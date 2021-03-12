@@ -11,7 +11,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.7.1-0.20210308081334-2dae12a14c48
+	github.com/cortexproject/cortex v1.7.1-0.20210310133228-161f103ed5ba
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.3+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
@@ -74,6 +74,9 @@ require (
 	k8s.io/klog v1.0.0
 )
 
+// Upgrade to run with gRPC 1.3.0 and above.
+replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
+
 replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
@@ -90,9 +93,6 @@ replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
-
-// Same as Cortex, we can't upgrade to grpc 1.30.0 until go.etcd.io/etcd will support it.
-replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
 
 // Same as Cortex
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86

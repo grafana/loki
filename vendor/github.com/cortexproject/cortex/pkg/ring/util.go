@@ -69,7 +69,7 @@ func GetInstancePort(configPort, listenPort int) int {
 
 // WaitInstanceState waits until the input instanceID is registered within the
 // ring matching the provided state. A timeout should be provided within the context.
-func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state IngesterState) error {
+func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state InstanceState) error {
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,

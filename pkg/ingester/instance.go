@@ -7,6 +7,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,7 +18,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -126,7 +126,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	stream, ok := i.streamsByFP[fp]
 	if !ok {
 
-		sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(ls), fp)
+		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(ls), fp)
 		stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
 		i.streamsByFP[fp] = stream
 		i.streams[stream.labelsString] = stream
@@ -237,7 +237,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	}
 	fp := i.getHashForLabels(labels)
 
-	sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(labels), fp)
+	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
 	stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
 	i.streams[pushReqStream.Labels] = stream
 	i.streamsByFP[fp] = stream

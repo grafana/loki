@@ -26,6 +26,7 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
@@ -494,7 +495,7 @@ func (w *walWrapper) checkpointSeries(userID string, fp model.Fingerprint, serie
 	b, err = encodeWithTypeHeader(&Series{
 		UserId:      userID,
 		Fingerprint: uint64(fp),
-		Labels:      client.FromLabelsToLabelAdapters(series.metric),
+		Labels:      cortexpb.FromLabelsToLabelAdapters(series.metric),
 		Chunks:      wireChunks,
 	}, CheckpointRecord, b)
 
@@ -714,7 +715,7 @@ Loop:
 	}
 }
 
-func copyLabelAdapters(las []client.LabelAdapter) []client.LabelAdapter {
+func copyLabelAdapters(las []cortexpb.LabelAdapter) []cortexpb.LabelAdapter {
 	for i := range las {
 		n, v := make([]byte, len(las[i].Name)), make([]byte, len(las[i].Value))
 		copy(n, las[i].Name)
@@ -734,7 +735,7 @@ func processCheckpointRecord(
 	errChan chan error,
 	memoryChunks prometheus.Counter,
 ) {
-	var la []client.LabelAdapter
+	var la []cortexpb.LabelAdapter
 	for s := range seriesChan {
 		state, ok := stateCache[s.UserId]
 		if !ok {
@@ -745,7 +746,7 @@ func processCheckpointRecord(
 
 		la = la[:0]
 		for _, l := range s.Labels {
-			la = append(la, client.LabelAdapter{
+			la = append(la, cortexpb.LabelAdapter{
 				Name:  string(l.Name),
 				Value: string(l.Value),
 			})
@@ -872,7 +873,7 @@ Loop:
 
 				lp = lp[:0]
 				for _, l := range s.Labels {
-					lp = append(lp, client.LabelAdapter(l))
+					lp = append(lp, cortexpb.LabelAdapter(l))
 				}
 				if _, err := state.createSeriesWithFingerprint(fp, lp, nil, true); err != nil {
 					// We don't return here in order to close/drain all the channels and

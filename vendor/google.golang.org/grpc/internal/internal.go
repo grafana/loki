@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/serviceconfig"
 )
 
 var (
@@ -40,9 +41,26 @@ var (
 	// NewRequestInfoContext creates a new context based on the argument context attaching
 	// the passed in RequestInfo to the new context.
 	NewRequestInfoContext interface{} // func(context.Context, credentials.RequestInfo) context.Context
+	// NewClientHandshakeInfoContext returns a copy of the input context with
+	// the passed in ClientHandshakeInfo struct added to it.
+	NewClientHandshakeInfoContext interface{} // func(context.Context, credentials.ClientHandshakeInfo) context.Context
 	// ParseServiceConfigForTesting is for creating a fake
 	// ClientConn for resolver testing only
 	ParseServiceConfigForTesting interface{} // func(string) *serviceconfig.ParseResult
+	// EqualServiceConfigForTesting is for testing service config generation and
+	// parsing. Both a and b should be returned by ParseServiceConfigForTesting.
+	// This function compares the config without rawJSON stripped, in case the
+	// there's difference in white space.
+	EqualServiceConfigForTesting func(a, b serviceconfig.Config) bool
+	// GetCertificateProviderBuilder returns the registered builder for the
+	// given name. This is set by package certprovider for use from xDS
+	// bootstrap code while parsing certificate provider configs in the
+	// bootstrap file.
+	GetCertificateProviderBuilder interface{} // func(string) certprovider.Builder
+	// GetXDSHandshakeInfoForTesting returns a pointer to the xds.HandshakeInfo
+	// stored in the passed in attributes. This is set by
+	// credentials/xds/xds.go.
+	GetXDSHandshakeInfoForTesting interface{} // func (attr *attributes.Attributes) *xds.HandshakeInfo
 )
 
 // HealthChecker defines the signature of the client-side LB channel health checking function.

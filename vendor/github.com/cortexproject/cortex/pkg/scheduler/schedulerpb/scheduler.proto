@@ -19,6 +19,9 @@ service SchedulerForQuerier {
   // Long-running loop is used to detect broken connection between scheduler and querier. This is important
   // for scheduler to keep a list of connected queriers up-to-date.
   rpc QuerierLoop(stream QuerierToScheduler) returns (stream SchedulerToQuerier) { };
+
+  // The querier notifies the query-scheduler that it started a graceful shutdown.
+  rpc NotifyQuerierShutdown(NotifyQuerierShutdownRequest) returns (NotifyQuerierShutdownResponse);
 }
 
 // Querier reports its own clientID when it connects, so that scheduler knows how many *different* queriers are connected.
@@ -88,3 +91,9 @@ message SchedulerToFrontend {
   SchedulerToFrontendStatus status = 1;
   string error = 2;
 }
+
+message NotifyQuerierShutdownRequest {
+  string querierID = 1;
+}
+
+message NotifyQuerierShutdownResponse {}

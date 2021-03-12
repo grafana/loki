@@ -21,7 +21,7 @@ type BasicLifecyclerDelegate interface {
 	// OnRingInstanceRegister is called while the lifecycler is registering the
 	// instance within the ring and should return the state and set of tokens to
 	// use for the instance itself.
-	OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (IngesterState, Tokens)
+	OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens)
 
 	// OnRingInstanceTokens is called once the instance tokens are set and are
 	// stable within the ring (honoring the observe period, if set).
@@ -111,7 +111,7 @@ func (l *BasicLifecycler) GetInstanceZone() string {
 	return l.cfg.Zone
 }
 
-func (l *BasicLifecycler) GetState() IngesterState {
+func (l *BasicLifecycler) GetState() InstanceState {
 	l.currState.RLock()
 	defer l.currState.RUnlock()
 
@@ -151,7 +151,7 @@ func (l *BasicLifecycler) IsRegistered() bool {
 	return l.currInstanceDesc != nil
 }
 
-func (l *BasicLifecycler) ChangeState(ctx context.Context, state IngesterState) error {
+func (l *BasicLifecycler) ChangeState(ctx context.Context, state InstanceState) error {
 	return l.run(func() error {
 		return l.changeState(ctx, state)
 	})
@@ -447,7 +447,7 @@ func (l *BasicLifecycler) heartbeat(ctx context.Context) {
 
 // changeState of the instance within the ring. This function is guaranteed
 // to be called within the lifecycler main goroutine.
-func (l *BasicLifecycler) changeState(ctx context.Context, state IngesterState) error {
+func (l *BasicLifecycler) changeState(ctx context.Context, state InstanceState) error {
 	err := l.updateInstance(ctx, func(_ *Desc, i *InstanceDesc) bool {
 		// No-op if the state hasn't changed.
 		if i.State == state {

@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 var (
@@ -14,7 +14,7 @@ var (
 )
 
 // MetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.
-func MetricNameFromLabelAdapters(labels []client.LabelAdapter) (string, error) {
+func MetricNameFromLabelAdapters(labels []cortexpb.LabelAdapter) (string, error) {
 	for _, label := range labels {
 		if label.Name == model.MetricNameLabel {
 			// Force a string copy since LabelAdapter is often a pointer into

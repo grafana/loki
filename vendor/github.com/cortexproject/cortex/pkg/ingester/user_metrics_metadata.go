@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -29,7 +29,7 @@ func newMetadataMap(l *Limiter, m *ingesterMetrics, userID string) *userMetricsM
 	}
 }
 
-func (mm *userMetricsMetadata) add(metric string, metadata *client.MetricMetadata) error {
+func (mm *userMetricsMetadata) add(metric string, metadata *cortexpb.MetricMetadata) error {
 	mm.mtx.Lock()
 	defer mm.mtx.Unlock()
 
@@ -80,10 +80,10 @@ func (mm *userMetricsMetadata) purge(deadline time.Time) {
 	mm.metrics.memMetadataRemovedTotal.WithLabelValues(mm.userID).Add(float64(deleted))
 }
 
-func (mm *userMetricsMetadata) toClientMetadata() []*client.MetricMetadata {
+func (mm *userMetricsMetadata) toClientMetadata() []*cortexpb.MetricMetadata {
 	mm.mtx.RLock()
 	defer mm.mtx.RUnlock()
-	r := make([]*client.MetricMetadata, 0, len(mm.metricToMetadata))
+	r := make([]*cortexpb.MetricMetadata, 0, len(mm.metricToMetadata))
 	for _, set := range mm.metricToMetadata {
 		for m := range set {
 			r = append(r, &m)
@@ -92,7 +92,7 @@ func (mm *userMetricsMetadata) toClientMetadata() []*client.MetricMetadata {
 	return r
 }
 
-type metricMetadataSet map[client.MetricMetadata]time.Time
+type metricMetadataSet map[cortexpb.MetricMetadata]time.Time
 
 // If deadline is zero time, all metrics are purged.
 func (mms metricMetadataSet) purge(deadline time.Time) int {

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log"
@@ -267,7 +267,7 @@ func (s *streamIterator) Next() bool {
 
 	s.current.UserID = currentInstance.id
 	s.current.Fingerprint = uint64(stream.fp)
-	s.current.Labels = client.FromLabelsToLabelAdapters(stream.labels)
+	s.current.Labels = cortexpb.FromLabelsToLabelAdapters(stream.labels)
 
 	s.current.To = stream.lastLine.ts
 	s.current.LastLine = stream.lastLine.content

@@ -129,7 +129,7 @@ type Lifecycler struct {
 	// We need to remember the ingester state, tokens and registered timestamp just in case the KV store
 	// goes away and comes back empty. The state changes during lifecycle of instance.
 	stateMtx     sync.RWMutex
-	state        IngesterState
+	state        InstanceState
 	tokens       Tokens
 	registeredAt time.Time
 
@@ -246,13 +246,13 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 }
 
 // GetState returns the state of this ingester.
-func (i *Lifecycler) GetState() IngesterState {
+func (i *Lifecycler) GetState() InstanceState {
 	i.stateMtx.RLock()
 	defer i.stateMtx.RUnlock()
 	return i.state
 }
 
-func (i *Lifecycler) setState(state IngesterState) {
+func (i *Lifecycler) setState(state InstanceState) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 	i.state = state
@@ -273,7 +273,7 @@ func (i *Lifecycler) sendToLifecyclerLoop(fn func()) error {
 }
 
 // ChangeState of the ingester, for use off of the loop() goroutine.
-func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error {
+func (i *Lifecycler) ChangeState(ctx context.Context, state InstanceState) error {
 	errCh := make(chan error)
 	fn := func() {
 		errCh <- i.changeState(ctx, state)
@@ -665,7 +665,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 }
 
 // autoJoin selects random tokens & moves state to targetState
-func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) error {
+func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) error {
 	var ringDesc *Desc
 
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -740,7 +740,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 
 // changeState updates consul with state transitions for us.  NB this must be
 // called from loop()!  Use ChangeState for calls from outside of loop().
-func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error {
+func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error {
 	currState := i.GetState()
 	// Only the following state transitions can be triggered externally
 	if !((currState == PENDING && state == JOINING) || // triggered by TransferChunks at the beginning

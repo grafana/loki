@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -476,7 +476,7 @@ func Test_SeriesIterator(t *testing.T) {
 			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
 			require.NoError(t, err)
 			stream := logproto.Stream{
-				Labels: cortex_client.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
+				Labels: cortexpb.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
 			}
 			for it.Next() {
 				stream.Entries = append(stream.Entries, it.Entry())
@@ -552,7 +552,7 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 		require.NoError(b, writer.Write(&Series{
 			UserID:      "foo",
 			Fingerprint: lbs.Hash(),
-			Labels:      cortex_client.FromLabelsToLabelAdapters(lbs),
+			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),
 			Chunks:      chunks,
 		}))
 	}

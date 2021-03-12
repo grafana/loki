@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -450,9 +450,9 @@ func (e tooManyClustersError) Is(err error) bool {
 	return ok1 || ok2
 }
 
-func findHALabels(replicaLabel, clusterLabel string, labels []client.LabelAdapter) (string, string) {
+func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelAdapter) (string, string) {
 	var cluster, replica string
-	var pair client.LabelAdapter
+	var pair cortexpb.LabelAdapter
 
 	for _, pair = range labels {
 		if pair.Name == replicaLabel {
