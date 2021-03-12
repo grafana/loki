@@ -7,13 +7,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/manager"
 )
 
 func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits ruler.RulesLimits) (*ruler.Ruler, error) {
 	mgr, err := ruler.NewDefaultMultiTenantManager(
 		cfg.Config,
-		manager.MemstoreTenantManager(
+		MemstoreTenantManager(
 			cfg,
 			engine,
 			limits,
@@ -26,7 +25,7 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 	}
 	return ruler.NewRuler(
 		cfg.Config,
-		manager.MultiTenantManagerAdapter(mgr),
+		MultiTenantManagerAdapter(mgr),
 		reg,
 		logger,
 		ruleStore,

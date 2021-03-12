@@ -1,4 +1,4 @@
-package manager
+package ruler
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	rulerConfig "github.com/grafana/loki/pkg/ruler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
@@ -89,7 +88,7 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 }
 
 func MemstoreTenantManager(
-	cfg rulerConfig.Config,
+	cfg Config,
 	engine *logql.Engine,
 	overrides RulesLimits,
 ) ruler.ManagerFactory {
@@ -133,7 +132,7 @@ func MemstoreTenantManager(
 	})
 }
 
-func newRemoteWriter(logger log.Logger, cfg rulerConfig.Config) *remote.WriteClient {
+func newRemoteWriter(logger log.Logger, cfg Config) *remote.WriteClient {
 	if cfg.RemoteWriteConfig.URL == "" {
 		return nil
 	}
