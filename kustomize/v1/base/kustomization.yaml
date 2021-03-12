@@ -13,10 +13,12 @@ commonLabels:
 
 resources:
   - ./distributor-deploy.yaml
-  - ./ingester-deploy.yaml
-  - ./gossip-ring-service.yaml
   - ./distributor-grpc-service.yaml
   - ./distributor-http-service.yaml
+  - ./ingester-deploy.yaml
+  - ./ingester-http-service.yaml
+  - ./ingester-grpc-service.yaml
+  - ./gossip-ring-service.yaml
   - ./querier-deploy.yaml
   - ./query-frontend-deploy.yaml
   - ./query-frontend-grpc-service.yaml

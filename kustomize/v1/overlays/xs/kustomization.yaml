@@ -8,3 +8,6 @@ bases:
 #patches:
 #  - ./replica_count.yaml
 
+resources:
+  - ./promtail.yaml
+
