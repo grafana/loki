@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/signals"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
@@ -154,7 +155,7 @@ type Loki struct {
 	tenantConfigs   *runtime.TenantConfigs
 	distributor     *distributor.Distributor
 	ingester        *ingester.Ingester
-	querier         *querier.Querier
+	Querier         *querier.Querier
 	ingesterQuerier *querier.IngesterQuerier
 	store           storage.Store
 	tableManager    *chunk.TableManager
@@ -166,6 +167,7 @@ type Loki struct {
 	runtimeConfig   *runtimeconfig.Manager
 	memberlistKV    *memberlist.KVInitService
 	compactor       *compactor.Compactor
+	QueryFrontEndTripperware cortex_tripper.Tripperware
 
 	HTTPAuthMiddleware middleware.Interface
 }
