@@ -19,14 +19,16 @@ package controllers
 import (
 	"context"
 
+	"github.com/ViaQ/logerr/log"
 	"github.com/go-logr/logr"
+	"gitlab.com/blockloop/loki-operator/internal/manifests"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	lokiv1beta1 "github.com/openshift/loki-operator/api/v1beta1"
+	lokiv1beta1 "gitlab.com/blockloop/loki-operator/api/v1beta1"
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -50,9 +52,15 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = r.Log.WithValues("lokistack", req.NamespacedName)
+	ll := log.WithValues("lokistack", req.NamespacedName)
 
-	// your logic here
+	result, err := manifests.Build(manifests.DefaultOptions())
+	if err != nil {
+		ll.Error(err, "failed to build manifests")
+	}
+	for _, r := range result {
+		log.Info("Resource created", "resource", r)
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -60,7 +68,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // SetupWithManager sets up the controller with the Manager.
 func (r *LokiStackReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	createPredicate := predicate.Funcs{
-		UpdateFunc:  func(e event.UpdateEvent) bool { return true },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return false },
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
 		GenericFunc: func(e event.GenericEvent) bool { return false },

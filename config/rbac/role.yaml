@@ -1,0 +1,34 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - loki.openshift.io
+  resources:
+  - lokistacks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - loki.openshift.io
+  resources:
+  - lokistacks/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - loki.openshift.io
+  resources:
+  - lokistacks/status
+  verbs:
+  - get
+  - patch
+  - update

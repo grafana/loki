@@ -1,7 +1,7 @@
 domain: openshift.io
 layout: go.kubebuilder.io/v3
 projectName: loki-operator
-repo: github.com/openshift/loki-operator
+repo: gitlab.com/blockloop/loki-operator
 resources:
 - crdVersion: v1beta1
   group: loki

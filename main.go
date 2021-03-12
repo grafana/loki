@@ -31,8 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	lokiv1beta1 "github.com/openshift/loki-operator/api/v1beta1"
-	"github.com/openshift/loki-operator/controllers"
+	lokiv1beta1 "gitlab.com/blockloop/loki-operator/api/v1beta1"
+	"gitlab.com/blockloop/loki-operator/controllers"
 	// +kubebuilder:scaffold:imports
 )
 
