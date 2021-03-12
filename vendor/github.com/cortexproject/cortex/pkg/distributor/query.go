@@ -21,7 +21,7 @@ import (
 // Query multiple ingesters and returns a Matrix of samples.
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
-	err := instrument.CollectedRequest(ctx, "Distributor.Query", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "Distributor.Query", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
@@ -48,7 +48,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
 func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
 	var result *ingester_client.QueryStreamResponse
-	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
@@ -136,9 +136,9 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 		}
 
 		resp, err := client.(ingester_client.IngesterClient).Query(ctx, req)
-		ingesterQueries.WithLabelValues(ing.Addr).Inc()
+		d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
 		if err != nil {
-			ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+			d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 			return nil, err
 		}
 
@@ -179,11 +179,11 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		if err != nil {
 			return nil, err
 		}
-		ingesterQueries.WithLabelValues(ing.Addr).Inc()
+		d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
 
 		stream, err := client.(ingester_client.IngesterClient).QueryStream(ctx, req)
 		if err != nil {
-			ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+			d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 			return nil, err
 		}
 		defer stream.CloseSend() //nolint:errcheck
@@ -196,7 +196,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			} else if err != nil {
 				// Do not track a failure if the context was canceled.
 				if !grpc_util.IsGRPCContextCanceled(err) {
-					ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+					d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 				}
 
 				return nil, err

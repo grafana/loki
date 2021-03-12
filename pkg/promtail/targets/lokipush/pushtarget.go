@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/logproto"
@@ -102,7 +103,9 @@ func (t *PushTarget) run() error {
 }
 
 func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
-	req, err := distributor.ParseRequest(r)
+	logger := util_log.WithContext(r.Context(), util_log.Logger)
+	userID, _ := user.ExtractOrgID(r.Context())
+	req, err := distributor.ParseRequest(logger, userID, r)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)

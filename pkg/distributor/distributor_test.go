@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	fe "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -313,7 +314,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 		}
 	}
 
-	d, err := New(distributorConfig, clientConfig, ingestersRing, overrides, nil)
+	d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
@@ -420,3 +421,5 @@ func (r mockRing) ShuffleShard(identifier string, size int) ring.ReadRing {
 func (r mockRing) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
 	return r
 }
+
+func (r mockRing) CleanupShuffleShardCache(identifier string) {}

@@ -1,5 +1,22 @@
 # Change Log
 
+## [v1.57.0] - 2021-01-15
+
+- #429 - @varshavaradarajan - kubernetes: support optional cascading deletes for clusters
+- #430 - @jonfriesen - apps: updates apps.gen.go for gitlab addition
+- #431 - @nicktate - apps: update proto to support dockerhub registry type
+
+## [v1.56.0] - 2021-01-08
+
+- #422 - @kamaln7 - apps: add ProposeApp method
+
+## [v1.55.0] - 2021-01-07
+
+- #425 - @adamwg - registry: Support the storage usage indicator
+- #423 - @ChiefMateStarbuck - Updated README example
+- #421 - @andrewsomething - Add some basic input cleaning to NewFromToken
+- #420 - @bentranter - Don't set "Content-Type" header on GET requests
+
 ## [v1.54.0] - 2020-11-24
 
 - #417 - @waynr - registry: add support for garbage collection types

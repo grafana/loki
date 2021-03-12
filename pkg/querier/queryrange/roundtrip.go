@@ -11,7 +11,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
@@ -224,7 +223,7 @@ func NewLogFilterTripperware(
 ) (queryrange.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByMetrics))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByTime, splitByMetrics))
 	}
 
 	if cfg.ShardedQueries {
@@ -270,7 +269,7 @@ func NewSeriesTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
 			// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, cfg.SplitQueriesByInterval), codec, splitByMetrics),
+			SplitByIntervalMiddleware(WithSplitByLimits(limits, cfg.SplitQueriesByInterval), codec, splitByTime, splitByMetrics),
 		)
 	}
 	if cfg.MaxRetries > 0 {
@@ -301,7 +300,7 @@ func NewLabelsTripperware(
 			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
 			// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
 			// This is because the labels API is an index-only operation.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByMetrics),
+			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, splitByMetrics),
 		)
 	}
 	if cfg.MaxRetries > 0 {
@@ -340,15 +339,10 @@ func NewMetricTripperware(
 		)
 	}
 
-	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
-	if cfg.SplitQueriesByDay {
-		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
-	}
-
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
 		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-		SplitByIntervalMiddleware(limits, codec, splitByMetrics),
+		SplitByIntervalMiddleware(limits, codec, splitMetricByTime, splitByMetrics),
 	)
 
 	var c cache.Cache

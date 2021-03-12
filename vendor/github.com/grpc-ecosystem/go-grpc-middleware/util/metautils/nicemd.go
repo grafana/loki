@@ -49,7 +49,7 @@ func (m NiceMD) Clone(copiedKeys ...string) NiceMD {
 			found = true
 		} else {
 			for _, allowedKey := range copiedKeys {
-				if strings.ToLower(allowedKey) == strings.ToLower(k) {
+				if strings.EqualFold(allowedKey, k) {
 					found = true
 					break
 				}

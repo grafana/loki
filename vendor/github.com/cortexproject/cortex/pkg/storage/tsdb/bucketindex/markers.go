@@ -48,8 +48,8 @@ func IsBlockDeletionMarkFilename(name string) (ulid.ULID, bool) {
 // MigrateBlockDeletionMarksToGlobalLocation list all tenant's blocks and, for each of them, look for
 // a deletion mark in the block location. Found deletion marks are copied to the global markers location.
 // The migration continues on error and returns once all blocks have been checked.
-func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore.Bucket, userID string) error {
-	userBucket := bucket.NewUserBucketClient(userID, bkt)
+func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider) error {
+	userBucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	// Find all blocks in the storage.
 	var blocks []ulid.ULID

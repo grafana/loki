@@ -59,8 +59,10 @@ type RegistryDockerCredentialsRequest struct {
 
 // Registry represents a registry.
 type Registry struct {
-	Name      string    `json:"name,omitempty"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
+	Name                       string    `json:"name,omitempty"`
+	StorageUsageBytes          uint64    `json:"storage_usage_bytes,omitempty"`
+	StorageUsageBytesUpdatedAt time.Time `json:"storage_usage_bytes_updated_at,omitempty"`
+	CreatedAt                  time.Time `json:"created_at,omitempty"`
 }
 
 // Repository represents a repository

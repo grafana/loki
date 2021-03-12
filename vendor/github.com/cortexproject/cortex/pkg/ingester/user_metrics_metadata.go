@@ -63,6 +63,7 @@ func (mm *userMetricsMetadata) add(metric string, metadata *client.MetricMetadat
 	return nil
 }
 
+// If deadline is zero, all metadata is purged.
 func (mm *userMetricsMetadata) purge(deadline time.Time) {
 	mm.mtx.Lock()
 	defer mm.mtx.Unlock()
@@ -93,10 +94,11 @@ func (mm *userMetricsMetadata) toClientMetadata() []*client.MetricMetadata {
 
 type metricMetadataSet map[client.MetricMetadata]time.Time
 
+// If deadline is zero time, all metrics are purged.
 func (mms metricMetadataSet) purge(deadline time.Time) int {
 	var deleted int
 	for metadata, t := range mms {
-		if deadline.After(t) {
+		if deadline.IsZero() || deadline.After(t) {
 			delete(mms, metadata)
 			deleted++
 		}

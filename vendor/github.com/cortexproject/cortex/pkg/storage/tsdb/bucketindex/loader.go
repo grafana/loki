@@ -13,6 +13,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -36,9 +37,10 @@ type LoaderConfig struct {
 type Loader struct {
 	services.Service
 
-	bkt    objstore.Bucket
-	logger log.Logger
-	cfg    LoaderConfig
+	bkt         objstore.Bucket
+	logger      log.Logger
+	cfg         LoaderConfig
+	cfgProvider bucket.TenantConfigProvider
 
 	indexesMx sync.RWMutex
 	indexes   map[string]*cachedIndex
@@ -51,12 +53,13 @@ type Loader struct {
 }
 
 // NewLoader makes a new Loader.
-func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *Loader {
+func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *Loader {
 	l := &Loader{
-		bkt:     bucketClient,
-		logger:  logger,
-		cfg:     cfg,
-		indexes: map[string]*cachedIndex{},
+		bkt:         bucketClient,
+		logger:      logger,
+		cfg:         cfg,
+		cfgProvider: cfgProvider,
+		indexes:     map[string]*cachedIndex{},
 
 		loadAttempts: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_bucket_index_loads_total",
@@ -104,7 +107,7 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
 
 	startTime := time.Now()
 	l.loadAttempts.Inc()
-	idx, err := ReadIndex(ctx, l.bkt, userID, l.logger)
+	idx, err := ReadIndex(ctx, l.bkt, userID, l.cfgProvider, l.logger)
 	if err != nil {
 		// Cache the error, to avoid hammering the object store in case of persistent issues
 		// (eg. corrupted bucket index or not existing).
@@ -192,7 +195,7 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 
 	l.loadAttempts.Inc()
 	startTime := time.Now()
-	idx, err := ReadIndex(readCtx, l.bkt, userID, l.logger)
+	idx, err := ReadIndex(readCtx, l.bkt, userID, l.cfgProvider, l.logger)
 	if err != nil && !errors.Is(err, ErrIndexNotFound) {
 		l.loadFailures.Inc()
 		level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)

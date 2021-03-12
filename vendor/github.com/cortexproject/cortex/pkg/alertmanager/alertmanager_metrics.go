@@ -46,6 +46,11 @@ type alertmanagerMetrics struct {
 
 	// The alertmanager config hash.
 	configHashValue *prometheus.Desc
+
+	partialMerges       *prometheus.Desc
+	partialMergesFailed *prometheus.Desc
+	replicationTotal    *prometheus.Desc
+	replicationFailed   *prometheus.Desc
 }
 
 func newAlertmanagerMetrics() *alertmanagerMetrics {
@@ -147,6 +152,22 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"cortex_alertmanager_config_hash",
 			"Hash of the currently loaded alertmanager configuration.",
 			[]string{"user"}, nil),
+		partialMerges: prometheus.NewDesc(
+			"cortex_alertmanager_partial_state_merges_total",
+			"Number of times we have received a partial state to merge for a key.",
+			[]string{"key"}, nil),
+		partialMergesFailed: prometheus.NewDesc(
+			"cortex_alertmanager_partial_state_merges_failed_total",
+			"Number of times we have failed to merge a partial state received for a key.",
+			[]string{"key"}, nil),
+		replicationTotal: prometheus.NewDesc(
+			"cortex_alertmanager_state_replication_total",
+			"Number of times we have tried to replicate a state to other alertmanagers",
+			[]string{"key"}, nil),
+		replicationFailed: prometheus.NewDesc(
+			"cortex_alertmanager_state_replication_failed_total",
+			"Number of times we have failed to replicate a state to other alertmanagers",
+			[]string{"key"}, nil),
 	}
 }
 
@@ -155,7 +176,7 @@ func (m *alertmanagerMetrics) addUserRegistry(user string, reg *prometheus.Regis
 }
 
 func (m *alertmanagerMetrics) removeUserRegistry(user string) {
-	// We neeed to go for a soft deletion here, as hard deletion requires
+	// We need to go for a soft deletion here, as hard deletion requires
 	// that _all_ metrics except gauges are per-user.
 	m.regs.RemoveUserRegistry(user, false)
 }
@@ -185,6 +206,10 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.silencesPropagatedMessagesTotal
 	out <- m.silences
 	out <- m.configHashValue
+	out <- m.partialMerges
+	out <- m.partialMergesFailed
+	out <- m.replicationTotal
+	out <- m.replicationFailed
 }
 
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
@@ -218,4 +243,9 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfGaugesPerUserWithLabels(out, m.silences, "alertmanager_silences", "state")
 
 	data.SendMaxOfGaugesPerUser(out, m.configHashValue, "alertmanager_config_hash")
+
+	data.SendSumOfCountersWithLabels(out, m.partialMerges, "alertmanager_partial_state_merges_total", "key")
+	data.SendSumOfCountersWithLabels(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total", "key")
+	data.SendSumOfCountersWithLabels(out, m.replicationTotal, "alertmanager_state_replication_total", "key")
+	data.SendSumOfCountersWithLabels(out, m.replicationFailed, "alertmanager_state_replication_failed_total", "key")
 }

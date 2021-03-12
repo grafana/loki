@@ -33,25 +33,40 @@ func newMapper(path string, logger log.Logger) *mapper {
 	return m
 }
 
+func (m *mapper) cleanupUser(userID string) {
+	dirPath := filepath.Join(m.Path, userID)
+	err := m.FS.RemoveAll(dirPath)
+	if err != nil {
+		level.Warn(m.logger).Log("msg", "unable to remove user directory", "path", dirPath, "err", err)
+	}
+}
+
 // cleanup removes all of the user directories in the path of the mapper
 func (m *mapper) cleanup() {
 	level.Info(m.logger).Log("msg", "cleaning up mapped rules directory", "path", m.Path)
 
-	existingUsers, err := afero.ReadDir(m.FS, m.Path)
+	users, err := m.users()
 	if err != nil {
 		level.Error(m.logger).Log("msg", "unable to read rules directory", "path", m.Path, "err", err)
 		return
 	}
 
-	for _, u := range existingUsers {
+	for _, u := range users {
+		m.cleanupUser(u)
+	}
+}
+
+func (m *mapper) users() ([]string, error) {
+	var result []string
+
+	dirs, err := afero.ReadDir(m.FS, m.Path)
+	for _, u := range dirs {
 		if u.IsDir() {
-			dirPath := filepath.Join(m.Path, u.Name())
-			err = m.FS.RemoveAll(dirPath)
-			if err != nil {
-				level.Warn(m.logger).Log("msg", "unable to remove user directory", "path", dirPath, "err", err)
-			}
+			result = append(result, u.Name())
 		}
 	}
+
+	return result, err
 }
 
 func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGroup) (bool, []string, error) {

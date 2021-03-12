@@ -5,13 +5,13 @@ import (
 	"flag"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -42,6 +42,7 @@ type Flusher struct {
 	chunkStore     ingester.ChunkStore
 	limits         *validation.Overrides
 	registerer     prometheus.Registerer
+	logger         log.Logger
 }
 
 const (
@@ -56,6 +57,7 @@ func New(
 	chunkStore ingester.ChunkStore,
 	limits *validation.Overrides,
 	registerer prometheus.Registerer,
+	logger log.Logger,
 ) (*Flusher, error) {
 
 	// These are ignored by blocks-ingester, but that's fine.
@@ -69,13 +71,14 @@ func New(
 		chunkStore:     chunkStore,
 		limits:         limits,
 		registerer:     registerer,
+		logger:         logger,
 	}
 	f.Service = services.NewBasicService(nil, f.running, nil)
 	return f, nil
 }
 
 func (f *Flusher) running(ctx context.Context) error {
-	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.chunkStore, f.limits, f.registerer)
+	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.chunkStore, f.limits, f.registerer, f.logger)
 	if err != nil {
 		return errors.Wrap(err, "create ingester")
 	}
@@ -88,7 +91,7 @@ func (f *Flusher) running(ctx context.Context) error {
 
 	// Sleeping to give a chance to Prometheus
 	// to collect the metrics.
-	level.Info(util_log.Logger).Log("msg", "sleeping to give chance for collection of metrics", "duration", postFlushSleepTime.String())
+	level.Info(f.logger).Log("msg", "sleeping to give chance for collection of metrics", "duration", postFlushSleepTime.String())
 	time.Sleep(postFlushSleepTime)
 
 	if err := services.StopAndAwaitTerminated(ctx, ing); err != nil {

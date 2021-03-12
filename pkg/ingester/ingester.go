@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
 	listutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -121,8 +122,9 @@ func (cfg *Config) Validate() error {
 type Ingester struct {
 	services.Service
 
-	cfg          Config
-	clientConfig client.Config
+	cfg           Config
+	clientConfig  client.Config
+	tenantConfigs *runtime.TenantConfigs
 
 	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
 	instancesMtx sync.RWMutex
@@ -168,7 +170,7 @@ type ChunkStore interface {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -178,6 +180,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	i := &Ingester{
 		cfg:                   cfg,
 		clientConfig:          clientConfig,
+		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
 		store:                 store,
 		periodicConfigs:       store.GetSchemaConfigs(),
@@ -401,7 +404,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal, i.metrics, i.flushOnShutdownSwitch)
+		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch)
 		i.instances[instanceID] = inst
 	}
 	return inst

@@ -1,26 +1,5 @@
 # Releasing
 
-## Setup environment from scratch
-
-1. [Install Go](https://golang.org/dl/).
-    1. Ensure that your `GOBIN` directory (by default `$(go env GOPATH)/bin`)
-    is in your `PATH`.
-    1. Check it's working by running `go version`.
-        * If it doesn't work, check the install location, usually
-        `/usr/local/go`, is on your `PATH`.
-
-1. Sign one of the
-[contributor license agreements](#contributor-license-agreements) below.
-
-1. Clone the repo:
-    `git clone https://github.com/googleapis/google-cloud-go`
-
-1. Change into the checked out source:
-    `cd google-cloud-go`
-
-1. Fork the repo and add your fork as a secondary remote (this is necessary in
-   order to create PRs).
-
 ## Determine which module to release
 
 The Go client libraries have several modules. Each module does not strictly
@@ -31,15 +10,20 @@ To see all modules:
 
 ```bash
 $ cat `find . -name go.mod` | grep module
-module cloud.google.com/go
-module cloud.google.com/go/bigtable
-module cloud.google.com/go/firestore
-module cloud.google.com/go/bigquery
-module cloud.google.com/go/storage
-module cloud.google.com/go/datastore
 module cloud.google.com/go/pubsub
 module cloud.google.com/go/spanner
+module cloud.google.com/go
+module cloud.google.com/go/bigtable
+module cloud.google.com/go/bigquery
+module cloud.google.com/go/storage
+module cloud.google.com/go/pubsublite
+module cloud.google.com/go/firestore
 module cloud.google.com/go/logging
+module cloud.google.com/go/internal/gapicgen
+module cloud.google.com/go/internal/godocfx
+module cloud.google.com/go/internal/examples/fake
+module cloud.google.com/go/internal/examples/mock
+module cloud.google.com/go/datastore
 ```
 
 The `cloud.google.com/go` is the repository root module. Each other module is
@@ -60,27 +44,41 @@ They are released entirely independently.
 If there are any test failures in the Kokoro build, releases are blocked until
 the failures have been resolved.
 
-## How to release `cloud.google.com/go`
+## How to release
 
-Check for failures in the [continuous Kokoro build](http://go/google-cloud-go-continuous).
-If there are any failures in the most recent build, address them before
-proceeding with the release.
+### Automated Releases (`cloud.google.com/go` and submodules)
 
-### Automated Release
+We now use [release-please](https://github.com/googleapis/release-please) to
+perform automated releases for `cloud.google.com/go` and all submodules.
 
-If there are changes that have not yet been released a
-[pull request](https://github.com/googleapis/google-cloud-go/pull/2971) should
-be automatically opened by [release-please](https://github.com/googleapis/release-please)
-with a title like "chore: release 0.XX.0", where XX is the next version to be
-released. To cut a release, approve and merge this pull request. Doing so will
-update the `CHANGES.md`, tag the merged commit with the appropriate version,
-and draft a GitHub release.
+1. If there are changes that have not yet been released, a
+   [pull request](https://github.com/googleapis/google-cloud-go/pull/2971) will
+   be automatically opened by release-please
+   with a title like "chore: release X.Y.Z" (for the root module) or 
+   "chore: release datastore X.Y.Z" (for the datastore submodule), where X.Y.Z 
+   is the next version to be released. Find the desired pull request
+   [here](https://github.com/googleapis/google-cloud-go/pulls)
+1. Check for failures in the
+   [continuous Kokoro build](http://go/google-cloud-go-continuous). If there are
+   any failures in the most recent build, address them before proceeding with
+   the release. (This applies even if the failures are in a different submodule
+   from the one being released.)
+1. Review the release notes. These are automatically generated from the titles
+   of any merged commits since the previous release. If you would like to edit
+   them, this can be done by updating the changes in the release PR.
+1. To cut a release, approve and merge the pull request. Doing so will
+   update the `CHANGES.md`, tag the merged commit with the appropriate version,
+   and draft a GitHub release which will copy the notes from `CHANGES.md`.
 
-### Manual Release
+### Manual Release (`cloud.google.com/go`)
 
 If for whatever reason the automated release process is not working as expected,
-here is how to manually cut a release.
+here is how to manually cut a release of `cloud.google.com/go`.
 
+1. Check for failures in the
+   [continuous Kokoro build](http://go/google-cloud-go-continuous). If there are
+   any failures in the most recent build, address them before proceeding with
+   the release.
 1. Navigate to `google-cloud-go/` and switch to master.
 1. `git pull`
 1. Run `git tag -l | grep -v beta | grep -v alpha` to see all existing releases.
@@ -108,12 +106,10 @@ here is how to manually cut a release.
 1. Update [the releases page](https://github.com/googleapis/google-cloud-go/releases)
    with the new release, copying the contents of `CHANGES.md`.
 
-## How to release a submodule
+### Manual Releases (submodules)
 
-We have several submodules, including `cloud.google.com/go/logging`,
-`cloud.google.com/go/datastore`, and so on.
-
-To release a submodule:
+If for whatever reason the automated release process is not working as expected,
+here is how to manually cut a release of a submodule.
 
 (these instructions assume we're releasing `cloud.google.com/go/datastore` - adjust accordingly)
 
@@ -143,7 +139,3 @@ To release a submodule:
       `git push origin $NV`
 1. Update [the releases page](https://github.com/googleapis/google-cloud-go/releases)
    with the new release, copying the contents of `datastore/CHANGES.md`.
-
-## Appendix
-
-1: This should get better as submodule tooling matures.

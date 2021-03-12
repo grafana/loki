@@ -82,7 +82,7 @@ func main() {
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
-	err := config.Validate(util_log.Logger)
+	err := config.Validate()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())
 		os.Exit(1)

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -28,7 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -99,7 +99,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.StringVar(&cfg.SecondStoreEngine, "querier.second-store-engine", "", "Second store engine to use for querying. Empty = disabled.")
 	f.Var(&cfg.UseSecondStoreBeforeTime, "querier.use-second-store-before-time", "If specified, second store is only used for queries before this timestamp. Default value 0 means secondary store is always queried.")
-	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
+	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
 }
 
 // Validate the config
@@ -143,7 +143,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.SampleAndChunkQueryable, *promql.Engine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -167,9 +167,9 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             logger,
 		Reg:                reg,
-		ActiveQueryTracker: createActiveQueryTracker(cfg),
+		ActiveQueryTracker: createActiveQueryTracker(cfg, logger),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
 		LookbackDelta:      cfg.LookbackDelta,
@@ -195,11 +195,11 @@ func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt i
 	return nil, errors.New("ChunkQuerier not implemented")
 }
 
-func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
+func createActiveQueryTracker(cfg Config, logger log.Logger) *promql.ActiveQueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.Logger)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
 	}
 
 	return nil
@@ -384,13 +384,13 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 }
 
 // LabelsValue implements storage.Querier.
-func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q querier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if !q.queryStoreForLabels {
-		return q.metadataQuerier.LabelValues(name)
+		return q.metadataQuerier.LabelValues(name, matchers...)
 	}
 
 	if len(q.queriers) == 1 {
-		return q.queriers[0].LabelValues(name)
+		return q.queriers[0].LabelValues(name, matchers...)
 	}
 
 	var (
@@ -406,7 +406,7 @@ func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
-			myValues, myWarnings, err := querier.LabelValues(name)
+			myValues, myWarnings, err := querier.LabelValues(name, matchers...)
 			if err != nil {
 				return err
 			}

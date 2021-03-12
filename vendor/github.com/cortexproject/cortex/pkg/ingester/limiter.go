@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	errMaxSeriesPerMetricLimitExceeded   = "per-metric series limit (local limit: %d global limit: %d actual local limit: %d) exceeded"
-	errMaxSeriesPerUserLimitExceeded     = "per-user series limit (local limit: %d global limit: %d actual local limit: %d) exceeded"
-	errMaxMetadataPerMetricLimitExceeded = "per-metric metadata limit (local limit: %d global limit: %d actual local limit: %d) exceeded"
-	errMaxMetadataPerUserLimitExceeded   = "per-user metric metadata limit (local limit: %d global limit: %d actual local limit: %d) exceeded"
+	errMaxSeriesPerMetricLimitExceeded   = "per-metric series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
+	errMaxSeriesPerUserLimitExceeded     = "per-user series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
+	errMaxMetadataPerMetricLimitExceeded = "per-metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
+	errMaxMetadataPerUserLimitExceeded   = "per-user metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
 )
 
 // RingCount is the interface exposed by a ring implementation which allows
@@ -64,7 +64,7 @@ func (l *Limiter) AssertMaxSeriesPerMetric(userID string, series int) error {
 	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
 
-	return fmt.Errorf(errMaxSeriesPerMetricLimitExceeded, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf(errMaxSeriesPerMetricLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
 }
 
 // AssertMaxMetadataPerMetric limit has not been reached compared to the current
@@ -79,7 +79,7 @@ func (l *Limiter) AssertMaxMetadataPerMetric(userID string, metadata int) error 
 	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
 
-	return fmt.Errorf(errMaxMetadataPerMetricLimitExceeded, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf(errMaxMetadataPerMetricLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
 }
 
 // AssertMaxSeriesPerUser limit has not been reached compared to the current
@@ -93,7 +93,7 @@ func (l *Limiter) AssertMaxSeriesPerUser(userID string, series int) error {
 	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
 
-	return fmt.Errorf(errMaxSeriesPerUserLimitExceeded, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf(errMaxSeriesPerUserLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
 }
 
 // AssertMaxMetricsWithMetadataPerUser limit has not been reached compared to the current
@@ -108,7 +108,7 @@ func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int
 	localLimit := l.limits.MaxLocalMetricsWithMetadataPerUser(userID)
 	globalLimit := l.limits.MaxGlobalMetricsWithMetadataPerUser(userID)
 
-	return fmt.Errorf(errMaxMetadataPerUserLimitExceeded, localLimit, globalLimit, actualLimit)
+	return fmt.Errorf(errMaxMetadataPerUserLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
 }
 
 // MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.

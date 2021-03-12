@@ -78,6 +78,13 @@ func LoadTokensFromFile(tokenFilePath string) (Tokens, error) {
 	}
 	var t Tokens
 	err = t.Unmarshal(b)
+
+	// Tokens may have been written to file by an older version of Cortex which
+	// doesn't guarantee sorted tokens, so we enforce sorting here.
+	if !sort.IsSorted(t) {
+		sort.Sort(t)
+	}
+
 	return t, err
 }
 
@@ -92,7 +99,7 @@ func (t *Tokens) Unmarshal(b []byte) error {
 	if err := json.Unmarshal(b, &tj); err != nil {
 		return err
 	}
-	*t = Tokens(tj.Tokens)
+	*t = tj.Tokens
 	return nil
 }
 

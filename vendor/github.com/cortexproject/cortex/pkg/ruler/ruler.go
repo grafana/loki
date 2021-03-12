@@ -28,12 +28,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -168,7 +169,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type MultiTenantManager interface {
 	// SyncRuleGroups is used to sync the Manager with rules from the RuleStore.
 	// If existing user is missing in the ruleGroups map, its ruler manager will be stopped.
-	SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList)
+	SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulestore.RuleGroupList)
 	// GetRules fetches rules for a particular tenant (userID).
 	GetRules(userID string) []*promRules.Group
 	// Stop stops all Manager components.
@@ -210,7 +211,7 @@ type Ruler struct {
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
 	subservices *services.Manager
-	store       rules.RuleStore
+	store       rulestore.RuleStore
 	manager     MultiTenantManager
 	limits      RulesLimits
 
@@ -222,7 +223,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore, limits RulesLimits) (*Ruler, error) {
+func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
 	ruler := &Ruler{
 		cfg:      cfg,
 		store:    ruleStore,
@@ -351,7 +352,7 @@ func SendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
 
 var sep = []byte("/")
 
-func tokenForGroup(g *store.RuleGroupDesc) uint32 {
+func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	ringHasher := fnv.New32a()
 
 	// Hasher never returns err.
@@ -364,7 +365,7 @@ func tokenForGroup(g *store.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rules.RuleGroupDesc, instanceAddr string) (bool, error) {
+func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
 
 	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
@@ -451,10 +452,11 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 		return
 	}
 
+	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, configs)
 }
 
-func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRules(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	switch {
 	case !r.cfg.EnableSharding:
 		return r.listRulesNoSharding(ctx)
@@ -470,17 +472,17 @@ func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, 
 	}
 }
 
-func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	return r.store.ListAllRuleGroups(ctx)
 }
 
-func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	filteredConfigs := make(map[string]rules.RuleGroupList)
+	filteredConfigs := make(map[string]rulestore.RuleGroupList)
 	for userID, groups := range configs {
 		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
@@ -490,7 +492,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rules.
 	return filteredConfigs, nil
 }
 
-func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	users, err := r.store.ListAllUsers(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to list users of ruler")
@@ -524,7 +526,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.
 	close(userCh)
 
 	mu := sync.Mutex{}
-	result := map[string]rules.RuleGroupList{}
+	result := map[string]rulestore.RuleGroupList{}
 
 	concurrency := loadRulesConcurrency
 	if len(userRings) < concurrency {
@@ -562,9 +564,9 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.
 //
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*store.RuleGroupDesc {
+func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
-	var result []*rules.RuleGroupDesc
+	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
 		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
@@ -615,7 +617,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 		}
 
 		groupDesc := &GroupStateDesc{
-			Group: &rules.RuleGroupDesc{
+			Group: &rulespb.RuleGroupDesc{
 				Name:      group.Name(),
 				Namespace: string(decodedNamespace),
 				Interval:  interval,
@@ -650,7 +652,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					})
 				}
 				ruleDesc = &RuleStateDesc{
-					Rule: &rules.RuleDesc{
+					Rule: &rulespb.RuleDesc{
 						Expr:        rule.Query().String(),
 						Alert:       rule.Name(),
 						For:         rule.HoldDuration(),
@@ -666,7 +668,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				}
 			case *promRules.RecordingRule:
 				ruleDesc = &RuleStateDesc{
-					Rule: &rules.RuleDesc{
+					Rule: &rulespb.RuleDesc{
 						Record: rule.Name(),
 						Expr:   rule.Query().String(),
 						Labels: client.FromLabelsToLabelAdapters(rule.Labels()),
@@ -709,7 +711,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 			return nil, err
 		}
 		cc := NewRulerClient(conn)
-		newGrps, err := cc.Rules(ctx, nil)
+		newGrps, err := cc.Rules(ctx, &RulesRequest{})
 
 		// Close the gRPC connection regardless the RPC was successful or not.
 		if closeErr := conn.Close(); closeErr != nil {
@@ -769,4 +771,25 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 		return nil
 	}
 	return fmt.Errorf(errMaxRulesPerRuleGroupPerUserLimitExceeded, limit, rules)
+}
+
+func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
+	logger := util_log.WithContext(req.Context(), r.logger)
+
+	userID, err := tenant.TenantID(req.Context())
+	if err != nil {
+		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
+		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
+	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
+		respondError(logger, w, err.Error())
+		return
+	}
+
+	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", userID)
+	w.WriteHeader(http.StatusOK)
 }

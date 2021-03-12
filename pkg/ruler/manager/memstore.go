@@ -304,7 +304,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 }
 
 // LabelValues returns all potential values for a label name.
-func (*memStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 

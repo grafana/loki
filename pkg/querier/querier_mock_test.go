@@ -351,6 +351,8 @@ func (r *readRingMock) ShuffleShardWithLookback(identifier string, size int, loo
 	return r
 }
 
+func (r *readRingMock) CleanupShuffleShardCache(identifier string) {}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},

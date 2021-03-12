@@ -60,7 +60,7 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", req.Shards), "query", req.Query)
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", req.Shards), "query", req.Query, "step", req.GetStep())
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {

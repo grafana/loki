@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ruler/manager"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/grafana/loki/pkg/util/runtime"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -60,6 +62,7 @@ const (
 	Ring            string = "ring"
 	RuntimeConfig   string = "runtime-config"
 	Overrides       string = "overrides"
+	TenantConfigs   string = "tenant-configs"
 	Server          string = "server"
 	Distributor     string = "distributor"
 	Ingester        string = "ingester"
@@ -140,11 +143,17 @@ func (t *Loki) initOverrides() (_ services.Service, err error) {
 	return nil, err
 }
 
+func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
+	t.tenantConfigs, err = runtime.NewTenantConfigs(tenantConfigFromRuntimeConfig(t.runtimeConfig))
+	// tenantConfigs are not a service, since they don't have any operational state.
+	return nil, err
+}
+
 func (t *Loki) initDistributor() (services.Service, error) {
 	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	var err error
-	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides, prometheus.DefaultRegisterer)
+	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.tenantConfigs, t.ring, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +227,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, prometheus.DefaultRegisterer)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -451,8 +460,15 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
 	t.Server.HTTP.Handle("/api/prom/tail", defaultHandler)
 
-	return services.NewIdleService(nil, func(_ error) error {
-		t.frontend.Close()
+	return services.NewIdleService(func(ctx context.Context) error {
+		return services.StartAndAwaitRunning(ctx, t.frontend)
+	}, func(_ error) error {
+		// Log but not return in case of error, so that other following dependencies
+		// are stopped too.
+		if err := services.StopAndAwaitTerminated(context.Background(), t.frontend); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to stop frontend service", "err", err)
+		}
+
 		if t.stopper != nil {
 			t.stopper.Stop()
 		}
@@ -484,7 +500,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewRuleStorage(t.cfg.Ruler.StoreConfig, manager.GroupLoader{})
+	t.RulerStorage, err = cortex_ruler.NewLegacyRuleStore(t.cfg.Ruler.StoreConfig, manager.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -517,7 +533,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return
 	}
 
-	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage)
+	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage, util_log.Logger)
 
 	// Expose HTTP endpoints.
 	if t.cfg.Ruler.EnableAPI {

@@ -22,6 +22,7 @@ import (
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -59,9 +60,10 @@ type Handler struct {
 
 	// Metrics.
 	querySeconds *prometheus.CounterVec
+	activeUsers  *util.ActiveUsersCleanupService
 }
 
-// New creates a new frontend handler.
+// NewHandler creates a new frontend handler.
 func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
 	h := &Handler{
 		cfg:          cfg,
@@ -74,6 +76,12 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Name: "cortex_query_seconds_total",
 			Help: "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
+
+		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+			h.querySeconds.DeleteLabelValues(user)
+		})
+		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
+		_ = h.activeUsers.StartAsync(context.Background())
 	}
 
 	return h
@@ -160,6 +168,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(stats.LoadWallTime().Seconds())
+	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.
 	logMessage := append([]interface{}{
@@ -201,7 +210,7 @@ func writeError(w http.ResponseWriter, err error) {
 	case context.DeadlineExceeded:
 		err = errDeadlineExceeded
 	default:
-		if strings.Contains(err.Error(), "http: request body too large") {
+		if util.IsRequestBodyTooLarge(err) {
 			err = errRequestEntityTooLarge
 		}
 	}

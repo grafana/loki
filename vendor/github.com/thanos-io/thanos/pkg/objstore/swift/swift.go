@@ -195,11 +195,20 @@ func (c *Container) Name() string {
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (c *Container) Iter(_ context.Context, dir string, f func(string) error) error {
+func (c *Container) Iter(_ context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, string(DirDelim)) + string(DirDelim)
 	}
-	return c.connection.ObjectsWalk(c.name, &swift.ObjectsOpts{Prefix: dir, Delimiter: DirDelim}, func(opts *swift.ObjectsOpts) (interface{}, error) {
+
+	listOptions := &swift.ObjectsOpts{
+		Prefix:    dir,
+		Delimiter: DirDelim,
+	}
+	if objstore.ApplyIterOptions(options...).Recursive {
+		listOptions.Delimiter = rune(0)
+	}
+
+	return c.connection.ObjectsWalk(c.name, listOptions, func(opts *swift.ObjectsOpts) (interface{}, error) {
 		objects, err := c.connection.ObjectNames(c.name, opts)
 		if err != nil {
 			return objects, errors.Wrap(err, "list object names")

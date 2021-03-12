@@ -32,6 +32,7 @@ import (
 	"github.com/matttproud/golang_protobuf_extensions/pbutil"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
+	"github.com/prometheus/alertmanager/pkg/labels"
 	pb "github.com/prometheus/alertmanager/silence/silencepb"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -49,12 +50,12 @@ func utcNow() time.Time {
 	return time.Now().UTC()
 }
 
-type matcherCache map[*pb.Silence]types.Matchers
+type matcherCache map[*pb.Silence]labels.Matchers
 
 // Get retrieves the matchers for a given silence. If it is a missed cache
 // access, it compiles and adds the matchers of the requested silence to the
 // cache.
-func (c matcherCache) Get(s *pb.Silence) (types.Matchers, error) {
+func (c matcherCache) Get(s *pb.Silence) (labels.Matchers, error) {
 	if m, ok := c[s]; ok {
 		return m, nil
 	}
@@ -63,33 +64,32 @@ func (c matcherCache) Get(s *pb.Silence) (types.Matchers, error) {
 
 // add compiles a silences' matchers and adds them to the cache.
 // It returns the compiled matchers.
-func (c matcherCache) add(s *pb.Silence) (types.Matchers, error) {
-	var (
-		ms types.Matchers
-		mt *types.Matcher
-	)
+func (c matcherCache) add(s *pb.Silence) (labels.Matchers, error) {
+	ms := make(labels.Matchers, len(s.Matchers))
 
-	for _, m := range s.Matchers {
-		mt = &types.Matcher{
-			Name:  m.Name,
-			Value: m.Pattern,
-		}
+	for i, m := range s.Matchers {
+		var mt labels.MatchType
 		switch m.Type {
 		case pb.Matcher_EQUAL:
-			mt.IsRegex = false
+			mt = labels.MatchEqual
+		case pb.Matcher_NOT_EQUAL:
+			mt = labels.MatchNotEqual
 		case pb.Matcher_REGEXP:
-			mt.IsRegex = true
+			mt = labels.MatchRegexp
+		case pb.Matcher_NOT_REGEXP:
+			mt = labels.MatchNotRegexp
+		default:
+			return nil, errors.Errorf("unknown matcher type %q", m.Type)
 		}
-		err := mt.Init()
+		matcher, err := labels.NewMatcher(mt, m.Name, m.Pattern)
 		if err != nil {
 			return nil, err
 		}
 
-		ms = append(ms, mt)
+		ms[i] = matcher
 	}
 
 	c[s] = ms
-
 	return ms, nil
 }
 
@@ -420,11 +420,11 @@ func validateMatcher(m *pb.Matcher) error {
 		return fmt.Errorf("invalid label name %q", m.Name)
 	}
 	switch m.Type {
-	case pb.Matcher_EQUAL:
+	case pb.Matcher_EQUAL, pb.Matcher_NOT_EQUAL:
 		if !model.LabelValue(m.Pattern).IsValid() {
 			return fmt.Errorf("invalid label value %q", m.Pattern)
 		}
-	case pb.Matcher_REGEXP:
+	case pb.Matcher_REGEXP, pb.Matcher_NOT_REGEXP:
 		if _, err := regexp.Compile(m.Pattern); err != nil {
 			return fmt.Errorf("invalid regular expression %q: %s", m.Pattern, err)
 		}
@@ -634,7 +634,7 @@ func QMatches(set model.LabelSet) QueryParam {
 			if err != nil {
 				return true, err
 			}
-			return m.Match(set), nil
+			return m.Matches(set), nil
 		}
 		q.filters = append(q.filters, f)
 		return nil

@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -14,9 +16,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/ruler/rules/local"
-	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
+	configClient "github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 // RuleStoreConfig configures a rule store.
@@ -31,7 +37,7 @@ type RuleStoreConfig struct {
 	Swift openstack.SwiftConfig   `yaml:"swift"`
 	Local local.Config            `yaml:"local"`
 
-	mock rules.RuleStore `yaml:"-"`
+	mock rulestore.RuleStore `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -65,8 +71,10 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 	return cfg.Type == "configdb" && cfg.ConfigDB.ConfigsAPIURL.URL == nil
 }
 
-// NewRuleStorage returns a new rule storage backend poller and store
-func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader) (rules.RuleStore, error) {
+// NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
+// The client used by the function is based a legacy object store clients that shouldn't
+// be used anymore.
+func NewLegacyRuleStore(cfg RuleStoreConfig, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -75,33 +83,58 @@ func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader) (rules.Ru
 		loader = promRules.FileLoader{}
 	}
 
+	var err error
+	var client chunk.ObjectClient
+
 	switch cfg.Type {
 	case "configdb":
+		c, err := configClient.New(cfg.ConfigDB)
+		if err != nil {
+			return nil, err
+		}
+		return configdb.NewConfigRuleStore(c), nil
+	case "azure":
+		client, err = azure.NewBlobStorage(&cfg.Azure)
+	case "gcs":
+		client, err = gcp.NewGCSObjectClient(context.Background(), cfg.GCS)
+	case "s3":
+		client, err = aws.NewS3ObjectClient(cfg.S3)
+	case "swift":
+		client, err = openstack.NewSwiftObjectClient(cfg.Swift)
+	case "local":
+		return local.NewLocalRulesClient(cfg.Local, loader)
+	default:
+		return nil, fmt.Errorf("unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return objectclient.NewRuleStore(client, loadRulesConcurrency, logger), nil
+}
+
+// NewRuleStore returns a rule store backend client based on the provided cfg.
+func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
+	if cfg.Backend == rulestore.ConfigDB {
 		c, err := client.New(cfg.ConfigDB)
 
 		if err != nil {
 			return nil, err
 		}
 
-		return rules.NewConfigRuleStore(c), nil
-	case "azure":
-		return newObjRuleStore(azure.NewBlobStorage(&cfg.Azure))
-	case "gcs":
-		return newObjRuleStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
-	case "s3":
-		return newObjRuleStore(aws.NewS3ObjectClient(cfg.S3))
-	case "swift":
-		return newObjRuleStore(openstack.NewSwiftObjectClient(cfg.Swift))
-	case "local":
-		return local.NewLocalRulesClient(cfg.Local, loader)
-	default:
-		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
+		return configdb.NewConfigRuleStore(c), nil
 	}
-}
 
-func newObjRuleStore(client chunk.ObjectClient, err error) (rules.RuleStore, error) {
+	bucketClient, err := bucket.NewClient(ctx, cfg.Config, rulestore.Name, logger, reg)
 	if err != nil {
 		return nil, err
 	}
-	return objectclient.NewRuleStore(client, loadRulesConcurrency), nil
+
+	store := bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return store, nil
 }

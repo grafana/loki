@@ -56,7 +56,7 @@ type Options struct {
 	// alert. Mandatory.
 	StatusFunc func(model.Fingerprint) types.AlertStatus
 	// Peer from the gossip cluster. If nil, no clustering will be used.
-	Peer *cluster.Peer
+	Peer cluster.ClusterPeer
 	// Timeout for all HTTP connections. The zero value (and negative
 	// values) result in no timeout.
 	Timeout time.Duration

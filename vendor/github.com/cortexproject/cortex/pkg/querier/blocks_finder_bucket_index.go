@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -34,8 +35,8 @@ type BucketIndexBlocksFinder struct {
 	loader *bucketindex.Loader
 }
 
-func NewBucketIndexBlocksFinder(cfg BucketIndexBlocksFinderConfig, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *BucketIndexBlocksFinder {
-	loader := bucketindex.NewLoader(cfg.IndexLoader, bkt, logger, reg)
+func NewBucketIndexBlocksFinder(cfg BucketIndexBlocksFinderConfig, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BucketIndexBlocksFinder {
+	loader := bucketindex.NewLoader(cfg.IndexLoader, bkt, cfgProvider, logger, reg)
 
 	return &BucketIndexBlocksFinder{
 		cfg:     cfg,

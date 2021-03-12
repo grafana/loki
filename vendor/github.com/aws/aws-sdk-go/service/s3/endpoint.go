@@ -98,7 +98,7 @@ func endpointHandler(req *request.Request) {
 		Request:  req,
 	}
 
-	if resReq.IsCrossPartition() {
+	if len(resReq.Request.ClientInfo.PartitionID) != 0 && resReq.IsCrossPartition() {
 		req.Error = s3shared.NewClientPartitionMismatchError(resource,
 			req.ClientInfo.PartitionID, aws.StringValue(req.Config.Region), nil)
 		return
@@ -107,11 +107,6 @@ func endpointHandler(req *request.Request) {
 	if !resReq.AllowCrossRegion() && resReq.IsCrossRegion() {
 		req.Error = s3shared.NewClientRegionMismatchError(resource,
 			req.ClientInfo.PartitionID, aws.StringValue(req.Config.Region), nil)
-		return
-	}
-
-	if resReq.HasCustomEndpoint() {
-		req.Error = s3shared.NewInvalidARNWithCustomEndpointError(resource, nil)
 		return
 	}
 
@@ -155,8 +150,7 @@ func updateRequestAccessPointEndpoint(req *request.Request, accessPoint arn.Acce
 			req.ClientInfo.PartitionID, aws.StringValue(req.Config.Region), nil)
 	}
 
-	// Ignore the disable host prefix for access points since custom endpoints
-	// are not supported.
+	// Ignore the disable host prefix for access points
 	req.Config.DisableEndpointHostPrefix = aws.Bool(false)
 
 	if err := accessPointEndpointBuilder(accessPoint).build(req); err != nil {
@@ -181,8 +175,7 @@ func updateRequestOutpostAccessPointEndpoint(req *request.Request, accessPoint a
 			req.ClientInfo.PartitionID, aws.StringValue(req.Config.Region), nil)
 	}
 
-	// Ignore the disable host prefix for access points since custom endpoints
-	// are not supported.
+	// Ignore the disable host prefix for access points
 	req.Config.DisableEndpointHostPrefix = aws.Bool(false)
 
 	if err := outpostAccessPointEndpointBuilder(accessPoint).build(req); err != nil {
