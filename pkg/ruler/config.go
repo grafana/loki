@@ -18,7 +18,7 @@ type RemoteWriteConfig struct {
 // Override the embedded cortex variant which expects a cortex limits struct. Instead copy the relevant bits over.
 func (cfg *Config) Validate() error {
 	if err := cfg.StoreConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
+		return errors.Wrap(err, "invalid ruler config")
 	}
 	return nil
 }

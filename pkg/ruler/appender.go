@@ -54,13 +54,11 @@ func (a *RemoteWriteAppender) encodeRequest(l labels.Labels, s client.Sample) ([
 		},
 	}
 
-	// Create write request
 	data, err := proto.Marshal(&prompb.WriteRequest{Timeseries: []prompb.TimeSeries{ts}})
 	if err != nil {
 		return nil, err
 	}
 
-	// Create HTTP request
 	compressed := snappy.Encode(nil, data)
 	return compressed, nil
 }
@@ -106,8 +104,8 @@ func (a *RemoteWriteAppender) Commit() error {
 		level.Debug(a.logger).Log("msg", "no remote_write client defined, skipping commit")
 	}
 
-	level.Debug(a.logger).Log("msg", "writing to remote_write target")
 	writer := *a.remoteWriter
+	level.Debug(a.logger).Log("msg", "writing to remote_write target", "target", writer.Endpoint())
 
 	req, err := a.prepareRequest()
 	if err != nil {
