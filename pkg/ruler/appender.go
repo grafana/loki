@@ -102,6 +102,7 @@ func (a *RemoteWriteAppender) AddFast(ref uint64, t int64, v float64) error {
 func (a *RemoteWriteAppender) Commit() error {
 	if a.remoteWriter == nil {
 		level.Debug(a.logger).Log("msg", "no remote_write client defined, skipping commit")
+		return nil
 	}
 
 	writer := *a.remoteWriter
