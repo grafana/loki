@@ -141,6 +141,9 @@ github.com/beorn7/perks/quantile
 github.com/bmatcuk/doublestar
 # github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 github.com/bradfitz/gomemcache/memcache
+# github.com/buger/jsonparser v1.1.1
+## explicit
+github.com/buger/jsonparser
 # github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 ## explicit
 github.com/c2h5oh/datasize

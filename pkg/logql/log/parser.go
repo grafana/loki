@@ -1,11 +1,13 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"regexp"
 
+	"github.com/buger/jsonparser"
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 
@@ -317,6 +319,7 @@ func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{}
 
 type UnpackParser struct {
 	lbsBuffer []string
+	buf       *bytes.Buffer
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -326,6 +329,7 @@ type UnpackParser struct {
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
 		lbsBuffer: make([]string, 0, 16),
+		buf:       bytes.NewBuffer(make([]byte, 0, 1024)),
 	}
 }
 
@@ -336,10 +340,7 @@ func (u *UnpackParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, true
 	}
 	u.lbsBuffer = u.lbsBuffer[:0]
-	it := jsoniter.ConfigFastest.BorrowIterator(line)
-	defer jsoniter.ConfigFastest.ReturnIterator(it)
-
-	entry, err := u.unpack(it, line, lbs)
+	entry, err := u.unpack(line, lbs)
 	if err != nil {
 		lbs.SetErr(errJSON)
 		return line, true
@@ -347,41 +348,32 @@ func (u *UnpackParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return entry, true
 }
 
-func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBuilder) ([]byte, error) {
-	// we only care about object and values.
-	if nextType := it.WhatIsNext(); nextType != jsoniter.ObjectValue {
-		return nil, fmt.Errorf("expecting json object(%d), got %d", jsoniter.ObjectValue, nextType)
-	}
+func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) {
 	var isPacked bool
-	_ = it.ReadMapCB(func(iter *jsoniter.Iterator, field string) bool {
-		switch iter.WhatIsNext() {
-		case jsoniter.StringValue:
-			// we only unpack map[string]string. Anything else is skipped.
-			if field == PackedEntryKey {
-				s := iter.ReadString()
-				// todo(ctovena): we should just reslice the original line since the property is contiguous
-				// but jsoniter doesn't allow us to do this right now.
-				// https://github.com/buger/jsonparser might do a better job at this.
-				entry = append(entry[:0], []byte(s)...)
-				isPacked = true
-				return true
-			}
-			if !lbs.ParserLabelHints().ShouldExtract(field) {
-				iter.Skip()
-				return true
-			}
-			if lbs.BaseHas(field) {
-				field = field + duplicateSuffix
-			}
-			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, field, iter.ReadString())
-		default:
-			iter.Skip()
+
+	err := jsonparser.ObjectEach(entry, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+		if dataType != jsonparser.String {
+			return nil
 		}
-		return true
+		if bytes.Equal(key, []byte(PackedEntryKey)) {
+			entry = bytes.ReplaceAll(value, []byte("\\"), nil)
+			isPacked = true
+			return nil
+		}
+		u.buf.Reset()
+		if !lbs.ParserLabelHints().ShouldExtract(unsafeGetString(u.buf.Bytes())) {
+			return nil
+		}
+
+		if lbs.BaseHas(unsafeGetString(u.buf.Bytes())) {
+			u.buf.WriteString(duplicateSuffix)
+		}
+		// append to the buffer of labels
+		u.lbsBuffer = append(u.lbsBuffer, u.buf.String(), string(value))
+		return nil
 	})
-	if it.Error != nil && it.Error != io.EOF {
-		return nil, it.Error
+	if err != nil {
+		return nil, err
 	}
 	// flush the buffer if we found a packed entry.
 	if isPacked {

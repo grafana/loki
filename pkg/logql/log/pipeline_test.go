@@ -84,7 +84,6 @@ func Benchmark_Pipeline(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		resLine, resLbs, resOK = sp.Process(line)
 	}
-
 }
 
 func mustFilter(f Filterer, err error) Filterer {
