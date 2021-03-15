@@ -361,6 +361,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			return nil
 		}
 		u.buf.Reset()
+		u.buf.Write(key)
 		if !lbs.ParserLabelHints().ShouldExtract(unsafeGetString(u.buf.Bytes())) {
 			return nil
 		}
