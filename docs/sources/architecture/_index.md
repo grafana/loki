@@ -95,6 +95,8 @@ responsible for a range of hashes. If there are three tokens with values 0, 25,
 and 50, then a hash of 3 would be given to the ingester that owns the token 25;
 the ingester owning token 25 is responsible for the hash range of 1-25.
 
+For more information, see the [Ring](./ring) page.
+
 #### Quorum consistency
 
 Since all distributors share access to the same hash ring, write requests can be
