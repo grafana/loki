@@ -1,15 +1,14 @@
 package log
 
 import (
+	"reflect"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-var (
-	// NoopStage is a stage that doesn't process a log line.
-	NoopStage Stage = &noopStage{}
-)
+// NoopStage is a stage that doesn't process a log line.
+var NoopStage Stage = &noopStage{}
 
 // Pipeline can create pipelines for each log stream.
 type Pipeline interface {
@@ -179,7 +178,11 @@ func ReduceStages(stages []Stage) Stage {
 }
 
 func unsafeGetBytes(s string) []byte {
-	return *(*[]byte)(unsafe.Pointer(&s))
+	var buf []byte
+	p := unsafe.Pointer(&buf)
+	*(*string)(p) = s
+	(*reflect.SliceHeader)(p).Cap = len(s)
+	return buf
 }
 
 func unsafeGetString(buf []byte) string {
