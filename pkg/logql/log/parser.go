@@ -356,7 +356,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			return nil
 		}
 		if bytes.Equal(key, []byte(PackedEntryKey)) {
-			entry = bytes.ReplaceAll(value, []byte("\\"), nil)
+			entry = bytes.ReplaceAll(value, []byte("\\\""), []byte("\""))
 			isPacked = true
 			return nil
 		}

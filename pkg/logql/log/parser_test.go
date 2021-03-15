@@ -644,51 +644,51 @@ func Test_unpackParser_Parse(t *testing.T) {
 		wantLbs  labels.Labels
 		wantLine []byte
 	}{
-		// {
-		// 	"should extract only map[string]string",
-		// 	[]byte(`{"bar":1,"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}}`),
-		// 	labels.Labels{{Name: "cluster", Value: "us-central1"}},
-		// 	labels.Labels{
-		// 		{Name: "app", Value: "foo"},
-		// 		{Name: "namespace", Value: "prod"},
-		// 		{Name: "cluster", Value: "us-central1"},
-		// 	},
-		// 	[]byte(`some message`),
-		// },
-		// {
-		// 	"wrong json",
-		// 	[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-		// 	labels.Labels{},
-		// 	labels.Labels{
-		// 		{Name: "__error__", Value: "JSONParserErr"},
-		// 	},
-		// 	[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-		// },
-		// {
-		// 	"not a map",
-		// 	[]byte(`["foo","bar"]`),
-		// 	labels.Labels{{Name: "cluster", Value: "us-central1"}},
-		// 	labels.Labels{
-		// 		{Name: "__error__", Value: "JSONParserErr"},
-		// 		{Name: "cluster", Value: "us-central1"},
-		// 	},
-		// 	[]byte(`["foo","bar"]`),
-		// },
-		// {
-		// 	"should rename",
-		// 	[]byte(`{"bar":1,"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}}`),
-		// 	labels.Labels{
-		// 		{Name: "cluster", Value: "us-central1"},
-		// 		{Name: "app", Value: "bar"},
-		// 	},
-		// 	labels.Labels{
-		// 		{Name: "app", Value: "bar"},
-		// 		{Name: "app_extracted", Value: "foo"},
-		// 		{Name: "namespace", Value: "prod"},
-		// 		{Name: "cluster", Value: "us-central1"},
-		// 	},
-		// 	[]byte(`some message`),
-		// },
+		{
+			"should extract only map[string]string",
+			[]byte(`{"bar":1,"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}}`),
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			labels.Labels{
+				{Name: "app", Value: "foo"},
+				{Name: "namespace", Value: "prod"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`some message`),
+		},
+		{
+			"wrong json",
+			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "__error__", Value: "JSONParserErr"},
+			},
+			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
+		},
+		{
+			"not a map",
+			[]byte(`["foo","bar"]`),
+			labels.Labels{{Name: "cluster", Value: "us-central1"}},
+			labels.Labels{
+				{Name: "__error__", Value: "JSONParserErr"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`["foo","bar"]`),
+		},
+		{
+			"should rename",
+			[]byte(`{"bar":1,"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}}`),
+			labels.Labels{
+				{Name: "cluster", Value: "us-central1"},
+				{Name: "app", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "app", Value: "bar"},
+				{Name: "app_extracted", Value: "foo"},
+				{Name: "namespace", Value: "prod"},
+				{Name: "cluster", Value: "us-central1"},
+			},
+			[]byte(`some message`),
+		},
 		{
 			"should not change log and labels if no packed entry",
 			[]byte(`{"bar":1,"app":"foo","namespace":"prod","pod":{"uid":"1"}}`),
