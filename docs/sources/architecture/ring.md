@@ -11,7 +11,7 @@ It explains what exactly is the ring, what problem does it solve and how it actu
 
 We use ring in Distributor and Ingester components of Loki.
 
-Loki in microservice mode usually can have multiple ingesters and distributors. This multiple instances of same component(ingester or distributor) forms a ring (more presicisly Consisten Hash Ring).
+Loki in microservice mode usually can have multiple ingesters and distributors. This multiple instances of same component(ingester or distributor) forms a ring (more precisely Consistent Hash Ring).
 
 Both distributors and ingesters have their own ring. Write path looks like Client -> Distributors (ring) -> Ingesters (ring). Read path looks like Client -> Querier -> Ingesters (ring).
 
