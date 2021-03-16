@@ -7,10 +7,10 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/buger/jsonparser"
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 
+	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
