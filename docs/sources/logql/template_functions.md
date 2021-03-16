@@ -372,9 +372,9 @@ Examples:
 {{ if hasPrefix "he" "hello" }} yes {{end}}
 ```
 
-## add 
+## add
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Sum numbers. Supports multiple numbers
 
@@ -386,7 +386,7 @@ Signature: `func(i ...interface{}) int64`
 
 ## sub
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Subtract numbers.
 
@@ -398,7 +398,7 @@ Signature: `func(a, b interface{}) int64`
 
 ## mul
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Mulitply numbers. Supports multiple numbers.
 
@@ -410,7 +410,7 @@ Signature: `func(a interface{}, v ...interface{}) int64`
 
 ## div
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Integer divide numbers.
 
@@ -422,7 +422,7 @@ Signature: `func(a, b interface{}) int64`
 
 ## addf
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Sum numbers. Supports multiple numbers.
 
@@ -434,7 +434,7 @@ Signature: `func(i ...interface{}) float64`
 
 ## subf
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Subtract numbers. Supports multiple numbers.
 
@@ -446,7 +446,7 @@ Signature: `func(a interface{}, v ...interface{}) float64`
 
 ## mulf
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Mulitply numbers. Supports multiple numbers
 
@@ -458,7 +458,7 @@ Signature: `func(a interface{}, v ...interface{}) float64`
 
 ## divf
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Divide numbers. Supports multiple numbers.
 
@@ -467,9 +467,10 @@ Signature: `func(a interface{}, v ...interface{}) float64`
 ```template
 {{ divf 10 2 4}} // output: 1.25
 ```
+
 ## mod
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Modulo wit mod.
 
@@ -481,7 +482,7 @@ Signature: `func(a, b interface{}) int64`
 
 ## max
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Return the largest of a series of integers:
 
@@ -493,7 +494,7 @@ Signature: `max(a interface{}, i ...interface{}) int64`
 
 ## min
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Return the smallest of a series of integers.
 
@@ -505,7 +506,7 @@ Signature: `min(a interface{}, i ...interface{}) int64`
 
 ## maxf
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Return the largest of a series of floats:
 
@@ -515,10 +516,9 @@ Signature: `maxf(a interface{}, i ...interface{}) float64`
 {{ maxf 1 2.5 3 }} //output 3
 ```
 
-
 ## minf
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Return the smallest of a series of floats.
 
@@ -530,7 +530,7 @@ Signature: `minf(a interface{}, i ...interface{}) float64`
 
 ## ceil
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Returns the greatest float value greater than or equal to input value
 
@@ -542,7 +542,7 @@ Signature: `ceil(a interface{}) float64`
 
 ## floor
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Returns the greatest float value less than or equal to input value
 
@@ -554,11 +554,11 @@ Signature: `floor(a interface{}) float64`
 
 ## round
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Returns a float value with the remainder rounded to the given number of digits after the decimal point.
 
-Signature: ` round(a interface{}, p int, rOpt ...float64) float64`
+Signature: `round(a interface{}, p int, rOpt ...float64) float64`
 
 ```template
 {{ round 123.555555 3 }} //output 123.556
@@ -574,7 +574,7 @@ With default `roundOn` of `.5` the above value would be `123.88571`
 
 ## int
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Convert value to an int.
 
@@ -586,7 +586,7 @@ Signature: `toInt(v interface{}) int`
 
 ## float64
 
-> **Note:** Added in Loki 2.2.
+> **Note:** Added in Loki 2.3.
 
 Convert to a float64.
 
