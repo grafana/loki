@@ -362,7 +362,7 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 			return nil, err
 		}
 
-		return shipper.NewBoltDBShipperTableClient(objectClient), nil
+		return shipper.NewBoltDBShipperTableClient(objectClient, cfg.BoltDBShipperConfig.SharedStoreKeyPrefix), nil
 	})
 }
 

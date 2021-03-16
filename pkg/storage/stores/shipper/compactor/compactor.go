@@ -17,22 +17,24 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
 const delimiter = "/"
 
 type Config struct {
-	WorkingDirectory   string        `yaml:"working_directory"`
-	SharedStoreType    string        `yaml:"shared_store"`
-	CompactionInterval time.Duration `yaml:"compaction_interval"`
+	WorkingDirectory     string        `yaml:"working_directory"`
+	SharedStoreType      string        `yaml:"shared_store"`
+	SharedStoreKeyPrefix string        `yaml:"shared_store_key_prefix"`
+	CompactionInterval   time.Duration `yaml:"compaction_interval"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
+	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
 }
 
@@ -40,6 +42,10 @@ func (cfg *Config) IsDefaults() bool {
 	cpy := &Config{}
 	cpy.RegisterFlags(flag.NewFlagSet("defaults", flag.ContinueOnError))
 	return reflect.DeepEqual(cfg, cpy)
+}
+
+func (cfg *Config) Validate() error {
+	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
 type Compactor struct {
@@ -68,7 +74,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registe
 
 	compactor := Compactor{
 		cfg:          cfg,
-		objectClient: util.NewPrefixedObjectClient(objectClient, shipper.StorageKeyPrefix),
+		objectClient: util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix),
 		metrics:      newMetrics(r),
 	}
 

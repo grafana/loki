@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
@@ -39,8 +40,6 @@ const (
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
 
-	StorageKeyPrefix = "index/"
-
 	// UploadInterval defines interval for when we check if there are new index files to upload.
 	// It's also used to snapshot the currently written index tables so the snapshots can be used for reads.
 	UploadInterval = 1 * time.Minute
@@ -56,6 +55,7 @@ type boltDBIndexClient interface {
 type Config struct {
 	ActiveIndexDirectory   string        `yaml:"active_index_directory"`
 	SharedStoreType        string        `yaml:"shared_store"`
+	SharedStoreKeyPrefix   string        `yaml:"shared_store_key_prefix"`
 	CacheLocation          string        `yaml:"cache_location"`
 	CacheTTL               time.Duration `yaml:"cache_ttl"`
 	ResyncInterval         time.Duration `yaml:"resync_interval"`
@@ -69,10 +69,15 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ActiveIndexDirectory, "boltdb.shipper.active-index-directory", "", "Directory where ingesters would write boltdb files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.shared-store", "", "Shared store for keeping boltdb files. Supported types: gcs, s3, azure, filesystem")
+	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator")
 	f.StringVar(&cfg.CacheLocation, "boltdb.shipper.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, "boltdb.shipper.query-ready-num-days", 0, "Number of days of index to be kept downloaded for queries. Works only with tables created with 24h period.")
+}
+
+func (cfg *Config) Validate() error {
+	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
 type Shipper struct {
@@ -116,7 +121,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		return err
 	}
 
-	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, StorageKeyPrefix)
+	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
 		uploader, err := s.getUploaderName()
