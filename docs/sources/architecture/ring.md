@@ -37,7 +37,7 @@ There are several better approach to solve this problem. One of the approach we 
 
 Distributors use consistent hashing in conjunction with a configurable replication factor to determine which instances of the ingester service should receive a given stream.
 
-Each ingester belongs to a single hash ring. This hash ring stored in Consul is used to achieve consistent hashing;
+Each ingester holds a subset of tokens within the hash ring. This hash ring stored in Consul is used to achieve consistent hashing;
 
 Every ingester (also distributor) that is part of the ring has two things associated with it.
 - State
