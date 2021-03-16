@@ -12,19 +12,21 @@ import (
 //
 // Use NewParser function to instantiate one.
 type parser struct {
-	msglen     int64
-	s          Scanner
-	internal   syslog.Machine
-	last       Token
-	stepback   bool // Wheter to retrieve the last token or not
-	bestEffort bool // Best effort mode flag
-	emit       syslog.ParserListener
+	msglen           int64
+	maxMessageLength int
+	s                Scanner
+	internal         syslog.Machine
+	last             Token
+	stepback         bool // Wheter to retrieve the last token or not
+	bestEffort       bool // Best effort mode flag
+	emit             syslog.ParserListener
 }
 
 // NewParser returns a syslog.Parser suitable to parse syslog messages sent with transparent - ie. octet counting (RFC 5425) - framing.
 func NewParser(opts ...syslog.ParserOption) syslog.Parser {
 	p := &parser{
-		emit: func(*syslog.Result) { /* noop */ },
+		emit:             func(*syslog.Result) { /* noop */ },
+		maxMessageLength: 8192, // size as per RFC5425#section-4.3.1
 	}
 
 	for _, opt := range opts {
@@ -39,6 +41,10 @@ func NewParser(opts ...syslog.ParserOption) syslog.Parser {
 	}
 
 	return p
+}
+
+func (p *parser) WithMaxMessageLength(length int) {
+	p.maxMessageLength = length
 }
 
 // HasBestEffort tells whether the receiving parser has best effort mode on or off.
@@ -64,7 +70,7 @@ func (p *parser) WithListener(f syslog.ParserListener) {
 //
 // It stops parsing when an error regarding RFC 5425 is found.
 func (p *parser) Parse(r io.Reader) {
-	p.s = *NewScanner(r)
+	p.s = *NewScanner(r, p.maxMessageLength)
 	p.run()
 }
 
@@ -76,6 +82,13 @@ func (p *parser) run() {
 		if tok = p.scan(); tok.typ != MSGLEN {
 			p.emit(&syslog.Result{
 				Error: fmt.Errorf("found %s, expecting a %s", tok, MSGLEN),
+			})
+			break
+		}
+
+		if int(p.s.msglen) > p.maxMessageLength {
+			p.emit(&syslog.Result{
+				Error: fmt.Errorf("message too long to parse. was size %d, max length %d", p.s.msglen, p.maxMessageLength),
 			})
 			break
 		}

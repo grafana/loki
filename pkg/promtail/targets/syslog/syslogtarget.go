@@ -27,7 +27,8 @@ import (
 )
 
 var (
-	defaultIdleTimeout = 120 * time.Second
+	defaultIdleTimeout      = 120 * time.Second
+	defaultMaxMessageLength = 8192
 )
 
 // SyslogTarget listens to syslog messages.
@@ -153,7 +154,7 @@ func (t *SyslogTarget) handleConnection(cn net.Conn) {
 			return
 		}
 		t.handleMessage(connLabels.Copy(), msg.Message)
-	})
+	}, t.maxMessageLength())
 
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "error initializing syslog stream", "err", err)
@@ -310,10 +311,17 @@ func (t *SyslogTarget) ListenAddress() net.Addr {
 }
 
 func (t *SyslogTarget) idleTimeout() time.Duration {
-	if tm := t.config.IdleTimeout; tm != 0 {
-		return tm
+	if t.config.IdleTimeout != 0 {
+		return t.config.IdleTimeout
 	}
 	return defaultIdleTimeout
+}
+
+func (t *SyslogTarget) maxMessageLength() int {
+	if t.config.MaxMessageLength != 0 {
+		return t.config.MaxMessageLength
+	}
+	return defaultMaxMessageLength
 }
 
 type idleTimeoutConn struct {
