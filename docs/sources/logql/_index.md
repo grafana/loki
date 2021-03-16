@@ -382,11 +382,21 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
+`line_format` also supports `math` functions. Example:
+
+If we have fllowing labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms). We can divide the duration by `1000` to get the value in seconds.
+
+```logql
+{container="frontend"} | logfmt | line_format "{{.ip}} {{.status}} {{div .duration 1000}}"
+```
+
+The above query will give us the `line` as `1.1.1.1 200 3`
+
 See [template functions](template_functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
-The `| label_format` expression can renamed, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
+The `| label_format` expression can rename, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 

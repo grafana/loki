@@ -148,6 +148,62 @@ func Test_lineFormatter_Format(t *testing.T) {
 			[]byte("foo BLIP buzzblop"),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 		},
+		{
+			"mathint",
+			newMustLineFormatter("{{ add .foo 1 | sub .bar | mul .baz | div .bazz}}"),
+			labels.Labels{{Name: "foo", Value: "1"}, {Name: "bar", Value: "3"}, {Name: "baz", Value: "10"}, {Name: "bazz", Value: "20"}},
+			[]byte("2"),
+			labels.Labels{{Name: "foo", Value: "1"}, {Name: "bar", Value: "3"}, {Name: "baz", Value: "10"}, {Name: "bazz", Value: "20"}},
+		},
+		{
+			"mathfloat",
+			newMustLineFormatter("{{ addf .foo 1.5 | subf .bar 1.5 | mulf .baz | divf .bazz }}"),
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
+			[]byte("3.8476190476190477"),
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.2"}},
+		},
+		{
+			"mathfloatround",
+			newMustLineFormatter("{{ round (addf .foo 1.5 | subf .bar | mulf .baz | divf .bazz) 5 .2}}"),
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.4"}},
+			[]byte("3.88572"),
+			labels.Labels{{Name: "foo", Value: "1.5"}, {Name: "bar", Value: "3.5"}, {Name: "baz", Value: "10.5"}, {Name: "bazz", Value: "20.4"}},
+		},
+		{
+			"min",
+			newMustLineFormatter("min is {{ min .foo .bar .baz }} and max is {{ max .foo .bar .baz }}"),
+			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "10"}, {Name: "baz", Value: "15"}},
+			[]byte("min is 5 and max is 15"),
+			labels.Labels{{Name: "foo", Value: "5"}, {Name: "bar", Value: "10"}, {Name: "baz", Value: "15"}},
+		},
+		{
+			"max",
+			newMustLineFormatter("minf is {{ minf .foo .bar .baz }} and maxf is {{maxf .foo .bar .baz}}"),
+			labels.Labels{{Name: "foo", Value: "5.3"}, {Name: "bar", Value: "10.5"}, {Name: "baz", Value: "15.2"}},
+			[]byte("minf is 5.3 and maxf is 15.2"),
+			labels.Labels{{Name: "foo", Value: "5.3"}, {Name: "bar", Value: "10.5"}, {Name: "baz", Value: "15.2"}},
+		},
+		{
+			"ceilfloor",
+			newMustLineFormatter("ceil is {{ ceil .foo }} and floor is {{floor .foo }}"),
+			labels.Labels{{Name: "foo", Value: "5.3"}},
+			[]byte("ceil is 6 and floor is 5"),
+			labels.Labels{{Name: "foo", Value: "5.3"}},
+		},
+		{
+			"mod",
+			newMustLineFormatter("mod is {{ mod .foo 3 }}"),
+			labels.Labels{{Name: "foo", Value: "20"}},
+			[]byte("mod is 2"),
+			labels.Labels{{Name: "foo", Value: "20"}},
+		},
+		{
+			"float64int",
+			newMustLineFormatter("{{ \"2.5\" | float64 | int | add 10}}"),
+			labels.Labels{{Name: "foo", Value: "2.5"}},
+			[]byte("12"),
+			labels.Labels{{Name: "foo", Value: "2.5"}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -201,6 +257,12 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			}),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			labels.Labels{{Name: "blip", Value: "BLIP and blop"}, {Name: "bar", Value: "blip"}},
+		},
+		{
+			"math",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("status", "{{div .status 100 }}")}),
+			labels.Labels{{Name: "status", Value: "200"}},
+			labels.Labels{{Name: "status", Value: "2"}},
 		},
 	}
 
