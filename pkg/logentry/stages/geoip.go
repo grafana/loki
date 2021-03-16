@@ -23,27 +23,27 @@ const (
 type GeoIPFields int
 
 const (
-	CITY_NAME GeoIPFields = iota
-	COUNTRY_NAME
-	CONTINENT_NAME
-	CONTINENT_CODE
+	CITYNAME GeoIPFields = iota
+	COUNTRYNAME
+	CONTINENTNAME
+	CONTINENTCODE
 	LOCATION
-	POSTAL_CODE
+	POSTALCODE
 	TIMEZONE
-	SUBDIVISION_NAME
-	SUBDIVISION_CODE
+	SUBDIVISIONNAME
+	SUBDIVISIONCODE
 )
 
 var fields = map[GeoIPFields]string{
-	CITY_NAME:        "geoip_city_name",
-	COUNTRY_NAME:     "geoip_country_name",
-	CONTINENT_NAME:   "geoip_continet_name",
-	CONTINENT_CODE:   "geoip_continent_code",
-	LOCATION:         "geoip_location",
-	POSTAL_CODE:      "geoip_postal_code",
-	TIMEZONE:         "geoip_timezone",
-	SUBDIVISION_NAME: "geoip_subdivision_name",
-	SUBDIVISION_CODE: "geoip_subdivision_code",
+	CITYNAME:        "geoip_city_name",
+	COUNTRYNAME:     "geoip_country_name",
+	CONTINENTNAME:   "geoip_continet_name",
+	CONTINENTCODE:   "geoip_continent_code",
+	LOCATION:        "geoip_location",
+	POSTALCODE:      "geoip_postal_code",
+	TIMEZONE:        "geoip_timezone",
+	SUBDIVISIONNAME: "geoip_subdivision_name",
+	SUBDIVISIONCODE: "geoip_subdivision_code",
 }
 
 // GeoIPConfig represents GeoIP stage config
@@ -143,27 +143,27 @@ func (g *geoIPStage) Close() {
 func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *geoip2.City) {
 	for field, label := range fields {
 		switch field {
-		case CITY_NAME:
+		case CITYNAME:
 			cityName := record.City.Names["en"]
 			if cityName != "" {
 				labels[model.LabelName(label)] = model.LabelValue(cityName)
 			}
-		case COUNTRY_NAME:
+		case COUNTRYNAME:
 			contryName := record.Country.Names["en"]
 			if contryName != "" {
 				labels[model.LabelName(label)] = model.LabelValue(contryName)
 			}
-		case CONTINENT_NAME:
+		case CONTINENTNAME:
 			continentName := record.Continent.Names["en"]
 			if continentName != "" {
 				labels[model.LabelName(label)] = model.LabelValue(continentName)
 			}
-		case CONTINENT_CODE:
+		case CONTINENTCODE:
 			continentCode := record.Continent.Code
 			if continentCode != "" {
 				labels[model.LabelName(label)] = model.LabelValue(continentCode)
 			}
-		case POSTAL_CODE:
+		case POSTALCODE:
 			postalCode := record.Postal.Code
 			if postalCode != "" {
 				labels[model.LabelName(label)] = model.LabelValue(postalCode)
@@ -180,7 +180,7 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 				labels[model.LabelName(fmt.Sprintf("%s_latitude", label))] = model.LabelValue(fmt.Sprint(latitude))
 				labels[model.LabelName(fmt.Sprintf("%s_longitude", label))] = model.LabelValue(fmt.Sprint(longitude))
 			}
-		case SUBDIVISION_NAME:
+		case SUBDIVISIONNAME:
 			if len(record.Subdivisions) > 0 {
 				// we get most specific subdivision https://dev.maxmind.com/release-note/most-specific-subdivision-attribute-added/
 				subdivision_name := record.Subdivisions[len(record.Subdivisions)-1].Names["en"]
@@ -188,7 +188,7 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 					labels[model.LabelName(label)] = model.LabelValue(subdivision_name)
 				}
 			}
-		case SUBDIVISION_CODE:
+		case SUBDIVISIONCODE:
 			if len(record.Subdivisions) > 0 {
 				subdivision_code := record.Subdivisions[len(record.Subdivisions)-1].IsoCode
 				if subdivision_code != "" {

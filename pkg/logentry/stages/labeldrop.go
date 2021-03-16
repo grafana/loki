@@ -57,6 +57,4 @@ func (l *labelDropStage) Name() string {
 	return StageTypeLabelDrop
 }
 
-func (l *labelDropStage) Close() {
-	return
-}
+func (l *labelDropStage) Close() {}

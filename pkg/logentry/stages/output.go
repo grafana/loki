@@ -82,6 +82,4 @@ func (o *outputStage) Name() string {
 	return StageTypeOutput
 }
 
-func (o *outputStage) Close() {
-	return
-}
+func (o *outputStage) Close() {}

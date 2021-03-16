@@ -229,5 +229,4 @@ func (m *matcherStage) Name() string {
 
 func (m *matcherStage) Stop() {
 	m.stage.Stop()
-	return
 }

@@ -178,9 +178,7 @@ func (m *metricStage) Name() string {
 	return StageTypeMetric
 }
 
-func (m *metricStage) Close() {
-	return
-}
+func (m *metricStage) Close() {}
 
 // recordCounter will update a counter metric
 func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {

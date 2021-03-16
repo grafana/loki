@@ -218,6 +218,4 @@ func (m *packStage) Name() string {
 	return StageTypePack
 }
 
-func (m *packStage) Stop() {
-	return
-}
+func (m *packStage) Stop() {}

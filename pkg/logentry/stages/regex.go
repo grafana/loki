@@ -135,6 +135,4 @@ func (r *regexStage) Name() string {
 	return StageTypeRegex
 }
 
-func (r *regexStage) Close() {
-	return
-}
+func (r *regexStage) Close() {}

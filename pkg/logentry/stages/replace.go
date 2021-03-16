@@ -216,6 +216,4 @@ func (r *replaceStage) Name() string {
 	return StageTypeReplace
 }
 
-func (r *replaceStage) Close() {
-	return
-}
+func (r *replaceStage) Close() {}

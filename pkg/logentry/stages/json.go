@@ -171,6 +171,4 @@ func (j *jsonStage) Name() string {
 	return StageTypeJSON
 }
 
-func (j *jsonStage) Close() {
-	return
-}
+func (j *jsonStage) Close() {}

@@ -143,6 +143,4 @@ func (o *templateStage) Name() string {
 	return StageTypeTemplate
 }
 
-func (o *templateStage) Close() {
-	return
-}
+func (o *templateStage) Close() {}

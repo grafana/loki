@@ -238,6 +238,4 @@ func (m *dropStage) Name() string {
 	return StageTypeDrop
 }
 
-func (m *dropStage) Stop() {
-	return
-}
+func (m *dropStage) Stop() {}

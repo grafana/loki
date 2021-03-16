@@ -146,9 +146,7 @@ func (ts *timestampStage) Name() string {
 	return StageTypeTimestamp
 }
 
-func (ts *timestampStage) Close() {
-	return
-}
+func (ts *timestampStage) Close() {}
 
 // Process implements Stage
 func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {

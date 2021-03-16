@@ -229,6 +229,4 @@ func (m *multilineStage) Name() string {
 	return StageTypeMultiline
 }
 
-func (m *multilineStage) Stop() {
-	return
-}
+func (m *multilineStage) Stop() {}

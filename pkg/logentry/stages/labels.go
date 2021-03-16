@@ -89,6 +89,4 @@ func (l *labelStage) Name() string {
 	return StageTypeLabel
 }
 
-func (l *labelStage) Close() {
-	return
-}
+func (l *labelStage) Close() {}

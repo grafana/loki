@@ -84,9 +84,7 @@ func (s *tenantStage) Name() string {
 	return StageTypeTenant
 }
 
-func (s *tenantStage) Close() {
-	return
-}
+func (s *tenantStage) Close() {}
 
 func (s *tenantStage) getTenantFromSourceField(extracted map[string]interface{}) string {
 	// Get the tenant ID from the source data
