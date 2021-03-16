@@ -21,7 +21,7 @@ Loki aggregates incoming log lines into something called Log stream. Log stream 
 
 Here is the problem, say I have large number of log streams coming in and I have a bunch of Loki servers(can be ingesters or distributors). Now I want to distribute these log streams across the servers in a way I can find it later when I want to read back the log stream. Here is the tricky part. I want to do this without any global directory or lookup service.
 
-So basically, we are talking problem of distribuing the log streams "deterministically"!
+So basically, we are talking problem of distributing the log streams "deterministically"!
 
 Problem is simple if all I have is single Loki server. Solution is send all logs into that single server. But having multiple servers makes the problem bit tricky
 
