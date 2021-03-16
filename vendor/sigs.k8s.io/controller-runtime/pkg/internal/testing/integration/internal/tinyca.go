@@ -137,15 +137,51 @@ func (c *TinyCA) makeCert(cfg certutil.Config) (CertPair, error) {
 	}, nil
 }
 
-// NewServingCert returns a new CertPair for a serving HTTPS on localhost.
-func (c *TinyCA) NewServingCert() (CertPair, error) {
+// NewServingCert returns a new CertPair for a serving HTTPS on localhost (or other specified names).
+func (c *TinyCA) NewServingCert(names ...string) (CertPair, error) {
+	if len(names) == 0 {
+		names = []string{"localhost"}
+	}
+	dnsNames, ips, err := resolveNames(names)
+	if err != nil {
+		return CertPair{}, err
+	}
+
 	return c.makeCert(certutil.Config{
 		CommonName:   "localhost",
 		Organization: []string{c.orgName},
 		AltNames: certutil.AltNames{
-			DNSNames: []string{"localhost"},
-			IPs:      []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+			DNSNames: dnsNames,
+			IPs:      ips,
 		},
 		Usages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	})
+}
+
+func resolveNames(names []string) ([]string, []net.IP, error) {
+	dnsNames := []string{}
+	ips := []net.IP{}
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		ip := net.ParseIP(name)
+		if ip == nil {
+			dnsNames = append(dnsNames, name)
+			// Also resolve to IPs.
+			nameIPs, err := net.LookupHost(name)
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, nameIP := range nameIPs {
+				ip = net.ParseIP(nameIP)
+				if ip != nil {
+					ips = append(ips, ip)
+				}
+			}
+		} else {
+			ips = append(ips, ip)
+		}
+	}
+	return dnsNames, ips, nil
 }

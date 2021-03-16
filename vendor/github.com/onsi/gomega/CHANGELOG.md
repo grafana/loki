@@ -1,3 +1,35 @@
+## 1.11.0
+
+### Features
+- feature: add index to gstruct element func (#419) [334e00d]
+- feat(gexec) Add CompileTest functions. Close #410 (#411) [47c613f]
+
+### Fixes
+- Check more carefully for nils in WithTransform (#423) [3c60a15]
+- fix: typo in Makefile [b82522a]
+- Allow WithTransform function to accept a nil value (#422) [b75d2f2]
+- fix: print value type for interface{} containers (#409) [f08e2dc]
+- fix(BeElementOf): consistently flatten expected values [1fa9468]
+
+## 1.10.5
+
+### Fixes
+- fix: collections matchers should display type of expectation (#408) [6b4eb5a]
+- fix(ContainElements): consistently flatten expected values [073b880]
+- fix(ConsistOf): consistently flatten expected values [7266efe]
+
+## 1.10.4
+
+### Fixes
+- update golang net library to more recent version without vulnerability (#406) [817a8b9]
+- Correct spelling: alloted -> allotted (#403) [0bae715]
+- fix a panic in MessageWithDiff with long message (#402) [ea06b9b]
+
+## 1.10.3
+
+### Fixes
+- updates golang/x/net to fix vulnerability detected by snyk (#394) [c479356]
+
 ## 1.10.2
 
 ### Fixes

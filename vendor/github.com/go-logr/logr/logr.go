@@ -14,18 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package logr defines abstract interfaces for logging.  Packages can depend on
-// these interfaces and callers can implement logging in whatever way is
-// appropriate.
-//
 // This design derives from Dave Cheney's blog:
 //     http://dave.cheney.net/2015/11/05/lets-talk-about-logging
 //
 // This is a BETA grade API.  Until there is a significant 2nd implementation,
 // I don't really know how it will change.
-//
-// The logging specifically makes it non-trivial to use format strings, to encourage
-// attaching structured information instead of unstructured format strings.
+
+// Package logr defines abstract interfaces for logging.  Packages can depend on
+// these interfaces and callers can implement logging in whatever way is
+// appropriate.
 //
 // Usage
 //
@@ -114,14 +111,14 @@ limitations under the License.
 // generally best to avoid using the following keys, as they're frequently used
 // by implementations:
 //
-// - `"caller"`: the calling information (file/line) of a particular log line.
-// - `"error"`: the underlying error value in the `Error` method.
-// - `"level"`: the log level.
-// - `"logger"`: the name of the associated logger.
-// - `"msg"`: the log message.
-// - `"stacktrace"`: the stack trace associated with a particular log line or
-//                   error (often from the `Error` message).
-// - `"ts"`: the timestamp for a log line.
+//   * `"caller"`: the calling information (file/line) of a particular log line.
+//   * `"error"`: the underlying error value in the `Error` method.
+//   * `"level"`: the log level.
+//   * `"logger"`: the name of the associated logger.
+//   * `"msg"`: the log message.
+//   * `"stacktrace"`: the stack trace associated with a particular log line or
+//                     error (often from the `Error` message).
+//   * `"ts"`: the timestamp for a log line.
 //
 // Implementations are encouraged to make use of these keys to represent the
 // above concepts, when necessary (for example, in a pure-JSON output form, it
@@ -145,7 +142,7 @@ import (
 
 // TODO: consider adding back in format strings if they're really needed
 // TODO: consider other bits of zap/zapcore functionality like ObjectMarshaller (for arbitrary objects)
-// TODO: consider other bits of glog functionality like Flush, InfoDepth, OutputStats
+// TODO: consider other bits of glog functionality like Flush, OutputStats
 
 // Logger represents the ability to log messages, both errors and not.
 type Logger interface {
@@ -190,8 +187,12 @@ type Logger interface {
 	WithName(name string) Logger
 }
 
-// InfoLogger provides compatibility with code that relies on the v0.1.0 interface
-// Deprecated: use Logger instead. This will be removed in a future release.
+// InfoLogger provides compatibility with code that relies on the v0.1.0
+// interface.
+//
+// Deprecated: InfoLogger is an artifact of early versions of this API.  New
+// users should never use it and existing users should use Logger instead. This
+// will be removed in a future release.
 type InfoLogger = Logger
 
 type contextKey struct{}
@@ -213,10 +214,53 @@ func FromContextOrDiscard(ctx context.Context) Logger {
 		return v
 	}
 
-	return discardLogger{}
+	return Discard()
 }
 
 // NewContext returns a new context derived from ctx that embeds the Logger.
 func NewContext(ctx context.Context, l Logger) context.Context {
 	return context.WithValue(ctx, contextKey{}, l)
+}
+
+// CallDepthLogger represents a Logger that knows how to climb the call stack
+// to identify the original call site and can offset the depth by a specified
+// number of frames.  This is useful for users who have helper functions
+// between the "real" call site and the actual calls to Logger methods.
+// Implementations that log information about the call site (such as file,
+// function, or line) would otherwise log information about the intermediate
+// helper functions.
+//
+// This is an optional interface and implementations are not required to
+// support it.
+type CallDepthLogger interface {
+	Logger
+
+	// WithCallDepth returns a Logger that will offset the call stack by the
+	// specified number of frames when logging call site information.  If depth
+	// is 0 the attribution should be to the direct caller of this method.  If
+	// depth is 1 the attribution should skip 1 call frame, and so on.
+	// Successive calls to this are additive.
+	WithCallDepth(depth int) Logger
+}
+
+// WithCallDepth returns a Logger that will offset the call stack by the
+// specified number of frames when logging call site information, if possible.
+// This is useful for users who have helper functions between the "real" call
+// site and the actual calls to Logger methods.  If depth is 0 the attribution
+// should be to the direct caller of this function.  If depth is 1 the
+// attribution should skip 1 call frame, and so on.  Successive calls to this
+// are additive.
+//
+// If the underlying log implementation supports the CallDepthLogger interface,
+// the WithCallDepth method will be called and the result returned.  If the
+// implementation does not support CallDepthLogger, the original Logger will be
+// returned.
+//
+// Callers which care about whether this was supported or not should test for
+// CallDepthLogger support themselves.
+func WithCallDepth(logger Logger, depth int) Logger {
+	if decorator, ok := logger.(CallDepthLogger); ok {
+		return decorator.WithCallDepth(depth)
+	}
+	return logger
 }

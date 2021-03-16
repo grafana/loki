@@ -56,10 +56,10 @@ func UseDevMode(enabled bool) Opts {
 }
 
 // WriteTo configures the logger to write to the given io.Writer, instead of standard error.
-// See Options.DestWritter
+// See Options.DestWriter
 func WriteTo(out io.Writer) Opts {
 	return func(o *Options) {
-		o.DestWritter = out
+		o.DestWriter = out
 	}
 }
 
@@ -143,8 +143,13 @@ type Options struct {
 	// NewEncoder configures Encoder using the provided EncoderConfigOptions.
 	// Note that the NewEncoder function is not used when the Encoder option is already set.
 	NewEncoder NewEncoderFunc
+	// DestWriter controls the destination of the log output.  Defaults to
+	// os.Stderr.
+	DestWriter io.Writer
 	// DestWritter controls the destination of the log output.  Defaults to
 	// os.Stderr.
+	//
+	// Deprecated: Use DestWriter instead
 	DestWritter io.Writer
 	// Level configures the verbosity of the logging.  Defaults to Debug when
 	// Development is true and Info otherwise
@@ -160,8 +165,11 @@ type Options struct {
 
 // addDefaults adds defaults to the Options
 func (o *Options) addDefaults() {
-	if o.DestWritter == nil {
-		o.DestWritter = os.Stderr
+	if o.DestWriter == nil && o.DestWritter == nil {
+		o.DestWriter = os.Stderr
+	} else if o.DestWriter == nil && o.DestWritter != nil {
+		// while misspelled DestWritter is deprecated but still not removed
+		o.DestWriter = o.DestWritter
 	}
 
 	if o.Development {
@@ -216,7 +224,7 @@ func NewRaw(opts ...Opts) *zap.Logger {
 	o.addDefaults()
 
 	// this basically mimics New<type>Config, but with a custom sink
-	sink := zapcore.AddSync(o.DestWritter)
+	sink := zapcore.AddSync(o.DestWriter)
 
 	o.ZapOpts = append(o.ZapOpts, zap.AddCallerSkip(1), zap.ErrorOutput(sink))
 	log := zap.New(zapcore.NewCore(&KubeAwareEncoder{Encoder: o.Encoder, Verbose: o.Development}, sink, o.Level))
@@ -230,7 +238,7 @@ func NewRaw(opts ...Opts) *zap.Logger {
 //  zap-encoder: Zap log encoding (one of 'json' or 'console')
 //  zap-log-level:  Zap Level to configure the verbosity of logging. Can be one of 'debug', 'info', 'error',
 //			       or any integer value > 0 which corresponds to custom debug levels of increasing verbosity")
-//  zap-stacktrace-level: Zap Level at and above which stacktraces are captured (one of 'info' or 'error')
+//  zap-stacktrace-level: Zap Level at and above which stacktraces are captured (one of 'info', 'error' or 'panic')
 func (o *Options) BindFlags(fs *flag.FlagSet) {
 
 	// Set Development mode value
@@ -260,7 +268,7 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 		o.StacktraceLevel = fromFlag
 	}
 	fs.Var(&stackVal, "zap-stacktrace-level",
-		"Zap Level at and above which stacktraces are captured (one of 'info', 'error').")
+		"Zap Level at and above which stacktraces are captured (one of 'info', 'error', 'panic').")
 }
 
 // UseFlagOptions configures the logger to use the Options set by parsing zap option flags from the CLI.

@@ -12,7 +12,7 @@ import (
 var _ runtime.ParameterCodec = noConversionParamCodec{}
 
 // noConversionParamCodec is a no-conversion codec for serializing parameters into URL query strings.
-// it's useful in scenarios with the unstructured client and arbitrary resouces.
+// it's useful in scenarios with the unstructured client and arbitrary resources.
 type noConversionParamCodec struct{}
 
 func (noConversionParamCodec) EncodeParameters(obj runtime.Object, to schema.GroupVersion) (url.Values, error) {

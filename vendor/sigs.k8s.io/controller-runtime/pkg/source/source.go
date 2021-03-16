@@ -215,7 +215,10 @@ func (cs *Channel) Start(
 	}
 
 	dst := make(chan event.GenericEvent, cs.DestBufferSize)
+
+	cs.destLock.Lock()
 	cs.dest = append(cs.dest, dst)
+	cs.destLock.Unlock()
 
 	cs.once.Do(func() {
 		// Distribute GenericEvents to all EventHandler / Queue pairs Watching this source
@@ -237,9 +240,6 @@ func (cs *Channel) Start(
 			}
 		}
 	}()
-
-	cs.destLock.Lock()
-	defer cs.destLock.Unlock()
 
 	return nil
 }
@@ -274,7 +274,13 @@ func (cs *Channel) syncLoop(ctx context.Context) {
 			// Close destination channels
 			cs.doStop()
 			return
-		case evt := <-cs.Source:
+		case evt, stillOpen := <-cs.Source:
+			if !stillOpen {
+				// if the source channel is closed, we're never gonna get
+				// anything more on it, so stop & bail
+				cs.doStop()
+				return
+			}
 			cs.distribute(evt)
 		}
 	}

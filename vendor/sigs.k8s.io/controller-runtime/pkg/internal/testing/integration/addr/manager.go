@@ -38,8 +38,11 @@ var cache = &portCache{
 	ports: make(map[int]time.Time),
 }
 
-func suggest() (port int, resolvedHost string, err error) {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+func suggest(listenHost string) (port int, resolvedHost string, err error) {
+	if listenHost == "" {
+		listenHost = "localhost"
+	}
+	addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(listenHost, "0"))
 	if err != nil {
 		return
 	}
@@ -59,9 +62,9 @@ func suggest() (port int, resolvedHost string, err error) {
 // a tuple consisting of a free port and the hostname resolved to its IP.
 // It makes sure that new port allocated does not conflict with old ports
 // allocated within 1 minute.
-func Suggest() (port int, resolvedHost string, err error) {
+func Suggest(listenHost string) (port int, resolvedHost string, err error) {
 	for i := 0; i < portConflictRetry; i++ {
-		port, resolvedHost, err = suggest()
+		port, resolvedHost, err = suggest(listenHost)
 		if err != nil {
 			return
 		}

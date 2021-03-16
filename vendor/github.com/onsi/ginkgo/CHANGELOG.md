@@ -1,3 +1,25 @@
+## 1.15.1
+
+### Fixes
+- reporters/junit: Use `system-out` element instead of `passed` (#769) [9eda305]
+
+## 1.15.0
+
+### Features
+- Adds 'outline' command to print the outline of specs/containers in a file (#754) [071c369] [6803cc3] [935b538] [06744e8] [0c40583]
+- Add support for using template to generate tests (#752) [efb9e69]
+- Add a Chinese Doc #755 (#756) [5207632]
+- cli: allow multiple -focus and -skip flags (#736) [9a782fb]
+
+### Fixes
+- Add _internal to filename of tests created with internal flag (#751) [43c12da]
+
+## 1.14.2
+
+### Fixes
+- correct handling windows backslash in import path (#721) [97f3d51]
+- Add additional methods to GinkgoT() to improve compatibility with the testing.TB interface [b5fe44d]
+
 ## 1.14.1
 
 ### Fixes

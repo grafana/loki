@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/util/workqueue"
@@ -47,6 +48,10 @@ type Options struct {
 	// Log is the logger used for this controller and passed to each reconciliation
 	// request via the context field.
 	Log logr.Logger
+
+	// CacheSyncTimeout refers to the time limit set to wait for syncing caches.
+	// Defaults to 2 minutes if not set.
+	CacheSyncTimeout time.Duration
 }
 
 // Controller implements a Kubernetes API.  A Controller manages a work queue fed reconcile.Requests
@@ -104,6 +109,10 @@ func NewUnmanaged(name string, mgr manager.Manager, options Options) (Controller
 		options.MaxConcurrentReconciles = 1
 	}
 
+	if options.CacheSyncTimeout == 0 {
+		options.CacheSyncTimeout = 2 * time.Minute
+	}
+
 	if options.RateLimiter == nil {
 		options.RateLimiter = workqueue.DefaultControllerRateLimiter()
 	}
@@ -120,6 +129,7 @@ func NewUnmanaged(name string, mgr manager.Manager, options Options) (Controller
 			return workqueue.NewNamedRateLimitingQueue(options.RateLimiter, name)
 		},
 		MaxConcurrentReconciles: options.MaxConcurrentReconciles,
+		CacheSyncTimeout:        options.CacheSyncTimeout,
 		SetFields:               mgr.SetFields,
 		Name:                    name,
 		Log:                     options.Log.WithName("controller").WithName(name),

@@ -36,9 +36,8 @@ spec:
           spec:
             description: LokiStackSpec defines the desired state of LokiStack
             properties:
-              foo:
-                description: Foo is an example field of LokiStack. Edit LokiStack_types.go
-                  to remove/update
+              name:
+                description: Name is the unique name of this LokiStack.
                 type: string
             type: object
           status:

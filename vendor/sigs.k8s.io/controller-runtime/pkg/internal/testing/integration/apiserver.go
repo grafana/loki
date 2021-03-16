@@ -105,7 +105,7 @@ func (s *APIServer) setProcessState() error {
 
 	// Defaulting the secure port
 	if s.SecurePort == 0 {
-		s.SecurePort, _, err = addr.Suggest()
+		s.SecurePort, _, err = addr.Suggest("")
 		if err != nil {
 			return err
 		}

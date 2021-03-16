@@ -1,9 +1,10 @@
 module github.com/onsi/gomega
 
+go 1.14
+
 require (
-	github.com/golang/protobuf v1.4.2
+	github.com/golang/protobuf v1.4.3
 	github.com/onsi/ginkgo v1.12.1
-	golang.org/x/net v0.0.0-20200520004742-59133d7f0dd7
-	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
-	gopkg.in/yaml.v2 v2.3.0
+	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
+	gopkg.in/yaml.v2 v2.4.0
 )

@@ -200,6 +200,36 @@ func (AnnotationChangedPredicate) Update(e event.UpdateEvent) bool {
 	return !reflect.DeepEqual(e.ObjectNew.GetAnnotations(), e.ObjectOld.GetAnnotations())
 }
 
+// LabelChangedPredicate implements a default update predicate function on label change.
+//
+// This predicate will skip update events that have no change in the object's label.
+// It is intended to be used in conjunction with the GenerationChangedPredicate, as in the following example:
+//
+// Controller.Watch(
+//		&source.Kind{Type: v1.MyCustomKind},
+// 		&handler.EnqueueRequestForObject{},
+//		predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{}))
+//
+// This will be helpful when object's labels is carrying some extra specification information beyond object's spec,
+// and the controller will be triggered if any valid spec change (not only in spec, but also in labels) happens.
+type LabelChangedPredicate struct {
+	Funcs
+}
+
+// Update implements default UpdateEvent filter for checking label change
+func (LabelChangedPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil {
+		log.Error(nil, "Update event has no old object to update", "event", e)
+		return false
+	}
+	if e.ObjectNew == nil {
+		log.Error(nil, "Update event has no new object for update", "event", e)
+		return false
+	}
+
+	return !reflect.DeepEqual(e.ObjectNew.GetLabels(), e.ObjectOld.GetLabels())
+}
+
 // And returns a composite predicate that implements a logical AND of the predicates passed to it.
 func And(predicates ...Predicate) Predicate {
 	return and{predicates}

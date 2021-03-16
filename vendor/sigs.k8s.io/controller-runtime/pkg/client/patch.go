@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 )
 
 var (
@@ -87,13 +88,15 @@ type MergeFromOptions struct {
 }
 
 type mergeFromPatch struct {
-	from runtime.Object
-	opts MergeFromOptions
+	patchType   types.PatchType
+	createPatch func(originalJSON, modifiedJSON []byte, dataStruct interface{}) ([]byte, error)
+	from        runtime.Object
+	opts        MergeFromOptions
 }
 
 // Type implements patch.
 func (s *mergeFromPatch) Type() types.PatchType {
-	return types.MergePatchType
+	return s.patchType
 }
 
 // Data implements Patch.
@@ -108,7 +111,7 @@ func (s *mergeFromPatch) Data(obj runtime.Object) ([]byte, error) {
 		return nil, err
 	}
 
-	data, err := jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
+	data, err := s.createPatch(originalJSON, modifiedJSON, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -137,18 +140,50 @@ func (s *mergeFromPatch) Data(obj runtime.Object) ([]byte, error) {
 	return data, nil
 }
 
+func createMergePatch(originalJSON, modifiedJSON []byte, _ interface{}) ([]byte, error) {
+	return jsonpatch.CreateMergePatch(originalJSON, modifiedJSON)
+}
+
+func createStrategicMergePatch(originalJSON, modifiedJSON []byte, dataStruct interface{}) ([]byte, error) {
+	return strategicpatch.CreateTwoWayMergePatch(originalJSON, modifiedJSON, dataStruct)
+}
+
 // MergeFrom creates a Patch that patches using the merge-patch strategy with the given object as base.
+// The difference between MergeFrom and StrategicMergeFrom lays in the handling of modified list fields.
+// When using MergeFrom, existing lists will be completely replaced by new lists.
+// When using StrategicMergeFrom, the list field's `patchStrategy` is respected if specified in the API type,
+// e.g. the existing list is not replaced completely but rather merged with the new one using the list's `patchMergeKey`.
+// See https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/ for more details on
+// the difference between merge-patch and strategic-merge-patch.
 func MergeFrom(obj runtime.Object) Patch {
-	return &mergeFromPatch{from: obj}
+	return &mergeFromPatch{patchType: types.MergePatchType, createPatch: createMergePatch, from: obj}
 }
 
 // MergeFromWithOptions creates a Patch that patches using the merge-patch strategy with the given object as base.
+// See MergeFrom for more details.
 func MergeFromWithOptions(obj runtime.Object, opts ...MergeFromOption) Patch {
 	options := &MergeFromOptions{}
 	for _, opt := range opts {
 		opt.ApplyToMergeFrom(options)
 	}
-	return &mergeFromPatch{from: obj, opts: *options}
+	return &mergeFromPatch{patchType: types.MergePatchType, createPatch: createMergePatch, from: obj, opts: *options}
+}
+
+// StrategicMergeFrom creates a Patch that patches using the strategic-merge-patch strategy with the given object as base.
+// The difference between MergeFrom and StrategicMergeFrom lays in the handling of modified list fields.
+// When using MergeFrom, existing lists will be completely replaced by new lists.
+// When using StrategicMergeFrom, the list field's `patchStrategy` is respected if specified in the API type,
+// e.g. the existing list is not replaced completely but rather merged with the new one using the list's `patchMergeKey`.
+// See https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/ for more details on
+// the difference between merge-patch and strategic-merge-patch.
+// Please note, that CRDs don't support strategic-merge-patch, see
+// https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#advanced-features-and-flexibility
+func StrategicMergeFrom(obj Object, opts ...MergeFromOption) Patch {
+	options := &MergeFromOptions{}
+	for _, opt := range opts {
+		opt.ApplyToMergeFrom(options)
+	}
+	return &mergeFromPatch{patchType: types.StrategicMergePatchType, createPatch: createStrategicMergePatch, from: obj, opts: *options}
 }
 
 // mergePatch uses a raw merge strategy to patch the object.

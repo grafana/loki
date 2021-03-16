@@ -75,7 +75,7 @@ func DoDefaulting(
 	}
 
 	if listenURL == nil {
-		port, host, err := addr.Suggest()
+		port, host, err := addr.Suggest("")
 		if err != nil {
 			return DefaultedProcessInput{}, err
 		}

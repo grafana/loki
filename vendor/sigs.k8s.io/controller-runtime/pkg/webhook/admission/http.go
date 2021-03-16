@@ -45,6 +45,10 @@ var _ http.Handler = &Webhook{}
 func (wh *Webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body []byte
 	var err error
+	ctx := r.Context()
+	if wh.WithContextFunc != nil {
+		ctx = wh.WithContextFunc(ctx, r)
+	}
 
 	var reviewResponse Response
 	if r.Body != nil {
@@ -93,7 +97,7 @@ func (wh *Webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	wh.log.V(1).Info("received request", "UID", req.UID, "kind", req.Kind, "resource", req.Resource)
 
 	// TODO: add panic-recovery for Handle
-	reviewResponse = wh.Handle(r.Context(), req)
+	reviewResponse = wh.Handle(ctx, req)
 	wh.writeResponseTyped(w, reviewResponse, actualAdmRevGVK)
 }
 

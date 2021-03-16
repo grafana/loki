@@ -4,4 +4,4 @@ metadata:
   name: lokistack-sample
 spec:
   # Add fields here
-  foo: bar
+  name: mystack

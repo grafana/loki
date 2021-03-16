@@ -18,17 +18,18 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	"github.com/ViaQ/logerr/log"
+	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/go-logr/logr"
-	"gitlab.com/blockloop/loki-operator/internal/manifests"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	lokiv1beta1 "gitlab.com/blockloop/loki-operator/api/v1beta1"
+	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -54,12 +55,19 @@ type LokiStackReconciler struct {
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ll := log.WithValues("lokistack", req.NamespacedName)
 
-	result, err := manifests.Build(manifests.DefaultOptions())
+	ll.Info("begin building manifests")
+
+	result, err := manifests.BuildAll(req.Name, req.Namespace)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
+		return ctrl.Result{
+			Requeue:      true,
+			RequeueAfter: time.Second,
+		}, err
 	}
+	ll.Info("manifests built", "count", len(result))
 	for _, r := range result {
-		log.Info("Resource created", "resource", r)
+		ll.Info("Resource created", "resource", r)
 	}
 
 	return ctrl.Result{}, nil

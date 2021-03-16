@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package inject is used by a Manager to inject types into Sources, EventHandlers, Predicates, and Reconciles.
+// Deprecated: Use manager.Options fields directly. This package will be removed in v0.10.
 package inject
 
 import (

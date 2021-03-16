@@ -34,11 +34,10 @@ var levelStrings = map[string]zapcore.Level{
 	"error": zap.ErrorLevel,
 }
 
-// TODO Add level to disable stacktraces.
-// https://github.com/kubernetes-sigs/controller-runtime/issues/1035
 var stackLevelStrings = map[string]zapcore.Level{
 	"info":  zap.InfoLevel,
 	"error": zap.ErrorLevel,
+	"panic": zap.PanicLevel,
 }
 
 type encoderFlag struct {

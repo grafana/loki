@@ -115,6 +115,11 @@ type Webhook struct {
 	// and potentially patches to apply to the handler.
 	Handler Handler
 
+	// WithContextFunc will allow you to take the http.Request.Context() and
+	// add any additional information such as passing the request path or
+	// headers thus allowing you to read them from within the handler
+	WithContextFunc func(context.Context, *http.Request) context.Context
+
 	// decoder is constructed on receiving a scheme and passed down to then handler
 	decoder *Decoder
 
