@@ -217,3 +217,7 @@ func (m *packStage) pack(e Entry) Entry {
 func (m *packStage) Name() string {
 	return StageTypePack
 }
+
+func (m *packStage) Stop() {
+	return
+}

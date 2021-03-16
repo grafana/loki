@@ -56,3 +56,7 @@ func (l *labelDropStage) Process(labels model.LabelSet, extracted map[string]int
 func (l *labelDropStage) Name() string {
 	return StageTypeLabelDrop
 }
+
+func (l *labelDropStage) Close() {
+	return
+}

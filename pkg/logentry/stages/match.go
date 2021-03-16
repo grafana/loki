@@ -226,3 +226,8 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 func (m *matcherStage) Name() string {
 	return StageTypeMatch
 }
+
+func (m *matcherStage) Stop() {
+	m.stage.Stop()
+	return
+}

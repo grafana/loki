@@ -142,3 +142,7 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 func (o *templateStage) Name() string {
 	return StageTypeTemplate
 }
+
+func (o *templateStage) Close() {
+	return
+}

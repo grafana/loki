@@ -701,6 +701,11 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+# github.com/oschwald/geoip2-golang v1.5.0
+## explicit
+github.com/oschwald/geoip2-golang
+# github.com/oschwald/maxminddb-golang v1.8.0
+github.com/oschwald/maxminddb-golang
 # github.com/pierrec/lz4/v4 v4.1.1
 ## explicit
 github.com/pierrec/lz4/v4

@@ -215,3 +215,7 @@ func (r *replaceStage) getTemplateData(extracted map[string]interface{}) map[str
 func (r *replaceStage) Name() string {
 	return StageTypeReplace
 }
+
+func (r *replaceStage) Close() {
+	return
+}

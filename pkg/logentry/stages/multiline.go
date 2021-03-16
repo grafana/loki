@@ -228,3 +228,7 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 func (m *multilineStage) Name() string {
 	return StageTypeMultiline
 }
+
+func (m *multilineStage) Stop() {
+	return
+}

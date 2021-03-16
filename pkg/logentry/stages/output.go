@@ -81,3 +81,7 @@ func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interf
 func (o *outputStage) Name() string {
 	return StageTypeOutput
 }
+
+func (o *outputStage) Close() {
+	return
+}

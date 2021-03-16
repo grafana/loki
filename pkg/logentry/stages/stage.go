@@ -30,6 +30,7 @@ const (
 	StageTypeMultiline  = "multiline"
 	StageTypePack       = "pack"
 	StageTypeLabelAllow = "labelallow"
+	StageTypeGeoIP      = "geoip"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -37,6 +38,7 @@ const (
 type Processor interface {
 	Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
 	Name() string
+	Close()
 }
 
 type Entry struct {
@@ -48,6 +50,7 @@ type Entry struct {
 type Stage interface {
 	Name() string
 	Run(chan Entry) chan Entry
+	Stop()
 }
 
 // stageProcessor Allow to transform a Processor (old synchronous pipeline stage) into an async Stage
@@ -60,6 +63,10 @@ func (s stageProcessor) Run(in chan Entry) chan Entry {
 		s.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
 		return e
 	})
+}
+
+func (s stageProcessor) Stop() {
+	s.Close()
 }
 
 func toStage(p Processor) Stage {
@@ -154,6 +161,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeLabelAllow:
 		s, err = newLabelAllowStage(cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeGeoIP:
+		s, err = newGeoIPStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}

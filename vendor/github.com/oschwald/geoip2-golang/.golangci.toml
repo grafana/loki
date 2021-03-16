@@ -1,0 +1,56 @@
+[run]
+  deadline = "10m"
+  tests = true
+
+[linters]
+  disable-all = true
+  enable = [
+    "bodyclose",
+    "deadcode",
+    "depguard",
+    "errcheck",
+    "exportloopref",
+    "goconst",
+    "gocyclo",
+    "gocritic",
+    "gofumpt",
+    "golint",
+    "gosec",
+    "gosimple",
+    "govet",
+    "ineffassign",
+    "maligned",
+    "misspell",
+    "nakedret",
+    "noctx",
+    "nolintlint",
+    "sqlclosecheck",
+    "staticcheck",
+    "structcheck",
+    "stylecheck",
+    "typecheck",
+    "unconvert",
+    "unparam",
+    "unused",
+    "varcheck",
+    "vetshadow",
+  ]
+
+[linters-settings.errcheck]
+    ignore = "Close,fmt:.*"
+
+[linters-settings.gofumpt]
+    extra-rules = true
+
+[issues]
+exclude-use-default = false
+
+  [[issues.exclude-rules]]
+  linters = [
+    "gosec"
+  ]
+
+  # G304 - Potential file inclusion via variable (gosec)
+  # G404 - "Use of weak random number generator (math/rand instead of crypto/rand)"
+  #        We only use this in tests.
+  text = "G304|G404"

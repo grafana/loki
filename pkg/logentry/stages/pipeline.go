@@ -83,6 +83,17 @@ func (p *Pipeline) Run(in chan Entry) chan Entry {
 	return in
 }
 
+func (p *Pipeline) Stop() {
+	out := make(chan bool)
+	go func() {
+		for _, m := range p.stages {
+			m.Stop()
+		}
+		out <- true
+	}()
+	<-out
+}
+
 // Name implements Stage
 func (p *Pipeline) Name() string {
 	return StageTypePipeline
@@ -101,6 +112,7 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 		for e := range pipelineOut {
 			nextChan <- e.Entry
 		}
+		p.Stop()
 	}()
 	go func() {
 		defer wg.Done()

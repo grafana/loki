@@ -178,6 +178,10 @@ func (m *metricStage) Name() string {
 	return StageTypeMetric
 }
 
+func (m *metricStage) Close() {
+	return
+}
+
 // recordCounter will update a counter metric
 func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
