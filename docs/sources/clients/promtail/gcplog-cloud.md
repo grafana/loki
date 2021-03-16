@@ -72,6 +72,10 @@ We need a service account with following permissions.
 
 This enables promtail to read log entries from the pubsub subscription created before.
 
+you can find example for promtail scrape config for `gcplog` [here](../scraping/#gcplog-scraping)
+
+If you are scraping logs from multiple GCP projects, then this serviceaccount should have above permissions in all the projects you are tyring to scrape.
+
 ## Operations
 
 Sometimes you may wish to clear the pending pubsub queue containing logs.
@@ -88,13 +92,13 @@ To delete all the old messages until now, set `--time` to current time.
 gcloud pubsub subscriptions seek projects/my-project/subscriptions/cloud-logs --time=$(date +%Y-%m-%dT%H:%M:%S)
 ```
 
-# Advanced log filter
+## Advanced log filter
 
 So far we've covered admitting GCS bucket logs into Loki, but often one may need to add multiple cloud resource logs and may also need to exclude unnecessary logs. The following is a more complex example.
 
 We use the `log-filter` option to include logs and the `exclusion` option to exclude them.
 
-## Use Case
+### Use Case
 Include following cloud resource logs
 - GCS bucket
 - Kubernetes
