@@ -1,13 +1,12 @@
 package stages
 
 import (
-	"github.com/prometheus/prometheus/pkg/labels"
-
 	"github.com/go-kit/kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -228,5 +227,9 @@ func (m *matcherStage) Name() string {
 }
 
 func (m *matcherStage) Stop() {
-	m.stage.Stop()
+	switch m.action {
+	case MatchActionKeep:
+		m.stage.Stop()
+	case MatchActionDrop:
+	}
 }

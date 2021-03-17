@@ -183,16 +183,16 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 		case SUBDIVISIONNAME:
 			if len(record.Subdivisions) > 0 {
 				// we get most specific subdivision https://dev.maxmind.com/release-note/most-specific-subdivision-attribute-added/
-				subdivision_name := record.Subdivisions[len(record.Subdivisions)-1].Names["en"]
-				if subdivision_name != "" {
-					labels[model.LabelName(label)] = model.LabelValue(subdivision_name)
+				subdivisionName := record.Subdivisions[len(record.Subdivisions)-1].Names["en"]
+				if subdivisionName != "" {
+					labels[model.LabelName(label)] = model.LabelValue(subdivisionName)
 				}
 			}
 		case SUBDIVISIONCODE:
 			if len(record.Subdivisions) > 0 {
-				subdivision_code := record.Subdivisions[len(record.Subdivisions)-1].IsoCode
-				if subdivision_code != "" {
-					labels[model.LabelName(label)] = model.LabelValue(subdivision_code)
+				subdivisionCode := record.Subdivisions[len(record.Subdivisions)-1].IsoCode
+				if subdivisionCode != "" {
+					labels[model.LabelName(label)] = model.LabelValue(subdivisionCode)
 				}
 			}
 		default:
@@ -202,12 +202,12 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 }
 
 func (g *geoIPStage) populateLabelsWithASNData(labels model.LabelSet, record *geoip2.ASN) {
-	autonomous_system_number := record.AutonomousSystemNumber
-	autonomous_system_organization := record.AutonomousSystemOrganization
-	if autonomous_system_number != 0 {
-		labels[model.LabelName("geoip_autonomous_system_number")] = model.LabelValue(fmt.Sprint(autonomous_system_number))
+	autonomousSystemNumber := record.AutonomousSystemNumber
+	autonomousSystemOrganization := record.AutonomousSystemOrganization
+	if autonomousSystemNumber != 0 {
+		labels[model.LabelName("geoip_autonomous_system_number")] = model.LabelValue(fmt.Sprint(autonomousSystemNumber))
 	}
-	if autonomous_system_organization != "" {
-		labels[model.LabelName("geoip_autonomous_system_organization")] = model.LabelValue(autonomous_system_organization)
+	if autonomousSystemOrganization != "" {
+		labels[model.LabelName("geoip_autonomous_system_organization")] = model.LabelValue(autonomousSystemOrganization)
 	}
 }
