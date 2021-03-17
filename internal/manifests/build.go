@@ -1,10 +1,14 @@
 package manifests
 
-import "github.com/ViaQ/logerr/log"
+import (
+	"github.com/ViaQ/logerr/log"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 // BuildAll builds all manifests required to run a Loki Stack
-func BuildAll(stackName, namespace string) ([]interface{}, error) {
-	res := make([]interface{}, 0)
+// TODO add options parameter to enable resource sizing, and other configurations
+func BuildAll(stackName, namespace string) ([]client.Object, error) {
+	res := make([]client.Object, 0)
 
 	log.Info("building configmap")
 	cm, err := LokiConfigMap(stackName, namespace)

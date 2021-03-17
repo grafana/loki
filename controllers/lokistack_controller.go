@@ -42,6 +42,9 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -57,7 +60,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	ll.Info("begin building manifests")
 
-	result, err := manifests.BuildAll(req.Name, req.Namespace)
+	objects, err := manifests.BuildAll(req.Name, req.Namespace)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
 		return ctrl.Result{
@@ -65,9 +68,19 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			RequeueAfter: time.Second,
 		}, err
 	}
-	ll.Info("manifests built", "count", len(result))
-	for _, r := range result {
-		ll.Info("Resource created", "resource", r)
+	ll.Info("manifests built", "count", len(objects))
+	for _, obj := range objects {
+		l := ll.WithValues("object_name", obj.GetName(),
+			"object_kind", obj.GetObjectKind(),
+			"object", obj)
+
+		obj.SetNamespace(req.Namespace)
+		err := r.Create(ctx, obj)
+		if err != nil {
+			l.Error(err, "failed to create object")
+			continue
+		}
+		l.Info("Resource created", "resource", obj.GetName())
 	}
 
 	return ctrl.Result{}, nil

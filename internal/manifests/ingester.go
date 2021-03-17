@@ -135,9 +135,9 @@ func IngesterDeployment(stackName string) *apps.Deployment {
 	}
 }
 
-func IngesterServices(stackName string) []core.Service {
+func IngesterServices(stackName string) []*core.Service {
 	l := ComponentLabels("ingester", stackName)
-	return []core.Service{
+	return []*core.Service{
 		{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Service",

@@ -1,0 +1,4 @@
+resources:
+- ../default
+- ../samples
+- ../scorecard

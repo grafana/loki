@@ -1,0 +1,48 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: loki-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: LokiStack is the Schema for the lokistacks API
+      displayName: Loki Stack
+      kind: LokiStack
+      name: lokistacks.loki.openshift.io
+      version: v1beta1
+  description: Loki Stack for Logging
+  displayName: Loki Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - logging
+  - loki
+  links:
+  - name: Loki Operator
+    url: https://loki-operator.domain
+  maintainers:
+  - email: brejones@redhat.com
+    name: brett
+  maturity: alpha
+  provider:
+    name: Red Hat
+  version: 0.0.0
