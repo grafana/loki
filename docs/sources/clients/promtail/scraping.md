@@ -206,6 +206,10 @@ Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with p
 
 It also support `relabeling` and `pipeline` stages just like other targets.
 
+Log entries scraped by `gcplog` will add additional label called `promtail_instance`. This label uniquely identifies each promtail instances trying to scrape gcplog(from single `subscription_id`).
+We need this unique identifier to avoid out-of-order errors from Loki servers.
+Because say two promtail instances rewrite timestamp of log entries(with same labelset) at the same time may reach Loki servers at different times can cause Loki servers to reject it.
+
 ## Syslog Receiver
 
 Promtail supports receiving [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
