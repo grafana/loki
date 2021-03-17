@@ -1,7 +1,8 @@
 ---
 auth_enabled: false
 chunk_store_config:
-  enable_fifocache: yes
+  chunk_cache_config:
+    enable_fifocache: yes
 distributor:
   ring:
     kvstore:

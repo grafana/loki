@@ -1,4 +1,5 @@
-# VERSION defines the project version for the bundle. 
+# VERSIO
+# defines the project version for the bundle. 
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
@@ -41,6 +42,8 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 all: manager
+
+OCI_RUNTIME ?= $(shell which podman || which docker)
 
 # Run tests
 ENVTEST_ASSETS_DIR=$(CURDIR)/testbin
@@ -90,13 +93,13 @@ vet:
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-# Build the docker image
-docker-build:
-	docker build -t ${IMG} .
+# Build the image
+oci-build:
+	$(OCI_RUNTIME) build -t ${IMG} .
 
-# Push the docker image
-docker-push:
-	docker push ${IMG}
+# Push the image
+oci-push:
+	$(OCI_RUNTIME) push ${IMG}
 
 # Download controller-gen locally if necessary
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
@@ -133,4 +136,4 @@ bundle: manifests kustomize
 # Build the bundle image.
 .PHONY: bundle-build
 bundle-build:
-	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(OCI_RUNTIME) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .

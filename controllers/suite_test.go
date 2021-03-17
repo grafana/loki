@@ -17,63 +17,73 @@ limitations under the License.
 package controllers
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/ViaQ/logerr/log"
+	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
-// These tests use Ginkgo (BDD-style Go testing framework). Refer to
-// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+var (
+	testEnv   *envtest.Environment
+	cfg       *rest.Config
+	k8sClient client.Client
+)
 
-var cfg *rest.Config
-var k8sClient client.Client
-var testEnv *envtest.Environment
-
-func TestAPIs(t *testing.T) {
-	RegisterFailHandler(Fail)
-
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"Controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
+func TestMain(m *testing.M) {
+	Setup()
+	defer Teardown()
+	m.Run()
 }
 
-var _ = BeforeSuite(func() {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-
-	By("bootstrapping test environment")
+func Setup() {
+	log.Init("testing")
+	log.Info("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{filepath.Join("..", "config", "crd", "bases")},
 	}
 
-	cfg, err := testEnv.Start()
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg).NotTo(BeNil())
+	var err error
+	cfg, err = testEnv.Start()
+	if err != nil {
+		log.Error(err, "failed to start test env")
+		os.Exit(1)
+	}
+	if cfg == nil {
+		log.Error(fmt.Errorf("config was nil"), "failed to start test env")
+		os.Exit(1)
+	}
 
-	err = lokiv1beta1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
+	if err = lokiv1beta1.AddToScheme(scheme.Scheme); err != nil {
+		log.Error(err, "failed to AddToScheme")
+		os.Exit(1)
+	}
 
 	// +kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient).NotTo(BeNil())
+	if err != nil {
+		log.Error(err, "failed to create test k8sclient")
+		os.Exit(1)
+	}
 
-}, 60)
+	if cfg == nil {
+		log.Error(fmt.Errorf("k8sClient was nil"), "failed to connect k8s client")
+		os.Exit(1)
+	}
+}
 
-var _ = AfterSuite(func() {
-	By("tearing down the test environment")
-	err := testEnv.Stop()
-	Expect(err).NotTo(HaveOccurred())
-})
+func Teardown() {
+	log.Info("tearing down test suite")
+	testEnv.Stop()
+}
+
+func TestWorks(t *testing.T) {
+}

@@ -7,7 +7,6 @@ Gomega's format package pretty-prints objects.  It explores input objects recurs
 package format
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -45,7 +44,16 @@ var TruncateThreshold uint = 50
 // after the first diff location in a truncated string assertion error message.
 var CharactersAroundMismatchToInclude uint = 5
 
-var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+// Ctx interface defined here to keep backwards compatibility with go < 1.7
+// It matches the context.Context interface
+type Ctx interface {
+	Deadline() (deadline time.Time, ok bool)
+	Done() <-chan struct{}
+	Err() error
+	Value(key interface{}) interface{}
+}
+
+var contextType = reflect.TypeOf((*Ctx)(nil)).Elem()
 var timeType = reflect.TypeOf(time.Time{})
 
 //The default indentation string emitted by the format package
@@ -97,13 +105,7 @@ func MessageWithDiff(actual, message, expected string) string {
 
 		tabLength := 4
 		spaceFromMessageToActual := tabLength + len("<string>: ") - len(message)
-
-		paddingCount := spaceFromMessageToActual + spacesBeforeFormattedMismatch
-		if paddingCount < 0 {
-			return Message(formattedActual, message, formattedExpected)
-		}
-
-		padding := strings.Repeat(" ", paddingCount) + "|"
+		padding := strings.Repeat(" ", spaceFromMessageToActual+spacesBeforeFormattedMismatch) + "|"
 		return Message(formattedActual, message+padding, formattedExpected)
 	}
 
@@ -173,7 +175,7 @@ Set PrintContextObjects to true to print the content of objects implementing con
 func Object(object interface{}, indentation uint) string {
 	indent := strings.Repeat(Indent, int(indentation))
 	value := reflect.ValueOf(object)
-	return fmt.Sprintf("%s<%s>: %s", indent, formatType(value), formatValue(value, indentation))
+	return fmt.Sprintf("%s<%s>: %s", indent, formatType(object), formatValue(value, indentation))
 }
 
 /*
@@ -193,20 +195,25 @@ func IndentString(s string, indentation uint) string {
 	return result
 }
 
-func formatType(v reflect.Value) string {
-	switch v.Kind() {
-	case reflect.Invalid:
+func formatType(object interface{}) string {
+	t := reflect.TypeOf(object)
+	if t == nil {
 		return "nil"
+	}
+	switch t.Kind() {
 	case reflect.Chan:
-		return fmt.Sprintf("%s | len:%d, cap:%d", v.Type(), v.Len(), v.Cap())
+		v := reflect.ValueOf(object)
+		return fmt.Sprintf("%T | len:%d, cap:%d", object, v.Len(), v.Cap())
 	case reflect.Ptr:
-		return fmt.Sprintf("%s | 0x%x", v.Type(), v.Pointer())
+		return fmt.Sprintf("%T | %p", object, object)
 	case reflect.Slice:
-		return fmt.Sprintf("%s | len:%d, cap:%d", v.Type(), v.Len(), v.Cap())
+		v := reflect.ValueOf(object)
+		return fmt.Sprintf("%T | len:%d, cap:%d", object, v.Len(), v.Cap())
 	case reflect.Map:
-		return fmt.Sprintf("%s | len:%d", v.Type(), v.Len())
+		v := reflect.ValueOf(object)
+		return fmt.Sprintf("%T | len:%d", object, v.Len())
 	default:
-		return fmt.Sprintf("%s", v.Type())
+		return fmt.Sprintf("%T", object)
 	}
 }
 
@@ -271,7 +278,7 @@ func formatValue(value reflect.Value, indentation uint) string {
 		}
 		return formatStruct(value, indentation)
 	case reflect.Interface:
-		return formatInterface(value, indentation)
+		return formatValue(value.Elem(), indentation)
 	default:
 		if value.CanInterface() {
 			return fmt.Sprintf("%#v", value.Interface())
@@ -364,10 +371,6 @@ func formatStruct(v reflect.Value, indentation uint) string {
 		return fmt.Sprintf("{\n%s%s,\n%s}", indenter+Indent, strings.Join(result, ",\n"+indenter+Indent), indenter)
 	}
 	return fmt.Sprintf("{%s}", strings.Join(result, ", "))
-}
-
-func formatInterface(v reflect.Value, indentation uint) string {
-	return fmt.Sprintf("<%s>%s", formatType(v.Elem()), formatValue(v.Elem(), indentation))
 }
 
 func isNilValue(a reflect.Value) bool {

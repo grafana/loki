@@ -2632,9 +2632,7 @@ func (t *Transport) getBodyWriterState(cs *clientStream, body io.Reader) (s body
 
 func (s bodyWriterState) cancel() {
 	if s.timer != nil {
-		if s.timer.Stop() {
-			s.resc <- nil
-		}
+		s.timer.Stop()
 	}
 }
 
