@@ -3,6 +3,7 @@ package stages
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -48,9 +49,9 @@ var fields = map[GeoIPFields]string{
 
 // GeoIPConfig represents GeoIP stage config
 type GeoIPConfig struct {
-	DB     string `mapstructure:"db"`
-	Source string `mapstructure:"source"`
-	DBType string `mapstructure:"db_type"`
+	DB     string  `mapstructure:"db"`
+	Source *string `mapstructure:"source"`
+	DBType string  `mapstructure:"db_type"`
 }
 
 func validateGeoIPConfig(c *GeoIPConfig) error {
@@ -62,7 +63,7 @@ func validateGeoIPConfig(c *GeoIPConfig) error {
 		return errors.New(ErrEmptyDBPathGeoIPStageConfig)
 	}
 
-	if c.Source == "" {
+	if c.Source != nil && *c.Source == "" {
 		return errors.New(ErrEmptySourceGeoIPStageConfig)
 	}
 
@@ -105,7 +106,24 @@ type geoIPStage struct {
 
 // Process implements Stage
 func (g *geoIPStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	ip := net.ParseIP(g.cfgs.Source)
+	var ip net.IP
+	if g.cfgs.Source != nil {
+		if _, ok := extracted[*g.cfgs.Source]; !ok {
+			if Debug {
+				level.Debug(g.logger).Log("msg", "source does not exist in the set of extracted values", "source", *g.cfgs.Source)
+			}
+			return
+		}
+
+		value, err := getString(extracted[*g.cfgs.Source])
+		if err != nil {
+			if Debug {
+				level.Debug(g.logger).Log("msg", "failed to convert source value to string", "source", *g.cfgs.Source, "err", err, "type", reflect.TypeOf(extracted[*g.cfgs.Source]))
+			}
+			return
+		}
+		ip = net.ParseIP(value)
+	}
 	switch g.cfgs.DBType {
 	case "city":
 		record, err := g.db.City(ip)
