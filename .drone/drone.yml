@@ -12,28 +12,28 @@ workspace:
 
 steps:
 - name: test
-  image: grafana/loki-build-image:0.12.0
+  image: grafana/loki-build-image:0.13.0
   commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
 
 - name: lint
-  image: grafana/loki-build-image:0.12.0
+  image: grafana/loki-build-image:0.13.0
   commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
 
 - name: check-generated-files
-  image: grafana/loki-build-image:0.12.0
+  image: grafana/loki-build-image:0.13.0
   commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
 
 - name: check-mod
-  image: grafana/loki-build-image:0.12.0
+  image: grafana/loki-build-image:0.13.0
   commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
@@ -814,7 +814,7 @@ platform:
 
 steps:
 - name: trigger
-  image: grafana/loki-build-image:0.12.0
+  image: grafana/loki-build-image:0.13.0
   commands:
   - ./tools/deploy.sh
   environment:
