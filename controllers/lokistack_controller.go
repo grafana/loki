@@ -75,8 +75,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			"object", obj)
 
 		obj.SetNamespace(req.Namespace)
-		err := r.Create(ctx, obj)
-		if err != nil {
+		if err := r.Create(ctx, obj); err != nil {
 			l.Error(err, "failed to create object")
 			continue
 		}

@@ -14,17 +14,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// BuildIngester builds the k8s objects required to run Loki Ingester
-func BuildIngester(stackName string) []client.Object {
+// BuildQueryFrontend returns a list of k8s objects for Loki QueryFrontend
+func BuildQueryFrontend(stackName string) []client.Object {
 	return []client.Object{
-		NewIngesterDeployment(stackName),
-		NewIngesterGRPCService(stackName),
-		NewIngesterHTTPService(stackName),
+		NewQueryFrontendDeployment(stackName),
+		NewQueryFrontendGRPCService(stackName),
+		NewQueryFrontendHTTPService(stackName),
 	}
 }
 
-// NewIngesterDeployment creates a deployment object for an ingester
-func NewIngesterDeployment(stackName string) *apps.Deployment {
+// NewQueryFrontendDeployment creates a deployment object for a query-frontend
+func NewQueryFrontendDeployment(stackName string) *apps.Deployment {
 	podSpec := core.PodSpec{
 		Volumes: []core.Volume{
 			{
@@ -47,15 +47,15 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 		Containers: []core.Container{
 			{
 				Image: containerImage,
-				Name:  "loki-ingester",
+				Name:  "loki-query-frontend",
 				Args: []string{
-					"-target=ingester",
+					"-target=query-frontend",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 				},
 				ReadinessProbe: &core.Probe{
 					Handler: core.Handler{
 						HTTPGet: &core.HTTPGetAction{
-							Path:   "/ready",
+							Path:   "/metrics",
 							Port:   intstr.FromInt(httpPort),
 							Scheme: core.URISchemeHTTP,
 						},
@@ -84,10 +84,6 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 						Name:          "grpc",
 						ContainerPort: grpcPort,
 					},
-					{
-						Name:          "gossip-ring",
-						ContainerPort: gossipPort,
-					},
 				},
 				// Resources: core.ResourceRequirements{
 				// 	Limits: core.ResourceList{
@@ -115,7 +111,7 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 		},
 	}
 
-	l := ComponentLabels("ingester", stackName)
+	l := ComponentLabels("query-frontend", stackName)
 
 	return &apps.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -123,7 +119,7 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 			APIVersion: apps.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-ingester-%s", stackName),
+			Name:   fmt.Sprintf("loki-query-frontend-%s", stackName),
 			Labels: l,
 		},
 		Spec: apps.DeploymentSpec{
@@ -133,7 +129,7 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 			},
 			Template: core.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   fmt.Sprintf("loki-ingester-%s", stackName),
+					Name:   fmt.Sprintf("loki-query-frontend-%s", stackName),
 					Labels: labels.Merge(l, GossipLabels()),
 				},
 				Spec: podSpec,
@@ -145,15 +141,15 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 	}
 }
 
-func NewIngesterGRPCService(stackName string) *core.Service {
-	l := ComponentLabels("ingester", stackName)
+func NewQueryFrontendGRPCService(stackName string) *core.Service {
+	l := ComponentLabels("query-frontend", stackName)
 	return &core.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
 			APIVersion: apps.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterGRPC(stackName),
+			Name:   fmt.Sprintf("loki-query-frontend-grpc-%s", stackName),
 			Labels: l,
 		},
 		Spec: core.ServiceSpec{
@@ -169,22 +165,23 @@ func NewIngesterGRPCService(stackName string) *core.Service {
 	}
 }
 
-func NewIngesterHTTPService(stackName string) *core.Service {
-	l := ComponentLabels("ingester", stackName)
+func NewQueryFrontendHTTPService(stackName string) *core.Service {
+	l := ComponentLabels("query-frontend", stackName)
 	return &core.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
 			APIVersion: apps.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterHTTP(stackName),
+			Name:   fmt.Sprintf("loki-query-frontend-http-%s", stackName),
 			Labels: l,
 		},
 		Spec: core.ServiceSpec{
+			ClusterIP: "None",
 			Ports: []core.ServicePort{
 				{
-					Name: "metrics",
-					Port: httpPort,
+					Name: "grpc",
+					Port: grpcPort,
 				},
 			},
 			Selector: l,

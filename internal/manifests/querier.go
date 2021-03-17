@@ -14,17 +14,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// BuildIngester builds the k8s objects required to run Loki Ingester
-func BuildIngester(stackName string) []client.Object {
+// BuildQuerier returns a list of k8s objects for Loki Querier
+func BuildQuerier(stackName string) []client.Object {
 	return []client.Object{
-		NewIngesterDeployment(stackName),
-		NewIngesterGRPCService(stackName),
-		NewIngesterHTTPService(stackName),
+		NewQuerierDeployment(stackName),
 	}
 }
 
-// NewIngesterDeployment creates a deployment object for an ingester
-func NewIngesterDeployment(stackName string) *apps.Deployment {
+// NewQuerierDeployment creates a deployment object for a querier
+func NewQuerierDeployment(stackName string) *apps.Deployment {
 	podSpec := core.PodSpec{
 		Volumes: []core.Volume{
 			{
@@ -47,9 +45,9 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 		Containers: []core.Container{
 			{
 				Image: containerImage,
-				Name:  "loki-ingester",
+				Name:  "loki-querier",
 				Args: []string{
-					"-target=ingester",
+					"-target=querier",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 				},
 				ReadinessProbe: &core.Probe{
@@ -115,7 +113,7 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 		},
 	}
 
-	l := ComponentLabels("ingester", stackName)
+	l := ComponentLabels("querier", stackName)
 
 	return &apps.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -123,7 +121,7 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 			APIVersion: apps.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-ingester-%s", stackName),
+			Name:   fmt.Sprintf("loki-querier-%s", stackName),
 			Labels: l,
 		},
 		Spec: apps.DeploymentSpec{
@@ -133,7 +131,7 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 			},
 			Template: core.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   fmt.Sprintf("loki-ingester-%s", stackName),
+					Name:   fmt.Sprintf("loki-querier-%s", stackName),
 					Labels: labels.Merge(l, GossipLabels()),
 				},
 				Spec: podSpec,
@@ -141,53 +139,6 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 			Strategy: apps.DeploymentStrategy{
 				Type: apps.RollingUpdateDeploymentStrategyType,
 			},
-		},
-	}
-}
-
-func NewIngesterGRPCService(stackName string) *core.Service {
-	l := ComponentLabels("ingester", stackName)
-	return &core.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Service",
-			APIVersion: apps.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterGRPC(stackName),
-			Labels: l,
-		},
-		Spec: core.ServiceSpec{
-			ClusterIP: "None",
-			Ports: []core.ServicePort{
-				{
-					Name: "grpc",
-					Port: grpcPort,
-				},
-			},
-			Selector: l,
-		},
-	}
-}
-
-func NewIngesterHTTPService(stackName string) *core.Service {
-	l := ComponentLabels("ingester", stackName)
-	return &core.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Service",
-			APIVersion: apps.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterHTTP(stackName),
-			Labels: l,
-		},
-		Spec: core.ServiceSpec{
-			Ports: []core.ServicePort{
-				{
-					Name: "metrics",
-					Port: httpPort,
-				},
-			},
-			Selector: l,
 		},
 	}
 }

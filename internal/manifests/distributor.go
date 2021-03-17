@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -19,8 +20,17 @@ const (
 	dataDirectory     = "/tmp/loki"
 )
 
-// DistributorDeployment creates a deployment object for a distributor
-func DistributorDeployment(stackName string) *apps.Deployment {
+// BuildDistributor returns a list of k8s objects for Loki Distributor
+func BuildDistributor(stackName string) []client.Object {
+	return []client.Object{
+		NewDistributorDeployment(stackName),
+		NewDistributorHTTPService(stackName),
+		NewDistributorGRPCService(stackName),
+	}
+}
+
+// NewDistributorDeployment creates a deployment object for a distributor
+func NewDistributorDeployment(stackName string) *apps.Deployment {
 	podSpec := core.PodSpec{
 		Volumes: []core.Volume{
 			{
@@ -141,48 +151,49 @@ func DistributorDeployment(stackName string) *apps.Deployment {
 	}
 }
 
-func DistributorServices(stackName string) []*core.Service {
+func NewDistributorHTTPService(stackName string) *core.Service {
 	l := ComponentLabels("distributor", stackName)
-
-	return []*core.Service{
-		{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Service",
-				APIVersion: apps.SchemeGroupVersion.String(),
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   fmt.Sprintf("loki-distributor-grpc-%s", stackName),
-				Labels: l,
-			},
-			Spec: core.ServiceSpec{
-				ClusterIP: "None",
-				Ports: []core.ServicePort{
-					{
-						Name: "grpc",
-						Port: grpcPort,
-					},
-				},
-				Selector: l,
-			},
+	return &core.Service{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Service",
+			APIVersion: apps.SchemeGroupVersion.String(),
 		},
-		{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Service",
-				APIVersion: apps.SchemeGroupVersion.String(),
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   fmt.Sprintf("loki-distributor-http-%s", stackName),
-				Labels: l,
-			},
-			Spec: core.ServiceSpec{
-				Ports: []core.ServicePort{
-					{
-						Name: "metrics",
-						Port: httpPort,
-					},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   serviceNameDistributorGRPC(stackName),
+			Labels: l,
+		},
+		Spec: core.ServiceSpec{
+			ClusterIP: "None",
+			Ports: []core.ServicePort{
+				{
+					Name: "grpc",
+					Port: grpcPort,
 				},
-				Selector: l,
 			},
+			Selector: l,
+		},
+	}
+}
+
+func NewDistributorGRPCService(stackName string) *core.Service {
+	l := ComponentLabels("distributor", stackName)
+	return &core.Service{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Service",
+			APIVersion: apps.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   serviceNameDistributorHTTP(stackName),
+			Labels: l,
+		},
+		Spec: core.ServiceSpec{
+			Ports: []core.ServicePort{
+				{
+					Name: "metrics",
+					Port: httpPort,
+				},
+			},
+			Selector: l,
 		},
 	}
 }

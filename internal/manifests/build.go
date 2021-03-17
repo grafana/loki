@@ -15,18 +15,10 @@ func BuildAll(stackName, namespace string) ([]client.Object, error) {
 	}
 	res = append(res, cm)
 
-	res = append(res, DistributorDeployment(stackName))
-
-	for _, svc := range DistributorServices(stackName) {
-		res = append(res, svc)
-	}
-
-	res = append(res, IngesterDeployment(stackName))
-
-	for _, svc := range IngesterServices(stackName) {
-		res = append(res, svc)
-	}
-
+	res = append(res, BuildDistributor(stackName)...)
+	res = append(res, BuildIngester(stackName)...)
+	res = append(res, BuildQuerier(stackName)...)
+	res = append(res, BuildQueryFrontend(stackName)...)
 	res = append(res, LokiGossipRingService(stackName))
 
 	return res, nil
