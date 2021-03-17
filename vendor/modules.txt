@@ -846,6 +846,7 @@ github.com/rs/xid
 # github.com/samuel/go-zookeeper v0.0.0-20201211165307-7117e9ea2414
 github.com/samuel/go-zookeeper/zk
 # github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b => github.com/satori/go.uuid v1.2.0
+## explicit
 github.com/satori/go.uuid
 # github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
 github.com/sean-/seed
