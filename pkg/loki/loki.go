@@ -131,6 +131,12 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
+	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid boltdb-shipper config")
+	}
+	if err := c.CompactorConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid compactor config")
+	}
 	return nil
 }
 
