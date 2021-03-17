@@ -1,7 +1,6 @@
 package manifests
 
 import (
-	"github.com/ViaQ/logerr/log"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -10,28 +9,25 @@ import (
 func BuildAll(stackName, namespace string) ([]client.Object, error) {
 	res := make([]client.Object, 0)
 
-	log.Info("building configmap")
 	cm, err := LokiConfigMap(stackName, namespace)
 	if err != nil {
 		return nil, err
 	}
 	res = append(res, cm)
 
-	log.Info("building distributor deployment")
 	res = append(res, DistributorDeployment(stackName))
 
-	log.Info("building distributor services")
 	for _, svc := range DistributorServices(stackName) {
 		res = append(res, svc)
 	}
 
-	log.Info("building ingester deployment")
 	res = append(res, IngesterDeployment(stackName))
 
-	log.Info("building ingester services")
 	for _, svc := range IngesterServices(stackName) {
 		res = append(res, svc)
 	}
+
+	res = append(res, LokiGossipRingService(stackName))
 
 	return res, nil
 }
