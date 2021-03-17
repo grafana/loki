@@ -720,6 +720,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 		j := NewUnpackParser()
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
 			copy := string(tt.line)
 			l, _ := j.Process(tt.line, b)
 			sort.Sort(tt.wantLbs)
