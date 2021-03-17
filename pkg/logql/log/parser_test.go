@@ -721,10 +721,13 @@ func Test_unpackParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
+			copy := string(tt.line)
 			l, _ := j.Process(tt.line, b)
 			sort.Sort(tt.wantLbs)
 			require.Equal(t, tt.wantLbs, b.Labels())
 			require.Equal(t, tt.wantLine, l)
+			require.Equal(t, string(tt.wantLine), string(l))
+			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
 		})
 	}
 }
