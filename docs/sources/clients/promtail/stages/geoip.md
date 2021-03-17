@@ -4,7 +4,7 @@ title: geoip
 # `geoip` stage
 
 The `geoip` stage is a parsing stage that reads a ip address and 
-populates the labelset with geoip fields. Maxminds GeoIP2 databse is used for the lookup.
+populates the labelset with geoip fields. Maxmind's GeoIP2 databse is used for the lookup.
 
 Populated fields for City db:
 
@@ -28,7 +28,7 @@ Populated fields for ASN db:
 
 ```yaml
 geoip:
-  # Path to the maxmind DB file
+  # Path to the Maxmind DB file
   [db: <string>]
 
   # IP from extracted data to parse.
@@ -37,6 +37,8 @@ geoip:
   # Maxmind DB type. Allowed values are "city", "asn"
   [db_type: <string>]
 ```
+
+## GeoIP with City database
 
 For the given pipeline
 
@@ -70,7 +72,7 @@ The `regex` stage parses the log line and `ip` is extracted. Then the extracted 
 
 If only a subset of above labels are required. We can chain the above pipeline with `labeldrop` or `labelallow` stage
 
-## labelallow
+### labelallow
 ```yaml
 - regex:
     expression: "^(?P<ip>\S+) .*"
@@ -87,7 +89,7 @@ If only a subset of above labels are required. We can chain the above pipeline w
 
 Only the labels listed under `labelallow` will be sent to Loki.
 
-## labeldrop
+### labeldrop
 
 ```yaml
 - regex:
@@ -102,3 +104,25 @@ Only the labels listed under `labelallow` will be sent to Loki.
 ```
 
 All the labels except the ones listed under `labeldrop` will be sent to Loki.
+
+## GeoIP with ASN database
+
+```yaml
+- regex:
+    expression: "^(?P<ip>\S+) .*"
+- geoip:
+    db: "/path/to/GeoIP2-ASN.mmdb"
+    source: "ip"
+    db_type: "asn"
+```
+
+And the log line:
+
+```
+"81.2.69.142 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+```
+
+The `regex` stage parses the log line and `ip` is extracted. Then the extracted `ip` value is given as `source` to `geoip` stage. `geoip` stage performs a lookup on the `ip` and populates below labels
+
+- `geoip_autonomous_system_number`: `20712`
+- `geoip_autonomous_system_organization`: `Andrews & Arnold Ltd`

@@ -128,17 +128,15 @@ func (g *geoIPStage) Process(labels model.LabelSet, extracted map[string]interfa
 	case "city":
 		record, err := g.db.City(ip)
 		if err != nil {
-			if Debug {
-				level.Debug(g.logger).Log("msg", "unable to get City record for the ip", "err", err, "ip", ip)
-			}
+			level.Error(g.logger).Log("msg", "unable to get City record for the ip", "err", err, "ip", ip)
+			return
 		}
 		g.populateLabelsWithCityData(labels, record)
 	case "asn":
 		record, err := g.db.ASN(ip)
 		if err != nil {
-			if Debug {
-				level.Debug(g.logger).Log("msg", "unable to get ASN record for the ip", "err", err, "ip", ip)
-			}
+			level.Error(g.logger).Log("msg", "unable to get ASN record for the ip", "err", err, "ip", ip)
+			return
 		}
 		g.populateLabelsWithASNData(labels, record)
 	default:
@@ -222,6 +220,7 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 func (g *geoIPStage) populateLabelsWithASNData(labels model.LabelSet, record *geoip2.ASN) {
 	autonomousSystemNumber := record.AutonomousSystemNumber
 	autonomousSystemOrganization := record.AutonomousSystemOrganization
+	fmt.Printf("ASN is %v %v\n", autonomousSystemNumber, autonomousSystemOrganization)
 	if autonomousSystemNumber != 0 {
 		labels[model.LabelName("geoip_autonomous_system_number")] = model.LabelValue(fmt.Sprint(autonomousSystemNumber))
 	}
