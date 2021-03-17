@@ -358,11 +358,10 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 		case jsoniter.StringValue:
 			// we only unpack map[string]string. Anything else is skipped.
 			if field == PackedEntryKey {
-				s := iter.ReadString()
 				// todo(ctovena): we should just reslice the original line since the property is contiguous
 				// but jsoniter doesn't allow us to do this right now.
 				// https://github.com/buger/jsonparser might do a better job at this.
-				entry = append(entry[:0], []byte(s)...)
+				entry = []byte(iter.ReadString())
 				isPacked = true
 				return true
 			}
