@@ -244,7 +244,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 	}
 
 	responses, err := q.forGivenIngesters(ctx, replicationSet, func(querierClient logproto.QuerierClient) (interface{}, error) {
-		resp, err := querierClient.TailersCount(ctx, nil)
+		resp, err := querierClient.TailersCount(ctx, &logproto.TailersCountRequest{})
 		if err != nil {
 			return nil, err
 		}
