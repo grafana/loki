@@ -5,20 +5,19 @@ import (
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
-// TODO add options parameter to enable resource sizing, and other configurations
-func BuildAll(stackName, namespace string) ([]client.Object, error) {
+func BuildAll(opt Options) ([]client.Object, error) {
 	res := make([]client.Object, 0)
 
-	cm, err := LokiConfigMap(stackName, namespace)
+	cm, err := LokiConfigMap(opt.Name, opt.Namespace)
 	if err != nil {
 		return nil, err
 	}
 	res = append(res, cm)
-	res = append(res, BuildDistributor(stackName)...)
-	res = append(res, BuildIngester(stackName)...)
-	res = append(res, BuildQuerier(stackName)...)
-	res = append(res, BuildQueryFrontend(stackName)...)
-	res = append(res, LokiGossipRingService(stackName))
+	res = append(res, BuildDistributor(opt.Name)...)
+	res = append(res, BuildIngester(opt.Name)...)
+	res = append(res, BuildQuerier(opt.Name)...)
+	res = append(res, BuildQueryFrontend(opt.Name)...)
+	res = append(res, LokiGossipRingService(opt.Name))
 
 	return res, nil
 }

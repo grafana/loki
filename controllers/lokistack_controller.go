@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 )
@@ -56,11 +57,26 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ll := log.WithValues("lokistack", req.NamespacedName)
+	ll := log.WithValues("lokistack", req.NamespacedName, "event", "create")
+
+	var stack lokiv1beta1.LokiStack
+	if err := r.Get(ctx, req.NamespacedName, &stack); err != nil {
+		if apierrors.IsNotFound(err) {
+			// maybe the user deleted it before we could react? Either way this isn't an issue
+			ll.Error(err, "could not find the requested loki stack", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
+	}
+
+	// here we will translate the 
+	opts := manifests.Options{
+		Name:      req.Name,
+		Namespace: req.Namespace,
+	}
 
 	ll.Info("begin building manifests")
 
-	objects, err := manifests.BuildAll(req.Name, req.Namespace)
+	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
 		return ctrl.Result{
