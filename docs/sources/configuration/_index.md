@@ -166,6 +166,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 # Configuration for tracing
 [tracing: <tracing_config>]
+
+# Configuration for Gossip memberlist. Only applies if ring kvstore is "memberlist"
+[memberlist: <memberlist_config>]
 ```
 
 ## server_config
@@ -256,10 +259,6 @@ ring:
     # Configuration for an ETCD v3 client. Only applies if store is "etcd"
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
-
-    # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-    # The CLI flags prefix for this block config is: distributor.ring
-    [memberlist: <memberlist_config>]
 
   # The heartbeat timeout after which ingesters are skipped for
   # reading and writing.
@@ -778,10 +777,6 @@ lifecycler:
       # The etcd_config configures the etcd client.
       # CLI flag: <no prefix>
       [etcd: <etcd_config>]
-
-      # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-      # CLI flag: <no prefix>
-      [memberlist: <memberlist_config>]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
     # CLI flag: -ring.heartbeat-timeout
