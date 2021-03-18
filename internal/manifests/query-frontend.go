@@ -180,8 +180,8 @@ func NewQueryFrontendHTTPService(stackName string) *core.Service {
 			ClusterIP: "None",
 			Ports: []core.ServicePort{
 				{
-					Name: "grpc",
-					Port: grpcPort,
+					Name: "http",
+					Port: httpPort,
 				},
 			},
 			Selector: l,

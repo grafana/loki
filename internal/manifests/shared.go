@@ -12,12 +12,20 @@ import (
 
 func LokiConfigMap(stackName, namespace string) (*core.ConfigMap, error) {
 	b, err := config.Build(config.Options{
-		Namespace:        namespace,
-		StorageDirectory: strings.TrimRight(dataDirectory, "/"),
-		GossipRing: config.GossipRing{
+		FrontendWorker: config.Address{
+			FQDN: "",
+			Port: 0,
+		},
+		GossipRing: config.Address{
 			FQDN: fqdn(LokiGossipRingService(stackName).GetName(), namespace),
 			Port: gossipPort,
 		},
+		Querier:          config.Address{
+			FQDN: serviceNameQuerierHTTP(stackName),
+			Port: httpPort,
+		},
+		StorageDirectory: strings.TrimRight(dataDirectory, "/"),
+		Namespace:        namespace,
 	})
 	if err != nil {
 		return nil, err

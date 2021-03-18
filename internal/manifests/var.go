@@ -33,6 +33,14 @@ func GossipLabels() map[string]string {
 	}
 }
 
+func serviceNameQuerierHTTP(stackName string) string {
+	return fmt.Sprintf("loki-querier-http-%s", stackName)
+}
+
+func serviceNameQuerierGRPC(stackName string) string {
+	return fmt.Sprintf("loki-querier-grpc-%s", stackName)
+}
+
 func serviceNameGossipRing(stackName string) string {
 	return fmt.Sprintf("loki-gossip-ring-%s", stackName)
 }

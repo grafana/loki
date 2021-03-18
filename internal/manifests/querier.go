@@ -18,6 +18,8 @@ import (
 func BuildQuerier(stackName string) []client.Object {
 	return []client.Object{
 		NewQuerierDeployment(stackName),
+		NewQuerierGRPCService(stackName),
+		NewQuerierHTTPService(stackName),
 	}
 }
 
@@ -139,6 +141,54 @@ func NewQuerierDeployment(stackName string) *apps.Deployment {
 			Strategy: apps.DeploymentStrategy{
 				Type: apps.RollingUpdateDeploymentStrategyType,
 			},
+		},
+	}
+}
+
+func NewQuerierGRPCService(stackName string) *core.Service {
+	l := ComponentLabels("querier", stackName)
+	return &core.Service{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Service",
+			APIVersion: apps.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   serviceNameQuerierGRPC(stackName),
+			Labels: l,
+		},
+		Spec: core.ServiceSpec{
+			ClusterIP: "None",
+			Ports: []core.ServicePort{
+				{
+					Name: "grpc",
+					Port: grpcPort,
+				},
+			},
+			Selector: l,
+		},
+	}
+}
+
+func NewQuerierHTTPService(stackName string) *core.Service {
+	l := ComponentLabels("querier", stackName)
+	return &core.Service{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Service",
+			APIVersion: apps.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   serviceNameQuerierHTTP(stackName),
+			Labels: l,
+		},
+		Spec: core.ServiceSpec{
+			ClusterIP: "None",
+			Ports: []core.ServicePort{
+				{
+					Name: "http",
+					Port: httpPort,
+				},
+			},
+			Selector: l,
 		},
 	}
 }

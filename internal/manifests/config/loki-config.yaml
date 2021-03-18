@@ -8,12 +8,14 @@ distributor:
     kvstore:
       store: memberlist
 frontend:
+  downstream_url: {{ .Querier.FQDN }}:{{ .Querier.Port }}
   compress_responses: true
   max_outstanding_per_tenant: 200
+  log_queries_longer_than: 5s
 frontend_worker:
-  frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
-  grpc_client_config:
-    max_send_msg_size: 104857600
+#  frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
+#  grpc_client_config:
+#    max_send_msg_size: 104857600
   parallelism: 32
 ingester:
   chunk_block_size: 262144
@@ -87,7 +89,7 @@ server:
   http_listen_port: 3100
   http_server_idle_timeout: 120s
   http_server_write_timeout: 1m
-  log_level: debug
+  log_level: info
 storage_config:
   boltdb:
     directory: {{ .StorageDirectory }}/index

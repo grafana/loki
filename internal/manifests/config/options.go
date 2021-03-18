@@ -3,9 +3,11 @@ package config
 // lokiConfigOptions is used to render the loki-config.yaml file template
 type Options struct {
 	// FrontendWorker is required
-	FrontendWorker FrontendWorker
+	FrontendWorker Address
 	// GossipRing is required
-	GossipRing GossipRing
+	GossipRing Address
+	// Querier is required
+	Querier Address
 	// Storage is required
 	StorageDirectory string
 
@@ -13,18 +15,9 @@ type Options struct {
 	Namespace string
 }
 
-type FrontendWorker struct {
-	// FQDN is the required name of the service or fqdn WITHOUT the port
+type Address struct {
+	// FQDN is required
 	FQDN string
-
-	// Port is the required service port
-	Port int
-}
-
-type GossipRing struct {
-	// FQDN is the required name of the gossip ring service or fqdn WITHOUT the port
-	FQDN string
-
-	// Port is the required gossip ring service port
+	// Port is required
 	Port int
 }

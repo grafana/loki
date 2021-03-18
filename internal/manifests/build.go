@@ -14,7 +14,6 @@ func BuildAll(stackName, namespace string) ([]client.Object, error) {
 		return nil, err
 	}
 	res = append(res, cm)
-
 	res = append(res, BuildDistributor(stackName)...)
 	res = append(res, BuildIngester(stackName)...)
 	res = append(res, BuildQuerier(stackName)...)
