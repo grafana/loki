@@ -63,3 +63,6 @@ func (l *labelAllowStage) Process(labels model.LabelSet, extracted map[string]in
 func (l *labelAllowStage) Name() string {
 	return StageTypeLabelAllow
 }
+
+// Close implements Stage
+func (l *labelAllowStage) Close() {}
