@@ -20,7 +20,7 @@ func LokiConfigMap(stackName, namespace string) (*core.ConfigMap, error) {
 			FQDN: fqdn(LokiGossipRingService(stackName).GetName(), namespace),
 			Port: gossipPort,
 		},
-		Querier:          config.Address{
+		Querier: config.Address{
 			FQDN: serviceNameQuerierHTTP(stackName),
 			Port: httpPort,
 		},
@@ -48,28 +48,4 @@ func LokiConfigMap(stackName, namespace string) (*core.ConfigMap, error) {
 
 func lokiConfigMapName(stackName string) string {
 	return fmt.Sprintf("loki-config-%s", stackName)
-}
-
-func LokiGossipRingService(stackName string) *core.Service {
-	return &core.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Service",
-			APIVersion: apps.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-gossip-ring-%s", stackName),
-			Labels: commonLabels(stackName),
-		},
-		Spec: core.ServiceSpec{
-			ClusterIP: "None",
-			Ports: []core.ServicePort{
-				{
-					Name:     "gossip",
-					Port:     gossipPort,
-					Protocol: "TCP",
-				},
-			},
-			Selector: commonLabels(stackName),
-		},
-	}
 }
