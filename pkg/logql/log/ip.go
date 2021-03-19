@@ -1,27 +1,35 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 )
 
 // This actually implements the Stage interface to process the line
 type LineIPFiler struct {
-	pat string
+	pattern *net4
+	parser  *IP4parser
 }
 
 func NewLineIpFilter(pattern string) (Stage, error) {
-	return &LineIPFiler{pat: pattern}, nil
+	// parse `pat` into net4 spec.
+	spec, err := parseNet4(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LineIPFiler{
+		pattern: spec,
+		parser:  newIP4Parser(),
+	}, nil
 }
 
 func (f *LineIPFiler) Process(line []byte, _ *LabelsBuilder) ([]byte, bool) {
-	match, _ := ip(f.pat, string(line))
-	if match {
-		return line, true
-	}
-	return line, false
+	return line, filterIP(f.pattern, f.parser, string(line))
 }
 
 func (f *LineIPFiler) RequiredLabelNames() []string {
@@ -41,15 +49,9 @@ const (
 // 3. CIDR      - "192.168.0.0/16"
 
 // TODO(kavi): It works only for ipv4. Add support for ipv6
-func ip(pat, line string) (bool, error) {
+func filterIP(pat *net4, parser *IP4parser, line string) bool {
 	if len(line) == 0 {
-		return false, nil
-	}
-
-	// parse `pat` into net4 spec.
-	spec, err := parseNet4(pat)
-	if err != nil {
-		return false, err
+		return false
 	}
 
 	// look for any ip in given `line` that matches the spec.
@@ -62,30 +64,54 @@ func ip(pat, line string) (bool, error) {
 		if unicode.IsDigit(rune(line[i])) && (line[i+1] == '.' || line[i+2] == '.' || line[i+3] == '.') {
 			start := i
 			end := strings.LastIndexAny(line[start:], IPV4_CHARSET)
-			ip, err := parseIP4(line[start : start+end+1])
+			ip, err := parser.parseIP4(line[start : start+end+1])
 			if err != nil {
 				// TODO(kavi): We can do a better job of incrementing the offset when its not a valid IP.
 				continue
 			}
 			ipv := uint32(buildIP4(ip))
-			if ipv >= spec.min && ipv <= spec.max {
+			if ipv >= pat.min && ipv <= pat.max {
 				// got the match
-				return true, nil
+				return true
 			}
 		}
 	}
 
-	return false, nil
+	return false
+}
+
+type IP4parser struct {
+	buf *bytes.Buffer
+}
+
+func newIP4Parser() *IP4parser {
+	return &IP4parser{
+		buf: bytes.NewBuffer(make([]byte, 4)),
+	}
 }
 
 // parseIP4 takes the input string `s` try to parse it into
 // array of 4 uints.
-func parseIP4(s string) ([4]uint, error) {
-	var ip [4]uint
-
-	_, err := fmt.Sscanf(s, "%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3])
-	if err != nil {
-		return ip, err
+func (p *IP4parser) parseIP4(s string) ([4]uint, error) {
+	var (
+		ip [4]uint
+		i  int
+	)
+	p.buf.Reset()
+	for _, r := range s {
+		if p.buf.Len() > 4 {
+			return ip, errInValidIP
+		}
+		if r == '.' { // 127.0.0.1
+			strconv.ParseInt(unsafeGetString(p.buf.Bytes()), 10, 32)
+			p.buf.Reset()
+			i++
+			continue
+		}
+		_, _ = p.buf.WriteRune(r)
+	}
+	if i != 3 {
+		return ip, errInValidIP
 	}
 
 	return ip, nil
