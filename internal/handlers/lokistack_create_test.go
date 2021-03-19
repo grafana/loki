@@ -70,7 +70,7 @@ func TestCreateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 
 	stack := lokiv1beta1.LokiStack{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "someKind",
+			Kind: "someKind",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "someStack",
