@@ -7,34 +7,44 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
-    name: go test
+  lint:
+    name: lint
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         go: ['1.16']
-
     steps:
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
         go-version: ${{ matrix.go }}
       id: go
-
     - uses: actions/checkout@v2
-
     - name: Lint
       uses: golangci/golangci-lint-action@v2
       with:
         version: v1.32
-        args: --timeout=5m
+        args: --timeout=2m
 
-    - name: Test
-      run: go test -v -coverprofile=.coverprofile .
-
-    - name: Report coveralls.io
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Run tests
+      run: go test -v -coverprofile=profile.cov ./...
+    - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
       with:
-        path-to-profile: .coverprofile
+        path-to-profile: profile.cov
         flag-name: Go-${{ matrix.go }}
