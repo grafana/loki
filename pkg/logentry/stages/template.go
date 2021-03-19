@@ -11,6 +11,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/mitchellh/mapstructure"
@@ -25,35 +26,41 @@ const (
 	ErrTemplateSourceRequired   = "template source value is required"
 )
 
-var (
-	functionMap = template.FuncMap{
-		"ToLower":    strings.ToLower,
-		"ToUpper":    strings.ToUpper,
-		"Replace":    strings.Replace,
-		"Trim":       strings.Trim,
-		"TrimLeft":   strings.TrimLeft,
-		"TrimRight":  strings.TrimRight,
-		"TrimPrefix": strings.TrimPrefix,
-		"TrimSuffix": strings.TrimSuffix,
-		"TrimSpace":  strings.TrimSpace,
-		"Hash": func(salt string, input string) string {
-			hash := sha3.Sum256([]byte(salt + input))
-			return hex.EncodeToString(hash[:])
-		},
-		"Sha2Hash": func(salt string, input string) string {
-			hash := sha256.Sum256([]byte(salt + input))
-			return hex.EncodeToString(hash[:])
-		},
-		"regexReplaceAll": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllString(s, repl)
-		},
-		"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
-			r := regexp.MustCompile(regex)
-			return r.ReplaceAllLiteralString(s, repl)
-		},
+var extraFunctionMap = template.FuncMap{
+	"ToLower":    strings.ToLower,
+	"ToUpper":    strings.ToUpper,
+	"Replace":    strings.Replace,
+	"Trim":       strings.Trim,
+	"TrimLeft":   strings.TrimLeft,
+	"TrimRight":  strings.TrimRight,
+	"TrimPrefix": strings.TrimPrefix,
+	"TrimSuffix": strings.TrimSuffix,
+	"TrimSpace":  strings.TrimSpace,
+	"Hash": func(salt string, input string) string {
+		hash := sha3.Sum256([]byte(salt + input))
+		return hex.EncodeToString(hash[:])
+	},
+	"Sha2Hash": func(salt string, input string) string {
+		hash := sha256.Sum256([]byte(salt + input))
+		return hex.EncodeToString(hash[:])
+	},
+	"regexReplaceAll": func(regex string, s string, repl string) string {
+		r := regexp.MustCompile(regex)
+		return r.ReplaceAllString(s, repl)
+	},
+	"regexReplaceAllLiteral": func(regex string, s string, repl string) string {
+		r := regexp.MustCompile(regex)
+		return r.ReplaceAllLiteralString(s, repl)
+	},
+}
+
+var functionMap = sprig.TxtFuncMap()
+
+func init() {
+	for k, v := range extraFunctionMap {
+		functionMap[k] = v
 	}
-)
+}
 
 // TemplateConfig configures template value extraction
 type TemplateConfig struct {
@@ -135,7 +142,6 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 	} else {
 		extracted[o.cfgs.Source] = st
 	}
-
 }
 
 // Name implements Stage
