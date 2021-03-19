@@ -182,7 +182,7 @@ You can relabel default labels via [Relabeling](#relabeling) if required.
 Providing a path to a bookmark is mandatory, it will be used to persist the last event processed and allow
 resuming the target without skipping logs.
 
-see the [configuration](./configuration#windows_event) section for more information.
+see the [configuration](../configuration/#windows_events) section for more information.
 
 ## Gcplog scraping
 Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
