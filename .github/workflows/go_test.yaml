@@ -28,6 +28,7 @@ jobs:
       uses: golangci/golangci-lint-action@v2
       with:
         version: v1.32
+        args: --timeout 300
 
     - name: Test
       run: go test -v -coverprofile=.coverprofile .
