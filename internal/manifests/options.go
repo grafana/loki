@@ -4,6 +4,6 @@ package manifests
 // Most of this should be provided - either directly or indirectly - by the user. This will
 // probably be converted from the CR.
 type Options struct {
-	Name string
+	Name      string
 	Namespace string
 }

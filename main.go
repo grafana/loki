@@ -35,9 +35,7 @@ import (
 	// +kubebuilder:scaffold:imports
 )
 
-var (
-	scheme = runtime.NewScheme()
-)
+var scheme = runtime.NewScheme()
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))

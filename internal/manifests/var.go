@@ -41,10 +41,6 @@ func serviceNameQuerierGRPC(stackName string) string {
 	return fmt.Sprintf("loki-querier-grpc-%s", stackName)
 }
 
-func serviceNameGossipRing(stackName string) string {
-	return fmt.Sprintf("loki-gossip-ring-%s", stackName)
-}
-
 func serviceNameIngesterGRPC(stackName string) string {
 	return fmt.Sprintf("loki-ingester-grpc-%s", stackName)
 }

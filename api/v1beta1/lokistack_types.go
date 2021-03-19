@@ -43,11 +43,10 @@ type LokiStackStatus struct {
 
 // LokiStack is the Schema for the lokistacks API
 type LokiStack struct {
-	metav1.TypeMeta   `json:",inline"`
+	Spec              LokiStackSpec   `json:"spec,omitempty"`
+	Status            LokiStackStatus `json:"status,omitempty"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   LokiStackSpec   `json:"spec,omitempty"`
-	Status LokiStackStatus `json:"status,omitempty"`
+	metav1.TypeMeta   `json:",inline"`
 }
 
 // +kubebuilder:object:root=true
