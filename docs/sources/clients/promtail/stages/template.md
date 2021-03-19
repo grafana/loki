@@ -113,7 +113,7 @@ The snippet above will for instance prepend the log line with the application na
 
 ## Supported Functions
 
-> All [sprig functions](http://masterminds.github.io/sprig/) have been added to the template stage in Loki 2.3 along with function described below.
+> All [sprig functions](http://masterminds.github.io/sprig/) have been added to the template stage in Loki 2.3(along with function described below).
 
 ### ToLower & ToUpper
 
