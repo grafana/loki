@@ -1,0 +1,5 @@
+[![GoDoc](https://godoc.org/github.com/ViaQ/loki-operator?status.svg)](https://godoc.org/github.com/ViaQ/loki-operator)
+[![go test](https://github.com/ViaQ/loki-operator/workflows/go%20test/badge.svg)](https://github.com/ViaQ/loki-operator/actions)
+[![Coveralls github](https://img.shields.io/coveralls/github/ViaQ/loki-operator.svg)](https://coveralls.io/github/ViaQ/loki-operator)
+[![Report Card](https://goreportcard.com/badge/github.com/ViaQ/loki-operator)](https://goreportcard.com/report/github.com/ViaQ/loki-operator)
+[![Dependabot Status](https://api.dependabot.com/badges/status?host=github&repo=ViaQ/loki-operator)](https://dependabot.com)
