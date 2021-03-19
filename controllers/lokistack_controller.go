@@ -23,12 +23,14 @@ import (
 	"github.com/ViaQ/logerr/log"
 	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 )
@@ -68,7 +70,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	// here we will translate the 
+	// Here we will translate the lokiv1beta1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:      req.Name,
 		Namespace: req.Namespace,
@@ -91,6 +93,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			"object", obj)
 
 		obj.SetNamespace(req.Namespace)
+		SetOwner(stack, obj)
 		if err := r.Create(ctx, obj); err != nil {
 			l.Error(err, "failed to create object")
 			continue
@@ -99,6 +102,16 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func SetOwner(stack lokiv1beta1.LokiStack, o client.Object) {
+	o.SetOwnerReferences(append(o.GetOwnerReferences(), metav1.OwnerReference{
+		APIVersion: lokiv1beta1.GroupVersion.String(),
+		Kind:       stack.Kind,
+		Name:       stack.Name,
+		UID:        stack.UID,
+		Controller: pointer.BoolPtr(true),
+	}))
 }
 
 // SetupWithManager sets up the controller with the Manager.
