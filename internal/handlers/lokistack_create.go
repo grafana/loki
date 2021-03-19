@@ -50,6 +50,7 @@ func CreateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client) error 
 		setOwner(stack, obj)
 		if err := k.Create(ctx, obj); err != nil {
 			l.Error(err, "failed to create object")
+			// TODO requeue the event, but continue anyway
 			continue
 		}
 		l.Info("Resource created", "resource", obj.GetName())

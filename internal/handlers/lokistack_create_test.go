@@ -13,7 +13,9 @@ import (
 	"github.com/ViaQ/loki-operator/internal/handlers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -36,6 +38,26 @@ func TestMain(m *testing.M) {
 	}
 	log.Init("testing")
 	os.Exit(m.Run())
+}
+
+func TestCreateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object) error {
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	err := handlers.CreateLokiStack(context.TODO(), r, k)
+	require.NoError(t, err)
+
+	// make sure create was NOT called because the Get failed
+	require.Zero(t, k.CreateCallCount())
 }
 
 func TestCreateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
