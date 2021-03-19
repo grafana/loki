@@ -20,13 +20,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/ViaQ/logerr/log"
-	"github.com/ViaQ/loki-operator/internal/manifests"
+	"github.com/ViaQ/loki-operator/internal/handlers"
 	"github.com/go-logr/logr"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -51,67 +47,22 @@ type LokiStackReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the LokiStack object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
+// Compare the state specified by the LokiStack object against the actual cluster state,
+// and then perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ll := log.WithValues("lokistack", req.NamespacedName, "event", "create")
-
-	var stack lokiv1beta1.LokiStack
-	if err := r.Get(ctx, req.NamespacedName, &stack); err != nil {
-		if apierrors.IsNotFound(err) {
-			// maybe the user deleted it before we could react? Either way this isn't an issue
-			ll.Error(err, "could not find the requested loki stack", "name", req.NamespacedName)
-			return ctrl.Result{}, nil
-		}
-	}
-
-	// Here we will translate the lokiv1beta1.LokiStack options into manifest options
-	opts := manifests.Options{
-		Name:      req.Name,
-		Namespace: req.Namespace,
-	}
-
-	ll.Info("begin building manifests")
-
-	objects, err := manifests.BuildAll(opts)
+	err := handlers.CreateLokiStack(ctx, req, r.Client)
 	if err != nil {
-		ll.Error(err, "failed to build manifests")
 		return ctrl.Result{
 			Requeue:      true,
 			RequeueAfter: time.Second,
 		}, err
 	}
-	ll.Info("manifests built", "count", len(objects))
-	for _, obj := range objects {
-		l := ll.WithValues("object_name", obj.GetName(),
-			"object_kind", obj.GetObjectKind(),
-			"object", obj)
-
-		obj.SetNamespace(req.Namespace)
-		SetOwner(stack, obj)
-		if err := r.Create(ctx, obj); err != nil {
-			l.Error(err, "failed to create object")
-			continue
-		}
-		l.Info("Resource created", "resource", obj.GetName())
-	}
 
 	return ctrl.Result{}, nil
-}
-
-func SetOwner(stack lokiv1beta1.LokiStack, o client.Object) {
-	o.SetOwnerReferences(append(o.GetOwnerReferences(), metav1.OwnerReference{
-		APIVersion: lokiv1beta1.GroupVersion.String(),
-		Kind:       stack.Kind,
-		Name:       stack.Name,
-		UID:        stack.UID,
-		Controller: pointer.BoolPtr(true),
-	}))
 }
 
 // SetupWithManager sets up the controller with the Manager.
