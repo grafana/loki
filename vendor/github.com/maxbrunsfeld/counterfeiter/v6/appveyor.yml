@@ -1,0 +1,23 @@
+platform: x64
+shallow_clone: true
+clone_depth: 10
+clone_folder: c:\projects\counterfeiter
+
+environment:
+  GOPATH: c:\gopath
+
+test_script:
+  - cd c:\projects\counterfeiter
+  - set PATH=c:\gopath\bin;c:\go\bin;C:\mingw-w64\x86_64-7.2.0-posix-seh-rt_v5-rev1\mingw64\bin;%PATH%
+  - echo %PATH%
+  - go version
+  - go env
+  - go vet ./...
+  - go install .
+  - copy scripts\counterfeiter.bat c:\gopath\bin
+  - go generate ./...
+  - go build -v ./...
+  - go test -v -race ./...
+
+build: off
+deploy: off

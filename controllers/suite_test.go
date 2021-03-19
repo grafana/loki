@@ -17,6 +17,7 @@ limitations under the License.
 package controllers
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,14 +39,25 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	testing.Init()
+	flag.Parse()
+
+	// Do not run this unless we intend to run integration testing. This stuff is dark magic.
+	if envStr := os.Getenv("INTEGRATION"); envStr == "" {
+		return
+	}
+	if testing.Short() {
+		return
+	}
+
 	Setup()
 	defer Teardown()
 	m.Run()
 }
 
 func Setup() {
-	log.Init("testing")
-	log.Info("bootstrapping test environment")
+	log.Init("integration-testing")
+	log.Info("bootstrapping integration test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{filepath.Join("..", "config", "crd", "bases")},
 	}
