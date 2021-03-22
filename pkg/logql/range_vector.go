@@ -135,7 +135,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 			r.window[lbs] = series
 		}
 		p := promql.Point{
-			T: sample.Timestamp + r.offset,
+			T: sample.Timestamp,
 			V: sample.Value,
 		}
 		series.Points = append(series.Points, p)
