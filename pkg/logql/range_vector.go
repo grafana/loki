@@ -39,13 +39,17 @@ func newRangeVectorIterator(
 	if step == 0 {
 		step = 1
 	}
+	if offset != 0 {
+		start = start - offset
+		end = end - offset
+	}
 	return &rangeVectorIterator{
 		iter:     it,
 		step:     step,
 		end:      end,
-		offset:   offset,
 		selRange: selRange,
 		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
 		window:   map[string]*promql.Series{},
 		metrics:  map[string]labels.Labels{},
 	}
@@ -57,7 +61,7 @@ func (r *rangeVectorIterator) Next() bool {
 	if r.current > r.end {
 		return false
 	}
-	rangeEnd := r.current - r.offset
+	rangeEnd := r.current
 	rangeStart := rangeEnd - r.selRange
 	// load samples
 	r.popBack(rangeStart)
@@ -131,7 +135,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 			r.window[lbs] = series
 		}
 		p := promql.Point{
-			T: sample.Timestamp + r.offset/1e+6,
+			T: sample.Timestamp + r.offset,
 			V: sample.Value,
 		}
 		series.Points = append(series.Points, p)
@@ -145,12 +149,12 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current / 1e+6
+	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
 		r.at = append(r.at, promql.Sample{
 			Point: promql.Point{
 				V: aggregator(series.Points),
-				T: ts + r.offset/1e+6,
+				T: ts,
 			},
 			Metric: series.Metric,
 		})
