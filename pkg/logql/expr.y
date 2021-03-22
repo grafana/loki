@@ -50,6 +50,7 @@ import (
   JSONExpression          log.JSONExpression
   JSONExpressionList      []log.JSONExpression
   UnwrapExpr              *unwrapExpr
+  OffsetExpr              *offsetExpr
 }
 
 %start root
@@ -90,6 +91,7 @@ import (
 %type <JSONExpressionList>    jsonExpressionList
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
+%type <OffsetExpr>            offsetExpr
 
 %token <bytes> BYTES
 %token <str>      IDENTIFIER STRING NUMBER
@@ -98,7 +100,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  ABSENT_OVER_TIME LABEL_REPLACE UNPACK
+                  ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -133,19 +135,31 @@ logExpr:
     ;
 
 logRangeExpr:
-      selector RANGE                                                             { $$ = newLogRange(newMatcherExpr($1), $2, nil) }
-    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE                          { $$ = newLogRange(newMatcherExpr($2), $4, nil) }
-    | selector RANGE unwrapExpr                                                  { $$ = newLogRange(newMatcherExpr($1), $2 , $3) }
-    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE unwrapExpr               { $$ = newLogRange(newMatcherExpr($2), $4 , $5) }
-    | selector unwrapExpr RANGE                                                  { $$ = newLogRange(newMatcherExpr($1), $3, $2 ) }
-    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE               { $$ = newLogRange(newMatcherExpr($2), $5, $3 ) }
-    | selector pipelineExpr RANGE                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil ) }
-    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE             { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil ) }
-    | selector pipelineExpr unwrapExpr RANGE                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3) }
-    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE  { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4) }
-    | selector RANGE pipelineExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil) }
-    | selector RANGE pipelineExpr unwrapExpr                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, $4 ) }
-    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                            { $$ = $2 }
+      selector RANGE                                                                        { $$ = newLogRange(newMatcherExpr($1), $2, nil, nil ) }
+    | selector RANGE offsetExpr                                                             { $$ = newLogRange(newMatcherExpr($1), $2, nil, $3 ) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE                                     { $$ = newLogRange(newMatcherExpr($2), $4, nil, nil ) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE offsetExpr                          { $$ = newLogRange(newMatcherExpr($2), $4, nil, $5 ) }
+    | selector RANGE unwrapExpr                                                             { $$ = newLogRange(newMatcherExpr($1), $2, $3, nil ) }
+    | selector RANGE offsetExpr unwrapExpr                                                  { $$ = newLogRange(newMatcherExpr($1), $2, $4, $3 ) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE unwrapExpr                          { $$ = newLogRange(newMatcherExpr($2), $4, $5, nil ) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE offsetExpr unwrapExpr               { $$ = newLogRange(newMatcherExpr($2), $4, $6, $5 ) }
+    | selector unwrapExpr RANGE                                                             { $$ = newLogRange(newMatcherExpr($1), $3, $2, nil ) }
+    | selector unwrapExpr RANGE offsetExpr                                                  { $$ = newLogRange(newMatcherExpr($1), $3, $2, $4 ) }
+    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE                          { $$ = newLogRange(newMatcherExpr($2), $5, $3, nil ) }
+    | OPEN_PARENTHESIS selector unwrapExpr CLOSE_PARENTHESIS RANGE offsetExpr               { $$ = newLogRange(newMatcherExpr($2), $5, $3, $6 ) }
+    | selector pipelineExpr RANGE                                                           { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil, nil ) }
+    | selector pipelineExpr RANGE offsetExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil, $4 ) }
+    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE                        { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil, nil ) }
+    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE offsetExpr             { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil, $6 ) }
+    | selector pipelineExpr unwrapExpr RANGE                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3, nil ) }
+    | selector pipelineExpr unwrapExpr RANGE offsetExpr                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $4, $3, $5 ) }
+    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE             { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4, nil ) }
+    | OPEN_PARENTHESIS selector pipelineExpr unwrapExpr CLOSE_PARENTHESIS RANGE offsetExpr  { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $6, $4, $7 ) }
+    | selector RANGE pipelineExpr                                                           { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil, nil) }
+    | selector RANGE offsetExpr pipelineExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $4), $2, nil, $3 ) }
+    | selector RANGE pipelineExpr unwrapExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, $4, nil ) }
+    | selector RANGE offsetExpr pipelineExpr unwrapExpr                                     { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $4), $2, $5, $3 ) }
+    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                                       { $$ = $2 }
     | logRangeExpr error
     ;
 
@@ -363,6 +377,8 @@ rangeOp:
     | ABSENT_OVER_TIME   { $$ = OpRangeTypeAbsent }
     ;
 
+offsetExpr:
+    OFFSET DURATION { $$ = newOffsetExpr( $2 ) }
 
 labels:
       IDENTIFIER                 { $$ = []string{ $1 } }
