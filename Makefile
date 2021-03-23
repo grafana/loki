@@ -47,17 +47,17 @@ OCI_RUNTIME ?= $(shell which podman || which docker)
 
 # Run tests
 ENVTEST_ASSETS_DIR=$(CURDIR)/testbin
-test: generate fmt vet manifests
+test: generate lint manifests
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.0/hack/setup-envtest.sh
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
 
 # Build manager binary
-manager: generate fmt vet
+manager: generate lint
 	go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
-run: generate fmt vet manifests
+run: generate lint manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
@@ -81,13 +81,23 @@ undeploy:
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-# Run go fmt against code
-fmt:
-	go fmt ./...
 
-# Run go vet against code
-vet:
-	go vet ./...
+# Download golangci-lint locally if necessary
+GOLANGCI_LINT = $(CURDIR)/bin/golangci-lint
+golangci-lint: $(CURDIR)/bin/golangci-lint
+$(CURDIR)/bin/golangci-lint:
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.38.0
+
+lint: $(GOLANGCI_LINT)
+	$(GOLANGCI_LINT) run ./...
+
+GOFUMPT = $(CURDIR)/bin/gofumpt
+gofumpt: $(GOFUMPT)
+$(GOFUMPT):
+	$(call go-get-tool,$(GOFUMPT),mvdan.cc/gofumpt@v0.1.1)
+
+fmt: $(GOFUMPT)
+	find . -type f -name '*.go' -not -path './vendor/*' -exec $(GOFUMPT) -w {} \;
 
 # Generate code
 generate: controller-gen

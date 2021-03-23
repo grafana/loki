@@ -145,6 +145,7 @@ func NewQuerierDeployment(stackName string) *apps.Deployment {
 	}
 }
 
+// NewQuerierGRPCService creates a k8s service for the querier GRPC endpoint
 func NewQuerierGRPCService(stackName string) *core.Service {
 	l := ComponentLabels("querier", stackName)
 	return &core.Service{
@@ -169,6 +170,7 @@ func NewQuerierGRPCService(stackName string) *core.Service {
 	}
 }
 
+// NewQuerierHTTPService creates a k8s service for the querier HTTP endpoint
 func NewQuerierHTTPService(stackName string) *core.Service {
 	l := ComponentLabels("querier", stackName)
 	return &core.Service{

@@ -1,4 +1,4 @@
-name: go test
+name: go
 
 on:
   push:
@@ -24,7 +24,9 @@ jobs:
     - name: Lint
       uses: golangci/golangci-lint-action@v2
       with:
-        version: v1.32
+        version: v1.38
+        skip-go-installation: true
+        only-new-issues: true
         args: --timeout=2m
 
   test:
@@ -42,7 +44,7 @@ jobs:
       id: go
     - uses: actions/checkout@v2
     - name: Run tests
-      run: go test -v -coverprofile=profile.cov ./...
+      run: go test -coverprofile=profile.cov ./...
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
       with:

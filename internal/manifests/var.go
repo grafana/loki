@@ -21,12 +21,14 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
+// ComponentLabels is a list of all commonLabels including the loki.grafana.com/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
 		"loki.grafana.com/component": component,
 	})
 }
 
+// GossipLabels is the list of labels that should be assigned to components using the gossip ring
 func GossipLabels() map[string]string {
 	return map[string]string{
 		"loki.grafana.com/gossip": "true",

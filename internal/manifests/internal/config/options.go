@@ -1,6 +1,6 @@
 package config
 
-// lokiConfigOptions is used to render the loki-config.yaml file template
+// Options is used to render the loki-config.yaml file template
 type Options struct {
 	// FrontendWorker is required
 	FrontendWorker Address
@@ -15,6 +15,7 @@ type Options struct {
 	Namespace string
 }
 
+// Address FQDN and port for a k8s service.
 type Address struct {
 	// FQDN is required
 	FQDN string

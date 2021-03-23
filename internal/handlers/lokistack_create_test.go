@@ -101,8 +101,11 @@ func TestCreateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 		},
 	}
 
-	// Create looks up the CR first, so we need to create a fake one to return
-	k.GetSetsFrom(&stack)
+	// Create looks up the CR first, so we need to return our fake stack
+	k.GetStub = func(_ context.Context, _ types.NamespacedName, object client.Object) error {
+		k.SetClientObject(object, &stack)
+		return nil
+	}
 
 	expected := metav1.OwnerReference{
 		APIVersion: lokiv1beta1.GroupVersion.String(),

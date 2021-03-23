@@ -10,7 +10,9 @@ import (
 )
 
 const (
+	// LokiConfigFileName is the name of the config file in the configmap
 	LokiConfigFileName = "config.yaml"
+	// LokiConfigMountDir is the path that is mounted from the configmap
 	LokiConfigMountDir = "/etc/loki/config"
 )
 

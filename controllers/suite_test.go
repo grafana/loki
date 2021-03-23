@@ -96,6 +96,3 @@ func Teardown() {
 	log.Info("tearing down test suite")
 	testEnv.Stop()
 }
-
-func TestWorks(t *testing.T) {
-}

@@ -145,6 +145,7 @@ func NewIngesterDeployment(stackName string) *apps.Deployment {
 	}
 }
 
+// NewIngesterGRPCService creates a k8s service for the ingester GRPC endpoint
 func NewIngesterGRPCService(stackName string) *core.Service {
 	l := ComponentLabels("ingester", stackName)
 	return &core.Service{
@@ -169,6 +170,7 @@ func NewIngesterGRPCService(stackName string) *core.Service {
 	}
 }
 
+// NewIngesterHTTPService creates a k8s service for the ingester HTTP endpoint
 func NewIngesterHTTPService(stackName string) *core.Service {
 	l := ComponentLabels("ingester", stackName)
 	return &core.Service{

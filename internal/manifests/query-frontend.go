@@ -141,6 +141,7 @@ func NewQueryFrontendDeployment(stackName string) *apps.Deployment {
 	}
 }
 
+// NewQueryFrontendGRPCService creates a k8s service for the querier GRPC endpoint
 func NewQueryFrontendGRPCService(stackName string) *core.Service {
 	l := ComponentLabels("query-frontend", stackName)
 	return &core.Service{
@@ -165,6 +166,7 @@ func NewQueryFrontendGRPCService(stackName string) *core.Service {
 	}
 }
 
+// NewQueryFrontendHTTPService creates a k8s service for the querier HTTP endpoint
 func NewQueryFrontendHTTPService(stackName string) *core.Service {
 	l := ComponentLabels("query-frontend", stackName)
 	return &core.Service{

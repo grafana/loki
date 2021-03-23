@@ -22,10 +22,10 @@ linters:
   - goerr113 # checks that errors are wrapped according to go 1.13 error wrapping tools
   - gofumpt # checks that gofumpt was run on all source code
   - goimports # checks that goimports was run on all source code
+  - golint
   - gosimple # Linter for Go source code that specializes in simplifying a code
   - govet # Vet examines Go source code and reports suspicious constructs, such as Printf calls whose arguments do not align with the format string
   - ineffassign # Detects when assignments to existing variables are not used
-  - maligned # Tool to detect Go structs that would take less memory if their fields were sorted
   - misspell # spell checker
   - rowserrcheck # checks whether Err of rows is checked successfully
   - staticcheck # Staticcheck is a go vet on steroids, applying a ton of static analysis checks

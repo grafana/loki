@@ -151,6 +151,7 @@ func NewDistributorDeployment(stackName string) *apps.Deployment {
 	}
 }
 
+// NewDistributorHTTPService creates a k8s service for the distributor HTTP endpoint
 func NewDistributorHTTPService(stackName string) *core.Service {
 	l := ComponentLabels("distributor", stackName)
 	return &core.Service{
@@ -175,6 +176,7 @@ func NewDistributorHTTPService(stackName string) *core.Service {
 	}
 }
 
+// NewDistributorGRPCService creates a k8s service for the distributor GRPC endpoint
 func NewDistributorGRPCService(stackName string) *core.Service {
 	l := ComponentLabels("distributor", stackName)
 	return &core.Service{

@@ -1,25 +1,20 @@
 package k8sfakes
 
 import (
-	"context"
 	"reflect"
 
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// GetSetsFrom is a shortcut that makes Get set the client.Object to the value of actual
+// SetClientObject sets out to v.
+// This is primarily used within the GetStub to fake the object returned from the API to the vaule of v
 //
 // Examples:
-//   	stack := lokiv1beta1.LokiStack{...}
-//      fake.GetSetsFrom(&stack)
 //
-//      var out lokiv1beta1.LokiStack
-//      fake.Get(..., &out)
-//      // out == stack
-func (fake *FakeClient) GetSetsFrom(actual client.Object) {
-	fake.GetStub = func(_ context.Context, name types.NamespacedName, o client.Object) error {
-		reflect.Indirect(reflect.ValueOf(o)).Set(reflect.ValueOf(actual).Elem())
-		return nil
-	}
+//  k.GetStub = func(_ context.Context, _ types.NamespacedName, object client.Object) error {
+//  	k.SetClientObject(object, &stack)
+//  	return nil
+//  }
+func (fake *FakeClient) SetClientObject(out, v client.Object) {
+	reflect.Indirect(reflect.ValueOf(out)).Set(reflect.ValueOf(v).Elem())
 }

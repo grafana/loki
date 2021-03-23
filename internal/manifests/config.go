@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(stackName, namespace string) (*core.ConfigMap, error) {
 	b, err := config.Build(config.Options{
 		FrontendWorker: config.Address{
