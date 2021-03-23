@@ -55,6 +55,8 @@ processes with the following limitations:
 
 ## Components
 
+![components_diagram](loki_architecture_components.svg)
+
 ### Distributor
 
 The **distributor** service is responsible for handling incoming streams by
