@@ -99,7 +99,6 @@ func TestLoadSmallConfig(t *testing.T) {
 	err := yaml.Unmarshal([]byte(smallYaml), &config)
 	require.Nil(t, err)
 
-	fmt.Printf("%#v\n", config.ServiceDiscoveryConfig.KubernetesSDConfigs)
 
 	expected := Config{
 		JobName:        "kubernetes-pods-name",
