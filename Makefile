@@ -29,6 +29,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= quay.io/blockloop/loki-controller-bundle:$(VERSION)
 
+GO_FILES := $(shell find . -type f -name '*.go')
+
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/blockloop/loki-operator:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -151,5 +153,5 @@ bundle-build:
 
 
 cli: bin/loki-broker
-bin/loki-broker:
+bin/loki-broker: $(GO_FILES) | generate lint
 	go build -o $@ ./cmd/loki-broker/

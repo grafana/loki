@@ -29,6 +29,46 @@ jobs:
         only-new-issues: true
         args: --timeout=2m
 
+  build-controller:
+    name: Build Controller
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Install make
+      run: sudo apt-get install make
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Build operator
+      run: |-
+        make manager
+
+  build-loki-broker:
+    name: Build Loki Broker
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Install make
+      run: sudo apt-get install make
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Build loki-broker
+      run: |-
+        make bin/loki-broker
+
   test:
     name: test
     runs-on: ubuntu-latest
