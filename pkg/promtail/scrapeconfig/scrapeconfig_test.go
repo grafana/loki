@@ -1,8 +1,10 @@
 package scrapeconfig
 
 import (
+	"fmt"
 	"testing"
 
+	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -97,6 +99,8 @@ func TestLoadSmallConfig(t *testing.T) {
 	err := yaml.Unmarshal([]byte(smallYaml), &config)
 	require.Nil(t, err)
 
+	fmt.Printf("%#v\n", config.ServiceDiscoveryConfig.KubernetesSDConfigs)
+
 	expected := Config{
 		JobName:        "kubernetes-pods-name",
 		PipelineStages: DefaultScrapeConfig.PipelineStages,
@@ -104,6 +108,9 @@ func TestLoadSmallConfig(t *testing.T) {
 			KubernetesSDConfigs: []*kubernetes.SDConfig{
 				{
 					Role: "pod",
+					HTTPClientConfig: promConfig.HTTPClientConfig{
+						FollowRedirects: true,
+					},
 				},
 			},
 			StaticConfigs: []*targetgroup.Group{
