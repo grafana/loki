@@ -1,7 +1,6 @@
 package scrapeconfig
 
 import (
-	"fmt"
 	"testing"
 
 	promConfig "github.com/prometheus/common/config"
@@ -98,7 +97,6 @@ func TestLoadSmallConfig(t *testing.T) {
 	var config Config
 	err := yaml.Unmarshal([]byte(smallYaml), &config)
 	require.Nil(t, err)
-
 
 	expected := Config{
 		JobName:        "kubernetes-pods-name",
