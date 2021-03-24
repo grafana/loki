@@ -333,8 +333,6 @@ github.com/cortexproject/cortex v1.5.1-0.20201111110551-ba512881b076/go.mod h1:z
 github.com/cortexproject/cortex v1.6.1-0.20210108144208-6c2dab103f20/go.mod h1:fOsaeeFSyWrjd9nFJO8KVUpsikcxnYsjEzQyjURBoQk=
 github.com/cortexproject/cortex v1.6.1-0.20210215155036-dfededd9f331/go.mod h1:8bRHNDawVx8te5lIqJ+/AcNTyfosYNC34Qah7+jX/8c=
 github.com/cortexproject/cortex v1.7.1-0.20210224085859-66d6fb5b0d42/go.mod h1:u2dxcHInYbe45wxhLoWVdlFJyDhXewsMcxtnbq/QbH4=
-github.com/cortexproject/cortex v1.7.1-0.20210310133228-161f103ed5ba h1:dHqQ4mMapwPHCLwQJmvJvcZtG7wlH0oAJM1IkO8eZEc=
-github.com/cortexproject/cortex v1.7.1-0.20210310133228-161f103ed5ba/go.mod h1:2V5O+D4nzBRQteKKyHq7NVVOk1+wp2HvpP8n5Sv9bok=
 github.com/cortexproject/cortex v1.7.1-0.20210323110114-8a2e2c1eeb65 h1:5g+WHg3AO12lvwQ+Vt8RjU6fywHEm9hVtDjbT7lDZ4c=
 github.com/cortexproject/cortex v1.7.1-0.20210323110114-8a2e2c1eeb65/go.mod h1:mL94M9u0HyWk4Q7/de5nWAgbyujGjHgdwMYHcM3W36I=
 github.com/couchbase/go-couchbase v0.0.0-20180501122049-16db1f1fe037/go.mod h1:TWI8EKQMs5u5jLKW/tsb9VwauIrMIxQG1r5fMsswK5U=
@@ -387,6 +385,7 @@ github.com/digitalocean/godo v1.52.0/go.mod h1:p7dOjjtSBqCTUksqtA5Fd3uaKs9kyTq2x
 github.com/digitalocean/godo v1.57.0 h1:uCpe0sRIZ/sJWxWDsJyBPBjUfSvxop+WHkHiSf+tjjM=
 github.com/digitalocean/godo v1.57.0/go.mod h1:p7dOjjtSBqCTUksqtA5Fd3uaKs9kyTq2xcz76ulEJRU=
 github.com/dimchansky/utfbom v1.1.0/go.mod h1:rO41eb7gLfo8SF1jd9F8HplJm1Fewwi4mQvIirEdv+8=
+github.com/dnaeon/go-vcr v1.0.1 h1:r8L/HqC0Hje5AXMu1ooW8oyQyOFv4GxqpL0nRP7SLLY=
 github.com/dnaeon/go-vcr v1.0.1/go.mod h1:aBB1+wY4s93YsC3HHjMBMrwTj2R9FHDzUr9KyGc8n1E=
 github.com/docker/distribution v2.6.0-rc.1.0.20170726174610-edc3ab29cdff+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
 github.com/docker/distribution v2.7.0+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
@@ -1265,8 +1264,6 @@ github.com/prometheus/alertmanager v0.20.0/go.mod h1:9g2i48FAyZW6BtbsnvHtMHQXl2a
 github.com/prometheus/alertmanager v0.21.0/go.mod h1:h7tJ81NA0VLWvWEayi1QltevFkLF3KxmC/malTcT8Go=
 github.com/prometheus/alertmanager v0.21.1-0.20200911160112-1fdff6b3f939/go.mod h1:imXRHOP6QTsE0fFsIsAV/cXimS32m7gVZOiUj11m6Ig=
 github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054/go.mod h1:imXRHOP6QTsE0fFsIsAV/cXimS32m7gVZOiUj11m6Ig=
-github.com/prometheus/alertmanager v0.21.1-0.20210303154452-7866b9bb0927 h1:BLdqq8kRvpCWghcXjU32mi4pzJlyo8InM5hfmIqFyoc=
-github.com/prometheus/alertmanager v0.21.1-0.20210303154452-7866b9bb0927/go.mod h1:MTqVn+vIupE0dzdgo+sMcNCp37SCAi8vPrvKTTnTz9g=
 github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6 h1:WeazuhFA+g8Xce5wgqskDP+b48oQKk7smH72dxO2beA=
 github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6/go.mod h1:MTqVn+vIupE0dzdgo+sMcNCp37SCAi8vPrvKTTnTz9g=
 github.com/prometheus/client_golang v0.0.0-20180328130430-f504d69affe1/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
@@ -1384,6 +1381,7 @@ github.com/samuel/go-zookeeper v0.0.0-20201211165307-7117e9ea2414/go.mod h1:gi+0
 github.com/santhosh-tekuri/jsonschema v1.2.4/go.mod h1:TEAUOeZSmIxTTuHatJzrvARHiuO9LYd+cIxzgEHCQI4=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
+github.com/scaleway/scaleway-sdk-go v1.0.0-beta.7.0.20210223165440-c65ae3540d44 h1:3egqo0Vut6daANFm7tOXdNAa8v5/uLU+sgCJrc88Meo=
 github.com/scaleway/scaleway-sdk-go v1.0.0-beta.7.0.20210223165440-c65ae3540d44/go.mod h1:CJJ5VAbozOl0yEw7nHB9+7BXTJbIn6h7W+f6Gau5IP8=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 h1:nn5Wsu0esKSJiIVhscUtVbo7ada43DJhG55ua/hjS5I=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
