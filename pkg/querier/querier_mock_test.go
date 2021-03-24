@@ -290,7 +290,7 @@ type readRingMock struct {
 func newReadRingMock(ingesters []ring.InstanceDesc) *readRingMock {
 	return &readRingMock{
 		replicationSet: ring.ReplicationSet{
-			Ingesters: ingesters,
+			Instances: ingesters,
 			MaxErrors: 0,
 		},
 	}
@@ -309,7 +309,7 @@ func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.InstanceDes
 func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
 	// pass by value to copy
 	return func(r readRingMock) *readRingMock {
-		r.replicationSet.Ingesters = r.replicationSet.Ingesters[:size]
+		r.replicationSet.Instances = r.replicationSet.Instances[:size]
 		return &r
 	}(*r)
 }
@@ -331,7 +331,7 @@ func (r *readRingMock) ReplicationFactor() int {
 }
 
 func (r *readRingMock) InstancesCount() int {
-	return len(r.replicationSet.Ingesters)
+	return len(r.replicationSet.Instances)
 }
 
 func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
@@ -339,7 +339,7 @@ func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
 }
 
 func (r *readRingMock) HasInstance(instanceID string) bool {
-	for _, ing := range r.replicationSet.Ingesters {
+	for _, ing := range r.replicationSet.Instances {
 		if ing.Addr != instanceID {
 			return true
 		}

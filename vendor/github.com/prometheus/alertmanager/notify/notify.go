@@ -44,7 +44,7 @@ type ResolvedSender interface {
 // Peer represents the cluster node from where we are the sending the notification.
 type Peer interface {
 	// WaitReady waits until the node silences and notifications have settled before attempting to send a notification.
-	WaitReady()
+	WaitReady(context.Context) error
 }
 
 // MinTimeout is the minimum timeout that is set for the context of a call
@@ -430,7 +430,9 @@ func NewGossipSettleStage(p Peer) *GossipSettleStage {
 
 func (n *GossipSettleStage) Exec(ctx context.Context, _ log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	if n.peer != nil {
-		n.peer.WaitReady()
+		if err := n.peer.WaitReady(ctx); err != nil {
+			return ctx, nil, err
+		}
 	}
 	return ctx, alerts, nil
 }

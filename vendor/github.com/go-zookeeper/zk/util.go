@@ -38,12 +38,15 @@ func DigestACL(perms int32, user, password string) []ACL {
 // that resembles <addr>:<port>. If the server has no port provided, the
 // DefaultPort constant is added to the end.
 func FormatServers(servers []string) []string {
-	for i := range servers {
-		if !strings.Contains(servers[i], ":") {
-			servers[i] = servers[i] + ":" + strconv.Itoa(DefaultPort)
+	srvs := make([]string, len(servers))
+	for i, addr := range servers {
+		if strings.Contains(addr, ":") {
+			srvs[i] = addr
+		} else {
+			srvs[i] = addr + ":" + strconv.Itoa(DefaultPort)
 		}
 	}
-	return servers
+	return srvs
 }
 
 // stringShuffle performs a Fisher-Yates shuffle on a slice of strings

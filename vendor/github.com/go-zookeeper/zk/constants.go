@@ -12,25 +12,27 @@ const (
 )
 
 const (
-	opNotify       = 0
-	opCreate       = 1
-	opDelete       = 2
-	opExists       = 3
-	opGetData      = 4
-	opSetData      = 5
-	opGetAcl       = 6
-	opSetAcl       = 7
-	opGetChildren  = 8
-	opSync         = 9
-	opPing         = 11
-	opGetChildren2 = 12
-	opCheck        = 13
-	opMulti        = 14
-	opReconfig     = 16
-	opClose        = -11
-	opSetAuth      = 100
-	opSetWatches   = 101
-	opError        = -1
+	opNotify          = 0
+	opCreate          = 1
+	opDelete          = 2
+	opExists          = 3
+	opGetData         = 4
+	opSetData         = 5
+	opGetAcl          = 6
+	opSetAcl          = 7
+	opGetChildren     = 8
+	opSync            = 9
+	opPing            = 11
+	opGetChildren2    = 12
+	opCheck           = 13
+	opMulti           = 14
+	opReconfig        = 16
+	opCreateContainer = 19
+	opCreateTTL       = 21
+	opClose           = -11
+	opSetAuth         = 100
+	opSetWatches      = 101
+	opError           = -1
 	// Not in protocol, used internally
 	opWatcherEvent = -2
 )
@@ -72,6 +74,7 @@ const (
 const (
 	FlagEphemeral = 1
 	FlagSequence  = 2
+	FlagTTL       = 4
 )
 
 var (
@@ -94,7 +97,7 @@ func (s State) String() string {
 	if name := stateNames[s]; name != "" {
 		return name
 	}
-	return "unknown state"
+	return "Unknown"
 }
 
 type ErrCode int32
@@ -111,6 +114,7 @@ var (
 	ErrNotEmpty                = errors.New("zk: node has children")
 	ErrSessionExpired          = errors.New("zk: session has been expired by the server")
 	ErrInvalidACL              = errors.New("zk: invalid ACL specified")
+	ErrInvalidFlags            = errors.New("zk: invalid flags specified")
 	ErrAuthFailed              = errors.New("zk: client authentication failed")
 	ErrClosing                 = errors.New("zk: zookeeper is closing")
 	ErrNothing                 = errors.New("zk: no server responsees to process")
@@ -191,24 +195,26 @@ const (
 var (
 	emptyPassword = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	opNames       = map[int32]string{
-		opNotify:       "notify",
-		opCreate:       "create",
-		opDelete:       "delete",
-		opExists:       "exists",
-		opGetData:      "getData",
-		opSetData:      "setData",
-		opGetAcl:       "getACL",
-		opSetAcl:       "setACL",
-		opGetChildren:  "getChildren",
-		opSync:         "sync",
-		opPing:         "ping",
-		opGetChildren2: "getChildren2",
-		opCheck:        "check",
-		opMulti:        "multi",
-		opReconfig:     "reconfig",
-		opClose:        "close",
-		opSetAuth:      "setAuth",
-		opSetWatches:   "setWatches",
+		opNotify:          "notify",
+		opCreate:          "create",
+		opCreateContainer: "createContainer",
+		opCreateTTL:       "createTTL",
+		opDelete:          "delete",
+		opExists:          "exists",
+		opGetData:         "getData",
+		opSetData:         "setData",
+		opGetAcl:          "getACL",
+		opSetAcl:          "setACL",
+		opGetChildren:     "getChildren",
+		opSync:            "sync",
+		opPing:            "ping",
+		opGetChildren2:    "getChildren2",
+		opCheck:           "check",
+		opMulti:           "multi",
+		opReconfig:        "reconfig",
+		opClose:           "close",
+		opSetAuth:         "setAuth",
+		opSetWatches:      "setWatches",
 
 		opWatcherEvent: "watcherEvent",
 	}

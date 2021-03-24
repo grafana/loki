@@ -59,7 +59,7 @@ type Memcached struct {
 	logger log.Logger
 }
 
-// NewMemcached makes a new Memcache.
+// NewMemcached makes a new Memcached.
 func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg prometheus.Registerer, logger log.Logger) *Memcached {
 	c := &Memcached{
 		cfg:      cfg,
@@ -71,7 +71,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				Namespace: "cortex",
 				Name:      "memcache_request_duration_seconds",
 				Help:      "Total time spent in seconds doing memcache requests.",
-				// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
+				// Memcached requests are very quick: smallest bucket is 16us, biggest is 1s
 				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
 				ConstLabels: prometheus.Labels{"name": name},
 			}, []string{"method", "status_code"}),

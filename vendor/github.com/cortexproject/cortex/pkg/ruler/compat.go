@@ -2,11 +2,13 @@ package ruler
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
@@ -31,7 +33,7 @@ type pusherAppender struct {
 	evaluationDelay time.Duration
 }
 
-func (a *pusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *pusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 
 	// Adapt staleness markers for ruler evaluation delay. As the upstream code
@@ -50,8 +52,8 @@ func (a *pusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error
 	return 0, nil
 }
 
-func (a *pusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
-	return storage.ErrNotFound
+func (a *pusherAppender) AppendExemplar(_ uint64, _ labels.Labels, _ exemplar.Exemplar) (uint64, error) {
+	return 0, errors.New("exemplars are unsupported")
 }
 
 func (a *pusherAppender) Commit() error {

@@ -189,7 +189,7 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
-	amDesc := replicationSet.Ingesters[rand.Intn(len(replicationSet.Ingesters))]
+	amDesc := replicationSet.Instances[rand.Intn(len(replicationSet.Instances))]
 	resp, err := d.doRequest(ctx, amDesc, req)
 	if err != nil {
 		respondFromError(err, w, logger)
