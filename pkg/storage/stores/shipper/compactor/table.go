@@ -82,6 +82,7 @@ func (t *table) compact() error {
 		}
 	}()
 
+	// create a new compacted db
 	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
 	if err != nil {
 		return err
@@ -93,7 +94,7 @@ func (t *table) compact() error {
 	readObjectChan := make(chan string)
 	n := util_math.Min(len(objects), readDBsParallelism)
 
-	// read files parallelly
+	// read files in parallel
 	for i := 0; i < n; i++ {
 		go func() {
 			var err error
@@ -137,7 +138,6 @@ func (t *table) compact() error {
 					return
 				}
 			}
-
 		}()
 	}
 
@@ -268,7 +268,7 @@ func (t *table) readFile(path string) error {
 				if err != nil {
 					return err
 				}
-
+				// todo(cyriltovena) we should just re-slice to avoid allocations
 				writeBatch = make([]indexEntry, 0, batchSize)
 			}
 

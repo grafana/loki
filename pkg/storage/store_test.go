@@ -43,7 +43,7 @@ var (
 	chunkStore = getLocalStore()
 )
 
-//go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
+// go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
 func Benchmark_store_SelectLogsRegexBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
 		Selector:  `{foo="bar"} |~ "fuzz"`,
@@ -122,13 +122,12 @@ func Benchmark_store_SelectSample(b *testing.B) {
 		})
 	}
 	log.Print("sample processed ", len(sampleRes))
-
 }
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 	b.ReportAllocs()
 	// force to run gc 10x more often this can be useful to detect fast allocation vs leak.
-	//debug.SetGCPercent(10)
+	// debug.SetGCPercent(10)
 	stop := make(chan struct{})
 	go func() {
 		_ = http.ListenAndServe(":6060", http.DefaultServeMux)
@@ -220,7 +219,6 @@ func getLocalStore() Store {
 		storeConfig.Config,
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig, limits, nil, nil, util_log.Logger)
-
 	if err != nil {
 		panic(err)
 	}
@@ -233,7 +231,6 @@ func getLocalStore() Store {
 }
 
 func Test_store_SelectLogs(t *testing.T) {
-
 	tests := []struct {
 		name     string
 		req      *logproto.QueryRequest
@@ -421,7 +418,6 @@ func Test_store_SelectLogs(t *testing.T) {
 }
 
 func Test_store_SelectSample(t *testing.T) {
-
 	tests := []struct {
 		name     string
 		req      *logproto.SampleQueryRequest
@@ -631,7 +627,6 @@ func Test_store_SelectSample(t *testing.T) {
 }
 
 func Test_store_GetSeries(t *testing.T) {
-
 	tests := []struct {
 		name      string
 		req       *logproto.QueryRequest
@@ -879,7 +874,6 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 func mustParseLabels(s string) map[string]string {
 	l, err := marshal.NewLabelSet(s)
-
 	if err != nil {
 		log.Fatalf("Failed to parse %s", s)
 	}
