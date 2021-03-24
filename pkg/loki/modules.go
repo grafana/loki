@@ -14,13 +14,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
-
 	"github.com/grafana/loki/pkg/ruler/manager"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/util/runtime"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -45,6 +45,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	loki_purger "github.com/grafana/loki/pkg/purger"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
@@ -59,23 +60,25 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring            string = "ring"
-	RuntimeConfig   string = "runtime-config"
-	Overrides       string = "overrides"
-	TenantConfigs   string = "tenant-configs"
-	Server          string = "server"
-	Distributor     string = "distributor"
-	Ingester        string = "ingester"
-	Querier         string = "querier"
-	IngesterQuerier string = "ingester-querier"
-	QueryFrontend   string = "query-frontend"
-	RulerStorage    string = "ruler-storage"
-	Ruler           string = "ruler"
-	Store           string = "store"
-	TableManager    string = "table-manager"
-	MemberlistKV    string = "memberlist-kv"
-	Compactor       string = "compactor"
-	All             string = "all"
+	Ring                string = "ring"
+	RuntimeConfig       string = "runtime-config"
+	Overrides           string = "overrides"
+	TenantConfigs       string = "tenant-configs"
+	Server              string = "server"
+	Distributor         string = "distributor"
+	Ingester            string = "ingester"
+	Querier             string = "querier"
+	IngesterQuerier     string = "ingester-querier"
+	QueryFrontend       string = "query-frontend"
+	RulerStorage        string = "ruler-storage"
+	Ruler               string = "ruler"
+	Store               string = "store"
+	TableManager        string = "table-manager"
+	MemberlistKV        string = "memberlist-kv"
+	Compactor           string = "compactor"
+	DeleteRequestsStore string = "delete-requests-store"
+	Purger              string = "purger"
+	All                 string = "all"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -583,6 +586,55 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	return t.compactor, nil
+}
+
+func (t *Loki) initDeleteRequestsStore() (serv services.Service, err error) {
+	if !t.cfg.PurgerConfig.Enable {
+		return
+	}
+
+	if loki_storage.UsingBoltdbShipper(t.cfg.SchemaConfig.SchemaConfig.Configs) {
+		return nil, errors.New("deletion feature is not supported with boltdb-shipper")
+	}
+
+	var indexClient chunk.IndexClient
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": DeleteRequestsStore}, prometheus.DefaultRegisterer)
+	indexClient, err = storage.NewIndexClient(t.cfg.StorageConfig.DeleteStoreConfig.Store, t.cfg.StorageConfig.Config, t.cfg.SchemaConfig.SchemaConfig, reg)
+	if err != nil {
+		return
+	}
+
+	t.DeletesStore, err = purger.NewDeleteStore(t.cfg.StorageConfig.DeleteStoreConfig, indexClient)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func (t *Loki) initPurger() (services.Service, error) {
+	if !t.cfg.PurgerConfig.Enable {
+		return nil, nil
+	}
+
+	storageClient, err := storage.NewObjectClient(t.cfg.PurgerConfig.ObjectStoreType, t.cfg.StorageConfig.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Purger, err = purger.NewPurger(t.cfg.PurgerConfig, t.DeletesStore, t.store, storageClient, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	deleteRequestHandler := loki_purger.NewDeleteRequestHandler(t.DeletesStore, t.cfg.PurgerConfig.DeleteRequestCancelPeriod, prometheus.DefaultRegisterer)
+
+	t.Server.HTTP.Path("/loki/api/admin/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler)))
+	t.Server.HTTP.Path("/loki/api/admin/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler)))
+	t.Server.HTTP.Path("/loki/api/admin/cancel_delete_request").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler)))
+
+	return t.Purger, nil
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {
