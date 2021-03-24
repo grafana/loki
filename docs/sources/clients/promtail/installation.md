@@ -78,6 +78,12 @@ spec:
         image: grafana/promtail
         args:
         - -config.file=/etc/promtail/promtail.yaml
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
         volumeMounts:
         - name: logs
           mountPath: MOUNT_PATH
