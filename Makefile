@@ -41,7 +41,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: manager
+all: manager bin/loki-broker
 
 OCI_RUNTIME ?= $(shell which podman || which docker)
 
@@ -148,3 +148,8 @@ bundle: manifests kustomize
 .PHONY: bundle-build
 bundle-build:
 	$(OCI_RUNTIME) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+
+cli: bin/loki-broker
+bin/loki-broker:
+	go build -o $@ ./cmd/loki-broker/
