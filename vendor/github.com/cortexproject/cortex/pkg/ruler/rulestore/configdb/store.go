@@ -7,14 +7,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+)
+
+const (
+	Name = "configdb"
 )
 
 // ConfigRuleStore is a concrete implementation of RuleStore that sources rules from the config service
 type ConfigRuleStore struct {
 	configClient  client.Client
 	since         userconfig.ID
-	ruleGroupList map[string]rulestore.RuleGroupList
+	ruleGroupList map[string]rulespb.RuleGroupList
 }
 
 func (c *ConfigRuleStore) SupportsModifications() bool {
@@ -26,7 +29,7 @@ func NewConfigRuleStore(c client.Client) *ConfigRuleStore {
 	return &ConfigRuleStore{
 		configClient:  c,
 		since:         0,
-		ruleGroupList: make(map[string]rulestore.RuleGroupList),
+		ruleGroupList: make(map[string]rulespb.RuleGroupList),
 	}
 }
 
@@ -43,7 +46,7 @@ func (c *ConfigRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements RuleStore
-func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
+func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	configs, err := c.configClient.GetRules(ctx, c.since)
 
 	if err != nil {
@@ -51,7 +54,7 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 	}
 
 	for user, cfg := range configs {
-		userRules := rulestore.RuleGroupList{}
+		userRules := rulespb.RuleGroupList{}
 		if cfg.IsDeleted() {
 			delete(c.ruleGroupList, user)
 			continue
@@ -85,7 +88,7 @@ func getLatestConfigID(cfgs map[string]userconfig.VersionedRulesConfig, latest u
 	return ret
 }
 
-func (c *ConfigRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
+func (c *ConfigRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	r, err := c.ListAllRuleGroups(ctx)
 	if err != nil {
 		return nil, err
@@ -107,7 +110,7 @@ func (c *ConfigRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 	return list, nil
 }
 
-func (c *ConfigRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulestore.RuleGroupList) error {
+func (c *ConfigRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
 	// Since ConfigRuleStore already Loads the rules in the List methods, there is nothing left to do here.
 	return nil
 }

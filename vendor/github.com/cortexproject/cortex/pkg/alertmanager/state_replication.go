@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -28,32 +27,28 @@ type state struct {
 	mtx    sync.Mutex
 	states map[string]cluster.State
 
-	replicationFactor  int
-	replicateStateFunc func(context.Context, string, *clusterpb.Part) error
-	positionFunc       func(string) int
+	replicationFactor int
+	replicator        Replicator
 
 	partialStateMergesTotal  *prometheus.CounterVec
 	partialStateMergesFailed *prometheus.CounterVec
 	stateReplicationTotal    *prometheus.CounterVec
 	stateReplicationFailed   *prometheus.CounterVec
 
-	msgc   chan *clusterpb.Part
-	readyc chan struct{}
+	msgc chan *clusterpb.Part
 }
 
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
-func newReplicatedStates(userID string, rf int, f func(context.Context, string, *clusterpb.Part) error, pf func(string) int, l log.Logger, r prometheus.Registerer) *state {
+func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r prometheus.Registerer) *state {
 
 	s := &state{
-		logger:             l,
-		userID:             userID,
-		replicateStateFunc: f,
-		replicationFactor:  rf,
-		positionFunc:       pf,
-		states:             make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
-		msgc:               make(chan *clusterpb.Part),
-		readyc:             make(chan struct{}),
-		reg:                r,
+		logger:            l,
+		userID:            userID,
+		replicationFactor: rf,
+		replicator:        re,
+		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
+		msgc:              make(chan *clusterpb.Part),
+		reg:               r,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
@@ -72,7 +67,7 @@ func newReplicatedStates(userID string, rf int, f func(context.Context, string, 
 		}, []string{"key"}),
 	}
 
-	s.Service = services.NewBasicService(nil, s.running, nil)
+	s.Service = services.NewBasicService(s.starting, s.running, nil)
 
 	return s
 }
@@ -116,33 +111,27 @@ func (s *state) MergePartialState(p *clusterpb.Part) error {
 }
 
 // Position helps in determining how long should we wait before sending a notification based on the number of replicas.
-func (s *state) Position() int { return s.positionFunc(s.userID) }
+func (s *state) Position() int {
+	return s.replicator.GetPositionForUser(s.userID)
+}
 
-// Settle waits until the alertmanagers are ready (and sets the appropriate internal state when it is).
+// starting waits until the alertmanagers are ready (and sets the appropriate internal state when it is).
 // The idea is that we don't want to start working" before we get a chance to know most of the notifications and/or silences.
-func (s *state) Settle(ctx context.Context, _ time.Duration) {
+func (s *state) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "Waiting for notification and silences to settle...")
 
 	// TODO: Make sure that the state is fully synchronised at this point.
 	// We can check other alertmanager(s) and explicitly ask them to propagate their state to us if available.
-	close(s.readyc)
+	return nil
 }
 
 // WaitReady is needed for the pipeline builder to know whenever we've settled and the state is up to date.
-func (s *state) WaitReady() {
-	//TODO: At the moment, we settle in a separate go-routine (see multitenant.go as we create the Peer) we should
-	// mimic that behaviour here once we have full state replication.
-	s.Settle(context.Background(), time.Second)
-	<-s.readyc
+func (s *state) WaitReady(ctx context.Context) error {
+	return s.Service.AwaitRunning(ctx)
 }
 
 func (s *state) Ready() bool {
-	select {
-	case <-s.readyc:
-		return true
-	default:
-	}
-	return false
+	return s.Service.State() == services.Running
 }
 
 func (s *state) running(ctx context.Context) error {
@@ -155,7 +144,7 @@ func (s *state) running(ctx context.Context) error {
 			}
 
 			s.stateReplicationTotal.WithLabelValues(p.Key).Inc()
-			if err := s.replicateStateFunc(ctx, s.userID, p); err != nil {
+			if err := s.replicator.ReplicateStateForUser(ctx, s.userID, p); err != nil {
 				s.stateReplicationFailed.WithLabelValues(p.Key).Inc()
 				level.Error(s.logger).Log("msg", "failed to replicate state to other alertmanagers", "user", s.userID, "key", p.Key, "err", err)
 			}

@@ -26,6 +26,7 @@ import (
 )
 
 // RuleStoreConfig configures a rule store.
+// TODO remove this legacy config in Cortex 1.11.
 type RuleStoreConfig struct {
 	Type     string        `yaml:"type"`
 	ConfigDB client.Config `yaml:"configdb"`
@@ -115,8 +116,8 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, loader promRules.GroupLoader, logge
 }
 
 // NewRuleStore returns a rule store backend client based on the provided cfg.
-func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
-	if cfg.Backend == rulestore.ConfigDB {
+func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
+	if cfg.Backend == configdb.Name {
 		c, err := client.New(cfg.ConfigDB)
 
 		if err != nil {
@@ -126,7 +127,11 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 		return configdb.NewConfigRuleStore(c), nil
 	}
 
-	bucketClient, err := bucket.NewClient(ctx, cfg.Config, rulestore.Name, logger, reg)
+	if cfg.Backend == local.Name {
+		return local.NewLocalRulesClient(cfg.Local, loader)
+	}
+
+	bucketClient, err := bucket.NewClient(ctx, cfg.Config, "ruler-storage", logger, reg)
 	if err != nil {
 		return nil, err
 	}

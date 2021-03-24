@@ -56,10 +56,10 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 		if err != nil {
 			return err
 		}
-		itemTrackers[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
+		itemTrackers[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
 		itemTrackers[i].maxFailures = replicationSet.MaxErrors
 
-		for _, desc := range replicationSet.Ingesters {
+		for _, desc := range replicationSet.Instances {
 			curr, found := instances[desc.Addr]
 			if !found {
 				curr.itemTrackers = make([]*itemTracker, 0, expectedTrackers)

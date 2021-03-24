@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -181,7 +180,7 @@ func (us *userStates) teardown() {
 func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("no user id")
+		return nil, false, err
 	}
 	state, ok := us.get(userID)
 	return state, ok, nil
@@ -230,7 +229,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 
 	if !recovery {
 		if err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length()); err != nil {
-			return nil, makeLimitError(perUserSeriesLimit, err)
+			return nil, makeLimitError(perUserSeriesLimit, u.limiter.FormatError(u.userID, err))
 		}
 	}
 
@@ -244,7 +243,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 		// Check if the per-metric limit has been exceeded
 		if err = u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
 			// WARNING: returns a reference to `metric`
-			return nil, makeMetricLimitError(perMetricSeriesLimit, cortexpb.FromLabelAdaptersToLabels(metric), err)
+			return nil, makeMetricLimitError(perMetricSeriesLimit, cortexpb.FromLabelAdaptersToLabels(metric), u.limiter.FormatError(u.userID, err))
 		}
 	}
 

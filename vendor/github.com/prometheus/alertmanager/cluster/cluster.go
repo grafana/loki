@@ -584,8 +584,13 @@ func (p *Peer) Ready() bool {
 }
 
 // Wait until Settle() has finished.
-func (p *Peer) WaitReady() {
-	<-p.readyc
+func (p *Peer) WaitReady(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.readyc:
+		return nil
+	}
 }
 
 // Return a status string representing the peer state.

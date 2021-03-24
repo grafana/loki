@@ -36,13 +36,23 @@ func NewLock(c *Conn, path string, acl []ACL) *Lock {
 
 func parseSeq(path string) (int, error) {
 	parts := strings.Split(path, "-")
+	// python client uses a __LOCK__ prefix
+	if len(parts) == 1 {
+		parts = strings.Split(path, "__")
+	}
 	return strconv.Atoi(parts[len(parts)-1])
 }
 
-// Lock attempts to acquire the lock. It will wait to return until the lock
-// is acquired or an error occurs. If this instance already has the lock
-// then ErrDeadlock is returned.
+// Lock attempts to acquire the lock. It works like LockWithData, but it doesn't
+// write any data to the lock node.
 func (l *Lock) Lock() error {
+	return l.LockWithData([]byte{})
+}
+
+// LockWithData attempts to acquire the lock, writing data into the lock node.
+// It will wait to return until the lock is acquired or an error occurs. If
+// this instance already has the lock then ErrDeadlock is returned.
+func (l *Lock) LockWithData(data []byte) error {
 	if l.lockPath != "" {
 		return ErrDeadlock
 	}
@@ -52,7 +62,7 @@ func (l *Lock) Lock() error {
 	path := ""
 	var err error
 	for i := 0; i < 3; i++ {
-		path, err = l.c.CreateProtectedEphemeralSequential(prefix, []byte{}, l.acl)
+		path, err = l.c.CreateProtectedEphemeralSequential(prefix, data, l.acl)
 		if err == ErrNoNode {
 			// Create parent node.
 			parts := strings.Split(l.path, "/")

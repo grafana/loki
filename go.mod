@@ -12,7 +12,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.7.1-0.20210310133228-161f103ed5ba
+	github.com/cortexproject/cortex v1.7.1-0.20210323110114-8a2e2c1eeb65
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.3+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
@@ -26,7 +26,7 @@ require (
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
-	github.com/golang/snappy v0.0.3-0.20201103224600-674baa8c7fc3
+	github.com/golang/snappy v0.0.3
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
@@ -51,7 +51,7 @@ require (
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.18.0
-	github.com/prometheus/prometheus v1.8.2-0.20210215121130-6f488061dfb4
+	github.com/prometheus/prometheus v1.8.2-0.20210321183757-31a518faab18
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
 	github.com/segmentio/fasthash v1.0.2
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749

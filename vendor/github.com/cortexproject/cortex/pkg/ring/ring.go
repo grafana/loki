@@ -368,7 +368,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 	}
 
 	return ReplicationSet{
-		Ingesters: healthyInstances,
+		Instances: healthyInstances,
 		MaxErrors: maxFailure,
 	}, nil
 }
@@ -391,7 +391,7 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}
 
 	return ReplicationSet{
-		Ingesters: instances,
+		Instances: instances,
 		MaxErrors: 0,
 	}, nil
 }
@@ -472,7 +472,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 
 	return ReplicationSet{
-		Ingesters:           healthyInstances,
+		Instances:           healthyInstances,
 		MaxErrors:           maxErrors,
 		MaxUnavailableZones: maxUnavailableZones,
 	}, nil

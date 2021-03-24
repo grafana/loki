@@ -3,6 +3,7 @@ package scrapeconfig
 import (
 	"testing"
 
+	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -104,6 +105,9 @@ func TestLoadSmallConfig(t *testing.T) {
 			KubernetesSDConfigs: []*kubernetes.SDConfig{
 				{
 					Role: "pod",
+					HTTPClientConfig: promConfig.HTTPClientConfig{
+						FollowRedirects: true,
+					},
 				},
 			},
 			StaticConfigs: []*targetgroup.Group{

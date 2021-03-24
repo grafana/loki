@@ -10,8 +10,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/gorilla/mux"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -191,6 +189,7 @@ func NewQuerierHandler(
 		engine,
 		errorTranslateQueryable{queryable}, // Translate errors to errors expected by API.
 		nil,                                // No remote write support.
+		nil,                                // No exemplars support.
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
@@ -208,6 +207,7 @@ func NewQuerierHandler(
 		&v1.PrometheusVersion{},
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
+		reg,
 	)
 
 	router := mux.NewRouter()
@@ -259,11 +259,6 @@ func NewQuerierHandler(
 	router.Path(legacyPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
 	router.Path(legacyPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
 
-	// Add a middleware to extract the trace context and add a header.
-	handler := nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
-		return "internalQuerier"
-	}))
-
 	// Track execution time.
-	return stats.NewWallTimeMiddleware().Wrap(handler)
+	return stats.NewWallTimeMiddleware().Wrap(router)
 }
