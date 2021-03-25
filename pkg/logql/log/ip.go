@@ -86,7 +86,7 @@ type IP4parser struct {
 
 func newIP4Parser() *IP4parser {
 	return &IP4parser{
-		buf: bytes.NewBuffer(make([]byte, 4)),
+		buf: bytes.NewBuffer(make([]byte, 0, 4)),
 	}
 }
 
@@ -97,22 +97,38 @@ func (p *IP4parser) parseIP4(s string) ([4]uint, error) {
 		ip [4]uint
 		i  int
 	)
-	p.buf.Reset()
+	defer p.buf.Reset()
+
 	for _, r := range s {
-		if p.buf.Len() > 4 {
+		if i > 3 {
 			return ip, errInValidIP
 		}
-		if r == '.' { // 127.0.0.1
-			strconv.ParseInt(unsafeGetString(p.buf.Bytes()), 10, 32)
+		if r == '.' { // 127.0.0.1\
+			if p.buf.Len() == 0 { // .x or x..y invalid
+				return ip, errInValidIP
+			}
+			v, err := strconv.ParseInt(p.buf.String(), 10, 32)
+			if err != nil {
+				return ip, errInValidIP
+			}
+			ip[i] = uint(v)
 			p.buf.Reset()
 			i++
 			continue
 		}
 		_, _ = p.buf.WriteRune(r)
 	}
+
 	if i != 3 {
 		return ip, errInValidIP
 	}
+
+	// don't forget the last octet.
+	v, err := strconv.ParseInt(p.buf.String(), 10, 32)
+	if err != nil {
+		return ip, errInValidIP
+	}
+	ip[i] = uint(v)
 
 	return ip, nil
 }

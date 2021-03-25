@@ -237,7 +237,8 @@ type functionLineFilterExpr struct {
 func newFunctionLineFilterExpr(op, params string, ty labels.MatchType) *functionLineFilterExpr {
 	switch op {
 	case OpFilterIP:
-		// todo filter panic(newParseError("this is not an ip or range", 0, 0))
+	default:
+		panic(newParseError("this is not an ip or range", 0, 0))
 	}
 	return &functionLineFilterExpr{
 		op:     op,
