@@ -222,7 +222,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, err
 	}
 
-	if result.End.Before(result.Start) || result.Start.Equal(result.End) {
+	if result.End.Before(result.Start) {
 		return nil, errEndBeforeStart
 	}
 
