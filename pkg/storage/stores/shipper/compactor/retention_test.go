@@ -3,6 +3,8 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -21,15 +23,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 const (
@@ -114,7 +117,20 @@ func Test_Retention(t *testing.T) {
 	indexFilesInfo, err := ioutil.ReadDir(indexDir)
 	require.NoError(t, err)
 
-	retentionRules := fakeRule{}
+	retentionRules := fakeRule{
+		streams: []StreamRule{
+			{
+				UserID: "1",
+				Matchers: []labels.Matcher{
+					{
+						Type:  labels.MatchEqual,
+						Name:  "foo",
+						Value: "bar",
+					},
+				},
+			},
+		},
+	}
 
 	// 1-  Get all series ID for given retention per stream....
 	// 2 - Delete from index and Mark for delete all chunk  based on retention with seriesID/tenantID.
@@ -137,7 +153,10 @@ func Test_Retention(t *testing.T) {
 			continue
 		}
 		fmt.Fprintf(os.Stdout, "Found Schema for Table %s => %+v\n", indexFileInfo.Name(), currentSchema)
-		findSeriesIDsForRules(db, currentSchema, retentionRules.PerStream())
+		ids, err := findSeriesIDsForRules(db, currentSchema, retentionRules.PerStream())
+
+		require.NoError(t, err)
+		fmt.Fprintf(os.Stdout, "Found IDS for rules %+v\n", ids)
 		require.NoError(t,
 			db.Update(func(tx *bbolt.Tx) error {
 				return tx.Bucket(bucketName).ForEach(func(k, v []byte) error {
@@ -308,57 +327,40 @@ func intersectStrings(left, right []string) []string {
 const separator = "\000"
 
 func lookupSeriesByQuery(db *bbolt.DB, query chunk.IndexQuery) ([]string, error) {
-	start = []byte(query.HashValue + separator + string(query.RangeValueStart))
+	start := []byte(query.HashValue + separator + string(query.RangeValueStart))
+	rowPrefix := []byte(query.HashValue + separator)
+	var res []string
+	var components [][]byte
+	err := db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket(bucketName)
+		if bucket == nil {
+			return nil
+		}
+		c := bucket.Cursor()
+		for k, v := c.Seek(start); k != nil; k, v = c.Next() {
+			// technically we can run regex that are not matching empty.
+			if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
+				continue
+			}
+			if !bytes.HasPrefix(k, rowPrefix) {
+				break
+			}
+			// parse series ID and add to res
+			_, r := decodeKey(k)
 
-	db.View(func(t *bbolt.Tx) error {
+			components = decodeRangeKey(r, components)
+			if len(components) != 4 {
+				continue
+			}
+			// we store in label entries range keys: label hash value | seriesID | empty | type.
+			// and we want the seriesID
+			res = append(res, string(components[len(components)-3]))
+		}
 		return nil
 	})
 
-	return nil, nil
+	return res, err
 }
-
-// func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
-// 	var start []byte
-// 	if len(query.RangeValuePrefix) > 0 {
-// 		start = []byte(query.HashValue + separator + string(query.RangeValuePrefix))
-// 	} else if len(query.RangeValueStart) > 0 {
-// 		start = []byte(query.HashValue + separator + string(query.RangeValueStart))
-// 	} else {
-// 		start = []byte(query.HashValue + separator)
-// 	}
-
-// 	rowPrefix := []byte(query.HashValue + separator)
-
-// 	var batch boltReadBatch
-
-// 	for k, v := c.Seek(start); k != nil; k, v = c.Next() {
-// 		if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
-// 			continue
-// 		}
-
-// 		if len(query.RangeValuePrefix) > 0 && !bytes.HasPrefix(k, start) {
-// 			break
-// 		}
-
-// 		if !bytes.HasPrefix(k, rowPrefix) {
-// 			break
-// 		}
-
-// 		// make a copy since k, v are only valid for the life of the transaction.
-// 		// See: https://godoc.org/github.com/boltdb/bolt#Cursor.Seek
-// 		batch.rangeValue = make([]byte, len(k)-len(rowPrefix))
-// 		copy(batch.rangeValue, k[len(rowPrefix):])
-
-// 		batch.value = make([]byte, len(v))
-// 		copy(batch.value, v)
-
-// 		if !callback(query, &batch) {
-// 			break
-// 		}
-// 	}
-
-// 	return nil
-// }
 
 func schemaPeriodForTable(config storage.SchemaConfig, tableName string) (chunk.PeriodConfig, bool) {
 	for _, schema := range config.Configs {
@@ -517,6 +519,49 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	c := chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
 	require.NoError(t, c.Encode())
 	return c
+}
+
+func labelsSeriesID(ls labels.Labels) []byte {
+	h := sha256.Sum256([]byte(labelsString(ls)))
+	return encodeBase64Bytes(h[:])
+}
+
+func encodeBase64Bytes(bytes []byte) []byte {
+	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
+	encoded := make([]byte, encodedLen)
+	base64.RawStdEncoding.Encode(encoded, bytes)
+	return encoded
+}
+
+// Backwards-compatible with model.Metric.String()
+func labelsString(ls labels.Labels) string {
+	metricName := ls.Get(labels.MetricName)
+	if metricName != "" && len(ls) == 1 {
+		return metricName
+	}
+	var b strings.Builder
+	b.Grow(1000)
+
+	b.WriteString(metricName)
+	b.WriteByte('{')
+	i := 0
+	for _, l := range ls {
+		if l.Name == labels.MetricName {
+			continue
+		}
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+		b.WriteString(l.Name)
+		b.WriteByte('=')
+		var buf [1000]byte
+		b.Write(strconv.AppendQuote(buf[:0], l.Value))
+		i++
+	}
+	b.WriteByte('}')
+
+	return b.String()
 }
 
 type StreamRule struct {
