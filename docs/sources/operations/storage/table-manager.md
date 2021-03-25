@@ -31,6 +31,7 @@ The Table Manager supports the following backends:
   - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
   - [Google Bigtable](https://cloud.google.com/bigtable)
   - [Apache Cassandra](https://cassandra.apache.org)
+  - [Amazon S3](https://aws.amazon.com/s3)
   - Filesystem (primarily used for local environments)
 
 The object storages - like Amazon S3 and Google Cloud Storage - supported by Loki
