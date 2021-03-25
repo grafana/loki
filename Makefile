@@ -43,7 +43,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: manager bin/loki-broker
+all: lint generate manager bin/loki-broker
 
 OCI_RUNTIME ?= $(shell which podman || which docker)
 
@@ -55,11 +55,11 @@ test: generate lint manifests
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
 
 # Build manager binary
-manager: generate lint
+manager: generate
 	go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
-run: generate lint manifests
+run: generate manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
@@ -153,5 +153,5 @@ bundle-build:
 
 
 cli: bin/loki-broker
-bin/loki-broker: $(GO_FILES) | generate lint
+bin/loki-broker: $(GO_FILES) | generate
 	go build -o $@ ./cmd/loki-broker/
