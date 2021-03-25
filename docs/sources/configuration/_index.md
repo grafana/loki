@@ -257,10 +257,6 @@ ring:
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
 
-    # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-    # The CLI flags prefix for this block config is: distributor.ring
-    [memberlist: <memberlist_config>]
-
   # The heartbeat timeout after which ingesters are skipped for
   # reading and writing.
   # CLI flag: -distributor.ring.heartbeat-timeout
@@ -778,10 +774,6 @@ lifecycler:
       # The etcd_config configures the etcd client.
       # CLI flag: <no prefix>
       [etcd: <etcd_config>]
-
-      # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-      # CLI flag: <no prefix>
-      [memberlist: <memberlist_config>]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
     # CLI flag: -ring.heartbeat-timeout
@@ -1354,7 +1346,7 @@ filesystem:
   directory: <string>
 
 # Configures storing index in an Object Store(GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files.
-# Required fields only required when boltdb-shipper is defined in config.  
+# Required fields only required when boltdb-shipper is defined in config.
 boltdb_shipper:
   # Directory where ingesters would write boltdb files which would then be
   # uploaded by shipper to configured storage
