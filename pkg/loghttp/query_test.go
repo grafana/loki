@@ -24,29 +24,39 @@ func TestParseRangeQuery(t *testing.T) {
 		{"bad start", &http.Request{URL: mustParseURL(`?query={foo="bar"}&start=t`)}, nil, true},
 		{"bad end", &http.Request{URL: mustParseURL(`?query={foo="bar"}&end=t`)}, nil, true},
 		{"end before start", &http.Request{URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2015-06-10T21:42:24.760738998Z`)}, nil, true},
-		{"end equal start", &http.Request{URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2016-06-10T21:42:24.760738998Z`)}, nil, true},
 		{"bad limit", &http.Request{URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=h`)}, nil, true},
-		{"bad direction",
+		{
+			"bad direction",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=100&direction=fw`),
-			}, nil, true},
-		{"bad step",
+			}, nil, true,
+		},
+		{
+			"bad step",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=100&direction=FORWARD&step=h`),
-			}, nil, true},
-		{"negative step",
+			}, nil, true,
+		},
+		{
+			"negative step",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=100&direction=BACKWARD&step=-1`),
-			}, nil, true},
-		{"too small step",
+			}, nil, true,
+		},
+		{
+			"too small step",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=100&direction=BACKWARD&step=1`),
-			}, nil, true},
-		{"negative interval",
+			}, nil, true,
+		},
+		{
+			"negative interval",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=100&direction=BACKWARD&step=1,interval=-1`),
-			}, nil, true},
-		{"good",
+			}, nil, true,
+		},
+		{
+			"good",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2017-06-10T21:42:24.760738998Z&end=2017-07-10T21:42:24.760738998Z&limit=1000&direction=BACKWARD&step=3600`),
 			}, &RangeQuery{
@@ -56,7 +66,8 @@ func TestParseRangeQuery(t *testing.T) {
 				Start:     time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
 				End:       time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC),
 				Limit:     1000,
-			}, false},
+			}, false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -76,7 +87,6 @@ func TestParseRangeQuery(t *testing.T) {
 }
 
 func TestParseInstantQuery(t *testing.T) {
-
 	tests := []struct {
 		name    string
 		r       *http.Request
@@ -85,11 +95,14 @@ func TestParseInstantQuery(t *testing.T) {
 	}{
 		{"bad time", &http.Request{URL: mustParseURL(`?query={foo="bar"}&time=t`)}, nil, true},
 		{"bad limit", &http.Request{URL: mustParseURL(`?query={foo="bar"}&time=2016-06-10T21:42:24.760738998Z&limit=h`)}, nil, true},
-		{"bad direction",
+		{
+			"bad direction",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&time=2016-06-10T21:42:24.760738998Z&limit=100&direction=fw`),
-			}, nil, true},
-		{"good",
+			}, nil, true,
+		},
+		{
+			"good",
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&time=2017-06-10T21:42:24.760738998Z&limit=1000&direction=BACKWARD`),
 			}, &InstantQuery{
@@ -97,7 +110,8 @@ func TestParseInstantQuery(t *testing.T) {
 				Direction: logproto.BACKWARD,
 				Ts:        time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
 				Limit:     1000,
-			}, false},
+			}, false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -130,22 +144,24 @@ func TestStreams_ToProto(t *testing.T) {
 		want []logproto.Stream
 	}{
 		{"empty", nil, nil},
-		{"some", []Stream{
-			{
-				Labels: map[string]string{"foo": "bar"},
-				Entries: []Entry{
-					{Timestamp: time.Unix(0, 1), Line: "1"},
-					{Timestamp: time.Unix(0, 2), Line: "2"},
+		{
+			"some",
+			[]Stream{
+				{
+					Labels: map[string]string{"foo": "bar"},
+					Entries: []Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+						{Timestamp: time.Unix(0, 2), Line: "2"},
+					},
+				},
+				{
+					Labels: map[string]string{"foo": "bar", "lvl": "error"},
+					Entries: []Entry{
+						{Timestamp: time.Unix(0, 3), Line: "3"},
+						{Timestamp: time.Unix(0, 4), Line: "4"},
+					},
 				},
 			},
-			{
-				Labels: map[string]string{"foo": "bar", "lvl": "error"},
-				Entries: []Entry{
-					{Timestamp: time.Unix(0, 3), Line: "3"},
-					{Timestamp: time.Unix(0, 4), Line: "4"},
-				},
-			},
-		},
 			[]logproto.Stream{
 				{
 					Labels: `{foo="bar"}`,
