@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io/ioutil"
 	"os"
@@ -59,6 +60,30 @@ func TestCreateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
 	// make sure create was NOT called because the Get failed
 	require.Zero(t, k.CreateCallCount())
 }
+
+
+func TestCreateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsTheError(t *testing.T) {
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	badRequestErr := apierrors.NewBadRequest("you do not belong here")
+	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object) error {
+		return badRequestErr
+	}
+
+	err := handlers.CreateLokiStack(context.TODO(), r, k)
+
+	require.Equal(t, badRequestErr, errors.Unwrap(err))
+
+	// make sure create was NOT called because the Get failed
+	require.Zero(t, k.CreateCallCount())
+}
+
 
 func TestCreateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 	k := &k8sfakes.FakeClient{}

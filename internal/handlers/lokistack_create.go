@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 
+	"github.com/ViaQ/logerr/kverrors"
 	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
@@ -25,6 +26,7 @@ func CreateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client) error 
 			ll.Error(err, "could not find the requested loki stack", "name", req.NamespacedName)
 			return nil
 		}
+		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
 	// Here we will translate the lokiv1beta1.LokiStack options into manifest options
