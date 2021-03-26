@@ -77,7 +77,7 @@ outer:
 	for i := range filtered {
 		// This is the same as how LazyChunk or MemChunk build their iterators,
 		// they return a TimeRangedIterator which is wrapped in a EntryReversedIter if the direction is BACKWARD
-		iterForward := iter.NewTimeRangedIterator(iter.NewStreamIterator(filtered[i]), req.Start, req.End.Add(time.Nanosecond))
+		iterForward := iter.NewTimeRangedIterator(iter.NewStreamIterator(filtered[i]), req.Start, req.End)
 		if req.Direction == logproto.FORWARD {
 			streamIters = append(streamIters, iterForward)
 		} else {
@@ -201,7 +201,7 @@ outer:
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(ctx, filtered),
 		req.Start.UnixNano(),
-		req.End.UnixNano()+1,
+		req.End.UnixNano(),
 	), nil
 }
 
