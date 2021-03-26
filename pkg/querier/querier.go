@@ -61,7 +61,6 @@ type Querier struct {
 	engine          *logql.Engine
 	limits          *validation.Overrides
 	ingesterQuerier *IngesterQuerier
-	Queryable       logql.Querier
 }
 
 // New makes a new Querier.
@@ -73,7 +72,7 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, querier.Queryable, limits)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
 
 	return &querier, nil
 }
@@ -320,7 +319,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		return nil, err
 	}
 
-	histIterators, err := q.Queryable.SelectLogs(queryCtx, histReq)
+	histIterators, err := q.SelectLogs(queryCtx, histReq)
 	if err != nil {
 		return nil, err
 	}
