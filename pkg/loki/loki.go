@@ -149,24 +149,24 @@ type Loki struct {
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
 
-	Server          *server.Server
-	ring            *ring.Ring
-	overrides       *validation.Overrides
-	tenantConfigs   *runtime.TenantConfigs
-	distributor     *distributor.Distributor
-	ingester        *ingester.Ingester
-	Querier         *querier.Querier
-	ingesterQuerier *querier.IngesterQuerier
-	store           storage.Store
-	tableManager    *chunk.TableManager
-	frontend        *frontend.Frontend
-	ruler           *cortex_ruler.Ruler
-	RulerStorage    rulestore.RuleStore
-	rulerAPI        *cortex_ruler.API
-	stopper         queryrange.Stopper
-	runtimeConfig   *runtimeconfig.Manager
-	memberlistKV    *memberlist.KVInitService
-	compactor       *compactor.Compactor
+	Server                   *server.Server
+	ring                     *ring.Ring
+	overrides                *validation.Overrides
+	tenantConfigs            *runtime.TenantConfigs
+	distributor              *distributor.Distributor
+	ingester                 *ingester.Ingester
+	Querier                  *querier.Querier
+	ingesterQuerier          *querier.IngesterQuerier
+	store                    storage.Store
+	tableManager             *chunk.TableManager
+	frontend                 *frontend.Frontend
+	ruler                    *cortex_ruler.Ruler
+	RulerStorage             rulestore.RuleStore
+	rulerAPI                 *cortex_ruler.API
+	stopper                  queryrange.Stopper
+	runtimeConfig            *runtimeconfig.Manager
+	memberlistKV             *memberlist.KVInitService
+	compactor                *compactor.Compactor
 	QueryFrontEndTripperware cortex_tripper.Tripperware
 
 	HTTPAuthMiddleware middleware.Interface

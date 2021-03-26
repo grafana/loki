@@ -72,7 +72,6 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
 	}
-	querier.Queryable = &querier
 
 	querier.engine = logql.NewEngine(cfg.Engine, querier.Queryable, limits)
 
@@ -80,7 +79,7 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 }
 
 func (q *Querier) SetQueryable(queryable logql.Querier) {
-	q.Queryable = queryable
+	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits)
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
