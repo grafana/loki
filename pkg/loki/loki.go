@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/signals"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
@@ -72,6 +73,7 @@ type Config struct {
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 	Tracing          tracing.Config              `yaml:"tracing"`
 	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
+	PurgerConfig     purger.Config               `yaml:"purger"`
 }
 
 // RegisterFlags registers flag.
@@ -100,6 +102,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
+	c.PurgerConfig.RegisterFlags(f)
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -166,6 +169,8 @@ type Loki struct {
 	runtimeConfig   *runtimeconfig.Manager
 	memberlistKV    *memberlist.KVInitService
 	compactor       *compactor.Compactor
+	DeletesStore    *purger.DeleteStore
+	Purger          *purger.Purger
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -362,6 +367,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
+	mm.RegisterModule(Purger, t.initPurger)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -370,14 +377,15 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:       {RuntimeConfig},
 		TenantConfigs:   {RuntimeConfig},
 		Distributor:     {Ring, Server, Overrides, TenantConfigs},
-		Store:           {Overrides},
+		Store:           {Overrides, DeleteRequestsStore},
 		Ingester:        {Store, Server, MemberlistKV, TenantConfigs},
 		Querier:         {Store, Ring, Server, IngesterQuerier, TenantConfigs},
-		QueryFrontend:   {Server, Overrides, TenantConfigs},
+		QueryFrontend:   {Server, Overrides, TenantConfigs, DeleteRequestsStore},
 		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:    {Server},
 		Compactor:       {Server},
 		IngesterQuerier: {Ring},
+		Purger:          {Store, DeleteRequestsStore},
 		All:             {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
@@ -386,10 +394,14 @@ func (t *Loki) setupModuleManager() error {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
-	// If we are running Loki with boltdb-shipper as a single binary, without clustered mode(which should always be the case when using inmemory ring),
-	// we should start compactor as well for better user experience.
-	if storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) && t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
-		deps[All] = append(deps[All], Compactor)
+	// If we are running Loki as a single binary, without clustered mode(which should always be the case when using inmemory ring),
+	// we should start singleton services as well for better user experience.
+	if t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
+		deps[All] = append(deps[All], Purger)
+		// compactor should run only when using boltdb-shipper
+		if storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) {
+			deps[All] = append(deps[All], Compactor)
+		}
 	}
 
 	for mod, targets := range deps {

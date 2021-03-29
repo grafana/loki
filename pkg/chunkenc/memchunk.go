@@ -12,10 +12,13 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+
 	"github.com/cespare/xxhash/v2"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -31,6 +34,11 @@ const (
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
+
+	// defaultBlockSize is used for target block size when cutting partially deleted chunks from a delete request.
+	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
+	// different block size in the new chunk which should be fine.
+	defaultBlockSize = 256 * 1024
 )
 
 var magicNumber = uint32(0x12EE56A)
@@ -754,6 +762,32 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 		}
 	}
 	return blocks
+}
+
+func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
+	// add a nanosecond to end time because the delete intervals are inclusive while the Chunk.Iterator considers end time to be non-inclusive.
+	itr, err := c.Iterator(context.Background(), start, end.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+	if err != nil {
+		return nil, err
+	}
+
+	// Using defaultBlockSize for target block size.
+	// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
+	// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
+	newChunk := NewMemChunk(c.Encoding(), defaultBlockSize, c.CompressedSize())
+
+	for itr.Next() {
+		entry := itr.Entry()
+		if err := newChunk.Append(&entry); err != nil {
+			return nil, err
+		}
+	}
+
+	if newChunk.Size() == 0 {
+		return nil, encoding.ErrSliceNoDataInRange
+	}
+
+	return newChunk, nil
 }
 
 // encBlock is an internal wrapper for a block, mainly to avoid binding an encoding in a block itself.
