@@ -58,7 +58,6 @@ type Query struct {
 
 // DoQuery executes the query and prints out the results
 func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) {
-
 	if q.LocalConfig != "" {
 		if err := q.DoLocalQuery(out, statistics, c.GetOrgID()); err != nil {
 			log.Fatalf("Query failed: %+v", err)
@@ -149,7 +148,6 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 
 		}
 	}
-
 }
 
 func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
@@ -172,7 +170,6 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, las
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
 func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string) error {
-
 	var conf loki.Config
 	conf.RegisterFlags(flag.CommandLine)
 	if q.LocalConfig == "" {
@@ -255,7 +252,7 @@ func (q *Query) SetInstant(time time.Time) {
 }
 
 func (q *Query) isInstant() bool {
-	return q.Start == q.End
+	return q.Start == q.End && q.Step == 0
 }
 
 func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
@@ -369,7 +366,6 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
 	bytes, err := json.MarshalIndent(matrix, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling matrix: %v", err)
 	}
@@ -379,7 +375,6 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 
 func (q *Query) printVector(vector loghttp.Vector) {
 	bytes, err := json.MarshalIndent(vector, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling vector: %v", err)
 	}
@@ -389,7 +384,6 @@ func (q *Query) printVector(vector loghttp.Vector) {
 
 func (q *Query) printScalar(scalar loghttp.Scalar) {
 	bytes, err := json.MarshalIndent(scalar, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling scalar: %v", err)
 	}

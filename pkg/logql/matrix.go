@@ -33,7 +33,7 @@ func NewMatrixStepper(start, end time.Time, step time.Duration, m promql.Matrix)
 
 func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
 	m.ts = m.ts.Add(m.step)
-	if !m.ts.Before(m.end) {
+	if m.ts.After(m.end) {
 		return false, 0, nil
 	}
 

@@ -201,7 +201,7 @@ outer:
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(ctx, filtered),
 		req.Start.UnixNano(),
-		req.End.UnixNano(),
+		req.End.UnixNano()+1,
 	), nil
 }
 
@@ -232,7 +232,6 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 		results = append(results, res)
 	}
 	return results, nil
-
 }
 
 // create nStreams of nEntries with labelNames each where each label value
@@ -256,7 +255,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 				Value: fmt.Sprintf("%d", shard),
 			})
 		}
-		for j := 0; j < nEntries; j++ {
+		for j := 0; j <= nEntries; j++ {
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Unix(0, int64(j*int(time.Second))),
 				Line:      fmt.Sprintf("line number: %d", j),
@@ -267,7 +266,6 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 		streams = append(streams, stream)
 	}
 	return streams
-
 }
 
 func mustParseLabels(s string) labels.Labels {
