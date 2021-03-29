@@ -201,7 +201,7 @@ outer:
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(ctx, filtered),
 		req.Start.UnixNano(),
-		req.End.UnixNano(),
+		req.End.UnixNano()+1,
 	), nil
 }
 
