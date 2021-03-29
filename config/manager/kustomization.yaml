@@ -13,4 +13,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/blockloop/loki-operator
-  newTag: "1616165734"
+  newTag: latest
