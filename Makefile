@@ -1,4 +1,8 @@
-# VERSIO
+# include the bingo binary variables. This enables the bingo versions to be 
+# referenced here as make variables. For example: $(GOLANGCI_LINT)
+include .bingo/Variables.mk
+
+# VERSION
 # defines the project version for the bundle. 
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
@@ -63,15 +67,15 @@ run: generate manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
-install: manifests kustomize
+install: manifests $(KUSTOMIZE)
 	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
-uninstall: manifests kustomize
+uninstall: manifests $(KUSTOMIZE)
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests kustomize
+deploy: manifests $(KUSTOMIZE)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
@@ -80,7 +84,7 @@ undeploy:
 	$(KUSTOMIZE) build config/default | kubectl delete -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
-manifests: controller-gen
+manifests: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 
@@ -93,16 +97,11 @@ $(CURDIR)/bin/golangci-lint:
 lint: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) run ./...
 
-GOFUMPT = $(CURDIR)/bin/gofumpt
-gofumpt: $(GOFUMPT)
-$(GOFUMPT):
-	$(call go-get-tool,$(GOFUMPT),mvdan.cc/gofumpt@v0.1.1)
-
 fmt: $(GOFUMPT)
 	find . -type f -name '*.go' -not -path './vendor/*' -exec $(GOFUMPT) -w {} \;
 
 # Generate code
-generate: controller-gen
+generate: $(CONTROLLER_GEN)
 	go generate ./...
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
@@ -114,33 +113,9 @@ oci-build:
 oci-push:
 	$(OCI_RUNTIME) push ${IMG}
 
-# Download controller-gen locally if necessary
-CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
-controller-gen:
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.1)
-
-# Download kustomize locally if necessary
-KUSTOMIZE = $(shell pwd)/bin/kustomize
-kustomize:
-	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
-
-# go-get-tool will 'go get' any package $2 and install it to $1.
-PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
-define go-get-tool
-@[ -f $(1) ] || { \
-set -e ;\
-TMP_DIR=$$(mktemp -d) ;\
-cd $$TMP_DIR ;\
-go mod init tmp ;\
-echo "Downloading $(2)" ;\
-GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
-rm -rf $$TMP_DIR ;\
-}
-endef
-
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
-bundle: manifests kustomize
+bundle: manifests $(KUSTOMIZE)
 	operator-sdk generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
