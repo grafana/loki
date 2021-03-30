@@ -1776,7 +1776,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 
 # Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)
 # CLI flag: -<prefix>.grpc-compression
-[grpc-compression: <bool> | default = false]
+[grpc-compression: <string> | default = '']
 
 # Rate limit for gRPC client. 0 is disabled.
 # CLI flag: -<prefix>.grpc-client-rate-limit
