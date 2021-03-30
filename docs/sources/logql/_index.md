@@ -262,7 +262,7 @@ The **logfmt** parser can be added using the `| logfmt` and will extract all key
 For example the following log line:
 
 ```logfmt
-at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" connect=4ms service=8ms status=200
+at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
 ```
 
 will get those labels extracted:
@@ -393,7 +393,7 @@ You can use double quoted string for the template or backticks `` `{{.label_name
 
 `line_format` also supports `math` functions. Example:
 
-If we have fllowing labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms). We can divide the duration by `1000` to get the value in seconds.
+If we have following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms). We can divide the duration by `1000` to get the value in seconds.
 
 ```logql
 {container="frontend"} | logfmt | line_format "{{.ip}} {{.status}} {{div .duration 1000}}"
