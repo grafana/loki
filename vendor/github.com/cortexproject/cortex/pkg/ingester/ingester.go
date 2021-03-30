@@ -49,6 +49,8 @@ const (
 var (
 	// This is initialised if the WAL is enabled and the records are fetched from this pool.
 	recordPool sync.Pool
+
+	errIngesterStopping = errors.New("ingester stopping")
 )
 
 // Config for an Ingester.
@@ -452,7 +454,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
@@ -535,7 +537,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		}
 	}()
 	if i.stopped {
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 
 	// getOrCreateSeries copies the memory for `labels`, except on the error path.
@@ -624,7 +626,7 @@ func (i *Ingester) appendMetadata(userID string, m *cortexpb.MetricMetadata) err
 	i.userStatesMtx.RLock()
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 	i.userStatesMtx.RUnlock()
 
@@ -955,7 +957,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	userMetadata := i.getUserMetadata(userID)

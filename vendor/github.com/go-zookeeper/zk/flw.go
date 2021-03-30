@@ -24,7 +24,7 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 	// different parts of the regular expression that are required to parse the srvr output
 	const (
 		zrVer   = `^Zookeeper version: ([A-Za-z0-9\.\-]+), built on (\d\d/\d\d/\d\d\d\d \d\d:\d\d [A-Za-z0-9:\+\-]+)`
-		zrLat   = `^Latency min/avg/max: (\d+)/(\d+)/(\d+)`
+		zrLat   = `^Latency min/avg/max: (\d+)/([0-9.]+)/(\d+)`
 		zrNet   = `^Received: (\d+).*\n^Sent: (\d+).*\n^Connections: (\d+).*\n^Outstanding: (\d+)`
 		zrState = `^Zxid: (0x[A-Za-z0-9]+).*\n^Mode: (\w+).*\n^Node count: (\d+)`
 	)
@@ -97,7 +97,7 @@ func FLWSrvr(servers []string, timeout time.Duration) ([]*ServerStats, bool) {
 		// within the regex above, these values must be numerical
 		// so we can avoid useless checking of the error return value
 		minLatency, _ := strconv.ParseInt(match[2], 0, 64)
-		avgLatency, _ := strconv.ParseInt(match[3], 0, 64)
+		avgLatency, _ := strconv.ParseFloat(match[3], 64)
 		maxLatency, _ := strconv.ParseInt(match[4], 0, 64)
 		recv, _ := strconv.ParseInt(match[5], 0, 64)
 		sent, _ := strconv.ParseInt(match[6], 0, 64)
@@ -255,16 +255,12 @@ func fourLetterWord(server, command string, timeout time.Duration) ([]byte, erro
 	// once the command has been processed, but better safe than sorry
 	defer conn.Close()
 
-	if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, err
-	}
+	conn.SetWriteDeadline(time.Now().Add(timeout))
 	_, err = conn.Write([]byte(command))
 	if err != nil {
 		return nil, err
 	}
 
-	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, err
-	}
+	conn.SetReadDeadline(time.Now().Add(timeout))
 	return ioutil.ReadAll(conn)
 }

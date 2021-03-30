@@ -38,4 +38,4 @@ Given the following incoming labels:
 Only the below labels would be sent to `loki`
 
 - `kubernetes_pod_name`: `"loki-pqrs"`
-- `contaikubernetes_container_namener`: `"loki"`
+- `kubernetes_container_name`: `"loki"`

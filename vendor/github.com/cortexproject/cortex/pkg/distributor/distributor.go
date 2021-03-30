@@ -410,7 +410,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
-func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool) (cortexpb.PreallocTimeseries, error) {
+func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
@@ -544,12 +544,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 
 		skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
-		validatedSeries, err := d.validateSeries(ts, userID, skipLabelNameValidation)
+		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
-		if err != nil && firstPartialErr == nil {
-			firstPartialErr = err
+		if validationErr != nil && firstPartialErr == nil {
+			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
 		}
 
 		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
@@ -588,8 +588,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	totalN := validatedSamples + len(validatedMetadata)
-	rateOK, rateReservation := d.ingestionRateLimiter.AllowN(now, userID, totalN)
-	if !rateOK {
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)
 
@@ -641,8 +640,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { cortexpb.ReuseSlice(req.Timeseries) })
 	if err != nil {
-		// Ingestion failed, so roll-back the reservation from the rate limiter.
-		rateReservation.CancelAt(now)
 		return nil, err
 	}
 	return &cortexpb.WriteResponse{}, firstPartialErr
@@ -912,7 +909,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, ingester := range replicationSet.Ingesters {
+	for _, ingester := range replicationSet.Instances {
 		client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err

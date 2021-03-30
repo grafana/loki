@@ -41,7 +41,7 @@ func (mm *userMetricsMetadata) add(metric string, metadata *cortexpb.MetricMetad
 		// Verify that the user can create more metric metadata given we don't have a set for that metric name.
 		if err := mm.limiter.AssertMaxMetricsWithMetadataPerUser(mm.userID, len(mm.metricToMetadata)); err != nil {
 			validation.DiscardedMetadata.WithLabelValues(mm.userID, perUserMetadataLimit).Inc()
-			return makeLimitError(perUserMetadataLimit, err)
+			return makeLimitError(perUserMetadataLimit, mm.limiter.FormatError(mm.userID, err))
 		}
 		set = metricMetadataSet{}
 		mm.metricToMetadata[metric] = set
@@ -49,7 +49,7 @@ func (mm *userMetricsMetadata) add(metric string, metadata *cortexpb.MetricMetad
 
 	if err := mm.limiter.AssertMaxMetadataPerMetric(mm.userID, len(set)); err != nil {
 		validation.DiscardedMetadata.WithLabelValues(mm.userID, perMetricMetadataLimit).Inc()
-		return makeLimitError(perMetricMetadataLimit, err)
+		return makeLimitError(perMetricMetadataLimit, mm.limiter.FormatError(mm.userID, err))
 	}
 
 	// if we have seen this metadata before, it is a no-op and we don't need to change our metrics.

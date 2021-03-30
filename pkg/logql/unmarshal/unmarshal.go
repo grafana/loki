@@ -4,7 +4,6 @@ import (
 	"io"
 	"unsafe"
 
-	json "github.com/json-iterator/go"
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -15,7 +14,7 @@ import (
 func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
 	var request loghttp.PushRequest
 
-	if err := json.NewDecoder(b).Decode(&request); err != nil {
+	if err := jsoniter.NewDecoder(b).Decode(&request); err != nil {
 		return err
 	}
 	*r = NewPushRequest(request)

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/prometheus/prometheus/pkg/rulefmt"
-
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
@@ -26,16 +24,16 @@ type RuleStore interface {
 	ListAllUsers(ctx context.Context) ([]string, error)
 
 	// ListAllRuleGroups returns all rule groups for all users.
-	ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
+	ListAllRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error)
 
 	// ListRuleGroupsForUserAndNamespace returns all the active rule groups for a user from given namespace.
 	// If namespace is empty, groups from all namespaces are returned.
-	ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
+	ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulespb.RuleGroupList, error)
 
 	// LoadRuleGroups loads rules for each rule group in the map.
 	// Parameter with groups to load *MUST* be coming from one of the List methods.
 	// Reason is that some implementations don't do anything, since their List method already loads the rules.
-	LoadRuleGroups(ctx context.Context, groupsToLoad map[string]RuleGroupList) error
+	LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error
 
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error
@@ -46,22 +44,4 @@ type RuleStore interface {
 	// DeleteNamespace lists rule groups for given user and namespace, and deletes all rule groups.
 	// If namespace is empty, deletes all rule groups for user.
 	DeleteNamespace(ctx context.Context, userID, namespace string) error
-}
-
-// RuleGroupList contains a set of rule groups
-type RuleGroupList []*rulespb.RuleGroupDesc
-
-// Formatted returns the rule group list as a set of formatted rule groups mapped
-// by namespace
-func (l RuleGroupList) Formatted() map[string][]rulefmt.RuleGroup {
-	ruleMap := map[string][]rulefmt.RuleGroup{}
-	for _, g := range l {
-		if _, exists := ruleMap[g.Namespace]; !exists {
-			ruleMap[g.Namespace] = []rulefmt.RuleGroup{rulespb.FromProto(g)}
-			continue
-		}
-		ruleMap[g.Namespace] = append(ruleMap[g.Namespace], rulespb.FromProto(g))
-
-	}
-	return ruleMap
 }

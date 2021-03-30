@@ -113,6 +113,8 @@ The snippet above will for instance prepend the log line with the application na
 
 ## Supported Functions
 
+> All [sprig functions](http://masterminds.github.io/sprig/) have been added to the template stage in Loki 2.3(along with function described below).
+
 ### ToLower & ToUpper
 
 ToLower and ToUpper convert the entire string respectively to lowercase and uppercase.
@@ -201,7 +203,7 @@ and trailing white space removed, as defined by Unicode.
     template: '{{ Hash .Value "salt" }}'
 ```
 
-Alternatively, you can use `Sha2Hash` for calculating the Sha2_256 of the string. Sha2_256 is faster and requires less CPU than Sha3_256, however it is less secure. 
+Alternatively, you can use `Sha2Hash` for calculating the Sha2_256 of the string. Sha2_256 is faster and requires less CPU than Sha3_256, however it is less secure.
 
 We recommend using `Hash` as it has a stronger hashing algorithm which we plan to keep strong over time without requiring client config changes.
 

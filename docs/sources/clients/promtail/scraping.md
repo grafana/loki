@@ -182,7 +182,7 @@ You can relabel default labels via [Relabeling](#relabeling) if required.
 Providing a path to a bookmark is mandatory, it will be used to persist the last event processed and allow
 resuming the target without skipping logs.
 
-see the [configuration](./configuration#windows_event) section for more information.
+see the [configuration](../configuration/#windows_events) section for more information.
 
 ## Gcplog scraping
 Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
@@ -196,6 +196,9 @@ Configs are set in `gcplog` section in `scrape_config`
       use_incoming_timestamp: false # default rewrite timestamps.
       labels:
         job: "gcplog"
+    relabel_configs:
+      - source_labels: ['__project_id']
+        target_label: 'project'
 ```
 Here `project_id` and `subscription` are the only required fields.
 
@@ -204,7 +207,13 @@ Here `project_id` and `subscription` are the only required fields.
 
 Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with pubsub subscription to receive logs from.
 
-It also support `relabeling` and `pipeline` stages just like other targets.
+It also support `relabeling` and `pipeline` stages just like other targets. 
+
+When Promtail receives GCP logs the labels that are set on the GCP resources are available as internal labels. Like in the example above, the `__project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`. See [Relabeling](#relabeling) for more information.
+
+Log entries scraped by `gcplog` will add an additional label called `promtail_instance`. This label uniquely identifies each promtail instance trying to scrape gcplog (from a single `subscription_id`).
+We need this unique identifier to avoid out-of-order errors from Loki servers.
+Because say two promtail instances rewrite timestamp of log entries(with same labelset) at the same time may reach Loki servers at different times can cause Loki servers to reject it.
 
 ## Syslog Receiver
 

@@ -78,7 +78,7 @@ type ServerStats struct {
 	Received    int64
 	NodeCount   int64
 	MinLatency  int64
-	AvgLatency  int64
+	AvgLatency  float64
 	MaxLatency  int64
 	Connections int64
 	Outstanding int64
@@ -163,6 +163,16 @@ type CreateRequest struct {
 	Data  []byte
 	Acl   []ACL
 	Flags int32
+}
+
+type CreateContainerRequest CreateRequest
+
+type CreateTTLRequest struct {
+	Path  string
+	Data  []byte
+	Acl   []ACL
+	Flags int32
+	Ttl   int64 // ms
 }
 
 type createResponse pathResponse
@@ -589,6 +599,10 @@ func requestStructForOp(op int32) interface{} {
 		return &closeRequest{}
 	case opCreate:
 		return &CreateRequest{}
+	case opCreateContainer:
+		return &CreateContainerRequest{}
+	case opCreateTTL:
+		return &CreateTTLRequest{}
 	case opDelete:
 		return &DeleteRequest{}
 	case opExists:

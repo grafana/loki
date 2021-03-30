@@ -24,6 +24,7 @@ Configuration examples can be found in the [Configuration Examples](examples/) d
   - [ingester_config](#ingester_config)
   - [consul_config](#consul_config)
   - [etcd_config](#etcd_config)
+  - [compactor_config](#compactor_config)
   - [memberlist_config](#memberlist_config)
   - [storage_config](#storage_config)
   - [chunk_store_config](#chunk_store_config)
@@ -151,6 +152,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the chunk index schema and where it is stored.
 [schema_config: <schema_config>]
 
+# Configures the compactor component which compacts index shards for performance.
+[compactor: <compactor_config>]
+
 # Configures limits per-tenant or globally
 [limits_config: <limits_config>]
 
@@ -256,10 +260,6 @@ ring:
     # Configuration for an ETCD v3 client. Only applies if store is "etcd"
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
-
-    # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-    # The CLI flags prefix for this block config is: distributor.ring
-    [memberlist: <memberlist_config>]
 
   # The heartbeat timeout after which ingesters are skipped for
   # reading and writing.
@@ -778,10 +778,6 @@ lifecycler:
       # The etcd_config configures the etcd client.
       # CLI flag: <no prefix>
       [etcd: <etcd_config>]
-
-      # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-      # CLI flag: <no prefix>
-      [memberlist: <memberlist_config>]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
     # CLI flag: -ring.heartbeat-timeout
@@ -1354,7 +1350,7 @@ filesystem:
   directory: <string>
 
 # Configures storing index in an Object Store(GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files.
-# Required fields only required when boltdb-shipper is defined in config.  
+# Required fields only required when boltdb-shipper is defined in config.
 boltdb_shipper:
   # Directory where ingesters would write boltdb files which would then be
   # uploaded by shipper to configured storage
@@ -1610,6 +1606,28 @@ chunks:
 
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int> | default = 16]
+```
+
+## compactor_config
+
+The `compactor_config` block configures the compactor component. This component periodically
+compacts index shards to more performant forms.
+
+```yaml
+# Directory where files can be downloaded for compaction.
+[working_directory: <string>]
+
+# The shared store used for storing boltdb files.
+# Supported types: gcs, s3, azure, swift, filesystem.
+[shared_store: <string>]
+
+# Prefix to add to object keys in shared store.
+# Path separator(if any) should always be a '/'.
+# Prefix should never start with a separator but should always end with it.
+[shared_store_key_prefix: <string> | default = "index/"]
+
+# Interval at which to re-run the compaction operation.
+[compaction_interval: <duration> | default = 2h]
 ```
 
 ## limits_config

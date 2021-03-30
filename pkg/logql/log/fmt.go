@@ -76,6 +76,15 @@ var (
 	}
 )
 
+func init() {
+	sprigFuncMap := sprig.GenericFuncMap()
+	for _, v := range templateFunctions {
+		if function, ok := sprigFuncMap[v]; ok {
+			functionMap[v] = function
+		}
+	}
+}
+
 type LineFormatter struct {
 	*template.Template
 	buf *bytes.Buffer
@@ -83,7 +92,7 @@ type LineFormatter struct {
 
 // NewFormatter creates a new log line formatter from a given text template.
 func NewFormatter(tmpl string) (*LineFormatter, error) {
-	t, err := template.New("line").Option("missingkey=zero").Funcs(templateFunctionMap()).Parse(tmpl)
+	t, err := template.New("line").Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %s", err)
 	}
@@ -207,7 +216,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 	for _, fm := range fmts {
 		toAdd := labelFormatter{LabelFmt: fm}
 		if !fm.Rename {
-			t, err := template.New("label").Option("missingkey=zero").Funcs(templateFunctionMap()).Parse(fm.Value)
+			t, err := template.New("label").Option("missingkey=zero").Funcs(functionMap).Parse(fm.Value)
 			if err != nil {
 				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.Name, err)
 			}
@@ -314,15 +323,4 @@ func substring(start, end int, s string) string {
 		return ""
 	}
 	return string(runes[start:end])
-}
-
-// add sprig template functions maps
-func templateFunctionMap() map[string]interface{} {
-	sprigFuncMap := sprig.GenericFuncMap()
-	for _, v := range templateFunctions {
-		if function, ok := sprigFuncMap[v]; ok {
-			functionMap[v] = function
-		}
-	}
-	return functionMap
 }

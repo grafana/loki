@@ -499,6 +499,7 @@ func newUnwrapExpr(id string, operation string) *unwrapExpr {
 type logRange struct {
 	left     LogSelectorExpr
 	interval time.Duration
+	offset   time.Duration
 
 	unwrap *unwrapExpr
 }
@@ -511,16 +512,41 @@ func (r logRange) String() string {
 		sb.WriteString(r.unwrap.String())
 	}
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
+	if r.offset != 0 {
+		offsetExpr := offsetExpr{offset: r.offset}
+		sb.WriteString(offsetExpr.String())
+	}
 	return sb.String()
 }
 
 func (r *logRange) Shardable() bool { return r.left.Shardable() }
 
-func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr) *logRange {
+func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr, o *offsetExpr) *logRange {
+	var offset time.Duration
+	if o != nil {
+		offset = o.offset
+	}
 	return &logRange{
 		left:     left,
 		interval: interval,
 		unwrap:   u,
+		offset:   offset,
+	}
+}
+
+type offsetExpr struct {
+	offset time.Duration
+}
+
+func (o *offsetExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(" %s %s", OpOffset, o.offset.String()))
+	return sb.String()
+}
+
+func newOffsetExpr(offset time.Duration) *offsetExpr {
+	return &offsetExpr{
+		offset: offset,
 	}
 }
 
@@ -582,6 +608,7 @@ const (
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
+	OpOffset = "offset"
 
 	// conversion Op
 	OpConvBytes           = "bytes"

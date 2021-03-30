@@ -10,7 +10,7 @@ This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/flue
 
 Prerequisites:
 
-* Go 1.11+
+* Go 1.16+
 * gcc (for cgo)
 
 To build the output plugin library file (`out_grafana_loki.so`), you can use:

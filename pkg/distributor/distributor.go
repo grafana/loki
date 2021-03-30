@@ -235,7 +235,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if ok, _ := d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize); !ok {
+	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
@@ -253,9 +253,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return nil, err
 		}
 
-		streams[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
+		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
 		streams[i].maxFailures = replicationSet.MaxErrors
-		for _, ingester := range replicationSet.Ingesters {
+		for _, ingester := range replicationSet.Instances {
 			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &streams[i])
 			ingesterDescs[ingester.Addr] = ingester
 		}
