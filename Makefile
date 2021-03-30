@@ -582,3 +582,9 @@ lint-jsonnet:
 fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
+
+# usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
+# this will run the fuzzing using /tmp/testcase and save benchmark locally.
+test-fuzz:
+	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
+		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
