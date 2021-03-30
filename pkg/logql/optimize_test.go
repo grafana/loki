@@ -28,7 +28,7 @@ func Test_optimizeSampleExpr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			e, err := ParseSampleExpr(tt.in)
+			e, err := ParseSampleExpr(tt.in, true)
 			require.NoError(t, err)
 			got, err := optimizeSampleExpr(e)
 			require.NoError(t, err)

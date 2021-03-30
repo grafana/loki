@@ -332,7 +332,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	query := httpRequest.Form.Get("query")
 	regexp := httpRequest.Form.Get("regexp")
 	if regexp != "" {
-		expr, err := logql.ParseLogSelector(query)
+		expr, err := logql.ParseLogSelector(query, true)
 		if err != nil {
 			return "", err
 		}
