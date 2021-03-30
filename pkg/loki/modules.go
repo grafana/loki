@@ -410,7 +410,9 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.stopper = stopper
 
 	roundTripper = tripperware(roundTripper)
-	roundTripper = t.QueryFrontEndTripperware(roundTripper)
+	if t.QueryFrontEndTripperware != nil {
+		roundTripper = t.QueryFrontEndTripperware(roundTripper)
+	}
 
 	frontendHandler := transport.NewHandler(t.cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	if t.cfg.Frontend.CompressResponses {
