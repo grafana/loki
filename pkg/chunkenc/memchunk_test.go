@@ -1038,7 +1038,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 	}
 
 	assertOrder := func(t *testing.T, total int64) {
-		expr, err := logql.ParseLogSelector(`{app="foo"} | logfmt`)
+		expr, err := logql.ParseLogSelector(`{app="foo"} | logfmt`, true)
 		require.NoError(t, err)
 		p, err := expr.Pipeline()
 		require.NoError(t, err)
