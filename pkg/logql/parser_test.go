@@ -81,112 +81,118 @@ func TestParse(t *testing.T) {
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		},
 		{
-			in:  `{ foo != "bar" }`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+			in: `{ namespace="buzz", foo != "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "namespace", "buzz"),
+				mustNewMatcher(labels.MatchNotEqual, "foo", "bar"),
+			}},
 		},
 		{
 			in:  `{ foo =~ "bar" }`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
 		},
 		{
-			in:  `{ foo !~ "bar" }`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+			in: `{ namespace="buzz", foo !~ "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "namespace", "buzz"),
+				mustNewMatcher(labels.MatchNotRegexp, "foo", "bar"),
+			}},
 		},
 		{
-			in: `count_over_time({ foo !~ "bar" }[12m])`,
+			in: `count_over_time({ foo = "bar" }[12m])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 12 * time.Minute,
 				},
 				operation: "count_over_time",
 			},
 		},
 		{
-			in: `bytes_over_time({ foo !~ "bar" }[12m])`,
+			in: `bytes_over_time({ foo = "bar" }[12m])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 12 * time.Minute,
 				},
 				operation: OpRangeTypeBytes,
 			},
 		},
 		{
-			in: `bytes_rate({ foo !~ "bar" }[12m])`,
+			in: `bytes_rate({ foo = "bar" }[12m])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 12 * time.Minute,
 				},
 				operation: OpRangeTypeBytesRate,
 			},
 		},
 		{
-			in: `rate({ foo !~ "bar" }[5h])`,
+			in: `rate({ foo = "bar" }[5h])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "rate",
 			},
 		},
 		{
-			in: `rate({ foo !~ "bar" }[5d])`,
+			in: `rate({ foo = "bar" }[5d])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * 24 * time.Hour,
 				},
 				operation: "rate",
 			},
 		},
 		{
-			in: `count_over_time({ foo !~ "bar" }[1w])`,
+			in: `count_over_time({ foo = "bar" }[1w])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 7 * 24 * time.Hour,
 				},
 				operation: "count_over_time",
 			},
 		},
 		{
-			in: `absent_over_time({ foo !~ "bar" }[1w])`,
+			in: `absent_over_time({ foo = "bar" }[1w])`,
 			exp: &rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 7 * 24 * time.Hour,
 				},
 				operation: OpRangeTypeAbsent,
 			},
 		},
 		{
-			in: `sum(rate({ foo !~ "bar" }[5h]))`,
+			in: `sum(rate({ foo = "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "rate",
 			}, "sum", nil, nil),
 		},
 		{
-			in: `sum(rate({ foo !~ "bar" }[1y]))`,
+			in: `sum(rate({ foo ="bar" }[1y]))`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 365 * 24 * time.Hour,
 				},
 				operation: "rate",
 			}, "sum", nil, nil),
 		},
 		{
-			in: `avg(count_over_time({ foo !~ "bar" }[5h])) by (bar,foo)`,
+			in: `avg(count_over_time({ foo = "bar" }[5h])) by (bar,foo)`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "count_over_time",
@@ -198,7 +204,7 @@ func TestParse(t *testing.T) {
 		{
 			in: `avg(
 					label_replace(
-						count_over_time({ foo !~ "bar" }[5h]),
+						count_over_time({ foo = "bar" }[5h]),
 						"bar",
 						"$1$2",
 						"foo",
@@ -209,7 +215,7 @@ func TestParse(t *testing.T) {
 				mustNewLabelReplaceExpr(
 					&rangeAggregationExpr{
 						left: &logRange{
-							left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+							left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 							interval: 5 * time.Hour,
 						},
 						operation: "count_over_time",
@@ -222,10 +228,10 @@ func TestParse(t *testing.T) {
 				}, nil),
 		},
 		{
-			in: `avg(count_over_time({ foo !~ "bar" }[5h])) by ()`,
+			in: `avg(count_over_time({ foo = "bar" }[5h])) by ()`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "count_over_time",
@@ -235,10 +241,10 @@ func TestParse(t *testing.T) {
 			}, nil),
 		},
 		{
-			in: `max without (bar) (count_over_time({ foo !~ "bar" }[5h]))`,
+			in: `max without (bar) (count_over_time({ foo = "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "count_over_time",
@@ -248,10 +254,10 @@ func TestParse(t *testing.T) {
 			}, nil),
 		},
 		{
-			in: `max without () (count_over_time({ foo !~ "bar" }[5h]))`,
+			in: `max without () (count_over_time({ foo = "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "count_over_time",
@@ -261,10 +267,10 @@ func TestParse(t *testing.T) {
 			}, nil),
 		},
 		{
-			in: `topk(10,count_over_time({ foo !~ "bar" }[5h])) without (bar)`,
+			in: `topk(10,count_over_time({ foo = "bar" }[5h])) without (bar)`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "count_over_time",
@@ -274,10 +280,10 @@ func TestParse(t *testing.T) {
 			}, NewStringLabelFilter("10")),
 		},
 		{
-			in: `bottomk(30 ,sum(rate({ foo !~ "bar" }[5h])) by (foo))`,
+			in: `bottomk(30 ,sum(rate({ foo = "bar" }[5h])) by (foo))`,
 			exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "rate",
@@ -288,10 +294,10 @@ func TestParse(t *testing.T) {
 				NewStringLabelFilter("30")),
 		},
 		{
-			in: `max( sum(count_over_time({ foo !~ "bar" }[5h])) without (foo,bar) ) by (foo)`,
+			in: `max( sum(count_over_time({ foo = "bar" }[5h])) without (foo,bar) ) by (foo)`,
 			exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
-					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					interval: 5 * time.Hour,
 				},
 				operation: "count_over_time",
@@ -304,7 +310,7 @@ func TestParse(t *testing.T) {
 			}, nil),
 		},
 		{
-			in: `unk({ foo !~ "bar" }[5m])`,
+			in: `unk({ foo = "bar" }[5m])`,
 			err: ParseError{
 				msg:  "syntax error: unexpected IDENTIFIER",
 				line: 1,
@@ -312,7 +318,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `absent_over_time({ foo !~ "bar" }[5h]) by (foo)`,
+			in: `absent_over_time({ foo = "bar" }[5h]) by (foo)`,
 			err: ParseError{
 				msg:  "grouping not allowed for absent_over_time aggregation",
 				line: 0,
@@ -320,23 +326,23 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `rate({ foo !~ "bar" }[5minutes])`,
+			in: `rate({ foo = "bar" }[5minutes])`,
 			err: ParseError{
 				msg:  `not a valid duration string: "5minutes"`,
 				line: 0,
-				col:  22,
+				col:  21,
 			},
 		},
 		{
-			in: `label_replace(rate({ foo !~ "bar" }[5m]),"")`,
+			in: `label_replace(rate({ foo = "bar" }[5m]),"")`,
 			err: ParseError{
 				msg:  `syntax error: unexpected ), expecting ,`,
 				line: 1,
-				col:  44,
+				col:  43,
 			},
 		},
 		{
-			in: `label_replace(rate({ foo !~ "bar" }[5m]),"foo","$1","bar","^^^^x43\\q")`,
+			in: `label_replace(rate({ foo = "bar" }[5m]),"foo","$1","bar","^^^^x43\\q")`,
 			err: ParseError{
 				msg:  "invalid regex in label_replace: error parsing regexp: invalid escape sequence: `\\q`",
 				line: 0,
@@ -344,23 +350,23 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `rate({ foo !~ "bar" }[5)`,
+			in: `rate({ foo = "bar" }[5)`,
 			err: ParseError{
 				msg:  "missing closing ']' in duration",
-				line: 0,
-				col:  22,
-			},
-		},
-		{
-			in: `min({ foo !~ "bar" }[5m])`,
-			err: ParseError{
-				msg:  "syntax error: unexpected RANGE",
 				line: 0,
 				col:  21,
 			},
 		},
 		{
-			in: `sum(3 ,count_over_time({ foo !~ "bar" }[5h]))`,
+			in: `min({ foo = "bar" }[5m])`,
+			err: ParseError{
+				msg:  "syntax error: unexpected RANGE",
+				line: 0,
+				col:  20,
+			},
+		},
+		{
+			in: `sum(3 ,count_over_time({ foo = "bar" }[5h]))`,
 			err: ParseError{
 				msg:  "unsupported parameter for operation sum(3,",
 				line: 0,
@@ -368,7 +374,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `topk(count_over_time({ foo !~ "bar" }[5h]))`,
+			in: `topk(count_over_time({ foo = "bar" }[5h]))`,
 			err: ParseError{
 				msg:  "parameter required for operation topk",
 				line: 0,
@@ -376,7 +382,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `bottomk(he,count_over_time({ foo !~ "bar" }[5h]))`,
+			in: `bottomk(he,count_over_time({ foo = "bar" }[5h]))`,
 			err: ParseError{
 				msg:  "syntax error: unexpected IDENTIFIER",
 				line: 1,
@@ -384,7 +390,7 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `bottomk(1.2,count_over_time({ foo !~ "bar" }[5h]))`,
+			in: `bottomk(1.2,count_over_time({ foo = "bar" }[5h]))`,
 			err: ParseError{
 				msg:  "invalid parameter bottomk(1.2,",
 				line: 0,
@@ -392,11 +398,11 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `stddev({ foo !~ "bar" })`,
+			in: `stddev({ foo = "bar" })`,
 			err: ParseError{
 				msg:  "syntax error: unexpected )",
 				line: 1,
-				col:  24,
+				col:  23,
 			},
 		},
 		{
@@ -2171,12 +2177,12 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `count_over_time({ foo != "bar" }[12m]) > count_over_time({ foo = "bar" }[12m])`,
+			in: `count_over_time({ foo ="bar" }[12m]) > count_over_time({ foo = "bar" }[12m])`,
 			exp: &binOpExpr{
 				op: OpTypeGT,
 				SampleExpr: &rangeAggregationExpr{
 					left: &logRange{
-						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						interval: 12 * time.Minute,
 					},
 					operation: "count_over_time",
@@ -2191,12 +2197,12 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			in: `count_over_time({ foo != "bar" }[12m]) > 1`,
+			in: `count_over_time({ foo = "bar" }[12m]) > 1`,
 			exp: &binOpExpr{
 				op: OpTypeGT,
 				SampleExpr: &rangeAggregationExpr{
 					left: &logRange{
-						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						interval: 12 * time.Minute,
 					},
 					operation: "count_over_time",
@@ -2206,18 +2212,18 @@ func TestParse(t *testing.T) {
 		},
 		{
 			// cannot compare metric & log queries
-			in: `count_over_time({ foo != "bar" }[12m]) > { foo = "bar" }`,
+			in: `count_over_time({ foo = "bar" }[12m]) > { foo = "bar" }`,
 			err: ParseError{
 				msg: "unexpected type for right leg of binary operation (>): *logql.matchersExpr",
 			},
 		},
 		{
-			in: `count_over_time({ foo != "bar" }[12m]) or count_over_time({ foo = "bar" }[12m]) > 1`,
+			in: `count_over_time({ foo = "bar" }[12m]) or count_over_time({ foo = "bar" }[12m]) > 1`,
 			exp: &binOpExpr{
 				op: OpTypeOr,
 				SampleExpr: &rangeAggregationExpr{
 					left: &logRange{
-						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+						left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						interval: 12 * time.Minute,
 					},
 					operation: "count_over_time",
@@ -2516,7 +2522,7 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in:  `count_over_time({foo!="bar"}[5m])`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in: `count_over_time({app="baz", foo!="bar"}[5m])`,
@@ -2526,36 +2532,36 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in:  `count_over_time({app=~".*"}[5m])`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in: `count_over_time({app=~"bar|baz"}[5m])`,
 		},
 		{
 			in:  `count_over_time({app!~"bar|baz"}[5m])`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in:  `1 + count_over_time({app=~".*"}[5m])`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in:  `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".*"}[5m])`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m])`,
 		},
 		{
 			in:  `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".*"}[5m]) + 1`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
-			_, err := ParseSampleExpr(tc.in, true)
+			_, err := ParseSampleExpr(tc.in)
 			require.Equal(t, tc.err, err)
 		})
 	}
@@ -2571,7 +2577,7 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in:  `{foo!="bar"}`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in: `{app="baz", foo!="bar"}`,
@@ -2581,14 +2587,14 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in:  `{app=~".*"}`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in: `{foo=~"bar|baz"}`,
 		},
 		{
 			in:  `{foo!~"bar|baz"}`,
-			err: errors.New(errAtleastOneEqualityMatcherRequired),
+			err: newParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

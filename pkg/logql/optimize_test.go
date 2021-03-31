@@ -7,11 +7,10 @@ import (
 )
 
 func Test_optimizeSampleExpr(t *testing.T) {
-
 	tests := []struct {
 		in, expected string
 	}{
-		//noop
+		// noop
 		{`1`, `1`},
 		{`1 + 1`, `2`},
 		{`topk(10,sum by(name)(rate({region="us-east1"}[5m])))`, `topk(10,sum by(name)(rate({region="us-east1"}[5m])))`},
@@ -28,7 +27,7 @@ func Test_optimizeSampleExpr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			e, err := ParseSampleExpr(tt.in, true)
+			e, err := ParseSampleExpr(tt.in)
 			require.NoError(t, err)
 			got, err := optimizeSampleExpr(e)
 			require.NoError(t, err)
