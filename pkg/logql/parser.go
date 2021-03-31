@@ -58,7 +58,18 @@ func (p *parser) Parse() (Expr, error) {
 }
 
 // ParseExpr parses a string and returns an Expr.
-func ParseExpr(input string) (expr Expr, err error) {
+func ParseExpr(input string) (Expr, error) {
+	expr, err := parseExprWithoutValidation(input)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateExpr(expr); err != nil {
+		return nil, err
+	}
+	return expr, nil
+}
+
+func parseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
 		return nil, newParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
@@ -83,14 +94,32 @@ func ParseExpr(input string) (expr Expr, err error) {
 	return p.Parse()
 }
 
-// checkEqualityMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
-func checkEqualityMatchers(matchers []*labels.Matcher) error {
+func validateExpr(expr Expr) error {
+	switch e := expr.(type) {
+	case SampleExpr:
+		err := validateSampleExpr(e)
+		if err != nil {
+			return err
+		}
+	case LogSelectorExpr:
+		err := validateMatchers(e.Matchers())
+		if err != nil {
+			return err
+		}
+	default:
+		return newParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
+	}
+	return nil
+}
+
+// validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
+func validateMatchers(matchers []*labels.Matcher) error {
 	if len(matchers) == 0 {
 		return nil
 	}
 	_, matchers = util.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
-		return errors.New(errAtleastOneEqualityMatcherRequired)
+		return newParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
 
 	return nil
@@ -111,7 +140,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 }
 
 // ParseSampleExpr parses a string and returns the sampleExpr
-func ParseSampleExpr(input string, equalityMatcherRequired bool) (SampleExpr, error) {
+func ParseSampleExpr(input string) (SampleExpr, error) {
 	expr, err := ParseExpr(input)
 	if err != nil {
 		return nil, err
@@ -121,33 +150,27 @@ func ParseSampleExpr(input string, equalityMatcherRequired bool) (SampleExpr, er
 		return nil, errors.New("only sample expression supported")
 	}
 
-	if equalityMatcherRequired {
-		err = sampleExprCheckEqualityMatchers(sampleExpr)
-		if err != nil {
-			return nil, err
-		}
-	}
 	return sampleExpr, nil
 }
 
-func sampleExprCheckEqualityMatchers(expr SampleExpr) error {
+func validateSampleExpr(expr SampleExpr) error {
 	switch e := expr.(type) {
 	case *binOpExpr:
-		if err := sampleExprCheckEqualityMatchers(e.SampleExpr); err != nil {
+		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}
 
-		return sampleExprCheckEqualityMatchers(e.RHS)
+		return validateSampleExpr(e.RHS)
 	case *literalExpr:
 		return nil
 	default:
-		return checkEqualityMatchers(expr.Selector().Matchers())
+		return validateMatchers(expr.Selector().Matchers())
 	}
 }
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
-func ParseLogSelector(input string, equalityMatcherRequired bool) (LogSelectorExpr, error) {
-	expr, err := ParseExpr(input)
+func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
+	expr, err := parseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -155,10 +178,8 @@ func ParseLogSelector(input string, equalityMatcherRequired bool) (LogSelectorEx
 	if !ok {
 		return nil, errors.New("only log selector is supported")
 	}
-
-	if equalityMatcherRequired {
-		err = checkEqualityMatchers(logSelector.Matchers())
-		if err != nil {
+	if validate {
+		if err := validateExpr(expr); err != nil {
 			return nil, err
 		}
 	}

@@ -15,7 +15,7 @@ func optimizeSampleExpr(expr SampleExpr) (SampleExpr, error) {
 	}
 	// clone the expr.
 	q := expr.String()
-	expr, err := ParseSampleExpr(q, true)
+	expr, err := ParseSampleExpr(q)
 	if err != nil {
 		return nil, err
 	}

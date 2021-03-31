@@ -54,13 +54,13 @@ type SelectSampleParams struct {
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (SampleExpr, error) {
-	return ParseSampleExpr(s.Selector, true)
+	return ParseSampleExpr(s.Selector)
 }
 
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) LogSelector() (LogSelectorExpr, error) {
-	expr, err := ParseSampleExpr(s.Selector, true)
+	expr, err := ParseSampleExpr(s.Selector)
 	if err != nil {
 		return nil, err
 	}

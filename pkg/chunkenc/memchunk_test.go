@@ -999,7 +999,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 	} {
 		b.Run(test, func(b *testing.B) {
 			b.ReportAllocs()
-			expr, err := logql.ParseSampleExpr(test, true)
+			expr, err := logql.ParseSampleExpr(test)
 			if err != nil {
 				b.Fatal(err)
 			}
