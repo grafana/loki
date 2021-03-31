@@ -217,6 +217,7 @@ func (c *client) run() {
 	maxWaitCheck := time.NewTicker(maxWaitCheckFrequency)
 
 	defer func() {
+		maxWaitCheck.Stop()
 		// Send all pending batches
 		for tenantID, batch := range batches {
 			c.sendBatch(tenantID, batch)
