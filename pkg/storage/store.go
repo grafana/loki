@@ -79,10 +79,12 @@ type Store interface {
 	SetChunkFilterer(chunkFilter RequestChunkFilterer)
 }
 
+// RequestChunkFilterer creates ChunkFilterer for a given request context.
 type RequestChunkFilterer interface {
 	ForRequest(ctx context.Context) ChunkFilterer
 }
 
+// ChunkFilterer filters chunks based on the metric.
 type ChunkFilterer interface {
 	ShouldFilter(metric labels.Labels) bool
 }
