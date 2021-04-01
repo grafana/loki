@@ -634,9 +634,9 @@ func (f fakeChunkFilterer) ForRequest(ctx context.Context) ChunkFilterer {
 
 func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 	if metric.Get("foo") == "bazz" {
-		return false
+		return true
 	}
-	return true
+	return false
 }
 
 func Test_ChunkFilterer(t *testing.T) {
@@ -656,8 +656,8 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		_, ok := mustParseLabels(it.Labels())["bazz"]
-		require.False(t, ok)
+		v, _ := mustParseLabels(it.Labels())["foo"]
+		require.NotEqual(t, "bazz", v)
 	}
 
 	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
@@ -667,14 +667,14 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		_, ok := mustParseLabels(it.Labels())["bazz"]
-		require.False(t, ok)
+		v, _ := mustParseLabels(it.Labels())["foo"]
+		require.NotEqual(t, "bazz", v)
 	}
 	ids, err := s.GetSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
 	require.NoError(t, err)
 	for _, id := range ids {
-		_, ok := id.Labels["bazz"]
-		require.False(t, ok)
+		v, _ := id.Labels["foo"]
+		require.NotEqual(t, "bazz", v)
 	}
 }
 
