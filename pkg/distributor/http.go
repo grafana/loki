@@ -3,6 +3,7 @@ package distributor
 import (
 	"compress/gzip"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"strings"
@@ -107,24 +108,26 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 func ParseRequest(logger gokit.Logger, userID string, r *http.Request) (*logproto.PushRequest, error) {
 
-	var body lokiutil.SizeReader
-
+	// Body
+	var body io.Reader
+	// bodySize should always reflect the compressed size of the request body
+	bodySize := lokiutil.NewSizeReader(r.Body)
 	contentEncoding := r.Header.Get(contentEnc)
 	switch contentEncoding {
 	case "":
-		body = lokiutil.NewSizeReader(r.Body)
+		body = bodySize
 	case "snappy":
 		// Snappy-decoding is done by `util.ParseProtoReader(..., util.RawSnappy)` below.
 		// Pass on body bytes. Note: HTTP clients do not need to set this header,
 		// but they sometimes do. See #3407.
-		body = lokiutil.NewSizeReader(r.Body)
+		body = bodySize
 	case "gzip":
-		gzipReader, err := gzip.NewReader(r.Body)
+		gzipReader, err := gzip.NewReader(bodySize)
 		if err != nil {
 			return nil, err
 		}
 		defer gzipReader.Close()
-		body = lokiutil.NewSizeReader(gzipReader)
+		body = gzipReader
 	default:
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
@@ -163,7 +166,7 @@ func ParseRequest(logger gokit.Logger, userID string, r *http.Request) (*logprot
 			"path", r.URL.Path,
 			"contentType", contentType,
 			"contentEncoding", contentEncoding,
-			"bodySize", humanize.Bytes(uint64(body.Size())),
+			"bodySize", humanize.Bytes(uint64(bodySize.Size())),
 			"streams", len(req.Streams),
 			"entries", totalEntries,
 			"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
