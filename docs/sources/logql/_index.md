@@ -319,7 +319,7 @@ allows to extract the `container` and `pod` labels and the `original log message
 
 #### Label Filter Expression
 
-Label filter expression allows filtering log line using their original and extracted labels. It can contains multiple predicates.
+Label filter expression allows filtering log line using their original and extracted labels. It can contain multiple predicates.
 
 A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
 
@@ -393,7 +393,7 @@ You can use double quoted string for the template or backticks `` `{{.label_name
 
 `line_format` also supports `math` functions. Example:
 
-If we have following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms). We can divide the duration by `1000` to get the value in seconds.
+If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms), we can divide the duration by `1000` to get the value in seconds.
 
 ```logql
 {container="frontend"} | logfmt | line_format "{{.ip}} {{.status}} {{div .duration 1000}}"
@@ -516,7 +516,7 @@ It returns the per-second rate of all non-timeout errors within the last minutes
 
 #### Unwrapped Range Aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be use within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
