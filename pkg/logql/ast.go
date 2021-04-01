@@ -574,6 +574,8 @@ const (
 	OpRangeTypeStdvar    = "stdvar_over_time"
 	OpRangeTypeStddev    = "stddev_over_time"
 	OpRangeTypeQuantile  = "quantile_over_time"
+	OpRangeTypeFirst     = "first_over_time"
+	OpRangeTypeLast      = "last_over_time"
 	OpRangeTypeAbsent    = "absent_over_time"
 
 	// binops - logical/set
@@ -691,14 +693,14 @@ func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 func (e rangeAggregationExpr) validate() error {
 	if e.grouping != nil {
 		switch e.operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.operation)
 		}
 	}
 	if e.left.unwrap != nil {
 		switch e.operation {
-		case OpRangeTypeRate, OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeAbsent:
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.operation)

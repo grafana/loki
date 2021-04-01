@@ -534,6 +534,8 @@ Supported function for operating over unwrapped ranges are:
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
 - `min_over_time(unwrapped-range)`: the minimum value of all points in the specified interval
+- `first_over_time(unwrapped-range)`: the first value of all points in the specified interval
+- `last_over_time(unwrapped-range)`: the last value of all points in the specified interval
 - `stdvar_over_time(unwrapped-range)`: the population standard variance of the values in the specified interval.
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
