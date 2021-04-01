@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 /*
@@ -44,7 +45,6 @@ func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *S
 		metrics:        metrics,
 		limits:         limits,
 	}
-
 }
 
 // Query constructs a Query
@@ -168,12 +168,11 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 	for _, res := range results {
 		if err := stats.JoinResults(ctx, res.Statistics); err != nil {
-			level.Warn(util.Logger).Log("msg", "unable to merge downstream results", "err", err)
+			level.Warn(util_log.Logger).Log("msg", "unable to merge downstream results", "err", err)
 		}
 	}
 
 	return results, nil
-
 }
 
 type errorQuerier struct{}
@@ -181,6 +180,7 @@ type errorQuerier struct{}
 func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	return nil, errors.New("Unimplemented")
 }
+
 func (errorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, errors.New("Unimplemented")
 }
@@ -241,7 +241,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		for i, res := range results {
 			stepper, err := ResultStepEvaluator(res, params)
 			if err != nil {
-				level.Warn(util.Logger).Log(
+				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract StepEvaluator",
 					"err", err,
 					"expr", queries[i].Expr.String(),
@@ -276,7 +276,6 @@ func (ev *DownstreamEvaluator) Iterator(
 			Params: params,
 			Shards: shards,
 		}})
-
 		if err != nil {
 			return nil, err
 		}
@@ -306,7 +305,7 @@ func (ev *DownstreamEvaluator) Iterator(
 		for i, res := range results {
 			iter, err := ResultIterator(res, params)
 			if err != nil {
-				level.Warn(util.Logger).Log(
+				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract Iterator",
 					"err", err,
 					"expr", queries[i].Expr.String(),
@@ -333,7 +332,6 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 				vec = append(vec, cur...)
 			}
 			return done, ts, vec
-
 		},
 		func() (lastErr error) {
 			for _, eval := range evaluators {
@@ -356,7 +354,7 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 			case 1:
 				return errs[0]
 			default:
-				return fmt.Errorf("Multiple errors: %+v", errs)
+				return util.MultiError(errs)
 			}
 		},
 	)
@@ -394,5 +392,4 @@ func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), ValueTypeStreams)
 	}
 	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
-
 }

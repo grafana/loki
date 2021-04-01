@@ -7,6 +7,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,10 +18,9 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
-	"github.com/cortexproject/cortex/pkg/util"
 	cutil "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -79,6 +80,7 @@ type instance struct {
 	tailerMtx sync.RWMutex
 
 	limiter *Limiter
+	configs *runtime.TenantConfigs
 
 	wal WAL
 
@@ -89,14 +91,7 @@ type instance struct {
 	metrics *ingesterMetrics
 }
 
-func newInstance(
-	cfg *Config,
-	instanceID string,
-	limiter *Limiter,
-	wal WAL,
-	metrics *ingesterMetrics,
-	flushOnShutdownSwitch *OnceSwitch,
-) *instance {
+func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch) *instance {
 	i := &instance{
 		cfg:         cfg,
 		streams:     map[string]*stream{},
@@ -110,6 +105,7 @@ func newInstance(
 
 		tailers: map[uint32]*tailer{},
 		limiter: limiter,
+		configs: configs,
 
 		wal:                   wal,
 		metrics:               metrics,
@@ -130,7 +126,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	stream, ok := i.streamsByFP[fp]
 	if !ok {
 
-		sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(ls), fp)
+		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(ls), fp)
 		stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
 		i.streamsByFP[fp] = stream
 		i.streams[stream.labelsString] = stream
@@ -164,7 +160,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		if err := stream.Push(ctx, s.Entries, record); err != nil {
+		if _, err := stream.Push(ctx, s.Entries, record); err != nil {
 			appendErr = err
 			continue
 		}
@@ -175,7 +171,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
 				i.metrics.walDiskFullFailures.Inc()
 				i.flushOnShutdownSwitch.TriggerAnd(func() {
-					level.Error(util.Logger).Log(
+					level.Error(util_log.Logger).Log(
 						"msg",
 						"Error writing to WAL, disk full, no further messages will be logged for this error",
 					)
@@ -184,7 +180,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 				return err
 			}
 		}
-
 	}
 
 	return appendErr
@@ -210,22 +205,39 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	}
 
 	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Debug(util_log.Logger).Log(
+				"msg", "failed to create stream, exceeded limit",
+				"org_id", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
+
 		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
 		bytes := 0
 		for _, e := range pushReqStream.Entries {
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
 	}
 
 	labels, err := logql.ParseLabels(pushReqStream.Labels)
 	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Debug(util_log.Logger).Log(
+				"msg", "failed to create stream, failed to parse labels",
+				"org_id", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	fp := i.getHashForLabels(labels)
 
-	sortedLabels := i.index.Add(client.FromLabelsToLabelAdapters(labels), fp)
+	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
 	stream = newStream(i.cfg, fp, sortedLabels, i.metrics)
 	i.streams[pushReqStream.Labels] = stream
 	i.streamsByFP[fp] = stream
@@ -244,6 +256,14 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
+
+	if i.configs.LogStreamCreation(i.instanceID) {
+		level.Debug(util_log.Logger).Log(
+			"msg", "successfully created stream",
+			"org_id", i.instanceID,
+			"stream", pushReqStream.Labels,
+		)
+	}
 
 	return stream, nil
 }
@@ -391,7 +411,6 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 		series = make([]logproto.SeriesIdentifier, 0, len(dedupedSeries))
 		for _, v := range dedupedSeries {
 			series = append(series, v)
-
 		}
 	}
 
@@ -529,7 +548,13 @@ func isDone(ctx context.Context) bool {
 	}
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+// QuerierQueryServer is the GRPC server stream we use to send batch of entries.
+type QuerierQueryServer interface {
+	Context() context.Context
+	Send(res *logproto.QueryResponse) error
+}
+
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
 	ingStats := stats.GetIngesterData(ctx)
 	if limit == 0 {
 		// send all batches.
@@ -617,10 +642,8 @@ func (o *OnceSwitch) Trigger() {
 // TriggerAnd will ensure the switch is on and run the provided function if
 // the switch was not already toggled on.
 func (o *OnceSwitch) TriggerAnd(fn func()) {
-
 	triggeredPrior := o.triggered.Swap(true)
 	if !triggeredPrior && fn != nil {
 		fn()
 	}
-
 }

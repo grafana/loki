@@ -5,8 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"math/rand"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -28,12 +30,59 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+const (
+	blocksMarkedForDeletionName = "cortex_compactor_blocks_marked_for_deletion_total"
+	blocksMarkedForDeletionHelp = "Total number of blocks marked for deletion in compactor."
 )
 
 var (
 	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+	RingOp                = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+
+	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
+		return compact.NewDefaultGrouper(
+			logger,
+			bkt,
+			false, // Do not accept malformed indexes
+			true,  // Enable vertical compaction
+			reg,
+			blocksMarkedForDeletion,
+			garbageCollectedBlocks)
+	}
+
+	DefaultBlocksCompactorFactory = func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, compact.Planner, error) {
+		compactor, err := tsdb.NewLeveledCompactor(ctx, reg, logger, cfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		planner := compact.NewTSDBBasedPlanner(logger, cfg.BlockRanges.ToMilliseconds())
+		return compactor, planner, nil
+	}
 )
+
+// BlocksGrouperFactory builds and returns the grouper to use to compact a tenant's blocks.
+type BlocksGrouperFactory func(
+	ctx context.Context,
+	cfg Config,
+	bkt objstore.Bucket,
+	logger log.Logger,
+	reg prometheus.Registerer,
+	blocksMarkedForDeletion prometheus.Counter,
+	garbageCollectedBlocks prometheus.Counter,
+) compact.Grouper
+
+// BlocksCompactorFactory builds and returns the compactor and planner to use to compact a tenant's blocks.
+type BlocksCompactorFactory func(
+	ctx context.Context,
+	cfg Config,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) (compact.Compactor, compact.Planner, error)
 
 // Config holds the Compactor config.
 type Config struct {
@@ -45,8 +94,13 @@ type Config struct {
 	CompactionInterval    time.Duration            `yaml:"compaction_interval"`
 	CompactionRetries     int                      `yaml:"compaction_retries"`
 	CompactionConcurrency int                      `yaml:"compaction_concurrency"`
+	CleanupInterval       time.Duration            `yaml:"cleanup_interval"`
 	CleanupConcurrency    int                      `yaml:"cleanup_concurrency"`
 	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
+	TenantCleanupDelay    time.Duration            `yaml:"tenant_cleanup_delay"`
+
+	// Whether the migration of block deletion marks to the global markers location is enabled.
+	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
@@ -60,6 +114,10 @@ type Config struct {
 	// it in tests.
 	retryMinBackoff time.Duration `yaml:"-"`
 	retryMaxBackoff time.Duration `yaml:"-"`
+
+	// Allow downstream projects to customise the blocks compactor.
+	BlocksGrouperFactory   BlocksGrouperFactory   `yaml:"-"`
+	BlocksCompactorFactory BlocksCompactorFactory `yaml:"-"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -76,14 +134,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MetaSyncConcurrency, "compactor.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
-	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
+	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction within a single compaction run.")
 	f.IntVar(&cfg.CompactionConcurrency, "compactor.compaction-concurrency", 1, "Max number of concurrent compactions running.")
-	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks should be cleaned up concurrently (deletion of blocks previously marked for deletion).")
+	f.DurationVar(&cfg.CleanupInterval, "compactor.cleanup-interval", 15*time.Minute, "How frequently compactor should run blocks cleanup and maintenance, as well as update the bucket index.")
+	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks cleanup and maintenance should run concurrently.")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
-		"If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. "+
-		"If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, "+
-		"if store gateway still has the block loaded, or compactor is ignoring the deletion because it's compacting the block at the same time.")
+		"If not 0, blocks will be marked for deletion and compactor component will permanently delete blocks marked for deletion from the bucket. "+
+		"If 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures.")
+	f.DurationVar(&cfg.TenantCleanupDelay, "compactor.tenant-cleanup-delay", 6*time.Hour, "For tenants marked for deletion, this is time between deleting of last block, and doing final cleanup (marker files, debug files) of the tenant.")
+	f.BoolVar(&cfg.BlockDeletionMarksMigrationEnabled, "compactor.block-deletion-marks-migration-enabled", true, "When enabled, at compactor startup the bucket will be scanned and all found deletion marks inside the block location will be copied to the markers global location too. This option can (and should) be safely disabled as soon as the compactor has successfully run at least once.")
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
@@ -100,12 +160,19 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
+// ConfigProvider defines the per-tenant config provider for the Compactor.
+type ConfigProvider interface {
+	bucket.TenantConfigProvider
+	CompactorBlocksRetentionPeriod(user string) time.Duration
+}
+
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
 type Compactor struct {
 	services.Service
 
 	compactorCfg Config
 	storageCfg   cortex_tsdb.BlocksStorageConfig
+	cfgProvider  ConfigProvider
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
@@ -116,9 +183,11 @@ type Compactor struct {
 	// If empty, no users are disabled. If not empty, users in the map are disabled (not owned by this compactor).
 	disabledUsers map[string]struct{}
 
-	// Function that creates bucket client, TSDB planner and compactor using the context.
+	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
-	createDependencies func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error)
+	bucketClientFactory    func(ctx context.Context) (objstore.Bucket, error)
+	blocksGrouperFactory   BlocksGrouperFactory
+	blocksCompactorFactory BlocksCompactorFactory
 
 	// Users scanner, used to discover users from the bucket.
 	usersScanner *cortex_tsdb.UsersScanner
@@ -127,8 +196,8 @@ type Compactor struct {
 	blocksCleaner *BlocksCleaner
 
 	// Underlying compactor and planner used to compact TSDB blocks.
-	tsdbCompactor tsdb.Compactor
-	tsdbPlanner   compact.Planner
+	blocksCompactor compact.Compactor
+	blocksPlanner   compact.Planner
 
 	// Client used to run operations on the bucket storing blocks.
 	bucketClient objstore.Bucket
@@ -156,23 +225,22 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
-	createDependencies := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error) {
-		bucketClient, err := bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
-		if err != nil {
-			return nil, nil, nil, errors.Wrap(err, "failed to create the bucket client")
-		}
-
-		compactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		planner := compact.NewTSDBBasedPlanner(logger, compactorCfg.BlockRanges.ToMilliseconds())
-		return bucketClient, compactor, planner, nil
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
+	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
+		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createDependencies)
+	blocksGrouperFactory := compactorCfg.BlocksGrouperFactory
+	if blocksGrouperFactory == nil {
+		blocksGrouperFactory = DefaultBlocksGrouperFactory
+	}
+
+	blocksCompactorFactory := compactorCfg.BlocksCompactorFactory
+	if blocksCompactorFactory == nil {
+		blocksCompactorFactory = DefaultBlocksCompactorFactory
+	}
+
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, cfgProvider, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -183,18 +251,24 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 func newCompactor(
 	compactorCfg Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
+	cfgProvider ConfigProvider,
 	logger log.Logger,
 	registerer prometheus.Registerer,
-	createDependencies func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error),
+	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
+	blocksGrouperFactory BlocksGrouperFactory,
+	blocksCompactorFactory BlocksCompactorFactory,
 ) (*Compactor, error) {
 	c := &Compactor{
-		compactorCfg:       compactorCfg,
-		storageCfg:         storageCfg,
-		parentLogger:       logger,
-		logger:             log.With(logger, "component", "compactor"),
-		registerer:         registerer,
-		syncerMetrics:      newSyncerMetrics(registerer),
-		createDependencies: createDependencies,
+		compactorCfg:           compactorCfg,
+		storageCfg:             storageCfg,
+		cfgProvider:            cfgProvider,
+		parentLogger:           logger,
+		logger:                 log.With(logger, "component", "compactor"),
+		registerer:             registerer,
+		syncerMetrics:          newSyncerMetrics(registerer),
+		bucketClientFactory:    bucketClientFactory,
+		blocksGrouperFactory:   blocksGrouperFactory,
+		blocksCompactorFactory: blocksCompactorFactory,
 
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -229,8 +303,9 @@ func newCompactor(
 			Help: "Number of tenants failed processing during the current compaction run. Reset to 0 when compactor is idle.",
 		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_blocks_marked_for_deletion_total",
-			Help: "Total number of blocks marked for deletion in compactor.",
+			Name:        blocksMarkedForDeletionName,
+			Help:        blocksMarkedForDeletionHelp,
+			ConstLabels: prometheus.Labels{"reason": "compaction"},
 		}),
 		garbageCollectedBlocks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_garbage_collected_blocks_total",
@@ -265,10 +340,16 @@ func newCompactor(
 func (c *Compactor) starting(ctx context.Context) error {
 	var err error
 
-	// Create bucket client and compactor.
-	c.bucketClient, c.tsdbCompactor, c.tsdbPlanner, err = c.createDependencies(ctx)
+	// Create bucket client.
+	c.bucketClient, err = c.bucketClientFactory(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to initialize compactor objects")
+		return errors.Wrap(err, "failed to create bucket client")
+	}
+
+	// Create blocks compactor dependencies.
+	c.blocksCompactor, c.blocksPlanner, err = c.blocksCompactorFactory(ctx, c.compactorCfg, c.logger, c.registerer)
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize compactor dependencies")
 	}
 
 	// Wrap the bucket client to write block deletion marks in the global location too.
@@ -322,7 +403,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 			maxWaiting := c.compactorCfg.ShardingRing.WaitStabilityMaxDuration
 
 			level.Info(c.logger).Log("msg", "waiting until compactor ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
-			if err := ring.WaitRingStability(ctx, c.ring, ring.Compactor, minWaiting, maxWaiting); err != nil {
+			if err := ring.WaitRingStability(ctx, c.ring, RingOp, minWaiting, maxWaiting); err != nil {
 				level.Warn(c.logger).Log("msg", "compactor is ring topology is not stable after the max waiting time, proceeding anyway")
 			} else {
 				level.Info(c.logger).Log("msg", "compactor is ring topology is stable")
@@ -332,12 +413,12 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// Create the blocks cleaner (service).
 	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
-		DataDir:             c.compactorCfg.DataDir,
-		MetaSyncConcurrency: c.compactorCfg.MetaSyncConcurrency,
-		DeletionDelay:       c.compactorCfg.DeletionDelay,
-		CleanupInterval:     util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.1),
-		CleanupConcurrency:  c.compactorCfg.CleanupConcurrency,
-	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
+		DeletionDelay:                      c.compactorCfg.DeletionDelay,
+		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
+		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
+		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
+		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
+	}, c.bucketClient, c.usersScanner, c.cfgProvider, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
@@ -360,7 +441,7 @@ func (c *Compactor) stopping(_ error) error {
 
 func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
-	c.compactUsersWithRetries(ctx)
+	c.compactUsers(ctx)
 
 	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05))
 	defer ticker.Stop()
@@ -368,7 +449,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			c.compactUsersWithRetries(ctx)
+			c.compactUsers(ctx)
 		case <-ctx.Done():
 			return nil
 		case err := <-c.ringSubservicesWatcher.Chan():
@@ -377,33 +458,20 @@ func (c *Compactor) running(ctx context.Context) error {
 	}
 }
 
-func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
-	retries := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: c.compactorCfg.retryMinBackoff,
-		MaxBackoff: c.compactorCfg.retryMaxBackoff,
-		MaxRetries: c.compactorCfg.CompactionRetries,
-	})
+func (c *Compactor) compactUsers(ctx context.Context) {
+	succeeded := false
 
 	c.compactionRunsStarted.Inc()
 
-	for retries.Ongoing() {
-		if err := c.compactUsers(ctx); err == nil {
+	defer func() {
+		if succeeded {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
-			return
-		} else if errors.Is(err, context.Canceled) {
-			return
+		} else {
+			c.compactionRunsFailed.Inc()
 		}
 
-		retries.Wait()
-	}
-
-	c.compactionRunsFailed.Inc()
-}
-
-func (c *Compactor) compactUsers(ctx context.Context) error {
-	// Reset progress metrics once done.
-	defer func() {
+		// Reset progress metrics once done.
 		c.compactionRunDiscoveredTenants.Set(0)
 		c.compactionRunSkippedTenants.Set(0)
 		c.compactionRunSucceededTenants.Set(0)
@@ -411,10 +479,10 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	}()
 
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
-	users, err := c.discoverUsers(ctx)
+	users, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
-		return errors.Wrap(err, "failed to discover users from bucket")
+		return
 	}
 
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
@@ -427,13 +495,13 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 		users[i], users[j] = users[j], users[i]
 	})
 
-	errs := tsdb_errors.NewMulti()
-
+	// Keep track of users owned by this shard, so that we can delete the local files for all other users.
+	ownedUsers := map[string]struct{}{}
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
-			return ctx.Err()
+			return
 		}
 
 		// Ensure the user ID belongs to our shard.
@@ -447,6 +515,8 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 			continue
 		}
 
+		ownedUsers[userID] = struct{}{}
+
 		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
 			c.compactionRunSkippedTenants.Inc()
 			level.Warn(c.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
@@ -459,10 +529,9 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
 
-		if err = c.compactUser(ctx, userID); err != nil {
+		if err = c.compactUserWithRetries(ctx, userID); err != nil {
 			c.compactionRunFailedTenants.Inc()
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
-			errs.Add(errors.Wrapf(err, "failed to compact user blocks (user: %s)", userID))
 			continue
 		}
 
@@ -470,16 +539,63 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
-	return errs.Err()
+	// Delete local files for unowned tenants, if there are any. This cleans up
+	// leftover local files for tenants that belong to different compactors now,
+	// or have been deleted completely.
+	for userID := range c.listTenantsWithMetaSyncDirectories() {
+		if _, owned := ownedUsers[userID]; owned {
+			continue
+		}
+
+		dir := c.metaSyncDirForUser(userID)
+		s, err := os.Stat(dir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				level.Warn(c.logger).Log("msg", "failed to stat local directory with user data", "dir", dir, "err", err)
+			}
+			continue
+		}
+
+		if s.IsDir() {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				level.Info(c.logger).Log("msg", "deleted directory for user not owned by this shard", "dir", dir)
+			} else {
+				level.Warn(c.logger).Log("msg", "failed to delete directory for user not owned by this shard", "dir", dir, "err", err)
+			}
+		}
+	}
+
+	succeeded = true
+}
+
+func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {
+	var lastErr error
+
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: c.compactorCfg.retryMinBackoff,
+		MaxBackoff: c.compactorCfg.retryMaxBackoff,
+		MaxRetries: c.compactorCfg.CompactionRetries,
+	})
+
+	for retries.Ongoing() {
+		lastErr = c.compactUser(ctx, userID)
+		if lastErr == nil {
+			return nil
+		}
+
+		retries.Wait()
+	}
+
+	return lastErr
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
-	bucket := bucket.NewUserBucketClient(userID, c.bucketClient)
-
+	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
 
-	ulogger := util.WithUserID(userID, c.logger)
+	ulogger := util_log.WithUserID(userID, c.logger)
 
 	// Filters out duplicate blocks that can be formed from two or more overlapping
 	// blocks that fully submatches the source blocks of the older blocks.
@@ -497,10 +613,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
-		// The fetcher stores cached metas in the "meta-syncer/" sub directory,
-		// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
-		// the directory used by the Thanos Syncer, whatever is the user ID.
-		path.Join(c.compactorCfg.DataDir, "compactor-meta-"+userID),
+		c.metaSyncDirForUser(userID),
 		reg,
 		// List of filters to apply (order matters).
 		[]block.MetadataFilter{
@@ -532,22 +645,12 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return errors.Wrap(err, "failed to create syncer")
 	}
 
-	grouper := compact.NewDefaultGrouper(
-		ulogger,
-		bucket,
-		false, // Do not accept malformed indexes
-		true,  // Enable vertical compaction
-		reg,
-		c.blocksMarkedForDeletion,
-		c.garbageCollectedBlocks,
-	)
-
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		grouper,
-		c.tsdbPlanner,
-		c.tsdbCompactor,
+		c.blocksGrouperFactory(ctx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.garbageCollectedBlocks),
+		c.blocksPlanner,
+		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
@@ -561,6 +664,29 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	}
 
 	return nil
+}
+
+func (c *Compactor) discoverUsersWithRetries(ctx context.Context) ([]string, error) {
+	var lastErr error
+
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: c.compactorCfg.retryMinBackoff,
+		MaxBackoff: c.compactorCfg.retryMaxBackoff,
+		MaxRetries: c.compactorCfg.CompactionRetries,
+	})
+
+	for retries.Ongoing() {
+		var users []string
+
+		users, lastErr = c.discoverUsers(ctx)
+		if lastErr == nil {
+			return users, nil
+		}
+
+		retries.Wait()
+	}
+
+	return nil, lastErr
 }
 
 func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
@@ -590,16 +716,16 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	userHash := hasher.Sum32()
 
 	// Check whether this compactor instance owns the user.
-	rs, err := c.ring.Get(userHash, ring.Compactor, []ring.IngesterDesc{})
+	rs, err := c.ring.Get(userHash, RingOp, nil, nil, nil)
 	if err != nil {
 		return false, err
 	}
 
-	if len(rs.Ingesters) != 1 {
-		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Ingesters))
+	if len(rs.Instances) != 1 {
+		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Instances))
 	}
 
-	return rs.Ingesters[0].Addr == c.ringLifecycler.Addr, nil
+	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
 }
 
 func isAllowedUser(enabledUsers, disabledUsers map[string]struct{}, userID string) bool {
@@ -616,4 +742,38 @@ func isAllowedUser(enabledUsers, disabledUsers map[string]struct{}, userID strin
 	}
 
 	return true
+}
+
+const compactorMetaPrefix = "compactor-meta-"
+
+// metaSyncDirForUser returns directory to store cached meta files.
+// The fetcher stores cached metas in the "meta-syncer/" sub directory,
+// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
+// the directory used by the Thanos Syncer, whatever is the user ID.
+func (c *Compactor) metaSyncDirForUser(userID string) string {
+	return filepath.Join(c.compactorCfg.DataDir, compactorMetaPrefix+userID)
+}
+
+// This function returns tenants with meta sync directories found on local disk. On error, it returns nil map.
+func (c *Compactor) listTenantsWithMetaSyncDirectories() map[string]struct{} {
+	result := map[string]struct{}{}
+
+	files, err := ioutil.ReadDir(c.compactorCfg.DataDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		if !strings.HasPrefix(f.Name(), compactorMetaPrefix) {
+			continue
+		}
+
+		result[f.Name()[len(compactorMetaPrefix):]] = struct{}{}
+	}
+
+	return result
 }

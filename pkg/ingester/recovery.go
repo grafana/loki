@@ -1,17 +1,17 @@
 package ingester
 
 import (
-	"context"
 	io "io"
 	"runtime"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -70,7 +70,7 @@ func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
 		return nil, nil, err
 	}
 	if idx < 0 {
-		level.Info(util.Logger).Log("msg", "no checkpoint found, treating as no-op")
+		level.Info(util_log.Logger).Log("msg", "no checkpoint found, treating as no-op")
 		var reader NoopWALReader
 		return reader, reader, nil
 	}
@@ -87,7 +87,6 @@ type Recoverer interface {
 	Series(series *Series) error
 	SetStream(userID string, series record.RefSeries) error
 	Push(userID string, entries RefEntries) error
-	Close()
 	Done() <-chan struct{}
 }
 
@@ -95,7 +94,8 @@ type ingesterRecoverer struct {
 	// basically map[userID]map[fingerprint]*stream
 	users sync.Map
 	ing   *Ingester
-	done  chan struct{}
+
+	done chan struct{}
 }
 
 func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
@@ -109,31 +109,39 @@ func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
 func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
 func (r *ingesterRecoverer) Series(series *Series) error {
-	inst := r.ing.getOrCreateInstance(series.UserID)
+	return r.ing.replayController.WithBackPressure(func() error {
 
-	// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
-	stream, err := inst.getOrCreateStream(logproto.Stream{
-		Labels: client.FromLabelAdaptersToLabels(series.Labels).String(),
-	}, true, nil)
+		inst := r.ing.getOrCreateInstance(series.UserID)
 
-	if err != nil {
-		return err
-	}
+		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
+		stream, err := inst.getOrCreateStream(logproto.Stream{
+			Labels: cortexpb.FromLabelAdaptersToLabels(series.Labels).String(),
+		}, true, nil)
 
-	added, err := stream.setChunks(series.Chunks)
-	if err != nil {
-		return err
-	}
-	r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
-	r.ing.metrics.recoveredEntriesTotal.Add(float64(added))
+		if err != nil {
+			return err
+		}
 
-	// now store the stream in the recovery map under the fingerprint originally recorded
-	// as it's possible the newly mapped fingerprint is different. This is because the WAL records
-	// will use this original reference.
-	got, _ := r.users.LoadOrStore(series.UserID, &sync.Map{})
-	streamsMap := got.(*sync.Map)
-	streamsMap.Store(series.Fingerprint, stream)
-	return nil
+		bytesAdded, entriesAdded, err := stream.setChunks(series.Chunks)
+		stream.lastLine.ts = series.To
+		stream.lastLine.content = series.LastLine
+
+		if err != nil {
+			return err
+		}
+		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
+		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
+		r.ing.replayController.Add(int64(bytesAdded))
+
+		// now store the stream in the recovery map under the fingerprint originally recorded
+		// as it's possible the newly mapped fingerprint is different. This is because the WAL records
+		// will use this original reference.
+		got, _ := r.users.LoadOrStore(series.UserID, &sync.Map{})
+		streamsMap := got.(*sync.Map)
+		streamsMap.Store(series.Fingerprint, stream)
+
+		return nil
+	})
 }
 
 // SetStream is responsible for setting the key path for userIDs -> fingerprints -> streams.
@@ -170,19 +178,22 @@ func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) er
 }
 
 func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
-	out, ok := r.users.Load(userID)
-	if !ok {
-		return errors.Errorf("user (%s) not set during WAL replay", userID)
-	}
+	return r.ing.replayController.WithBackPressure(func() error {
+		out, ok := r.users.Load(userID)
+		if !ok {
+			return errors.Errorf("user (%s) not set during WAL replay", userID)
+		}
 
-	s, ok := out.(*sync.Map).Load(entries.Ref)
-	if !ok {
-		return errors.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
-	}
+		s, ok := out.(*sync.Map).Load(entries.Ref)
+		if !ok {
+			return errors.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
+		}
 
-	// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-	_ = s.(*stream).Push(context.Background(), entries.Entries, nil)
-	return nil
+		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
+		bytesAdded, _ := s.(*stream).Push(context.Background(), entries.Entries, nil)
+		r.ing.replayController.Add(int64(bytesAdded))
+		return nil
+	})
 }
 
 func (r *ingesterRecoverer) Close() {

@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const pageContent = `
@@ -107,7 +108,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
 		if err := r.forget(req.Context(), ingesterID); err != nil {
-			level.Error(util.WithContext(req.Context(), util.Logger)).Log("msg", "error forgetting instance", "err", err)
+			level.Error(log.WithContext(req.Context(), log.Logger)).Log("msg", "error forgetting instance", "err", err)
 		}
 
 		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.
@@ -131,13 +132,14 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	sort.Strings(ingesterIDs)
 
+	now := time.Now()
 	ingesters := []interface{}{}
-	_, owned := countTokens(r.ringDesc, r.ringTokens)
+	_, owned := r.countTokens()
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
 		heartbeatTimestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if !r.IsHealthy(&ing, Reporting) {
+		if !r.IsHealthy(&ing, Reporting, now) {
 			state = unhealthy
 		}
 
@@ -178,7 +180,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ShowTokens bool          `json:"-"`
 	}{
 		Ingesters:  ingesters,
-		Now:        time.Now(),
+		Now:        now,
 		ShowTokens: tokensParam == "true",
 	}, pageTemplate, req)
 }

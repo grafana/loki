@@ -81,7 +81,7 @@ func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkI
 	return seriesset.NewConcreteSeriesSet(series)
 }
 
-func (q *chunkStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q *chunkStoreQuerier) LabelValues(name string, labels ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

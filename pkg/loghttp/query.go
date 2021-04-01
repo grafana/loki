@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 	"unsafe"
 
@@ -31,7 +30,7 @@ const (
 	QueryStatusFail    = "fail"
 )
 
-//QueryResponse represents the http json response to a label query
+// QueryResponse represents the http json response to a Loki range and instant query
 type QueryResponse struct {
 	Status string            `json:"status"`
 	Data   QueryResponseData `json:"data"`
@@ -58,7 +57,7 @@ type ResultValue interface {
 	Type() ResultType
 }
 
-//QueryResponseData represents the http json response to a label query
+// QueryResponseData represents the http json response to a label query
 type QueryResponseData struct {
 	ResultType ResultType   `json:"resultType"`
 	Result     ResultValue  `json:"result"`
@@ -92,16 +91,10 @@ func (s Streams) ToProto() []logproto.Stream {
 	return result
 }
 
-//Stream represents a log stream.  It includes a set of log entries and their labels.
+// Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
 	Labels  LabelSet `json:"stream"`
 	Entries []Entry  `json:"values"`
-}
-
-//Entry represents a log entry.  It includes a log message and the time it occurred at.
-type Entry struct {
-	Timestamp time.Time
-	Line      string
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -148,35 +141,6 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 	q.ResultType = unmarshal.Type
 	q.Result = value
 	q.Statistics = unmarshal.Statistics
-
-	return nil
-}
-
-// MarshalJSON implements the json.Marshaler interface.
-func (e *Entry) MarshalJSON() ([]byte, error) {
-	l, err := json.Marshal(e.Line)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(fmt.Sprintf("[\"%d\",%s]", e.Timestamp.UnixNano(), l)), nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface.
-func (e *Entry) UnmarshalJSON(data []byte) error {
-	var unmarshal []string
-
-	err := json.Unmarshal(data, &unmarshal)
-	if err != nil {
-		return err
-	}
-
-	t, err := strconv.ParseInt(unmarshal[0], 10, 64)
-	if err != nil {
-		return err
-	}
-
-	e.Timestamp = time.Unix(0, t)
-	e.Line = unmarshal[1]
 
 	return nil
 }
@@ -258,7 +222,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, err
 	}
 
-	if result.End.Before(result.Start) || result.Start.Equal(result.End) {
+	if result.End.Before(result.Start) {
 		return nil, errEndBeforeStart
 	}
 

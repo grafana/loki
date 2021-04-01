@@ -18,11 +18,17 @@ const (
 	// SyslogTargetType is a syslog target
 	SyslogTargetType = TargetType("Syslog")
 
+	// GcplogTargetType is a target where log entries are pulled from pubsub topic.
+	GcplogTargetType = TargetType("Gcplog")
+
 	// DroppedTargetType is a target that's been dropped.
 	DroppedTargetType = TargetType("dropped")
 
 	// PushTargetType is a Loki push target
 	PushTargetType = TargetType("Push")
+
+	// WindowsTargetType is a Windows event target
+	WindowsTargetType = TargetType("WindowsEvent")
 )
 
 // Target is a promtail scrape target

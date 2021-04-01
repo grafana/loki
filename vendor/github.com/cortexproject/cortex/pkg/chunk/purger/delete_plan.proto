@@ -5,7 +5,7 @@ package purgeplan;
 option go_package = "purger";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -19,7 +19,7 @@ message DeletePlan {
 
 // ChunksGroup holds ChunkDetails and Labels for a group of chunks which have same series ID
 message ChunksGroup {
-  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
   repeated ChunkDetails chunks = 2 [(gogoproto.nullable) = false];
 }
 

@@ -29,10 +29,10 @@ import (
 
 // Config for a Frontend.
 type Config struct {
-	SchedulerAddress  string                   `yaml:"scheduler_address"`
-	DNSLookupPeriod   time.Duration            `yaml:"scheduler_dns_lookup_period"`
-	WorkerConcurrency int                      `yaml:"scheduler_worker_concurrency"`
-	GRPCClientConfig  grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+	SchedulerAddress  string            `yaml:"scheduler_address"`
+	DNSLookupPeriod   time.Duration     `yaml:"scheduler_dns_lookup_period"`
+	WorkerConcurrency int               `yaml:"scheduler_worker_concurrency"`
+	GRPCClientConfig  grpcclient.Config `yaml:"grpc_client_config"`
 
 	// Used to find local IP address, that is sent to scheduler and querier-worker.
 	InfNames []string `yaml:"instance_interface_names"`
@@ -73,9 +73,10 @@ type Frontend struct {
 }
 
 type frontendRequest struct {
-	queryID uint64
-	request *httpgrpc.HTTPRequest
-	userID  string
+	queryID      uint64
+	request      *httpgrpc.HTTPRequest
+	userID       string
+	statsEnabled bool
 
 	cancel context.CancelFunc
 
@@ -99,7 +100,7 @@ type enqueueResult struct {
 	cancelCh chan<- uint64 // Channel that can be used for request cancellation. If nil, cancellation is not possible.
 }
 
-// New creates a new frontend.
+// NewFrontend creates a new frontend.
 func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
@@ -152,10 +153,11 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
@@ -170,9 +172,10 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	defer cancel()
 
 	freq := &frontendRequest{
-		queryID: f.lastQueryID.Inc(),
-		request: req,
-		userID:  userID,
+		queryID:      f.lastQueryID.Inc(),
+		request:      req,
+		userID:       userID,
+		statsEnabled: stats.IsEnabled(ctx),
 
 		cancel: cancel,
 
@@ -239,10 +242,11 @@ enqueueAgain:
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	req := f.requests.get(qrReq.QueryID)
 	// It is possible that some old response belonging to different user was received, if frontend has restarted.

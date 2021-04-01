@@ -30,10 +30,7 @@ type Config struct {
 
 	QuerierID string `yaml:"id"`
 
-	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
-
-	// The following config is injected internally.
-	QueryStatsEnabled bool `yaml:"-"`
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -71,6 +68,10 @@ type processor interface {
 	//
 	// processorManager (not processor) is responsible for starting as many goroutines as needed for each connection.
 	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string)
+
+	// notifyShutdown notifies the remote query-frontend or query-scheduler that the querier is
+	// shutting down.
+	notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string)
 }
 
 type querierWorker struct {

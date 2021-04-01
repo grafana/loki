@@ -24,7 +24,10 @@ import (
 // BucketCacheProvider is a type used to evaluate all bucket cache providers.
 type BucketCacheProvider string
 
-const MemcachedBucketCacheProvider BucketCacheProvider = "MEMCACHED" // Memcached cache-provider for caching bucket.
+const (
+	InMemoryBucketCacheProvider  BucketCacheProvider = "IN-MEMORY" // In-memory cache-provider for caching bucket.
+	MemcachedBucketCacheProvider BucketCacheProvider = "MEMCACHED" // Memcached cache-provider for caching bucket.
+)
 
 // CachingWithBackendConfig is a configuration of caching bucket used by Store component.
 type CachingWithBackendConfig struct {
@@ -89,6 +92,11 @@ func NewCachingBucketFromYaml(yamlContent []byte, bucket objstore.Bucket, logger
 			return nil, errors.Wrapf(err, "failed to create memcached client")
 		}
 		c = cache.NewMemcachedCache("caching-bucket", logger, memcached, reg)
+	case string(InMemoryBucketCacheProvider):
+		c, err = cache.NewInMemoryCache("caching-bucket", logger, reg, backendConfig)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create inmemory cache")
+		}
 	default:
 		return nil, errors.Errorf("unsupported cache type: %s", config.Type)
 	}

@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type MockStorageMode int
@@ -53,6 +53,25 @@ func NewMockStorage() *MockStorage {
 		tables:  map[string]*mockTable{},
 		objects: map[string][]byte{},
 	}
+}
+
+func (m *MockStorage) GetSortedObjectKeys() []string {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	keys := make([]string, 0, len(m.objects))
+	for k := range m.objects {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (m *MockStorage) GetObjectCount() int {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	return len(m.objects)
 }
 
 // Stop doesn't do anything.
@@ -174,7 +193,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 		}
 		seenWrites[key] = true
 
-		level.Debug(util.WithContext(ctx, util.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
+		level.Debug(log.WithContext(ctx, log.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
 
 		items := table.items[req.hashValue]
 
@@ -247,7 +266,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, call
 }
 
 func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func(ReadBatch) (shouldContinue bool)) error {
-	logger := util.WithContext(ctx, util.Logger)
+	logger := log.WithContext(ctx, log.Logger)
 	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
 
 	table, ok := m.tables[query.TableName]

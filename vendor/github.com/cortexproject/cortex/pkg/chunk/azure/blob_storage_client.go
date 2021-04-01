@@ -16,6 +16,7 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -93,7 +94,7 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
-	util.WarnExperimentalUse("Azure Blob Storage")
+	log.WarnExperimentalUse("Azure Blob Storage")
 	blobStorage := &BlobStorage{
 		cfg: cfg,
 	}

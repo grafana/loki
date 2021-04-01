@@ -35,32 +35,39 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
-type fetcherMetrics struct {
-	syncs        prometheus.Counter
-	syncFailures prometheus.Counter
-	syncDuration prometheus.Histogram
+const FetcherConcurrency = 32
 
-	synced   *extprom.TxGaugeVec
-	modified *extprom.TxGaugeVec
+// FetcherMetrics holds metrics tracked by the metadata fetcher. This struct and its fields are exported
+// to allow depending projects (eg. Cortex) to implement their own custom metadata fetcher while tracking
+// compatible metrics.
+type FetcherMetrics struct {
+	Syncs        prometheus.Counter
+	SyncFailures prometheus.Counter
+	SyncDuration prometheus.Histogram
+
+	Synced   *extprom.TxGaugeVec
+	Modified *extprom.TxGaugeVec
 }
 
-func (s *fetcherMetrics) submit() {
-	s.synced.Submit()
-	s.modified.Submit()
+// Submit applies new values for metrics tracked by transaction GaugeVec.
+func (s *FetcherMetrics) Submit() {
+	s.Synced.Submit()
+	s.Modified.Submit()
 }
 
-func (s *fetcherMetrics) resetTx() {
-	s.synced.ResetTx()
-	s.modified.ResetTx()
+// ResetTx starts new transaction for metrics tracked by transaction GaugeVec.
+func (s *FetcherMetrics) ResetTx() {
+	s.Synced.ResetTx()
+	s.Modified.ResetTx()
 }
 
 const (
 	fetcherSubSys = "blocks_meta"
 
-	corruptedMeta = "corrupted-meta-json"
-	noMeta        = "no-meta-json"
-	loadedMeta    = "loaded"
-	failedMeta    = "failed"
+	CorruptedMeta = "corrupted-meta-json"
+	NoMeta        = "no-meta-json"
+	LoadedMeta    = "loaded"
+	FailedMeta    = "failed"
 
 	// Synced label values.
 	labelExcludedMeta = "label-excluded"
@@ -69,7 +76,7 @@ const (
 	duplicateMeta     = "duplicate"
 	// Blocks that are marked for deletion can be loaded as well. This is done to make sure that we load blocks that are meant to be deleted,
 	// but don't have a replacement block yet.
-	markedForDeletionMeta = "marked-for-deletion"
+	MarkedForDeletionMeta = "marked-for-deletion"
 
 	// MarkedForNoCompactionMeta is label for blocks which are loaded but also marked for no compaction. This label is also counted in `loaded` label metric.
 	MarkedForNoCompactionMeta = "marked-for-no-compact"
@@ -78,26 +85,26 @@ const (
 	replicaRemovedMeta = "replica-label-removed"
 )
 
-func newFetcherMetrics(reg prometheus.Registerer) *fetcherMetrics {
-	var m fetcherMetrics
+func NewFetcherMetrics(reg prometheus.Registerer, syncedExtraLabels, modifiedExtraLabels [][]string) *FetcherMetrics {
+	var m FetcherMetrics
 
-	m.syncs = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	m.Syncs = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Subsystem: fetcherSubSys,
 		Name:      "syncs_total",
 		Help:      "Total blocks metadata synchronization attempts",
 	})
-	m.syncFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	m.SyncFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Subsystem: fetcherSubSys,
 		Name:      "sync_failures_total",
 		Help:      "Total blocks metadata synchronization failures",
 	})
-	m.syncDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+	m.SyncDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Subsystem: fetcherSubSys,
 		Name:      "sync_duration_seconds",
 		Help:      "Duration of the blocks metadata synchronization in seconds",
 		Buckets:   []float64{0.01, 1, 10, 100, 1000},
 	})
-	m.synced = extprom.NewTxGaugeVec(
+	m.Synced = extprom.NewTxGaugeVec(
 		reg,
 		prometheus.GaugeOpts{
 			Subsystem: fetcherSubSys,
@@ -105,18 +112,20 @@ func newFetcherMetrics(reg prometheus.Registerer) *fetcherMetrics {
 			Help:      "Number of block metadata synced",
 		},
 		[]string{"state"},
-		[]string{corruptedMeta},
-		[]string{noMeta},
-		[]string{loadedMeta},
-		[]string{tooFreshMeta},
-		[]string{failedMeta},
-		[]string{labelExcludedMeta},
-		[]string{timeExcludedMeta},
-		[]string{duplicateMeta},
-		[]string{markedForDeletionMeta},
-		[]string{MarkedForNoCompactionMeta},
+		append([][]string{
+			{CorruptedMeta},
+			{NoMeta},
+			{LoadedMeta},
+			{tooFreshMeta},
+			{FailedMeta},
+			{labelExcludedMeta},
+			{timeExcludedMeta},
+			{duplicateMeta},
+			{MarkedForDeletionMeta},
+			{MarkedForNoCompactionMeta},
+		}, syncedExtraLabels...)...,
 	)
-	m.modified = extprom.NewTxGaugeVec(
+	m.Modified = extprom.NewTxGaugeVec(
 		reg,
 		prometheus.GaugeOpts{
 			Subsystem: fetcherSubSys,
@@ -124,7 +133,9 @@ func newFetcherMetrics(reg prometheus.Registerer) *fetcherMetrics {
 			Help:      "Number of blocks whose metadata changed",
 		},
 		[]string{"modified"},
-		[]string{replicaRemovedMeta},
+		append([][]string{
+			{replicaRemovedMeta},
+		}, modifiedExtraLabels...)...,
 	)
 	return &m
 }
@@ -184,6 +195,12 @@ func NewBaseFetcher(logger log.Logger, concurrency int, bkt objstore.Instrumente
 	}, nil
 }
 
+// NewRawMetaFetcher returns basic meta fetcher without proper handling for eventual consistent backends or partial uploads.
+// NOTE: Not suitable to use in production.
+func NewRawMetaFetcher(logger log.Logger, bkt objstore.InstrumentedBucketReader) (*MetaFetcher, error) {
+	return NewMetaFetcher(logger, 1, bkt, "", nil, nil, nil)
+}
+
 // NewMetaFetcher returns meta fetcher.
 func NewMetaFetcher(logger log.Logger, concurrency int, bkt objstore.InstrumentedBucketReader, dir string, reg prometheus.Registerer, filters []MetadataFilter, modifiers []MetadataModifier) (*MetaFetcher, error) {
 	b, err := NewBaseFetcher(logger, concurrency, bkt, dir, reg)
@@ -195,7 +212,7 @@ func NewMetaFetcher(logger log.Logger, concurrency int, bkt objstore.Instrumente
 
 // NewMetaFetcher transforms BaseFetcher into actually usable *MetaFetcher.
 func (f *BaseFetcher) NewMetaFetcher(reg prometheus.Registerer, filters []MetadataFilter, modifiers []MetadataModifier, logTags ...interface{}) *MetaFetcher {
-	return &MetaFetcher{metrics: newFetcherMetrics(reg), wrapped: f, filters: filters, modifiers: modifiers, logger: log.With(f.logger, logTags...)}
+	return &MetaFetcher{metrics: NewFetcherMetrics(reg, nil, nil), wrapped: f, filters: filters, modifiers: modifiers, logger: log.With(f.logger, logTags...)}
 }
 
 var (
@@ -301,6 +318,7 @@ func (f *BaseFetcher) fetchMetadata(ctx context.Context) (interface{}, error) {
 		ch  = make(chan ulid.ULID, f.concurrency)
 		mtx sync.Mutex
 	)
+	level.Debug(f.logger).Log("msg", "fetching meta data", "concurrency", f.concurrency)
 	for i := 0; i < f.concurrency; i++ {
 		eg.Go(func() error {
 			for id := range ch {
@@ -402,16 +420,16 @@ func (f *BaseFetcher) fetchMetadata(ctx context.Context) (interface{}, error) {
 	return resp, nil
 }
 
-func (f *BaseFetcher) fetch(ctx context.Context, metrics *fetcherMetrics, filters []MetadataFilter, modifiers []MetadataModifier) (_ map[ulid.ULID]*metadata.Meta, _ map[ulid.ULID]error, err error) {
+func (f *BaseFetcher) fetch(ctx context.Context, metrics *FetcherMetrics, filters []MetadataFilter, modifiers []MetadataModifier) (_ map[ulid.ULID]*metadata.Meta, _ map[ulid.ULID]error, err error) {
 	start := time.Now()
 	defer func() {
-		metrics.syncDuration.Observe(time.Since(start).Seconds())
+		metrics.SyncDuration.Observe(time.Since(start).Seconds())
 		if err != nil {
-			metrics.syncFailures.Inc()
+			metrics.SyncFailures.Inc()
 		}
 	}()
-	metrics.syncs.Inc()
-	metrics.resetTx()
+	metrics.Syncs.Inc()
+	metrics.ResetTx()
 
 	// Run this in thread safe run group.
 	// TODO(bwplotka): Consider custom singleflight with ttl.
@@ -430,29 +448,29 @@ func (f *BaseFetcher) fetch(ctx context.Context, metrics *fetcherMetrics, filter
 		metas[id] = m
 	}
 
-	metrics.synced.WithLabelValues(failedMeta).Set(float64(len(resp.metaErrs)))
-	metrics.synced.WithLabelValues(noMeta).Set(resp.noMetas)
-	metrics.synced.WithLabelValues(corruptedMeta).Set(resp.corruptedMetas)
+	metrics.Synced.WithLabelValues(FailedMeta).Set(float64(len(resp.metaErrs)))
+	metrics.Synced.WithLabelValues(NoMeta).Set(resp.noMetas)
+	metrics.Synced.WithLabelValues(CorruptedMeta).Set(resp.corruptedMetas)
 
 	for _, filter := range filters {
 		// NOTE: filter can update synced metric accordingly to the reason of the exclude.
-		if err := filter.Filter(ctx, metas, metrics.synced); err != nil {
+		if err := filter.Filter(ctx, metas, metrics.Synced); err != nil {
 			return nil, nil, errors.Wrap(err, "filter metas")
 		}
 	}
 
 	for _, m := range modifiers {
 		// NOTE: modifier can update modified metric accordingly to the reason of the modification.
-		if err := m.Modify(ctx, metas, metrics.modified); err != nil {
+		if err := m.Modify(ctx, metas, metrics.Modified); err != nil {
 			return nil, nil, errors.Wrap(err, "modify metas")
 		}
 	}
 
-	metrics.synced.WithLabelValues(loadedMeta).Set(float64(len(metas)))
-	metrics.submit()
+	metrics.Synced.WithLabelValues(LoadedMeta).Set(float64(len(metas)))
+	metrics.Submit()
 
 	if len(resp.metaErrs) > 0 {
-		return metas, resp.partial, errors.Wrap(resp.metaErrs, "incomplete view")
+		return metas, resp.partial, errors.Wrap(resp.metaErrs.Err(), "incomplete view")
 	}
 
 	level.Info(f.logger).Log("msg", "successfully synchronized block metadata", "duration", time.Since(start).String(), "cached", len(f.cached), "returned", len(metas), "partial", len(resp.partial))
@@ -461,7 +479,7 @@ func (f *BaseFetcher) fetch(ctx context.Context, metrics *fetcherMetrics, filter
 
 type MetaFetcher struct {
 	wrapped *BaseFetcher
-	metrics *fetcherMetrics
+	metrics *FetcherMetrics
 
 	filters   []MetadataFilter
 	modifiers []MetadataModifier
@@ -820,7 +838,7 @@ func (f *IgnoreDeletionMarkFilter) Filter(ctx context.Context, metas map[ulid.UL
 				mtx.Lock()
 				f.deletionMarkMap[id] = m
 				if time.Since(time.Unix(m.DeletionTime, 0)).Seconds() > f.delay.Seconds() {
-					synced.WithLabelValues(markedForDeletionMeta).Inc()
+					synced.WithLabelValues(MarkedForDeletionMeta).Inc()
 					delete(metas, id)
 				}
 				mtx.Unlock()

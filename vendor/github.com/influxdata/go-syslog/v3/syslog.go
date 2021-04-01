@@ -15,6 +15,11 @@ type BestEfforter interface {
 	HasBestEffort() bool
 }
 
+// MaxMessager sets the max message size the parser should be able to parse
+type MaxMessager interface {
+	WithMaxMessageLength(length int)
+}
+
 // Machine represent a FSM able to parse an entire syslog message and return it in an structured way.
 type Machine interface {
 	Parse(input []byte) (Message, error)
@@ -29,6 +34,7 @@ type Parser interface {
 	Parse(r io.Reader)
 	WithListener(ParserListener)
 	BestEfforter
+	MaxMessager
 }
 
 // ParserOption represent the type of option setters for Parser instances.

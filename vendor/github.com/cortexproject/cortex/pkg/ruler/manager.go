@@ -19,7 +19,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
-	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
 type DefaultMultiTenantManager struct {
@@ -91,7 +91,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 	}, nil
 }
 
-func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList) {
+func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
 	// A lock is taken to ensure if this function is called concurrently, then each call
 	// returns after the call map files and check for updates
 	r.userManagerMtx.Lock()
@@ -106,11 +106,13 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 		if _, exists := ruleGroups[userID]; !exists {
 			go mngr.Stop()
 			delete(r.userManagers, userID)
+
+			r.mapper.cleanupUser(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
-			level.Info(r.logger).Log("msg", "deleting rule manager", "user", userID)
+			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}
 
@@ -119,7 +121,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the
 // the users Prometheus Rules Manager.
-func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups store.RuleGroupList) {
+func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups rulespb.RuleGroupList) {
 	// Map the files to disk and return the file names to be passed to the users manager if they
 	// have been updated
 	update, files, err := r.mapper.MapRules(user, groups.Formatted())
@@ -171,8 +173,7 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	reg := prometheus.NewRegistry()
 	r.userManagerMetrics.AddUserRegistry(userID, reg)
 
-	logger := log.With(r.logger, "user", userID)
-	return r.managerFactory(ctx, userID, notifier, logger, reg), nil
+	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
 }
 
 func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
@@ -206,7 +207,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 		},
 	}, log.With(r.logger, "user", userID))
 
-	go n.run()
+	n.run()
 
 	// This should never fail, unless there's a programming mistake.
 	if err := n.applyConfig(r.notifierCfg); err != nil {

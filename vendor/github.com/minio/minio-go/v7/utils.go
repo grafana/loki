@@ -297,6 +297,8 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 	// extract lifecycle expiry date and rule ID
 	expTime, ruleID := amzExpirationToExpiryDateRuleID(h.Get(amzExpiration))
 
+	deleteMarker := h.Get(amzDeleteMarker) == "true"
+
 	// Save object metadata info.
 	return ObjectInfo{
 		ETag:              etag,
@@ -306,6 +308,7 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 		ContentType:       contentType,
 		Expires:           expiry,
 		VersionID:         h.Get(amzVersionID),
+		IsDeleteMarker:    deleteMarker,
 		ReplicationStatus: h.Get(amzReplicationStatus),
 		Expiration:        expTime,
 		ExpirationRuleID:  ruleID,
@@ -317,6 +320,41 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 		UserTags:     userTags,
 		UserTagCount: tagCount,
 	}, nil
+}
+
+var readFull = func(r io.Reader, buf []byte) (n int, err error) {
+	// ReadFull reads exactly len(buf) bytes from r into buf.
+	// It returns the number of bytes copied and an error if
+	// fewer bytes were read. The error is EOF only if no bytes
+	// were read. If an EOF happens after reading some but not
+	// all the bytes, ReadFull returns ErrUnexpectedEOF.
+	// On return, n == len(buf) if and only if err == nil.
+	// If r returns an error having read at least len(buf) bytes,
+	// the error is dropped.
+	for n < len(buf) && err == nil {
+		var nn int
+		nn, err = r.Read(buf[n:])
+		// Some spurious io.Reader's return
+		// io.ErrUnexpectedEOF when nn == 0
+		// this behavior is undocumented
+		// so we are on purpose not using io.ReadFull
+		// implementation because this can lead
+		// to custom handling, to avoid that
+		// we simply modify the original io.ReadFull
+		// implementation to avoid this issue.
+		// io.ErrUnexpectedEOF with nn == 0 really
+		// means that io.EOF
+		if err == io.ErrUnexpectedEOF && nn == 0 {
+			err = io.EOF
+		}
+		n += nn
+	}
+	if n >= len(buf) {
+		err = nil
+	} else if n > 0 && err == io.EOF {
+		err = io.ErrUnexpectedEOF
+	}
+	return
 }
 
 // regCred matches credential string in HTTP header

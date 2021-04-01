@@ -64,6 +64,8 @@ and to ensure that it is within the configured tenant (or global) limits. Valid
 chunks are then split into batches and sent to multiple [ingesters](#ingester)
 in parallel.
 
+For more information, see the [Distributor](./distributor) page.
+
 #### Hashing
 
 Distributors use consistent hashing in conjunction with a configurable
@@ -114,6 +116,7 @@ Ingesters contain a _lifecycler_ which manages the lifecycle of an ingester in
 the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
 `ACTIVE`, `LEAVING`, or `UNHEALTHY`:
 
+**Deprecated: the WAL (write ahead log) supersedes this feature**
 1. `PENDING` is an Ingester's state when it is waiting for a handoff from
    another ingester that is `LEAVING`.
 
@@ -159,7 +162,7 @@ strict ordering. See the [Loki
 Overview](../overview#timestamp-ordering) for detailed documentation on
 the rules of timestamp order.
 
-#### Handoff
+#### Handoff - Deprecated in favor the the [WAL](../operations/storage/wal)
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
 it will wait to see if a new ingester tries to enter before flushing and will

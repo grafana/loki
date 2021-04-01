@@ -22,6 +22,18 @@ type ingesterMetrics struct {
 	recoveredStreamsTotal prometheus.Counter
 	recoveredChunksTotal  prometheus.Counter
 	recoveredEntriesTotal prometheus.Counter
+	recoveredBytesTotal   prometheus.Counter
+	recoveryBytesInUse    prometheus.Gauge
+	recoveryIsFlushing    prometheus.Gauge
+}
+
+// setRecoveryBytesInUse bounds the bytes reports to >= 0.
+// TODO(owen-d): we can gain some efficiency by having the flusher never update this after recovery ends.
+func (m *ingesterMetrics) setRecoveryBytesInUse(v int64) {
+	if v < 0 {
+		v = 0
+	}
+	m.recoveryBytesInUse.Set(float64(v))
 }
 
 const (
@@ -87,6 +99,18 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		recoveredEntriesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_recovered_entries_total",
 			Help: "Total number of entries recovered from the WAL.",
+		}),
+		recoveredBytesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_recovered_bytes_total",
+			Help: "Total number of bytes recovered from the WAL.",
+		}),
+		recoveryBytesInUse: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_wal_bytes_in_use",
+			Help: "Total number of bytes in use by the WAL recovery process.",
+		}),
+		recoveryIsFlushing: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_wal_replay_flushing",
+			Help: "Whether the wal replay is in a flushing phase due to backpressure",
 		}),
 	}
 }

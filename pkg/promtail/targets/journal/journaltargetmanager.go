@@ -5,6 +5,7 @@ package journal
 import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -19,6 +20,7 @@ type JournalTargetManager struct{}
 // NewJournalTargetManager returns nil as JournalTargets are not supported
 // on this platform.
 func NewJournalTargetManager(
+	reg prometheus.Registerer,
 	logger log.Logger,
 	positions positions.Positions,
 	client api.EntryHandler,

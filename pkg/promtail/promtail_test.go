@@ -1,6 +1,7 @@
 package promtail
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -41,12 +43,11 @@ import (
 const httpTestPort = 9080
 
 func TestPromtail(t *testing.T) {
-
 	// Setup.
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	logger = level.NewFilter(logger, level.AllowInfo())
-	util.Logger = logger
+	util_log.Logger = logger
 
 	initRandom()
 	dirName := "/tmp/promtail_test_" + randName()
@@ -74,17 +75,29 @@ func TestPromtail(t *testing.T) {
 		t:              t,
 	}
 	http.Handle("/loki/api/v1/push", handler)
+	var (
+		wg        sync.WaitGroup
+		listenErr error
+		server    = &http.Server{Addr: "localhost:3100", Handler: nil}
+	)
 	defer func() {
+		fmt.Fprintf(os.Stdout, "wait close")
+		wg.Wait()
 		if err != nil {
 			t.Fatal(err)
 		}
-	}()
-	go func() {
-		if err = http.ListenAndServe("localhost:3100", nil); err != nil {
-			err = errors.Wrap(err, "Failed to start web server to receive logs")
+		if listenErr != nil && listenErr != http.ErrServerClosed {
+			t.Fatal(listenErr)
 		}
 	}()
-
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		listenErr = server.ListenAndServe()
+	}()
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
 	// Run.
 
 	p, err := New(buildTestConfig(t, positionsFileName, testDir), false)
@@ -92,8 +105,9 @@ func TestPromtail(t *testing.T) {
 		t.Error("error creating promtail", err)
 		return
 	}
-
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		err = p.Run()
 		if err != nil {
 			err = errors.Wrap(err, "Failed to start promtail")
@@ -179,7 +193,7 @@ func TestPromtail(t *testing.T) {
 	// Sync period is 500ms in tests, need to wait for at least one sync period for tailer to be cleaned up
 	<-time.After(500 * time.Millisecond)
 
-	//Pull out some prometheus metrics before shutting down
+	// Pull out some prometheus metrics before shutting down
 	metricsBytes, contentType := getPromMetrics(t)
 
 	p.Shutdown()
@@ -209,7 +223,6 @@ func TestPromtail(t *testing.T) {
 
 	verifyMetric(t, readBytesMetrics, "promtail_read_bytes_total", logFile4, 590)
 	verifyMetric(t, fileBytesMetrics, "promtail_file_bytes_total", logFile4, 590)
-
 }
 
 func createStartupFile(t *testing.T, filename string) int {
@@ -244,7 +257,6 @@ func verifyPipeline(t *testing.T, expected int, expectedEntries map[string]int, 
 			t.Errorf("Did not receive expected log entry, expected %v, received %s", expectedEntries, entries[i].Line)
 		}
 	}
-
 }
 
 func verifyMetricAbsent(t *testing.T, metrics map[string]float64, metric string, label string) {
@@ -380,7 +392,6 @@ func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) i
 	}
 
 	return 200
-
 }
 
 func subdirSingleFile(t *testing.T, filename string, prefix string) int {
@@ -428,7 +439,7 @@ func waitForEntries(timeoutSec int, handler *testServerHandler, expectedCounts m
 			if rcvd, ok := handler.receivedMap[file]; !ok || len(rcvd) != expectedCount {
 				waiting = waiting + " " + file
 				for _, e := range rcvd {
-					level.Info(util.Logger).Log("file", file, "entry", e.Line)
+					level.Info(util_log.Logger).Log("file", file, "entry", e.Line)
 				}
 			}
 		}
@@ -628,7 +639,6 @@ func randName() string {
 }
 
 func Test_DryRun(t *testing.T) {
-
 	f, err := ioutil.TempFile("/tmp", "Test_DryRun")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())

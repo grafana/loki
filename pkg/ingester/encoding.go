@@ -134,6 +134,7 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 		}
 
 		nEntries := dec.Uvarint()
+		refEntries.Entries = make([]logproto.Entry, 0, nEntries)
 		rem := nEntries
 		for ; dec.Err() == nil && rem > 0; rem-- {
 			timeOffset := dec.Varint64()

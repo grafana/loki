@@ -65,6 +65,8 @@ func TestBlocksInclusive(t *testing.T) {
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
 			chk := NewMemChunk(enc, testBlockSize, testTargetSize)
 			cases := []struct {
 				ts  int64
@@ -173,6 +175,8 @@ func TestBlock(t *testing.T) {
 }
 
 func TestReadFormatV1(t *testing.T) {
+	t.Parallel()
+
 	c := NewMemChunk(EncGZIP, testBlockSize, testTargetSize)
 	fillChunk(c)
 	// overrides default v2 format
@@ -211,6 +215,8 @@ func TestRoundtripV2(t *testing.T) {
 	for _, enc := range testEncoding {
 		for _, version := range []byte{chunkFormatV2, chunkFormatV3} {
 			t.Run(enc.String(), func(t *testing.T) {
+				t.Parallel()
+
 				c := NewMemChunk(enc, testBlockSize, testTargetSize)
 				c.format = version
 				populated := fillChunk(c)
@@ -258,14 +264,14 @@ func TestRoundtripV2(t *testing.T) {
 				assertLines(loaded)
 			})
 		}
-
 	}
 }
 
 func TestRoundtripV3(t *testing.T) {
-
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
 			c := NewMemChunk(enc, testBlockSize, testTargetSize)
 			c.format = chunkFormatV3
 			_ = fillChunk(c)
@@ -281,15 +287,15 @@ func TestRoundtripV3(t *testing.T) {
 			r.head.clear()
 
 			require.Equal(t, c, r)
-
 		})
 	}
-
 }
 
 func TestSerialization(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
 			chk := NewMemChunk(enc, testBlockSize, testTargetSize)
 
 			numSamples := 50000
@@ -337,6 +343,8 @@ func TestSerialization(t *testing.T) {
 func TestChunkFilling(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
 			chk := NewMemChunk(enc, testBlockSize, 0)
 			chk.blockSize = 1024
 
@@ -374,6 +382,8 @@ func TestChunkFilling(t *testing.T) {
 }
 
 func TestGZIPChunkTargetSize(t *testing.T) {
+	t.Parallel()
+
 	chk := NewMemChunk(EncGZIP, testBlockSize, testTargetSize)
 
 	lineSize := 512
@@ -420,7 +430,6 @@ func TestGZIPChunkTargetSize(t *testing.T) {
 	ut := chk.Utilization()
 	require.Greater(t, ut, 0.99)
 	require.Less(t, ut, 1.01)
-
 }
 
 func TestMemChunk_AppendOutOfOrder(t *testing.T) {
@@ -467,6 +476,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 func TestChunkSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
 			c := NewMemChunk(enc, testBlockSize, testTargetSize)
 			inserted := fillChunk(c)
 			b, err := c.Bytes()
@@ -477,7 +487,6 @@ func TestChunkSize(t *testing.T) {
 			t.Log("characters ", humanize.Bytes(uint64(inserted)))
 			t.Log("Ratio", float64(inserted)/float64(len(b)))
 		})
-
 	}
 }
 
@@ -508,7 +517,6 @@ func TestChunkStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	for it.Next() {
-
 	}
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
@@ -537,7 +545,6 @@ func TestChunkStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	for it.Next() {
-
 	}
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
@@ -586,7 +593,6 @@ func TestIteratorClose(t *testing.T) {
 				}
 				test(iter, t)
 			}
-
 		})
 	}
 }
@@ -618,7 +624,6 @@ func BenchmarkWrite(b *testing.B) {
 			result = chunks
 		})
 	}
-
 }
 
 type nomatchPipeline struct{}
@@ -703,10 +708,8 @@ func TestGenerateDataSize(t *testing.T) {
 }
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
-
 	for _, j := range []int{100000, 50000, 15000, 10000} {
 		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
-
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
@@ -729,10 +732,8 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 }
 
 func BenchmarkHeadBlockSampleIterator(b *testing.B) {
-
 	for _, j := range []int{100000, 50000, 15000, 10000} {
 		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
-
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
@@ -755,8 +756,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 }
 
 func TestMemChunk_IteratorBounds(t *testing.T) {
-
-	var createChunk = func() *MemChunk {
+	createChunk := func() *MemChunk {
 		t.Helper()
 		c := NewMemChunk(EncNone, 1e6, 1e6)
 
@@ -799,6 +799,8 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
+				t.Parallel()
+
 				tt := tt
 				c := createChunk()
 
@@ -819,14 +821,14 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 				}
 				require.NoError(t, it.Close())
 			})
-
 	}
-
 }
 
 func TestMemchunkLongLine(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
 			c := NewMemChunk(enc, testBlockSize, testTargetSize)
 			for i := 1; i <= 10; i++ {
 				require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: strings.Repeat("e", 200000)}))
@@ -843,6 +845,8 @@ func TestMemchunkLongLine(t *testing.T) {
 
 // Ensure passing a reusable []byte doesn't affect output
 func TestBytesWith(t *testing.T) {
+	t.Parallel()
+
 	exp, err := NewMemChunk(EncNone, testBlockSize, testTargetSize).BytesWith(nil)
 	require.Nil(t, err)
 	out, err := NewMemChunk(EncNone, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
@@ -852,6 +856,8 @@ func TestBytesWith(t *testing.T) {
 }
 
 func TestHeadBlockCheckpointing(t *testing.T) {
+	t.Parallel()
+
 	c := NewMemChunk(EncSnappy, 256*1024, 1500*1024)
 
 	// add a few entries
@@ -867,7 +873,7 @@ func TestHeadBlockCheckpointing(t *testing.T) {
 	// ensure blocks are not cut
 	require.Equal(t, 0, len(c.blocks))
 
-	b, err := c.head.CheckpointBytes(c.format)
+	b, err := c.head.CheckpointBytes(c.format, nil)
 	require.Nil(t, err)
 
 	hb := &headBlock{}
@@ -876,6 +882,8 @@ func TestHeadBlockCheckpointing(t *testing.T) {
 }
 
 func TestCheckpointEncoding(t *testing.T) {
+	t.Parallel()
+
 	blockSize, targetSize := 256*1024, 1500*1024
 	c := NewMemChunk(EncSnappy, blockSize, targetSize)
 
@@ -905,24 +913,20 @@ func TestCheckpointEncoding(t *testing.T) {
 	// ensure new blocks are not cut
 	require.Equal(t, 1, len(c.blocks))
 
-	chk, head, err := c.SerializeForCheckpoint(nil)
+	var chk, head bytes.Buffer
+	err := c.SerializeForCheckpointTo(&chk, &head)
 	require.Nil(t, err)
 
-	cpy, err := MemchunkFromCheckpoint(chk, head, blockSize, targetSize)
+	cpy, err := MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), blockSize, targetSize)
 	require.Nil(t, err)
-
-	// TODO(owen-d): remove once v3+ is the default chunk version
-	// because that is when we started serializing uncompressed size.
-	// Until then, nil them out in order to ease equality testing.
-	for i := range c.blocks {
-		c.blocks[i].uncompressedSize = 0
-	}
 
 	require.Equal(t, c, cpy)
 }
 
-var streams = []logproto.Stream{}
-var series = []logproto.Series{}
+var (
+	streams = []logproto.Stream{}
+	series  = []logproto.Series{}
+)
 
 func BenchmarkBufferedIteratorLabels(b *testing.B) {
 	c := NewMemChunk(EncSnappy, testBlockSize, testTargetSize)
@@ -956,7 +960,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 	} {
 		b.Run(test, func(b *testing.B) {
 			b.ReportAllocs()
-			expr, err := logql.ParseLogSelector(test)
+			expr, err := logql.ParseLogSelector(test, true)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -1018,4 +1022,36 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 			series = series[:0]
 		})
 	}
+}
+
+func Test_HeadIteratorReverse(t *testing.T) {
+	c := NewMemChunk(EncSnappy, testBlockSize, testTargetSize)
+	genEntry := func(i int64) *logproto.Entry {
+		return &logproto.Entry{
+			Timestamp: time.Unix(0, i),
+			Line:      fmt.Sprintf(`msg="%d"`, i),
+		}
+	}
+	var i int64
+	for e := genEntry(i); c.SpaceFor(e); e, i = genEntry(i+1), i+1 {
+		require.NoError(t, c.Append(e))
+	}
+
+	assertOrder := func(t *testing.T, total int64) {
+		expr, err := logql.ParseLogSelector(`{app="foo"} | logfmt`, true)
+		require.NoError(t, err)
+		p, err := expr.Pipeline()
+		require.NoError(t, err)
+		it, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(0, i), logproto.BACKWARD, p.ForStream(labels.Labels{{Name: "app", Value: "foo"}}))
+		require.NoError(t, err)
+		for it.Next() {
+			total--
+			require.Equal(t, total, it.Entry().Timestamp.UnixNano())
+		}
+	}
+
+	assertOrder(t, i)
+	// let's try again without the headblock.
+	require.NoError(t, c.cut())
+	assertOrder(t, i)
 }

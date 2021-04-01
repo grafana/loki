@@ -9,7 +9,7 @@ import (
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -48,7 +48,7 @@ func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
 		ring:            ring,
-		pool:            cortex_distributor.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
+		pool:            cortex_distributor.NewPool(clientCfg.PoolConfig, ring, clientFactory, util_log.Logger),
 		extraQueryDelay: extraQueryDelay,
 	}
 
@@ -74,7 +74,7 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(logproto.Q
 // forGivenIngesters runs f, in parallel, for given ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.IngesterDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err
@@ -100,31 +100,31 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 }
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
-	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Query(ctx, params.QueryRequest, stats.CollectTrailer(ctx))
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	iterators := make([]iter.EntryIterator, len(clients))
-	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), params.Direction)
+	iterators := make([]iter.EntryIterator, len(resps))
+	for i := range resps {
+		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Querier_QueryClient), params.Direction)
 	}
 	return iterators, nil
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
-	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.QuerySample(ctx, params.SampleQueryRequest, stats.CollectTrailer(ctx))
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	iterators := make([]iter.SampleIterator, len(clients))
-	for i := range clients {
-		iterators[i] = iter.NewSampleQueryClientIterator(clients[i].response.(logproto.Querier_QuerySampleClient))
+	iterators := make([]iter.SampleIterator, len(resps))
+	for i := range resps {
+		iterators[i] = iter.NewSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
 	}
 	return iterators, nil
 }
@@ -146,7 +146,7 @@ func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest)
 }
 
 func (q *IngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {
-	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
@@ -154,8 +154,8 @@ func (q *IngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (
 	}
 
 	tailClients := make(map[string]logproto.Querier_TailClient)
-	for i := range clients {
-		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
+	for i := range resps {
+		tailClients[resps[i].addr] = resps[i].response.(logproto.Querier_TailClient)
 	}
 
 	return tailClients, nil
@@ -175,9 +175,9 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	}
 
 	// Look for disconnected ingesters or new one we should (re)connect to
-	reconnectIngesters := []ring.IngesterDesc{}
+	reconnectIngesters := []ring.InstanceDesc{}
 
-	for _, ingester := range replicationSet.Ingesters {
+	for _, ingester := range replicationSet.Instances {
 		if _, ok := connected[ingester.Addr]; ok {
 			continue
 		}
@@ -195,7 +195,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	}
 
 	// Instance a tail client for each ingester to re(connect)
-	reconnectClients, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Ingesters: reconnectIngesters}, func(client logproto.QuerierClient) (interface{}, error) {
+	reconnectClients, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Instances: reconnectIngesters}, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
@@ -232,10 +232,10 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 	}
 
 	// we want to check count of active tailers with only active ingesters
-	ingesters := make([]ring.IngesterDesc, 0, 1)
-	for i := range replicationSet.Ingesters {
-		if replicationSet.Ingesters[i].State == ring.ACTIVE {
-			ingesters = append(ingesters, replicationSet.Ingesters[i])
+	ingesters := make([]ring.InstanceDesc, 0, 1)
+	for i := range replicationSet.Instances {
+		if replicationSet.Instances[i].State == ring.ACTIVE {
+			ingesters = append(ingesters, replicationSet.Instances[i])
 		}
 	}
 
@@ -244,7 +244,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 	}
 
 	responses, err := q.forGivenIngesters(ctx, replicationSet, func(querierClient logproto.QuerierClient) (interface{}, error) {
-		resp, err := querierClient.TailersCount(ctx, nil)
+		resp, err := querierClient.TailersCount(ctx, &logproto.TailersCountRequest{})
 		if err != nil {
 			return nil, err
 		}

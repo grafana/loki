@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	pkg_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -84,7 +84,7 @@ func (tm *TableManager) loop() {
 }
 
 func (tm *TableManager) Stop() {
-	level.Info(pkg_util.Logger).Log("msg", "stopping table manager")
+	level.Info(util_log.Logger).Log("msg", "stopping table manager")
 
 	tm.cancel()
 	tm.wg.Wait()
@@ -168,21 +168,21 @@ func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
-	level.Info(pkg_util.Logger).Log("msg", "uploading tables")
+	level.Info(util_log.Logger).Log("msg", "uploading tables")
 
 	status := statusSuccess
 	for _, table := range tm.tables {
 		err := table.Snapshot()
 		if err != nil {
 			// we do not want to stop uploading of dbs due to failures in snapshotting them so logging just the error here.
-			level.Error(pkg_util.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to snapshot table for reads", "table", table.name, "err", err)
 		}
 
 		err = table.Upload(ctx, force)
 		if err != nil {
 			// continue uploading other tables while skipping cleanup for a failed one.
 			status = statusFailure
-			level.Error(pkg_util.Logger).Log("msg", "failed to upload dbs", "table", table.name, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to upload dbs", "table", table.name, "err", err)
 			continue
 		}
 
@@ -190,7 +190,7 @@ func (tm *TableManager) uploadTables(ctx context.Context, force bool) {
 		err = table.Cleanup(tm.cfg.DBRetainPeriod)
 		if err != nil {
 			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
-			level.Error(pkg_util.Logger).Log("msg", "failed to cleanup uploaded dbs past their retention period", "table", table.name, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to cleanup uploaded dbs past their retention period", "table", table.name, "err", err)
 		}
 	}
 
@@ -218,7 +218,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		// since we are moving to keeping files for same table in a folder, if current element is a file we need to move it inside a directory with the same name
 		// i.e file index_123 would be moved to path index_123/index_123.
 		if !fileInfo.IsDir() {
-			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("found a legacy file %s, moving it to folder with same name", fileInfo.Name()))
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found a legacy file %s, moving it to folder with same name", fileInfo.Name()))
 			filePath := filepath.Join(tm.cfg.IndexDir, fileInfo.Name())
 
 			// create a folder with .temp suffix since we can't create a directory with same name as file.
@@ -238,7 +238,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			}
 		}
 
-		level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("loading table %s", fileInfo.Name()))
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading table %s", fileInfo.Name()))
 		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient)
 		if err != nil {
 			return nil, err
@@ -248,7 +248,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 			// if table is nil it means it has no files in it so remove the folder for that table.
 			err := os.Remove(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()))
 			if err != nil {
-				level.Error(pkg_util.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
+				level.Error(util_log.Logger).Log("msg", "failed to remove empty table folder", "table", fileInfo.Name(), "err", err)
 			}
 			continue
 		}

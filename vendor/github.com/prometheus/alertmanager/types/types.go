@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
@@ -407,9 +408,9 @@ func (f MuteFunc) Mutes(lset model.LabelSet) bool { return f(lset) }
 type Silence struct {
 	// A unique identifier across all connected instances.
 	ID string `json:"id"`
-	// A set of matchers determining if a label set is affect
+	// A set of matchers determining if a label set is affected
 	// by the silence.
-	Matchers Matchers `json:"matchers"`
+	Matchers labels.Matchers `json:"matchers"`
 
 	// Time range of the silence.
 	//

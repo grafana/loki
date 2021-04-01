@@ -15,8 +15,6 @@ import (
 	"github.com/influxdata/go-syslog/v3"
 	"github.com/influxdata/go-syslog/v3/rfc5424"
 	"github.com/mwitkow/go-conntrack"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -29,28 +27,14 @@ import (
 )
 
 var (
-	syslogEntries = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "syslog_target_entries_total",
-		Help:      "Total number of successful entries sent to the syslog target",
-	})
-	syslogParsingErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "syslog_target_parsing_errors_total",
-		Help:      "Total number of parsing errors while receiving syslog messages",
-	})
-	syslogEmptyMessages = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "promtail",
-		Name:      "syslog_empty_messages_total",
-		Help:      "Total number of empty messages receiving from syslog",
-	})
-
-	defaultIdleTimeout = 120 * time.Second
+	defaultIdleTimeout      = 120 * time.Second
+	defaultMaxMessageLength = 8192
 )
 
 // SyslogTarget listens to syslog messages.
 // nolint:golint
 type SyslogTarget struct {
+	metrics       *Metrics
 	logger        log.Logger
 	handler       api.EntryHandler
 	config        *scrapeconfig.SyslogTargetConfig
@@ -72,6 +56,7 @@ type message struct {
 
 // NewSyslogTarget configures a new SyslogTarget.
 func NewSyslogTarget(
+	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
@@ -81,6 +66,7 @@ func NewSyslogTarget(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	t := &SyslogTarget{
+		metrics:       metrics,
 		logger:        logger,
 		handler:       handler,
 		config:        config,
@@ -168,7 +154,7 @@ func (t *SyslogTarget) handleConnection(cn net.Conn) {
 			return
 		}
 		t.handleMessage(connLabels.Copy(), msg.Message)
-	})
+	}, t.maxMessageLength())
 
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "error initializing syslog stream", "err", err)
@@ -182,14 +168,14 @@ func (t *SyslogTarget) handleMessageError(err error) {
 		return
 	}
 	level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
-	syslogParsingErrors.Inc()
+	t.metrics.syslogParsingErrors.Inc()
 }
 
 func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Message) {
 	rfc5424Msg := msg.(*rfc5424.SyslogMessage)
 
 	if rfc5424Msg.Message == nil {
-		syslogEmptyMessages.Inc()
+		t.metrics.syslogEmptyMessages.Inc()
 		return
 	}
 
@@ -251,7 +237,7 @@ func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {
 				Line:      msg.message,
 			},
 		}
-		syslogEntries.Inc()
+		t.metrics.syslogEntries.Inc()
 	}
 }
 
@@ -325,10 +311,17 @@ func (t *SyslogTarget) ListenAddress() net.Addr {
 }
 
 func (t *SyslogTarget) idleTimeout() time.Duration {
-	if tm := t.config.IdleTimeout; tm != 0 {
-		return tm
+	if t.config.IdleTimeout != 0 {
+		return t.config.IdleTimeout
 	}
 	return defaultIdleTimeout
+}
+
+func (t *SyslogTarget) maxMessageLength() int {
+	if t.config.MaxMessageLength != 0 {
+		return t.config.MaxMessageLength
+	}
+	return defaultMaxMessageLength
 }
 
 type idleTimeoutConn struct {

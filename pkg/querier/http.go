@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -198,7 +198,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	logger := util.WithContext(r.Context(), util.Logger)
+	logger := util_log.WithContext(r.Context(), util_log.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
 	if err != nil {
@@ -332,7 +332,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	query := httpRequest.Form.Get("query")
 	regexp := httpRequest.Form.Get("regexp")
 	if regexp != "" {
-		expr, err := logql.ParseLogSelector(query)
+		expr, err := logql.ParseLogSelector(query, true)
 		if err != nil {
 			return "", err
 		}

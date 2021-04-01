@@ -25,6 +25,9 @@ func UnaryClientInterceptor(opts ...Option) grpc.UnaryClientInterceptor {
 			return invoker(parentCtx, method, req, reply, cc, opts...)
 		}
 		newCtx, clientSpan := newClientSpanFromContext(parentCtx, o.tracer, method)
+		if o.unaryRequestHandlerFunc != nil {
+			o.unaryRequestHandlerFunc(clientSpan, req)
+		}
 		err := invoker(newCtx, method, req, reply, cc, opts...)
 		finishClientSpan(clientSpan, err)
 		return err
@@ -76,9 +79,7 @@ func (s *tracedClientStream) SendMsg(m interface{}) error {
 
 func (s *tracedClientStream) CloseSend() error {
 	err := s.ClientStream.CloseSend()
-	if err != nil {
-		s.finishClientSpan(err)
-	}
+	s.finishClientSpan(err)
 	return err
 }
 
@@ -127,7 +128,7 @@ func newClientSpanFromContext(ctx context.Context, tracer opentracing.Tracer, fu
 	// Make sure we add this to the metadata of the call, so it gets propagated:
 	md := metautils.ExtractOutgoing(ctx).Clone()
 	if err := tracer.Inject(clientSpan.Context(), opentracing.HTTPHeaders, metadataTextMap(md)); err != nil {
-		grpclog.Printf("grpc_opentracing: failed serializing trace information: %v", err)
+		grpclog.Infof("grpc_opentracing: failed serializing trace information: %v", err)
 	}
 	ctxWithMetadata := md.ToOutgoing(ctx)
 	return opentracing.ContextWithSpan(ctxWithMetadata, clientSpan), clientSpan

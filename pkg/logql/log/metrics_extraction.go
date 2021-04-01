@@ -47,17 +47,13 @@ type lineSampleExtractor struct {
 
 // NewLineSampleExtractor creates a SampleExtractor from a LineExtractor.
 // Multiple log stages are run before converting the log line.
-func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without bool, noLabels bool) (SampleExtractor, error) {
+func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
-	var expectedLabels []string
-	if !without {
-		expectedLabels = append(expectedLabels, s.RequiredLabelNames()...)
-		expectedLabels = uniqueString(append(expectedLabels, groups...))
-	}
+	hints := newParserHint(s.RequiredLabelNames(), groups, without, noLabels, "")
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, expectedLabels, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
@@ -118,7 +114,7 @@ type labelSampleExtractor struct {
 // to remove sample containing the __error__ label.
 func LabelExtractorWithStages(
 	labelName, conversion string,
-	groups []string, without bool, noLabels bool,
+	groups []string, without, noLabels bool,
 	preStages []Stage,
 	postFilter Stage,
 ) (SampleExtractor, error) {
@@ -139,19 +135,13 @@ func LabelExtractorWithStages(
 		sort.Strings(groups)
 	}
 	preStage := ReduceStages(preStages)
-	var expectedLabels []string
-	if !without {
-		expectedLabels = append(expectedLabels, preStage.RequiredLabelNames()...)
-		expectedLabels = append(expectedLabels, groups...)
-		expectedLabels = append(expectedLabels, postFilter.RequiredLabelNames()...)
-		expectedLabels = uniqueString(expectedLabels)
-	}
+	hints := newParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName)
 	return &labelSampleExtractor{
 		preStage:         preStage,
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, expectedLabels, without, noLabels),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }

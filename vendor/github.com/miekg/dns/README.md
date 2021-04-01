@@ -69,6 +69,8 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://zonedb.org/
 * https://router7.org/
 * https://github.com/fortio/dnsping
+* https://github.com/Luzilla/dnsbl_exporter
+* https://github.com/bodgit/tsig
 
 Send pull request if you want to be listed here.
 

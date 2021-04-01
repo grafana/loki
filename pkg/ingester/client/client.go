@@ -9,12 +9,22 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "loki_ingester_client_request_duration_seconds",
+	Help:    "Time spent doing Ingester requests.",
+	Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+}, []string{"operation", "status_code"})
 
 type HealthAndIngesterClient interface {
 	logproto.IngesterClient
@@ -52,7 +62,13 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 		grpc.WithInsecure(),
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
-	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
+
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation())
+	if err != nil {
+		return nil, err
+	}
+
+	opts = append(opts, dialOpts...)
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err
@@ -70,8 +86,10 @@ func instrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterc
 	return []grpc.UnaryClientInterceptor{
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
+			cortex_middleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
 		}, []grpc.StreamClientInterceptor{
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 			middleware.StreamClientUserHeaderInterceptor,
+			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
 		}
 }

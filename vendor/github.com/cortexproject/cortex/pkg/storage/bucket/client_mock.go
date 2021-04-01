@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -24,6 +25,10 @@ func (m *ClientMock) Upload(ctx context.Context, name string, r io.Reader) error
 	return args.Error(0)
 }
 
+func (m *ClientMock) MockUpload(name string, err error) {
+	m.On("Upload", mock.Anything, name, mock.Anything).Return(err)
+}
+
 // Delete mocks objstore.Bucket.Delete()
 func (m *ClientMock) Delete(ctx context.Context, name string) error {
 	args := m.Called(ctx, name)
@@ -36,8 +41,8 @@ func (m *ClientMock) Name() string {
 }
 
 // Iter mocks objstore.Bucket.Iter()
-func (m *ClientMock) Iter(ctx context.Context, dir string, f func(string) error) error {
-	args := m.Called(ctx, dir, f)
+func (m *ClientMock) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	args := m.Called(ctx, dir, f, options)
 	return args.Error(0)
 }
 
@@ -49,7 +54,7 @@ func (m *ClientMock) MockIter(prefix string, objects []string, err error) {
 // MockIterWithCallback is a convenient method to mock Iter() and get a callback called when the Iter
 // API is called.
 func (m *ClientMock) MockIterWithCallback(prefix string, objects []string, err error, cb func()) {
-	m.On("Iter", mock.Anything, prefix, mock.Anything).Return(err).Run(func(args mock.Arguments) {
+	m.On("Iter", mock.Anything, prefix, mock.Anything, mock.Anything).Return(err).Run(func(args mock.Arguments) {
 		if cb != nil {
 			cb()
 		}
@@ -78,6 +83,10 @@ func (m *ClientMock) Get(ctx context.Context, name string) (io.ReadCloser, error
 func (m *ClientMock) MockGet(name, content string, err error) {
 	if content != "" {
 		m.On("Exists", mock.Anything, name).Return(true, err)
+		m.On("Attributes", mock.Anything, name).Return(objstore.ObjectAttributes{
+			Size:         int64(len(content)),
+			LastModified: time.Now(),
+		}, nil)
 
 		// Since we return an ReadCloser and it can be consumed only once,
 		// each time the mocked Get() is called we do create a new one, so
@@ -89,6 +98,7 @@ func (m *ClientMock) MockGet(name, content string, err error) {
 	} else {
 		m.On("Exists", mock.Anything, name).Return(false, err)
 		m.On("Get", mock.Anything, name).Return(nil, errObjectDoesNotExist)
+		m.On("Attributes", mock.Anything, name).Return(nil, errObjectDoesNotExist)
 	}
 }
 

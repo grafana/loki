@@ -41,13 +41,13 @@ func (b *globalMarkersBucket) Upload(ctx context.Context, name string, r io.Read
 	}
 
 	// Upload it to the original location.
-	if err := b.parent.Upload(ctx, name, bytes.NewReader(body)); err != nil {
+	if err := b.parent.Upload(ctx, name, bytes.NewBuffer(body)); err != nil {
 		return err
 	}
 
 	// Upload it to the global markers location too.
 	globalMarkPath := path.Clean(path.Join(path.Dir(name), "../", BlockDeletionMarkFilepath(blockID)))
-	return b.parent.Upload(ctx, globalMarkPath, bytes.NewReader(body))
+	return b.parent.Upload(ctx, globalMarkPath, bytes.NewBuffer(body))
 }
 
 // Delete implements objstore.Bucket.
@@ -81,8 +81,8 @@ func (b *globalMarkersBucket) Close() error {
 }
 
 // Iter implements objstore.Bucket.
-func (b *globalMarkersBucket) Iter(ctx context.Context, dir string, f func(string) error) error {
-	return b.parent.Iter(ctx, dir, f)
+func (b *globalMarkersBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	return b.parent.Iter(ctx, dir, f, options...)
 }
 
 // Get implements objstore.Bucket.
@@ -108,6 +108,24 @@ func (b *globalMarkersBucket) IsObjNotFoundErr(err error) bool {
 // Attributes implements objstore.Bucket.
 func (b *globalMarkersBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
 	return b.parent.Attributes(ctx, name)
+}
+
+// WithExpectedErrs implements objstore.InstrumentedBucket.
+func (b *globalMarkersBucket) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	if ib, ok := b.parent.(objstore.InstrumentedBucket); ok {
+		return ib.WithExpectedErrs(fn)
+	}
+
+	return b
+}
+
+// ReaderWithExpectedErrs implements objstore.InstrumentedBucketReader.
+func (b *globalMarkersBucket) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	if ib, ok := b.parent.(objstore.InstrumentedBucketReader); ok {
+		return ib.ReaderWithExpectedErrs(fn)
+	}
+
+	return b
 }
 
 func (b *globalMarkersBucket) isBlockDeletionMark(name string) (ulid.ULID, bool) {

@@ -30,6 +30,7 @@ type AppsService interface {
 	List(ctx context.Context, opts *ListOptions) ([]*App, *Response, error)
 	Update(ctx context.Context, appID string, update *AppUpdateRequest) (*App, *Response, error)
 	Delete(ctx context.Context, appID string) (*Response, error)
+	Propose(ctx context.Context, propose *AppProposeRequest) (*AppProposeResponse, *Response, error)
 
 	GetDeployment(ctx context.Context, appID, deploymentID string) (*Deployment, *Response, error)
 	ListDeployments(ctx context.Context, appID string, opts *ListOptions) ([]*Deployment, *Response, error)
@@ -182,6 +183,22 @@ func (s *AppsServiceOp) Delete(ctx context.Context, appID string) (*Response, er
 		return resp, err
 	}
 	return resp, nil
+}
+
+// Propose an app.
+func (s *AppsServiceOp) Propose(ctx context.Context, propose *AppProposeRequest) (*AppProposeResponse, *Response, error) {
+	path := fmt.Sprintf("%s/propose", appsBasePath)
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, propose)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &AppProposeResponse{}
+	resp, err := s.client.Do(ctx, req, res)
+	if err != nil {
+		return nil, resp, err
+	}
+	return res, resp, nil
 }
 
 // GetDeployment gets an app deployment.

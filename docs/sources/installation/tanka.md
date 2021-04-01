@@ -35,17 +35,16 @@ jb install github.com/grafana/loki/production/ksonnet/loki
 jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
-> **Note:** As of 2020-08-13, we use some features that are not yet generally available. This step will be unnecessary in future Tanka releases. For now, install this library, which we'll use as an override:
+Then you'll need to install a kubernetes library:
 
 ```bash
-jb install github.com/jsonnet-libs/k8s-alpha/1.14
+jb install github.com/jsonnet-libs/k8s-alpha/1.16
 ```
 
 Next, override the `lib/k.libsonnet` with the following
 
 ```jsonnet
-(import 'github.com/jsonnet-libs/k8s-alpha/1.14/main.libsonnet')
-+ (import 'github.com/jsonnet-libs/k8s-alpha/1.14/extensions/kausal-shim.libsonnet')
+import 'github.com/jsonnet-libs/k8s-alpha/1.16/main.libsonnet'
 ```
 
 Be sure to replace the username, password, and the relevant `htpasswd` contents.
@@ -97,3 +96,5 @@ Run `docker info | grep "Root Dir"` to get the root path.
 
 Run `tk show environments/loki` to see the manifests that will be deployed to
 the cluster. Run `tk apply environments/loki` to deploy the manifests.
+
+>> **Note:** You'll likely be prompted to set the `boltdb_shipper_shared_store` based on which backend you're using. This is expected. Set it to the name of the storage backend (i.e. 'gcs') that you've chosen. Available options may be found in the [configuration docs](https://grafana.com/docs/loki/latest/configuration/#storage_config).

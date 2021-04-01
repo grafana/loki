@@ -163,7 +163,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		}
 
 		ringCfg := gatewayCfg.ShardingRing.ToRingConfig()
-		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, &BlocksReplicationStrategy{})
+		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}
@@ -271,7 +271,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
-		ringLastState, _ = g.ring.GetAllHealthy(ring.BlocksSync) // nolint:errcheck
+		ringLastState, _ = g.ring.GetAllHealthy(BlocksSync) // nolint:errcheck
 		ringTicker := time.NewTicker(util.DurationWithJitter(g.gatewayCfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -284,7 +284,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := g.ring.GetAllHealthy(ring.BlocksSync) // nolint:errcheck
+			currRingState, _ := g.ring.GetAllHealthy(BlocksSync) // nolint:errcheck
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
@@ -330,7 +330,7 @@ func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValues
 	return g.stores.LabelValues(ctx, req)
 }
 
-func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.IngesterDesc) (ring.IngesterState, ring.Tokens) {
+func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the store-gateway instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any) or the ones loaded from file.
@@ -339,7 +339,7 @@ func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc 
 		tokens = instanceDesc.GetTokens()
 	}
 
-	_, takenTokens := ringDesc.TokensFor(instanceID)
+	takenTokens := ringDesc.GetTokens()
 	newTokens := ring.GenerateTokens(RingNumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
@@ -350,7 +350,7 @@ func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc 
 
 func (g *StoreGateway) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
 func (g *StoreGateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
-func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.IngesterDesc) {
+func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
 }
 
 func createBucketClient(cfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {

@@ -66,7 +66,7 @@ createRequest := &godo.DropletCreateRequest{
     Region: "nyc3",
     Size:   "s-1vcpu-1gb",
     Image: godo.DropletCreateImage{
-        Slug: "ubuntu-14-04-x64",
+        Slug: "ubuntu-20-04-x64",
     },
 }
 

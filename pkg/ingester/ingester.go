@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -33,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
 	listutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -114,15 +116,15 @@ func (cfg *Config) Validate() error {
 		return errors.New("the use of the write ahead log (WAL) is incompatible with chunk transfers. It's suggested to use the WAL. Please try setting ingester.max-transfer-retries to 0 to disable transfers")
 	}
 	return nil
-
 }
 
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
 	services.Service
 
-	cfg          Config
-	clientConfig client.Config
+	cfg           Config
+	clientConfig  client.Config
+	tenantConfigs *runtime.TenantConfigs
 
 	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
 	instancesMtx sync.RWMutex
@@ -150,6 +152,9 @@ type Ingester struct {
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
 
+	// Only used by WAL & flusher to coordinate backpressure during replay.
+	replayController *replayController
+
 	metrics *ingesterMetrics
 
 	wal WAL
@@ -165,7 +170,7 @@ type ChunkStore interface {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -175,6 +180,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	i := &Ingester{
 		cfg:                   cfg,
 		clientConfig:          clientConfig,
+		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
 		store:                 store,
 		periodicConfigs:       store.GetSchemaConfigs(),
@@ -184,6 +190,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
 	}
+	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
 	if cfg.WAL.Enabled {
 		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
@@ -214,7 +221,14 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
-	if i.cfg.WAL.Recover {
+	if i.cfg.WAL.Enabled {
+		// Ignore retain period during wal replay.
+		old := i.cfg.RetainPeriod
+		i.cfg.RetainPeriod = 0
+		defer func() {
+			i.cfg.RetainPeriod = old
+		}()
+
 		// Disable the in process stream limit checks while replaying the WAL
 		i.limiter.Disable()
 		defer i.limiter.Enable()
@@ -224,7 +238,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 		start := time.Now()
 
-		level.Info(util.Logger).Log("msg", "recovering from checkpoint")
+		level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
 		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
 		if err != nil {
 			return err
@@ -234,19 +248,19 @@ func (i *Ingester) starting(ctx context.Context) error {
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util.Logger).Log(
+			level.Error(util_log.Logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util.Logger).Log(
+		level.Info(util_log.Logger).Log(
 			"msg", "recovered WAL checkpoint recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", checkpointRecoveryErr != nil,
 		)
 
-		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
@@ -256,13 +270,13 @@ func (i *Ingester) starting(ctx context.Context) error {
 		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(util.Logger).Log(
+			level.Error(util_log.Logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util.Logger).Log(
+		level.Info(util_log.Logger).Log(
 			"msg", "WAL segment recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", segmentRecoveryErr != nil,
@@ -270,15 +284,12 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
-		level.Info(util.Logger).Log("msg", "recovery finished", "time", elapsed.String())
+		level.Info(util_log.Logger).Log("msg", "recovery finished", "time", elapsed.String())
 
+		i.wal.Start()
 	}
 
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
-	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
-		go i.flushLoop(j)
-	}
+	i.InitFlushQueues()
 
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
 	err := i.lifecycler.StartAsync(context.Background())
@@ -349,7 +360,7 @@ func (i *Ingester) loop() {
 	for {
 		select {
 		case <-flushTicker.C:
-			i.sweepUsers(false)
+			i.sweepUsers(false, true)
 
 		case <-i.loopQuit:
 			return
@@ -393,7 +404,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.wal, i.metrics, i.flushOnShutdownSwitch)
+		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch)
 		i.instances[instanceID] = inst
 	}
 	return inst
@@ -437,7 +448,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
-	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
+	return sendBatches(ctx, heapItr, queryServer, req.Limit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -476,7 +487,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
-	return sendSampleBatches(queryServer.Context(), heapItr, queryServer)
+	return sendSampleBatches(ctx, heapItr, queryServer)
 }
 
 // boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.

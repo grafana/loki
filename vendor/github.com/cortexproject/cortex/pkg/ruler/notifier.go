@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -16,7 +17,20 @@ import (
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/dns"
 	"github.com/prometheus/prometheus/notifier"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
+
+type NotifierConfig struct {
+	TLS       tls.ClientConfig `yaml:",inline"`
+	BasicAuth util.BasicAuth   `yaml:",inline"`
+}
+
+func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.TLS.RegisterFlagsWithPrefix("ruler.alertmanager-client", f)
+	cfg.BasicAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
+}
 
 // rulerNotifier bundles a notifier.Manager together with an associated
 // Alertmanager service discovery manager and handles the lifecycle
@@ -39,6 +53,7 @@ func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
 	}
 }
 
+// run starts the notifier. This function doesn't block and returns immediately.
 func (rn *rulerNotifier) run() {
 	rn.wg.Add(2)
 	go func() {
@@ -149,17 +164,33 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 		PathPrefix:              url.Path,
 		Timeout:                 model.Duration(rulerConfig.NotificationTimeout),
 		ServiceDiscoveryConfigs: sdConfig,
+		HTTPClientConfig: config_util.HTTPClientConfig{
+			TLSConfig: config_util.TLSConfig{
+				CAFile:             rulerConfig.Notifier.TLS.CAPath,
+				CertFile:           rulerConfig.Notifier.TLS.CertPath,
+				KeyFile:            rulerConfig.Notifier.TLS.KeyPath,
+				InsecureSkipVerify: rulerConfig.Notifier.TLS.InsecureSkipVerify,
+				ServerName:         rulerConfig.Notifier.TLS.ServerName,
+			},
+		},
 	}
 
+	// Check the URL for basic authentication information first
 	if url.User != nil {
-		amConfig.HTTPClientConfig = config_util.HTTPClientConfig{
-			BasicAuth: &config_util.BasicAuth{
-				Username: url.User.Username(),
-			},
+		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
+			Username: url.User.Username(),
 		}
 
 		if password, isSet := url.User.Password(); isSet {
 			amConfig.HTTPClientConfig.BasicAuth.Password = config_util.Secret(password)
+		}
+	}
+
+	// Override URL basic authentication configs with hard coded config values if present
+	if rulerConfig.Notifier.BasicAuth.IsEnabled() {
+		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
+			Username: rulerConfig.Notifier.BasicAuth.Username,
+			Password: config_util.Secret(rulerConfig.Notifier.BasicAuth.Password),
 		}
 	}
 

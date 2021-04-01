@@ -23,6 +23,9 @@ func sanitizeLabelKey(key string, isPrefix bool) string {
 		return key
 	}
 	key = strings.TrimSpace(key)
+	if len(key) == 0 {
+		return key
+	}
 	if isPrefix && key[0] >= '0' && key[0] <= '9' {
 		key = "_" + key
 	}

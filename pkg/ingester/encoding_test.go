@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
@@ -42,6 +42,11 @@ func Test_Encoding_Series(t *testing.T) {
 
 	err := decodeWALRecord(buf, decoded)
 	require.Nil(t, err)
+
+	// Since we use a pool, there can be subtle differentiations between nil slices and len(0) slices.
+	// Both are valid, so check length.
+	require.Equal(t, 0, len(decoded.RefEntries))
+	decoded.RefEntries = nil
 	require.Equal(t, record, decoded)
 }
 
@@ -120,9 +125,42 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	}
 }
 
-func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
+func Benchmark_DecodeWAL(b *testing.B) {
+	var entries []logproto.Entry
+	for i := int64(0); i < 10000; i++ {
+		entries = append(entries, logproto.Entry{
+			Timestamp: time.Unix(0, i),
+			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+		})
+	}
+	record := &WALRecord{
+		entryIndexMap: make(map[uint64]int),
+		UserID:        "123",
+		RefEntries: []RefEntries{
+			{
+				Ref:     456,
+				Entries: entries,
+			},
+			{
+				Ref:     789,
+				Entries: entries,
+			},
+		},
+	}
+
+	buf := record.encodeEntries(nil)
+	rec := recordPool.GetRecord()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		require.NoError(b, decodeWALRecord(buf, rec))
+	}
+}
+
+func fillChunk(t testing.TB, c chunkenc.Chunk) {
 	t.Helper()
-	var i, inserted int64
+	var i int64
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      "entry for line 0",
@@ -131,11 +169,9 @@ func fillChunk(t *testing.T, c chunkenc.Chunk) int64 {
 	for c.SpaceFor(entry) {
 		require.NoError(t, c.Append(entry))
 		i++
-		inserted += int64(len(entry.Line))
 		entry.Timestamp = time.Unix(0, i)
 		entry.Line = fmt.Sprintf("entry for line %d", i)
 	}
-	return inserted
 }
 
 func dummyConf() *Config {
@@ -166,7 +202,11 @@ func Test_EncodingChunks(t *testing.T) {
 	}
 	there, err := toWireChunks(from, nil)
 	require.Nil(t, err)
-	backAgain, err := fromWireChunks(conf, there)
+	chunks := make([]Chunk, 0, len(there))
+	for _, c := range there {
+		chunks = append(chunks, c.Chunk)
+	}
+	backAgain, err := fromWireChunks(conf, chunks)
 	require.Nil(t, err)
 
 	for i, to := range backAgain {
@@ -202,7 +242,9 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	s := &Series{
 		UserID:      "fake",
 		Fingerprint: 123,
-		Labels:      client.FromLabelsToLabelAdapters(ls),
+		Labels:      cortexpb.FromLabelsToLabelAdapters(ls),
+		To:          time.Unix(10, 0),
+		LastLine:    "lastLine",
 		Chunks: []Chunk{
 			{
 				From:        from,
@@ -216,7 +258,7 @@ func Test_EncodingCheckpoint(t *testing.T) {
 		},
 	}
 
-	b, err := encodeWithTypeHeader(s, CheckpointRecord)
+	b, err := encodeWithTypeHeader(s, CheckpointRecord, nil)
 	require.Nil(t, err)
 
 	out := &Series{}
@@ -235,12 +277,17 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	outChunks := out.Chunks
 	out.Chunks = nil
 
+	zero := time.Unix(0, 0)
+
+	require.Equal(t, true, s.To.Equal(out.To))
+	s.To = zero
+	out.To = zero
+
 	require.Equal(t, s, out)
 	require.Equal(t, len(sChunks), len(outChunks))
 	for i, exp := range sChunks {
 
 		got := outChunks[i]
-		zero := time.Unix(0, 0)
 		// Issues diffing zero-value time.Locations against nil ones.
 		// Check/override them individually so that other fields get tested in an extensible manner.
 		require.Equal(t, true, exp.From.Equal(got.From))

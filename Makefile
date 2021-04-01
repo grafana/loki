@@ -6,6 +6,7 @@
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
+.PHONY: migrate migrate-image
 
 SHELL = /usr/bin/env bash
 
@@ -38,7 +39,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.12.0
+BUILD_IMAGE_VERSION := 0.13.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -225,6 +226,16 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
+###############
+# Migrate #
+###############
+
+migrate: cmd/migrate/migrate
+
+cmd/migrate/migrate: $(APP_GO_FILES) cmd/migrate/main.go
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
 #############
 # Releasing #
 #############
@@ -235,7 +246,7 @@ dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -273,6 +284,7 @@ clean:
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_grafana_loki.h
 	rm -rf cmd/fluent-bit/out_grafana_loki.so
+	rm -rf cmd/migrate/migrate
 	go clean $(MOD_FLAG) ./...
 
 #########
@@ -502,6 +514,11 @@ loki-querytee-image-cross:
 loki-querytee-push: loki-querytee-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-querytee:$(IMAGE_TAG)
 
+# migrate-image
+migrate-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
+
+
 # build-image (only amd64)
 build-image: OCI_PLATFORMS=
 build-image:
@@ -565,3 +582,9 @@ lint-jsonnet:
 fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
+
+# usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
+# this will run the fuzzing using /tmp/testcase and save benchmark locally.
+test-fuzz:
+	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
+		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s

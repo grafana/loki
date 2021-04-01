@@ -20,10 +20,15 @@ type SyslogTargetManager struct {
 
 // NewSyslogTargetManager creates a new SyslogTargetManager.
 func NewSyslogTargetManager(
+	metrics *Metrics,
 	logger log.Logger,
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 ) (*SyslogTargetManager, error) {
+	reg := metrics.reg
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
 
 	tm := &SyslogTargetManager{
 		logger:  logger,
@@ -31,13 +36,12 @@ func NewSyslogTargetManager(
 	}
 
 	for _, cfg := range scrapeConfigs {
-		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "syslog_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "syslog_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 		if err != nil {
 			return nil, err
 		}
 
-		t, err := NewSyslogTarget(logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.SyslogConfig)
+		t, err := NewSyslogTarget(metrics, logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.SyslogConfig)
 		if err != nil {
 			return nil, err
 		}

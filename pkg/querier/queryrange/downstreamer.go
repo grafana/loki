@@ -56,11 +56,11 @@ type instance struct {
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logql.Result, error) {
-	return in.For(queries, func(qry logql.DownstreamQuery) (logql.Result, error) {
+	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logql.Result, error) {
 		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", req.Shards), "query", req.Query)
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", req.Shards), "query", req.Query, "step", req.GetStep())
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
@@ -72,6 +72,7 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 
 // For runs a function against a list of queries, collecting the results or returning an error. The indices are preserved such that input[i] maps to output[i].
 func (in instance) For(
+	ctx context.Context,
 	queries []logql.DownstreamQuery,
 	fn func(logql.DownstreamQuery) (logql.Result, error),
 ) ([]logql.Result, error) {
@@ -81,16 +82,15 @@ func (in instance) For(
 		err error
 	}
 
-	done := make(chan struct{})
-	defer close(done)
-
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	ch := make(chan resp)
 
 	// Make one goroutine to dispatch the other goroutines, bounded by instance parallelism
 	go func() {
 		for i := 0; i < len(queries); i++ {
 			select {
-			case <-done:
+			case <-ctx.Done():
 				break
 			case <-in.locks:
 				go func(i int) {
@@ -108,7 +108,7 @@ func (in instance) For(
 
 					// Feed the result into the channel unless the work has completed.
 					select {
-					case <-done:
+					case <-ctx.Done():
 					case ch <- response:
 					}
 				}(i)
@@ -125,7 +125,6 @@ func (in instance) For(
 		results[resp.i] = resp.res
 	}
 	return results, nil
-
 }
 
 // convert to matrix
@@ -136,7 +135,6 @@ func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
 		x.Metric = make(labels.Labels, 0, len(stream.Labels))
 		for _, l := range stream.Labels {
 			x.Metric = append(x.Metric, labels.Label(l))
-
 		}
 
 		x.Points = make([]promql.Point, 0, len(stream.Samples))

@@ -23,17 +23,19 @@ import (
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -64,16 +66,13 @@ type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// GRPC Client configuration.
-	ClientTLSConfig grpcclient.ConfigWithTLS `yaml:"ruler_client"`
+	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
-	// Deprecated. Replaced with pkg/util/validation/Limits.RulerEvaluationDelay field.
-	// TODO: To be removed in Cortex 1.6.
-	EvaluationDelay time.Duration `yaml:"evaluation_delay_duration"`
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.
-	StoreConfig RuleStoreConfig `yaml:"storage"`
+	StoreConfig RuleStoreConfig `yaml:"storage" doc:"description=Deprecated. Use -ruler-storage.* CLI flags and their respective YAML config options instead."`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
 
@@ -89,6 +88,8 @@ type Config struct {
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
+	// Client configs for interacting with the Alertmanager
+	Notifier NotifierConfig `yaml:"alertmanager_client"`
 
 	// Max time to tolerate outage for restoring "for" state of alert.
 	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
@@ -133,6 +134,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.StoreConfig.RegisterFlags(f)
 	cfg.Ring.RegisterFlags(f)
+	cfg.Notifier.RegisterFlags(f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 	flagext.DeprecatedFlag(f, "ruler.client-timeout", "This flag has been renamed to ruler.configs.client-timeout")
@@ -142,7 +144,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
-	f.DurationVar(&cfg.EvaluationDelay, "ruler.evaluation-delay-duration-deprecated", 0, "Deprecated. Please use -ruler.evaluation-delay-duration instead.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
 
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of URL(s) of the Alertmanager(s) to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via -ruler.alertmanager-discovery.")
@@ -169,7 +170,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type MultiTenantManager interface {
 	// SyncRuleGroups is used to sync the Manager with rules from the RuleStore.
 	// If existing user is missing in the ruleGroups map, its ruler manager will be stopped.
-	SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList)
+	SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList)
 	// GetRules fetches rules for a particular tenant (userID).
 	GetRules(userID string) []*promRules.Group
 	// Stop stops all Manager components.
@@ -207,13 +208,18 @@ type MultiTenantManager interface {
 type Ruler struct {
 	services.Service
 
-	cfg         Config
-	lifecycler  *ring.BasicLifecycler
-	ring        *ring.Ring
-	subservices *services.Manager
-	store       rules.RuleStore
-	manager     MultiTenantManager
-	limits      RulesLimits
+	cfg        Config
+	lifecycler *ring.BasicLifecycler
+	ring       *ring.Ring
+	store      rulestore.RuleStore
+	manager    MultiTenantManager
+	limits     RulesLimits
+
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+
+	// Pool of clients used to connect to other ruler replicas.
+	clientsPool *ring_client.Pool
 
 	ringCheckErrors prometheus.Counter
 	rulerSync       *prometheus.CounterVec
@@ -223,14 +229,15 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore, limits RulesLimits) (*Ruler, error) {
+func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
 	ruler := &Ruler{
-		cfg:      cfg,
-		store:    ruleStore,
-		manager:  manager,
-		registry: reg,
-		logger:   logger,
-		limits:   limits,
+		cfg:         cfg,
+		store:       ruleStore,
+		manager:     manager,
+		registry:    reg,
+		logger:      logger,
+		limits:      limits,
+		clientsPool: newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -284,7 +291,7 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, rulerReplicationStrategy{})
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}
@@ -293,14 +300,20 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 }
 
 func (r *Ruler) starting(ctx context.Context) error {
-	// If sharding is enabled, start the ruler ring subservices
+	// If sharding is enabled, start the used subservices.
 	if r.cfg.EnableSharding {
 		var err error
-		r.subservices, err = services.NewManager(r.lifecycler, r.ring)
-		if err == nil {
-			err = services.StartManagerAndAwaitHealthy(ctx, r.subservices)
+
+		if r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool); err != nil {
+			return errors.Wrap(err, "unable to start ruler subservices")
 		}
-		return errors.Wrap(err, "failed to start ruler's services")
+
+		r.subservicesWatcher = services.NewFailureWatcher()
+		r.subservicesWatcher.WatchManager(r.subservices)
+
+		if err = services.StartManagerAndAwaitHealthy(ctx, r.subservices); err != nil {
+			return errors.Wrap(err, "unable to start ruler subservices")
+		}
 	}
 
 	// TODO: ideally, ruler would wait until its queryable is finished starting.
@@ -313,7 +326,6 @@ func (r *Ruler) stopping(_ error) error {
 	r.manager.Stop()
 
 	if r.subservices != nil {
-		// subservices manages ring and lifecycler, if sharding was enabled.
 		_ = services.StopManagerAndAwaitStopped(context.Background(), r.subservices)
 	}
 	return nil
@@ -352,7 +364,7 @@ func SendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
 
 var sep = []byte("/")
 
-func tokenForGroup(g *store.RuleGroupDesc) uint32 {
+func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	ringHasher := fnv.New32a()
 
 	// Hasher never returns err.
@@ -365,15 +377,15 @@ func tokenForGroup(g *store.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rules.RuleGroupDesc, instanceAddr string) (bool, error) {
+func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
 
-	rlrs, err := r.Get(hash, ring.Ruler, []ring.IngesterDesc{})
+	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	return rlrs.Ingesters[0].Addr == instanceAddr, nil
+	return rlrs.Instances[0].Addr == instanceAddr, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -410,7 +422,7 @@ func (r *Ruler) run(ctx context.Context) error {
 	var ringLastState ring.ReplicationSet
 
 	if r.cfg.EnableSharding {
-		ringLastState, _ = r.ring.GetAllHealthy(ring.Ruler)
+		ringLastState, _ = r.ring.GetAllHealthy(RingOp)
 		ringTicker := time.NewTicker(util.DurationWithJitter(r.cfg.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -426,12 +438,14 @@ func (r *Ruler) run(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := r.ring.GetAllHealthy(ring.Ruler)
+			currRingState, _ := r.ring.GetAllHealthy(RingOp)
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
 				r.syncRules(ctx, rulerSyncReasonRingChange)
 			}
+		case err := <-r.subservicesWatcher.Chan():
+			return errors.Wrap(err, "ruler subservice failed")
 		}
 	}
 }
@@ -452,10 +466,11 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 		return
 	}
 
+	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, configs)
 }
 
-func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRules(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	switch {
 	case !r.cfg.EnableSharding:
 		return r.listRulesNoSharding(ctx)
@@ -471,17 +486,17 @@ func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, 
 	}
 }
 
-func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	return r.store.ListAllRuleGroups(ctx)
 }
 
-func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	filteredConfigs := make(map[string]rules.RuleGroupList)
+	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
 		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
@@ -491,7 +506,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rules.
 	return filteredConfigs, nil
 }
 
-func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	users, err := r.store.ListAllUsers(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to list users of ruler")
@@ -525,7 +540,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.
 	close(userCh)
 
 	mu := sync.Mutex{}
-	result := map[string]rules.RuleGroupList{}
+	result := map[string]rulespb.RuleGroupList{}
 
 	concurrency := loadRulesConcurrency
 	if len(userRings) < concurrency {
@@ -563,14 +578,14 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.
 //
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*store.RuleGroupDesc {
+func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
-	var result []*rules.RuleGroupDesc
+	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
 		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
 			ringCheckErrors.Inc()
-			level.Error(log).Log("msg", "failed to create group for user", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
 			continue
 		}
 
@@ -616,7 +631,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 		}
 
 		groupDesc := &GroupStateDesc{
-			Group: &rules.RuleGroupDesc{
+			Group: &rulespb.RuleGroupDesc{
 				Name:      group.Name(),
 				Namespace: string(decodedNamespace),
 				Interval:  interval,
@@ -640,8 +655,8 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				for _, a := range rule.ActiveAlerts() {
 					alerts = append(alerts, &AlertStateDesc{
 						State:       a.State.String(),
-						Labels:      client.FromLabelsToLabelAdapters(a.Labels),
-						Annotations: client.FromLabelsToLabelAdapters(a.Annotations),
+						Labels:      cortexpb.FromLabelsToLabelAdapters(a.Labels),
+						Annotations: cortexpb.FromLabelsToLabelAdapters(a.Annotations),
 						Value:       a.Value,
 						ActiveAt:    a.ActiveAt,
 						FiredAt:     a.FiredAt,
@@ -651,12 +666,12 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					})
 				}
 				ruleDesc = &RuleStateDesc{
-					Rule: &rules.RuleDesc{
+					Rule: &rulespb.RuleDesc{
 						Expr:        rule.Query().String(),
 						Alert:       rule.Name(),
 						For:         rule.HoldDuration(),
-						Labels:      client.FromLabelsToLabelAdapters(rule.Labels()),
-						Annotations: client.FromLabelsToLabelAdapters(rule.Annotations()),
+						Labels:      cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
+						Annotations: cortexpb.FromLabelsToLabelAdapters(rule.Annotations()),
 					},
 					State:               rule.State().String(),
 					Health:              string(rule.Health()),
@@ -667,10 +682,10 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				}
 			case *promRules.RecordingRule:
 				ruleDesc = &RuleStateDesc{
-					Rule: &rules.RuleDesc{
+					Rule: &rulespb.RuleDesc{
 						Record: rule.Name(),
 						Expr:   rule.Query().String(),
-						Labels: client.FromLabelsToLabelAdapters(rule.Labels()),
+						Labels: cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
 					},
 					Health:              string(rule.Health()),
 					LastError:           lastError,
@@ -688,7 +703,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	rulers, err := r.ring.GetReplicationSetForOperation(ring.Ruler)
+	rulers, err := r.ring.GetReplicationSetForOperation(RingOp)
 	if err != nil {
 		return nil, err
 	}
@@ -698,32 +713,35 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	var rgs []*GroupStateDesc
+	var (
+		mergedMx sync.Mutex
+		merged   []*GroupStateDesc
+	)
 
-	for _, rlr := range rulers.Ingesters {
-		dialOpts, err := r.cfg.ClientTLSConfig.DialOption(nil, nil)
+	// Concurrently fetch rules from all rulers. Since rules are not replicated,
+	// we need all requests to succeed.
+	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
+	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+		addr := job.(string)
+
+		grpcClient, err := r.clientsPool.GetClientFor(addr)
 		if err != nil {
-			return nil, err
+			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
-		conn, err := grpc.DialContext(ctx, rlr.Addr, dialOpts...)
+
+		newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
 		if err != nil {
-			return nil, err
-		}
-		cc := NewRulerClient(conn)
-		newGrps, err := cc.Rules(ctx, nil)
-
-		// Close the gRPC connection regardless the RPC was successful or not.
-		if closeErr := conn.Close(); closeErr != nil {
-			level.Warn(r.logger).Log("msg", "failed to close gRPC connection to ruler", "remote", rlr.Addr, "err", closeErr)
+			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
 		}
 
-		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve rules from other rulers, %v", err)
-		}
-		rgs = append(rgs, newGrps.Groups...)
-	}
+		mergedMx.Lock()
+		merged = append(merged, newGrps.Groups...)
+		mergedMx.Unlock()
 
-	return rgs, nil
+		return nil
+	})
+
+	return merged, err
 }
 
 // Rules implements the rules service
@@ -770,4 +788,25 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 		return nil
 	}
 	return fmt.Errorf(errMaxRulesPerRuleGroupPerUserLimitExceeded, limit, rules)
+}
+
+func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
+	logger := util_log.WithContext(req.Context(), r.logger)
+
+	userID, err := tenant.TenantID(req.Context())
+	if err != nil {
+		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
+		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
+	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
+		respondError(logger, w, err.Error())
+		return
+	}
+
+	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", userID)
+	w.WriteHeader(http.StatusOK)
 }

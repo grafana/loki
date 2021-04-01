@@ -44,7 +44,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				NilMetrics,
 			)
 
-			err := s.Push(context.Background(), []logproto.Entry{
+			_, err := s.Push(context.Background(), []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
 			}, recordPool.GetRecord())
 			require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			fmt.Fprintf(&expected, "total ignored: %d out of %d", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
-			err = s.Push(context.Background(), newLines, recordPool.GetRecord())
+			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord())
 			require.Error(t, err)
 			require.Equal(t, expectErr.Error(), err.Error())
 		})
@@ -82,7 +82,7 @@ func TestPushDeduplication(t *testing.T) {
 		NilMetrics,
 	)
 
-	err := s.Push(context.Background(), []logproto.Entry{
+	written, err := s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
@@ -91,6 +91,7 @@ func TestPushDeduplication(t *testing.T) {
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+	require.Equal(t, len("test"+"newer, better test"), written)
 }
 
 func TestStreamIterator(t *testing.T) {
@@ -139,7 +140,6 @@ func TestStreamIterator(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Benchmark_PushStream(b *testing.B) {
@@ -164,7 +164,8 @@ func Benchmark_PushStream(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		require.NoError(b, s.Push(ctx, e, rec))
+		_, err := s.Push(ctx, e, rec)
+		require.NoError(b, err)
 		recordPool.PutRecord(rec)
 	}
 }

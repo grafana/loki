@@ -151,20 +151,15 @@ func (s *LocalStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.I
 // Series returns all series for a requested time range and label matcher. The returned data may
 // exceed the requested time bounds.
 func (s *LocalStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
-	match, newMatchers, err := matchesExternalLabels(r.Matchers, s.extLabels)
+	match, matchers, err := matchesExternalLabels(r.Matchers, s.extLabels)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	if !match {
 		return nil
 	}
-	if len(newMatchers) == 0 {
+	if len(matchers) == 0 {
 		return status.Error(codes.InvalidArgument, errors.New("no matchers specified (excluding external labels)").Error())
-	}
-
-	matchers, err := storepb.TranslateFromPromMatchers(newMatchers...)
-	if err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	var chosen []int

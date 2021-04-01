@@ -116,7 +116,6 @@ func TestMapSampleExpr(t *testing.T) {
 		t.Run(tc.in.String(), func(t *testing.T) {
 			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilMetrics.shardRecorder()))
 		})
-
 	}
 }
 
@@ -141,7 +140,7 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in:  `max(count(rate({foo="bar"}[5m]))) / 2`,
-			out: `max(sum(downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> ++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)) / 2`,
+			out: `(max(sum(downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> ++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)) / 2)`,
 		},
 		{
 			in:  `topk(3, rate({foo="bar"}[5m]))`,
@@ -202,7 +201,6 @@ func TestMappingStrings(t *testing.T) {
 			require.Nil(t, err)
 
 			require.Equal(t, strings.ReplaceAll(tc.out, " ", ""), strings.ReplaceAll(mapped.String(), " ", ""))
-
 		})
 	}
 }

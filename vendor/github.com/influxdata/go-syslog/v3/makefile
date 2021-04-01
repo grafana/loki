@@ -42,7 +42,7 @@ snake2camel:
 	}' $(file)
 
 .PHONY: bench
-bench: rfc5424/*_test.go rfc5424/machine.go
+bench: rfc5424/*_test.go rfc5424/machine.go octetcounting/performance_test.go
 	go test -bench=. -benchmem -benchtime=5s ./...
 
 .PHONY: tests

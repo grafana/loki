@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/thanos-io/thanos/pkg/metadata/metadatapb"
 	"github.com/thanos-io/thanos/pkg/rules/rulespb"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -110,7 +111,7 @@ func (c *Client) req2xx(ctx context.Context, u *url.URL, method string) (_ []byt
 
 	req, err := http.NewRequest(method, u.String(), b)
 	if err != nil {
-		return nil, 0, errors.Wrap(err, "create GET request")
+		return nil, 0, errors.Wrapf(err, "create %s request", method)
 	}
 	if c.userAgent != "" {
 		req.Header.Set("User-Agent", c.userAgent)
@@ -121,7 +122,7 @@ func (c *Client) req2xx(ctx context.Context, u *url.URL, method string) (_ []byt
 
 	resp, err := c.Do(req.WithContext(ctx))
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "perform GET request against %s", u.String())
+		return nil, 0, errors.Wrapf(err, "perform %s request against %s", method, u.String())
 	}
 	defer runutil.ExhaustCloseWithErrCapture(&err, resp.Body, "%s: close body", req.URL.String())
 
@@ -152,7 +153,7 @@ func IsWALDirAccessible(dir string) error {
 	return nil
 }
 
-// ExternalLabels returns external labels from /api/v1/status/config Prometheus endpoint.
+// ExternalLabels returns sorted external labels from /api/v1/status/config Prometheus endpoint.
 // Note that configuration can be hot reloadable on Prometheus, so this config might change in runtime.
 func (c *Client) ExternalLabels(ctx context.Context, base *url.URL) (labels.Labels, error) {
 	u := *base
@@ -181,7 +182,10 @@ func (c *Client) ExternalLabels(ctx context.Context, base *url.URL) (labels.Labe
 	if err := yaml.Unmarshal([]byte(d.Data.YAML), &cfg); err != nil {
 		return nil, errors.Wrapf(err, "parse Prometheus config: %v", d.Data.YAML)
 	}
-	return labels.FromMap(cfg.Global.ExternalLabels), nil
+
+	lset := labels.FromMap(cfg.Global.ExternalLabels)
+	sort.Sort(lset)
+	return lset, nil
 }
 
 type Flags struct {
@@ -650,12 +654,12 @@ func (c *Client) get2xxResultWithGRPCErrors(ctx context.Context, spanName string
 
 // SeriesInGRPC returns the labels from Prometheus series API. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []storepb.LabelMatcher, startTime, endTime int64) ([]map[string]string, error) {
+func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []*labels.Matcher, startTime, endTime int64) ([]map[string]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/series")
 	q := u.Query()
 
-	q.Add("match[]", storepb.MatchersToString(matchers...))
+	q.Add("match[]", storepb.PromMatchersToString(matchers...))
 	q.Add("start", formatTime(timestamp.Time(startTime)))
 	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()
@@ -669,11 +673,14 @@ func (c *Client) SeriesInGRPC(ctx context.Context, base *url.URL, matchers []sto
 
 // LabelNames returns all known label names. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL, startTime, endTime int64) ([]string, error) {
+func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL, matchers []storepb.LabelMatcher, startTime, endTime int64) ([]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/labels")
 	q := u.Query()
 
+	if len(matchers) > 0 {
+		q.Add("match[]", storepb.MatchersToString(matchers...))
+	}
 	q.Add("start", formatTime(timestamp.Time(startTime)))
 	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()
@@ -686,11 +693,14 @@ func (c *Client) LabelNamesInGRPC(ctx context.Context, base *url.URL, startTime,
 
 // LabelValuesInGRPC returns all known label values for a given label name. It uses gRPC errors.
 // NOTE: This method is tested in pkg/store/prometheus_test.go against Prometheus.
-func (c *Client) LabelValuesInGRPC(ctx context.Context, base *url.URL, label string, startTime, endTime int64) ([]string, error) {
+func (c *Client) LabelValuesInGRPC(ctx context.Context, base *url.URL, label string, matchers []storepb.LabelMatcher, startTime, endTime int64) ([]string, error) {
 	u := *base
 	u.Path = path.Join(u.Path, "/api/v1/label/", label, "/values")
 	q := u.Query()
 
+	if len(matchers) > 0 {
+		q.Add("match[]", storepb.MatchersToString(matchers...))
+	}
 	q.Add("start", formatTime(timestamp.Time(startTime)))
 	q.Add("end", formatTime(timestamp.Time(endTime)))
 	u.RawQuery = q.Encode()
@@ -726,4 +736,25 @@ func (c *Client) RulesInGRPC(ctx context.Context, base *url.URL, typeRules strin
 		g.PartialResponseStrategy = storepb.PartialResponseStrategy_ABORT
 	}
 	return m.Data.Groups, nil
+}
+
+func (c *Client) MetadataInGRPC(ctx context.Context, base *url.URL, metric string, limit int) (map[string][]metadatapb.Meta, error) {
+	u := *base
+	u.Path = path.Join(u.Path, "/api/v1/metadata")
+	q := u.Query()
+
+	if metric != "" {
+		q.Add("metric", metric)
+	}
+	// We only set limit when it is >= 0.
+	if limit >= 0 {
+		q.Add("limit", strconv.Itoa(limit))
+	}
+
+	u.RawQuery = q.Encode()
+
+	var v struct {
+		Data map[string][]metadatapb.Meta `json:"data"`
+	}
+	return v.Data, c.get2xxResultWithGRPCErrors(ctx, "/metadata HTTP[client]", &u, &v)
 }

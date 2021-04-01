@@ -24,6 +24,7 @@ Configuration examples can be found in the [Configuration Examples](examples/) d
   - [ingester_config](#ingester_config)
   - [consul_config](#consul_config)
   - [etcd_config](#etcd_config)
+  - [compactor_config](#compactor_config)
   - [memberlist_config](#memberlist_config)
   - [storage_config](#storage_config)
   - [chunk_store_config](#chunk_store_config)
@@ -151,6 +152,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the chunk index schema and where it is stored.
 [schema_config: <schema_config>]
 
+# Configures the compactor component which compacts index shards for performance.
+[compactor: <compactor_config>]
+
 # Configures limits per-tenant or globally
 [limits_config: <limits_config>]
 
@@ -256,10 +260,6 @@ ring:
     # Configuration for an ETCD v3 client. Only applies if store is "etcd"
     # The CLI flags prefix for this block config is: distributor.ring
     [etcd: <etcd_config>]
-
-    # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-    # The CLI flags prefix for this block config is: distributor.ring
-    [memberlist: <memberlist_config>]
 
   # The heartbeat timeout after which ingesters are skipped for
   # reading and writing.
@@ -588,11 +588,11 @@ storage:
   local:
     # Directory to scan for rules
     # CLI flag: -ruler.storage.local.directory
-    [directory: <string> | default = ""]
+    [directory: <filename> | default = ""]
 
 # File path to store temporary rule files
 # CLI flag: -ruler.rule-path
-[rule_path: <string> | default = "/rules"]
+[rule_path: <filename> | default = "/rules"]
 
 # Comma-separated list of Alertmanager URLs to send notifications to.
 # Each Alertmanager URL is treated as a separate group in the configuration.
@@ -779,10 +779,6 @@ lifecycler:
       # CLI flag: <no prefix>
       [etcd: <etcd_config>]
 
-      # Configuration for Gossip memberlist. Only applies if store is "memberlist"
-      # CLI flag: <no prefix>
-      [memberlist: <memberlist_config>]
-
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
     # CLI flag: -ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
@@ -895,6 +891,29 @@ lifecycler:
 # Use a value of -1 to allow the ingester to query the store infinitely far back in time.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
+
+
+# The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
+wal:
+  # Enables writing to WAL.
+  # CLI flag: -ingester.wal-enabled
+  [enabled: <boolean> | default = false]
+
+  # Directory where the WAL data should be stored and/or recovered from.
+  # CLI flag: -ingester.wal-dir
+  [dir: <filename> | default = "wal"]
+
+  # When WAL is enabled, should chunks be flushed to long-term storage on shutdown.
+  # CLI flag: -ingester.flush-on-shutdown
+  [flush_on_shutdown: <boolean> | default = false]
+
+  # Interval at which checkpoints should be created.
+  # CLI flag: ingester.checkpoint-duration
+  [checkpoint_duration: <duration> | default = 5m]
+
+  # Maximum memory size the WAL may use during replay. After hitting this it will flush data to storage before continuing.
+  # A unit suffix (KB, MB, GB) may be applied.
+  [replay_memory_ceiling: <string> | default = 4GB]
 ```
 
 ## consul_config
@@ -1166,7 +1185,7 @@ aws:
     # CLI flag: -dynamodb.chunk.get-max-parallelism
     [chunk_get_max_parallelism: <int> | default = 32]
 
-# Configures storing chunks in Bigtable. Required fields only required
+# Configures storing indexes in Bigtable. Required fields only required
 # when bigtable is defined in config.
 bigtable:
   # BigTable project ID
@@ -1181,7 +1200,7 @@ bigtable:
   # The CLI flags prefix for this block config is: bigtable
   [grpc_client_config: <grpc_client_config>]
 
-# Configures storing index in GCS. Required fields only required
+# Configures storing chunks in GCS. Required fields only required
 # when gcs is defined in config.
 gcs:
   # Name of GCS bucket to put chunks in.
@@ -1329,6 +1348,36 @@ filesystem:
   # Directory to store chunks in.
   # CLI flag: -local.chunk-directory
   directory: <string>
+
+# Configures storing index in an Object Store(GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files.
+# Required fields only required when boltdb-shipper is defined in config.
+boltdb_shipper:
+  # Directory where ingesters would write boltdb files which would then be
+  # uploaded by shipper to configured storage
+  # CLI flag: -boltdb.shipper.active-index-directory
+  [active_index_directory: <string> | default = ""]
+
+  # Shared store for keeping boltdb files. Supported types: gcs, s3, azure,
+  # filesystem
+  # CLI flag: -boltdb.shipper.shared-store
+  [shared_store: <string> | default = ""]
+
+  # Cache location for restoring boltDB files for queries
+  # CLI flag: -boltdb.shipper.cache-location
+  [cache_location: <string> | default = ""]
+
+  # TTL for boltDB files restored in cache for queries
+  # CLI flag: -boltdb.shipper.cache-ttl
+  [cache_ttl: <duration> | default = 24h]
+
+  # Resync downloaded files with the storage
+  # CLI flag: -boltdb.shipper.resync-interval
+  [resync_interval: <duration> | default = 5m]
+
+  # Number of days of index to be kept downloaded for queries. Works only with
+  # tables created with 24h period.
+  # CLI flag: -boltdb.shipper.query-ready-num-days
+  [query_ready_num_days: <int> | default = 0]
 
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
@@ -1559,6 +1608,28 @@ chunks:
 [row_shards: <int> | default = 16]
 ```
 
+## compactor_config
+
+The `compactor_config` block configures the compactor component. This component periodically
+compacts index shards to more performant forms.
+
+```yaml
+# Directory where files can be downloaded for compaction.
+[working_directory: <string>]
+
+# The shared store used for storing boltdb files.
+# Supported types: gcs, s3, azure, swift, filesystem.
+[shared_store: <string>]
+
+# Prefix to add to object keys in shared store.
+# Path separator(if any) should always be a '/'.
+# Prefix should never start with a separator but should always end with it.
+[shared_store_key_prefix: <string> | default = "index/"]
+
+# Interval at which to re-run the compaction operation.
+[compaction_interval: <duration> | default = 2h]
+```
+
 ## limits_config
 
 The `limits_config` block configures global and per-tenant limits for ingesting
@@ -1664,6 +1735,18 @@ logs in Loki.
 # Maximum number of stream matchers per query.
 # CLI flag: -querier.max-streams-matcher-per-query
 [max_streams_matchers_per_query: <int> | default = 1000]
+
+# Duration to delay the evaluation of rules to ensure.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
+
+# Maximum number of rules per rule group per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rules-per-rule-group
+[ruler_max_rules_per_rule_group: <int> | default = 0]
+
+# Maximum number of rule groups per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rule-groups-per-tenant
+[ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config

@@ -29,6 +29,13 @@ func FromContext(ctx context.Context) *Stats {
 	return o.(*Stats)
 }
 
+// IsEnabled returns whether stats tracking is enabled in the context.
+func IsEnabled(ctx context.Context) bool {
+	// When query statistics are enabled, the stats object is already initialised
+	// within the context, so we can just check it.
+	return FromContext(ctx) != nil
+}
+
 // AddWallTime adds some time to the counter.
 func (s *Stats) AddWallTime(t time.Duration) {
 	if s == nil {

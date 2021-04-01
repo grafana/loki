@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"flag"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -16,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
-func newStoreGatewayClientFactory(clientCfg grpcclient.Config, tlsCfg tls.ClientConfig, reg prometheus.Registerer) client.PoolFactory {
+func newStoreGatewayClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "cortex",
 		Name:        "storegateway_client_request_duration_seconds",
@@ -26,16 +27,16 @@ func newStoreGatewayClientFactory(clientCfg grpcclient.Config, tlsCfg tls.Client
 	}, []string{"operation", "status_code"})
 
 	return func(addr string) (client.PoolClient, error) {
-		return dialStoreGatewayClient(clientCfg, tlsCfg, addr, requestDuration)
+		return dialStoreGatewayClient(clientCfg, addr, requestDuration)
 	}
 }
 
-func dialStoreGatewayClient(clientCfg grpcclient.Config, tlsCfg tls.ClientConfig, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
-	opts, err := tlsCfg.GetGRPCDialOptions()
+func dialStoreGatewayClient(clientCfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*storeGatewayClient, error) {
+	opts, err := clientCfg.DialOption(grpcclient.Instrument(requestDuration))
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, clientCfg.DialOption(grpcclient.Instrument(requestDuration))...)
+
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to dial store-gateway %s", addr)
@@ -66,15 +67,17 @@ func (c *storeGatewayClient) RemoteAddress() string {
 	return c.conn.Target()
 }
 
-func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
+func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientConfig ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
 	// We prefer sane defaults instead of exposing further config options.
 	clientCfg := grpcclient.Config{
 		MaxRecvMsgSize:      100 << 20,
 		MaxSendMsgSize:      16 << 20,
-		UseGzipCompression:  false,
+		GRPCCompression:     "",
 		RateLimit:           0,
 		RateLimitBurst:      0,
 		BackoffOnRatelimits: false,
+		TLSEnabled:          clientConfig.TLSEnabled,
+		TLS:                 clientConfig.TLS,
 	}
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,
@@ -89,5 +92,15 @@ func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, tlsCfg tls
 		ConstLabels: map[string]string{"client": "querier"},
 	})
 
-	return client.NewPool("store-gateway", poolCfg, discovery, newStoreGatewayClientFactory(clientCfg, tlsCfg, reg), clientsCount, logger)
+	return client.NewPool("store-gateway", poolCfg, discovery, newStoreGatewayClientFactory(clientCfg, reg), clientsCount, logger)
+}
+
+type ClientConfig struct {
+	TLSEnabled bool             `yaml:"tls_enabled"`
+	TLS        tls.ClientConfig `yaml:",inline"`
+}
+
+func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", cfg.TLSEnabled, "Enable TLS for gRPC client connecting to store-gateway.")
+	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
 }

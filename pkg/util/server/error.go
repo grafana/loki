@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -22,10 +23,14 @@ const (
 
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
-	var queryErr chunk.QueryError
+	var (
+		queryErr chunk.QueryError
+		promErr  promql.ErrStorage
+	)
 
 	switch {
-	case errors.Is(err, context.Canceled):
+	case errors.Is(err, context.Canceled) ||
+		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
 		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
 	case errors.Is(err, context.DeadlineExceeded):
 		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)

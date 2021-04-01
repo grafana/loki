@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 
@@ -81,11 +81,11 @@ func (t *Tailer) loop() {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
 			if err := t.checkIngesterConnections(); err != nil {
-				level.Error(util.Logger).Log("msg", "Error reconnecting to disconnected ingesters", "err", err)
+				level.Error(util_log.Logger).Log("msg", "Error reconnecting to disconnected ingesters", "err", err)
 			}
 		case <-tailMaxDurationTicker.C:
 			if err := t.close(); err != nil {
-				level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
+				level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
 			}
 			t.closeErrChan <- errors.New("reached tail max duration limit")
 			return
@@ -127,12 +127,12 @@ func (t *Tailer) loop() {
 			if numClients == 0 {
 				// All the connections to ingesters are dropped, try reconnecting or return error
 				if err := t.checkIngesterConnections(); err != nil {
-					level.Error(util.Logger).Log("msg", "Error reconnecting to ingesters", "err", err)
+					level.Error(util_log.Logger).Log("msg", "Error reconnecting to ingesters", "err", err)
 				} else {
 					continue
 				}
 				if err := t.close(); err != nil {
-					level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
+					level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
 				}
 				t.closeErrChan <- errors.New("all ingesters closed the connection")
 				return
@@ -198,7 +198,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	var err error
 	defer t.dropTailClient(addr)
 
-	logger := util.WithContext(querierTailClient.Context(), util.Logger)
+	logger := util_log.WithContext(querierTailClient.Context(), util_log.Logger)
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {

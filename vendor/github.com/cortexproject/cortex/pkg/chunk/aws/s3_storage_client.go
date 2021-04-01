@@ -27,6 +27,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -64,14 +65,15 @@ type S3Config struct {
 	S3ForcePathStyle bool
 
 	BucketNames      string
-	Endpoint         string     `yaml:"endpoint"`
-	Region           string     `yaml:"region"`
-	AccessKeyID      string     `yaml:"access_key_id"`
-	SecretAccessKey  string     `yaml:"secret_access_key"`
-	Insecure         bool       `yaml:"insecure"`
-	SSEEncryption    bool       `yaml:"sse_encryption"`
-	HTTPConfig       HTTPConfig `yaml:"http_config"`
-	SignatureVersion string     `yaml:"signature_version"`
+	Endpoint         string              `yaml:"endpoint"`
+	Region           string              `yaml:"region"`
+	AccessKeyID      string              `yaml:"access_key_id"`
+	SecretAccessKey  string              `yaml:"secret_access_key"`
+	Insecure         bool                `yaml:"insecure"`
+	SSEEncryption    bool                `yaml:"sse_encryption"`
+	HTTPConfig       HTTPConfig          `yaml:"http_config"`
+	SignatureVersion string              `yaml:"signature_version"`
+	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -100,7 +102,11 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.StringVar(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "", "AWS Secret Access Key")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
-	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AES256 AWS Server Side Encryption")
+
+	// TODO Remove in Cortex 1.9.0
+	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]")
+
+	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
 	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
@@ -117,9 +123,9 @@ func (cfg *S3Config) Validate() error {
 }
 
 type S3ObjectClient struct {
-	bucketNames   []string
-	S3            s3iface.S3API
-	sseEncryption *string
+	bucketNames []string
+	S3          s3iface.S3API
+	sseConfig   *SSEParsedConfig
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
@@ -140,17 +146,32 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
 	}
 
-	var sseEncryption *string
-	if cfg.SSEEncryption {
-		sseEncryption = aws.String("AES256")
+	sseCfg, err := buildSSEParsedConfig(cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to build SSE config")
 	}
 
 	client := S3ObjectClient{
-		S3:            s3Client,
-		bucketNames:   bucketNames,
-		sseEncryption: sseEncryption,
+		S3:          s3Client,
+		bucketNames: bucketNames,
+		sseConfig:   sseCfg,
 	}
 	return &client, nil
+}
+
+func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
+	if cfg.SSEConfig.Type != "" {
+		return NewSSEParsedConfig(cfg.SSEConfig)
+	}
+
+	// deprecated, but if used it assumes SSE-S3 type
+	if cfg.SSEEncryption {
+		return NewSSEParsedConfig(cortex_s3.SSEConfig{
+			Type: cortex_s3.SSES3,
+		})
+	}
+
+	return nil, nil
 }
 
 func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
@@ -324,15 +345,22 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	return resp.Body, nil
 }
 
-// Put object into the store
+// PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
-			Body:                 object,
-			Bucket:               aws.String(a.bucketFromKey(objectKey)),
-			Key:                  aws.String(objectKey),
-			ServerSideEncryption: a.sseEncryption,
-		})
+		putObjectInput := &s3.PutObjectInput{
+			Body:   object,
+			Bucket: aws.String(a.bucketFromKey(objectKey)),
+			Key:    aws.String(objectKey),
+		}
+
+		if a.sseConfig != nil {
+			putObjectInput.ServerSideEncryption = aws.String(a.sseConfig.ServerSideEncryption)
+			putObjectInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
+			putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
+		}
+
+		_, err := a.S3.PutObjectWithContext(ctx, putObjectInput)
 		return err
 	})
 }

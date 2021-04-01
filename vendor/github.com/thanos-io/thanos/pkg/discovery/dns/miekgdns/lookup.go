@@ -11,6 +11,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ErrNoSuchHost = errors.New("no such host")
+
 // Copied and slightly adjusted from Prometheus DNS SD:
 // https://github.com/prometheus/prometheus/blob/be3c082539d85908ce03b6d280f83343e7c930eb/discovery/dns/dns.go#L212
 
@@ -68,7 +70,7 @@ func (r *Resolver) lookupWithSearchPath(name string, qtype dns.Type) (*dns.Msg, 
 
 	if len(errs) == 0 {
 		// Outcome 2: everyone says NXDOMAIN.
-		return &dns.Msg{}, nil
+		return &dns.Msg{}, ErrNoSuchHost
 	}
 	// Outcome 3: boned.
 	return nil, errors.Errorf("could not resolve %q: all servers responded with errors to at least one search domain. Errs %s", name, fmtErrs(errs))

@@ -453,31 +453,31 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		ringIngesters []ring.IngesterDesc
+		ringIngesters []ring.InstanceDesc
 		expectedError error
 		tailersCount  uint32
 	}{
 		"empty ring": {
-			ringIngesters: []ring.IngesterDesc{},
+			ringIngesters: []ring.InstanceDesc{},
 			expectedError: httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found"),
 		},
 		"ring containing one pending ingester": {
-			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.PENDING)},
+			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.PENDING)},
 			expectedError: httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found"),
 		},
 		"ring containing one active ingester and 0 active tailers": {
-			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
 		},
 		"ring containing one active ingester and 1 active tailer": {
-			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
 			tailersCount:  1,
 		},
 		"ring containing one pending and active ingester with 1 active tailer": {
-			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.PENDING), mockIngesterDesc("2.2.2.2", ring.ACTIVE)},
+			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.PENDING), mockInstanceDesc("2.2.2.2", ring.ACTIVE)},
 			tailersCount:  1,
 		},
 		"ring containing one active ingester and max active tailers": {
-			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
 			expectedError: httpgrpc.Errorf(http.StatusBadRequest,
 				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", 6, 5),
 			tailersCount: 5,

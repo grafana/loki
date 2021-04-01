@@ -18,7 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // BlocksStoreSet implementation used when the blocks are not sharded in the store-gateway
@@ -29,9 +28,11 @@ type blocksStoreBalancedSet struct {
 	serviceAddresses []string
 	clientsPool      *client.Pool
 	dnsProvider      *dns.Provider
+
+	logger log.Logger
 }
 
-func newBlocksStoreBalancedSet(serviceAddresses []string, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) *blocksStoreBalancedSet {
+func newBlocksStoreBalancedSet(serviceAddresses []string, clientConfig ClientConfig, logger log.Logger, reg prometheus.Registerer) *blocksStoreBalancedSet {
 	const dnsResolveInterval = 10 * time.Second
 
 	dnsProviderReg := extprom.WrapRegistererWithPrefix("cortex_storegateway_client_", reg)
@@ -39,7 +40,8 @@ func newBlocksStoreBalancedSet(serviceAddresses []string, tlsCfg tls.ClientConfi
 	s := &blocksStoreBalancedSet{
 		serviceAddresses: serviceAddresses,
 		dnsProvider:      dns.NewProvider(logger, dnsProviderReg, dns.GolangResolverType),
-		clientsPool:      newStoreGatewayClientPool(nil, tlsCfg, logger, reg),
+		clientsPool:      newStoreGatewayClientPool(nil, clientConfig, logger, reg),
+		logger:           logger,
 	}
 
 	s.Service = services.NewTimerService(dnsResolveInterval, s.starting, s.resolve, nil)
@@ -53,7 +55,7 @@ func (s *blocksStoreBalancedSet) starting(ctx context.Context) error {
 
 func (s *blocksStoreBalancedSet) resolve(ctx context.Context) error {
 	if err := s.dnsProvider.Resolve(ctx, s.serviceAddresses); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to resolve store-gateway addresses", "err", err, "addresses", s.serviceAddresses)
+		level.Error(s.logger).Log("msg", "failed to resolve store-gateway addresses", "err", err, "addresses", s.serviceAddresses)
 	}
 	return nil
 }

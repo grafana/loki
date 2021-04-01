@@ -9,10 +9,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -24,7 +21,6 @@ import (
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
-	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -115,19 +111,37 @@ func indexHandler(httpPathPrefix string, content *IndexPageContent) http.Handler
 	}
 }
 
-func configHandler(cfg interface{}) http.HandlerFunc {
+func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := yaml.Marshal(cfg)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		var output interface{}
+		switch r.URL.Query().Get("mode") {
+		case "diff":
+			defaultCfgObj, err := util.YAMLMarshalUnmarshal(defaultCfg)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			actualCfgObj, err := util.YAMLMarshalUnmarshal(actualCfg)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			diff, err := util.DiffConfig(defaultCfgObj, actualCfgObj)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			output = diff
+
+		case "defaults":
+			output = defaultCfg
+		default:
+			output = actualCfg
 		}
 
-		w.Header().Set("Content-Type", "text/yaml")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write(out); err != nil {
-			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
-		}
+		util.WriteYAMLResponse(w, output)
 	}
 }
 
@@ -174,6 +188,8 @@ func NewQuerierHandler(
 	api := v1.NewAPI(
 		engine,
 		errorTranslateQueryable{queryable}, // Translate errors to errors expected by API.
+		nil,                                // No remote write support.
+		nil,                                // No exemplars support.
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
@@ -191,6 +207,7 @@ func NewQuerierHandler(
 		&v1.PrometheusVersion{},
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
+		reg,
 	)
 
 	router := mux.NewRouter()
@@ -221,7 +238,7 @@ func NewQuerierHandler(
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(prefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(prefix + "/api/v1/read").Methods("POST").Handler(promRouter)
 	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
 	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
@@ -233,7 +250,7 @@ func NewQuerierHandler(
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(legacyPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(legacyPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
 	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
@@ -242,11 +259,6 @@ func NewQuerierHandler(
 	router.Path(legacyPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
 	router.Path(legacyPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
 
-	// Add a middleware to extract the trace context and add a header.
-	handler := nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
-		return "internalQuerier"
-	}))
-
 	// Track execution time.
-	return stats.NewWallTimeMiddleware().Wrap(handler)
+	return stats.NewWallTimeMiddleware().Wrap(router)
 }

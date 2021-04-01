@@ -21,10 +21,10 @@ func NewTracingBucket(bkt Bucket) InstrumentedBucket {
 	return TracingBucket{bkt: bkt}
 }
 
-func (t TracingBucket) Iter(ctx context.Context, dir string, f func(string) error) (err error) {
+func (t TracingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) (err error) {
 	tracing.DoWithSpan(ctx, "bucket_iter", func(spanCtx context.Context, span opentracing.Span) {
 		span.LogKV("dir", dir)
-		err = t.bkt.Iter(spanCtx, dir, f)
+		err = t.bkt.Iter(spanCtx, dir, f, options...)
 	})
 	return
 }

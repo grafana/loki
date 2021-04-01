@@ -13,7 +13,7 @@ import (
 	"time"
 
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -58,7 +58,6 @@ type Query struct {
 
 // DoQuery executes the query and prints out the results
 func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) {
-
 	if q.LocalConfig != "" {
 		if err := q.DoLocalQuery(out, statistics, c.GetOrgID()); err != nil {
 			log.Fatalf("Query failed: %+v", err)
@@ -149,7 +148,6 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 
 		}
 	}
-
 }
 
 func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
@@ -172,7 +170,6 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, las
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
 func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string) error {
-
 	var conf loki.Config
 	conf.RegisterFlags(flag.CommandLine)
 	if q.LocalConfig == "" {
@@ -182,7 +179,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	if err := conf.Validate(util.Logger); err != nil {
+	if err := conf.Validate(); err != nil {
 		return err
 	}
 
@@ -191,7 +188,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util.Logger)
+	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return err
 	}
@@ -255,7 +252,7 @@ func (q *Query) SetInstant(time time.Time) {
 }
 
 func (q *Query) isInstant() bool {
-	return q.Start == q.End
+	return q.Start == q.End && q.Step == 0
 }
 
 func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
@@ -274,12 +271,20 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
 	}
 
+	if len(q.ShowLabelsKey) > 0 && !q.Quiet {
+		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
+	}
+
 	// Remove ignored and common labels from the cached labels and
 	// calculate the max labels length
 	maxLabelsLen := q.FixedLabelsLen
 	for i, s := range streams {
 		// Remove common labels
 		ls := subtract(s.Labels, common)
+
+		if len(q.ShowLabelsKey) > 0 {
+			ls = matchLabels(true, ls, q.ShowLabelsKey)
+		}
 
 		// Remove ignored labels
 		if len(q.IgnoreLabelsKey) > 0 {
@@ -361,7 +366,6 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
 	bytes, err := json.MarshalIndent(matrix, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling matrix: %v", err)
 	}
@@ -371,7 +375,6 @@ func (q *Query) printMatrix(matrix loghttp.Matrix) {
 
 func (q *Query) printVector(vector loghttp.Vector) {
 	bytes, err := json.MarshalIndent(vector, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling vector: %v", err)
 	}
@@ -381,7 +384,6 @@ func (q *Query) printVector(vector loghttp.Vector) {
 
 func (q *Query) printScalar(scalar loghttp.Scalar) {
 	bytes, err := json.MarshalIndent(scalar, "", "  ")
-
 	if err != nil {
 		log.Fatalf("Error marshalling scalar: %v", err)
 	}

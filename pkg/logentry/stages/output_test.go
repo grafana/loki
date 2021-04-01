@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,7 +43,7 @@ var testOutputLogLineWithMissingKey = `
 `
 
 func TestPipeline_Output(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), nil, prometheus.DefaultRegisterer)
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testOutputYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestOutputStage_Process(t *testing.T) {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			st, err := newOutputStage(util.Logger, test.config)
+			st, err := newOutputStage(util_log.Logger, test.config)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -5,6 +5,7 @@ import (
 	"text/scanner"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
@@ -32,6 +33,7 @@ var tokens = map[string]int{
 	"[":            OPEN_BRACKET,
 	"]":            CLOSE_BRACKET,
 	OpLabelReplace: LABEL_REPLACE,
+	OpOffset:       OFFSET,
 
 	// binops
 	OpTypeOr:     OR,
@@ -54,6 +56,7 @@ var tokens = map[string]int{
 	OpParserTypeJSON:   JSON,
 	OpParserTypeRegexp: REGEXP,
 	OpParserTypeLogfmt: LOGFMT,
+	OpParserTypeUnpack: UNPACK,
 
 	// fmt
 	OpFmtLabel: LABEL_FMT,
@@ -98,7 +101,8 @@ var functionTokens = map[string]int{
 
 type lexer struct {
 	scanner.Scanner
-	errs []ParseError
+	errs    []ParseError
+	builder strings.Builder
 }
 
 func (l *lexer) Lex(lval *exprSymType) int {
@@ -135,7 +139,12 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	case scanner.String, scanner.RawString:
 		var err error
-		lval.str, err = strutil.Unquote(l.TokenText())
+		tokenText := l.TokenText()
+		if !utf8.ValidString(tokenText) {
+			l.Error("invalid UTF-8 rune")
+			return 0
+		}
+		lval.str, err = strutil.Unquote(tokenText)
 		if err != nil {
 			l.Error(err.Error())
 			return 0
@@ -145,10 +154,10 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	// scanning duration tokens
 	if r == '[' {
-		d := ""
+		l.builder.Reset()
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {
-			if string(r) == "]" {
-				i, err := model.ParseDuration(d)
+			if r == ']' {
+				i, err := model.ParseDuration(l.builder.String())
 				if err != nil {
 					l.Error(err.Error())
 					return 0
@@ -156,7 +165,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 				lval.duration = time.Duration(i)
 				return RANGE
 			}
-			d += string(r)
+			_, _ = l.builder.WriteRune(r)
 		}
 		l.Error("missing closing ']' in duration")
 		return 0

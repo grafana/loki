@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
@@ -75,4 +77,77 @@ func Test_CompressFile(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, testData, b)
+}
+
+func TestRemoveDirectories(t *testing.T) {
+	tests := []struct {
+		name     string
+		incoming []chunk.StorageObject
+		expected []chunk.StorageObject
+	}{
+		{
+			name: "no trailing slash",
+			incoming: []chunk.StorageObject{
+				{Key: "obj1"},
+				{Key: "obj2"},
+				{Key: "obj3"},
+			},
+			expected: []chunk.StorageObject{
+				{Key: "obj1"},
+				{Key: "obj2"},
+				{Key: "obj3"},
+			},
+		},
+		{
+			name: "one trailing slash",
+			incoming: []chunk.StorageObject{
+				{Key: "obj1"},
+				{Key: "obj2/"},
+				{Key: "obj3"},
+			},
+			expected: []chunk.StorageObject{
+				{Key: "obj1"},
+				{Key: "obj3"},
+			},
+		},
+		{
+			name: "only trailing slash",
+			incoming: []chunk.StorageObject{
+				{Key: "obj1"},
+				{Key: "obj2"},
+				{Key: "/"},
+			},
+			expected: []chunk.StorageObject{
+				{Key: "obj1"},
+				{Key: "obj2"},
+			},
+		},
+		{
+			name: "all trailing slash",
+			incoming: []chunk.StorageObject{
+				{Key: "/"},
+				{Key: "/"},
+				{Key: "/"},
+			},
+			expected: []chunk.StorageObject{},
+		},
+		{
+			name: "internal slash",
+			incoming: []chunk.StorageObject{
+				{Key: "test/test1"},
+				{Key: "te/st"},
+				{Key: "/sted"},
+			},
+			expected: []chunk.StorageObject{
+				{Key: "test/test1"},
+				{Key: "te/st"},
+				{Key: "/sted"},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, RemoveDirectories(test.incoming))
+		})
+	}
 }

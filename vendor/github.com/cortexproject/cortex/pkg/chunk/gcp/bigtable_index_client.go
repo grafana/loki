@@ -17,8 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -51,6 +51,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
+	// This overrides our default from TLS disabled to TLS enabled
+	cfg.GRPCClientConfig.TLSEnabled = true
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
 }
 
@@ -73,8 +75,11 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	if err != nil {
+		return nil, err
+	}
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,8 +102,11 @@ func newStorageClientV1(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtab
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
 func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	if err != nil {
+		return nil, err
+	}
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +252,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 		table := s.client.Open(tq.name)
 
 		for i := 0; i < len(tq.rows); i += maxRowReads {
-			page := tq.rows[i:util.Min(i+maxRowReads, len(tq.rows))]
+			page := tq.rows[i:math.Min(i+maxRowReads, len(tq.rows))]
 			go func(page bigtable.RowList, tq tableQuery) {
 				var processingErr error
 				// rows are returned in key order, not order in row list

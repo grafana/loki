@@ -3,6 +3,7 @@ package scrapeconfig
 import (
 	"testing"
 
+	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -80,6 +81,18 @@ relabel_configs:
   target_label: __path__
 `
 
+var noPipelineStagesYaml = `
+job_name: kubernetes-pods-name
+static_configs:
+- targets:
+    - localhost
+  labels:
+    job: varlogs
+    __path__: /var/log/*log
+kubernetes_sd_configs:
+- role: pod
+`
+
 func TestLoadSmallConfig(t *testing.T) {
 	var config Config
 	err := yaml.Unmarshal([]byte(smallYaml), &config)
@@ -92,6 +105,9 @@ func TestLoadSmallConfig(t *testing.T) {
 			KubernetesSDConfigs: []*kubernetes.SDConfig{
 				{
 					Role: "pod",
+					HTTPClientConfig: promConfig.HTTPClientConfig{
+						FollowRedirects: true,
+					},
 				},
 			},
 			StaticConfigs: []*targetgroup.Group{
@@ -107,6 +123,15 @@ func TestLoadSmallConfig(t *testing.T) {
 		},
 	}
 	require.Equal(t, expected, config)
+}
+
+// bugfix: https://github.com/grafana/loki/issues/3403
+func TestEmptyPipelineStagesConfig(t *testing.T) {
+	var config Config
+	err := yaml.Unmarshal([]byte(noPipelineStagesYaml), &config)
+	require.Nil(t, err)
+
+	require.Zero(t, len(config.PipelineStages))
 }
 
 func TestLoadConfig(t *testing.T) {

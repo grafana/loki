@@ -1,6 +1,6 @@
 {
   _images+:: {
-    promtail: 'grafana/promtail:2.1.0',
+    promtail: 'grafana/promtail:2.2.0',
   },
 
   _config+:: {
@@ -10,7 +10,7 @@
         username:: '',
         password:: '',
         scheme:: 'https',
-        hostname:: 'logs-us-west1.grafana.net',
+        hostname:: error 'must define a valid hostname',
         external_labels: {},
       }],
       container_root_path: '/var/lib/docker',

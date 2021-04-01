@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -17,14 +18,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -36,7 +41,7 @@ var (
 )
 
 type CacheGenNumberLoader interface {
-	GetResultsCacheGenNumber(userID string) string
+	GetResultsCacheGenNumber(tenantIDs []string) string
 }
 
 // ResultsCacheConfig is the config for the results cache.
@@ -128,6 +133,7 @@ type resultsCache struct {
 	splitter CacheSplitter
 
 	extractor            Extractor
+	minCacheExtent       int64 // discard any cache extent smaller than this
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
@@ -171,6 +177,7 @@ func NewResultsCacheMiddleware(
 			limits:               limits,
 			merger:               merger,
 			extractor:            extractor,
+			minCacheExtent:       (5 * time.Minute).Milliseconds(),
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
@@ -179,7 +186,7 @@ func NewResultsCacheMiddleware(
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -189,16 +196,16 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if s.cacheGenNumberLoader != nil {
-		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(userID))
+		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(userID, r)
+		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []Extent
 		response Response
 	)
 
-	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, s.limits.MaxCacheFreshness)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)
@@ -206,9 +213,9 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 
 	cached, ok := s.get(ctx, key)
 	if ok {
-		response, extents, err = s.handleHit(ctx, r, cached)
+		response, extents, err = s.handleHit(ctx, r, cached, maxCacheTime)
 	} else {
-		response, extents, err = s.handleMiss(ctx, r)
+		response, extents, err = s.handleMiss(ctx, r, maxCacheTime)
 	}
 
 	if err == nil && len(extents) > 0 {
@@ -223,13 +230,17 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool {
+func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
 	for _, v := range headerValues {
 		if v == noStoreValue {
 			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
+	}
+
+	if !s.isAtModifierCachable(req, maxCacheTime) {
+		return false
 	}
 
 	if s.cacheGenNumberLoader == nil {
@@ -254,6 +265,58 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool 
 	return true
 }
 
+var errAtModifierAfterEnd = errors.New("at modifier after end")
+
+// isAtModifierCachable returns true if the @ modifier result
+// is safe to cache.
+func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
+	// There are 2 cases when @ modifier is not safe to cache:
+	//   1. When @ modifier points to time beyond the maxCacheTime.
+	//   2. If the @ modifier time is > the query range end while being
+	//      below maxCacheTime. In such cases if any tenant is intentionally
+	//      playing with old data, we could cache empty result if we look
+	//      beyond query end.
+	query := r.GetQuery()
+	if !strings.Contains(query, "@") {
+		return true
+	}
+	expr, err := parser.ParseExpr(query)
+	if err != nil {
+		// We are being pessimistic in such cases.
+		level.Warn(s.logger).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
+		return false
+	}
+
+	// This resolves the start() and end() used with the @ modifier.
+	expr = promql.PreprocessExpr(expr, timestamp.Time(r.GetStart()), timestamp.Time(r.GetEnd()))
+
+	end := r.GetEnd()
+	atModCachable := true
+	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
+		switch e := n.(type) {
+		case *parser.VectorSelector:
+			if e.Timestamp != nil && (*e.Timestamp > end || *e.Timestamp > maxCacheTime) {
+				atModCachable = false
+				return errAtModifierAfterEnd
+			}
+		case *parser.MatrixSelector:
+			ts := e.VectorSelector.(*parser.VectorSelector).Timestamp
+			if ts != nil && (*ts > end || *ts > maxCacheTime) {
+				atModCachable = false
+				return errAtModifierAfterEnd
+			}
+		case *parser.SubqueryExpr:
+			if e.Timestamp != nil && (*e.Timestamp > end || *e.Timestamp > maxCacheTime) {
+				atModCachable = false
+				return errAtModifierAfterEnd
+			}
+		}
+		return nil
+	})
+
+	return atModCachable
+}
+
 func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
 	for _, hv := range r.GetHeaders() {
 		if hv.GetName() != headerName {
@@ -266,13 +329,13 @@ func getHeaderValuesWithName(r Response, headerName string) (headerValues []stri
 	return
 }
 
-func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime int64) (Response, []Extent, error) {
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if !s.shouldCacheResponse(ctx, response) {
+	if !s.shouldCacheResponse(ctx, r, response, maxCacheTime) {
 		return response, []Extent{}, nil
 	}
 
@@ -287,7 +350,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 	return response, extents, nil
 }
 
-func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent) (Response, []Extent, error) {
+func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent, maxCacheTime int64) (Response, []Extent, error) {
 	var (
 		reqResps []RequestResponse
 		err      error
@@ -295,7 +358,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	log, ctx := spanlogger.New(ctx, "handleHit")
 	defer log.Finish()
 
-	requests, responses, err := partition(r, extents, s.extractor)
+	requests, responses, err := s.partition(r, extents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -312,7 +375,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
-		if !s.shouldCacheResponse(ctx, reqResp.Response) {
+		if !s.shouldCacheResponse(ctx, r, reqResp.Response, maxCacheTime) {
 			continue
 		}
 		extent, err := toExtent(ctx, reqResp.Request, s.extractor.ResponseWithoutHeaders(reqResp.Response))
@@ -410,7 +473,8 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
-func partition(req Request, extents []Extent, extractor Extractor) ([]Request, []Response, error) {
+// extents must be in order by start time.
+func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Response, error) {
 	var requests []Request
 	var cachedResponses []Response
 	start := req.GetStart()
@@ -418,6 +482,15 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 	for _, extent := range extents {
 		// If there is no overlap, ignore this extent.
 		if extent.GetEnd() < start || extent.Start > req.GetEnd() {
+			continue
+		}
+
+		// If this extent is tiny, discard it: more efficient to do a few larger queries.
+
+		// However if the step is large enough, the split_query_by_interval middleware would generate a query with same start and end.
+		// For example, if the step size is more than 12h and the interval is 24h.
+		// This means the extent's start and end time would be same, even if the timerange covers several hours.
+		if (req.GetStart() != req.GetEnd()) && (extent.End-extent.Start < s.minCacheExtent) {
 			continue
 		}
 
@@ -431,13 +504,20 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, extractor.Extract(start, req.GetEnd(), res))
+		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
 		start = extent.End
 	}
 
+	// Lastly, make a request for any data missing at the end.
 	if start < req.GetEnd() {
 		r := req.WithStartEnd(start, req.GetEnd())
 		requests = append(requests, r)
+	}
+
+	// If start and end are the same (valid in promql), start == req.GetEnd() and we won't do the query.
+	// But we should only do the request if we don't have a valid cached response for it.
+	if req.GetStart() == req.GetEnd() && len(cachedResponses) == 0 {
+		requests = append(requests, req)
 	}
 
 	return requests, cachedResponses, nil
@@ -537,7 +617,7 @@ func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, bool) {
 	result := SampleStream{
 		Labels:  stream.Labels,
-		Samples: make([]client.Sample, 0, len(stream.Samples)),
+		Samples: make([]cortexpb.Sample, 0, len(stream.Samples)),
 	}
 	for _, sample := range stream.Samples {
 		if start <= sample.TimestampMs && sample.TimestampMs <= end {

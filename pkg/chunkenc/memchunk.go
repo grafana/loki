@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 
@@ -33,9 +33,7 @@ const (
 	maxLineLength  = 1024 * 1024 * 1024
 )
 
-var (
-	magicNumber = uint32(0x12EE56A)
-)
+var magicNumber = uint32(0x12EE56A)
 
 // The table gets initialized with sync.Once but may still cause a race
 // with any other use of the crc32 package anywhere. Thus we initialize it
@@ -155,20 +153,36 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 // CheckpointBytes serializes a headblock to []byte. This is used by the WAL checkpointing,
 // which does not want to mutate a chunk by cutting it (otherwise risking content address changes), but
 // needs to serialize/deserialize the data to disk to ensure data durability.
-func (hb *headBlock) CheckpointBytes(version byte) ([]byte, error) {
-	encB := BytesBufferPool.Get(1 << 10).([]byte)
+func (hb *headBlock) CheckpointBytes(version byte, b []byte) ([]byte, error) {
+	buf := bytes.NewBuffer(b[:0])
+	err := hb.CheckpointTo(version, buf)
+	return buf.Bytes(), err
+}
 
-	defer func() {
-		BytesBufferPool.Put(encB[:0])
-	}()
+// CheckpointSize returns the estimated size of the headblock checkpoint.
+func (hb *headBlock) CheckpointSize(version byte) int {
+	size := 1                                                                 // version
+	size += binary.MaxVarintLen32 * 2                                         // total entries + total size
+	size += binary.MaxVarintLen64 * 2                                         // mint,maxt
+	size += (binary.MaxVarintLen64 + binary.MaxVarintLen32) * len(hb.entries) // ts + len of log line.
 
-	buf := bytes.NewBuffer(make([]byte, 0, 1<<10))
-	eb := encbuf{b: encB}
+	for _, e := range hb.entries {
+		size += len(e.s)
+	}
+	return size
+}
+
+// CheckpointTo serializes a headblock to a `io.Writer`. see `CheckpointBytes`.
+func (hb *headBlock) CheckpointTo(version byte, w io.Writer) error {
+	eb := EncodeBufferPool.Get().(*encbuf)
+	defer EncodeBufferPool.Put(eb)
+
+	eb.reset()
 
 	eb.putByte(version)
-	_, err := buf.Write(eb.get())
+	_, err := w.Write(eb.get())
 	if err != nil {
-		return nil, errors.Wrap(err, "write headBlock version")
+		return errors.Wrap(err, "write headBlock version")
 	}
 	eb.reset()
 
@@ -177,27 +191,27 @@ func (hb *headBlock) CheckpointBytes(version byte) ([]byte, error) {
 	eb.putVarint64(hb.mint)
 	eb.putVarint64(hb.maxt)
 
-	_, err = buf.Write(eb.get())
+	_, err = w.Write(eb.get())
 	if err != nil {
-		return nil, errors.Wrap(err, "write headBlock metas")
+		return errors.Wrap(err, "write headBlock metas")
 	}
 	eb.reset()
 
 	for _, entry := range hb.entries {
 		eb.putVarint64(entry.t)
 		eb.putUvarint(len(entry.s))
-		_, err = buf.Write(eb.get())
+		_, err = w.Write(eb.get())
 		if err != nil {
-			return nil, errors.Wrap(err, "write headBlock entry ts")
+			return errors.Wrap(err, "write headBlock entry ts")
 		}
 		eb.reset()
 
-		_, err := buf.WriteString(entry.s)
+		_, err := io.WriteString(w, entry.s)
 		if err != nil {
-			return nil, errors.Wrap(err, "write headblock entry line")
+			return errors.Wrap(err, "write headblock entry line")
 		}
 	}
-	return buf.Bytes(), nil
+	return nil
 }
 
 func (hb *headBlock) FromCheckpoint(b []byte) error {
@@ -255,7 +269,7 @@ func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 		blocks:     []block{},
 
 		head:   &headBlock{},
-		format: chunkFormatV2,
+		format: chunkFormatV3,
 
 		encoding: enc,
 	}
@@ -328,7 +342,7 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			level.Error(util.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
+			level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
 			continue
 		}
 
@@ -361,6 +375,37 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	return c.BytesWith(nil)
 }
 
+// BytesSize returns the raw size of the chunk.
+// NOTE: This does not account for the head block nor include any head block data.
+func (c *MemChunk) BytesSize() int {
+	size := 4 // magic number
+	size++    // format
+	if c.format > chunkFormatV1 {
+		size++ // chunk format v2+ has a byte for encoding.
+	}
+
+	// blocks
+	for _, b := range c.blocks {
+		size += len(b.b) + crc32.Size // size + crc
+
+		size += binary.MaxVarintLen32 // num entries
+		size += binary.MaxVarintLen64 // mint
+		size += binary.MaxVarintLen64 // maxt
+		size += binary.MaxVarintLen32 // offset
+		if c.format == chunkFormatV3 {
+			size += binary.MaxVarintLen32 // uncompressed size
+		}
+		size += binary.MaxVarintLen32 // len(b)
+	}
+
+	// blockmeta
+	size += binary.MaxVarintLen32 // len  blocks
+
+	size += crc32.Size // metablock crc
+	size += 8          // metaoffset
+	return size
+}
+
 // WriteTo Implements io.WriterTo
 // NOTE: Does not cut head block or include any head block data.
 // For this to be the case you must call Close() first.
@@ -368,11 +413,16 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 // result in different content addressable chunks in storage based on the timing of when
 // they were checkpointed (which would cause new blocks to be cut early).
 func (c *MemChunk) WriteTo(w io.Writer) (int64, error) {
-	crc32Hash := newCRC32()
+	crc32Hash := crc32HashPool.Get().(hash.Hash32)
+	defer crc32HashPool.Put(crc32Hash)
+	crc32Hash.Reset()
 
 	offset := int64(0)
 
-	eb := encbuf{b: make([]byte, 0, 1<<10)}
+	eb := EncodeBufferPool.Get().(*encbuf)
+	defer EncodeBufferPool.Put(eb)
+
+	eb.reset()
 
 	// Write the header (magicNum + version).
 	eb.putBE32(magicNumber)
@@ -392,11 +442,13 @@ func (c *MemChunk) WriteTo(w io.Writer) (int64, error) {
 	for i, b := range c.blocks {
 		c.blocks[i].offset = int(offset)
 
-		eb.reset()
-		eb.putBytes(b.b)
-		eb.putHash(crc32Hash)
+		crc32Hash.Reset()
+		_, err := crc32Hash.Write(b.b)
+		if err != nil {
+			return offset, errors.Wrap(err, "write block")
+		}
 
-		n, err := w.Write(eb.get())
+		n, err := w.Write(crc32Hash.Sum(b.b))
 		if err != nil {
 			return offset, errors.Wrap(err, "write block")
 		}
@@ -439,25 +491,29 @@ func (c *MemChunk) WriteTo(w io.Writer) (int64, error) {
 	return offset, nil
 }
 
-// SerializeForCheckpoint returns []bytes representing the chunk & head. This is to ensure eventually
-// flushed chunks don't have different substructures depending on when they were checkpointed.
+// SerializeForCheckpointTo serialize the chunk & head into different `io.Writer` for checkpointing use.
+// This is to ensure eventually flushed chunks don't have different substructures depending on when they were checkpointed.
 // In turn this allows us to maintain a more effective dedupe ratio in storage.
-func (c *MemChunk) SerializeForCheckpoint(b []byte) (chk, head []byte, err error) {
-	chk, err = c.BytesWith(b)
+func (c *MemChunk) SerializeForCheckpointTo(chk, head io.Writer) error {
+	_, err := c.WriteTo(chk)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
 	if c.head.isEmpty() {
-		return chk, nil, nil
+		return nil
 	}
 
-	head, err = c.head.CheckpointBytes(c.format)
+	err = c.head.CheckpointTo(c.format, head)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
-	return chk, head, nil
+	return nil
+}
+
+func (c *MemChunk) CheckpointSize() (chunk, head int) {
+	return c.BytesSize(), c.head.CheckpointSize(c.format)
 }
 
 func MemchunkFromCheckpoint(chk, head []byte, blockSize int, targetSize int) (*MemChunk, error) {
@@ -537,7 +593,6 @@ func (c *MemChunk) Utilization() float64 {
 	}
 	size := c.UncompressedSize()
 	return float64(size) / float64(blocksPerChunk*c.blockSize)
-
 }
 
 // Append implements Chunk.
@@ -616,27 +671,33 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 // Iterator implements Chunk.
 func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
-	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
+	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
+	var headIterator iter.EntryIterator
 
 	for _, b := range c.blocks {
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
-		its = append(its, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
+		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
 	}
 
 	if !c.head.isEmpty() {
-		its = append(its, c.head.iterator(ctx, direction, mint, maxt, pipeline))
+		headIterator = c.head.iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
 	if direction == logproto.FORWARD {
+		// add the headblock iterator at the end.
+		if headIterator != nil {
+			blockItrs = append(blockItrs, headIterator)
+		}
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(its, ""),
+			iter.NewNonOverlappingIterator(blockItrs, ""),
 			time.Unix(0, mint),
 			time.Unix(0, maxt),
 		), nil
 	}
-	for i, it := range its {
+	// reverse each block entries
+	for i, it := range blockItrs {
 		r, err := iter.NewEntryReversedIter(
 			iter.NewTimeRangedIterator(it,
 				time.Unix(0, mint),
@@ -645,14 +706,18 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if err != nil {
 			return nil, err
 		}
-		its[i] = r
+		blockItrs[i] = r
+	}
+	// except the head block which is already reversed via the heapIterator.
+	if headIterator != nil {
+		blockItrs = append(blockItrs, headIterator)
+	}
+	// then reverse all iterators.
+	for i, j := 0, len(blockItrs)-1; i < j; i, j = i+1, j-1 {
+		blockItrs[i], blockItrs[j] = blockItrs[j], blockItrs[i]
 	}
 
-	for i, j := 0, len(its)-1; i < j; i, j = i+1, j-1 {
-		its[i], its[j] = its[j], its[i]
-	}
-
-	return iter.NewNonOverlappingIterator(its, ""), nil
+	return iter.NewNonOverlappingIterator(blockItrs, ""), nil
 }
 
 // Iterator implements Chunk.
@@ -721,9 +786,11 @@ func (b block) Offset() int {
 func (b block) Entries() int {
 	return b.numEntries
 }
+
 func (b block) MinTime() int64 {
 	return b.mint
 }
+
 func (b block) MaxTime() int64 {
 	return b.maxt
 }
@@ -741,11 +808,16 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	// cutting of blocks.
 	chunkStats.HeadChunkLines += int64(len(hb.entries))
 	streams := map[uint64]*logproto.Stream{}
-	for _, e := range hb.entries {
+
+	process := func(e entry) {
+		// apply time filtering
+		if e.t < mint || e.t >= maxt {
+			return
+		}
 		chunkStats.HeadChunkBytes += int64(len(e.s))
 		newLine, parsedLbs, ok := pipeline.ProcessString(e.s)
 		if !ok {
-			continue
+			return
 		}
 		var stream *logproto.Stream
 		lhash := parsedLbs.Hash()
@@ -759,7 +831,16 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 			Timestamp: time.Unix(0, e.t),
 			Line:      newLine,
 		})
+	}
 
+	if direction == logproto.FORWARD {
+		for _, e := range hb.entries {
+			process(e)
+		}
+	} else {
+		for i := len(hb.entries) - 1; i >= 0; i-- {
+			process(hb.entries[i])
+		}
 	}
 
 	if len(streams) == 0 {
@@ -810,6 +891,7 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extra
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
+		// todo(ctovena) not sure we need this sort.
 		sort.Sort(s)
 		seriesRes = append(seriesRes, *s)
 	}

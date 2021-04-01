@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
@@ -104,7 +104,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 		// A new mapping has to be created.
 		mappedFP = m.nextMappedFP()
 		mappedFPs[ms] = mappedFP
-		level.Info(util.Logger).Log(
+		level.Info(util_log.Logger).Log(
 			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
@@ -118,7 +118,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 	m.mtx.Lock()
 	m.mappings[fp] = mappedFPs
 	m.mtx.Unlock()
-	level.Info(util.Logger).Log(
+	level.Info(util_log.Logger).Log(
 		"msg", "fingerprint collision detected, mapping to new fingerprint",
 		"old_fp", fp,
 		"new_fp", mappedFP,

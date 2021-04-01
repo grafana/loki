@@ -3,8 +3,9 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 
-	pkg_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 
@@ -23,13 +24,15 @@ type IngesterQuerier interface {
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
 	chunk.Store
-	ingesterQuerier IngesterQuerier
+	ingesterQuerier      IngesterQuerier
+	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(store chunk.Store, querier IngesterQuerier) *AsyncStore {
+func NewAsyncStore(store chunk.Store, querier IngesterQuerier, queryIngestersWithin time.Duration) *AsyncStore {
 	return &AsyncStore{
-		Store:           store,
-		ingesterQuerier: querier,
+		Store:                store,
+		ingesterQuerier:      querier,
+		queryIngestersWithin: queryIngestersWithin,
 	}
 }
 
@@ -49,12 +52,21 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var ingesterChunks []string
 
 	go func() {
+		if a.queryIngestersWithin != 0 {
+			// don't query ingesters if the query does not overlap with queryIngestersWithin.
+			if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
+				level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
+				errs <- nil
+				return
+			}
+		}
+
 		var err error
 		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, matchers...)
 
 		if err == nil {
 			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
-			level.Debug(pkg_util.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
+			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
 		errs <- err
 	}()
@@ -75,7 +87,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*chunk.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	ingesterChunkIDs = filterDuplicateChunks(storeChunks, ingesterChunkIDs)
-	level.Debug(pkg_util.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
+	level.Debug(util_log.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
 
 	fetcherToChunksGroupIdx := make(map[*chunk.Fetcher]int, len(fetchers))
 

@@ -2,6 +2,7 @@ package consul
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -142,14 +144,14 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 		options := &consul.QueryOptions{}
 		kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error getting key", "key", key, "err", err)
 			continue
 		}
 		var intermediate interface{}
 		if kvp != nil {
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+				level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)
 				continue
 			}
 			// If key doesn't exist, index will be 0.
@@ -173,7 +175,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 
 		bytes, err := c.codec.Encode(intermediate)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error serialising value", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error serialising value", "key", key, "err", err)
 			continue
 		}
 		ok, _, err := c.kv.CAS(&consul.KVPair{
@@ -182,11 +184,11 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 			ModifyIndex: index,
 		}, writeOptions.WithContext(ctx))
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			continue
 		}
 		if !ok {
-			level.Debug(util.Logger).Log("msg", "error CASing, trying again", "key", key, "index", index)
+			level.Debug(util_log.Logger).Log("msg", "error CASing, trying again", "key", key, "index", index)
 			continue
 		}
 		return nil
@@ -209,7 +211,10 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	for backoff.Ongoing() {
 		err := limiter.Wait(ctx)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
+			if errors.Is(err, context.Canceled) {
+				break
+			}
+			level.Error(util_log.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -226,7 +231,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		// Don't backoff if value is not found (kvp == nil). In that case, Consul still returns index value,
 		// and next call to Get will block as expected. We handle missing value below.
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error getting path", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error getting path", "key", key, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -239,13 +244,13 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		}
 
 		if kvp == nil {
-			level.Info(util.Logger).Log("msg", "value is nil", "key", key, "index", index)
+			level.Info(util_log.Logger).Log("msg", "value is nil", "key", key, "index", index)
 			continue
 		}
 
 		out, err := c.codec.Decode(kvp.Value)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)
 			continue
 		}
 		if !f(out) {
@@ -266,7 +271,10 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	for backoff.Ongoing() {
 		err := limiter.Wait(ctx)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
+			if errors.Is(err, context.Canceled) {
+				break
+			}
+			level.Error(util_log.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -282,7 +290,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		// kvps being nil here is not an error -- quite the opposite. Consul returns index,
 		// which makes next query blocking, so there is no need to detect this and act on it.
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -302,7 +310,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error decoding list of values for prefix:key", "prefix", prefix, "key", kvp.Key, "err", err)
+				level.Error(util_log.Logger).Log("msg", "error decoding list of values for prefix:key", "prefix", prefix, "key", kvp.Key, "err", err)
 				continue
 			}
 			if !f(kvp.Key, out) {

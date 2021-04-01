@@ -46,7 +46,7 @@ Loki can be configured to run as just a single vertically scaled instance or as 
 When it comes to reads and writes, Ingesters are the ones which writes the index and chunks to stores and Queriers are the ones which reads index and chunks from the store for serving requests.
 
 Before we get into more details, it is important to understand how Loki manages index in stores. Loki shards index as per configured period which defaults to seven days i.e when it comes to table based stores like Bigtable/Cassandra/DynamoDB there would be separate table per week containing index for that week.
-In the case of BolDB Shipper, a table is defined by a collection of many smaller BoltDB files, each file storing just 15 mins worth of index. Tables created per day are identified by a configured `prefix_` + `<period-number-since-epoch>`.
+In the case of BoltDB Shipper, a table is defined by a collection of many smaller BoltDB files, each file storing just 15 mins worth of index. Tables created per day are identified by a configured `prefix_` + `<period-number-since-epoch>`.
 Here `<period-number-since-epoch>` in case of boltdb-shipper would be day number since epoch.
 For example, if you have a prefix set to `loki_index_` and a write request comes in on 20th April 2020, it would be stored in a table named loki_index_18372 because it has been `18371` days since the epoch, and we are in `18372`th day.
 Since sharding of index creates multiple files when using BoltDB, BoltDB Shipper would create a folder per day and add files for that day in that folder and names those files after ingesters which created them.
@@ -86,7 +86,7 @@ For all the queries which require chunks to be read from the store, Queriers als
 
 Queriers lazily loads BoltDB files from shared object store to configured `cache_location`.
 When a querier receives a read request, the query range from the request is resolved to period numbers and all the files for those period numbers are downloaded to `cache_location`, if not already.
-Once we have downloaded files for a period we keep looking for updates in shared object store and download them every 15 Minutes by default.
+Once we have downloaded files for a period we keep looking for updates in shared object store and download them every 5 Minutes by default.
 Frequency for checking updates can be configured with `resync_interval` config.
 
 To avoid keeping downloaded index files forever there is a ttl for them which defaults to 24 hours, which means if index files for a period are not used for 24 hours they would be removed from cache location.

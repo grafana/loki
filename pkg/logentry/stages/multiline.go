@@ -203,11 +203,15 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 		}
 		return
 	}
-
+	// copy extracted data.
+	extracted := make(map[string]interface{}, len(s.startLineEntry.Extracted))
+	for k, v := range s.startLineEntry.Extracted {
+		extracted[k] = v
+	}
 	collapsed := Entry{
-		Extracted: s.startLineEntry.Extracted,
+		Extracted: extracted,
 		Entry: api.Entry{
-			Labels: s.startLineEntry.Entry.Labels,
+			Labels: s.startLineEntry.Entry.Labels.Clone(),
 			Entry: logproto.Entry{
 				Timestamp: s.startLineEntry.Entry.Entry.Timestamp,
 				Line:      s.buffer.String(),

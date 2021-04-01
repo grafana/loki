@@ -9,24 +9,23 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/pkg/transport"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	cortex_tls "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config for a new etcd.Client.
 type Config struct {
-	Endpoints          []string      `yaml:"endpoints"`
-	DialTimeout        time.Duration `yaml:"dial_timeout"`
-	MaxRetries         int           `yaml:"max_retries"`
-	EnableTLS          bool          `yaml:"tls_enabled"`
-	CertFile           string        `yaml:"tls_cert_path"`
-	KeyFile            string        `yaml:"tls_key_path"`
-	TrustedCAFile      string        `yaml:"tls_ca_path"`
-	InsecureSkipVerify bool          `yaml:"tls_insecure_skip_verify"`
+	Endpoints   []string                `yaml:"endpoints"`
+	DialTimeout time.Duration           `yaml:"dial_timeout"`
+	MaxRetries  int                     `yaml:"max_retries"`
+	EnableTLS   bool                    `yaml:"tls_enabled"`
+	TLS         cortex_tls.ClientConfig `yaml:",inline"`
 }
 
 // Client implements ring.KVClient for etcd.
@@ -43,10 +42,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS.")
-	f.StringVar(&cfg.CertFile, prefix+"etcd.tls-cert-path", "", "The TLS certificate file path.")
-	f.StringVar(&cfg.KeyFile, prefix+"etcd.tls-key-path", "", "The TLS private key file path.")
-	f.StringVar(&cfg.TrustedCAFile, prefix+"etcd.tls-ca-path", "", "The trusted CA file path.")
-	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"etcd.tls-insecure-skip-verify", false, "Skip validating server certificate.")
+	cfg.TLS.RegisterFlagsWithPrefix(prefix+"etcd", f)
 }
 
 // GetTLS sets the TLS config field with certs
@@ -55,10 +51,11 @@ func (cfg *Config) GetTLS() (*tls.Config, error) {
 		return nil, nil
 	}
 	tlsInfo := &transport.TLSInfo{
-		CertFile:           cfg.CertFile,
-		KeyFile:            cfg.KeyFile,
-		TrustedCAFile:      cfg.TrustedCAFile,
-		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		CertFile:           cfg.TLS.CertPath,
+		KeyFile:            cfg.TLS.KeyPath,
+		TrustedCAFile:      cfg.TLS.CAPath,
+		ServerName:         cfg.TLS.ServerName,
+		InsecureSkipVerify: cfg.TLS.InsecureSkipVerify,
 	}
 	return tlsInfo.ClientConfig()
 }
@@ -110,7 +107,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 	for i := 0; i < c.cfg.MaxRetries; i++ {
 		resp, err := c.cli.Get(ctx, key)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error getting key", "key", key, "err", err)
 			lastErr = err
 			continue
 		}
@@ -119,7 +116,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		if len(resp.Kvs) > 0 {
 			intermediate, err = c.codec.Decode(resp.Kvs[0].Value)
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+				level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)
 				lastErr = err
 				continue
 			}
@@ -143,7 +140,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 		buf, err := c.codec.Encode(intermediate)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error serialising value", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error serialising value", "key", key, "err", err)
 			lastErr = err
 			continue
 		}
@@ -153,13 +150,13 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			Then(clientv3.OpPut(key, string(buf))).
 			Commit()
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
+			level.Error(util_log.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			lastErr = err
 			continue
 		}
 		// result is not Succeeded if the the comparison was false, meaning if the modify indexes did not match.
 		if !result.Succeeded {
-			level.Debug(util.Logger).Log("msg", "failed to CAS, revision and version did not match in etcd", "key", key, "revision", revision)
+			level.Debug(util_log.Logger).Log("msg", "failed to CAS, revision and version did not match in etcd", "key", key, "revision", revision)
 			continue
 		}
 
@@ -187,7 +184,7 @@ outer:
 	for backoff.Ongoing() {
 		for resp := range c.cli.Watch(watchCtx, key) {
 			if err := resp.Err(); err != nil {
-				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				level.Error(util_log.Logger).Log("msg", "watch error", "key", key, "err", err)
 				continue outer
 			}
 
@@ -196,7 +193,7 @@ outer:
 			for _, event := range resp.Events {
 				out, err := c.codec.Decode(event.Kv.Value)
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+					level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)
 					continue
 				}
 
@@ -223,16 +220,21 @@ outer:
 	for backoff.Ongoing() {
 		for resp := range c.cli.Watch(watchCtx, key, clientv3.WithPrefix()) {
 			if err := resp.Err(); err != nil {
-				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				level.Error(util_log.Logger).Log("msg", "watch error", "key", key, "err", err)
 				continue outer
 			}
 
 			backoff.Reset()
 
 			for _, event := range resp.Events {
+				if event.Kv.Version == 0 && event.Kv.Value == nil {
+					// Delete notification. Since not all KV store clients (and Cortex codecs) support this, we ignore it.
+					continue
+				}
+
 				out, err := c.codec.Decode(event.Kv.Value)
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+					level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)
 					continue
 				}
 

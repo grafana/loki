@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -20,7 +21,7 @@ func NewLeaveOnStoppingDelegate(next BasicLifecyclerDelegate, logger log.Logger)
 	}
 }
 
-func (d *LeaveOnStoppingDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+func (d *LeaveOnStoppingDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 }
 
@@ -36,7 +37,7 @@ func (d *LeaveOnStoppingDelegate) OnRingInstanceStopping(lifecycler *BasicLifecy
 	d.next.OnRingInstanceStopping(lifecycler)
 }
 
-func (d *LeaveOnStoppingDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+func (d *LeaveOnStoppingDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *InstanceDesc) {
 	d.next.OnRingInstanceHeartbeat(lifecycler, ringDesc, instanceDesc)
 }
 
@@ -44,10 +45,10 @@ type TokensPersistencyDelegate struct {
 	next       BasicLifecyclerDelegate
 	logger     log.Logger
 	tokensPath string
-	loadState  IngesterState
+	loadState  InstanceState
 }
 
-func NewTokensPersistencyDelegate(path string, state IngesterState, next BasicLifecyclerDelegate, logger log.Logger) *TokensPersistencyDelegate {
+func NewTokensPersistencyDelegate(path string, state InstanceState, next BasicLifecyclerDelegate, logger log.Logger) *TokensPersistencyDelegate {
 	return &TokensPersistencyDelegate{
 		next:       next,
 		logger:     logger,
@@ -56,7 +57,7 @@ func NewTokensPersistencyDelegate(path string, state IngesterState, next BasicLi
 	}
 }
 
-func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	// Skip if no path has been configured.
 	if d.tokensPath == "" {
 		level.Info(d.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
@@ -71,14 +72,17 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 
 	tokensFromFile, err := LoadTokensFromFile(d.tokensPath)
 	if err != nil {
-		level.Error(d.logger).Log("msg", "error in getting tokens from file", "err", err)
+		if !os.IsNotExist(err) {
+			level.Error(d.logger).Log("msg", "error loading tokens from file", "err", err)
+		}
+
 		return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 	}
 
 	// Signal the next delegate that the tokens have been loaded, miming the
 	// case the instance exist in the ring (which is OK because the lifecycler
 	// will correctly reconcile this case too).
-	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, true, lifecycler.GetInstanceID(), IngesterDesc{
+	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, true, lifecycler.GetInstanceID(), InstanceDesc{
 		Addr:                lifecycler.GetInstanceAddr(),
 		Timestamp:           time.Now().Unix(),
 		RegisteredTimestamp: lifecycler.GetRegisteredAt().Unix(),
@@ -102,7 +106,7 @@ func (d *TokensPersistencyDelegate) OnRingInstanceStopping(lifecycler *BasicLife
 	d.next.OnRingInstanceStopping(lifecycler)
 }
 
-func (d *TokensPersistencyDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+func (d *TokensPersistencyDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *InstanceDesc) {
 	d.next.OnRingInstanceHeartbeat(lifecycler, ringDesc, instanceDesc)
 }
 
@@ -122,7 +126,7 @@ func NewAutoForgetDelegate(forgetPeriod time.Duration, next BasicLifecyclerDeleg
 	}
 }
 
-func (d *AutoForgetDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+func (d *AutoForgetDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
 }
 
@@ -134,7 +138,7 @@ func (d *AutoForgetDelegate) OnRingInstanceStopping(lifecycler *BasicLifecycler)
 	d.next.OnRingInstanceStopping(lifecycler)
 }
 
-func (d *AutoForgetDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+func (d *AutoForgetDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *InstanceDesc) {
 	for id, instance := range ringDesc.Ingesters {
 		lastHeartbeat := time.Unix(instance.GetTimestamp(), 0)
 

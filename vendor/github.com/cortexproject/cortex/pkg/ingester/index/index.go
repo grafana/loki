@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -35,7 +35,7 @@ func New() *InvertedIndex {
 // Add a fingerprint under the specified labels.
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (ii *InvertedIndex) Add(labels []client.LabelAdapter, fp model.Fingerprint) labels.Labels {
+func (ii *InvertedIndex) Add(labels []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard := &ii.shards[util.HashFP(fp)%indexShards]
 	return shard.add(labels, fp) // add() returns 'interned' values so the original labels are not retained
 }
@@ -115,7 +115,7 @@ func copyString(s string) string {
 // add metric to the index; return all the name/value pairs as a fresh
 // sorted slice, referencing 'interned' strings from the index so that
 // no references are retained to the memory of `metric`.
-func (shard *indexShard) add(metric []client.LabelAdapter, fp model.Fingerprint) labels.Labels {
+func (shard *indexShard) add(metric []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
@@ -244,6 +244,11 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 		j := sort.Search(len(fingerprints.fps), func(i int) bool {
 			return fingerprints.fps[i] >= fp
 		})
+
+		// see if search didn't find fp which matches the condition which means we don't have to do anything.
+		if j >= len(fingerprints.fps) || fingerprints.fps[j] != fp {
+			continue
+		}
 		fingerprints.fps = fingerprints.fps[:j+copy(fingerprints.fps[j:], fingerprints.fps[j+1:])]
 
 		if len(fingerprints.fps) == 0 {

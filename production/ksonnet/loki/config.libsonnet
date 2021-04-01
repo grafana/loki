@@ -16,12 +16,16 @@
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
     stateful_ingesters: false,
-    ingester_pvc_size: '5Gi',
+    ingester_pvc_size: '10Gi',
     ingester_pvc_class: 'fast',
 
     stateful_queriers: false,
     querier_pvc_size: '10Gi',
     querier_pvc_class: 'fast',
+
+    stateful_rulers: false,
+    ruler_pvc_size: '10Gi',
+    ruler_pvc_class: 'fast',
 
     compactor_pvc_size: '10Gi',
     compactor_pvc_class: 'fast',
@@ -38,14 +42,6 @@
       replicas: 2,
       shard_factor: 16,  // v10 schema shard factor
       sharded_queries_enabled: false,
-      // Queries can technically be sharded an arbitrary number of times. Thus query_split_factor is used
-      // as a coefficient to multiply the frontend tenant queues by. The idea is that this
-      // yields a bit of headroom so tenant queues aren't underprovisioned. Therefore the split factor
-      // should represent the highest reasonable split factor for a query. If too low, a long query
-      // (i.e. 30d) with a high split factor (i.e. 5) would result in
-      // (day_splits * shard_factor * split_factor) or 30 * 16 * 5 = 2400 sharded queries, which may be
-      // more than the max queue size and thus would always error.
-      query_split_factor:: 3,
     },
 
     storage_backend: error 'must define storage_backend as a comma separated list of backends in use,\n    valid entries: dynamodb,s3,gcs,bigtable,cassandra. Typically this would be two entries, e.g. `gcs,bigtable`',
@@ -143,15 +139,8 @@
       },
       frontend: {
         compress_responses: true,
-      } + if $._config.queryFrontend.sharded_queries_enabled then {
-        // In process tenant queues on frontends. We divide by the number of frontends;
-        // 2 in this case in order to apply the global limit in aggregate.
-        // This is basically base * shard_factor * query_split_factor / num_frontends where
-        max_outstanding_per_tenant: std.floor(200 * $._config.queryFrontend.shard_factor * $._config.queryFrontend.query_split_factor / $._config.queryFrontend.replicas),
-      }
-      else {
-        max_outstanding_per_tenant: 200,
         log_queries_longer_than: '5s',
+        max_outstanding_per_tenant: if $._config.queryFrontend.sharded_queries_enabled then 1024 else 256,
       },
       frontend_worker: {
         frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
@@ -187,7 +176,11 @@
       limits_config: {
         enforce_metric_name: false,
         // align middleware parallelism with shard factor to optimize one-legged sharded queries.
-        max_query_parallelism: $._config.queryFrontend.shard_factor,
+        max_query_parallelism: if $._config.queryFrontend.sharded_queries_enabled then
+          // For a sharding factor of 16 (default), this is 256, or enough for 16 sharded queries.
+          $._config.queryFrontend.shard_factor * 16
+        else
+          16,  // default to 16x parallelism
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
         max_query_length: '12000h',  // 500 days

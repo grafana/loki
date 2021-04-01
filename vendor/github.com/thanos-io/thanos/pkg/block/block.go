@@ -98,12 +98,12 @@ func Upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir st
 		return errors.Wrap(err, "gather meta file stats")
 	}
 
-	metaEncoded := bytes.Buffer{}
+	metaEncoded := strings.Builder{}
 	if err := meta.Write(&metaEncoded); err != nil {
 		return errors.Wrap(err, "encode meta file")
 	}
 
-	if err := bkt.Upload(ctx, path.Join(DebugMetas, fmt.Sprintf("%s.json", id)), bytes.NewReader(metaEncoded.Bytes())); err != nil {
+	if err := bkt.Upload(ctx, path.Join(DebugMetas, fmt.Sprintf("%s.json", id)), strings.NewReader(metaEncoded.String())); err != nil {
 		return cleanUp(logger, bkt, id, errors.Wrap(err, "upload debug meta file"))
 	}
 
@@ -116,8 +116,12 @@ func Upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir st
 	}
 
 	// Meta.json always need to be uploaded as a last item. This will allow to assume block directories without meta file to be pending uploads.
-	if err := bkt.Upload(ctx, path.Join(id.String(), MetaFilename), &metaEncoded); err != nil {
-		return cleanUp(logger, bkt, id, errors.Wrap(err, "upload meta file"))
+	if err := bkt.Upload(ctx, path.Join(id.String(), MetaFilename), strings.NewReader(metaEncoded.String())); err != nil {
+		// Don't call cleanUp here. Despite getting error, meta.json may have been uploaded in certain cases,
+		// and even though cleanUp will not see it yet, meta.json may appear in the bucket later.
+		// (Eg. S3 is known to behave this way when it returns 503 "SlowDown" error).
+		// If meta.json is not uploaded, this will produce partial blocks, but such blocks will be cleaned later.
+		return errors.Wrap(err, "upload meta file")
 	}
 
 	return nil
@@ -164,12 +168,15 @@ func MarkForDeletion(ctx context.Context, logger log.Logger, bkt objstore.Bucket
 
 // Delete removes directory that is meant to be block directory.
 // NOTE: Always prefer this method for deleting blocks.
-//  * We have to delete block's files in the certain order (meta.json first)
+//  * We have to delete block's files in the certain order (meta.json first and deletion-mark.json last)
 //  to ensure we don't end up with malformed partial blocks. Thanos system handles well partial blocks
 //  only if they don't have meta.json. If meta.json is present Thanos assumes valid block.
 //  * This avoids deleting empty dir (whole bucket) by mistake.
 func Delete(ctx context.Context, logger log.Logger, bkt objstore.Bucket, id ulid.ULID) error {
 	metaFile := path.Join(id.String(), MetaFilename)
+	deletionMarkFile := path.Join(id.String(), metadata.DeletionMarkFilename)
+
+	// Delete block meta file.
 	ok, err := bkt.Exists(ctx, metaFile)
 	if err != nil {
 		return errors.Wrapf(err, "stat %s", metaFile)
@@ -182,10 +189,30 @@ func Delete(ctx context.Context, logger log.Logger, bkt objstore.Bucket, id ulid
 		level.Debug(logger).Log("msg", "deleted file", "file", metaFile, "bucket", bkt.Name())
 	}
 
-	// Delete the bucket, but skip the metaFile as we just deleted that. This is required for eventual object storages (list after write).
-	return deleteDirRec(ctx, logger, bkt, id.String(), func(name string) bool {
-		return name == metaFile
+	// Delete the block objects, but skip:
+	// - The metaFile as we just deleted. This is required for eventual object storages (list after write).
+	// - The deletionMarkFile as we'll delete it at last.
+	err = deleteDirRec(ctx, logger, bkt, id.String(), func(name string) bool {
+		return name == metaFile || name == deletionMarkFile
 	})
+	if err != nil {
+		return err
+	}
+
+	// Delete block deletion mark.
+	ok, err = bkt.Exists(ctx, deletionMarkFile)
+	if err != nil {
+		return errors.Wrapf(err, "stat %s", deletionMarkFile)
+	}
+
+	if ok {
+		if err := bkt.Delete(ctx, deletionMarkFile); err != nil {
+			return errors.Wrapf(err, "delete %s", deletionMarkFile)
+		}
+		level.Debug(logger).Log("msg", "deleted file", "file", deletionMarkFile, "bucket", bkt.Name())
+	}
+
+	return nil
 }
 
 // deleteDirRec removes all objects prefixed with dir from the bucket. It skips objects that return true for the passed keep function.

@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
@@ -13,11 +14,12 @@ import (
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logql/unmarshal"
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
-func (q *Query) TailQuery(delayFor int, c client.Client, out output.LogOutput) {
-	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
+func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) {
+	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start, q.Quiet)
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
@@ -43,7 +45,7 @@ func (q *Query) TailQuery(delayFor int, c client.Client, out output.LogOutput) {
 	}
 
 	for {
-		err := conn.ReadJSON(tailResponse)
+		err := unmarshal.ReadTailResponseJSON(tailResponse, conn)
 		if err != nil {
 			log.Println("Error reading stream:", err)
 			return
@@ -52,7 +54,6 @@ func (q *Query) TailQuery(delayFor int, c client.Client, out output.LogOutput) {
 		labels := loghttp.LabelSet{}
 		for _, stream := range tailResponse.Streams {
 			if !q.NoLabels {
-
 				if len(q.IgnoreLabelsKey) > 0 || len(q.ShowLabelsKey) > 0 {
 
 					ls := stream.Labels
@@ -70,7 +71,6 @@ func (q *Query) TailQuery(delayFor int, c client.Client, out output.LogOutput) {
 				} else {
 					labels = stream.Labels
 				}
-
 			}
 
 			for _, entry := range stream.Entries {

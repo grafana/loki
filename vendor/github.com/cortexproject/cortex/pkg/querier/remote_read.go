@@ -3,26 +3,27 @@ package querier
 import (
 	"net/http"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Queries are a set of matchers with time ranges - should not get into megabytes
 const maxRemoteReadQuerySize = 1024 * 1024
 
 // RemoteReadHandler handles Prometheus remote read requests.
-func RemoteReadHandler(q storage.Queryable) http.Handler {
+func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Read-Version"))
-
 		ctx := r.Context()
 		var req client.ReadRequest
-		logger := util.WithContext(r.Context(), util.Logger)
-		if err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, compressionType); err != nil {
-			level.Error(logger).Log("err", err.Error())
+		logger := util_log.WithContext(r.Context(), logger)
+		if err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, util.RawSnappy); err != nil {
+			level.Error(logger).Log("msg", "failed to parse proto", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -68,7 +69,7 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 			return
 		}
 		w.Header().Add("Content-Type", "application/x-protobuf")
-		if err := util.SerializeProtoResponse(w, &resp, compressionType); err != nil {
+		if err := util.SerializeProtoResponse(w, &resp, util.RawSnappy); err != nil {
 			level.Error(logger).Log("msg", "error sending remote read response", "err", err)
 		}
 	})
@@ -79,11 +80,11 @@ func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error
 
 	for s.Next() {
 		series := s.At()
-		samples := []client.Sample{}
+		samples := []cortexpb.Sample{}
 		it := series.Iterator()
 		for it.Next() {
 			t, v := it.At()
-			samples = append(samples, client.Sample{
+			samples = append(samples, cortexpb.Sample{
 				TimestampMs: t,
 				Value:       v,
 			})
@@ -91,8 +92,8 @@ func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error
 		if err := it.Err(); err != nil {
 			return nil, err
 		}
-		result.Timeseries = append(result.Timeseries, client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.Labels()),
+		result.Timeseries = append(result.Timeseries, cortexpb.TimeSeries{
+			Labels:  cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 			Samples: samples,
 		})
 	}

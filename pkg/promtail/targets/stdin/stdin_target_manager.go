@@ -57,8 +57,8 @@ type StdinTargetManager struct {
 	app Shutdownable
 }
 
-func NewStdinTargetManager(log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*StdinTargetManager, error) {
-	reader, err := newReaderTarget(log, stdIn, client, getStdinConfig(log, configs))
+func NewStdinTargetManager(reg prometheus.Registerer, log log.Logger, app Shutdownable, client api.EntryHandler, configs []scrapeconfig.Config) (*StdinTargetManager, error) {
+	reader, err := newReaderTarget(reg, log, stdIn, client, getStdinConfig(log, configs))
 	if err != nil {
 		return nil, err
 	}
@@ -103,8 +103,8 @@ type readerTarget struct {
 	ctx    context.Context
 }
 
-func newReaderTarget(logger log.Logger, in io.Reader, client api.EntryHandler, cfg scrapeconfig.Config) (*readerTarget, error) {
-	pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, prometheus.DefaultRegisterer)
+func newReaderTarget(reg prometheus.Registerer, logger log.Logger, in io.Reader, client api.EntryHandler, cfg scrapeconfig.Config) (*readerTarget, error) {
+	pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
 	if err != nil {
 		return nil, err
 	}

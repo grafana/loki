@@ -57,8 +57,8 @@ func NewRefCache() *RefCache {
 }
 
 // Ref returns the cached series reference, and guarantees the input labels set
-// is NOT retained.
-func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, bool) {
+// is NOT retained. We also output the copied set of labels which are safe to use.
+func (c *RefCache) Ref(now time.Time, series labels.Labels) (uint64, labels.Labels, bool) {
 	fp := client.Fingerprint(series)
 	stripeID := util.HashFP(fp) % numRefCacheStripes
 
@@ -81,24 +81,25 @@ func (c *RefCache) Purge(keepUntil time.Time) {
 	}
 }
 
-func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Fingerprint) (uint64, bool) {
+func (s *refCacheStripe) ref(now time.Time, series labels.Labels, fp model.Fingerprint) (uint64, labels.Labels, bool) {
 	s.refsMu.RLock()
 	defer s.refsMu.RUnlock()
 
 	entries, ok := s.refs[fp]
 	if !ok {
-		return 0, false
+		return 0, nil, false
 	}
 
 	for ix := range entries {
-		if labels.Equal(entries[ix].lbs, series) {
+		lbs := entries[ix].lbs
+		if labels.Equal(lbs, series) {
 			// Since we use read-only lock, we need to use atomic update.
 			entries[ix].touchedAt.Store(now.UnixNano())
-			return entries[ix].ref, true
+			return entries[ix].ref, lbs, true
 		}
 	}
 
-	return 0, false
+	return 0, nil, false
 }
 
 func (s *refCacheStripe) setRef(now time.Time, series labels.Labels, fp model.Fingerprint, ref uint64) {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -32,9 +33,9 @@ func (i *Ingester) Flush() {
 		return
 	}
 
-	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
+	level.Info(i.logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
-	level.Info(util.Logger).Log("msg", "chunks queued for flushing")
+	level.Info(i.logger).Log("msg", "chunks queued for flushing")
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
@@ -42,7 +43,7 @@ func (i *Ingester) Flush() {
 	}
 
 	i.flushQueuesDone.Wait()
-	level.Info(util.Logger).Log("msg", "flushing of chunks complete")
+	level.Info(i.logger).Log("msg", "flushing of chunks complete")
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
@@ -53,9 +54,9 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
+	level.Info(i.logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
-	level.Info(util.Logger).Log("msg", "chunks queued for flushing")
+	level.Info(i.logger).Log("msg", "chunks queued for flushing")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -114,7 +115,7 @@ func (i *Ingester) setFlushRate() {
 	if flushesPerSecond*i.cfg.FlushCheckPeriod.Seconds() < minFlushes {
 		flushesPerSecond = minFlushes / i.cfg.FlushCheckPeriod.Seconds()
 	}
-	level.Debug(util.Logger).Log("msg", "computed flush rate", "rate", flushesPerSecond)
+	level.Debug(i.logger).Log("msg", "computed flush rate", "rate", flushesPerSecond)
 	i.flushRateLimiter.SetLimit(rate.Limit(flushesPerSecond))
 }
 
@@ -246,7 +247,7 @@ func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint, lastValueIsSt
 
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
-		level.Debug(util.Logger).Log("msg", "Ingester.flushLoop() exited")
+		level.Debug(i.logger).Log("msg", "Ingester.flushLoop() exited")
 		i.flushQueuesDone.Done()
 	}()
 
@@ -263,7 +264,7 @@ func (i *Ingester) flushLoop(j int) {
 		outcome, err := i.flushUserSeries(j, op.userID, op.fp, op.immediate)
 		i.metrics.seriesDequeuedOutcome.WithLabelValues(outcome.String()).Inc()
 		if err != nil {
-			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
+			level.Error(log.WithUserID(op.userID, i.logger)).Log("msg", "failed to flush user", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation

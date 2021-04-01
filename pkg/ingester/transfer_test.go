@@ -10,7 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/go-kit/kit/log/level"
@@ -204,7 +204,7 @@ func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption)
 		c.i.stopIncomingRequests() // used to be called from lifecycler, now it must be called *before* stopping lifecyler. (ingester does this on shutdown)
 		err := services.StopAndAwaitTerminated(context.Background(), c.i.lifecycler)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+			level.Error(util_log.Logger).Log("msg", "lifecycler failed", "err", err)
 		}
 	}()
 

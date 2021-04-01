@@ -8,8 +8,8 @@ package ruler;
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
-import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
-import "github.com/cortexproject/cortex/pkg/ruler/rules/rules.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/ruler/rulespb/rules.proto";
 
 
 option (gogoproto.marshaler_all) = true;
@@ -46,15 +46,13 @@ message RuleStateDesc {
 
 message AlertStateDesc {
   string state = 1;
-  repeated cortex.LabelPair labels = 2 [
+  repeated cortexpb.LabelPair labels = 2 [
     (gogoproto.nullable) = false,
-    (gogoproto.customtype) =
-        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
+    (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
   ];
-  repeated cortex.LabelPair annotations = 3 [
+  repeated cortexpb.LabelPair annotations = 3 [
     (gogoproto.nullable) = false,
-    (gogoproto.customtype) =
-        "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"
+    (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
   ];
   double value = 4;
   google.protobuf.Timestamp active_at = 5

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -21,8 +21,8 @@ import (
 func testSampleStreams() []queryrange.SampleStream {
 	return []queryrange.SampleStream{
 		{
-			Labels: []client.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []client.Sample{
+			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []cortexpb.Sample{
 				{
 					Value:       0,
 					TimestampMs: 0,
@@ -38,8 +38,8 @@ func testSampleStreams() []queryrange.SampleStream {
 			},
 		},
 		{
-			Labels: []client.LabelAdapter{{Name: "bazz", Value: "buzz"}},
-			Samples: []client.Sample{
+			Labels: []cortexpb.LabelAdapter{{Name: "bazz", Value: "buzz"}},
+			Samples: []cortexpb.Sample{
 				{
 					Value:       4,
 					TimestampMs: 4,
@@ -184,7 +184,6 @@ func TestResponseToResult(t *testing.T) {
 }
 
 func TestDownstreamHandler(t *testing.T) {
-
 	// Pretty poor test, but this is just a passthrough struct, so ensure we create locks
 	// and can consume them
 	h := DownstreamHandler{nil}
@@ -220,7 +219,7 @@ func TestInstanceFor(t *testing.T) {
 	var ct int
 
 	// ensure we can execute queries that number more than the parallelism parameter
-	_, err := in.For(queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
+	_, err := in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
@@ -233,7 +232,7 @@ func TestInstanceFor(t *testing.T) {
 	// ensure an early error abandons the other queues queries
 	in = mkIn()
 	ct = 0
-	_, err = in.For(queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
+	_, err = in.For(context.TODO(), queries, func(_ logql.DownstreamQuery) (logql.Result, error) {
 		mtx.Lock()
 		defer mtx.Unlock()
 		ct++
@@ -250,6 +249,7 @@ func TestInstanceFor(t *testing.T) {
 
 	in = mkIn()
 	results, err := in.For(
+		context.TODO(),
 		[]logql.DownstreamQuery{
 			{
 				Shards: logql.Shards{
@@ -263,7 +263,6 @@ func TestInstanceFor(t *testing.T) {
 			},
 		},
 		func(qry logql.DownstreamQuery) (logql.Result, error) {
-
 			return logql.Result{
 				Data: logql.Streams{{
 					Labels: qry.Shards[0].String(),
@@ -285,7 +284,6 @@ func TestInstanceFor(t *testing.T) {
 		results,
 	)
 	ensureParallelism(t, in, in.parallelism)
-
 }
 
 func TestInstanceDownstream(t *testing.T) {
@@ -345,5 +343,4 @@ func TestInstanceDownstream(t *testing.T) {
 
 	require.Nil(t, err)
 	require.Equal(t, []logql.Result{expected}, results)
-
 }

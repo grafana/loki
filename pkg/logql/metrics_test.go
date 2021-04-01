@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/require"
@@ -53,7 +53,7 @@ func TestQueryType(t *testing.T) {
 
 func TestLogSlowQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
-	util.Logger = log.NewLogfmtLogger(buf)
+	util_log.Logger = log.NewLogfmtLogger(buf)
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
@@ -73,12 +73,12 @@ func TestLogSlowQuery(t *testing.T) {
 			ExecTime:                25.25,
 			TotalBytesProcessed:     100000,
 		},
-	})
+	}, Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query=\"{foo=\\\"bar\\\"} |= \\\"buzz\\\"\" query_type=filter range_type=range length=1h0m0s step=1m0s duration=25.25s status=200 throughput=100kB total_bytes=100kB\n",
+			"level=info org_id=foo traceID=%s latency=slow query=\"{foo=\\\"bar\\\"} |= \\\"buzz\\\"\" query_type=filter range_type=range length=1h0m0s step=1m0s duration=25.25s status=200 limit=1000 returned_lines=10 throughput=100kB total_bytes=100kB\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
-	util.Logger = log.NewNopLogger()
+	util_log.Logger = log.NewNopLogger()
 }

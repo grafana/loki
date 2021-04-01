@@ -153,8 +153,10 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	// Upload should be idempotent.
 	testutil.Ok(t, bkt.Upload(ctx, "id1/obj_2.some", strings.NewReader("@test-data2@")))
 	testutil.Ok(t, bkt.Upload(ctx, "id1/obj_3.some", strings.NewReader("@test-data3@")))
-	testutil.Ok(t, bkt.Upload(ctx, "id2/obj_4.some", strings.NewReader("@test-data4@")))
-	testutil.Ok(t, bkt.Upload(ctx, "obj_5.some", strings.NewReader("@test-data5@")))
+	testutil.Ok(t, bkt.Upload(ctx, "id1/sub/subobj_1.some", strings.NewReader("@test-data4@")))
+	testutil.Ok(t, bkt.Upload(ctx, "id1/sub/subobj_2.some", strings.NewReader("@test-data5@")))
+	testutil.Ok(t, bkt.Upload(ctx, "id2/obj_4.some", strings.NewReader("@test-data6@")))
+	testutil.Ok(t, bkt.Upload(ctx, "obj_5.some", strings.NewReader("@test-data7@")))
 
 	// Can we iter over items from top dir?
 	var seen []string
@@ -167,13 +169,32 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	sort.Strings(seen)
 	testutil.Equals(t, expected, seen)
 
+	// Can we iter over items from top dir recursively?
+	seen = []string{}
+	testutil.Ok(t, bkt.Iter(ctx, "", func(fn string) error {
+		seen = append(seen, fn)
+		return nil
+	}, WithRecursiveIter))
+	expected = []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some", "id2/obj_4.some", "obj_5.some"}
+	sort.Strings(expected)
+	sort.Strings(seen)
+	testutil.Equals(t, expected, seen)
+
 	// Can we iter over items from id1/ dir?
 	seen = []string{}
 	testutil.Ok(t, bkt.Iter(ctx, "id1/", func(fn string) error {
 		seen = append(seen, fn)
 		return nil
 	}))
-	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some"}, seen)
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/"}, seen)
+
+	// Can we iter over items from id1/ dir recursively?
+	seen = []string{}
+	testutil.Ok(t, bkt.Iter(ctx, "id1/", func(fn string) error {
+		seen = append(seen, fn)
+		return nil
+	}, WithRecursiveIter))
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some"}, seen)
 
 	// Can we iter over items from id1 dir?
 	seen = []string{}
@@ -181,7 +202,15 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 		seen = append(seen, fn)
 		return nil
 	}))
-	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some"}, seen)
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/"}, seen)
+
+	// Can we iter over items from id1 dir recursively?
+	seen = []string{}
+	testutil.Ok(t, bkt.Iter(ctx, "id1", func(fn string) error {
+		seen = append(seen, fn)
+		return nil
+	}, WithRecursiveIter))
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some"}, seen)
 
 	// Can we iter over items from not existing dir?
 	testutil.Ok(t, bkt.Iter(ctx, "id0", func(fn string) error {
@@ -203,7 +232,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 		seen = append(seen, fn)
 		return nil
 	}))
-	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_3.some"}, seen)
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_3.some", "id1/sub/"}, seen)
 
 	testutil.Ok(t, bkt.Delete(ctx, "id2/obj_4.some"))
 

@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -68,7 +69,9 @@ func NewPool(clientName string, cfg PoolConfig, discovery PoolServiceDiscovery, 
 		clientsMetric: clientsMetric,
 	}
 
-	p.Service = services.NewTimerService(cfg.CheckInterval, nil, p.iteration, nil)
+	p.Service = services.
+		NewTimerService(cfg.CheckInterval, nil, p.iteration, nil).
+		WithName(fmt.Sprintf("%s client pool", p.clientName))
 	return p
 }
 
@@ -158,7 +161,7 @@ func (p *Pool) removeStaleClients() {
 
 	serviceAddrs, err := p.discovery()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error removing stale clients", "err", err)
+		level.Error(util_log.Logger).Log("msg", "error removing stale clients", "err", err)
 		return
 	}
 
@@ -166,7 +169,7 @@ func (p *Pool) removeStaleClients() {
 		if util.StringsContain(serviceAddrs, addr) {
 			continue
 		}
-		level.Info(util.Logger).Log("msg", "removing stale client", "addr", addr)
+		level.Info(util_log.Logger).Log("msg", "removing stale client", "addr", addr)
 		p.RemoveClientFor(addr)
 	}
 }
@@ -179,7 +182,7 @@ func (p *Pool) cleanUnhealthy() {
 		if ok {
 			err := healthCheck(client, p.cfg.HealthCheckTimeout)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", fmt.Sprintf("removing %s failing healthcheck", p.clientName), "addr", addr, "reason", err)
+				level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("removing %s failing healthcheck", p.clientName), "addr", addr, "reason", err)
 				p.RemoveClientFor(addr)
 			}
 		}

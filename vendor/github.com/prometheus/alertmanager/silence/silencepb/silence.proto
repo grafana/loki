@@ -17,6 +17,8 @@ message Matcher {
   enum Type {
     EQUAL = 0;
     REGEXP = 1;
+    NOT_EQUAL = 2;
+    NOT_REGEXP = 3;
   };
   Type type = 1;
 

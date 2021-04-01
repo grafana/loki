@@ -12,22 +12,24 @@ import (
 )
 
 const (
-	StageTypeJSON      = "json"
-	StageTypeRegex     = "regex"
-	StageTypeReplace   = "replace"
-	StageTypeMetric    = "metrics"
-	StageTypeLabel     = "labels"
-	StageTypeLabelDrop = "labeldrop"
-	StageTypeTimestamp = "timestamp"
-	StageTypeOutput    = "output"
-	StageTypeDocker    = "docker"
-	StageTypeCRI       = "cri"
-	StageTypeMatch     = "match"
-	StageTypeTemplate  = "template"
-	StageTypePipeline  = "pipeline"
-	StageTypeTenant    = "tenant"
-	StageTypeDrop      = "drop"
-	StageTypeMultiline = "multiline"
+	StageTypeJSON       = "json"
+	StageTypeRegex      = "regex"
+	StageTypeReplace    = "replace"
+	StageTypeMetric     = "metrics"
+	StageTypeLabel      = "labels"
+	StageTypeLabelDrop  = "labeldrop"
+	StageTypeTimestamp  = "timestamp"
+	StageTypeOutput     = "output"
+	StageTypeDocker     = "docker"
+	StageTypeCRI        = "cri"
+	StageTypeMatch      = "match"
+	StageTypeTemplate   = "template"
+	StageTypePipeline   = "pipeline"
+	StageTypeTenant     = "tenant"
+	StageTypeDrop       = "drop"
+	StageTypeMultiline  = "multiline"
+	StageTypePack       = "pack"
+	StageTypeLabelAllow = "labelallow"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -142,6 +144,16 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeMultiline:
 		s, err = newMultilineStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypePack:
+		s, err = newPackStage(logger, cfg, registerer)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeLabelAllow:
+		s, err = newLabelAllowStage(cfg)
 		if err != nil {
 			return nil, err
 		}

@@ -1,0 +1,28 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: pubsub-test
+    gcplog:
+      project_id: "grafanalabs-dev"
+      subscription: "dev-logs-pull"
+      use_incoming_timestamp: false # default rewrite timestamp.
+      labels:
+        job: pubsub-gcp
+
+    relabel_configs:
+      - action: replace
+        source_labels:
+          - __bucket_name
+        target_label: bucket_name
+      - action: replace
+        source_labels:
+          - __backend_service_name
+        target_label: backend_service_name

@@ -33,14 +33,35 @@ type Index struct {
 	Version int `json:"version"`
 
 	// List of complete blocks (partial blocks are excluded from the index).
-	Blocks []*Block `json:"blocks"`
+	Blocks Blocks `json:"blocks"`
 
 	// List of block deletion marks.
-	BlockDeletionMarks []*BlockDeletionMark `json:"block_deletion_marks"`
+	BlockDeletionMarks BlockDeletionMarks `json:"block_deletion_marks"`
 
 	// UpdatedAt is a unix timestamp (seconds precision) of when the index has been updated
 	// (written in the storage) the last time.
 	UpdatedAt int64 `json:"updated_at"`
+}
+
+func (idx *Index) GetUpdatedAt() time.Time {
+	return time.Unix(idx.UpdatedAt, 0)
+}
+
+// RemoveBlock removes block and its deletion mark (if any) from index.
+func (idx *Index) RemoveBlock(id ulid.ULID) {
+	for i := 0; i < len(idx.Blocks); i++ {
+		if idx.Blocks[i].ID == id {
+			idx.Blocks = append(idx.Blocks[:i], idx.Blocks[i+1:]...)
+			break
+		}
+	}
+
+	for i := 0; i < len(idx.BlockDeletionMarks); i++ {
+		if idx.BlockDeletionMarks[i].ID == id {
+			idx.BlockDeletionMarks = append(idx.BlockDeletionMarks[:i], idx.BlockDeletionMarks[i+1:]...)
+			break
+		}
+	}
 }
 
 // Block holds the information about a block in the index.
@@ -64,6 +85,13 @@ type Block struct {
 	UploadedAt int64 `json:"uploaded_at"`
 }
 
+// Within returns whether the block contains samples within the provided range.
+// Input minT and maxT are both inclusive.
+func (m *Block) Within(minT, maxT int64) bool {
+	// NOTE: Block intervals are half-open: [MinTime, MaxTime).
+	return m.MinTime <= maxT && minT < m.MaxTime
+}
+
 func (m *Block) GetUploadedAt() time.Time {
 	return time.Unix(m.UploadedAt, 0)
 }
@@ -71,8 +99,8 @@ func (m *Block) GetUploadedAt() time.Time {
 // ThanosMeta returns a block meta based on the known information in the index.
 // The returned meta doesn't include all original meta.json data but only a subset
 // of it.
-func (m *Block) ThanosMeta(userID string) metadata.Meta {
-	return metadata.Meta{
+func (m *Block) ThanosMeta(userID string) *metadata.Meta {
+	return &metadata.Meta{
 		BlockMeta: tsdb.BlockMeta{
 			ULID:    m.ID,
 			MinTime: m.MinTime,
@@ -167,11 +195,44 @@ type BlockDeletionMark struct {
 	DeletionTime int64 `json:"deletion_time"`
 }
 
+func (m *BlockDeletionMark) GetDeletionTime() time.Time {
+	return time.Unix(m.DeletionTime, 0)
+}
+
+// ThanosMeta returns the Thanos deletion mark.
+func (m *BlockDeletionMark) ThanosDeletionMark() *metadata.DeletionMark {
+	return &metadata.DeletionMark{
+		ID:           m.ID,
+		Version:      metadata.DeletionMarkVersion1,
+		DeletionTime: m.DeletionTime,
+	}
+}
+
 func BlockDeletionMarkFromThanosMarker(mark *metadata.DeletionMark) *BlockDeletionMark {
 	return &BlockDeletionMark{
 		ID:           mark.ID,
 		DeletionTime: mark.DeletionTime,
 	}
+}
+
+// BlockDeletionMarks holds a set of block deletion marks in the index. No ordering guaranteed.
+type BlockDeletionMarks []*BlockDeletionMark
+
+func (s BlockDeletionMarks) GetULIDs() []ulid.ULID {
+	ids := make([]ulid.ULID, len(s))
+	for i, m := range s {
+		ids[i] = m.ID
+	}
+	return ids
+}
+
+func (s BlockDeletionMarks) Clone() BlockDeletionMarks {
+	clone := make(BlockDeletionMarks, len(s))
+	for i, m := range s {
+		v := *m
+		clone[i] = &v
+	}
+	return clone
 }
 
 // Blocks holds a set of blocks in the index. No ordering guaranteed.

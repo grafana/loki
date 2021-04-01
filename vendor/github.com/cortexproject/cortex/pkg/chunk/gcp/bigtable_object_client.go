@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/math"
 )
 
 type bigtableObjectClient struct {
@@ -22,8 +22,11 @@ type bigtableObjectClient struct {
 // NewBigtableObjectClient makes a new chunk.Client that stores chunks in
 // Bigtable.
 func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
-	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	if err != nil {
+		return nil, err
+	}
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +112,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		)
 
 		for i := 0; i < len(keys); i += maxRowReads {
-			page := keys[i:util.Min(i+maxRowReads, len(keys))]
+			page := keys[i:math.Min(i+maxRowReads, len(keys))]
 			go func(page bigtable.RowList) {
 				decodeContext := chunk.NewDecodeContext()
 

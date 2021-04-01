@@ -18,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const arnPrefix = "arn:"
@@ -234,7 +234,7 @@ func (m *mockDynamoDBClient) QueryPagesWithContext(ctx aws.Context, input *dynam
 						continue
 					}
 				} else {
-					level.Warn(util.Logger).Log("msg", "unsupported FilterExpression", "expression", *input.FilterExpression)
+					level.Warn(util_log.Logger).Log("msg", "unsupported FilterExpression", "expression", *input.FilterExpression)
 				}
 			}
 		}

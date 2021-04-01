@@ -74,6 +74,17 @@ Examples:
 
 The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki log stream selectors.
 
+**Important note:** The `=~` regex operator is fully anchored, meaning regex must match against the *entire* string, including newlines. The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
+
+#### Offset modifier
+The offset modifier allows changing the time offset for individual range vectors in a query.
+
+For example, the following expression counts all the logs within the last ten minutes to five minutes rather than last five minutes for the MySQL job. Note that the `offset` modifier always needs to follow the range vector selector immediately.
+```logql
+count_over_time({job="mysql"}[5m] offset 5m) // GOOD
+count_over_time({job="mysql"}[5m]) offset 5m // INVALID
+```
+
 ### Log Pipeline
 
 A log pipeline can be appended to a log stream selector to further process and filter log streams. It usually is composed of one or multiple expressions, each expressions is executed in sequence for each log line. If an expression filters out a log line, the pipeline will stop at this point and start processing the next line.
@@ -143,49 +154,115 @@ In case of errors, for instance if the line is not in the expected format, the l
 
 If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However if an extracted key appears twice, only the latest label value will be kept.
 
-We support currently support json, logfmt and regexp parsers.
+We support currently support [json](#json), [logfmt](#logfmt), [regexp](#regexp) and [unpack](#unpack) parsers.
 
-The **json** parsers take no parameters and can be added using the expression `| json` in your pipeline. It will extract all json properties as labels if the log line is a valid json document. Nested properties are flattened into label keys using the `_` separator. **Arrays are skipped**.
+It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
 
-For example the json parsers will extract from the following document:
+##### Json
 
-```json
-{
-	"protocol": "HTTP/2.0",
-	"servers": ["129.0.1.1","10.2.1.3"],
-	"request": {
-		"time": "6.032",
-		"method": "GET",
-		"host": "foo.grafana.net",
-		"size": "55",
-	},
-	"response": {
-		"status": 401,
-		"size": "228",
-		"latency_seconds": "6.031"
-	}
-}
-```
+The **json** parser operates in two modes:
 
-The following list of labels:
+1. **without** parameters:
 
-```kv
-"protocol" => "HTTP/2.0"
-"request_time" => "6.032"
-"request_method" => "GET"
-"request_host" => "foo.grafana.net"
-"request_size" => "55"
-"response_status" => "401"
-"response_size" => "228"
-"response_size" => "228"
-```
+   Adding `| json` to your pipeline will extract all json properties as labels if the log line is a valid json document.
+   Nested properties are flattened into label keys using the `_` separator.
+
+   Note: **Arrays are skipped**.
+
+   For example the json parsers will extract from the following document:
+
+   ```json
+   {
+       "protocol": "HTTP/2.0",
+       "servers": ["129.0.1.1","10.2.1.3"],
+       "request": {
+           "time": "6.032",
+           "method": "GET",
+           "host": "foo.grafana.net",
+           "size": "55",
+           "headers": {
+             "Accept": "*/*",
+             "User-Agent": "curl/7.68.0"
+           }
+       },
+       "response": {
+           "status": 401,
+           "size": "228",
+           "latency_seconds": "6.031"
+       }
+   }
+   ```
+
+   The following list of labels:
+
+   ```kv
+   "protocol" => "HTTP/2.0"
+   "request_time" => "6.032"
+   "request_method" => "GET"
+   "request_host" => "foo.grafana.net"
+   "request_size" => "55"
+   "response_status" => "401"
+   "response_size" => "228"
+   "response_size" => "228"
+   ```
+
+2. **with** parameters:
+
+   Using `| json label="expression", another="expression"` in your pipeline will extract only the
+   specified json fields to labels. You can specify one or more expressions in this way, the same
+   as [`label_format`](#labels-format-expression); all expressions must be quoted.
+
+   Currently, we only support field access (`my.field`, `my["field"]`) and array access (`list[0]`), and any combination
+   of these in any level of nesting (`my.list[0]["field"]`).
+
+   For example, `| json first_server="servers[0]", ua="request.headers[\"User-Agent\"]` will extract from the following document:
+
+    ```json
+    {
+        "protocol": "HTTP/2.0",
+        "servers": ["129.0.1.1","10.2.1.3"],
+        "request": {
+            "time": "6.032",
+            "method": "GET",
+            "host": "foo.grafana.net",
+            "size": "55",
+            "headers": {
+              "Accept": "*/*",
+              "User-Agent": "curl/7.68.0"
+            }
+        },
+        "response": {
+            "status": 401,
+            "size": "228",
+            "latency_seconds": "6.031"
+        }
+    }
+    ```
+
+   The following list of labels:
+
+    ```kv
+    "first_server" => "129.0.1.1"
+    "ua" => "curl/7.68.0"
+    ```
+
+   If an array or an object returned by an expression, it will be assigned to the label in json format.
+
+   For example, `| json server_list="servers", headers="request.headers` will extract:
+
+   ```kv
+   "server_list" => `["129.0.1.1","10.2.1.3"]`
+   "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
+   ```
+
+##### logfmt
 
 The **logfmt** parser can be added using the `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
 
 For example the following log line:
 
 ```logfmt
-at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" connect=4ms service=8ms status=200
+at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
 ```
 
 will get those labels extracted:
@@ -199,6 +276,8 @@ will get those labels extracted:
 "service" => "8ms"
 "status" => "200"
 ```
+
+##### regexp
 
 Unlike the logfmt and json, which extract implicitly all values and takes no parameters, the **regexp** parser takes a single parameter `| regexp "<re>"` which is the regular expression using the [Golang](https://golang.org/) [RE2 syntax](https://github.com/google/re2/wiki/Syntax).
 
@@ -219,7 +298,24 @@ those labels:
 "duration" => "1.5s"
 ```
 
-It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
+##### unpack
+
+The `unpack` parser will parse a json log line, and unpack all embedded labels via the [`pack`](../clients/promtail/stages/pack/) stage.
+**A special property `_entry` will also be used to replace the original log line**.
+
+For example, using `| unpack` with the following log line:
+
+```json
+{
+  "container": "myapp",
+  "pod": "pod-3223f",
+  "_entry": "original log message"
+}
+```
+
+allows to extract the `container` and `pod` labels and the `original log message` as the new log line.
+
+> You can combine `unpack` with `json` parser (or any other parsers) if the original embedded log line is specific format.
 
 #### Label Filter Expression
 
@@ -295,11 +391,21 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
+`line_format` also supports `math` functions. Example:
+
+If we have following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms). We can divide the duration by `1000` to get the value in seconds.
+
+```logql
+{container="frontend"} | logfmt | line_format "{{.ip}} {{.status}} {{div .duration 1000}}"
+```
+
+The above query will give us the `line` as `1.1.1.1 200 3`
+
 See [template functions](template_functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
-The `| label_format` expression can renamed, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
+The `| label_format` expression can rename, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 

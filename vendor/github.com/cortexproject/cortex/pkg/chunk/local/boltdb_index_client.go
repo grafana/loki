@@ -17,7 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -94,7 +94,7 @@ func (b *BoltIndexClient) reload() {
 	for name := range b.dbs {
 		if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err != nil && os.IsNotExist(err) {
 			removedDBs = append(removedDBs, name)
-			level.Debug(util.Logger).Log("msg", "boltdb file got removed", "filename", name)
+			level.Debug(util_log.Logger).Log("msg", "boltdb file got removed", "filename", name)
 			continue
 		}
 	}
@@ -106,7 +106,7 @@ func (b *BoltIndexClient) reload() {
 
 		for _, name := range removedDBs {
 			if err := b.dbs[name].Close(); err != nil {
-				level.Error(util.Logger).Log("msg", "failed to close removed boltdb", "filename", name, "err", err)
+				level.Error(util_log.Logger).Log("msg", "failed to close removed boltdb", "filename", name, "err", err)
 				continue
 			}
 			delete(b.dbs, name)

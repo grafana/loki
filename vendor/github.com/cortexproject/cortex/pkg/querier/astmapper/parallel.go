@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var summableAggregates = map[parser.ItemType]struct{}{
@@ -90,7 +90,7 @@ func CanParallelize(node parser.Node) bool {
 		return true
 
 	default:
-		level.Error(util.Logger).Log("err", fmt.Sprintf("CanParallel: unhandled node type %T", node))
+		level.Error(util_log.Logger).Log("err", fmt.Sprintf("CanParallel: unhandled node type %T", node)) //lint:ignore faillint allow global logger for now
 		return false
 	}
 

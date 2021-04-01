@@ -28,13 +28,15 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName                string                 `yaml:"job_name,omitempty"`
-	PipelineStages         stages.PipelineStages  `yaml:"pipeline_stages,omitempty"`
-	JournalConfig          *JournalTargetConfig   `yaml:"journal,omitempty"`
-	SyslogConfig           *SyslogTargetConfig    `yaml:"syslog,omitempty"`
-	PushConfig             *PushTargetConfig      `yaml:"loki_push_api,omitempty"`
-	RelabelConfigs         []*relabel.Config      `yaml:"relabel_configs,omitempty"`
-	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+	JobName                string                     `yaml:"job_name,omitempty"`
+	PipelineStages         stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
+	JournalConfig          *JournalTargetConfig       `yaml:"journal,omitempty"`
+	SyslogConfig           *SyslogTargetConfig        `yaml:"syslog,omitempty"`
+	GcplogConfig           *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
+	PushConfig             *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
+	WindowsConfig          *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
+	RelabelConfigs         []*relabel.Config          `yaml:"relabel_configs,omitempty"`
+	ServiceDiscoveryConfig ServiceDiscoveryConfig     `yaml:",inline"`
 }
 
 type ServiceDiscoveryConfig struct {
@@ -159,8 +161,71 @@ type SyslogTargetConfig struct {
 	// Labels optionally holds labels to associate with each record read from syslog.
 	Labels model.LabelSet `yaml:"labels"`
 
-	// UseIncomingTimestamp sets the timestamp to the incoming syslog mesages
+	// UseIncomingTimestamp sets the timestamp to the incoming syslog messages
 	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// MaxMessageLength sets the maximum limit to the length of syslog messages
+	MaxMessageLength int `yaml:"max_message_length"`
+}
+
+// WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.
+type WindowsEventsTargetConfig struct {
+
+	// LCID (Locale ID) for event rendering
+	// - 1033 to force English language
+	// -  0 to use default Windows locale
+	Locale uint32 `yaml:"locale"`
+
+	// Name of eventlog, used only if xpath_query is empty
+	// Example: "Application"
+	EventlogName string `yaml:"eventlog_name"`
+
+	// xpath_query can be in defined short form like "Event/System[EventID=999]"
+	// or you can form a XML Query. Refer to the Consuming Events article:
+	// https://docs.microsoft.com/en-us/windows/win32/wes/consuming-events
+	// XML query is the recommended form, because it is most flexible
+	// You can create or debug XML Query by creating Custom View in Windows Event Viewer
+	// and then copying resulting XML here
+	Query string `yaml:"xpath_query"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming windows messages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// BookmarkPath sets the bookmark location on the filesystem.
+	// The bookmark contains the current position of the target in XML.
+	// When restarting or rollingout promtail, the target will continue to scrape events where it left off based on the bookmark position.
+	// The position is updated after each entry processed.
+	BookmarkPath string `yaml:"bookmark_path"`
+
+	// PollInterval is the interval at which we're looking if new events are available. By default the target will check every 3seconds.
+	PollInterval time.Duration `yaml:"poll_interval"`
+
+	// ExcludeEventData allows to exclude the xml event data.
+	ExcludeEventData bool `yaml:"exclude_event_data"`
+
+	// ExcludeUserData allows to exclude the user data of each windows event.
+	ExcludeUserData bool `yaml:"exclude_user_data"`
+
+	// Labels optionally holds labels to associate with each log line.
+	Labels model.LabelSet `yaml:"labels"`
+}
+
+// GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
+type GcplogTargetConfig struct {
+	// ProjectID is the Cloud project id
+	ProjectID string `yaml:"project_id"`
+
+	// Subscription is the scription name we use to pull logs from a pubsub topic.
+	Subscription string `yaml:"subscription"`
+
+	// Labels are the additional labels to be added to log entry while pushing it to Loki server.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp represents whether to keep the timestamp same as actual log entry coming in or replace it with
+	// current timestamp at the time of processing.
+	// Its default value(`false`) denotes, replace it with current timestamp at the time of processing.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 }
 
@@ -178,11 +243,7 @@ type PushTargetConfig struct {
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	PipelineStages: []interface{}{
-		map[interface{}]interface{}{
-			stages.StageTypeDocker: nil,
-		},
-	},
+	PipelineStages: stages.PipelineStages{},
 }
 
 // HasServiceDiscoveryConfig checks to see if the service discovery used for

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 	"google.golang.org/grpc"
@@ -47,7 +47,7 @@ func CollectTrailer(ctx context.Context) grpc.CallOption {
 func SendAsTrailer(ctx context.Context, stream grpc.ServerStream) {
 	trailer, err := encodeTrailer(ctx)
 	if err != nil {
-		level.Warn(util.WithContext(ctx, util.Logger)).Log("msg", "failed to encode trailer", "err", err)
+		level.Warn(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to encode trailer", "err", err)
 		return
 	}
 	stream.SetTrailer(trailer)
@@ -110,7 +110,7 @@ func decodeTrailers(ctx context.Context) Result {
 }
 
 func decodeTrailer(ctx context.Context, meta *metadata.MD) Result {
-	logger := util.WithContext(ctx, util.Logger)
+	logger := util_log.WithContext(ctx, util_log.Logger)
 	var ingData IngesterData
 	values := meta.Get(ingesterDataKey)
 	if len(values) == 1 {

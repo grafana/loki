@@ -32,7 +32,8 @@ func testSyslogTarget(t *testing.T, octetCounting bool) {
 	logger := log.NewLogfmtLogger(w)
 	client := fake.New(func() {})
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	metrics := NewMetrics(nil)
+	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress:       "127.0.0.1:0",
 		LabelStructuredData: true,
 		Labels: model.LabelSet{
@@ -130,8 +131,9 @@ func TestSyslogTarget_InvalidData(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	client := fake.New(func() {})
+	metrics := NewMetrics(nil)
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 	})
 	require.NoError(t, err)
@@ -160,8 +162,9 @@ func TestSyslogTarget_NonUTF8Message(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	client := fake.New(func() {})
+	metrics := NewMetrics(nil)
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 	})
 	require.NoError(t, err)
@@ -197,8 +200,9 @@ func TestSyslogTarget_IdleTimeout(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	client := fake.New(func() {})
+	metrics := NewMetrics(nil)
 
-	tgt, err := NewSyslogTarget(logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
+	tgt, err := NewSyslogTarget(metrics, logger, client, relabelConfig(t), &scrapeconfig.SyslogTargetConfig{
 		ListenAddress: "127.0.0.1:0",
 		IdleTimeout:   time.Millisecond,
 	})

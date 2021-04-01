@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -34,7 +34,7 @@ type UserConfig struct {
 }
 
 func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.Request) {
-	logger := util.WithContext(r.Context(), am.logger)
+	logger := util_log.WithContext(r.Context(), am.logger)
 
 	userID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -45,7 +45,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 	cfg, err := am.store.GetAlertConfig(r.Context(), userID)
 	if err != nil {
-		if err == alerts.ErrNotFound {
+		if err == alertspb.ErrNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -54,7 +54,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 	}
 
 	d, err := yaml.Marshal(&UserConfig{
-		TemplateFiles:      alerts.ParseTemplates(cfg),
+		TemplateFiles:      alertspb.ParseTemplates(cfg),
 		AlertmanagerConfig: cfg.RawConfig,
 	})
 
@@ -72,7 +72,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 }
 
 func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.Request) {
-	logger := util.WithContext(r.Context(), am.logger)
+	logger := util_log.WithContext(r.Context(), am.logger)
 	userID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
@@ -95,7 +95,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 		return
 	}
 
-	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
+	cfgDesc := alertspb.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
 	if err := validateUserConfig(logger, cfgDesc); err != nil {
 		level.Warn(logger).Log("msg", errValidatingConfig, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errValidatingConfig, err.Error()), http.StatusBadRequest)
@@ -112,8 +112,10 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusCreated)
 }
 
+// DeleteUserConfig is exposed via user-visible API (if enabled, uses DELETE method), but also as an internal endpoint using POST method.
+// Note that if no config exists for a user, StatusOK is returned.
 func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *http.Request) {
-	logger := util.WithContext(r.Context(), am.logger)
+	logger := util_log.WithContext(r.Context(), am.logger)
 	userID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
@@ -132,7 +134,7 @@ func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *ht
 }
 
 // Partially copied from: https://github.com/prometheus/alertmanager/blob/8e861c646bf67599a1704fc843c6a94d519ce312/cli/check_config.go#L65-L96
-func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
+func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
 	// We don't have a valid use case for empty configurations. If a tenant does not have a
 	// configuration set and issue a request to the Alertmanager, we'll a) upload an empty
 	// config and b) immediately start an Alertmanager instance for them if a fallback
@@ -151,14 +153,14 @@ func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
 	// not to configured data dir, and on the flipside, it'll fail if we can't write
 	// to tmpDir. Ignoring both cases for now as they're ultra rare but will revisit if
 	// we see this in the wild.
-	tmpDir, err := ioutil.TempDir("", "validate-config")
+	userTempDir, err := ioutil.TempDir("", "validate-config-"+cfg.User)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(userTempDir)
 
 	for _, tmpl := range cfg.Templates {
-		_, err := createTemplateFile(tmpDir, cfg.User, tmpl.Filename, tmpl.Body)
+		_, err := storeTemplateFile(userTempDir, tmpl.Filename, tmpl.Body)
 		if err != nil {
 			level.Error(logger).Log("msg", "unable to create template file", "err", err, "user", cfg.User)
 			return fmt.Errorf("unable to create template file '%s'", tmpl.Filename)
@@ -167,7 +169,7 @@ func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
 
 	templateFiles := make([]string, len(amCfg.Templates))
 	for i, t := range amCfg.Templates {
-		templateFiles[i] = filepath.Join(tmpDir, "templates", cfg.User, t)
+		templateFiles[i] = filepath.Join(userTempDir, t)
 	}
 
 	_, err = template.FromGlobs(templateFiles...)

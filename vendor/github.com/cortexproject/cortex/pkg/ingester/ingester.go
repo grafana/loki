@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
@@ -21,11 +22,13 @@ import (
 	"google.golang.org/grpc/codes"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -46,11 +49,13 @@ const (
 var (
 	// This is initialised if the WAL is enabled and the records are fetched from this pool.
 	recordPool sync.Pool
+
+	errIngesterStopping = errors.New("ingester stopping")
 )
 
 // Config for an Ingester.
 type Config struct {
-	WALConfig        WALConfig             `yaml:"walconfig"`
+	WALConfig        WALConfig             `yaml:"walconfig" doc:"description=Configures the Write-Ahead Log (WAL) for the Cortex chunks storage. This config is ignored when running the Cortex blocks storage."`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler"`
 
 	// Config for transferring chunks. Zero or negative = no retries.
@@ -77,8 +82,11 @@ type Config struct {
 	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
 
 	// Use blocks storage.
-	BlocksStorageEnabled bool                     `yaml:"-"`
-	BlocksStorageConfig  tsdb.BlocksStorageConfig `yaml:"-"`
+	BlocksStorageEnabled        bool                     `yaml:"-"`
+	BlocksStorageConfig         tsdb.BlocksStorageConfig `yaml:"-"`
+	StreamChunksWhenUsingBlocks bool                     `yaml:"-"`
+	// Runtime-override for type of streaming query to use (chunks or samples).
+	StreamTypeFn func() QueryStreamType `yaml:"-"`
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
@@ -112,6 +120,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", false, "Enable tracking of active series and export them as metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
+	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -123,6 +132,7 @@ type Ingester struct {
 	clientConfig client.Config
 
 	metrics *ingesterMetrics
+	logger  log.Logger
 
 	chunkStore         ChunkStore
 	lifecycler         *ring.Lifecycler
@@ -165,13 +175,13 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
 	if cfg.BlocksStorageEnabled {
-		return NewV2(cfg, clientConfig, limits, registerer)
+		return NewV2(cfg, clientConfig, limits, registerer, logger)
 	}
 
 	if cfg.WALConfig.WALEnabled {
@@ -207,6 +217,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
 		usersMetadata:    map[string]*userMetricsMetadata{},
 		registerer:       registerer,
+		logger:           logger,
 	}
 
 	var err error
@@ -235,24 +246,24 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WALConfig.Recover {
-		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		level.Info(i.logger).Log("msg", "recovering from WAL")
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+			level.Error(i.logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 			return errors.Wrap(err, "failed to recover from WAL")
 		}
 		elapsed := time.Since(start)
-		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+		level.Info(i.logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 	}
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics)
+		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics, i.logger)
 	}
 
 	var err error
-	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp, i.registerer)
+	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp, i.registerer, i.logger)
 	if err != nil {
 		return errors.Wrap(err, "starting WAL")
 	}
@@ -283,9 +294,9 @@ func (i *Ingester) startFlushLoops() {
 // Compared to the 'New' method:
 //   * Always replays the WAL.
 //   * Does not start the lifecycler.
-func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
+func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	if cfg.BlocksStorageEnabled {
-		return NewV2ForFlusher(cfg, registerer)
+		return NewV2ForFlusher(cfg, limits, registerer, logger)
 	}
 
 	i := &Ingester{
@@ -296,6 +307,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
 		wal:              &noopWAL{},
 		limits:           limits,
+		logger:           logger,
 	}
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
@@ -303,17 +315,17 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 }
 
 func (i *Ingester) startingForFlusher(ctx context.Context) error {
-	level.Info(util.Logger).Log("msg", "recovering from WAL")
+	level.Info(i.logger).Log("msg", "recovering from WAL")
 
 	// We recover from WAL always.
 	start := time.Now()
 	if err := recoverFromWAL(i); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+		level.Error(i.logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 		return err
 	}
 	elapsed := time.Since(start)
 
-	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+	level.Info(i.logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 	i.metrics.walReplayDuration.Set(elapsed.Seconds())
 
 	i.startFlushLoops()
@@ -427,7 +439,7 @@ func (i *Ingester) checkRunningOrStopping() error {
 }
 
 // Push implements client.IngesterServer
-func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	if err := i.checkRunningOrStopping(); err != nil {
 		return nil, err
 	}
@@ -438,11 +450,11 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
-	defer client.ReuseSlice(req.Timeseries)
+	defer cortexpb.ReuseSlice(req.Timeseries)
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
@@ -502,15 +514,15 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	if firstPartialErr != nil {
 		// grpcForwardableError turns the error into a string so it no longer references `req`
-		return &client.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
+		return &cortexpb.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
 	}
 
-	return &client.WriteResponse{}, nil
+	return &cortexpb.WriteResponse{}, nil
 }
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *WALRecord) error {
+func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source cortexpb.WriteRequest_SourceEnum, record *WALRecord) error {
 	labels.removeBlanks()
 
 	var (
@@ -525,7 +537,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		}
 	}()
 	if i.stopped {
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 
 	// getOrCreateSeries copies the memory for `labels`, except on the error path.
@@ -576,9 +588,9 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 	i.metrics.ingestedSamples.Inc()
 	switch source {
-	case client.RULE:
+	case cortexpb.RULE:
 		state.ingestedRuleSamples.inc()
-	case client.API:
+	case cortexpb.API:
 		fallthrough
 	default:
 		state.ingestedAPISamples.inc()
@@ -587,7 +599,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	return err
 }
 
-func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*client.MetricMetadata) {
+func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*cortexpb.MetricMetadata) {
 	var firstMetadataErr error
 	for _, metadata := range metadata {
 		err := i.appendMetadata(userID, metadata)
@@ -605,16 +617,16 @@ func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*
 	// If we have any error with regard to metadata we just log and no-op.
 	// We consider metadata a best effort approach, errors here should not stop processing.
 	if firstMetadataErr != nil {
-		logger := util.WithContext(ctx, util.Logger)
+		logger := logutil.WithContext(ctx, i.logger)
 		level.Warn(logger).Log("msg", "failed to ingest some metadata", "err", firstMetadataErr)
 	}
 }
 
-func (i *Ingester) appendMetadata(userID string, m *client.MetricMetadata) error {
+func (i *Ingester) appendMetadata(userID string, m *cortexpb.MetricMetadata) error {
 	i.userStatesMtx.RLock()
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 	i.userStatesMtx.RUnlock()
 
@@ -645,6 +657,19 @@ func (i *Ingester) getUserMetadata(userID string) *userMetricsMetadata {
 	i.usersMetadataMtx.RLock()
 	defer i.usersMetadataMtx.RUnlock()
 	return i.usersMetadata[userID]
+}
+
+func (i *Ingester) deleteUserMetadata(userID string) {
+	i.usersMetadataMtx.Lock()
+	um := i.usersMetadata[userID]
+	delete(i.usersMetadata, userID)
+	i.usersMetadataMtx.Unlock()
+
+	if um != nil {
+		// We need call purge to update i.metrics.memMetadata correctly (it counts number of metrics with metadata in memory).
+		// Passing zero time means purge everything.
+		um.purge(time.Time{})
+	}
 }
 
 func (i *Ingester) getUsersWithMetadata() []string {
@@ -722,12 +747,12 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
 		}
 
-		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.metric),
-			Samples: make([]client.Sample, 0, len(values)),
+		ts := cortexpb.TimeSeries{
+			Labels:  cortexpb.FromLabelsToLabelAdapters(series.metric),
+			Samples: make([]cortexpb.Sample, 0, len(values)),
 		}
 		for _, s := range values {
-			ts.Samples = append(ts.Samples, client.Sample{
+			ts.Samples = append(ts.Samples, cortexpb.Sample{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			})
@@ -750,8 +775,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return i.v2QueryStream(req, stream)
 	}
 
-	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
-	defer log.Finish()
+	spanLog, ctx := spanlogger.New(stream.Context(), "QueryStream")
+	defer spanLog.Finish()
 
 	from, through, matchers, err := client.FromQueryRequest(req)
 	if err != nil {
@@ -798,7 +823,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapters(series.metric),
+			Labels: cortexpb.FromLabelsToLabelAdapters(series.metric),
 			Chunks: wireChunks,
 		})
 
@@ -819,8 +844,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedChunks.Observe(float64(numChunks))
-	level.Debug(log).Log("streams", numSeries)
-	level.Debug(log).Log("chunks", numChunks)
+	level.Debug(spanLog).Log("streams", numSeries)
+	level.Debug(spanLog).Log("chunks", numChunks)
 	return err
 }
 
@@ -912,10 +937,10 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	result := &client.MetricsForLabelMatchersResponse{
-		Metric: make([]*client.Metric, 0, len(lss)),
+		Metric: make([]*cortexpb.Metric, 0, len(lss)),
 	}
 	for _, ls := range lss {
-		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapters(ls)})
+		result.Metric = append(result.Metric, &cortexpb.Metric{Labels: cortexpb.FromLabelsToLabelAdapters(ls)})
 	}
 
 	return result, nil
@@ -932,7 +957,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	userMetadata := i.getUserMetadata(userID)
@@ -1016,9 +1041,9 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 }
 
 // labels will be copied if needed.
-func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []client.LabelAdapter) {
+func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []cortexpb.LabelAdapter) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
-	i.userStates.updateActiveSeriesForUser(userID, now, client.FromLabelAdaptersToLabels(labels))
+	i.userStates.updateActiveSeriesForUser(userID, now, cortexpb.FromLabelAdaptersToLabels(labels))
 }

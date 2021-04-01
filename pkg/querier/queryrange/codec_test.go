@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/stretchr/testify/require"
 
@@ -43,6 +43,18 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Query:     `{foo="bar"}`,
 			Limit:     200,
 			Step:      1000, // step is expected in ms.
+			Direction: logproto.FORWARD,
+			Path:      "/query_range",
+			StartTs:   start,
+			EndTs:     end,
+		}, false},
+		{"ok", func() (*http.Request, error) {
+			return http.NewRequest(http.MethodGet,
+				fmt.Sprintf(`/query_range?start=%d&end=%d&query={foo="bar"}&step=86400&limit=200&direction=FORWARD`, start.UnixNano(), end.UnixNano()), nil)
+		}, &LokiRequest{
+			Query:     `{foo="bar"}`,
+			Limit:     200,
+			Step:      86400000, // step is expected in ms.
 			Direction: logproto.FORWARD,
 			Path:      "/query_range",
 			StartTs:   start,
@@ -95,7 +107,8 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		{"bad json", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(""))}, nil, nil, true},
 		{"not success", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(`{"status":"fail"}`))}, nil, nil, true},
 		{"unknown", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(`{"status":"success"}`))}, nil, nil, true},
-		{"matrix", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixString))}, nil,
+		{
+			"matrix", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixString))}, nil,
 			&LokiPromResponse{
 				Response: &queryrange.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -105,8 +118,10 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					},
 				},
 				Statistics: statsResult,
-			}, false},
-		{"streams v1", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
+			}, false,
+		},
+		{
+			"streams v1", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
@@ -118,8 +133,10 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, false},
-		{"streams legacy", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
+			}, false,
+		},
+		{
+			"streams legacy", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/api/prom/query_range"},
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
@@ -131,21 +148,26 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, false},
-		{"series", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(seriesString))},
+			}, false,
+		},
+		{
+			"series", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(seriesString))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
 			&LokiSeriesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    seriesData,
-			}, false},
-		{"labels legacy", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(labelsString))},
+			}, false,
+		},
+		{
+			"labels legacy", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(labelsString))},
 			&LokiLabelNamesRequest{Path: "/api/prom/label"},
 			&LokiLabelNamesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
 				Data:    labelsData,
-			}, false},
+			}, false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,7 +182,6 @@ func Test_codec_DecodeResponse(t *testing.T) {
 }
 
 func Test_codec_EncodeRequest(t *testing.T) {
-
 	// we only accept LokiRequest.
 	got, err := lokiCodec.EncodeRequest(context.TODO(), &queryrange.PrometheusRequest{})
 	require.Error(t, err)
@@ -170,7 +191,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	toEncode := &LokiRequest{
 		Query:     `{foo="bar"}`,
 		Limit:     200,
-		Step:      1010,
+		Step:      86400000,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
 		StartTs:   start,
@@ -185,7 +206,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 	require.Equal(t, fmt.Sprintf("%d", 200), got.URL.Query().Get("limit"))
 	require.Equal(t, `FORWARD`, got.URL.Query().Get("direction"))
-	require.Equal(t, "1.010000", got.URL.Query().Get("step"))
+	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
 
 	// testing a full roundtrip
 	req, err := lokiCodec.DecodeRequest(context.TODO(), got)
@@ -229,7 +250,6 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 }
 
 func Test_codec_labels_EncodeRequest(t *testing.T) {
-
 	ctx := context.Background()
 	toEncode := &LokiLabelNamesRequest{
 		Path:    "/loki/api/v1/labels",
@@ -252,7 +272,6 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 }
 
 func Test_codec_EncodeResponse(t *testing.T) {
-
 	tests := []struct {
 		name    string
 		res     queryrange.Response
@@ -270,7 +289,8 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			},
 			Statistics: statsResult,
 		}, matrixString, false},
-		{"loki v1",
+		{
+			"loki v1",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
@@ -281,8 +301,10 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, streamsString, false},
-		{"loki legacy",
+			}, streamsString, false,
+		},
+		{
+			"loki legacy",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
@@ -293,25 +315,32 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, streamsStringLegacy, false},
-		{"loki series",
+			}, streamsStringLegacy, false,
+		},
+		{
+			"loki series",
 			&LokiSeriesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    seriesData,
-			}, seriesString, false},
-		{"loki labels",
+			}, seriesString, false,
+		},
+		{
+			"loki labels",
 			&LokiLabelNamesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    labelsData,
-			}, labelsString, false},
-		{"loki labels legacy",
+			}, labelsString, false,
+		},
+		{
+			"loki labels legacy",
 			&LokiLabelNamesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
 				Data:    labelsData,
-			}, labelsLegacyString, false},
+			}, labelsLegacyString, false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -340,17 +369,19 @@ func Test_codec_MergeResponse(t *testing.T) {
 	}{
 		{"empty", []queryrange.Response{}, nil, true},
 		{"unknown response", []queryrange.Response{&badResponse{}}, nil, true},
-		{"prom", []queryrange.Response{
-			&LokiPromResponse{
-				Response: &queryrange.PrometheusResponse{
-					Status: loghttp.QueryStatusSuccess,
-					Data: queryrange.PrometheusData{
-						ResultType: loghttp.ResultTypeMatrix,
-						Result:     sampleStreams,
+		{
+			"prom",
+			[]queryrange.Response{
+				&LokiPromResponse{
+					Response: &queryrange.PrometheusResponse{
+						Status: loghttp.QueryStatusSuccess,
+						Data: queryrange.PrometheusData{
+							ResultType: loghttp.ResultTypeMatrix,
+							Result:     sampleStreams,
+						},
 					},
 				},
 			},
-		},
 			&LokiPromResponse{
 				Response: &queryrange.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -874,12 +905,12 @@ var (
   }`
 	sampleStreams = []queryrange.SampleStream{
 		{
-			Labels:  []client.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
-			Samples: []client.Sample{{Value: 0.013333333333333334, TimestampMs: 1568404331324}},
+			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
+			Samples: []cortexpb.Sample{{Value: 0.013333333333333334, TimestampMs: 1568404331324}},
 		},
 		{
-			Labels:  []client.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
-			Samples: []client.Sample{{Value: 3.45, TimestampMs: 1568404331324}, {Value: 4.45, TimestampMs: 1568404331339}},
+			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
+			Samples: []cortexpb.Sample{{Value: 3.45, TimestampMs: 1568404331324}, {Value: 4.45, TimestampMs: 1568404331339}},
 		},
 	}
 	streamsString = `{
@@ -1032,7 +1063,6 @@ func BenchmarkResponseMerge(b *testing.B) {
 			}
 		})
 	}
-
 }
 
 func mkResps(nResps, nStreams, nLogs int, direction logproto.Direction) (resps []*LokiResponse) {

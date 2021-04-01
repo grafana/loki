@@ -11,12 +11,14 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -25,7 +27,7 @@ import (
 type Distributor interface {
 	Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
 	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
-	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName) ([]string, error)
+	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
 	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
@@ -103,7 +105,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	if q.queryIngestersWithin > 0 {
 		now := time.Now()
 		origMinT := minT
-		minT = util.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
+		minT = math.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
 
 		if origMinT != minT {
 			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)
@@ -116,7 +118,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	}
 
 	if q.streaming {
-		return q.streamingSelect(minT, maxT, matchers)
+		return q.streamingSelect(ctx, minT, maxT, matchers)
 	}
 
 	matrix, err := q.distributor.Query(ctx, model.Time(minT), model.Time(maxT), matchers...)
@@ -128,13 +130,13 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	return series.MatrixToSeriesSet(matrix)
 }
 
-func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := tenant.TenantID(q.ctx)
+func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
 
-	results, err := q.distributor.QueryStream(q.ctx, model.Time(minT), model.Time(maxT), matchers...)
+	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
@@ -151,7 +153,7 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 			continue
 		}
 
-		ls := client.FromLabelAdaptersToLabels(result.Labels)
+		ls := cortexpb.FromLabelAdaptersToLabels(result.Labels)
 		sort.Sort(ls)
 
 		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)
@@ -182,8 +184,8 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 	return storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 }
 
-func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	lvs, err := q.distributor.LabelValuesForLabelName(q.ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name))
+func (q *distributorQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	lvs, err := q.distributor.LabelValuesForLabelName(q.ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
 
 	return lvs, nil, err
 }

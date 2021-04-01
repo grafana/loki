@@ -1,18 +1,24 @@
 package ingester
 
 import (
+	"context"
 	fmt "fmt"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	loki_runtime "github.com/grafana/loki/pkg/util/runtime"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type MemoryWALReader struct {
@@ -189,4 +195,84 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 		}
 	}
 
+}
+
+func TestSeriesRecoveryNoDuplicates(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+
+	mkSample := func(i int) *logproto.PushRequest {
+		return &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					// Note: must use normalized labels here b/c we expect them
+					// sorted but use a string for efficiency.
+					Labels: `{bar="baz1", foo="bar"}`,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(int64(i), 0),
+							Line:      fmt.Sprintf("line %d", i),
+						},
+					},
+				},
+			},
+		}
+	}
+
+	req := mkSample(1)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, req)
+	require.NoError(t, err)
+
+	iter := newIngesterSeriesIter(i).Iter()
+	require.Equal(t, true, iter.Next())
+
+	series := iter.Stream()
+	require.Equal(t, false, iter.Next())
+
+	// create a new ingester now
+	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+
+	// recover the checkpointed series
+	recoverer := newIngesterRecoverer(i)
+	require.NoError(t, recoverer.Series(series))
+
+	_, err = i.Push(ctx, req)
+	require.NoError(t, err) // we don't error on duplicate pushes
+
+	result := mockQuerierServer{
+		ctx: ctx,
+	}
+
+	// ensure no duplicate log lines exist
+	err = i.Query(&logproto.QueryRequest{
+		Selector: `{foo="bar",bar="baz1"}`,
+		Limit:    100,
+		Start:    time.Unix(0, 0),
+		End:      time.Unix(10, 0),
+	}, &result)
+	require.NoError(t, err)
+	require.Len(t, result.resps, 1)
+	expected := []logproto.Stream{
+		{
+			Labels: `{bar="baz1", foo="bar"}`,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "line 1",
+				},
+			},
+		},
+	}
+	require.Equal(t, expected, result.resps[0].Streams)
 }

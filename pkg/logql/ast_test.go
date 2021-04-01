@@ -16,7 +16,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		selector     string
 		expectFilter bool
 	}{
-		{`{foo!~"bar"}`, false},
+		{`{foo="bar"}`, false},
 		{`{foo="bar", bar!="baz"}`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
@@ -27,6 +27,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b>=10GB`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
@@ -36,7 +37,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		tt := tt
 		t.Run(tt.selector, func(t *testing.T) {
 			t.Parallel()
-			expr, err := ParseLogSelector(tt.selector)
+			expr, err := ParseLogSelector(tt.selector, true)
 			if err != nil {
 				t.Fatalf("failed to parse log selector: %s", err)
 			}
@@ -59,18 +60,27 @@ func Test_SampleExpr_String(t *testing.T) {
 	for _, tc := range []string{
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
+		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10m )`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
+		`sum(count_over_time({job="mysql"}[5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | json [5m]))`,
+		`sum(count_over_time({job="mysql"} | json [5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
+		`sum(count_over_time({job="mysql"} | logfmt [5m] offset 10m))`,
+		`sum(count_over_time({job="mysql"} | unpack | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
+		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m] offset 10m))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`topk by (name)(10,sum(rate({region="us-east1"}[5m])))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
 		`avg(min_over_time({job="nginx"} |= "GET" | unwrap foo[10s])) by (region)`,
+		`avg(min_over_time({job="nginx"} |= "GET" | unwrap foo[10s] offset 10m)) by (region)`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m]))`,
+		`sum by (cluster) (count_over_time({job="mysql"}[5m] offset 10m))`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m])) / sum by (cluster) (count_over_time({job="postgres"}[5m])) `,
+		`sum by (cluster) (count_over_time({job="mysql"}[5m] offset 10m)) / sum by (cluster) (count_over_time({job="postgres"}[5m] offset 10m)) `,
 		`
 		sum by (cluster) (count_over_time({job="postgres"}[5m])) /
 		sum by (cluster) (count_over_time({job="postgres"}[5m])) /
@@ -84,6 +94,8 @@ func Test_SampleExpr_String(t *testing.T) {
 		)`,
 		`stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 		| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
+		`stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+		| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m] offset 10m)`,
 		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms|unwrap latency [5m])`,
 		`sum by (job) (
 			sum_over_time({namespace="tns"} |= "level=error" | json | foo=5 and bar<25ms | unwrap latency[5m])
@@ -127,6 +139,23 @@ func Test_SampleExpr_String(t *testing.T) {
 			"(.*):.*"
 		)
 		`,
+		`10 / (5/2)`,
+		`10 / (count_over_time({job="postgres"}[5m])/2)`,
+		`{app="foo"} | json response_status="response.status.code", first_param="request.params[0]"`,
+		`label_replace(
+			sum by (job) (
+				sum_over_time(
+					{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m] offset 1h
+				)
+			/
+				count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m] offset 1h)
+			),
+			"foo",
+			"$1",
+			"service",
+			"(.*):.*"
+		)
+		`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
@@ -149,7 +178,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "bloop" |= ""`,
 	} {
 		t.Run(tc, func(t *testing.T) {
-			expr, err := ParseLogSelector(tc)
+			expr, err := ParseLogSelector(tc, true)
 			require.Nil(t, err)
 
 			p, err := expr.Pipeline()
@@ -238,7 +267,7 @@ func Test_FilterMatcher(t *testing.T) {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()
-			expr, err := ParseLogSelector(tt.q)
+			expr, err := ParseLogSelector(tt.q, true)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expectedMatchers, expr.Matchers())
 			p, err := expr.Pipeline()
@@ -275,16 +304,16 @@ func TestStringer(t *testing.T) {
 		},
 		{
 			in:  `1 > bool 1 > count_over_time({foo="bar"}[1m])`,
-			out: `0 > count_over_time({foo="bar"}[1m])`,
+			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},
 		{
 			in:  `1 > bool 1 > bool count_over_time({foo="bar"}[1m])`,
-			out: `0 > bool count_over_time({foo="bar"}[1m])`,
+			out: `(0 > bool count_over_time({foo="bar"}[1m]))`,
 		},
 		{
 
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
-			out: `0 > count_over_time({foo="bar"}[1m])`,
+			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -296,7 +325,7 @@ func TestStringer(t *testing.T) {
 }
 
 func BenchmarkContainsFilter(b *testing.B) {
-	expr, err := ParseLogSelector(`{app="foo"} |= "foo"`)
+	expr, err := ParseLogSelector(`{app="foo"} |= "foo"`, true)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -327,6 +356,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		wantErr bool
 	}{
 		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false},
+		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false},
 		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
 		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},

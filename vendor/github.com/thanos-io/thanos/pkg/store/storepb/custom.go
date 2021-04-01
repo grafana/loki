@@ -337,9 +337,9 @@ func (x *PartialResponseStrategy) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(x.String())), nil
 }
 
-// TranslatePromMatchers returns proto matchers from Prometheus matchers.
+// PromMatchersToMatchers returns proto matchers from Prometheus matchers.
 // NOTE: It allocates memory.
-func TranslatePromMatchers(ms ...*labels.Matcher) ([]LabelMatcher, error) {
+func PromMatchersToMatchers(ms ...*labels.Matcher) ([]LabelMatcher, error) {
 	res := make([]LabelMatcher, 0, len(ms))
 	for _, m := range ms {
 		var t LabelMatcher_Type
@@ -361,10 +361,9 @@ func TranslatePromMatchers(ms ...*labels.Matcher) ([]LabelMatcher, error) {
 	return res, nil
 }
 
-// TranslateFromPromMatchers returns Prometheus matchers from proto matchers.
+// MatchersToPromMatchers returns Prometheus matchers from proto matchers.
 // NOTE: It allocates memory.
-// TODO(bwplotka): Create yolo/no-alloc helper.
-func TranslateFromPromMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
+func MatchersToPromMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
 	res := make([]*labels.Matcher, 0, len(ms))
 	for _, m := range ms {
 		var t labels.MatchType

@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,11 +23,13 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
+	ServiceTimingHeaderName   = "Server-Timing"
 )
 
 var (
@@ -45,7 +48,7 @@ type HandlerConfig struct {
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
-	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query. This configuration option must be set both on query-frontend and querier.")
+	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
 }
 
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
@@ -57,9 +60,10 @@ type Handler struct {
 
 	// Metrics.
 	querySeconds *prometheus.CounterVec
+	activeUsers  *util.ActiveUsersCleanupService
 }
 
-// New creates a new frontend handler.
+// NewHandler creates a new frontend handler.
 func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
 	h := &Handler{
 		cfg:          cfg,
@@ -72,6 +76,12 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Name: "cortex_query_seconds_total",
 			Help: "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
+
+		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+			h.querySeconds.DeleteLabelValues(user)
+		})
+		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
+		_ = h.activeUsers.StartAsync(context.Background())
 	}
 
 	return h
@@ -114,6 +124,10 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 
+	if f.cfg.QueryStatsEnabled {
+		writeServiceTimingHeader(queryResponseTime, hs, stats)
+	}
+
 	w.WriteHeader(resp.StatusCode)
 	// we don't check for copy error as there is no much we can do at this point
 	_, _ = io.Copy(w, resp.Body)
@@ -142,17 +156,19 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 		"time_taken", queryResponseTime.String(),
 	}, formatQueryString(queryString)...)
 
-	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats) {
-	userID, err := tenant.TenantID(r.Context())
+	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(stats.LoadWallTime().Seconds())
+	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.
 	logMessage := append([]interface{}{
@@ -160,10 +176,10 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"method", r.Method,
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,
-		"query_wall_time", stats.LoadWallTime(),
+		"query_wall_time_seconds", stats.LoadWallTime().Seconds(),
 	}, formatQueryString(queryString)...)
 
-	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer) url.Values {
@@ -173,7 +189,7 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 	// Ensure the form has been parsed so all the parameters are present
 	err := r.ParseForm()
 	if err != nil {
-		level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse request form", "err", err)
+		level.Warn(util_log.WithContext(r.Context(), f.log)).Log("msg", "unable to parse request form", "err", err)
 		return nil
 	}
 
@@ -194,9 +210,23 @@ func writeError(w http.ResponseWriter, err error) {
 	case context.DeadlineExceeded:
 		err = errDeadlineExceeded
 	default:
-		if strings.Contains(err.Error(), "http: request body too large") {
+		if util.IsRequestBodyTooLarge(err) {
 			err = errRequestEntityTooLarge
 		}
 	}
 	server.WriteError(w, err)
+}
+
+func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.Stats) {
+	if stats != nil {
+		parts := make([]string, 0)
+		parts = append(parts, statsValue("querier_wall_time", stats.LoadWallTime()))
+		parts = append(parts, statsValue("response_time", queryResponseTime))
+		headers.Set(ServiceTimingHeaderName, strings.Join(parts, ", "))
+	}
+}
+
+func statsValue(name string, d time.Duration) string {
+	durationInMs := strconv.FormatFloat(float64(d)/float64(time.Millisecond), 'f', -1, 64)
+	return name + ";dur=" + durationInMs
 }

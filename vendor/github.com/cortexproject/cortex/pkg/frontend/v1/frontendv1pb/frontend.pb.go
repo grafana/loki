@@ -59,6 +59,9 @@ func (Type) EnumDescriptor() ([]byte, []int) {
 type FrontendToClient struct {
 	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,1,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
 	Type        Type                  `protobuf:"varint,2,opt,name=type,proto3,enum=frontend.Type" json:"type,omitempty"`
+	// Whether query statistics tracking should be enabled. The response will include
+	// statistics only when this option is enabled.
+	StatsEnabled bool `protobuf:"varint,3,opt,name=statsEnabled,proto3" json:"statsEnabled,omitempty"`
 }
 
 func (m *FrontendToClient) Reset()      { *m = FrontendToClient{} }
@@ -105,6 +108,13 @@ func (m *FrontendToClient) GetType() Type {
 		return m.Type
 	}
 	return HTTP_REQUEST
+}
+
+func (m *FrontendToClient) GetStatsEnabled() bool {
+	if m != nil {
+		return m.StatsEnabled
+	}
+	return false
 }
 
 type ClientToFrontend struct {
@@ -166,43 +176,127 @@ func (m *ClientToFrontend) GetStats() *stats.Stats {
 	return nil
 }
 
+type NotifyClientShutdownRequest struct {
+	ClientID string `protobuf:"bytes,1,opt,name=clientID,proto3" json:"clientID,omitempty"`
+}
+
+func (m *NotifyClientShutdownRequest) Reset()      { *m = NotifyClientShutdownRequest{} }
+func (*NotifyClientShutdownRequest) ProtoMessage() {}
+func (*NotifyClientShutdownRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eca3873955a29cfe, []int{2}
+}
+func (m *NotifyClientShutdownRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *NotifyClientShutdownRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_NotifyClientShutdownRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *NotifyClientShutdownRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_NotifyClientShutdownRequest.Merge(m, src)
+}
+func (m *NotifyClientShutdownRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *NotifyClientShutdownRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_NotifyClientShutdownRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_NotifyClientShutdownRequest proto.InternalMessageInfo
+
+func (m *NotifyClientShutdownRequest) GetClientID() string {
+	if m != nil {
+		return m.ClientID
+	}
+	return ""
+}
+
+type NotifyClientShutdownResponse struct {
+}
+
+func (m *NotifyClientShutdownResponse) Reset()      { *m = NotifyClientShutdownResponse{} }
+func (*NotifyClientShutdownResponse) ProtoMessage() {}
+func (*NotifyClientShutdownResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eca3873955a29cfe, []int{3}
+}
+func (m *NotifyClientShutdownResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *NotifyClientShutdownResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_NotifyClientShutdownResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *NotifyClientShutdownResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_NotifyClientShutdownResponse.Merge(m, src)
+}
+func (m *NotifyClientShutdownResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *NotifyClientShutdownResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_NotifyClientShutdownResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_NotifyClientShutdownResponse proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterEnum("frontend.Type", Type_name, Type_value)
 	proto.RegisterType((*FrontendToClient)(nil), "frontend.FrontendToClient")
 	proto.RegisterType((*ClientToFrontend)(nil), "frontend.ClientToFrontend")
+	proto.RegisterType((*NotifyClientShutdownRequest)(nil), "frontend.NotifyClientShutdownRequest")
+	proto.RegisterType((*NotifyClientShutdownResponse)(nil), "frontend.NotifyClientShutdownResponse")
 }
 
 func init() { proto.RegisterFile("frontend.proto", fileDescriptor_eca3873955a29cfe) }
 
 var fileDescriptor_eca3873955a29cfe = []byte{
-	// 419 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x91, 0x41, 0x6f, 0xd3, 0x30,
-	0x14, 0xc7, 0x6d, 0x18, 0xa3, 0x78, 0x51, 0x15, 0x59, 0x02, 0x55, 0x39, 0x58, 0x53, 0xc4, 0xa1,
-	0x42, 0x22, 0x81, 0x82, 0x84, 0x84, 0xc4, 0x65, 0xac, 0x8c, 0xdd, 0x46, 0x1a, 0x2e, 0x5c, 0xa6,
-	0x25, 0x78, 0x59, 0x19, 0xcd, 0xf3, 0x6c, 0xa7, 0xa5, 0x37, 0x3e, 0x01, 0xe2, 0x63, 0xf0, 0x51,
-	0x38, 0xf6, 0xd8, 0x23, 0x4d, 0x2f, 0x1c, 0xfb, 0x11, 0x50, 0xec, 0x34, 0x64, 0xbd, 0x58, 0xfe,
-	0xeb, 0xff, 0xde, 0xfb, 0xbd, 0xbf, 0x4d, 0xba, 0x97, 0x12, 0x72, 0xcd, 0xf3, 0xcf, 0x81, 0x90,
-	0xa0, 0x81, 0x76, 0xb6, 0xda, 0x7b, 0x9a, 0x8d, 0xf5, 0x55, 0x91, 0x04, 0x29, 0x4c, 0xc2, 0x0c,
-	0x32, 0x08, 0x4d, 0x41, 0x52, 0x5c, 0x1a, 0x65, 0x84, 0xb9, 0xd9, 0x46, 0xef, 0x65, 0xab, 0x7c,
-	0xc6, 0x2f, 0xa6, 0x7c, 0x06, 0xf2, 0x5a, 0x85, 0x29, 0x4c, 0x26, 0x90, 0x87, 0x57, 0x5a, 0x8b,
-	0x4c, 0x8a, 0xb4, 0xb9, 0xd4, 0x5d, 0x6f, 0x5a, 0x5d, 0x29, 0x48, 0xcd, 0xbf, 0x09, 0x09, 0x5f,
-	0x78, 0xaa, 0x6b, 0x15, 0x8a, 0xeb, 0x2c, 0xbc, 0x29, 0xb8, 0x1c, 0x73, 0x19, 0x2a, 0x7d, 0xa1,
-	0x95, 0x3d, 0x6d, 0xbb, 0x0f, 0xc4, 0x7d, 0x57, 0xef, 0x1b, 0xc3, 0xdb, 0xaf, 0x63, 0x9e, 0x6b,
-	0xfa, 0x8a, 0x1c, 0x54, 0x90, 0x88, 0xdf, 0x14, 0x5c, 0xe9, 0x1e, 0x3e, 0xc4, 0xfd, 0x83, 0xc1,
-	0xc3, 0xa0, 0x01, 0xbf, 0x8f, 0xe3, 0xb3, 0xda, 0x8c, 0xda, 0x95, 0xd4, 0x27, 0x7b, 0x7a, 0x2e,
-	0x78, 0xef, 0xce, 0x21, 0xee, 0x77, 0x07, 0xdd, 0xa0, 0x79, 0x99, 0x78, 0x2e, 0x78, 0x64, 0x3c,
-	0xff, 0x07, 0x26, 0xae, 0xe5, 0xc4, 0xb0, 0x25, 0xd3, 0xd7, 0xc4, 0xb1, 0x73, 0x94, 0x80, 0x5c,
-	0xf1, 0x1a, 0xf9, 0x68, 0x17, 0x69, 0xdd, 0xe8, 0x56, 0x2d, 0xf5, 0x48, 0x27, 0x35, 0xf3, 0x4e,
-	0x8f, 0x0d, 0xf8, 0x41, 0xd4, 0x68, 0xea, 0x93, 0x7b, 0x26, 0x6c, 0xef, 0xae, 0x19, 0xe8, 0x04,
-	0x36, 0xfa, 0xa8, 0x3a, 0x23, 0x6b, 0x3d, 0x79, 0x4c, 0xf6, 0xaa, 0xf5, 0xa8, 0x4b, 0x9c, 0x8a,
-	0x72, 0x1e, 0x0d, 0x3f, 0x7c, 0x1c, 0x8e, 0x62, 0x17, 0x51, 0x42, 0xf6, 0x4f, 0x86, 0xf1, 0xf9,
-	0xe9, 0xb1, 0x8b, 0x07, 0x23, 0xd2, 0x69, 0xb6, 0x3d, 0x21, 0xf7, 0xcf, 0x24, 0xa4, 0x5c, 0x29,
-	0xea, 0xfd, 0xcf, 0xb8, 0x1b, 0xca, 0x6b, 0x79, 0xbb, 0x4f, 0xec, 0xa3, 0x3e, 0x7e, 0x86, 0x8f,
-	0x8e, 0x16, 0x2b, 0x86, 0x96, 0x2b, 0x86, 0x36, 0x2b, 0x86, 0xbf, 0x97, 0x0c, 0xff, 0x2a, 0x19,
-	0xfe, 0x5d, 0x32, 0xbc, 0x28, 0x19, 0xfe, 0x53, 0x32, 0xfc, 0xb7, 0x64, 0x68, 0x53, 0x32, 0xfc,
-	0x73, 0xcd, 0xd0, 0x62, 0xcd, 0xd0, 0x72, 0xcd, 0xd0, 0x27, 0x67, 0x3b, 0x76, 0xfa, 0x5c, 0x24,
-	0xc9, 0xbe, 0xf9, 0xc7, 0x17, 0xff, 0x02, 0x00, 0x00, 0xff, 0xff, 0xe0, 0xa2, 0x48, 0x34, 0x87,
-	0x02, 0x00, 0x00,
+	// 496 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x92, 0xc1, 0x6e, 0xd3, 0x40,
+	0x10, 0x86, 0x3d, 0x50, 0x4a, 0x98, 0x44, 0x91, 0xb5, 0x02, 0x14, 0x19, 0xb4, 0x8a, 0x2c, 0x40,
+	0x11, 0x12, 0x36, 0x04, 0x24, 0x04, 0x12, 0x97, 0xd2, 0x50, 0x7a, 0x41, 0xc5, 0x31, 0x17, 0x2e,
+	0x55, 0xec, 0x6c, 0x9c, 0xd0, 0xc6, 0xeb, 0xda, 0xeb, 0x86, 0xdc, 0x78, 0x02, 0x84, 0xc4, 0x4b,
+	0xf0, 0x0c, 0x3c, 0x01, 0xc7, 0x1c, 0x7b, 0x24, 0xce, 0x85, 0x63, 0x1f, 0x01, 0x65, 0xd7, 0x71,
+	0x9d, 0xa8, 0x82, 0xcb, 0x6a, 0xc7, 0x33, 0xff, 0xcc, 0x37, 0xbf, 0x17, 0xeb, 0x83, 0x98, 0x87,
+	0x82, 0x85, 0x7d, 0x2b, 0x8a, 0xb9, 0xe0, 0xa4, 0xb2, 0x8a, 0x8d, 0x47, 0xc1, 0x48, 0x0c, 0x53,
+	0xcf, 0xf2, 0xf9, 0xd8, 0x0e, 0x78, 0xc0, 0x6d, 0x59, 0xe0, 0xa5, 0x03, 0x19, 0xc9, 0x40, 0xde,
+	0x94, 0xd0, 0x78, 0x56, 0x2a, 0x9f, 0xb0, 0xde, 0x29, 0x9b, 0xf0, 0xf8, 0x28, 0xb1, 0x7d, 0x3e,
+	0x1e, 0xf3, 0xd0, 0x1e, 0x0a, 0x11, 0x05, 0x71, 0xe4, 0x17, 0x97, 0x5c, 0xf5, 0xaa, 0xa4, 0xf2,
+	0x79, 0x2c, 0xd8, 0xe7, 0x28, 0xe6, 0x9f, 0x98, 0x2f, 0xf2, 0xc8, 0x8e, 0x8e, 0x02, 0xfb, 0x24,
+	0x65, 0xf1, 0x88, 0xc5, 0x76, 0x22, 0x7a, 0x22, 0x51, 0xa7, 0x92, 0x9b, 0xdf, 0x01, 0xf5, 0x37,
+	0x39, 0xb0, 0xcb, 0x5f, 0x1f, 0x8f, 0x58, 0x28, 0xc8, 0x73, 0xac, 0x2e, 0xa7, 0x38, 0xec, 0x24,
+	0x65, 0x89, 0x68, 0x40, 0x13, 0x5a, 0xd5, 0xf6, 0x2d, 0xab, 0x98, 0xfc, 0xd6, 0x75, 0x0f, 0xf2,
+	0xa4, 0x53, 0xae, 0x24, 0x26, 0x6e, 0x89, 0x69, 0xc4, 0x1a, 0x57, 0x9a, 0xd0, 0xaa, 0xb7, 0xeb,
+	0x56, 0x61, 0x8d, 0x3b, 0x8d, 0x98, 0x23, 0x73, 0xc4, 0xc4, 0x9a, 0x04, 0xe8, 0x84, 0x3d, 0xef,
+	0x98, 0xf5, 0x1b, 0x57, 0x9b, 0xd0, 0xaa, 0x38, 0x6b, 0xdf, 0xcc, 0xaf, 0x80, 0xba, 0x62, 0x71,
+	0xf9, 0x8a, 0x8e, 0xbc, 0xc4, 0x9a, 0x9a, 0x95, 0x44, 0x3c, 0x4c, 0x58, 0x8e, 0x75, 0x7b, 0x13,
+	0x4b, 0x65, 0x9d, 0xb5, 0x5a, 0x62, 0x60, 0xc5, 0x97, 0xfd, 0xf6, 0x77, 0x25, 0xdc, 0x0d, 0xa7,
+	0x88, 0x89, 0x89, 0xd7, 0xe4, 0x70, 0x49, 0x52, 0x6d, 0xd7, 0x2c, 0xe5, 0x4f, 0x77, 0x79, 0x3a,
+	0x2a, 0x65, 0xbe, 0xc0, 0x3b, 0xef, 0xb8, 0x18, 0x0d, 0xa6, 0x8a, 0xaa, 0x3b, 0x4c, 0x45, 0x9f,
+	0x4f, 0xc2, 0xd5, 0xde, 0xe5, 0xf6, 0xb0, 0xde, 0xde, 0xa4, 0x78, 0xf7, 0x72, 0xa9, 0x42, 0x7b,
+	0x78, 0x0f, 0xb7, 0x96, 0xee, 0x10, 0x1d, 0x6b, 0xcb, 0x05, 0x0e, 0x9d, 0xce, 0xfb, 0x0f, 0x9d,
+	0xae, 0xab, 0x6b, 0x04, 0x71, 0x7b, 0xaf, 0xe3, 0x1e, 0xee, 0xef, 0xea, 0xd0, 0xfe, 0x09, 0x58,
+	0x29, 0x9c, 0xd8, 0xc3, 0xeb, 0x07, 0x31, 0xf7, 0x59, 0x92, 0x10, 0xe3, 0xc2, 0xe3, 0x4d, 0xc3,
+	0x8c, 0x52, 0x6e, 0xf3, 0x17, 0x9b, 0x5a, 0x0b, 0x1e, 0x03, 0x61, 0x78, 0xf3, 0x32, 0x36, 0x72,
+	0xff, 0x42, 0xf9, 0x8f, 0xb5, 0x8d, 0x07, 0xff, 0x2b, 0x53, 0x2b, 0xee, 0xec, 0xcc, 0xe6, 0x54,
+	0x3b, 0x9b, 0x53, 0xed, 0x7c, 0x4e, 0xe1, 0x4b, 0x46, 0xe1, 0x47, 0x46, 0xe1, 0x57, 0x46, 0x61,
+	0x96, 0x51, 0xf8, 0x9d, 0x51, 0xf8, 0x93, 0x51, 0xed, 0x3c, 0xa3, 0xf0, 0x6d, 0x41, 0xb5, 0xd9,
+	0x82, 0x6a, 0x67, 0x0b, 0xaa, 0x7d, 0xac, 0xad, 0x9a, 0x9f, 0x3e, 0x89, 0x3c, 0x6f, 0x5b, 0xbe,
+	0xd7, 0xa7, 0x7f, 0x03, 0x00, 0x00, 0xff, 0xff, 0x1f, 0xe0, 0x35, 0xe6, 0x6f, 0x03, 0x00, 0x00,
 }
 
 func (x Type) String() string {
@@ -237,6 +331,9 @@ func (this *FrontendToClient) Equal(that interface{}) bool {
 	if this.Type != that1.Type {
 		return false
 	}
+	if this.StatsEnabled != that1.StatsEnabled {
+		return false
+	}
 	return true
 }
 func (this *ClientToFrontend) Equal(that interface{}) bool {
@@ -269,16 +366,62 @@ func (this *ClientToFrontend) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *NotifyClientShutdownRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*NotifyClientShutdownRequest)
+	if !ok {
+		that2, ok := that.(NotifyClientShutdownRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ClientID != that1.ClientID {
+		return false
+	}
+	return true
+}
+func (this *NotifyClientShutdownResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*NotifyClientShutdownResponse)
+	if !ok {
+		that2, ok := that.(NotifyClientShutdownResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
 func (this *FrontendToClient) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 7)
 	s = append(s, "&frontendv1pb.FrontendToClient{")
 	if this.HttpRequest != nil {
 		s = append(s, "HttpRequest: "+fmt.Sprintf("%#v", this.HttpRequest)+",\n")
 	}
 	s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
+	s = append(s, "StatsEnabled: "+fmt.Sprintf("%#v", this.StatsEnabled)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -295,6 +438,25 @@ func (this *ClientToFrontend) GoString() string {
 	if this.Stats != nil {
 		s = append(s, "Stats: "+fmt.Sprintf("%#v", this.Stats)+",\n")
 	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *NotifyClientShutdownRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&frontendv1pb.NotifyClientShutdownRequest{")
+	s = append(s, "ClientID: "+fmt.Sprintf("%#v", this.ClientID)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *NotifyClientShutdownResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&frontendv1pb.NotifyClientShutdownResponse{")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -322,6 +484,8 @@ type FrontendClient interface {
 	// After calling this method, client enters a loop, in which it waits for
 	// a "FrontendToClient" message and replies with single "ClientToFrontend" message.
 	Process(ctx context.Context, opts ...grpc.CallOption) (Frontend_ProcessClient, error)
+	// The client notifies the query-frontend that it started a graceful shutdown.
+	NotifyClientShutdown(ctx context.Context, in *NotifyClientShutdownRequest, opts ...grpc.CallOption) (*NotifyClientShutdownResponse, error)
 }
 
 type frontendClient struct {
@@ -363,11 +527,22 @@ func (x *frontendProcessClient) Recv() (*FrontendToClient, error) {
 	return m, nil
 }
 
+func (c *frontendClient) NotifyClientShutdown(ctx context.Context, in *NotifyClientShutdownRequest, opts ...grpc.CallOption) (*NotifyClientShutdownResponse, error) {
+	out := new(NotifyClientShutdownResponse)
+	err := c.cc.Invoke(ctx, "/frontend.Frontend/NotifyClientShutdown", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FrontendServer is the server API for Frontend service.
 type FrontendServer interface {
 	// After calling this method, client enters a loop, in which it waits for
 	// a "FrontendToClient" message and replies with single "ClientToFrontend" message.
 	Process(Frontend_ProcessServer) error
+	// The client notifies the query-frontend that it started a graceful shutdown.
+	NotifyClientShutdown(context.Context, *NotifyClientShutdownRequest) (*NotifyClientShutdownResponse, error)
 }
 
 // UnimplementedFrontendServer can be embedded to have forward compatible implementations.
@@ -376,6 +551,9 @@ type UnimplementedFrontendServer struct {
 
 func (*UnimplementedFrontendServer) Process(srv Frontend_ProcessServer) error {
 	return status.Errorf(codes.Unimplemented, "method Process not implemented")
+}
+func (*UnimplementedFrontendServer) NotifyClientShutdown(ctx context.Context, req *NotifyClientShutdownRequest) (*NotifyClientShutdownResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NotifyClientShutdown not implemented")
 }
 
 func RegisterFrontendServer(s *grpc.Server, srv FrontendServer) {
@@ -408,10 +586,33 @@ func (x *frontendProcessServer) Recv() (*ClientToFrontend, error) {
 	return m, nil
 }
 
+func _Frontend_NotifyClientShutdown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NotifyClientShutdownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FrontendServer).NotifyClientShutdown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/frontend.Frontend/NotifyClientShutdown",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FrontendServer).NotifyClientShutdown(ctx, req.(*NotifyClientShutdownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _Frontend_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "frontend.Frontend",
 	HandlerType: (*FrontendServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "NotifyClientShutdown",
+			Handler:    _Frontend_NotifyClientShutdown_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Process",
@@ -443,6 +644,16 @@ func (m *FrontendToClient) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.StatsEnabled {
+		i--
+		if m.StatsEnabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
 	if m.Type != 0 {
 		i = encodeVarintFrontend(dAtA, i, uint64(m.Type))
 		i--
@@ -517,6 +728,59 @@ func (m *ClientToFrontend) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *NotifyClientShutdownRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NotifyClientShutdownRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *NotifyClientShutdownRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.ClientID) > 0 {
+		i -= len(m.ClientID)
+		copy(dAtA[i:], m.ClientID)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.ClientID)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *NotifyClientShutdownResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NotifyClientShutdownResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *NotifyClientShutdownResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintFrontend(dAtA []byte, offset int, v uint64) int {
 	offset -= sovFrontend(v)
 	base := offset
@@ -540,6 +804,9 @@ func (m *FrontendToClient) Size() (n int) {
 	}
 	if m.Type != 0 {
 		n += 1 + sovFrontend(uint64(m.Type))
+	}
+	if m.StatsEnabled {
+		n += 2
 	}
 	return n
 }
@@ -565,6 +832,28 @@ func (m *ClientToFrontend) Size() (n int) {
 	return n
 }
 
+func (m *NotifyClientShutdownRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ClientID)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	return n
+}
+
+func (m *NotifyClientShutdownResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
 func sovFrontend(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -578,6 +867,7 @@ func (this *FrontendToClient) String() string {
 	s := strings.Join([]string{`&FrontendToClient{`,
 		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
 		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`StatsEnabled:` + fmt.Sprintf("%v", this.StatsEnabled) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -590,6 +880,25 @@ func (this *ClientToFrontend) String() string {
 		`HttpResponse:` + strings.Replace(fmt.Sprintf("%v", this.HttpResponse), "HTTPResponse", "httpgrpc.HTTPResponse", 1) + `,`,
 		`ClientID:` + fmt.Sprintf("%v", this.ClientID) + `,`,
 		`Stats:` + strings.Replace(fmt.Sprintf("%v", this.Stats), "Stats", "stats.Stats", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *NotifyClientShutdownRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&NotifyClientShutdownRequest{`,
+		`ClientID:` + fmt.Sprintf("%v", this.ClientID) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *NotifyClientShutdownResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&NotifyClientShutdownResponse{`,
 		`}`,
 	}, "")
 	return s
@@ -686,6 +995,26 @@ func (m *FrontendToClient) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StatsEnabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.StatsEnabled = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFrontend(dAtA[iNdEx:])
@@ -843,6 +1172,144 @@ func (m *ClientToFrontend) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NotifyClientShutdownRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NotifyClientShutdownRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NotifyClientShutdownRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClientID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ClientID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NotifyClientShutdownResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NotifyClientShutdownResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NotifyClientShutdownResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFrontend(dAtA[iNdEx:])

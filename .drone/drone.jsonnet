@@ -1,4 +1,4 @@
-local apps = ['loki', 'loki-canary', 'promtail','logcli'];
+local apps = ['loki', 'loki-canary', 'promtail', 'logcli'];
 local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
@@ -57,6 +57,21 @@ local arch_image(arch, tags='') = {
       'git fetch origin --tags',
       'echo $(./tools/image-tag)-%s > .tags' % arch,
     ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
+  }],
+};
+
+local promtail_win() = pipeline('promtail-windows') {
+  platform: {
+    os: 'windows',
+    arch: 'amd64',
+    version: '1809',
+  },
+  steps: [{
+    name: 'test',
+    image: 'golang:windowsservercore-1809',
+    commands: [
+      'go test .\\pkg\\promtail\\targets\\windows\\... -v',
+    ],
   }],
 };
 
@@ -253,24 +268,4 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
-] + [
-  pipeline('prune-ci-tags') {
-    trigger: condition('include').tagMaster,
-    depends_on: ['manifest'],
-    steps: [
-      {
-        name: 'trigger',
-        image: 'grafana/loki-build-image:%s' % build_image_version,
-        environment: {
-          DOCKER_USERNAME: { from_secret: 'docker_username' },
-          DOCKER_PASSWORD: { from_secret: 'docker_password' },
-        },
-        commands: [
-          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki -delete',
-          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/promtail -delete',
-          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki-canary -delete',
-        ],
-      },
-    ],
-  },
-]
+] + [promtail_win()]

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,7 +46,7 @@ var testTimestampLogLineWithMissingKey = `
 `
 
 func TestTimestampPipeline(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), nil, prometheus.DefaultRegisterer)
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testTimestampYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestTimestampStage_Process(t *testing.T) {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			st, err := newTimestampStage(util.Logger, test.config)
+			st, err := newTimestampStage(util_log.Logger, test.config)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -439,7 +439,7 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 			// Ensure the test has been correctly set
 			require.Equal(t, len(testData.inputEntries), len(testData.expectedTimestamps))
 
-			s, err := newTimestampStage(util.Logger, testData.config)
+			s, err := newTimestampStage(util_log.Logger, testData.config)
 			require.NoError(t, err)
 
 			for i, inputEntry := range testData.inputEntries {

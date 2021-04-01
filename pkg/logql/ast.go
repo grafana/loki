@@ -44,7 +44,7 @@ type SelectLogParams struct {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (LogSelectorExpr, error) {
-	return ParseLogSelector(s.Selector)
+	return ParseLogSelector(s.Selector, true)
 }
 
 type SelectSampleParams struct {
@@ -327,6 +327,8 @@ func (e *labelParserExpr) Stage() (log.Stage, error) {
 		return log.NewLogfmtParser(), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.param)
+	case OpParserTypeUnpack:
+		return log.NewUnpackParser(), nil
 	default:
 		return nil, fmt.Errorf("unknown parser operator: %s", e.op)
 	}
@@ -416,6 +418,39 @@ func (e *labelFmtExpr) String() string {
 	return sb.String()
 }
 
+type jsonExpressionParser struct {
+	expressions []log.JSONExpression
+
+	implicit
+}
+
+func newJSONExpressionParser(expressions []log.JSONExpression) *jsonExpressionParser {
+	return &jsonExpressionParser{
+		expressions: expressions,
+	}
+}
+
+func (j *jsonExpressionParser) Shardable() bool { return true }
+
+func (j *jsonExpressionParser) Stage() (log.Stage, error) {
+	return log.NewJSONExpressionParser(j.expressions)
+}
+
+func (j *jsonExpressionParser) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeJSON))
+	for i, exp := range j.expressions {
+		sb.WriteString(exp.Identifier)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(exp.Expression))
+
+		if i+1 != len(j.expressions) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
@@ -464,6 +499,7 @@ func newUnwrapExpr(id string, operation string) *unwrapExpr {
 type logRange struct {
 	left     LogSelectorExpr
 	interval time.Duration
+	offset   time.Duration
 
 	unwrap *unwrapExpr
 }
@@ -476,16 +512,41 @@ func (r logRange) String() string {
 		sb.WriteString(r.unwrap.String())
 	}
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
+	if r.offset != 0 {
+		offsetExpr := offsetExpr{offset: r.offset}
+		sb.WriteString(offsetExpr.String())
+	}
 	return sb.String()
 }
 
 func (r *logRange) Shardable() bool { return r.left.Shardable() }
 
-func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr) *logRange {
+func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr, o *offsetExpr) *logRange {
+	var offset time.Duration
+	if o != nil {
+		offset = o.offset
+	}
 	return &logRange{
 		left:     left,
 		interval: interval,
 		unwrap:   u,
+		offset:   offset,
+	}
+}
+
+type offsetExpr struct {
+	offset time.Duration
+}
+
+func (o *offsetExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(" %s %s", OpOffset, o.offset.String()))
+	return sb.String()
+}
+
+func newOffsetExpr(offset time.Duration) *offsetExpr {
+	return &offsetExpr{
+		offset: offset,
 	}
 }
 
@@ -542,12 +603,14 @@ const (
 	OpParserTypeJSON   = "json"
 	OpParserTypeLogfmt = "logfmt"
 	OpParserTypeRegexp = "regexp"
+	OpParserTypeUnpack = "unpack"
 
 	OpFmtLine  = "line_format"
 	OpFmtLabel = "label_format"
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
+	OpOffset = "offset"
 
 	// conversion Op
 	OpConvBytes           = "bytes"
@@ -790,9 +853,9 @@ type binOpExpr struct {
 
 func (e *binOpExpr) String() string {
 	if e.opts.ReturnBool {
-		return fmt.Sprintf("%s %s bool %s", e.SampleExpr.String(), e.op, e.RHS.String())
+		return fmt.Sprintf("(%s %s bool %s)", e.SampleExpr.String(), e.op, e.RHS.String())
 	}
-	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
+	return fmt.Sprintf("(%s %s %s)", e.SampleExpr.String(), e.op, e.RHS.String())
 }
 
 // impl SampleExpr

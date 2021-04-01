@@ -19,6 +19,9 @@ service SchedulerForQuerier {
   // Long-running loop is used to detect broken connection between scheduler and querier. This is important
   // for scheduler to keep a list of connected queriers up-to-date.
   rpc QuerierLoop(stream QuerierToScheduler) returns (stream SchedulerToQuerier) { };
+
+  // The querier notifies the query-scheduler that it started a graceful shutdown.
+  rpc NotifyQuerierShutdown(NotifyQuerierShutdownRequest) returns (NotifyQuerierShutdownResponse);
 }
 
 // Querier reports its own clientID when it connects, so that scheduler knows how many *different* queriers are connected.
@@ -38,6 +41,10 @@ message SchedulerToQuerier {
 
   // User who initiated the request. Needed to send reply back to frontend.
   string userID = 4;
+
+  // Whether query statistics tracking should be enabled. The response will include
+  // statistics only when this option is enabled.
+  bool statsEnabled = 5;
 }
 
 // Scheduler interface exposed to Frontend. Frontend can enqueue and cancel requests.
@@ -70,6 +77,7 @@ message FrontendToScheduler {
   // Following are used by ENQUEUE only.
   string userID = 4;
   httpgrpc.HTTPRequest httpRequest = 5;
+  bool statsEnabled = 6;
 }
 
 enum SchedulerToFrontendStatus {
@@ -83,3 +91,9 @@ message SchedulerToFrontend {
   SchedulerToFrontendStatus status = 1;
   string error = 2;
 }
+
+message NotifyQuerierShutdownRequest {
+  string querierID = 1;
+}
+
+message NotifyQuerierShutdownResponse {}

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -45,6 +45,7 @@ var testTemplateLogLine = `
 	"message" : "this is a log line"
 }
 `
+
 var testTemplateLogLineWithMissingKey = `
 {
 	"time":"2012-11-01T22:08:41+00:00",
@@ -56,7 +57,7 @@ var testTemplateLogLineWithMissingKey = `
 `
 
 func TestPipeline_Template(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testTemplateYaml), nil, prometheus.DefaultRegisterer)
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testTemplateYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,6 @@ func TestPipelineWithMissingKey_Template(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	Debug = true
 
 	_ = processEntries(pl, newEntry(nil, nil, testTemplateLogLineWithMissingKey, time.Now()))
 
@@ -226,6 +226,18 @@ func TestTemplateStage_Process(t *testing.T) {
 				"testval": "value",
 			},
 		},
+		"sprig": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: "{{ add 7 3 }}",
+			},
+			map[string]interface{}{
+				"testval": "Value",
+			},
+			map[string]interface{}{
+				"testval": "10",
+			},
+		},
 		"ToLowerParams": {
 			TemplateConfig{
 				Source:   "testval",
@@ -365,7 +377,7 @@ func TestTemplateStage_Process(t *testing.T) {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			st, err := newTemplateStage(util.Logger, test.config)
+			st, err := newTemplateStage(util_log.Logger, test.config)
 			if err != nil {
 				t.Fatal(err)
 			}
