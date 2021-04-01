@@ -61,7 +61,6 @@ func TestCreateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
 	require.Zero(t, k.CreateCallCount())
 }
 
-
 func TestCreateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsTheError(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
@@ -83,7 +82,6 @@ func TestCreateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsTheError(
 	// make sure create was NOT called because the Get failed
 	require.Zero(t, k.CreateCallCount())
 }
-
 
 func TestCreateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 	k := &k8sfakes.FakeClient{}

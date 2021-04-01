@@ -5,13 +5,12 @@ import (
 	"strings"
 
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
-	apps "k8s.io/api/apps/v1"
-	core "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
-func LokiConfigMap(stackName, namespace string) (*core.ConfigMap, error) {
+func LokiConfigMap(stackName, namespace string) (*corev1.ConfigMap, error) {
 	b, err := config.Build(config.Options{
 		FrontendWorker: config.Address{
 			FQDN: "",
@@ -32,10 +31,10 @@ func LokiConfigMap(stackName, namespace string) (*core.ConfigMap, error) {
 		return nil, err
 	}
 
-	return &core.ConfigMap{
+	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
-			APIVersion: apps.SchemeGroupVersion.String(),
+			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   lokiConfigMapName(stackName),

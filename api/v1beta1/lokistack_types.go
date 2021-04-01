@@ -28,8 +28,7 @@ type LokiStackSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Name is the unique name of this LokiStack.
-	Name string `json:"name,omitempty"`
+	StorageClassName string `json:"storage_class_name,omitempty"`
 }
 
 // LokiStackStatus defines the observed state of LokiStack

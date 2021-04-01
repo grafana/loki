@@ -36,8 +36,7 @@ spec:
           spec:
             description: LokiStackSpec defines the desired state of LokiStack
             properties:
-              name:
-                description: Name is the unique name of this LokiStack.
+              storage_class_name:
                 type: string
             type: object
           status:

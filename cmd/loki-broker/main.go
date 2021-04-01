@@ -17,7 +17,7 @@ import (
 type config struct {
 	Name       string
 	Namespace  string
-	Replicas   int `yaml:"replicas"`
+	Replicas   int
 	writeToDir string
 }
 
@@ -68,7 +68,7 @@ func main() {
 		if cfg.writeToDir != "" {
 			basename := fmt.Sprintf("%s-%s.yaml", o.GetObjectKind().GroupVersionKind().Kind, o.GetName())
 			fname := strings.ToLower(path.Join(cfg.writeToDir, basename))
-			if err := ioutil.WriteFile(fname, b, 0644); err != nil {
+			if err := ioutil.WriteFile(fname, b, 0o644); err != nil {
 				log.Error(err, "failed to write file to directory", "path", fname)
 				os.Exit(1)
 			}

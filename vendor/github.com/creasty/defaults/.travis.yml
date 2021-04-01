@@ -1,0 +1,20 @@
+language: go
+go:       1.13
+
+branches:
+  only:
+    - master
+
+env:
+  global:
+    # CODECOV_TOKEN
+    - secure: "O4Hay0TPFW2eq1+Y9vlW4W8VIY9QlKzGgEoL8mgbHQ67RrvqaB7Ft6kdmUaVztu9a5ZB4QwwU8dCFV6D/+dY710qqayQghY2r4igqExzkMyRa3InQtGjhYd9CVpjbR5cXYV1PL9h/Jf3PTTUCmSJp0tpqZCce4BezgnhdSjccGzx3wlzj66+bDdpCzRkWtCvYvI4Fxg5aM5kBke1Ti+aLdEQNzDpkbM38/iyUQDuM+y6ZO+AuP9zqdMY82O6yEMXJppPtVnfqhTJQyDiEF6J6h3TauOb9nKhu8Eg0d2b0HseTRVcCigH3usCm6WYmqhInmsbdAge9gSs9SdYq06VYghG/AvnuRNbmGn3DHuRelyH0gBuXrzZxNP9nfPego4bvk6jQvPSu/flB7JHixkDkFBCO1b2R3ZdOdT6fg+qPQBMxEGy3YJ6ylZ0oqC0AByC+0OP7Hc/xv5U4uqnJ5oBVt4yt26sEjlMs8piXnkoNDoXVjgjfpqLLMyuSRzL1nbf7P270E7L0hDzWInObWlM7FuAl6ghb4j20jvx+4C5UKb8JJPMdbEOcDWZuJOnpThpcNIeP08Xks1wDJ5R01cxK2gja8Hmg+nF320bHybn3RRyOke7tuC3Egez2QaKEoQl9YmcepO+TENcsFk86v8Le68UHi8mJps5mm7iuJb2xyQ="
+
+before_install:
+  - go get -u golang.org/x/lint/golint
+
+script:
+  - make ci-test
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

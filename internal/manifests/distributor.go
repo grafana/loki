@@ -5,8 +5,8 @@ import (
 	"path"
 
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
-	apps "k8s.io/api/apps/v1"
-	core "k8s.io/api/core/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -30,14 +30,14 @@ func BuildDistributor(stackName string) []client.Object {
 }
 
 // NewDistributorDeployment creates a deployment object for a distributor
-func NewDistributorDeployment(stackName string) *apps.Deployment {
-	podSpec := core.PodSpec{
-		Volumes: []core.Volume{
+func NewDistributorDeployment(stackName string) *appsv1.Deployment {
+	podSpec := corev1.PodSpec{
+		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
-				VolumeSource: core.VolumeSource{
-					ConfigMap: &core.ConfigMapVolumeSource{
-						LocalObjectReference: core.LocalObjectReference{
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
 							Name: lokiConfigMapName(stackName),
 						},
 					},
@@ -45,12 +45,12 @@ func NewDistributorDeployment(stackName string) *apps.Deployment {
 			},
 			{
 				Name: storageVolumeName,
-				VolumeSource: core.VolumeSource{
-					EmptyDir: &core.EmptyDirVolumeSource{},
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
 			},
 		},
-		Containers: []core.Container{
+		Containers: []corev1.Container{
 			{
 				Image: containerImage,
 				Name:  "loki-distributor",
@@ -58,30 +58,30 @@ func NewDistributorDeployment(stackName string) *apps.Deployment {
 					"-target=distributor",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 				},
-				ReadinessProbe: &core.Probe{
-					Handler: core.Handler{
-						HTTPGet: &core.HTTPGetAction{
+				ReadinessProbe: &corev1.Probe{
+					Handler: corev1.Handler{
+						HTTPGet: &corev1.HTTPGetAction{
 							Path:   "/ready",
 							Port:   intstr.FromInt(httpPort),
-							Scheme: core.URISchemeHTTP,
+							Scheme: corev1.URISchemeHTTP,
 						},
 					},
 					InitialDelaySeconds: 15,
 					TimeoutSeconds:      1,
 				},
-				LivenessProbe: &core.Probe{
-					Handler: core.Handler{
-						HTTPGet: &core.HTTPGetAction{
+				LivenessProbe: &corev1.Probe{
+					Handler: corev1.Handler{
+						HTTPGet: &corev1.HTTPGetAction{
 							Path:   "/metrics",
 							Port:   intstr.FromInt(httpPort),
-							Scheme: core.URISchemeHTTP,
+							Scheme: corev1.URISchemeHTTP,
 						},
 					},
 					TimeoutSeconds:   2,
 					PeriodSeconds:    30,
 					FailureThreshold: 10,
 				},
-				Ports: []core.ContainerPort{
+				Ports: []corev1.ContainerPort{
 					{
 						Name:          "metrics",
 						ContainerPort: httpPort,
@@ -95,17 +95,17 @@ func NewDistributorDeployment(stackName string) *apps.Deployment {
 						ContainerPort: gossipPort,
 					},
 				},
-				// Resources: core.ResourceRequirements{
-				// 	Limits: core.ResourceList{
-				// 		core.ResourceMemory: resource.MustParse("1Gi"),
-				// 		core.ResourceCPU:    resource.MustParse("1000m"),
+				// Resources: corev1.ResourceRequirements{
+				// 	Limits: corev1.ResourceList{
+				// 		corev1.ResourceMemory: resource.MustParse("1Gi"),
+				// 		corev1.ResourceCPU:    resource.MustParse("1000m"),
 				// 	},
-				// 	Requests: core.ResourceList{
-				// 		core.ResourceMemory: resource.MustParse("50m"),
-				// 		core.ResourceCPU:    resource.MustParse("50m"),
+				// 	Requests: corev1.ResourceList{
+				// 		corev1.ResourceMemory: resource.MustParse("50m"),
+				// 		corev1.ResourceCPU:    resource.MustParse("50m"),
 				// 	},
 				// },
-				VolumeMounts: []core.VolumeMount{
+				VolumeMounts: []corev1.VolumeMount{
 					{
 						Name:      configVolumeName,
 						ReadOnly:  false,
@@ -123,49 +123,49 @@ func NewDistributorDeployment(stackName string) *apps.Deployment {
 
 	l := ComponentLabels("distributor", stackName)
 
-	return &apps.Deployment{
+	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
-			APIVersion: apps.SchemeGroupVersion.String(),
+			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fmt.Sprintf("loki-distributor-%s", stackName),
 			Labels: l,
 		},
-		Spec: apps.DeploymentSpec{
+		Spec: appsv1.DeploymentSpec{
 			Replicas: pointer.Int32Ptr(int32(3)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
-			Template: core.PodTemplateSpec{
+			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   fmt.Sprintf("loki-distributor-%s", stackName),
 					Labels: labels.Merge(l, GossipLabels()),
 				},
 				Spec: podSpec,
 			},
-			Strategy: apps.DeploymentStrategy{
-				Type: apps.RollingUpdateDeploymentStrategyType,
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
 			},
 		},
 	}
 }
 
 // NewDistributorHTTPService creates a k8s service for the distributor HTTP endpoint
-func NewDistributorHTTPService(stackName string) *core.Service {
+func NewDistributorHTTPService(stackName string) *corev1.Service {
 	l := ComponentLabels("distributor", stackName)
-	return &core.Service{
+	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
-			APIVersion: apps.SchemeGroupVersion.String(),
+			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   serviceNameDistributorGRPC(stackName),
 			Labels: l,
 		},
-		Spec: core.ServiceSpec{
+		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
-			Ports: []core.ServicePort{
+			Ports: []corev1.ServicePort{
 				{
 					Name: "grpc",
 					Port: grpcPort,
@@ -177,19 +177,19 @@ func NewDistributorHTTPService(stackName string) *core.Service {
 }
 
 // NewDistributorGRPCService creates a k8s service for the distributor GRPC endpoint
-func NewDistributorGRPCService(stackName string) *core.Service {
+func NewDistributorGRPCService(stackName string) *corev1.Service {
 	l := ComponentLabels("distributor", stackName)
-	return &core.Service{
+	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
-			APIVersion: apps.SchemeGroupVersion.String(),
+			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   serviceNameDistributorHTTP(stackName),
 			Labels: l,
 		},
-		Spec: core.ServiceSpec{
-			Ports: []core.ServicePort{
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
 				{
 					Name: "metrics",
 					Port: httpPort,

@@ -3,5 +3,4 @@ kind: LokiStack
 metadata:
   name: lokistack-sample
 spec:
-  # Add fields here
-  name: mystack
+  storage_class_name: "standard" # this is the default for KiND
