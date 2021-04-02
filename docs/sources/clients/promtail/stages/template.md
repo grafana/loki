@@ -182,7 +182,7 @@ and trailing white space removed, as defined by Unicode.
 ```yaml
 - template:
     source: output
-    template: '{{ regexReplaceAllLiteral "(a*)bc" .Value "{1}a" }}'
+    template: '{{ regexReplaceAll "(a*)bc" .Value "${1}a" }}'
 ```
 
 `regexReplaceAllLiteral` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement The replacement string is substituted directly, without using Expand.
