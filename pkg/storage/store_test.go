@@ -633,10 +633,7 @@ func (f fakeChunkFilterer) ForRequest(ctx context.Context) ChunkFilterer {
 }
 
 func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
-	if metric.Get("foo") == "bazz" {
-		return true
-	}
-	return false
+	return metric.Get("foo") == "bazz"
 }
 
 func Test_ChunkFilterer(t *testing.T) {
@@ -656,7 +653,7 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		v, _ := mustParseLabels(it.Labels())["foo"]
+		v := mustParseLabels(it.Labels())["foo"]
 		require.NotEqual(t, "bazz", v)
 	}
 
@@ -667,13 +664,13 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		v, _ := mustParseLabels(it.Labels())["foo"]
+		v := mustParseLabels(it.Labels())["foo"]
 		require.NotEqual(t, "bazz", v)
 	}
 	ids, err := s.GetSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
 	require.NoError(t, err)
 	for _, id := range ids {
-		v, _ := id.Labels["foo"]
+		v := id.Labels["foo"]
 		require.NotEqual(t, "bazz", v)
 	}
 }
