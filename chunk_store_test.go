@@ -86,7 +86,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
-	limits.MaxQueryLength = 30 * 24 * time.Hour
+	limits.MaxQueryLength = model.Duration(30 * 24 * time.Hour)
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
