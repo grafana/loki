@@ -1,10 +1,14 @@
 package client
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -40,7 +44,7 @@ func (b *batch) add(entry api.Entry) {
 	b.bytes += len(entry.Line)
 
 	// Append the entry to an already existing stream (if any)
-	labels := entry.Labels.String()
+	labels := labelsMapToString(entry.Labels, ReservedLabelTenantID)
 	if stream, ok := b.streams[labels]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
 		return
@@ -51,6 +55,22 @@ func (b *batch) add(entry api.Entry) {
 		Labels:  labels,
 		Entries: []logproto.Entry{entry.Entry},
 	}
+}
+
+func labelsMapToString(ls model.LabelSet, without ...model.LabelName) string {
+	lstrs := make([]string, 0, len(ls))
+Outer:
+	for l, v := range ls {
+		for _, w := range without {
+			if l == w {
+				continue Outer
+			}
+		}
+		lstrs = append(lstrs, fmt.Sprintf("%s=%q", l, v))
+	}
+
+	sort.Strings(lstrs)
+	return fmt.Sprintf("{%s}", strings.Join(lstrs, ", "))
 }
 
 // sizeBytes returns the current batch size in bytes
