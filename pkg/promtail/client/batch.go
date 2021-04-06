@@ -57,10 +57,10 @@ func (b *batch) add(entry api.Entry) {
 	}
 }
 
-func labelsMapToString(l model.LabelSet, without ...model.LabelName) string {
-	lstrs := make([]string, 0, len(l))
+func labelsMapToString(ls model.LabelSet, without ...model.LabelName) string {
+	lstrs := make([]string, 0, len(ls))
 Outer:
-	for l, v := range l {
+	for l, v := range ls {
 		for _, w := range without {
 			if l == w {
 				continue Outer
