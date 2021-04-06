@@ -19,6 +19,10 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 -_add changes here which are unreleased_
 
+## 2.2.1
+
+Review the notes for 2.2.0, there are no additional update notes.
+
 ## 2.2.0
 
 ### Loki

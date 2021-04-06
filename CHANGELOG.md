@@ -1,3 +1,16 @@
+## 2.2.1 (2021/04/05)
+
+2.2.1 fixes several important bugs, it is recommended everyone running 2.2.0 upgrade to 2.2.1
+
+2.2.1 also adds the `labelallow` pipeline stage in Promtail which lets an allowlist be created for what labels will be sent by Promtail to Loki.
+
+* [3468](https://github.com/grafana/loki/pull/3468) **adityacs**: Support labelallow stage in Promtail
+* [3502](https://github.com/grafana/loki/pull/3502) **cyriltovena**: Fixes a bug where unpack would mutate log line.
+* [3540](https://github.com/grafana/loki/pull/3540) **cyriltovena**: Support for single step metric query.
+* [3550](https://github.com/grafana/loki/pull/3550) **cyriltovena**: Fixes a bug in MatrixStepper when sharding queries.
+* [3566](https://github.com/grafana/loki/pull/3566) **cyriltovena**: Properly release the ticker in Loki client.
+* [3573](https://github.com/grafana/loki/pull/3573) **cyriltovena**: Fixes a race when using specific tenant and multi-client.
+
 ## 2.2.0 (2021/03/10)
 
 With over 200 PR's 2.2 includes significant features, performance improvements, and bug fixes!
