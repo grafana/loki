@@ -156,7 +156,13 @@ func Test_Retention(t *testing.T) {
 					}
 					if ok {
 						fmt.Fprintf(os.Stdout, "%+v\n", ref)
+						return nil
 					}
+					_, r := decodeKey(k)
+					components := decodeRangeKey(r, nil)
+					keyType := components[len(components)-1]
+
+					fmt.Fprintf(os.Stdout, "type:%s \n", keyType)
 					return nil
 				})
 			}))

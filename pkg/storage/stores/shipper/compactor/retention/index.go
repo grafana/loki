@@ -19,8 +19,12 @@ import (
 )
 
 const (
-	chunkTimeRangeKeyV3 = '3'
-	separator           = "\000"
+	chunkTimeRangeKeyV3   = '3'
+	metricNameRangeKeyV1  = '6'
+	seriesRangeKeyV1      = '7'
+	labelSeriesRangeKeyV1 = '8'
+	labelNamesRangeKeyV1  = '9'
+	separator             = "\000"
 )
 
 var QueryParallelism = 100
@@ -59,42 +63,42 @@ func (e InvalidIndexKeyError) Is(target error) bool {
 	return target == ErrInvalidIndexKey
 }
 
-func parseChunkRef(hashKey, rangeKey []byte) (ChunkRef, bool, error) {
+func parseChunkRef(hashKey, rangeKey []byte) (*ChunkRef, bool, error) {
 	// todo reuse memory
 	var components [][]byte
 	components = decodeRangeKey(rangeKey, components)
 	if len(components) == 0 {
-		return ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 
 	keyType := components[len(components)-1]
 	if len(keyType) == 0 || keyType[0] != chunkTimeRangeKeyV3 {
-		return ChunkRef{}, false, nil
+		return nil, false, nil
 	}
 	chunkID := components[len(components)-2]
 
 	// todo split manually
 	parts := bytes.Split(chunkID, []byte("/"))
 	if len(parts) != 2 {
-		return ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 	userID := parts[0]
 	// todo split manually
 	hexParts := bytes.Split(parts[1], []byte(":"))
 	if len(hexParts) != 4 {
-		return ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 
 	from, err := strconv.ParseInt(unsafeGetString(hexParts[1]), 16, 64)
 	if err != nil {
-		return ChunkRef{}, false, err
+		return nil, false, err
 	}
 	through, err := strconv.ParseInt(unsafeGetString(hexParts[2]), 16, 64)
 	if err != nil {
-		return ChunkRef{}, false, err
+		return nil, false, err
 	}
 
-	return ChunkRef{
+	return &ChunkRef{
 		UserID:   userID,
 		SeriesID: seriesFromHash(hashKey),
 		From:     model.Time(from),
