@@ -355,6 +355,78 @@ func TestParse(t *testing.T) {
 		// 		col:  0,
 		// 	},
 		// },
+		// {
+		// 	in: `min({ foo !~ "bar" }[5m])`,
+		// 	err: ParseError{
+		// 		msg:  "syntax error: unexpected RANGE",
+		// 		line: 0,
+		// 		col:  21,
+		// 	},
+		// },
+		// {
+		// 	in: `sum(3 ,count_over_time({ foo !~ "bar" }[5h]))`,
+		// 	err: ParseError{
+		// 		msg:  "unsupported parameter for operation sum(3,",
+		// 		line: 0,
+		// 		col:  0,
+		// 	},
+		// },
+		// {
+		// 	in: `topk(count_over_time({ foo !~ "bar" }[5h]))`,
+		// 	err: ParseError{
+		// 		msg:  "parameter required for operation topk",
+		// 		line: 0,
+		// 		col:  0,
+		// 	},
+		// },
+		// {
+		// 	in: `bottomk(he,count_over_time({ foo !~ "bar" }[5h]))`,
+		// 	err: ParseError{
+		// 		msg:  "syntax error: unexpected IDENTIFIER",
+		// 		line: 1,
+		// 		col:  9,
+		// 	},
+		// },
+		// {
+		// 	in: `bottomk(1.2,count_over_time({ foo !~ "bar" }[5h]))`,
+		// 	err: ParseError{
+		// 		msg:  "invalid parameter bottomk(1.2,",
+		// 		line: 0,
+		// 		col:  0,
+		// 	},
+		// },
+		// {
+		// 	in: `stddev({ foo !~ "bar" })`,
+		// 	err: ParseError{
+		// 		msg:  "syntax error: unexpected )",
+		// 		line: 1,
+		// 		col:  24,
+		// 	},
+		// },
+		// {
+		// 	in: `{ foo = "bar", bar != "baz" }`,
+		// 	exp: &matchersExpr{matchers: []*labels.Matcher{
+		// 		mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+		// 		mustNewMatcher(labels.MatchNotEqual, "bar", "baz"),
+		// 	}},
+		// },
+		// {
+		// 	in: `{foo="bar"} |= "baz"`,
+		// 	exp: newPipelineExpr(
+		// 		newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+		// 		MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "baz")},
+		// 	),
+		// },
+		// {
+		// 	in: `{foo="bar"} |= "baz" |= ip("123.123.123.123")`,
+		// 	exp: newPipelineExpr(
+		// 		newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+		// 		MultiStageExpr{
+		// 			newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+		// 			newFunctionLineFilterExpr(OpFilterIP, "123.123.123.123", labels.MatchEqual),
+		// 		},
+		// 	),
+		// },
 		{
 			in:  `sum(3 ,count_over_time({ foo = "bar" }[5h]))`,
 			err: logqlmodel.NewParseError("unsupported parameter for operation sum(3,", 0, 0),
@@ -400,11 +472,11 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
-			in: `{foo="bar"} |= "baz" != ip("123.123.123.123")`,
+			in: `{foo="bar"} != ip("123.123.123.123")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "baz"),
+					// newLineFilterExpr(nil, labels.MatchEqual, "baz"),
 					newFunctionLineFilterExpr(OpFilterIP, "123.123.123.123", labels.MatchNotEqual),
 				},
 			),

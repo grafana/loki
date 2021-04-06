@@ -234,7 +234,6 @@ pipelineExpr:
 
 pipelineStage:
    lineFilters                   { $$ = $1 }
-  | functionFilter               { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE labelFilter             { $$ = &labelFilterExpr{LabelFilterer: $2 }}
@@ -254,6 +253,7 @@ functionFilter:
 
 lineFilters:
     filter STRING                 { $$ = newLineFilterExpr(nil, $1, $2 ) }
+| filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS             { $$ = newFunctionLineFilterExpr($2, $4, $1)}
   | lineFilters filter STRING     { $$ = newLineFilterExpr($1, $2, $3 ) }
 
 labelParser:
