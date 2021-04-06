@@ -115,7 +115,79 @@ spec:
                         type: object
                     type: object
                   tenants:
-                    additionalProperties: {}
+                    additionalProperties:
+                      description: LimitsTemplateSpec defines the limits  applied
+                        at ingestion or query path.
+                      properties:
+                        ingestion:
+                          description: IngestionLimits defines the limits applied
+                            on ingested log streams.
+                          properties:
+                            ingestionBurstSize:
+                              description: IngestionBurstSize defines the local rate-limited
+                                sample size per distributor replica. It should be
+                                set to the set at least to the maximum logs size expected
+                                in a single push request.
+                              format: int32
+                              type: integer
+                            ingestionRate:
+                              description: IngestionRate defines the sample size per
+                                second. Units MB.
+                              format: int32
+                              type: integer
+                            maxGlobalStreamsPerUser:
+                              description: MaxGlobalStreamsPerUser defines the maximum
+                                number of active streams per user, across the cluster.
+                              format: int32
+                              type: integer
+                            maxLabelLength:
+                              description: MaxLabelLength defines the maximum number
+                                of characters allowed for label keys in log streams.
+                              format: int32
+                              type: integer
+                            maxLabelValueLength:
+                              description: MaxLabelValueLength defines the maximum
+                                number of characters allowed for label values in log
+                                streams.
+                              format: int32
+                              type: integer
+                            maxLabelsPerSeries:
+                              description: MaxLabelsPerSeries defines the maximum
+                                number of labels per series in each log stream.
+                              format: int32
+                              type: integer
+                            maxLineSize:
+                              description: MaxLineSize defines the aximum line size
+                                on ingestion path. Units in Bytes.
+                              format: int32
+                              type: integer
+                            maxStreamsPerUser:
+                              description: MaxStreamsPerUser defines the maximum number
+                                of active streams per user, per ingester.
+                              format: int32
+                              type: integer
+                          type: object
+                        queries:
+                          description: QueryLimits defines the limit applied on querying
+                            log streams.
+                          properties:
+                            maxChunksPerQuery:
+                              description: MaxChunksPerQuery defines the maximum number
+                                of chunks that can be fetched by a single query.
+                              format: int32
+                              type: integer
+                            maxEntriesPerQuery:
+                              description: MaxEntriesPerQuery defines the aximum number
+                                of log entries that will be returned for a query.
+                              format: int32
+                              type: integer
+                            maxQuerySeries:
+                              description: MaxQuerySeries defines the the maximum
+                                of unique series that is returned by a metric query.
+                              format: int32
+                              type: integer
+                          type: object
+                      type: object
                     description: Tenants defines the limits applied per tenant.
                     type: object
                 type: object

@@ -25,9 +25,38 @@ spec:
   customresourcedefinitions:
     owned:
     - description: LokiStack is the Schema for the lokistacks API
-      displayName: Loki Stack
+      displayName: LokiStack
       kind: LokiStack
       name: lokistacks.loki.openshift.io
+      resources:
+      - kind: ConfigMap
+        name: ""
+        version: v1
+      - kind: Deployment
+        name: ""
+        version: v1
+      - kind: Pod
+        name: ""
+        version: v1
+      - kind: ReplicaSet
+        name: ""
+        version: v1
+      - kind: Service
+        name: ""
+        version: v1
+      - kind: ServiceMonitor
+        name: ""
+        version: v1
+      - kind: StatefulSet
+        name: ""
+        version: v1
+      - kind: persistentvolumeclaims
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: Size defines one of the support Loki deployment scale out sizes.
+        displayName: Loki Stack Size
+        path: size
       version: v1beta1
   description: Loki Stack for Logging
   displayName: Loki Operator

@@ -51,7 +51,7 @@ func (in *LimitsSpec) DeepCopyInto(out *LimitsSpec) {
 	}
 	if in.Tenants != nil {
 		in, out := &in.Tenants, &out.Tenants
-		*out = make(map[string]LimitsSpec, len(*in))
+		*out = make(map[string]LimitsTemplateSpec, len(*in))
 		for key, val := range *in {
 			(*out)[key] = *val.DeepCopy()
 		}

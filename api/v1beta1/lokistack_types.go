@@ -226,7 +226,7 @@ type LimitsSpec struct {
 	// Tenants defines the limits applied per tenant.
 	//
 	// +optional
-	Tenants map[string]LimitsSpec `json:"tenants,omitempty"`
+	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
 // LokiStackSpec defines the desired state of LokiStack
