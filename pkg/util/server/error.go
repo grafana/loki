@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/logql"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request

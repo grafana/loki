@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	"github.com/grafana/loki/v2/pkg/storage/stores/shipper/testutil"
 )
 
 const (

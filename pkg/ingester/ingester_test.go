@@ -20,13 +20,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v2/pkg/chunkenc"
+	"github.com/grafana/loki/v2/pkg/ingester/client"
+	"github.com/grafana/loki/v2/pkg/iter"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/util/runtime"
+	"github.com/grafana/loki/v2/pkg/util/validation"
 )
 
 func TestIngester(t *testing.T) {

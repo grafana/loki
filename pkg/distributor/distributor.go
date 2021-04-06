@@ -23,12 +23,12 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v2/pkg/ingester/client"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/util"
+	"github.com/grafana/loki/v2/pkg/util/runtime"
+	"github.com/grafana/loki/v2/pkg/util/validation"
 )
 
 var (

@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	logql_log "github.com/grafana/loki/pkg/logql/log"
+	logql_log "github.com/grafana/loki/v2/pkg/logql/log"
 )
 
 var (

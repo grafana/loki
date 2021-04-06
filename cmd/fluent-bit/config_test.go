@@ -14,8 +14,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/logging"
 
-	"github.com/grafana/loki/pkg/promtail/client"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v2/pkg/promtail/client"
+	lokiflag "github.com/grafana/loki/v2/pkg/util/flagext"
 )
 
 type fakeConfig map[string]string

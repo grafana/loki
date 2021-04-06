@@ -23,7 +23,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/logentry/stages"
+	"github.com/grafana/loki/v2/pkg/logentry/stages"
 )
 
 // Config describes a job to scrape.

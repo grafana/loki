@@ -9,10 +9,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/grafana/loki/v2/pkg/logentry/stages"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/promtail/api"
+	"github.com/grafana/loki/v2/pkg/promtail/client"
 )
 
 var jobName = "docker"

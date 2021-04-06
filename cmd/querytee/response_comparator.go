@@ -8,7 +8,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/v2/pkg/loghttp"
 )
 
 func compareStreams(expectedRaw, actualRaw json.RawMessage, tolerance float64) error {

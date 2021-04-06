@@ -13,12 +13,12 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
-	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	loghttp_legacy "github.com/grafana/loki/v2/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v2/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/logql/marshal"
+	marshal_legacy "github.com/grafana/loki/v2/pkg/logql/marshal/legacy"
+	serverutil "github.com/grafana/loki/v2/pkg/util/server"
 )
 
 const (

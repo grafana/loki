@@ -23,8 +23,8 @@ import (
 	"github.com/weaveworks/common/user"
 	yaml "gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and

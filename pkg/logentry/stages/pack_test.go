@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/logproto"
-	logql_log "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	logql_log "github.com/grafana/loki/v2/pkg/logql/log"
+	"github.com/grafana/loki/v2/pkg/promtail/api"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error

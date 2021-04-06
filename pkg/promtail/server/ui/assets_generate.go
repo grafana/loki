@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/modtimevfs"
 	"github.com/shurcooL/vfsgen"
 
-	"github.com/grafana/loki/pkg/promtail/server/ui"
+	"github.com/grafana/loki/v2/pkg/promtail/server/ui"
 )
 
 func main() {

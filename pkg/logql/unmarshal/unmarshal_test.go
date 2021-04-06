@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	legacy_loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	legacy_loghttp "github.com/grafana/loki/v2/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql/marshal"
 )
 
 // covers requests to /loki/api/v1/push

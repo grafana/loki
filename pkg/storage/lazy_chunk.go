@@ -7,10 +7,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v2/pkg/chunkenc"
+	"github.com/grafana/loki/v2/pkg/iter"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql/log"
 )
 
 // LazyChunk loads the chunk when it is accessed.

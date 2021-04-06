@@ -16,9 +16,9 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/promtail/client/fake"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v2/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v2/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/target"
 )
 
 func TestGcplogTarget_Run(t *testing.T) {

@@ -19,17 +19,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
-	"github.com/grafana/loki/pkg/logql/stats"
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v2/pkg/cfg"
+	"github.com/grafana/loki/v2/pkg/logcli/client"
+	"github.com/grafana/loki/v2/pkg/logcli/output"
+	"github.com/grafana/loki/v2/pkg/loghttp"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/logql/marshal"
+	"github.com/grafana/loki/v2/pkg/logql/stats"
+	"github.com/grafana/loki/v2/pkg/loki"
+	"github.com/grafana/loki/v2/pkg/storage"
+	"github.com/grafana/loki/v2/pkg/util/validation"
 )
 
 type streamEntryPair struct {

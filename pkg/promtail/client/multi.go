@@ -7,8 +7,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v2/pkg/promtail/api"
+	"github.com/grafana/loki/v2/pkg/util/flagext"
 )
 
 // MultiClient is client pushing to one or more loki instances.

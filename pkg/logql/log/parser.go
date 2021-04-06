@@ -6,8 +6,8 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
-	"github.com/grafana/loki/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v2/pkg/logql/log/jsonexpr"
+	"github.com/grafana/loki/v2/pkg/logql/log/logfmt"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"

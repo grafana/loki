@@ -21,7 +21,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	shipper_util "github.com/grafana/loki/v2/pkg/storage/stores/shipper/util"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.

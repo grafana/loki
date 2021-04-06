@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/grafana/loki/pkg/promtail/targets/windows/win_eventlog"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/windows/win_eventlog"
 	"github.com/spf13/afero"
 )
 

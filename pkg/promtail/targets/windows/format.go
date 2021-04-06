@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"syscall"
 
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/windows/win_eventlog"
+	"github.com/grafana/loki/v2/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v2/pkg/promtail/targets/windows/win_eventlog"
 	jsoniter "github.com/json-iterator/go"
 )
 

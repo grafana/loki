@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/v2/pkg/logql"
 )
 
 var (

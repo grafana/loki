@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	uuid "github.com/satori/go.uuid"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v2/pkg/logproto"
+	"github.com/grafana/loki/v2/pkg/promtail/api"
+	"github.com/grafana/loki/v2/pkg/util"
 )
 
 var (
