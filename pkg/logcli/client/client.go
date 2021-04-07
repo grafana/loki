@@ -45,11 +45,13 @@ type Client interface {
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig config.TLSConfig
-	Username  string
-	Password  string
-	Address   string
-	OrgID     string
+	TLSConfig       config.TLSConfig
+	Username        string
+	Password        string
+	Address         string
+	OrgID           string
+	BearerToken     string
+	BearerTokenFile string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -177,6 +179,27 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		req.Header.Set("X-Scope-OrgID", c.OrgID)
 	}
 
+	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
+		return fmt.Errorf("at most one of HTTP basic auth (username/password), bearer-token & bearer-token-file is allowed to be configured")
+	}
+
+	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
+		return fmt.Errorf("at most one of the options bearer-token & bearer-token-file is allowed to be configured")
+	}
+
+	if c.BearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.BearerToken)
+	}
+
+	if c.BearerTokenFile != "" {
+		b, err := ioutil.ReadFile(c.BearerTokenFile)
+		if err != nil {
+			return fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
+		}
+		bearerToken := strings.TrimSpace(string(b))
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+
 	// Parse the URL to extract the host
 	clientConfig := config.HTTPClientConfig{
 		TLSConfig: c.TLSConfig,
@@ -229,6 +252,27 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 
 	if c.OrgID != "" {
 		h.Set("X-Scope-OrgID", c.OrgID)
+	}
+
+	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
+		return nil, fmt.Errorf("at most one of HTTP basic auth (username/password), bearer-token & bearer-token-file is allowed to be configured")
+	}
+
+	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
+		return nil, fmt.Errorf("at most one of the options bearer-token & bearer-token-file is allowed to be configured")
+	}
+
+	if c.BearerToken != "" {
+		h.Set("Authorization", "Bearer "+c.BearerToken)
+	}
+
+	if c.BearerTokenFile != "" {
+		b, err := ioutil.ReadFile(c.BearerTokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", c.BearerTokenFile, err)
+		}
+		bearerToken := strings.TrimSpace(string(b))
+		h.Set("Authorization", "Bearer "+bearerToken)
 	}
 
 	ws := websocket.Dialer{
