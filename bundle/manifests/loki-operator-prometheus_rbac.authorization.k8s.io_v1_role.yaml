@@ -1,6 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.0.1
@@ -8,9 +11,15 @@ metadata:
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: cluster-logging
     app.kubernetes.io/version: 0.0.1
-  name: loki-operator-metrics-reader
+  name: loki-operator-prometheus
 rules:
-- nonResourceURLs:
-  - /metrics
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - endpoints
+  - pods
   verbs:
   - get
+  - list
+  - watch

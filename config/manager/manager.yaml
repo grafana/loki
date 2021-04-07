@@ -1,37 +1,26 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    control-plane: controller-manager
-  name: system
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controller-manager
-  namespace: system
-  labels:
-    control-plane: controller-manager
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      name: loki-operator-controller-manager
   replicas: 1
   template:
     metadata:
       labels:
-        control-plane: controller-manager
+        name: loki-operator-controller-manager
     spec:
-      securityContext:
-        runAsUser: 65532
       containers:
       - command:
         - /manager
-        args:
-        - --leader-elect
         image: controller:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: manager
+        ports:
+        - containerPort: 8080
+          name: metrics
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:
@@ -46,11 +35,4 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        resources:
-          limits:
-            cpu: 100m
-            memory: 30Mi
-          requests:
-            cpu: 100m
-            memory: 20Mi
       terminationGracePeriodSeconds: 10

@@ -306,7 +306,7 @@ type LokiStackStatus struct {
 
 // LokiStack is the Schema for the lokistacks API
 //
-// +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Pod,v1},{Deployment,v1},{StatefulSet,v1},{ReplicaSet,v1},{ConfigMap,v1},{Service,v1},{ServiceMonitor,v1},{persistentvolumeclaims,v1}}
+// +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Service,v1},{PersistentVolumeClaims,v1}}
 type LokiStack struct {
 	Spec              LokiStackSpec   `json:"spec,omitempty"`
 	Status            LokiStackStatus `json:"status,omitempty"`

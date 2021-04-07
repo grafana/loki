@@ -4,23 +4,28 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controller-manager
-  namespace: system
 spec:
   template:
     spec:
       containers:
       - name: kube-rbac-proxy
-        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.5.0
+        image: quay.io/openshift/origin-kube-rbac-proxy:latest
         args:
         - "--secure-listen-address=0.0.0.0:8443"
         - "--upstream=http://127.0.0.1:8080/"
         - "--logtostderr=true"
-        - "--v=10"
+        - "--tls-cert-file=/var/run/secrets/serving-cert/tls.crt"
+        - "--tls-private-key-file=/var/run/secrets/serving-cert/tls.key"
+        - "--v=2"
         ports:
         - containerPort: 8443
           name: https
-      - name: manager
-        args:
-        - "--health-probe-bind-address=:8081"
-        - "--metrics-bind-address=127.0.0.1:8080"
-        - "--leader-elect"
+        volumeMounts:
+        - mountPath: /var/run/secrets/serving-cert
+          name: loki-operator-metrics-cert
+      volumes:
+      - name: loki-operator-metrics-cert
+        secret:
+          defaultMode: 420
+          optional: true
+          secretName: loki-operator-metrics

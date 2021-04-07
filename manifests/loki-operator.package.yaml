@@ -1,0 +1,5 @@
+#! package-manifest: ./deploy/chart/catalog_resources/rh-operators/loki-operator.v4.7.0.clusterserviceversion.yaml
+packageName: loki-operator
+channels:
+- name: "4.7"
+  currentCSV: loki-operator.v4.7.0

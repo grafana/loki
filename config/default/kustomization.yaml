@@ -1,5 +1,5 @@
 # Adds namespace to all resources.
-namespace: loki-operator-system
+namespace: openshift-logging
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
@@ -11,6 +11,12 @@ namePrefix: loki-operator-
 # Labels to add to all resources and selectors.
 #commonLabels:
 #  someName: someValue
+commonLabels:
+  app.kubernetes.io/name: loki-operator
+  app.kubernetes.io/instance: loki-operator-v0.0.1
+  app.kubernetes.io/version: "0.0.1"
+  app.kubernetes.io/part-of: cluster-logging
+  app.kubernetes.io/managed-by: operator-lifecycle-manager
 
 bases:
 - ../crd
@@ -22,7 +28,7 @@ bases:
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
 #- ../certmanager
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
-#- ../prometheus
+- ../prometheus
 
 patchesStrategicMerge:
 # Protect the /metrics endpoint by putting it behind auth.

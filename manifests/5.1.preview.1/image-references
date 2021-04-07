@@ -1,0 +1,8 @@
+kind: ImageStream
+apiVersion: image.openshift.io/v1
+spec:
+  tags:
+  - name: loki-operator
+    from:
+      kind: DockerImage
+      name: quay.io/openshift-logging/origin-loki-operator:latest
