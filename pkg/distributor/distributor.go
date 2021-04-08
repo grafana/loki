@@ -32,17 +32,6 @@ import (
 )
 
 var (
-	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_ingester_appends_total",
-		Help:      "The total number of batch appends sent to ingesters.",
-	}, []string{"ingester"})
-	ingesterAppendFailures = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_ingester_append_failures_total",
-		Help:      "The total number of failed batch appends sent to ingesters.",
-	}, []string{"ingester"})
-
 	maxLabelCacheSize = 100000
 )
 
@@ -81,6 +70,11 @@ type Distributor struct {
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
 	labelCache           *lru.Cache
+
+	// metrics
+	ingesterAppends        *prometheus.CounterVec
+	ingesterAppendFailures *prometheus.CounterVec
+	replicationFactor      prometheus.Gauge
 }
 
 // New a distributor creates.
@@ -130,7 +124,23 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:           labelCache,
+		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "distributor_ingester_appends_total",
+			Help:      "The total number of batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		ingesterAppendFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "distributor_ingester_append_failures_total",
+			Help:      "The total number of failed batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Name:      "distributor_replication_factor",
+			Help:      "The configured replication factor.",
+		}),
 	}
+	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 
 	servs = append(servs, d.pool)
 	d.subservices, err = services.NewManager(servs...)
@@ -335,9 +345,9 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 	}
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
-	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
+	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
-		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
 }
