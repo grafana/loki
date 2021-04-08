@@ -90,6 +90,8 @@ func decodeTrailers(ctx context.Context) Result {
 	if !ok {
 		return res
 	}
+	collector.Lock()
+	defer collector.Unlock()
 	res.Ingester.TotalReached = int32(len(collector.trailers))
 	for _, meta := range collector.trailers {
 		ing := decodeTrailer(ctx, meta)
