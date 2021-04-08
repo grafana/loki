@@ -8,8 +8,8 @@ import (
 
 // getSeriesPerRule merges rules per seriesID, if multiple series matches a rules, the strongest weight wins.
 // Otherwise the shorter retention wins.
-func getSeriesPerRule(series [][]string, rules []StreamRule) map[string]*StreamRule {
-	res := map[string]*StreamRule{}
+func getSeriesPerRule(series [][]string, rules []StreamRule) map[string]StreamRule {
+	res := map[string]StreamRule{}
 	for i, seriesPerRules := range series {
 		for _, series := range seriesPerRules {
 			r, ok := res[series]
@@ -17,14 +17,14 @@ func getSeriesPerRule(series [][]string, rules []StreamRule) map[string]*StreamR
 			if ok {
 				// we already have a rules for this series.
 				if newRule.Weight > r.Weight {
-					res[series] = &newRule
+					res[series] = newRule
 				}
 				if newRule.Weight == r.Weight && newRule.Duration < r.Duration {
-					res[series] = &newRule
+					res[series] = newRule
 				}
 				continue
 			}
-			res[series] = &newRule
+			res[series] = newRule
 		}
 	}
 	return res

@@ -29,18 +29,6 @@ const (
 
 var QueryParallelism = 100
 
-type ChunkRef struct {
-	UserID   []byte
-	SeriesID []byte
-	ChunkID  []byte
-	From     model.Time
-	Through  model.Time
-}
-
-func (c ChunkRef) String() string {
-	return fmt.Sprintf("UserID: %s , SeriesID: %s , Time: [%s,%s]", c.UserID, c.SeriesID, c.From, c.Through)
-}
-
 var ErrInvalidIndexKey = errors.New("invalid index key")
 
 type InvalidIndexKeyError struct {
@@ -63,8 +51,20 @@ func (e InvalidIndexKeyError) Is(target error) bool {
 	return target == ErrInvalidIndexKey
 }
 
+type ChunkRef struct {
+	UserID   []byte
+	SeriesID []byte
+	ChunkID  []byte
+	From     model.Time
+	Through  model.Time
+}
+
+func (c ChunkRef) String() string {
+	return fmt.Sprintf("UserID: %s , SeriesID: %s , Time: [%s,%s]", c.UserID, c.SeriesID, c.From, c.Through)
+}
+
 func parseChunkRef(hashKey, rangeKey []byte) (*ChunkRef, bool, error) {
-	// todo reuse memory
+	// todo reuse memory via pool
 	var components [][]byte
 	components = decodeRangeKey(rangeKey, components)
 	if len(components) == 0 {
@@ -104,6 +104,39 @@ func parseChunkRef(hashKey, rangeKey []byte) (*ChunkRef, bool, error) {
 		From:     model.Time(from),
 		Through:  model.Time(through),
 		ChunkID:  chunkID,
+	}, true, nil
+}
+
+type LabelIndexRef struct {
+	KeyType  byte
+	SeriesID []byte
+}
+
+func parseLabelIndexRef(hashKey, rangeKey []byte) (*LabelIndexRef, bool, error) {
+	// todo reuse memory via pool
+	var (
+		components [][]byte
+		seriesID   []byte
+	)
+	components = decodeRangeKey(rangeKey, components)
+	if len(components) < 4 {
+		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+	}
+	keyType := components[len(components)-1]
+	if len(keyType) == 0 {
+		return nil, false, nil
+	}
+	switch keyType[0] {
+	case labelSeriesRangeKeyV1:
+		seriesID = components[1]
+	case seriesRangeKeyV1:
+		seriesID = components[0]
+	default:
+		return nil, false, nil
+	}
+	return &LabelIndexRef{
+		KeyType:  keyType[0],
+		SeriesID: seriesID,
 	}, true, nil
 }
 
@@ -281,6 +314,7 @@ func seriesFromHash(h []byte) (seriesID []byte) {
 	return
 }
 
+// decodeKey decodes hash and range value from a boltdb key.
 func decodeKey(k []byte) (hashValue, rangeValue []byte) {
 	// hashValue + 0 + string(rangeValue)
 	for i := range k {

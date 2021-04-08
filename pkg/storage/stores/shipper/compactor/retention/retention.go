@@ -14,29 +14,37 @@ import (
 var (
 	bucketName    = []byte("index")
 	chunkBucket   = []byte("chunks")
-	seriesBucket  = []byte("series")
 	empty         = []byte("-")
 	logMetricName = "logs"
 )
+
+//  todo we want to extract interfaces for series iterator and marker
+
+type MarkerTx interface {
+	Mark(id []byte) error
+}
+
+// type Marker interface {
+// 	Begin() MarkerTx
+// 	Commit() error
+// 	Rollback() error
+// }
 
 // todo test double open db file.
 // markForDelete delete index entries for expired chunk in `in` and add chunkid to delete in `marker`.
 // All of this inside a single transaction.
 func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config chunk.PeriodConfig) error {
 	return in.Update(func(inTx *bbolt.Tx) error {
+		bucket := inTx.Bucket(bucketName)
+		if bucket == nil {
+			return nil
+		}
 		return marker.Update(func(outTx *bbolt.Tx) error {
-			bucket := inTx.Bucket(bucketName)
-			if bucket == nil {
-				return nil
-			}
 			deleteChunkBucket, err := outTx.CreateBucket(chunkBucket)
 			if err != nil {
 				return err
 			}
-			deleteSeriesBucket, err := outTx.CreateBucket(seriesBucket)
-			if err != nil {
-				return err
-			}
+			seriesMap := newUserSeriesMap()
 			// Phase 1 we mark chunkID that needs to be deleted in marker DB
 			c := bucket.Cursor()
 			var aliveChunk bool
@@ -45,10 +53,7 @@ func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config ch
 					if err := deleteChunkBucket.Put(ref.ChunkID, empty); err != nil {
 						return err
 					}
-					// todo: we should not overrides series for different userid. just merge both
-					if err := deleteSeriesBucket.Put(ref.SeriesID, ref.UserID); err != nil {
-						return err
-					}
+					seriesMap.Add(ref.SeriesID, ref.UserID)
 					if err := c.Delete(); err != nil {
 						return err
 					}
@@ -62,24 +67,19 @@ func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config ch
 			}
 			// shortcircuit: no chunks remaining we can delete everything.
 			if !aliveChunk {
-				if err := inTx.DeleteBucket(bucketName); err != nil {
-					return err
-				}
-				return outTx.DeleteBucket(seriesBucket)
+				return inTx.DeleteBucket(bucketName)
 			}
 			// Phase 2 verify series that have marked chunks have still other chunks in the index per buckets.
 			// If not this means we can delete labels index entries for the given series.
-			seriesCursor := deleteSeriesBucket.Cursor()
-		Outer:
-			for seriesID, userID := seriesCursor.First(); seriesID != nil; seriesID, userID = seriesCursor.Next() {
+			return seriesMap.ForEach(func(seriesID, userID []byte) error {
 				// for all buckets if seek to bucket.hashKey + ":" + string(seriesID) is not nil we still have chunks.
 				bucketHashes := allBucketsHashes(config, unsafeGetString(userID))
 				for _, bucketHash := range bucketHashes {
 					if key, _ := c.Seek([]byte(bucketHash + ":" + string(seriesID))); key != nil {
-						continue Outer
+						return nil
 					}
 					// this bucketHash doesn't contains the given series. Let's remove it.
-					if err := forAllLabelRef(c, bucketHash, seriesID, config, func(keyType rune) error {
+					if err := forAllLabelRef(c, bucketHash, seriesID, config, func(_ *LabelIndexRef) error {
 						if err := c.Delete(); err != nil {
 							return err
 						}
@@ -88,9 +88,8 @@ func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config ch
 						return err
 					}
 				}
-			}
-			// we don't need the series bucket anymore.
-			return outTx.DeleteBucket(seriesBucket)
+				return nil
+			})
 		})
 	})
 }
@@ -101,7 +100,7 @@ func forAllChunkRef(c *bbolt.Cursor, callback func(ref *ChunkRef) error) error {
 		if err != nil {
 			return err
 		}
-		// skiping anything else than chunk index entries.
+		// skips anything else than chunk index entries.
 		if !ok {
 			continue
 		}
@@ -112,12 +111,10 @@ func forAllChunkRef(c *bbolt.Cursor, callback func(ref *ChunkRef) error) error {
 	return nil
 }
 
-func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config chunk.PeriodConfig, callback func(keyType rune) error) error {
+func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config chunk.PeriodConfig, callback func(ref *LabelIndexRef) error) error {
 	// todo reuse memory and refactor
 	var (
-		prefix       string
-		components   [][]byte
-		seriesIDRead []byte
+		prefix string
 	)
 	// todo refactor ParseLabelRef. => keyType,SeriesID
 	switch config.Schema {
@@ -128,27 +125,14 @@ func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config 
 		prefix = fmt.Sprintf("%s:%s", bucketHash, logMetricName)
 	}
 	for k, _ := c.Seek([]byte(prefix)); k != nil; k, _ = c.Next() {
-		_, rv := decodeKey(k)
-		components = decodeRangeKey(rv, components)
-		if len(components) > 4 {
+		ref, ok, err := parseLabelIndexRef(decodeKey(k))
+		if err != nil {
+			return err
+		}
+		if !ok || !bytes.Equal(seriesID, ref.SeriesID) {
 			continue
 		}
-		keyType := components[len(components)-1]
-		if len(keyType) == 0 {
-			continue
-		}
-		switch keyType[0] {
-		case labelSeriesRangeKeyV1:
-			seriesIDRead = components[1]
-		case seriesRangeKeyV1:
-			seriesIDRead = components[0]
-		default:
-			continue
-		}
-		if !bytes.Equal(seriesID, seriesIDRead) {
-			continue
-		}
-		if err := callback(rune(keyType[0])); err != nil {
+		if err := callback(ref); err != nil {
 			return err
 		}
 	}
