@@ -97,8 +97,8 @@ func (b *BucketRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements rules.RuleStore.
-func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
-	out := map[string]rulestore.RuleGroupList{}
+func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
+	out := map[string]rulespb.RuleGroupList{}
 
 	// List rule groups for all tenants.
 	err := b.bucket.Iter(ctx, "", func(key string) error {
@@ -126,10 +126,10 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 }
 
 // ListRuleGroupsForUserAndNamespace implements rules.RuleStore.
-func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
+func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 
-	groupList := rulestore.RuleGroupList{}
+	groupList := rulespb.RuleGroupList{}
 
 	// The prefix to list objects depends on whether the namespace has been
 	// specified in the request.
@@ -162,7 +162,7 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 }
 
 // LoadRuleGroups implements rules.RuleStore.
-func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulestore.RuleGroupList) error {
+func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
 	ch := make(chan *rulespb.RuleGroupDesc)
 
 	// Given we store one file per rule group. With this, we create a pool of workers that will

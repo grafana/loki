@@ -3,7 +3,7 @@ title: labeldrop
 ---
 # `labeldrop` stage
 
-The labeldrop stage is an action stage that takes drops labels from
+The labeldrop stage is an action stage that drops labels from
 the label set that is sent to Loki with the log entry.
 
 ## Schema

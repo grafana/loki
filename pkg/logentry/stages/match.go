@@ -62,7 +62,7 @@ func validateMatcherConfig(cfg *MatcherConfig) (logql.LogSelectorExpr, error) {
 		return nil, errors.New(ErrStagesWithDropLine)
 	}
 
-	selector, err := logql.ParseLogSelector(cfg.Selector)
+	selector, err := logql.ParseLogSelector(cfg.Selector, false)
 	if err != nil {
 		return nil, errors.Wrap(err, ErrSelectorSyntax)
 	}

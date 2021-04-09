@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -48,6 +49,8 @@ const (
 var (
 	// This is initialised if the WAL is enabled and the records are fetched from this pool.
 	recordPool sync.Pool
+
+	errIngesterStopping = errors.New("ingester stopping")
 )
 
 // Config for an Ingester.
@@ -436,7 +439,7 @@ func (i *Ingester) checkRunningOrStopping() error {
 }
 
 // Push implements client.IngesterServer
-func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	if err := i.checkRunningOrStopping(); err != nil {
 		return nil, err
 	}
@@ -447,11 +450,11 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
-	defer client.ReuseSlice(req.Timeseries)
+	defer cortexpb.ReuseSlice(req.Timeseries)
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
@@ -511,15 +514,15 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	if firstPartialErr != nil {
 		// grpcForwardableError turns the error into a string so it no longer references `req`
-		return &client.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
+		return &cortexpb.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
 	}
 
-	return &client.WriteResponse{}, nil
+	return &cortexpb.WriteResponse{}, nil
 }
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *WALRecord) error {
+func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source cortexpb.WriteRequest_SourceEnum, record *WALRecord) error {
 	labels.removeBlanks()
 
 	var (
@@ -534,7 +537,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		}
 	}()
 	if i.stopped {
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 
 	// getOrCreateSeries copies the memory for `labels`, except on the error path.
@@ -585,9 +588,9 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 	i.metrics.ingestedSamples.Inc()
 	switch source {
-	case client.RULE:
+	case cortexpb.RULE:
 		state.ingestedRuleSamples.inc()
-	case client.API:
+	case cortexpb.API:
 		fallthrough
 	default:
 		state.ingestedAPISamples.inc()
@@ -596,7 +599,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	return err
 }
 
-func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*client.MetricMetadata) {
+func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*cortexpb.MetricMetadata) {
 	var firstMetadataErr error
 	for _, metadata := range metadata {
 		err := i.appendMetadata(userID, metadata)
@@ -619,11 +622,11 @@ func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*
 	}
 }
 
-func (i *Ingester) appendMetadata(userID string, m *client.MetricMetadata) error {
+func (i *Ingester) appendMetadata(userID string, m *cortexpb.MetricMetadata) error {
 	i.userStatesMtx.RLock()
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 	i.userStatesMtx.RUnlock()
 
@@ -744,12 +747,12 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
 		}
 
-		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.metric),
-			Samples: make([]client.Sample, 0, len(values)),
+		ts := cortexpb.TimeSeries{
+			Labels:  cortexpb.FromLabelsToLabelAdapters(series.metric),
+			Samples: make([]cortexpb.Sample, 0, len(values)),
 		}
 		for _, s := range values {
-			ts.Samples = append(ts.Samples, client.Sample{
+			ts.Samples = append(ts.Samples, cortexpb.Sample{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			})
@@ -820,7 +823,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapters(series.metric),
+			Labels: cortexpb.FromLabelsToLabelAdapters(series.metric),
 			Chunks: wireChunks,
 		})
 
@@ -934,10 +937,10 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	result := &client.MetricsForLabelMatchersResponse{
-		Metric: make([]*client.Metric, 0, len(lss)),
+		Metric: make([]*cortexpb.Metric, 0, len(lss)),
 	}
 	for _, ls := range lss {
-		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapters(ls)})
+		result.Metric = append(result.Metric, &cortexpb.Metric{Labels: cortexpb.FromLabelsToLabelAdapters(ls)})
 	}
 
 	return result, nil
@@ -954,7 +957,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	userMetadata := i.getUserMetadata(userID)
@@ -1038,9 +1041,9 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 }
 
 // labels will be copied if needed.
-func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []client.LabelAdapter) {
+func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []cortexpb.LabelAdapter) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
-	i.userStates.updateActiveSeriesForUser(userID, now, client.FromLabelAdaptersToLabels(labels))
+	i.userStates.updateActiveSeriesForUser(userID, now, cortexpb.FromLabelAdaptersToLabels(labels))
 }

@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	cloud.google.com/go/pubsub v1.3.1
+	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/bmatcuk/doublestar v1.2.2
@@ -11,7 +12,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.7.1-0.20210308081334-2dae12a14c48
+	github.com/cortexproject/cortex v1.7.1-0.20210323110114-8a2e2c1eeb65
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.3+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
@@ -25,7 +26,7 @@ require (
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
-	github.com/golang/snappy v0.0.3-0.20201103224600-674baa8c7fc3
+	github.com/golang/snappy v0.0.3
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
@@ -33,8 +34,8 @@ require (
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hpcloud/tail v1.0.0
-	github.com/imdario/mergo v0.3.9
-	github.com/influxdata/go-syslog/v3 v3.0.1-0.20200510134747-836dce2cf6da
+	github.com/imdario/mergo v0.3.11
+	github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
 	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
@@ -50,7 +51,8 @@ require (
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.18.0
-	github.com/prometheus/prometheus v1.8.2-0.20210215121130-6f488061dfb4
+	github.com/prometheus/prometheus v1.8.2-0.20210321183757-31a518faab18
+	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
 	github.com/segmentio/fasthash v1.0.2
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
@@ -74,6 +76,9 @@ require (
 	k8s.io/klog v1.0.0
 )
 
+// Upgrade to run with gRPC 1.3.0 and above.
+replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
+
 replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643-7aa4e4a91f03
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
@@ -90,9 +95,6 @@ replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
-
-// Same as Cortex, we can't upgrade to grpc 1.30.0 until go.etcd.io/etcd will support it.
-replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
 
 // Same as Cortex
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86

@@ -136,6 +136,10 @@ type Options struct {
 	// It is always the default time and size based retention in Prometheus and
 	// mainly meant for external users who import TSDB.
 	BlocksToDelete BlocksToDeleteFunc
+
+	// MaxExemplars sets the size, in # of exemplars stored, of the single circular buffer used to store exemplars in memory.
+	// See tsdb/exemplar.go, specifically the CircularExemplarStorage struct and it's constructor NewCircularExemplarStorage.
+	MaxExemplars int
 }
 
 type BlocksToDeleteFunc func(blocks []*Block) map[ulid.ULID]struct{}
@@ -663,6 +667,7 @@ func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs
 	headOpts.ChunkWriteBufferSize = opts.HeadChunksWriteBufferSize
 	headOpts.StripeSize = opts.StripeSize
 	headOpts.SeriesCallback = opts.SeriesLifecycleCallback
+	headOpts.NumExemplars = opts.MaxExemplars
 	db.head, err = NewHead(r, l, wlog, headOpts)
 	if err != nil {
 		return nil, err
@@ -788,6 +793,15 @@ func (db *DB) Appender(ctx context.Context) storage.Appender {
 type dbAppender struct {
 	storage.Appender
 	db *DB
+}
+
+var _ storage.GetRef = dbAppender{}
+
+func (a dbAppender) GetRef(lset labels.Labels) uint64 {
+	if g, ok := a.Appender.(storage.GetRef); ok {
+		return g.GetRef(lset)
+	}
+	return 0
 }
 
 func (a dbAppender) Commit() error {
@@ -979,6 +993,12 @@ func (db *DB) reloadBlocks() (err error) {
 		db.metrics.reloads.Inc()
 	}()
 
+	// Now that we reload TSDB every minute, there is high chance for race condition with a reload
+	// triggered by CleanTombstones(). We need to lock the reload to avoid the situation where
+	// a normal reload and CleanTombstones try to delete the same block.
+	db.mtx.Lock()
+	defer db.mtx.Unlock()
+
 	loadable, corrupted, err := openBlocks(db.logger, db.dir, db.blocks, db.chunkPool)
 	if err != nil {
 		return err
@@ -1044,10 +1064,8 @@ func (db *DB) reloadBlocks() (err error) {
 	}
 
 	// Swap new blocks first for subsequently created readers to be seen.
-	db.mtx.Lock()
 	oldBlocks := db.blocks
 	db.blocks = toLoad
-	db.mtx.Unlock()
 
 	blockMetas := make([]BlockMeta, 0, len(toLoad))
 	for _, b := range toLoad {
@@ -1502,6 +1520,10 @@ func (db *DB) ChunkQuerier(_ context.Context, mint, maxt int64) (storage.ChunkQu
 	return storage.NewMergeChunkQuerier(blockQueriers, nil, storage.NewCompactingChunkSeriesMerger(storage.ChainedSeriesMerge)), nil
 }
 
+func (db *DB) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
+	return db.head.exemplars.ExemplarQuerier(ctx)
+}
+
 func rangeForTimestamp(t int64, width int64) (maxt int64) {
 	return (t/width)*width + width
 }
@@ -1537,34 +1559,44 @@ func (db *DB) CleanTombstones() (err error) {
 	start := time.Now()
 	defer db.metrics.tombCleanTimer.Observe(time.Since(start).Seconds())
 
-	newUIDs := []ulid.ULID{}
-	defer func() {
-		// If any error is caused, we need to delete all the new directory created.
-		if err != nil {
-			for _, uid := range newUIDs {
+	cleanUpCompleted := false
+	// Repeat cleanup until there is no tombstones left.
+	for !cleanUpCompleted {
+		cleanUpCompleted = true
+
+		for _, pb := range db.Blocks() {
+			uid, safeToDelete, cleanErr := pb.CleanTombstones(db.Dir(), db.compactor)
+			if cleanErr != nil {
+				return errors.Wrapf(cleanErr, "clean tombstones: %s", pb.Dir())
+			}
+			if !safeToDelete {
+				// There was nothing to clean.
+				continue
+			}
+
+			// In case tombstones of the old block covers the whole block,
+			// then there would be no resultant block to tell the parent.
+			// The lock protects against race conditions when deleting blocks
+			// during an already running reload.
+			db.mtx.Lock()
+			pb.meta.Compaction.Deletable = safeToDelete
+			db.mtx.Unlock()
+			cleanUpCompleted = false
+			if err = db.reloadBlocks(); err == nil { // Will try to delete old block.
+				// Successful reload will change the existing blocks.
+				// We need to loop over the new set of blocks.
+				break
+			}
+
+			// Delete new block if it was created.
+			if uid != nil && *uid != (ulid.ULID{}) {
 				dir := filepath.Join(db.Dir(), uid.String())
 				if err := os.RemoveAll(dir); err != nil {
 					level.Error(db.logger).Log("msg", "failed to delete block after failed `CleanTombstones`", "dir", dir, "err", err)
 				}
 			}
+			return errors.Wrap(err, "reload blocks")
 		}
-	}()
-
-	db.mtx.RLock()
-	blocks := db.blocks[:]
-	db.mtx.RUnlock()
-
-	for _, b := range blocks {
-		if uid, er := b.CleanTombstones(db.Dir(), db.compactor); er != nil {
-			err = errors.Wrapf(er, "clean tombstones: %s", b.Dir())
-			return err
-		} else if uid != nil { // New block was created.
-			newUIDs = append(newUIDs, *uid)
-		}
-	}
-
-	if err := db.reloadBlocks(); err != nil {
-		return errors.Wrap(err, "reload blocks")
 	}
 	return nil
 }

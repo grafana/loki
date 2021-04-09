@@ -6,10 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -114,4 +117,23 @@ func TestMultiClient_Handle(t *testing.T) {
 	if len(f.Received()) != len(clients) {
 		t.Fatal("missing handle call")
 	}
+}
+
+func TestMultiClient_Handle_Race(t *testing.T) {
+	u := flagext.URLValue{}
+	require.NoError(t, u.Set("http://localhost"))
+	c1, err := New(nil, Config{URL: u, BackoffConfig: util.BackoffConfig{MaxRetries: 1}, Timeout: time.Microsecond}, log.NewNopLogger())
+	require.NoError(t, err)
+	c2, err := New(nil, Config{URL: u, BackoffConfig: util.BackoffConfig{MaxRetries: 1}, Timeout: time.Microsecond}, log.NewNopLogger())
+	require.NoError(t, err)
+	clients := []Client{c1, c2}
+	m := &MultiClient{
+		clients: clients,
+		entries: make(chan api.Entry),
+	}
+	m.start()
+
+	m.Chan() <- api.Entry{Labels: model.LabelSet{"foo": "bar", ReservedLabelTenantID: "1"}, Entry: logproto.Entry{Line: "foo"}}
+
+	m.Stop()
 }

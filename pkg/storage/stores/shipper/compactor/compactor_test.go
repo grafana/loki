@@ -18,7 +18,8 @@ func TestIsDefaults(t *testing.T) {
 		}, false},
 		{&Config{}, false},
 		{&Config{
-			CompactionInterval: 2 * time.Hour,
+			SharedStoreKeyPrefix: "index/",
+			CompactionInterval:   2 * time.Hour,
 		}, true},
 	} {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {

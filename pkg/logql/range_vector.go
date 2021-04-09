@@ -25,19 +25,23 @@ type RangeVectorIterator interface {
 }
 
 type rangeVectorIterator struct {
-	iter                         iter.PeekingSampleIterator
-	selRange, step, end, current int64
-	window                       map[string]*promql.Series
-	metrics                      map[string]labels.Labels
-	at                           []promql.Sample
+	iter                                 iter.PeekingSampleIterator
+	selRange, step, end, current, offset int64
+	window                               map[string]*promql.Series
+	metrics                              map[string]labels.Labels
+	at                                   []promql.Sample
 }
 
 func newRangeVectorIterator(
 	it iter.PeekingSampleIterator,
-	selRange, step, start, end int64) *rangeVectorIterator {
+	selRange, step, start, end, offset int64) *rangeVectorIterator {
 	// forces at least one step.
 	if step == 0 {
 		step = 1
+	}
+	if offset != 0 {
+		start = start - offset
+		end = end - offset
 	}
 	return &rangeVectorIterator{
 		iter:     it,
@@ -45,6 +49,7 @@ func newRangeVectorIterator(
 		end:      end,
 		selRange: selRange,
 		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
 		window:   map[string]*promql.Series{},
 		metrics:  map[string]labels.Labels{},
 	}
@@ -57,7 +62,7 @@ func (r *rangeVectorIterator) Next() bool {
 		return false
 	}
 	rangeEnd := r.current
-	rangeStart := r.current - r.selRange
+	rangeStart := rangeEnd - r.selRange
 	// load samples
 	r.popBack(rangeStart)
 	r.load(rangeStart, rangeEnd)
@@ -144,7 +149,7 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current / 1e+6
+	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
 		r.at = append(r.at, promql.Sample{
 			Point: promql.Point{

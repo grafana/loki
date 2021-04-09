@@ -371,11 +371,11 @@ type mockRing struct {
 func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	result := ring.ReplicationSet{
 		MaxErrors: 1,
-		Ingesters: buf[:0],
+		Instances: buf[:0],
 	}
 	for i := uint32(0); i < r.replicationFactor; i++ {
 		n := (key + i) % uint32(len(r.ingesters))
-		result.Ingesters = append(result.Ingesters, r.ingesters[n])
+		result.Instances = append(result.Instances, r.ingesters[n])
 	}
 	return result, nil
 }
@@ -386,7 +386,7 @@ func (r mockRing) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) 
 
 func (r mockRing) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
 	return ring.ReplicationSet{
-		Ingesters: r.ingesters,
+		Instances: r.ingesters,
 		MaxErrors: 1,
 	}, nil
 }

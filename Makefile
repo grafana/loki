@@ -39,7 +39,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.12.0
+BUILD_IMAGE_VERSION := 0.13.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -582,3 +582,9 @@ lint-jsonnet:
 fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
+
+# usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
+# this will run the fuzzing using /tmp/testcase and save benchmark locally.
+test-fuzz:
+	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
+		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s

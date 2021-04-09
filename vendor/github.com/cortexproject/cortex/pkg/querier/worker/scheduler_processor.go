@@ -73,6 +73,17 @@ type schedulerProcessor struct {
 	frontendClientRequestDuration *prometheus.HistogramVec
 }
 
+// notifyShutdown implements processor.
+func (sp *schedulerProcessor) notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string) {
+	client := schedulerpb.NewSchedulerForQuerierClient(conn)
+
+	req := &schedulerpb.NotifyQuerierShutdownRequest{QuerierID: sp.querierID}
+	if _, err := client.NotifyQuerierShutdown(ctx, req); err != nil {
+		// Since we're shutting down there's nothing we can do except logging it.
+		level.Warn(sp.log).Log("msg", "failed to notify querier shutdown to query-scheduler", "address", address, "err", err)
+	}
+}
+
 func (sp *schedulerProcessor) processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string) {
 	schedulerClient := schedulerpb.NewSchedulerForQuerierClient(conn)
 

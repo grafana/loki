@@ -226,6 +226,18 @@ func TestTemplateStage_Process(t *testing.T) {
 				"testval": "value",
 			},
 		},
+		"sprig": {
+			TemplateConfig{
+				Source:   "testval",
+				Template: "{{ add 7 3 }}",
+			},
+			map[string]interface{}{
+				"testval": "Value",
+			},
+			map[string]interface{}{
+				"testval": "10",
+			},
+		},
 		"ToLowerParams": {
 			TemplateConfig{
 				Source:   "testval",

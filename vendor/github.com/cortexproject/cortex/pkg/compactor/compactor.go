@@ -41,7 +41,7 @@ const (
 
 var (
 	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
-	RingOp                = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, nil)
+	RingOp                = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
 		return compact.NewDefaultGrouper(
@@ -721,11 +721,11 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 		return false, err
 	}
 
-	if len(rs.Ingesters) != 1 {
-		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Ingesters))
+	if len(rs.Instances) != 1 {
+		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Instances))
 	}
 
-	return rs.Ingesters[0].Addr == c.ringLifecycler.Addr, nil
+	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
 }
 
 func isAllowedUser(enabledUsers, disabledUsers map[string]struct{}, userID string) bool {

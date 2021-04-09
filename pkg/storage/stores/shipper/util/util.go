@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 )
+
+const delimiter = "/"
 
 type StorageClient interface {
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
@@ -171,4 +174,20 @@ func RemoveDirectories(incoming []chunk.StorageObject) []chunk.StorageObject {
 // IsDirectory will return true if the string ends in a forward slash
 func IsDirectory(key string) bool {
 	return strings.HasSuffix(key, "/")
+}
+
+func ValidateSharedStoreKeyPrefix(prefix string) error {
+	if prefix == "" {
+		return errors.New("shared store key prefix must be set")
+	} else if strings.Contains(prefix, "\\") {
+		// When using windows filesystem as object store the implementation of ObjectClient in Cortex takes care of conversion of separator.
+		// We just need to always use `/` as a path separator.
+		return fmt.Errorf("shared store key prefix should only have '%s' as a path separator", delimiter)
+	} else if strings.HasPrefix(prefix, delimiter) {
+		return errors.New("shared store key prefix should never start with a path separator i.e '/'")
+	} else if !strings.HasSuffix(prefix, delimiter) {
+		return errors.New("shared store key prefix should end with a path separator i.e '/'")
+	}
+
+	return nil
 }

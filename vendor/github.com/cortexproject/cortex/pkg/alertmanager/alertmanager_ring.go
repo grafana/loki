@@ -27,7 +27,7 @@ const (
 )
 
 // RingOp is the operation used for reading/writing to the alertmanagers.
-var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
+var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
 	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
 	return s != ring.ACTIVE
 })

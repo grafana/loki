@@ -76,6 +76,15 @@ The same rules that apply for [Prometheus Label Selectors](https://prometheus.io
 
 **Important note:** The `=~` regex operator is fully anchored, meaning regex must match against the *entire* string, including newlines. The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
 
+#### Offset modifier
+The offset modifier allows changing the time offset for individual range vectors in a query.
+
+For example, the following expression counts all the logs within the last ten minutes to five minutes rather than last five minutes for the MySQL job. Note that the `offset` modifier always needs to follow the range vector selector immediately.
+```logql
+count_over_time({job="mysql"}[5m] offset 5m) // GOOD
+count_over_time({job="mysql"}[5m]) offset 5m // INVALID
+```
+
 ### Log Pipeline
 
 A log pipeline can be appended to a log stream selector to further process and filter log streams. It usually is composed of one or multiple expressions, each expressions is executed in sequence for each log line. If an expression filters out a log line, the pipeline will stop at this point and start processing the next line.
@@ -253,7 +262,7 @@ The **logfmt** parser can be added using the `| logfmt` and will extract all key
 For example the following log line:
 
 ```logfmt
-at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" connect=4ms service=8ms status=200
+at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
 ```
 
 will get those labels extracted:
@@ -310,7 +319,7 @@ allows to extract the `container` and `pod` labels and the `original log message
 
 #### Label Filter Expression
 
-Label filter expression allows filtering log line using their original and extracted labels. It can contains multiple predicates.
+Label filter expression allows filtering log line using their original and extracted labels. It can contain multiple predicates.
 
 A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
 
@@ -382,11 +391,21 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
+`line_format` also supports `math` functions. Example:
+
+If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms), we can divide the duration by `1000` to get the value in seconds.
+
+```logql
+{container="frontend"} | logfmt | line_format "{{.ip}} {{.status}} {{div .duration 1000}}"
+```
+
+The above query will give us the `line` as `1.1.1.1 200 3`
+
 See [template functions](template_functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
-The `| label_format` expression can renamed, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
+The `| label_format` expression can rename, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 
@@ -497,7 +516,7 @@ It returns the per-second rate of all non-timeout errors within the last minutes
 
 #### Unwrapped Range Aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be use within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
@@ -515,6 +534,8 @@ Supported function for operating over unwrapped ranges are:
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
 - `min_over_time(unwrapped-range)`: the minimum value of all points in the specified interval
+- `first_over_time(unwrapped-range)`: the first value of all points in the specified interval
+- `last_over_time(unwrapped-range)`: the last value of all points in the specified interval
 - `stdvar_over_time(unwrapped-range)`: the population standard variance of the values in the specified interval.
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.

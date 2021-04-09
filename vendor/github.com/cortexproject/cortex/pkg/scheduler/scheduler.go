@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"io"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
@@ -53,6 +53,10 @@ type Scheduler struct {
 	pendingRequestsMu sync.Mutex
 	pendingRequests   map[requestKey]*schedulerRequest // Request is kept in this map even after being dispatched to querier. It can still be canceled at that time.
 
+	// Subservices manager.
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+
 	// Metrics.
 	queueLength              *prometheus.GaugeVec
 	discardedRequests        *prometheus.CounterVec
@@ -76,13 +80,14 @@ type connectedFrontend struct {
 }
 
 type Config struct {
-	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant"`
-
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
+	MaxOutstandingPerTenant int               `yaml:"max_outstanding_requests_per_tenant"`
+	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
+	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
+	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 }
 
@@ -106,7 +111,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Name: "cortex_query_scheduler_discarded_requests_total",
 		Help: "Total number of query requests discarded.",
 	}, []string{"user"})
-	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, s.queueLength, s.discardedRequests)
+	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_query_scheduler_queue_duration_seconds",
@@ -124,7 +129,13 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 
 	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
-	s.Service = services.NewIdleService(s.starting, s.stopping)
+	var err error
+	s.subservices, err = services.NewManager(s.requestQueue, s.activeUsers)
+	if err != nil {
+		return nil, err
+	}
+
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
 }
 
@@ -381,6 +392,13 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	return errSchedulerIsNotRunning
 }
 
+func (s *Scheduler) NotifyQuerierShutdown(_ context.Context, req *schedulerpb.NotifyQuerierShutdownRequest) (*schedulerpb.NotifyQuerierShutdownResponse, error) {
+	level.Info(s.log).Log("msg", "received shutdown notification from querier", "querier", req.GetQuerierID())
+	s.requestQueue.NotifyQuerierShutdown(req.GetQuerierID())
+
+	return &schedulerpb.NotifyQuerierShutdownResponse{}, nil
+}
+
 func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuerier_QuerierLoopServer, req *schedulerRequest) error {
 	// Make sure to cancel request at the end to cleanup resources.
 	defer s.cancelRequestAndRemoveFromPending(req.frontendAddress, req.queryID)
@@ -466,13 +484,30 @@ func (s *Scheduler) isRunningOrStopping() bool {
 }
 
 func (s *Scheduler) starting(ctx context.Context) error {
-	return services.StartAndAwaitRunning(ctx, s.activeUsers)
+	s.subservicesWatcher.WatchManager(s.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, s.subservices); err != nil {
+		return errors.Wrap(err, "unable to start scheduler subservices")
+	}
+
+	return nil
+}
+
+func (s *Scheduler) running(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-s.subservicesWatcher.Chan():
+			return errors.Wrap(err, "scheduler subservice failed")
+		}
+	}
 }
 
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
-	s.requestQueue.Stop()
-	return services.StopAndAwaitTerminated(context.Background(), s.activeUsers)
+	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
+	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {

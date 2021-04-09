@@ -3,9 +3,14 @@ package worker
 import (
 	"context"
 	"sync"
+	"time"
 
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+)
+
+const (
+	notifyShutdownTimeout = 5 * time.Second
 )
 
 // Manages processor goroutines for single grpc connection.
@@ -36,6 +41,12 @@ func newProcessorManager(ctx context.Context, p processor, conn *grpc.ClientConn
 }
 
 func (pm *processorManager) stop() {
+	// Notify the remote query-frontend or query-scheduler we're shutting down.
+	// We use a new context to make sure it's not cancelled.
+	notifyCtx, cancel := context.WithTimeout(context.Background(), notifyShutdownTimeout)
+	defer cancel()
+	pm.p.notifyShutdown(notifyCtx, pm.conn, pm.address)
+
 	// Stop all goroutines.
 	pm.concurrency(0)
 

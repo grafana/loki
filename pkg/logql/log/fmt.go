@@ -7,6 +7,8 @@ import (
 	"strings"
 	"text/template"
 	"text/template/parse"
+
+	"github.com/Masterminds/sprig/v3"
 )
 
 var (
@@ -15,7 +17,7 @@ var (
 
 	// Available map of functions for the text template engine.
 	functionMap = template.FuncMap{
-		// olds function deprecated.
+		// olds functions deprecated.
 		"ToLower":    strings.ToLower,
 		"ToUpper":    strings.ToUpper,
 		"Replace":    strings.Replace,
@@ -25,28 +27,6 @@ var (
 		"TrimPrefix": strings.TrimPrefix,
 		"TrimSuffix": strings.TrimSuffix,
 		"TrimSpace":  strings.TrimSpace,
-
-		// New function ported from https://github.com/Masterminds/sprig/
-		// Those function takes the string as the last parameter, allowing pipe chaining.
-		// Example: .mylabel | lower | substring 0 5
-		"lower":      strings.ToLower,
-		"upper":      strings.ToUpper,
-		"title":      strings.Title,
-		"trunc":      trunc,
-		"substr":     substring,
-		"contains":   contains,
-		"hasPrefix":  hasPrefix,
-		"hasSuffix":  hasSuffix,
-		"indent":     indent,
-		"nindent":    nindent,
-		"replace":    replace,
-		"repeat":     repeat,
-		"trim":       strings.TrimSpace,
-		"trimAll":    trimAll,
-		"trimSuffix": trimSuffix,
-		"trimPrefix": trimPrefix,
-
-		// regex functions
 		"regexReplaceAll": func(regex string, s string, repl string) string {
 			r := regexp.MustCompile(regex)
 			return r.ReplaceAllString(s, repl)
@@ -56,7 +36,54 @@ var (
 			return r.ReplaceAllLiteralString(s, repl)
 		},
 	}
+
+	// sprig template functions
+	templateFunctions = []string{
+		"lower",
+		"upper",
+		"title",
+		"trunc",
+		"substr",
+		"contains",
+		"hasPrefix",
+		"hasSuffix",
+		"indent",
+		"nindent",
+		"replace",
+		"repeat",
+		"trim",
+		"trimAll",
+		"trimSuffix",
+		"trimPrefix",
+		"int",
+		"float64",
+		"add",
+		"sub",
+		"mul",
+		"div",
+		"mod",
+		"addf",
+		"subf",
+		"mulf",
+		"divf",
+		"max",
+		"min",
+		"maxf",
+		"minf",
+		"ceil",
+		"floor",
+		"round",
+	}
 )
+
+func init() {
+	sprigFuncMap := sprig.GenericFuncMap()
+	for _, v := range templateFunctions {
+		if function, ok := sprigFuncMap[v]; ok {
+			functionMap[v] = function
+		}
+	}
+}
 
 type LineFormatter struct {
 	*template.Template
@@ -297,18 +324,3 @@ func substring(start, end int, s string) string {
 	}
 	return string(runes[start:end])
 }
-
-func contains(substr string, str string) bool  { return strings.Contains(str, substr) }
-func hasPrefix(substr string, str string) bool { return strings.HasPrefix(str, substr) }
-func hasSuffix(substr string, str string) bool { return strings.HasSuffix(str, substr) }
-func repeat(count int, str string) string      { return strings.Repeat(str, count) }
-func replace(old, new, src string) string      { return strings.Replace(src, old, new, -1) }
-func trimAll(a, b string) string               { return strings.Trim(b, a) }
-func trimSuffix(a, b string) string            { return strings.TrimSuffix(b, a) }
-func trimPrefix(a, b string) string            { return strings.TrimPrefix(b, a) }
-func indent(spaces int, v string) string {
-	pad := strings.Repeat(" ", spaces)
-	return pad + strings.Replace(v, "\n", "\n"+pad, -1)
-}
-
-func nindent(spaces int, v string) string { return "\n" + indent(spaces, v) }

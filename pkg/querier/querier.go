@@ -77,6 +77,10 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 	return &querier, nil
 }
 
+func (q *Querier) SetQueryable(queryable logql.Querier) {
+	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits)
+}
+
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	err := q.validateQueryRequest(ctx, params)

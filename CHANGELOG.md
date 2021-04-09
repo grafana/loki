@@ -1,5 +1,6 @@
 ## Master
 
+* [3532](https://github.com/grafana/loki/pull/3532) **MichelHollands**: Update vendored Cortex to 8a2e2c1eeb65
 * [3446](https://github.com/grafana/loki/pull/3446) **pracucci, owen-d**: Remove deprecated config `querier.split-queries-by-day` in favor of `querier.split-queries-by-interval`
 
 ## 2.2.0 (2021/03/10)

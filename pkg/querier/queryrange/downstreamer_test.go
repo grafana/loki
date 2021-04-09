@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -21,8 +21,8 @@ import (
 func testSampleStreams() []queryrange.SampleStream {
 	return []queryrange.SampleStream{
 		{
-			Labels: []client.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []client.Sample{
+			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []cortexpb.Sample{
 				{
 					Value:       0,
 					TimestampMs: 0,
@@ -38,8 +38,8 @@ func testSampleStreams() []queryrange.SampleStream {
 			},
 		},
 		{
-			Labels: []client.LabelAdapter{{Name: "bazz", Value: "buzz"}},
-			Samples: []client.Sample{
+			Labels: []cortexpb.LabelAdapter{{Name: "bazz", Value: "buzz"}},
+			Samples: []cortexpb.Sample{
 				{
 					Value:       4,
 					TimestampMs: 4,

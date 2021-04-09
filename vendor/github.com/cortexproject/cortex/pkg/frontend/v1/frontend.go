@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
@@ -31,12 +31,14 @@ var (
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant int `yaml:"max_outstanding_per_tenant"`
+	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
+	QuerierForgetDelay      time.Duration `yaml:"querier_forget_delay"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
+	f.DurationVar(&cfg.QuerierForgetDelay, "query-frontend.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-frontend will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 }
 
 type Limits interface {
@@ -56,6 +58,10 @@ type Frontend struct {
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
 
+	// Subservices manager.
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+
 	// Metrics.
 	queueLength       *prometheus.GaugeVec
 	discardedRequests *prometheus.CounterVec
@@ -74,8 +80,7 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) *Frontend {
-
+func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
@@ -95,26 +100,48 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, f.queueLength, f.discardedRequests)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, f.queueLength, f.discardedRequests)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
+
+	var err error
+	f.subservices, err = services.NewManager(f.requestQueue, f.activeUsers)
+	if err != nil {
+		return nil, err
+	}
 
 	f.numClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_frontend_connected_clients",
 		Help: "Number of worker clients currently connected to the frontend.",
 	}, f.requestQueue.GetConnectedQuerierWorkersMetric)
 
-	f.Service = services.NewIdleService(f.starting, f.stopping)
-	return f
+	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
+	return f, nil
 }
 
 func (f *Frontend) starting(ctx context.Context) error {
-	return services.StartAndAwaitRunning(ctx, f.activeUsers)
+	f.subservicesWatcher.WatchManager(f.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
+		return errors.Wrap(err, "unable to start frontend subservices")
+	}
+
+	return nil
+}
+
+func (f *Frontend) running(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-f.subservicesWatcher.Chan():
+			return errors.Wrap(err, "frontend subservice failed")
+		}
+	}
 }
 
 func (f *Frontend) stopping(_ error) error {
-	// Stops new requests and errors out any pending requests.
-	f.requestQueue.Stop()
-	return services.StopAndAwaitTerminated(context.Background(), f.activeUsers)
+	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
+	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {
@@ -256,6 +283,13 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 			req.response <- resp.HttpResponse
 		}
 	}
+}
+
+func (f *Frontend) NotifyClientShutdown(_ context.Context, req *frontendv1pb.NotifyClientShutdownRequest) (*frontendv1pb.NotifyClientShutdownResponse, error) {
+	level.Info(f.log).Log("msg", "received shutdown notification from querier", "querier", req.GetClientID())
+	f.requestQueue.NotifyQuerierShutdown(req.GetClientID())
+
+	return &frontendv1pb.NotifyClientShutdownResponse{}, nil
 }
 
 func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {

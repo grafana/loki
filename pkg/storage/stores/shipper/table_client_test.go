@@ -36,7 +36,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 	}
 
 	// we need to use prefixed object client while creating files/folder
-	prefixedObjectClient := util.NewPrefixedObjectClient(objectClient, StorageKeyPrefix)
+	prefixedObjectClient := util.NewPrefixedObjectClient(objectClient, "index/")
 
 	for folder, files := range foldersWithFiles {
 		for _, fileName := range files {
@@ -45,7 +45,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 		}
 	}
 
-	tableClient := NewBoltDBShipperTableClient(objectClient)
+	tableClient := NewBoltDBShipperTableClient(objectClient, "index/")
 
 	// check list of tables returns all the folders/tables created above
 	checkExpectedTables(t, tableClient, foldersWithFiles)

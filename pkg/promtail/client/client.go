@@ -217,6 +217,7 @@ func (c *client) run() {
 	maxWaitCheck := time.NewTicker(maxWaitCheckFrequency)
 
 	defer func() {
+		maxWaitCheck.Stop()
 		// Send all pending batches
 		for tenantID, batch := range batches {
 			c.sendBatch(tenantID, batch)
@@ -404,7 +405,6 @@ func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 		e.Labels = c.externalLabels.Merge(e.Labels)
 	}
 	tenantID := c.getTenantID(e.Labels)
-	delete(e.Labels, ReservedLabelTenantID)
 	return e, tenantID
 }
 

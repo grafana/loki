@@ -108,6 +108,15 @@ func (t *Test) TSDB() *tsdb.DB {
 	return t.storage.DB
 }
 
+// ExemplarStorage returns the test's exemplar storage.
+func (t *Test) ExemplarStorage() storage.ExemplarStorage {
+	return t.storage
+}
+
+func (t *Test) ExemplarQueryable() storage.ExemplarQueryable {
+	return t.storage.ExemplarQueryable()
+}
+
 func raise(line int, format string, v ...interface{}) error {
 	return &parser.ParseErr{
 		LineOffset: line,
@@ -307,7 +316,7 @@ func (cmd *loadCmd) append(a storage.Appender) error {
 		m := cmd.metrics[h]
 
 		for _, s := range smpls {
-			if _, err := a.Add(m, s.T, s.V); err != nil {
+			if _, err := a.Append(0, m, s.T, s.V); err != nil {
 				return err
 			}
 		}
@@ -657,7 +666,8 @@ type LazyLoader struct {
 
 	loadCmd *loadCmd
 
-	storage storage.Storage
+	storage          storage.Storage
+	SubqueryInterval time.Duration
 
 	queryEngine *Engine
 	context     context.Context
@@ -710,11 +720,12 @@ func (ll *LazyLoader) clear() {
 	ll.storage = teststorage.New(ll)
 
 	opts := EngineOpts{
-		Logger:           nil,
-		Reg:              nil,
-		MaxSamples:       10000,
-		Timeout:          100 * time.Second,
-		EnableAtModifier: true,
+		Logger:                   nil,
+		Reg:                      nil,
+		MaxSamples:               10000,
+		Timeout:                  100 * time.Second,
+		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(ll.SubqueryInterval) },
+		EnableAtModifier:         true,
 	}
 
 	ll.queryEngine = NewEngine(opts)
@@ -732,7 +743,7 @@ func (ll *LazyLoader) appendTill(ts int64) error {
 				ll.loadCmd.defs[h] = smpls[i:]
 				break
 			}
-			if _, err := app.Add(m, s.T, s.V); err != nil {
+			if _, err := app.Append(0, m, s.T, s.V); err != nil {
 				return err
 			}
 			if i == len(smpls)-1 {

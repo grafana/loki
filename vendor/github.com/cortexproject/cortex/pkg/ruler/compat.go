@@ -2,11 +2,13 @@ package ruler
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
@@ -14,24 +16,24 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 // Pusher is an ingester server that accepts pushes.
 type Pusher interface {
-	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
+	Push(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 }
 
 type pusherAppender struct {
 	ctx             context.Context
 	pusher          Pusher
 	labels          []labels.Labels
-	samples         []client.Sample
+	samples         []cortexpb.Sample
 	userID          string
 	evaluationDelay time.Duration
 }
 
-func (a *pusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *pusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 
 	// Adapt staleness markers for ruler evaluation delay. As the upstream code
@@ -43,21 +45,21 @@ func (a *pusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error
 		t -= a.evaluationDelay.Milliseconds()
 	}
 
-	a.samples = append(a.samples, client.Sample{
+	a.samples = append(a.samples, cortexpb.Sample{
 		TimestampMs: t,
 		Value:       v,
 	})
 	return 0, nil
 }
 
-func (a *pusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
-	return storage.ErrNotFound
+func (a *pusherAppender) AppendExemplar(_ uint64, _ labels.Labels, _ exemplar.Exemplar) (uint64, error) {
+	return 0, errors.New("exemplars are unsupported")
 }
 
 func (a *pusherAppender) Commit() error {
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
+	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE))
 	a.labels = nil
 	a.samples = nil
 	return err

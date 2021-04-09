@@ -67,7 +67,7 @@ func grpcForwardableError(userID string, code int, e error) error {
 	})
 }
 
-// Note: does not retain a reference to `err`
+// wrapWithUser prepends the user to the error. It does not retain a reference to err.
 func wrapWithUser(err error, userID string) error {
 	return fmt.Errorf("user=%s: %s", userID, err)
 }

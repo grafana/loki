@@ -144,12 +144,12 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy) string {
 	if balancingStrategy == randomLoadBalancing {
 		// Randomize the list of instances to not always query the same one.
-		rand.Shuffle(len(set.Ingesters), func(i, j int) {
-			set.Ingesters[i], set.Ingesters[j] = set.Ingesters[j], set.Ingesters[i]
+		rand.Shuffle(len(set.Instances), func(i, j int) {
+			set.Instances[i], set.Instances[j] = set.Instances[j], set.Instances[i]
 		})
 	}
 
-	for _, instance := range set.Ingesters {
+	for _, instance := range set.Instances {
 		if !util.StringsContain(exclude, instance.Addr) {
 			return instance.Addr
 		}

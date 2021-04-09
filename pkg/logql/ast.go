@@ -44,7 +44,7 @@ type SelectLogParams struct {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (LogSelectorExpr, error) {
-	return ParseLogSelector(s.Selector)
+	return ParseLogSelector(s.Selector, true)
 }
 
 type SelectSampleParams struct {
@@ -499,6 +499,7 @@ func newUnwrapExpr(id string, operation string) *unwrapExpr {
 type logRange struct {
 	left     LogSelectorExpr
 	interval time.Duration
+	offset   time.Duration
 
 	unwrap *unwrapExpr
 }
@@ -511,16 +512,41 @@ func (r logRange) String() string {
 		sb.WriteString(r.unwrap.String())
 	}
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
+	if r.offset != 0 {
+		offsetExpr := offsetExpr{offset: r.offset}
+		sb.WriteString(offsetExpr.String())
+	}
 	return sb.String()
 }
 
 func (r *logRange) Shardable() bool { return r.left.Shardable() }
 
-func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr) *logRange {
+func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr, o *offsetExpr) *logRange {
+	var offset time.Duration
+	if o != nil {
+		offset = o.offset
+	}
 	return &logRange{
 		left:     left,
 		interval: interval,
 		unwrap:   u,
+		offset:   offset,
+	}
+}
+
+type offsetExpr struct {
+	offset time.Duration
+}
+
+func (o *offsetExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(" %s %s", OpOffset, o.offset.String()))
+	return sb.String()
+}
+
+func newOffsetExpr(offset time.Duration) *offsetExpr {
+	return &offsetExpr{
+		offset: offset,
 	}
 }
 
@@ -548,6 +574,8 @@ const (
 	OpRangeTypeStdvar    = "stdvar_over_time"
 	OpRangeTypeStddev    = "stddev_over_time"
 	OpRangeTypeQuantile  = "quantile_over_time"
+	OpRangeTypeFirst     = "first_over_time"
+	OpRangeTypeLast      = "last_over_time"
 	OpRangeTypeAbsent    = "absent_over_time"
 
 	// binops - logical/set
@@ -582,6 +610,7 @@ const (
 
 	OpPipe   = "|"
 	OpUnwrap = "unwrap"
+	OpOffset = "offset"
 
 	// conversion Op
 	OpConvBytes           = "bytes"
@@ -664,14 +693,14 @@ func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 func (e rangeAggregationExpr) validate() error {
 	if e.grouping != nil {
 		switch e.operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.operation)
 		}
 	}
 	if e.left.unwrap != nil {
 		switch e.operation {
-		case OpRangeTypeRate, OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeAbsent:
+		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.operation)

@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -31,8 +31,12 @@ import (
 const StatusSuccess = "success"
 
 var (
-	matrix            = model.ValMatrix.String()
-	json              = jsoniter.ConfigCompatibleWithStandardLibrary
+	matrix = model.ValMatrix.String()
+	json   = jsoniter.Config{
+		EscapeHTML:             false, // No HTML in our responses.
+		SortMapKeys:            true,
+		ValidateJsonRawMessage: true,
+	}.Froze()
 	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
@@ -262,16 +266,20 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	// Preallocate the buffer with the exact size so we don't waste allocations
+	// while progressively growing an initial small buffer. The buffer capacity
+	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
+	// internally works.
+	buf := bytes.NewBuffer(make([]byte, 0, r.ContentLength+bytes.MinRead))
+	if _, err := buf.ReadFrom(r.Body); err != nil {
 		log.Error(err)
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
-	log.LogFields(otlog.Int("bytes", len(buf)))
+	log.LogFields(otlog.Int("bytes", buf.Len()))
 
 	var resp PrometheusResponse
-	if err := json.Unmarshal(buf, &resp); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
@@ -303,8 +311,9 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:       ioutil.NopCloser(bytes.NewBuffer(b)),
-		StatusCode: http.StatusOK,
+		Body:          ioutil.NopCloser(bytes.NewBuffer(b)),
+		StatusCode:    http.StatusOK,
+		ContentLength: int64(len(b)),
 	}
 	return &resp, nil
 }
@@ -312,13 +321,13 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
-		Metric model.Metric    `json:"metric"`
-		Values []client.Sample `json:"values"`
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = client.FromMetricsToLabelAdapters(stream.Metric)
+	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }
@@ -326,10 +335,10 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler.
 func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	stream := struct {
-		Metric model.Metric    `json:"metric"`
-		Values []client.Sample `json:"values"`
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
 	}{
-		Metric: client.FromLabelAdaptersToMetric(s.Labels),
+		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
@@ -339,7 +348,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			metric := client.FromLabelAdaptersToLabels(stream.Labels).String()
+			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
 				existing = &SampleStream{

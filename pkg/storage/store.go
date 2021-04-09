@@ -76,6 +76,17 @@ type Store interface {
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 	GetSchemaConfigs() []chunk.PeriodConfig
+	SetChunkFilterer(chunkFilter RequestChunkFilterer)
+}
+
+// RequestChunkFilterer creates ChunkFilterer for a given request context.
+type RequestChunkFilterer interface {
+	ForRequest(ctx context.Context) ChunkFilterer
+}
+
+// ChunkFilterer filters chunks based on the metric.
+type ChunkFilterer interface {
+	ShouldFilter(metric labels.Labels) bool
 }
 
 type store struct {
@@ -83,6 +94,8 @@ type store struct {
 	cfg          Config
 	chunkMetrics *ChunkMetrics
 	schemaCfg    SchemaConfig
+
+	chunkFilterer RequestChunkFilterer
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -146,6 +159,10 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 
 	from, through := util.RoundToMilliseconds(req.GetStart(), req.GetEnd())
 	return matchers, from, through, nil
+}
+
+func (s *store) SetChunkFilterer(chunkFilterer RequestChunkFilterer) {
+	s.chunkFilterer = chunkFilterer
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
@@ -230,6 +247,11 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 		split = len(firstChunksPerSeries)
 	}
 
+	var chunkFilterer ChunkFilterer
+	if s.chunkFilterer != nil {
+		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
+	}
+
 	for split > 0 {
 		groups = append(groups, firstChunksPerSeries[:split])
 		firstChunksPerSeries = firstChunksPerSeries[split:]
@@ -252,6 +274,10 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 				}
 			}
 
+			if chunkFilterer != nil && chunkFilterer.ShouldFilter(chk.Chunk.Metric) {
+				continue outer
+			}
+
 			m := chk.Chunk.Metric.Map()
 			delete(m, labels.MetricName)
 			results = append(results, logproto.SeriesIdentifier{
@@ -261,7 +287,6 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 	}
 	sort.Sort(results)
 	return results, nil
-
 }
 
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
@@ -290,9 +315,12 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
+	var chunkFilterer ChunkFilterer
+	if s.chunkFilterer != nil {
+		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
+	}
 
-	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End)
-
+	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
 }
 
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -319,7 +347,12 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	if len(lazyChunks) == 0 {
 		return iter.NoopIterator, nil
 	}
-	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End)
+	var chunkFilterer ChunkFilterer
+	if s.chunkFilterer != nil {
+		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
+	}
+
+	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
 }
 
 func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {
@@ -362,7 +395,7 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 			return nil, err
 		}
 
-		return shipper.NewBoltDBShipperTableClient(objectClient), nil
+		return shipper.NewBoltDBShipperTableClient(objectClient, cfg.BoltDBShipperConfig.SharedStoreKeyPrefix), nil
 	})
 }
 

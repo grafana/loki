@@ -551,7 +551,7 @@ timestamp:
   [location: <string>]
 ```
 
-##### output
+#### output
 
 The output stage takes data from the extracted map and sets the contents of the
 log entry that will be stored by Loki.
@@ -771,6 +771,9 @@ labels:
 # When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
 # Default is false
 use_incoming_timestamp: <bool>
+
+# Sets the maximum limit to the length of syslog messages
+max_message_length: <int>
 ```
 
 #### Available Labels

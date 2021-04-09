@@ -155,19 +155,19 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		partialMerges: prometheus.NewDesc(
 			"cortex_alertmanager_partial_state_merges_total",
 			"Number of times we have received a partial state to merge for a key.",
-			[]string{"key"}, nil),
+			[]string{"user"}, nil),
 		partialMergesFailed: prometheus.NewDesc(
 			"cortex_alertmanager_partial_state_merges_failed_total",
 			"Number of times we have failed to merge a partial state received for a key.",
-			[]string{"key"}, nil),
+			[]string{"user"}, nil),
 		replicationTotal: prometheus.NewDesc(
 			"cortex_alertmanager_state_replication_total",
 			"Number of times we have tried to replicate a state to other alertmanagers",
-			[]string{"key"}, nil),
+			[]string{"user"}, nil),
 		replicationFailed: prometheus.NewDesc(
 			"cortex_alertmanager_state_replication_failed_total",
 			"Number of times we have failed to replicate a state to other alertmanagers",
-			[]string{"key"}, nil),
+			[]string{"user"}, nil),
 	}
 }
 
@@ -244,8 +244,8 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 
 	data.SendMaxOfGaugesPerUser(out, m.configHashValue, "alertmanager_config_hash")
 
-	data.SendSumOfCountersWithLabels(out, m.partialMerges, "alertmanager_partial_state_merges_total", "key")
-	data.SendSumOfCountersWithLabels(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total", "key")
-	data.SendSumOfCountersWithLabels(out, m.replicationTotal, "alertmanager_state_replication_total", "key")
-	data.SendSumOfCountersWithLabels(out, m.replicationFailed, "alertmanager_state_replication_failed_total", "key")
+	data.SendSumOfCountersPerUser(out, m.partialMerges, "alertmanager_partial_state_merges_total")
+	data.SendSumOfCountersPerUser(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total")
+	data.SendSumOfCountersPerUser(out, m.replicationTotal, "alertmanager_state_replication_total")
+	data.SendSumOfCountersPerUser(out, m.replicationFailed, "alertmanager_state_replication_failed_total")
 }

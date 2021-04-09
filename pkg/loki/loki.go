@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/signals"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
@@ -131,6 +132,12 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
+	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid boltdb-shipper config")
+	}
+	if err := c.CompactorConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid compactor config")
+	}
 	return nil
 }
 
@@ -142,24 +149,25 @@ type Loki struct {
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
 
-	Server          *server.Server
-	ring            *ring.Ring
-	overrides       *validation.Overrides
-	tenantConfigs   *runtime.TenantConfigs
-	distributor     *distributor.Distributor
-	ingester        *ingester.Ingester
-	querier         *querier.Querier
-	ingesterQuerier *querier.IngesterQuerier
-	store           storage.Store
-	tableManager    *chunk.TableManager
-	frontend        *frontend.Frontend
-	ruler           *cortex_ruler.Ruler
-	RulerStorage    rulestore.RuleStore
-	rulerAPI        *cortex_ruler.API
-	stopper         queryrange.Stopper
-	runtimeConfig   *runtimeconfig.Manager
-	memberlistKV    *memberlist.KVInitService
-	compactor       *compactor.Compactor
+	Server                   *server.Server
+	ring                     *ring.Ring
+	overrides                *validation.Overrides
+	tenantConfigs            *runtime.TenantConfigs
+	distributor              *distributor.Distributor
+	ingester                 *ingester.Ingester
+	Querier                  *querier.Querier
+	ingesterQuerier          *querier.IngesterQuerier
+	store                    storage.Store
+	tableManager             *chunk.TableManager
+	frontend                 *frontend.Frontend
+	ruler                    *cortex_ruler.Ruler
+	RulerStorage             rulestore.RuleStore
+	rulerAPI                 *cortex_ruler.API
+	stopper                  queryrange.Stopper
+	runtimeConfig            *runtimeconfig.Manager
+	memberlistKV             *memberlist.KVInitService
+	compactor                *compactor.Compactor
+	QueryFrontEndTripperware cortex_tripper.Tripperware
 
 	HTTPAuthMiddleware middleware.Interface
 }

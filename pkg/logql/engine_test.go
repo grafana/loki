@@ -107,6 +107,26 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 		{
+			`first_over_time({app="foo"} |~".+bar" | unwrap foo [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `first_over_time({app="foo"}|~".+bar"| unwrap foo [1m])`}},
+			},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+		},
+		{
+			`count_over_time({app="foo"} |~".+bar" [1m] offset 30s)`, time.Unix(90, 0), logproto.BACKWARD, 10,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m] offset 30s)`}},
+			},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 90 * 1000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+		},
+		{
 			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
@@ -230,6 +250,34 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				},
 				promql.Sample{
 					Point: promql.Point{T: 60 * 1000, V: 6},
+					Metric: labels.Labels{
+						labels.Label{Name: "app", Value: "foo"},
+						labels.Label{Name: "namespace", Value: "a"},
+					},
+				},
+			},
+		},
+		{
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace,app)`, time.Unix(90, 0), logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, factor(10, identity), `{app="foo", namespace="a"}`),
+					newSeries(testSize, factor(10, identity), `{app="bar", namespace="b"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) `}},
+			},
+			promql.Vector{
+				promql.Sample{
+					Point: promql.Point{T: 90 * 1000, V: 6},
+					Metric: labels.Labels{
+						labels.Label{Name: "app", Value: "bar"},
+						labels.Label{Name: "namespace", Value: "b"},
+					},
+				},
+				promql.Sample{
+					Point: promql.Point{T: 90 * 1000, V: 6},
 					Metric: labels.Labels{
 						labels.Label{Name: "app", Value: "foo"},
 						labels.Label{Name: "namespace", Value: "a"},
@@ -712,6 +760,33 @@ func TestEngine_RangeQuery(t *testing.T) {
 						{T: 540 * 1000, V: 30},
 						{T: 570 * 1000, V: 30},
 						{T: 600 * 1000, V: 30},
+					},
+				},
+			},
+		},
+		{
+			`last_over_time(({app="foo"} |~".+bar" | unwrap foo)[5m])`, time.Unix(5*60, 0), time.Unix(5*120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*120, 0), Selector: `last_over_time({app="foo"}|~".+bar"| unwrap foo[5m])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{
+						{T: 300 * 1000, V: 1},
+						{T: 330 * 1000, V: 1},
+						{T: 360 * 1000, V: 1},
+						{T: 390 * 1000, V: 1},
+						{T: 420 * 1000, V: 1},
+						{T: 450 * 1000, V: 1},
+						{T: 480 * 1000, V: 1},
+						{T: 510 * 1000, V: 1},
+						{T: 540 * 1000, V: 1},
+						{T: 570 * 1000, V: 1},
+						{T: 600 * 1000, V: 1},
 					},
 				},
 			},
