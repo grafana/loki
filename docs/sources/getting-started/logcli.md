@@ -313,7 +313,7 @@ Flags:
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
-      --analyze-labels        Printout a summary of labels including count of label value combinations, useful for debugging high cardinality series
+      --analyze-labels        Prints out a summary of labels including the count of label value combinations, useful for debugging high cardinality series
 
 Args:
   <matcher>  eg '{foo="bar",baz=~".*blip"}'
