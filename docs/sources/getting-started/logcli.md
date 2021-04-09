@@ -309,7 +309,7 @@ Flags:
       --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
       --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.
       --bearer-token=""       adds the Authorization header Bearer to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.
-      --bearer-token-file=""  adds the Authorization header Bearer to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.
+      --bearer-token-file=""  Add the Authorization header Bearer to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
