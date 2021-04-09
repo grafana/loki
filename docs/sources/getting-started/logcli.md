@@ -98,7 +98,7 @@ Flags:
   -q, --quiet                 Suppress query metadata.
       --stats                 Show query statistics.
   -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC].
       --cpuprofile=""         Specify the location for writing a CPU profile.
       --memprofile=""         Specify the location for writing a memory profile.
       --addr="http://localhost:3100"
