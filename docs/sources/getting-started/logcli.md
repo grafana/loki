@@ -307,7 +307,7 @@ Flags:
       --tls-skip-verify       Server certificate TLS skip verify.
       --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
       --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.
+      --org-id=""             Add X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.
       --bearer-token=""       adds the Authorization header Bearer to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.
       --bearer-token-file=""  Add the Authorization header Bearer to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.
       --since=1h              Lookback window.
