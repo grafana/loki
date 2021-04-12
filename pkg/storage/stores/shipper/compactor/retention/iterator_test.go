@@ -2,6 +2,7 @@ package retention
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -91,7 +92,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 	t, err := time.Parse("2006-01-02", "2020-07-31")
 	require.NoError(b, err)
 	var total int64
-	db.View(func(tx *bbolt.Tx) error {
+	db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(bucketName)
 		for n := 0; n < b.N; n++ {
 			it, err := newChunkIndexIterator(bucket, chunk.PeriodConfig{
@@ -102,10 +103,11 @@ func Benchmark_ChunkIterator(b *testing.B) {
 			require.NoError(b, err)
 			for it.Next() {
 				chunkEntry = it.Entry()
+				require.NoError(b, it.Delete())
 				total++
 			}
 		}
-		return nil
+		return errors.New("don't commit")
 	})
 	b.Logf("Total chunk ref:%d", total)
 }
