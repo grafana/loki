@@ -30,7 +30,7 @@ type MarkerTx interface {
 // 	Rollback() error
 // }
 
-// todo test double open db file.
+// todo clean up with interfaces.
 // markForDelete delete index entries for expired chunk in `in` and add chunkid to delete in `marker`.
 // All of this inside a single transaction.
 func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config chunk.PeriodConfig) error {
@@ -40,31 +40,39 @@ func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config ch
 			return nil
 		}
 		return marker.Update(func(outTx *bbolt.Tx) error {
-			deleteChunkBucket, err := outTx.CreateBucket(chunkBucket)
-			if err != nil {
-				return err
-			}
+			// deleteChunkBucket, err := outTx.CreateBucket(chunkBucket)
+			// if err != nil {
+			// 	return err
+			// }
 			seriesMap := newUserSeriesMap()
 			// Phase 1 we mark chunkID that needs to be deleted in marker DB
 			c := bucket.Cursor()
 			var aliveChunk bool
-			if err := forAllChunkRef(c, func(ref *ChunkRef) error {
-				if expiration.Expired(ref) {
-					if err := deleteChunkBucket.Put(ref.ChunkID, empty); err != nil {
-						return err
-					}
-					seriesMap.Add(ref.SeriesID, ref.UserID)
-					if err := c.Delete(); err != nil {
-						return err
-					}
-					return nil
-				}
-				// we found a key that will stay.
-				aliveChunk = true
-				return nil
-			}); err != nil {
-				return err
-			}
+
+			// it := newBoltdbChunkIndexIterator(bucket)
+			// for it.Next() {
+			// 	if it.Err() != nil {
+			// 		return it.Err()
+			// 	}
+			// 	ref := it.Entry()
+			// }
+			// if err := forAllChunkRef(c, func(ref *ChunkRef) error {
+			// 	if expiration.Expired(ref) {
+			// 		if err := deleteChunkBucket.Put(ref.ChunkID, empty); err != nil {
+			// 			return err
+			// 		}
+			// 		seriesMap.Add(ref.SeriesID, ref.UserID)
+			// 		if err := c.Delete(); err != nil {
+			// 			return err
+			// 		}
+			// 		return nil
+			// 	}
+			// 	// we found a key that will stay.
+			// 	aliveChunk = true
+			// 	return nil
+			// }); err != nil {
+			// 	return err
+			// }
 			// shortcircuit: no chunks remaining we can delete everything.
 			if !aliveChunk {
 				return inTx.DeleteBucket(bucketName)
@@ -92,23 +100,6 @@ func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config ch
 			})
 		})
 	})
-}
-
-func forAllChunkRef(c *bbolt.Cursor, callback func(ref *ChunkRef) error) error {
-	for k, _ := c.First(); k != nil; k, _ = c.Next() {
-		ref, ok, err := parseChunkRef(decodeKey(k))
-		if err != nil {
-			return err
-		}
-		// skips anything else than chunk index entries.
-		if !ok {
-			continue
-		}
-		if err := callback(ref); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config chunk.PeriodConfig, callback func(ref *LabelIndexRef) error) error {

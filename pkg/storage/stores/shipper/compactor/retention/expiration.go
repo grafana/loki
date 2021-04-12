@@ -8,6 +8,10 @@ type ExpirationChecker interface {
 	Expired(ref *ChunkRef) bool
 }
 
+// func MultiExpirationCheck(checker ...ExpirationChecker) ExpirationChecker {
+
+// }
+
 type expirationChecker struct {
 	series map[string]StreamRule
 	TenantRules
@@ -29,3 +33,11 @@ func (e *expirationChecker) Expired(ref *ChunkRef) bool {
 	}
 	return ref.From.After(model.Now().Add(e.TenantRules.PerTenant(unsafeGetString(ref.UserID))))
 }
+
+// all chunk ref.... chunkid,seriesid, from,to, userid (labels) (n + 1)
+//
+// HashValue:  fmt.Sprintf("%02d:%s:%s:%s", shard, bucket.hashKey, metricName, v.Name),
+// RangeValue: encodeRangeKey(labelSeriesRangeKeyV1, valueHash, seriesID, nil),
+// Value:      []byte(v.Value),
+
+// custom stream only {app="foo"}

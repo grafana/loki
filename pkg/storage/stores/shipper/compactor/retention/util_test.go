@@ -20,6 +20,56 @@ import (
 	"go.etcd.io/bbolt"
 )
 
+var schemaCfg = storage.SchemaConfig{
+	SchemaConfig: chunk.SchemaConfig{
+		// we want to test over all supported schema.
+		Configs: []chunk.PeriodConfig{
+			{
+				From:       chunk.DayTime{Time: model.Earliest},
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v9",
+				IndexTables: chunk.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 16,
+			},
+			{
+				From:       chunk.DayTime{Time: model.Earliest.Add(25 * time.Hour)},
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v10",
+				IndexTables: chunk.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 16,
+			},
+			{
+				From:       chunk.DayTime{Time: model.Earliest.Add(49 * time.Hour)},
+				IndexType:  "boltdb",
+				ObjectType: "filesystem",
+				Schema:     "v11",
+				IndexTables: chunk.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 16,
+			},
+		},
+	},
+}
+
+var allSchemas = []struct {
+	schema string
+	from   model.Time
+}{
+	{"v9", model.Earliest},
+	{"v10", model.Earliest.Add(25 * time.Hour)},
+	{"v11", model.Earliest.Add(49 * time.Hour)},
+}
+
 type fakeRule struct {
 	streams []StreamRule
 	tenants map[string]time.Duration
@@ -90,34 +140,6 @@ func newTestStore(t *testing.T) *testStore {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	schemaCfg := storage.SchemaConfig{
-		SchemaConfig: chunk.SchemaConfig{
-			Configs: []chunk.PeriodConfig{
-				{
-					From:       chunk.DayTime{Time: model.Earliest},
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v9",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
-					RowShards: 16,
-				},
-				{
-					From:       chunk.DayTime{Time: model.Earliest.Add(25 * time.Hour)},
-					IndexType:  "boltdb",
-					ObjectType: "filesystem",
-					Schema:     "v11",
-					IndexTables: chunk.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
-					RowShards: 16,
-				},
-			},
-		},
-	}
 	require.NoError(t, schemaCfg.SchemaConfig.Validate())
 
 	config := storage.Config{
