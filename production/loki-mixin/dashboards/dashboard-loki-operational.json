@@ -6595,7 +6595,7 @@
         "multi": false,
         "name": "cluster",
         "options": [],
-        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
+        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", container!=\"loki-canary\"}, cluster)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

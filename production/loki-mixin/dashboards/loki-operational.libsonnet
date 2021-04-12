@@ -16,7 +16,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       namespaceType:: 'query',
       namespaceQuery::
         if cfg.showMultiCluster then
-          'kube_pod_container_info{cluster="$cluster"}'
+          'kube_pod_container_info{cluster="$cluster", image=~".*loki.*"}'
         else
           'kube_pod_container_info',
 
@@ -40,12 +40,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
           type:: 'datasource',
           query:: 'prometheus',
         },
-      ]+(
+      ] + (
         if cfg.showMultiCluster then [
           {
             variable:: 'cluster',
             label:: cfg.clusterLabel,
-            query:: 'kube_pod_container_info',
+            query:: 'kube_pod_container_info{image=~".*loki.*", container!="loki-canary"}',
             datasource:: '$metrics',
             type:: 'query',
           },
@@ -148,9 +148,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
         replaceMatchers(replaceClusterMatchers(expr)),
 
       local selectDatasource(ds) =
-        if ds == null || ds == "" then ds
-        else if ds == "$datasource" then "$metrics"
-        else "$logs",
+        if ds == null || ds == '' then ds
+        else if ds == '$datasource' then '$metrics'
+        else '$logs',
 
       panels: [
         p {
@@ -181,15 +181,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
                   ] else [],
                 }
                 for ssp in sp.panels
-              ] else []
+              ] else [],
             }
             for sp in p.panels
-          ] else []
+          ] else [],
         }
         for p in super.panels
       ],
       templating: {
-        list+:[
+        list+: [
           {
             hide: 0,
             includeAll: false,
@@ -202,7 +202,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             regex: '',
             skipUrlSync: false,
             type: l.type,
-          },
+          }
           for l in dashboards['loki-operational.json'].templateLabels
           if l.type == 'datasource'
         ] + [
