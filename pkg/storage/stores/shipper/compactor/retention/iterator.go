@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"go.etcd.io/bbolt"
 )
 
@@ -14,9 +15,14 @@ var (
 	_ Series             = &series{}
 )
 
+type ChunkEntry struct {
+	ChunkRef
+	Labels labels.Labels
+}
+
 type ChunkEntryIterator interface {
 	Next() bool
-	Entry() *ChunkRef
+	Entry() ChunkEntry
 	// Delete deletes the current entry.
 	Delete() error
 	Err() error
@@ -24,23 +30,31 @@ type ChunkEntryIterator interface {
 
 type chunkIndexIterator struct {
 	cursor  *bbolt.Cursor
-	current *ChunkRef
+	current ChunkEntry
 	first   bool
 	err     error
+
+	labelsMapper *seriesLabelsMapper
 }
 
-func newChunkIndexIterator(bucket *bbolt.Bucket) *chunkIndexIterator {
-	return &chunkIndexIterator{
-		cursor: bucket.Cursor(),
-		first:  true,
+func newChunkIndexIterator(bucket *bbolt.Bucket, config chunk.PeriodConfig) (*chunkIndexIterator, error) {
+	labelsMapper, err := newSeriesLabelsMapper(bucket, config)
+	if err != nil {
+		return nil, err
 	}
+	return &chunkIndexIterator{
+		cursor:       bucket.Cursor(),
+		first:        true,
+		labelsMapper: labelsMapper,
+		current:      ChunkEntry{},
+	}, nil
 }
 
 func (b *chunkIndexIterator) Err() error {
 	return b.err
 }
 
-func (b *chunkIndexIterator) Entry() *ChunkRef {
+func (b *chunkIndexIterator) Entry() ChunkEntry {
 	return b.current
 }
 
@@ -67,7 +81,8 @@ func (b *chunkIndexIterator) Next() bool {
 			key, _ = b.cursor.Next()
 			continue
 		}
-		b.current = ref
+		b.current.ChunkRef = *ref
+		b.current.Labels = b.labelsMapper.Get(ref.SeriesID, ref.UserID)
 		return true
 	}
 	return false

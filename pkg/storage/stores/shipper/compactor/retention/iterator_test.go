@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -28,9 +30,10 @@ func Test_ChunkIterator(t *testing.T) {
 
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
-			var actual []*ChunkRef
+			var actual []ChunkEntry
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it := newChunkIndexIterator(tx.Bucket(bucketName))
+				it, err := newChunkIndexIterator(tx.Bucket(bucketName), tt.config)
+				require.NoError(t, err)
 				for it.Next() {
 					require.NoError(t, it.Err())
 					actual = append(actual, it.Entry())
@@ -42,34 +45,67 @@ func Test_ChunkIterator(t *testing.T) {
 				return nil
 			})
 			require.NoError(t, err)
-			require.Equal(t, []*ChunkRef{
-				refFromChunk(c1),
-				refFromChunk(c2),
+			require.Equal(t, []ChunkEntry{
+				entryFromChunk(c1),
+				entryFromChunk(c2),
 			}, actual)
 
 			// second pass we delete c2
 			actual = actual[:0]
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				it := newChunkIndexIterator(tx.Bucket(bucketName))
+				it, err := newChunkIndexIterator(tx.Bucket(bucketName), tt.config)
+				require.NoError(t, err)
 				for it.Next() {
 					actual = append(actual, it.Entry())
 				}
 				return it.Err()
 			})
 			require.NoError(t, err)
-			require.Equal(t, []*ChunkRef{
-				refFromChunk(c1),
+			require.Equal(t, []ChunkEntry{
+				entryFromChunk(c1),
 			}, actual)
 		})
 	}
 }
 
-func refFromChunk(c chunk.Chunk) *ChunkRef {
-	return &ChunkRef{
-		UserID:   []byte(c.UserID),
-		SeriesID: labelsSeriesID(c.Metric),
-		ChunkID:  []byte(c.ExternalKey()),
-		From:     c.From,
-		Through:  c.Through,
+func entryFromChunk(c chunk.Chunk) ChunkEntry {
+	return ChunkEntry{
+		ChunkRef: ChunkRef{
+			UserID:   []byte(c.UserID),
+			SeriesID: labelsSeriesID(c.Metric),
+			ChunkID:  []byte(c.ExternalKey()),
+			From:     c.From,
+			Through:  c.Through,
+		},
+		Labels: c.Metric.WithoutLabels("__name__"),
 	}
+}
+
+var chunkEntry ChunkEntry
+
+func Benchmark_ChunkIterator(b *testing.B) {
+	b.ReportAllocs()
+
+	db, err := shipper_util.SafeOpenBoltdbFile("/Users/ctovena/Downloads/index_loki_ops_index_18669_compactor-1617841099")
+	require.NoError(b, err)
+	t, err := time.Parse("2006-01-02", "2020-07-31")
+	require.NoError(b, err)
+	var total int64
+	db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket(bucketName)
+		for n := 0; n < b.N; n++ {
+			it, err := newChunkIndexIterator(bucket, chunk.PeriodConfig{
+				From:      chunk.DayTime{Time: model.TimeFromUnix(t.Unix())},
+				Schema:    "v11",
+				RowShards: 16,
+			})
+			require.NoError(b, err)
+			for it.Next() {
+				chunkEntry = it.Entry()
+				total++
+			}
+		}
+		return nil
+	})
+	b.Logf("Total chunk ref:%d", total)
 }

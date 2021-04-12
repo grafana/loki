@@ -140,6 +140,44 @@ func parseLabelIndexRef(hashKey, rangeKey []byte) (*LabelIndexRef, bool, error) 
 	}, true, nil
 }
 
+type LabelSeriesRangeKey struct {
+	SeriesID []byte
+	UserID   []byte
+	Name     []byte
+}
+
+func (l LabelSeriesRangeKey) String() string {
+	return fmt.Sprintf("%s:%s:%s", l.SeriesID, l.UserID, l.Name)
+}
+
+func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (*LabelSeriesRangeKey, bool, error) {
+	// todo reuse memory via pool
+	var (
+		rangeComponents [][]byte
+		hashComponents  [][]byte
+	)
+	rangeComponents = decodeRangeKey(rangeKey, rangeComponents)
+	if len(rangeComponents) < 4 {
+		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+	}
+	keyType := rangeComponents[len(rangeComponents)-1]
+	if len(keyType) == 0 || keyType[0] != labelSeriesRangeKeyV1 {
+		return nil, false, nil
+	}
+	hashComponents = splitBytesBy(hashKey, ':', hashComponents)
+	// 	> v10		HashValue:  fmt.Sprintf("%02d:%s:%s:%s", shard, bucket.hashKey , metricName, v.Name),
+	// < v10		HashValue:  fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, v.Name),
+
+	if len(hashComponents) < 4 {
+		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+	}
+	return &LabelSeriesRangeKey{
+		SeriesID: rangeComponents[1],
+		Name:     hashComponents[len(hashComponents)-1],
+		UserID:   hashComponents[len(hashComponents)-4],
+	}, true, nil
+}
+
 func findSeriesIDsForRules(db *bbolt.DB, config chunk.PeriodConfig, rules []StreamRule) ([][]string, error) {
 	schema, err := config.CreateSchema()
 	if err != nil {
@@ -325,6 +363,22 @@ func decodeKey(k []byte) (hashValue, rangeValue []byte) {
 		}
 	}
 	return
+}
+
+func splitBytesBy(value []byte, by byte, components [][]byte) [][]byte {
+	components = components[:0]
+	i, j := 0, 0
+	for j < len(value) {
+		if value[j] != by {
+			j++
+			continue
+		}
+		components = append(components, value[i:j])
+		j++
+		i = j
+	}
+	components = append(components, value[i:])
+	return components
 }
 
 func decodeRangeKey(value []byte, components [][]byte) [][]byte {

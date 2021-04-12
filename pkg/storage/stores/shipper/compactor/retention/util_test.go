@@ -64,10 +64,11 @@ var schemaCfg = storage.SchemaConfig{
 var allSchemas = []struct {
 	schema string
 	from   model.Time
+	config chunk.PeriodConfig
 }{
-	{"v9", model.Earliest},
-	{"v10", model.Earliest.Add(25 * time.Hour)},
-	{"v11", model.Earliest.Add(49 * time.Hour)},
+	{"v9", model.Earliest, schemaCfg.Configs[0]},
+	{"v10", model.Earliest.Add(25 * time.Hour), schemaCfg.Configs[1]},
+	{"v11", model.Earliest.Add(49 * time.Hour), schemaCfg.Configs[2]},
 }
 
 type fakeRule struct {
