@@ -16,7 +16,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       namespaceType:: 'query',
       namespaceQuery::
         if cfg.showMultiCluster then
-          'kube_pod_container_info{cluster="$cluster", image=~".*loki.*"}'
+          'kube_pod_container_info{cluster="$cluster", image=~".*loki.*", container!="loki-canary"}'
         else
           'kube_pod_container_info',
 
