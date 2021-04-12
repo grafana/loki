@@ -81,7 +81,7 @@ func (b *chunkIndexIterator) Next() bool {
 			key, _ = b.cursor.Next()
 			continue
 		}
-		b.current.ChunkRef = *ref
+		b.current.ChunkRef = ref
 		b.current.Labels = b.labelsMapper.Get(ref.SeriesID, ref.UserID)
 		return true
 	}

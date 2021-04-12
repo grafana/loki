@@ -63,48 +63,88 @@ func (c ChunkRef) String() string {
 	return fmt.Sprintf("UserID: %s , SeriesID: %s , Time: [%s,%s]", c.UserID, c.SeriesID, c.From, c.Through)
 }
 
-func parseChunkRef(hashKey, rangeKey []byte) (*ChunkRef, bool, error) {
-	// todo reuse memory via pool
-	var components [][]byte
+func parseChunkRef(hashKey, rangeKey []byte) (ChunkRef, bool, error) {
+	componentsRef := getComponents()
+	defer putComponents(componentsRef)
+	components := componentsRef.components
+
 	components = decodeRangeKey(rangeKey, components)
 	if len(components) == 0 {
-		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 
 	keyType := components[len(components)-1]
 	if len(keyType) == 0 || keyType[0] != chunkTimeRangeKeyV3 {
-		return nil, false, nil
+		return ChunkRef{}, false, nil
 	}
 	chunkID := components[len(components)-2]
 
-	// todo split manually
-	parts := bytes.Split(chunkID, []byte("/"))
-	if len(parts) != 2 {
-		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+	userID, hexFrom, hexThrough, ok := parseChunkID(chunkID)
+	if !ok {
+		return ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
-	userID := parts[0]
-	// todo split manually
-	hexParts := bytes.Split(parts[1], []byte(":"))
-	if len(hexParts) != 4 {
-		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+	from, err := strconv.ParseInt(unsafeGetString(hexFrom), 16, 64)
+	if err != nil {
+		return ChunkRef{}, false, err
+	}
+	through, err := strconv.ParseInt(unsafeGetString(hexThrough), 16, 64)
+	if err != nil {
+		return ChunkRef{}, false, err
 	}
 
-	from, err := strconv.ParseInt(unsafeGetString(hexParts[1]), 16, 64)
-	if err != nil {
-		return nil, false, err
-	}
-	through, err := strconv.ParseInt(unsafeGetString(hexParts[2]), 16, 64)
-	if err != nil {
-		return nil, false, err
-	}
-
-	return &ChunkRef{
+	return ChunkRef{
 		UserID:   userID,
 		SeriesID: seriesFromHash(hashKey),
 		From:     model.Time(from),
 		Through:  model.Time(through),
 		ChunkID:  chunkID,
 	}, true, nil
+}
+
+func parseChunkID(chunkID []byte) (userID []byte, hexFrom, hexThrough []byte, valid bool) {
+	var (
+		j, i int
+		hex  []byte
+	)
+
+	for j < len(chunkID) {
+		if chunkID[j] != '/' {
+			j++
+			continue
+		}
+		userID = chunkID[:j]
+		hex = chunkID[j+1:]
+		break
+	}
+	if len(userID) == 0 {
+		return nil, nil, nil, false
+	}
+	_, i = readOneHexPart(hex)
+	if i == 0 {
+		return nil, nil, nil, false
+	}
+	hex = hex[i+1:]
+	hexFrom, i = readOneHexPart(hex)
+	if i == 0 {
+		return nil, nil, nil, false
+	}
+	hex = hex[i+1:]
+	hexThrough, i = readOneHexPart(hex)
+	if i == 0 {
+		return nil, nil, nil, false
+	}
+	return userID, hexFrom, hexThrough, true
+}
+
+func readOneHexPart(hex []byte) (part []byte, i int) {
+	for i < len(hex) {
+		if hex[i] != ':' {
+			i++
+			continue
+		}
+		return hex[:i], i
+	}
+	return nil, 0
 }
 
 type LabelIndexRef struct {
@@ -150,28 +190,30 @@ func (l LabelSeriesRangeKey) String() string {
 	return fmt.Sprintf("%s:%s:%s", l.SeriesID, l.UserID, l.Name)
 }
 
-func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (*LabelSeriesRangeKey, bool, error) {
-	// todo reuse memory via pool
-	var (
-		rangeComponents [][]byte
-		hashComponents  [][]byte
-	)
+func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (LabelSeriesRangeKey, bool, error) {
+	rangeComponentsRef := getComponents()
+	defer putComponents(rangeComponentsRef)
+	rangeComponents := rangeComponentsRef.components
+	hashComponentsRef := getComponents()
+	defer putComponents(hashComponentsRef)
+	hashComponents := hashComponentsRef.components
+
 	rangeComponents = decodeRangeKey(rangeKey, rangeComponents)
 	if len(rangeComponents) < 4 {
-		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return LabelSeriesRangeKey{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 	keyType := rangeComponents[len(rangeComponents)-1]
 	if len(keyType) == 0 || keyType[0] != labelSeriesRangeKeyV1 {
-		return nil, false, nil
+		return LabelSeriesRangeKey{}, false, nil
 	}
 	hashComponents = splitBytesBy(hashKey, ':', hashComponents)
 	// 	> v10		HashValue:  fmt.Sprintf("%02d:%s:%s:%s", shard, bucket.hashKey , metricName, v.Name),
 	// < v10		HashValue:  fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, v.Name),
 
 	if len(hashComponents) < 4 {
-		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return LabelSeriesRangeKey{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
-	return &LabelSeriesRangeKey{
+	return LabelSeriesRangeKey{
 		SeriesID: rangeComponents[1],
 		Name:     hashComponents[len(hashComponents)-1],
 		UserID:   hashComponents[len(hashComponents)-4],

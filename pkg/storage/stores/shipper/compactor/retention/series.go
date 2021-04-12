@@ -114,7 +114,7 @@ Outer:
 			k := newUserSeries(ref.SeriesID, ref.UserID)
 			lbs = &seriesLabels{
 				userSeries: k,
-				lbs:        make(labels.Labels, 0, 5),
+				lbs:        make(labels.Labels, 0, 15),
 			}
 			sm.mapping[k.Key()] = lbs
 		}
