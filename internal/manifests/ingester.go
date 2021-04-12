@@ -41,7 +41,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: containerImage,
+				Image: opts.Image,
 				Name:  "loki-ingester",
 				Args: []string{
 					"-target=ingester",

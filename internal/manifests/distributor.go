@@ -21,16 +21,16 @@ const (
 )
 
 // BuildDistributor returns a list of k8s objects for Loki Distributor
-func BuildDistributor(stackName string) []client.Object {
+func BuildDistributor(opts Options) []client.Object {
 	return []client.Object{
-		NewDistributorDeployment(stackName),
-		NewDistributorHTTPService(stackName),
-		NewDistributorGRPCService(stackName),
+		NewDistributorDeployment(opts),
+		NewDistributorHTTPService(opts.Name),
+		NewDistributorGRPCService(opts.Name),
 	}
 }
 
 // NewDistributorDeployment creates a deployment object for a distributor
-func NewDistributorDeployment(stackName string) *appsv1.Deployment {
+func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -38,7 +38,7 @@ func NewDistributorDeployment(stackName string) *appsv1.Deployment {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lokiConfigMapName(stackName),
+							Name: lokiConfigMapName(opts.Name),
 						},
 					},
 				},
@@ -52,7 +52,7 @@ func NewDistributorDeployment(stackName string) *appsv1.Deployment {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: containerImage,
+				Image: opts.Image,
 				Name:  "loki-distributor",
 				Args: []string{
 					"-target=distributor",
@@ -121,7 +121,7 @@ func NewDistributorDeployment(stackName string) *appsv1.Deployment {
 		},
 	}
 
-	l := ComponentLabels("distributor", stackName)
+	l := ComponentLabels("distributor", opts.Name)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -129,7 +129,7 @@ func NewDistributorDeployment(stackName string) *appsv1.Deployment {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-distributor-%s", stackName),
+			Name:   fmt.Sprintf("loki-distributor-%s", opts.Name),
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -139,7 +139,7 @@ func NewDistributorDeployment(stackName string) *appsv1.Deployment {
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   fmt.Sprintf("loki-distributor-%s", stackName),
+					Name:   fmt.Sprintf("loki-distributor-%s", opts.Name),
 					Labels: labels.Merge(l, GossipLabels()),
 				},
 				Spec: podSpec,

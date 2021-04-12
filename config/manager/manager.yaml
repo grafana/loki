@@ -15,6 +15,9 @@ spec:
       containers:
       - command:
         - /manager
+        env:
+        - name: LOKI_IMAGE
+          value: docker.io/grafana/loki:2.2.1
         image: controller:latest
         imagePullPolicy: IfNotPresent
         name: manager

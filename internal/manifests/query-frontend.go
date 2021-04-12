@@ -15,16 +15,16 @@ import (
 )
 
 // BuildQueryFrontend returns a list of k8s objects for Loki QueryFrontend
-func BuildQueryFrontend(stackName string) []client.Object {
+func BuildQueryFrontend(opts Options) []client.Object {
 	return []client.Object{
-		NewQueryFrontendDeployment(stackName),
-		NewQueryFrontendGRPCService(stackName),
-		NewQueryFrontendHTTPService(stackName),
+		NewQueryFrontendDeployment(opts),
+		NewQueryFrontendGRPCService(opts.Name),
+		NewQueryFrontendHTTPService(opts.Name),
 	}
 }
 
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
-func NewQueryFrontendDeployment(stackName string) *appsv1.Deployment {
+func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -32,7 +32,7 @@ func NewQueryFrontendDeployment(stackName string) *appsv1.Deployment {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lokiConfigMapName(stackName),
+							Name: lokiConfigMapName(opts.Name),
 						},
 					},
 				},
@@ -46,7 +46,7 @@ func NewQueryFrontendDeployment(stackName string) *appsv1.Deployment {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: containerImage,
+				Image: opts.Image,
 				Name:  "loki-query-frontend",
 				Args: []string{
 					"-target=query-frontend",
@@ -111,7 +111,7 @@ func NewQueryFrontendDeployment(stackName string) *appsv1.Deployment {
 		},
 	}
 
-	l := ComponentLabels("query-frontend", stackName)
+	l := ComponentLabels("query-frontend", opts.Name)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -119,7 +119,7 @@ func NewQueryFrontendDeployment(stackName string) *appsv1.Deployment {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-query-frontend-%s", stackName),
+			Name:   fmt.Sprintf("loki-query-frontend-%s", opts.Name),
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -129,7 +129,7 @@ func NewQueryFrontendDeployment(stackName string) *appsv1.Deployment {
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   fmt.Sprintf("loki-query-frontend-%s", stackName),
+					Name:   fmt.Sprintf("loki-query-frontend-%s", opts.Name),
 					Labels: labels.Merge(l, GossipLabels()),
 				},
 				Spec: podSpec,

@@ -10,6 +10,7 @@ import (
 type Options struct {
 	Name      string
 	Namespace string
+	Image     string
 
 	Stack lokiv1beta1.LokiStackSpec
 }

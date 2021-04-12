@@ -41,7 +41,7 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: containerImage,
+				Image: opts.Image,
 				Name:  "loki-querier",
 				Args: []string{
 					"-target=querier",

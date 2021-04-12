@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"os"
 
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/ViaQ/logerr/log"
@@ -29,10 +30,16 @@ func CreateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client) error 
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
+	img := os.Getenv("LOKI_IMAGE")
+	if img == "" {
+		img = manifests.DefaultContainerImage
+	}
+
 	// Here we will translate the lokiv1beta1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:      req.Name,
 		Namespace: req.Namespace,
+		Image:     img,
 		Stack:     stack.Spec,
 	}
 
