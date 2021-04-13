@@ -193,7 +193,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.cfg.Querier.IngesterQueryStoreMaxLookback = t.cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
-	t.Querier, err = querier.New(t.cfg.Querier, t.store, t.ingesterQuerier, t.overrides)
+	t.Querier, err = querier.New(t.cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = t.cfg.Server.GRPCListenPort
 
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.Store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -349,13 +349,13 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
+	t.Store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.SchemaConfig, chunkStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
 
 	return services.NewIdleService(nil, func(_ error) error {
-		t.store.Stop()
+		t.Store.Stop()
 		return nil
 	}), nil
 }
@@ -517,7 +517,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.cfg.Ruler.Ring.ListenPort = t.cfg.Server.GRPCListenPort
 	t.cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	q, err := querier.New(t.cfg.Querier, t.store, t.ingesterQuerier, t.overrides)
+	q, err := querier.New(t.cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
