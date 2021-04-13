@@ -131,6 +131,11 @@ func (s *seriesCleaner) Cleanup(seriesID []byte, userID []byte) error {
 	for _, timestamp := range s.bucketTimestamps {
 		// build the chunk ref prefix
 		s.buf = s.buf[:0]
+		if s.config.Schema != "v9" {
+			shard := binary.BigEndian.Uint32(seriesID) % s.config.RowShards
+			s.buf = append(s.buf, unsafeGetBytes(s.shards[shard])...)
+			s.buf = append(s.buf, ':')
+		}
 		s.buf = append(s.buf, userID...)
 		s.buf = append(s.buf, ':')
 		s.buf = append(s.buf, unsafeGetBytes(timestamp)...)
@@ -146,6 +151,7 @@ func (s *seriesCleaner) Cleanup(seriesID []byte, userID []byte) error {
 		if s.config.Schema != "v9" {
 			shard := binary.BigEndian.Uint32(seriesID) % s.config.RowShards
 			s.buf = append(s.buf, unsafeGetBytes(s.shards[shard])...)
+			s.buf = append(s.buf, ':')
 		}
 		s.buf = append(s.buf, userID...)
 		s.buf = append(s.buf, ':')

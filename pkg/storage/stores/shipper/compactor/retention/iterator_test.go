@@ -123,7 +123,9 @@ func Test_SeriesCleaner(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					require.NotEqual(t, string(expectedDeleteSeries), string(series), "series %s should be deleted", expectedDeleteSeries)
+					if string(expectedDeleteSeries) == string(series) {
+						require.Fail(t, "series should be deleted", expectedDeleteSeries)
+					}
 
 					return nil
 				})
