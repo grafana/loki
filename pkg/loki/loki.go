@@ -157,7 +157,7 @@ type Loki struct {
 	ingester                 *ingester.Ingester
 	Querier                  *querier.Querier
 	ingesterQuerier          *querier.IngesterQuerier
-	store                    storage.Store
+	Store                    storage.Store
 	tableManager             *chunk.TableManager
 	frontend                 *frontend.Frontend
 	ruler                    *cortex_ruler.Ruler
