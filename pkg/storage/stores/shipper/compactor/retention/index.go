@@ -147,17 +147,11 @@ func readOneHexPart(hex []byte) (part []byte, i int) {
 	return nil, 0
 }
 
-type LabelIndexRef struct {
-	KeyType  byte
-	SeriesID []byte
-}
-
-func parseLabelIndexRef(hashKey, rangeKey []byte) (*LabelIndexRef, bool, error) {
-	// todo reuse memory via pool
-	var (
-		components [][]byte
-		seriesID   []byte
-	)
+func parseLabelIndexSeriesID(hashKey, rangeKey []byte) ([]byte, bool, error) {
+	componentsRef := getComponents()
+	defer putComponents(componentsRef)
+	components := componentsRef.components
+	var seriesID []byte
 	components = decodeRangeKey(rangeKey, components)
 	if len(components) < 4 {
 		return nil, false, newInvalidIndexKeyError(hashKey, rangeKey)
@@ -174,10 +168,7 @@ func parseLabelIndexRef(hashKey, rangeKey []byte) (*LabelIndexRef, bool, error) 
 	default:
 		return nil, false, nil
 	}
-	return &LabelIndexRef{
-		KeyType:  keyType[0],
-		SeriesID: seriesID,
-	}, true, nil
+	return seriesID, true, nil
 }
 
 type LabelSeriesRangeKey struct {

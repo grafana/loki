@@ -87,14 +87,14 @@ func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config ch
 						return nil
 					}
 					// this bucketHash doesn't contains the given series. Let's remove it.
-					if err := forAllLabelRef(c, bucketHash, seriesID, config, func(_ *LabelIndexRef) error {
-						if err := c.Delete(); err != nil {
-							return err
-						}
-						return nil
-					}); err != nil {
-						return err
-					}
+					// if err := forAllLabelRef(c, bucketHash, seriesID, config, func(_ *LabelIndexRef) error {
+					// 	if err := c.Delete(); err != nil {
+					// 		return err
+					// 	}
+					// 	return nil
+					// }); err != nil {
+					// 	return err
+					// }
 				}
 				return nil
 			})
@@ -102,7 +102,7 @@ func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config ch
 	})
 }
 
-func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config chunk.PeriodConfig, callback func(ref *LabelIndexRef) error) error {
+func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config chunk.PeriodConfig, callback func(ref []byte) error) error {
 	// todo reuse memory and refactor
 	var (
 		prefix string
@@ -116,11 +116,11 @@ func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config 
 		prefix = fmt.Sprintf("%s:%s", bucketHash, logMetricName)
 	}
 	for k, _ := c.Seek([]byte(prefix)); k != nil; k, _ = c.Next() {
-		ref, ok, err := parseLabelIndexRef(decodeKey(k))
+		ref, ok, err := parseLabelIndexSeriesID(decodeKey(k))
 		if err != nil {
 			return err
 		}
-		if !ok || !bytes.Equal(seriesID, ref.SeriesID) {
+		if !ok || !bytes.Equal(seriesID, ref) {
 			continue
 		}
 		if err := callback(ref); err != nil {

@@ -69,6 +69,70 @@ func Test_ChunkIterator(t *testing.T) {
 	}
 }
 
+func Test_SeriesCleaner(t *testing.T) {
+	for _, tt := range allSchemas {
+		tt := tt
+		t.Run(tt.schema, func(t *testing.T) {
+			store := newTestStore(t)
+			defer store.cleanup()
+			c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
+			c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
+			c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))
+
+			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
+				c1, c2, c3,
+			}))
+
+			store.Stop()
+
+			tables := store.indexTables()
+			require.Len(t, tables, 1)
+			// remove c2 chunk
+			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
+				it, err := newChunkIndexIterator(tx.Bucket(bucketName), tt.config)
+				require.NoError(t, err)
+				for it.Next() {
+					require.NoError(t, it.Err())
+					if it.Entry().Labels.Get("bar") == "foo" {
+						require.NoError(t, it.Delete())
+					}
+				}
+				return nil
+			})
+			require.NoError(t, err)
+
+			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
+				cleaner := newSeriesCleaner(tx.Bucket(bucketName), tt.config)
+				if err := cleaner.Cleanup(entryFromChunk(c2).SeriesID, entryFromChunk(c2).UserID); err != nil {
+					return err
+				}
+				if err := cleaner.Cleanup(entryFromChunk(c1).SeriesID, entryFromChunk(c1).UserID); err != nil {
+					return err
+				}
+				return nil
+			})
+			require.NoError(t, err)
+
+			err = tables[0].DB.View(func(tx *bbolt.Tx) error {
+				return tx.Bucket(bucketName).ForEach(func(k, _ []byte) error {
+					expectedDeleteSeries := entryFromChunk(c2).SeriesID
+					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
+					if !ok {
+						return nil
+					}
+					if err != nil {
+						return err
+					}
+					require.NotEqual(t, string(expectedDeleteSeries), string(series), "series %s should be deleted", expectedDeleteSeries)
+
+					return nil
+				})
+			})
+			require.NoError(t, err)
+		})
+	}
+}
+
 func entryFromChunk(c chunk.Chunk) ChunkEntry {
 	return ChunkEntry{
 		ChunkRef: ChunkRef{

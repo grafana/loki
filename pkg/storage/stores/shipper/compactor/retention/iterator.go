@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -12,7 +13,7 @@ import (
 
 var (
 	_ ChunkEntryIterator = &chunkIndexIterator{}
-	_ Series             = &series{}
+	_ SeriesCleaner      = &seriesCleaner{}
 )
 
 type ChunkEntry struct {
@@ -88,130 +89,88 @@ func (b *chunkIndexIterator) Next() bool {
 	return false
 }
 
-type Series interface {
-	Buckets(userID []byte) []Bucket
+type SeriesCleaner interface {
+	Cleanup(seriesID []byte, userID []byte) error
 }
 
-type Bucket interface {
-	ContainsChunkFor(seriesID []byte) bool
-	LabelEntries(seriesID []byte) LabelEntryIterator
+type seriesCleaner struct {
+	bucketTimestamps []string
+	shards           map[uint32]string
+	cursor           *bbolt.Cursor
+	config           chunk.PeriodConfig
+
+	buf []byte
 }
 
-type LabelEntryIterator interface {
-	Next() bool
-	Entry() *LabelIndexRef
-	// Delete deletes the current entry.
-	Delete() error
-	Err() error
-}
-
-type series struct {
-	bucket *bbolt.Bucket
-	config chunk.PeriodConfig
-}
-
-func newSeries(bucket *bbolt.Bucket, config chunk.PeriodConfig) *series {
-	return &series{
-		bucket: bucket,
-		config: config,
+func newSeriesCleaner(bucket *bbolt.Bucket, config chunk.PeriodConfig) *seriesCleaner {
+	var (
+		fromDay          = config.From.Time.Unix() / int64(config.IndexTables.Period/time.Second)
+		throughDay       = config.From.Add(config.IndexTables.Period).Unix() / int64(config.IndexTables.Period/time.Second)
+		bucketTimestamps = []string{}
+	)
+	for i := fromDay; i <= throughDay; i++ {
+		bucketTimestamps = append(bucketTimestamps, fmt.Sprintf("d%d", i))
 	}
-}
-
-func (s *series) Buckets(userID []byte) []Bucket {
-	bucketHashes := allBucketsHashes(s.config, unsafeGetString(userID))
-	res := make([]Bucket, 0, len(bucketHashes))
-	for _, h := range bucketHashes {
-		res = append(res, newBucket(s.bucket.Cursor(), h, s.config))
-	}
-	return res
-}
-
-type bucket struct {
-	cursor *bbolt.Cursor
-	hash   string
-	config chunk.PeriodConfig
-}
-
-func newBucket(cursor *bbolt.Cursor, hash string, config chunk.PeriodConfig) *bucket {
-	return &bucket{
-		cursor: cursor,
-		hash:   hash,
-		config: config,
-	}
-}
-
-func (b *bucket) ContainsChunkFor(seriesID []byte) bool {
-	if key, _ := b.cursor.Seek([]byte(b.hash + ":" + string(seriesID))); key != nil {
-		return true
-	}
-	return false
-}
-
-func (b *bucket) LabelEntries(seriesID []byte) LabelEntryIterator {
-	return newLabelEntryIterator(b, b.keyPrefix(seriesID))
-}
-
-func (b *bucket) keyPrefix(series []byte) (prefix []byte) {
-	switch b.config.Schema {
-	case "v11", "v10":
-		shard := binary.BigEndian.Uint32(series) % b.config.RowShards
-		prefix = unsafeGetBytes(fmt.Sprintf("%02d:%s:%s", shard, b.hash, logMetricName))
-	default:
-		prefix = unsafeGetBytes(fmt.Sprintf("%s:%s", b.hash, logMetricName))
-	}
-	return
-}
-
-type labelEntryIterator struct {
-	*bucket
-
-	current *LabelIndexRef
-	first   bool
-	err     error
-	prefix  []byte
-}
-
-func newLabelEntryIterator(b *bucket, prefix []byte) *labelEntryIterator {
-	return &labelEntryIterator{
-		bucket: b,
-		first:  true,
-		prefix: prefix,
-	}
-}
-
-func (it *labelEntryIterator) Err() error {
-	return it.err
-}
-
-func (it *labelEntryIterator) Entry() *LabelIndexRef {
-	return it.current
-}
-
-func (it *labelEntryIterator) Delete() error {
-	return it.cursor.Delete()
-}
-
-func (it *labelEntryIterator) Next() bool {
-	var key []byte
-	if it.first {
-		key, _ = it.cursor.Seek(it.prefix)
-		it.first = false
-	} else {
-		key, _ = it.cursor.Next()
-	}
-	for key != nil && bytes.HasPrefix(key, it.prefix) {
-		ref, ok, err := parseLabelIndexRef(decodeKey(key))
-		if err != nil {
-			it.err = err
-			return false
+	var shards map[uint32]string
+	if config.RowShards != 0 {
+		shards = map[uint32]string{}
+		for s := uint32(0); s <= config.RowShards; s++ {
+			shards[s] = fmt.Sprintf("%02d", s)
 		}
-		// skips anything else than labels index entries.
-		if !ok {
-			key, _ = it.cursor.Next()
+	}
+	return &seriesCleaner{
+		bucketTimestamps: bucketTimestamps,
+		cursor:           bucket.Cursor(),
+		buf:              make([]byte, 0, 1024),
+		config:           config,
+		shards:           shards,
+	}
+}
+
+func (s *seriesCleaner) Cleanup(seriesID []byte, userID []byte) error {
+	for _, timestamp := range s.bucketTimestamps {
+		// build the chunk ref prefix
+		s.buf = s.buf[:0]
+		s.buf = append(s.buf, userID...)
+		s.buf = append(s.buf, ':')
+		s.buf = append(s.buf, unsafeGetBytes(timestamp)...)
+		s.buf = append(s.buf, ':')
+		s.buf = append(s.buf, seriesID...)
+
+		if key, _ := s.cursor.Seek(s.buf); key != nil && bytes.HasPrefix(key, s.buf) {
+			// this series still have chunk entries we can't cleanup
 			continue
 		}
-		it.current = ref
-		return true
+		// we don't have any chunk ref for that series let's delete all label index entries
+		s.buf = s.buf[:0]
+		if s.config.Schema != "v9" {
+			shard := binary.BigEndian.Uint32(seriesID) % s.config.RowShards
+			s.buf = append(s.buf, unsafeGetBytes(s.shards[shard])...)
+		}
+		s.buf = append(s.buf, userID...)
+		s.buf = append(s.buf, ':')
+		s.buf = append(s.buf, unsafeGetBytes(timestamp)...)
+		s.buf = append(s.buf, ':')
+		s.buf = append(s.buf, unsafeGetBytes(logMetricName)...)
+
+		// delete all seriesRangeKeyV1 and labelSeriesRangeKeyV1 via prefix
+		// todo(cyriltovena) we might be able to encode index key instead of parsing all label entries for faster delete.
+		for key, _ := s.cursor.Seek(s.buf); key != nil && bytes.HasPrefix(key, s.buf); key, _ = s.cursor.Next() {
+
+			parsedSeriesID, ok, err := parseLabelIndexSeriesID(decodeKey(key))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+			if !bytes.Equal(seriesID, parsedSeriesID) {
+				continue
+			}
+			if err := s.cursor.Delete(); err != nil {
+				return err
+			}
+		}
 	}
-	return false
+	return nil
 }
