@@ -169,7 +169,6 @@ type ChunkStore interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
 	GetSchemaConfigs() []chunk.PeriodConfig
-	SetChunkFilterer(chunkFilter storage.RequestChunkFilterer)
 }
 
 // New makes a new Ingester.
