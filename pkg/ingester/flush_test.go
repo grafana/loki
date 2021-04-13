@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/runtime"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -339,6 +340,8 @@ func (s *testStore) GetSchemaConfigs() []chunk.PeriodConfig {
 }
 
 func (s *testStore) Stop() {}
+
+func (s *testStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {}
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}

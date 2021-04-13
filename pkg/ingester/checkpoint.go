@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"bytes"
+	"context"
 	fmt "fmt"
 	"io/ioutil"
 	"os"
@@ -206,7 +207,7 @@ func newStreamsIterator(ing ingesterInstances) *streamIterator {
 		inst.streamsMtx.RLock()
 		streams := make([]*stream, 0, len(inst.streams))
 		inst.streamsMtx.RUnlock()
-		_ = inst.forAllStreams(func(s *stream) error {
+		_ = inst.forAllStreams(context.Background(), func(s *stream) error {
 			streams = append(streams, s)
 			return nil
 		})

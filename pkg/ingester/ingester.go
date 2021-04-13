@@ -158,6 +158,8 @@ type Ingester struct {
 	metrics *ingesterMetrics
 
 	wal WAL
+
+	chunkFilter storage.RequestChunkFilterer
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -167,6 +169,7 @@ type ChunkStore interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
 	GetSchemaConfigs() []chunk.PeriodConfig
+	SetChunkFilterer(chunkFilter storage.RequestChunkFilterer)
 }
 
 // New makes a new Ingester.
@@ -218,6 +221,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	return i, nil
+}
+
+func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
+	i.chunkFilter = chunkFilter
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
@@ -404,7 +411,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch)
+		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
 		i.instances[instanceID] = inst
 	}
 	return inst
@@ -677,7 +684,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	if err := instance.addNewTailer(tailer); err != nil {
+	if err := instance.addNewTailer(queryServer.Context(), tailer); err != nil {
 		return err
 	}
 	tailer.loop()
