@@ -7,10 +7,10 @@ ARG BUILD_IMAGE=grafana/loki-build-image:0.12.0
 FROM $BUILD_IMAGE as build
 COPY . /src/loki
 WORKDIR /src/loki
-RUN make clean && make BUILD_IN_CONTAINER=false cmd/docker-driver/docker-driver
+RUN make clean && make BUILD_IN_CONTAINER=false clients/cmd/docker-driver/docker-driver
 
 FROM alpine:3.13
 RUN apk add --update --no-cache ca-certificates tzdata
-COPY --from=build /src/loki/cmd/docker-driver/docker-driver /bin/docker-driver
+COPY --from=build /src/loki/clients/cmd/docker-driver/docker-driver /bin/docker-driver
 WORKDIR /bin/
 ENTRYPOINT [ "/bin/docker-driver" ]

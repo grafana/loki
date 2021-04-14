@@ -280,7 +280,7 @@ clean:
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf cmd/querytee/querytee
 	rm -rf .cache
-	rm -rf cmd/docker-driver/rootfs
+	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_grafana_loki.h
 	rm -rf cmd/fluent-bit/out_grafana_loki.so
@@ -350,16 +350,16 @@ PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
 
 docker-driver: docker-driver-clean
-	mkdir cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f cmd/docker-driver/Dockerfile .
+	mkdir clients/cmd/docker-driver/rootfs
+	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 	ID=$$(docker create rootfsimage true) && \
-	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
+	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
-	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) clients/cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) clients/cmd/docker-driver
 
-cmd/docker-driver/docker-driver: $(APP_GO_FILES)
+clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -374,7 +374,7 @@ docker-driver-clean:
 	-docker plugin disable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	-docker plugin rm $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	-docker plugin rm $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
-	rm -rf cmd/docker-driver/rootfs
+	rm -rf clients/cmd/docker-driver/rootfs
 
 #####################
 # fluent-bit plugin #
