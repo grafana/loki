@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"gopkg.in/yaml.v3"
 
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/logcli/client"
@@ -28,10 +29,13 @@ var (
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
 	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
 
+	configFile = lokiConfig()
+
 	queryClient = newQueryClient(app)
 
-	queryCmd = app.Command("query", `Run a LogQL query.
+	loginCmd = app.Command("login", `Grafana loki login-in.`)
 
+	queryCmd = app.Command("query", `Run a LogQL query.
 The "query" command is useful for querying for logs. Logs can be
 returned in a few output modes:
 
@@ -105,7 +109,27 @@ Use the --analyze-labels flag to get a summary of the labels found in all stream
 This is helpful to find high cardinality labels.
 `)
 	seriesQuery = newSeriesQuery(seriesCmd)
+
+	c ClientConfig
 )
+
+type ClientConfig struct {
+	AuthURL     string `yaml:"auth_url"`
+	TokenURL    string `yaml:"token_url"`
+	ClientID    string `yaml:"client_id"`
+	LokiAddr    string `yaml:"loki_addr"`
+	Token       string `yaml:"token"`
+	HeaderName  string `yaml:"header_name"`
+	RedirectUri string `yaml:"redirect_uri"`
+}
+
+func lokiConfig() (filepath string) {
+	filepath = os.Getenv("HOME") + "/.loki/config"
+	if os.Getenv("LOKI_HOME") != "" {
+		filepath = os.Getenv("LOKI_HOME")
+	}
+	return
+}
 
 func main() {
 	log.SetOutput(os.Stderr)
@@ -182,13 +206,44 @@ func main() {
 		labelsQuery.DoLabels(queryClient)
 	case seriesCmd.FullCommand():
 		seriesQuery.DoSeries(queryClient)
+	case loginCmd.FullCommand():
+		login(loginCmd)
 	}
 }
 
-func newQueryClient(app *kingpin.Application) client.Client {
+func login(cmd *kingpin.CmdClause) {
+	err := readConfig(configFile)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	AuthorizeUser(c.ClientID, c.AuthURL, c.TokenURL, c.RedirectUri)
+}
 
+func readConfig(filename string) error {
+	data, err := os.ReadFile(configFile)
+	if err == nil {
+		err = yaml.Unmarshal(data, &c)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func newQueryClient(app *kingpin.Application) client.Client {
+	defaultAddr := "http://localhost:3100"
+	if err := readConfig(configFile); err != nil {
+		log.Fatalln(err)
+	}
+	if c.LokiAddr != "" {
+		defaultAddr = c.LokiAddr
+	}
+
+	// TODO: implement refresh token
 	client := &client.DefaultClient{
-		TLSConfig: config.TLSConfig{},
+		TLSConfig:  config.TLSConfig{},
+		Token:      c.Token,
+		HeaderName: c.HeaderName,
 	}
 
 	// extract host
@@ -201,7 +256,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 		return nil
 	}
 
-	app.Flag("addr", "Server address. Can also be set using LOKI_ADDR env var.").Default("http://localhost:3100").Envar("LOKI_ADDR").Action(addressAction).StringVar(&client.Address)
+	app.Flag("addr", "Server address. Can also be set using LOKI_ADDR env var.").Default(defaultAddr).Envar("LOKI_ADDR").Action(addressAction).StringVar(&client.Address)
 	app.Flag("username", "Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.").Default("").Envar("LOKI_USERNAME").StringVar(&client.Username)
 	app.Flag("password", "Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.").Default("").Envar("LOKI_PASSWORD").StringVar(&client.Password)
 	app.Flag("ca-cert", "Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.").Default("").Envar("LOKI_CA_CERT_PATH").StringVar(&client.TLSConfig.CAFile)

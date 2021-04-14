@@ -45,11 +45,13 @@ type Client interface {
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig config.TLSConfig
-	Username  string
-	Password  string
-	Address   string
-	OrgID     string
+	TLSConfig  config.TLSConfig
+	Username   string
+	Password   string
+	Address    string
+	OrgID      string
+	Token      string
+	HeaderName string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -170,8 +172,12 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		return err
 	}
 
-	req.SetBasicAuth(c.Username, c.Password)
 	req.Header.Set("User-Agent", userAgent)
+	if c.Token != "" && c.HeaderName != "" {
+		req.Header.Set(c.HeaderName, c.Token)
+	} else {
+		req.SetBasicAuth(c.Username, c.Password)
+	}
 
 	if c.OrgID != "" {
 		req.Header.Set("X-Scope-OrgID", c.OrgID)
@@ -226,6 +232,10 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 	}
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password))}}
+
+	if c.Token != "" && c.HeaderName != "" {
+		h.Set(c.HeaderName, c.Token)
+	}
 
 	if c.OrgID != "" {
 		h.Set("X-Scope-OrgID", c.OrgID)

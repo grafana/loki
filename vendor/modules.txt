@@ -685,6 +685,9 @@ github.com/morikuni/aec
 github.com/mwitkow/go-conntrack
 # github.com/ncw/swift v1.0.52
 github.com/ncw/swift
+# github.com/nirasan/go-oauth-pkce-code-verifier v0.0.0-20170819232839-0fbfe93532da
+## explicit
+github.com/nirasan/go-oauth-pkce-code-verifier
 # github.com/oklog/run v1.1.0
 github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
@@ -867,6 +870,9 @@ github.com/shurcooL/httpfs/vfsutil
 github.com/shurcooL/vfsgen
 # github.com/sirupsen/logrus v1.7.0
 github.com/sirupsen/logrus
+# github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
+## explicit
+github.com/skratchdot/open-golang/open
 # github.com/soheilhy/cmux v0.1.5-0.20210205191134-5ec6847320e5
 github.com/soheilhy/cmux
 # github.com/sony/gobreaker v0.4.1
