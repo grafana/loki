@@ -416,12 +416,12 @@ fluentd-test:
 # logstash plugin #
 ##################
 logstash-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f cmd/logstash/Dockerfile ./
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f clients/cmd/logstash/Dockerfile ./
 
 # Send 10 lines to the local Loki instance.
 logstash-push-test-logs: LOKI_URL ?= http://host.docker.internal:3100/loki/api/v1/push
 logstash-push-test-logs:
-	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
+	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/clients/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
 		$(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f loki.conf
 
 logstash-push:
@@ -429,7 +429,7 @@ logstash-push:
 
 # Enter an env already configure to build and test logstash output plugin.
 logstash-env:
-	$(SUDO) docker run -v  `pwd`/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+	$(SUDO) docker run -v  `pwd`/clients/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
 ########################
 # Bigtable Backup Tool #
