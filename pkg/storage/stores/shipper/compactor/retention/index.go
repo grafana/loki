@@ -1,19 +1,14 @@
 package retention
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage"
 )
@@ -26,8 +21,6 @@ const (
 	labelNamesRangeKeyV1  = '9'
 	separator             = "\000"
 )
-
-var QueryParallelism = 100
 
 var ErrInvalidIndexKey = errors.New("invalid index key")
 
@@ -209,152 +202,6 @@ func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (LabelSeriesRangeKey, bo
 		Name:     hashComponents[len(hashComponents)-1],
 		UserID:   hashComponents[len(hashComponents)-4],
 	}, true, nil
-}
-
-func findSeriesIDsForRules(db *bbolt.DB, config chunk.PeriodConfig, rules []StreamRule) ([][]string, error) {
-	schema, err := config.CreateSchema()
-	if err != nil {
-		return nil, err
-	}
-	// cover the whole table.
-	from, through := config.From.Time, config.From.Time.Add(config.IndexTables.Period)
-	result := make([][]string, len(rules))
-
-	for ruleIndex, rule := range rules {
-		incomingIDs := make(chan []string)
-		incomingErrors := make(chan error)
-
-		for _, matcher := range rule.Matchers {
-			go func(matcher *labels.Matcher) {
-				ids, err := lookupSeriesByMatcher(db, schema, from, through, rule.UserID, matcher)
-				if err != nil {
-					incomingErrors <- err
-					return
-				}
-				incomingIDs <- ids
-			}(&matcher)
-		}
-		// intersect. and add to result.
-		var ids []string
-		var lastErr error
-		var initialized bool
-		for i := 0; i < len(rule.Matchers); i++ {
-			select {
-			case incoming := <-incomingIDs:
-				if !initialized {
-					ids = incoming
-					initialized = true
-				} else {
-					ids = intersectStrings(ids, incoming)
-				}
-			case err := <-incomingErrors:
-				lastErr = err
-			}
-		}
-		if lastErr != nil {
-			return nil, err
-		}
-		result[ruleIndex] = ids
-	}
-
-	return result, nil
-}
-
-func lookupSeriesByMatcher(
-	db *bbolt.DB,
-	schema chunk.BaseSchema,
-	from, through model.Time,
-	userID string,
-	matcher *labels.Matcher) ([]string, error) {
-	queries, err := schema.GetReadQueriesForMetricLabelValue(
-		from, through, userID, "logs", matcher.Name, matcher.Value)
-	if err != nil {
-		return nil, err
-	}
-	if len(queries) == 0 {
-		return nil, nil
-	}
-	if len(queries) == 1 {
-		return lookupSeriesByQuery(db, queries[0])
-	}
-	queue := make(chan chunk.IndexQuery)
-	incomingResult := make(chan struct {
-		ids []string
-		err error
-	})
-	n := math.Min(len(queries), QueryParallelism)
-	for i := 0; i < n; i++ {
-		go func() {
-			for {
-				query, ok := <-queue
-				if !ok {
-					return
-				}
-				res, err := lookupSeriesByQuery(db, query)
-				incomingResult <- struct {
-					ids []string
-					err error
-				}{res, err}
-			}
-		}()
-	}
-	go func() {
-		for _, query := range queries {
-			queue <- query
-		}
-		close(queue)
-	}()
-
-	// Now receive all the results.
-	var ids []string
-	var lastErr error
-	for i := 0; i < len(queries); i++ {
-		res := <-incomingResult
-		if res.err != nil {
-			lastErr = res.err
-			continue
-		}
-		ids = append(ids, res.ids...)
-	}
-	sort.Strings(ids)
-	ids = uniqueStrings(ids)
-	return ids, lastErr
-}
-
-func lookupSeriesByQuery(db *bbolt.DB, query chunk.IndexQuery) ([]string, error) {
-	start := []byte(query.HashValue + separator + string(query.RangeValueStart))
-	rowPrefix := []byte(query.HashValue + separator)
-	var res []string
-	var components [][]byte
-	err := db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket(bucketName)
-		if bucket == nil {
-			return nil
-		}
-		c := bucket.Cursor()
-		for k, v := c.Seek(start); k != nil; k, v = c.Next() {
-			// technically we can run regex that are not matching empty.
-			if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
-				continue
-			}
-			if !bytes.HasPrefix(k, rowPrefix) {
-				break
-			}
-			// parse series ID and add to res
-			_, r := decodeKey(k)
-
-			components = decodeRangeKey(r, components)
-			if len(components) != 4 {
-				continue
-			}
-			// we store in label entries range keys: label hash value | seriesID | empty | type.
-			// and we want the seriesID
-			res = append(res, string(components[len(components)-3]))
-		}
-		return nil
-	})
-
-	return res, err
 }
 
 func schemaPeriodForTable(config storage.SchemaConfig, tableName string) (chunk.PeriodConfig, bool) {

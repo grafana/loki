@@ -35,14 +35,9 @@ type StreamRule struct {
 	Duration time.Duration
 	// in case a series matches multiple Rules takes the one with higher weight or the first
 	Weight int
-	UserID string
 }
 
 type Rules interface {
-	TenantRules
-	PerStream() []StreamRule
-}
-
-type TenantRules interface {
 	PerTenant(userID string) time.Duration
+	PerStream(userID string) []StreamRule
 }

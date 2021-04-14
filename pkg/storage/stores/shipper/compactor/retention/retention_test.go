@@ -161,29 +161,3 @@ func labelsString(ls labels.Labels) string {
 
 	return b.String()
 }
-
-func Test_AllBucketHash(t *testing.T) {
-	fmt.Fprintf(os.Stdout, "BucketHash %+v", allBucketsHashes(chunk.PeriodConfig{
-		From:       chunk.DayTime{Time: model.Now()},
-		IndexType:  "boltdb",
-		ObjectType: "filesystem",
-		Schema:     "v9",
-		IndexTables: chunk.PeriodicTableConfig{
-			Prefix: "index_",
-			Period: time.Hour * 24,
-		},
-		RowShards: 16,
-	}, "foo"))
-
-	fmt.Fprintf(os.Stdout, "BucketHash %+v", bucketsHashes(model.Now().Add(-2*time.Hour), model.Now().Add(48*time.Hour), chunk.PeriodConfig{
-		From:       chunk.DayTime{Time: model.Now()},
-		IndexType:  "boltdb",
-		ObjectType: "filesystem",
-		Schema:     "v9",
-		IndexTables: chunk.PeriodicTableConfig{
-			Prefix: "index_",
-			Period: time.Hour * 24,
-		},
-		RowShards: 16,
-	}, "foo"))
-}

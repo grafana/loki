@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -61,9 +62,7 @@ func newTable(ctx context.Context, workingDirectory string, objectClient chunk.O
 }
 
 func (t *table) compact() error {
-	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
-	// This is due to the object stores not having a concept of directories.
-	objects, _, err := t.storageClient.List(t.ctx, t.name+delimiter, delimiter)
+	objects, err := util.ListDirectory(t.ctx, t.name, t.storageClient)
 	if err != nil {
 		return err
 	}

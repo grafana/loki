@@ -1,148 +1,195 @@
 package retention
 
 import (
-	"bytes"
-	"encoding/binary"
+	"context"
 	"fmt"
-	"time"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/prometheus/common/model"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 var (
-	bucketName    = []byte("index")
-	chunkBucket   = []byte("chunks")
-	empty         = []byte("-")
-	logMetricName = "logs"
+	bucketName  = []byte("index")
+	chunkBucket = []byte("chunks")
+	empty       = []byte("-")
 )
 
-//  todo we want to extract interfaces for series iterator and marker
+const (
+	logMetricName = "logs"
+	delimiter     = "/"
+	markersFolder = "markers"
+)
 
-type MarkerTx interface {
-	Mark(id []byte) error
+type Marker struct {
+	workingDirectory string
+	config           storage.SchemaConfig
+	objectClient     chunk.ObjectClient
+	expiration       ExpirationChecker
 }
 
-// type Marker interface {
-// 	Begin() MarkerTx
-// 	Commit() error
-// 	Rollback() error
-// }
+func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker) *Marker {
+	return &Marker{
+		workingDirectory: workingDirectory,
+		config:           config,
+		objectClient:     objectClient,
+	}
+}
 
-// todo clean up with interfaces.
-// markForDelete delete index entries for expired chunk in `in` and add chunkid to delete in `marker`.
-// All of this inside a single transaction.
-func markForDelete(in, marker *bbolt.DB, expiration ExpirationChecker, config chunk.PeriodConfig) error {
-	return in.Update(func(inTx *bbolt.Tx) error {
-		bucket := inTx.Bucket(bucketName)
+func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error {
+	objects, err := util.ListDirectory(ctx, tableName, t.objectClient)
+	if err != nil {
+		return err
+	}
+
+	if len(objects) != 1 {
+		// todo(1): in the future we would want to support more tables so that we can apply retention below 1d.
+		// for simplicity and to avoid conflict with compactor we'll support only compacted db file.
+		// Possibly we should apply retention right before the compactor upload compacted db.
+
+		// todo(2): Depending on the retention rules we should be able to skip tables.
+		// For instance if there isn't a retention rules below 1 week, then we can skip the first 7 tables.
+		level.Debug(util_log.Logger).Log("msg", "skipping retention for non-compacted table", "name", tableName)
+		return nil
+	}
+	tableKey := objects[0].Key
+
+	if shipper_util.IsDirectory(tableKey) {
+		level.Debug(util_log.Logger).Log("msg", "skipping retention no table file found", "key", tableKey)
+		return nil
+	}
+
+	tableDirectory := path.Join(t.workingDirectory, tableName)
+	err = chunk_util.EnsureDirectory(tableDirectory)
+	if err != nil {
+		return err
+	}
+
+	downloadAt := filepath.Join(t.workingDirectory, tableName)
+
+	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, tableKey, downloadAt)
+	if err != nil {
+		return err
+	}
+
+	db, err := shipper_util.SafeOpenBoltdbFile(downloadAt)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err := os.Remove(db.Path()); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to removed downloaded db", "err", err)
+		}
+	}()
+
+	schemaCfg, ok := schemaPeriodForTable(t.config, tableName)
+	if !ok {
+		return fmt.Errorf("could not find schema for table: %s", tableName)
+	}
+
+	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	if err != nil {
+		return fmt.Errorf("failed to create marker writer: %w", err)
+	}
+
+	var empty bool
+	err = db.Update(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket(bucketName)
 		if bucket == nil {
 			return nil
 		}
-		return marker.Update(func(outTx *bbolt.Tx) error {
-			// deleteChunkBucket, err := outTx.CreateBucket(chunkBucket)
-			// if err != nil {
-			// 	return err
-			// }
-			seriesMap := newUserSeriesMap()
-			// Phase 1 we mark chunkID that needs to be deleted in marker DB
-			c := bucket.Cursor()
-			var aliveChunk bool
 
-			// it := newBoltdbChunkIndexIterator(bucket)
-			// for it.Next() {
-			// 	if it.Err() != nil {
-			// 		return it.Err()
-			// 	}
-			// 	ref := it.Entry()
-			// }
-			// if err := forAllChunkRef(c, func(ref *ChunkRef) error {
-			// 	if expiration.Expired(ref) {
-			// 		if err := deleteChunkBucket.Put(ref.ChunkID, empty); err != nil {
-			// 			return err
-			// 		}
-			// 		seriesMap.Add(ref.SeriesID, ref.UserID)
-			// 		if err := c.Delete(); err != nil {
-			// 			return err
-			// 		}
-			// 		return nil
-			// 	}
-			// 	// we found a key that will stay.
-			// 	aliveChunk = true
-			// 	return nil
-			// }); err != nil {
-			// 	return err
-			// }
-			// shortcircuit: no chunks remaining we can delete everything.
-			if !aliveChunk {
-				return inTx.DeleteBucket(bucketName)
-			}
-			// Phase 2 verify series that have marked chunks have still other chunks in the index per buckets.
-			// If not this means we can delete labels index entries for the given series.
-			return seriesMap.ForEach(func(seriesID, userID []byte) error {
-				// for all buckets if seek to bucket.hashKey + ":" + string(seriesID) is not nil we still have chunks.
-				bucketHashes := allBucketsHashes(config, unsafeGetString(userID))
-				for _, bucketHash := range bucketHashes {
-					if key, _ := c.Seek([]byte(bucketHash + ":" + string(seriesID))); key != nil {
-						return nil
-					}
-					// this bucketHash doesn't contains the given series. Let's remove it.
-					// if err := forAllLabelRef(c, bucketHash, seriesID, config, func(_ *LabelIndexRef) error {
-					// 	if err := c.Delete(); err != nil {
-					// 		return err
-					// 	}
-					// 	return nil
-					// }); err != nil {
-					// 	return err
-					// }
-				}
-				return nil
-			})
-		})
-	})
-}
+		chunkIt, err := newChunkIndexIterator(bucket, schemaCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create chunk index iterator: %w", err)
+		}
 
-func forAllLabelRef(c *bbolt.Cursor, bucketHash string, seriesID []byte, config chunk.PeriodConfig, callback func(ref []byte) error) error {
-	// todo reuse memory and refactor
-	var (
-		prefix string
-	)
-	// todo refactor ParseLabelRef. => keyType,SeriesID
-	switch config.Schema {
-	case "v11":
-		shard := binary.BigEndian.Uint32(seriesID) % config.RowShards
-		prefix = fmt.Sprintf("%02d:%s:%s", shard, bucketHash, logMetricName)
-	default:
-		prefix = fmt.Sprintf("%s:%s", bucketHash, logMetricName)
-	}
-	for k, _ := c.Seek([]byte(prefix)); k != nil; k, _ = c.Next() {
-		ref, ok, err := parseLabelIndexSeriesID(decodeKey(k))
+		seriesCleaner := newSeriesCleaner(bucket, schemaCfg)
+		empty, err = markforDelete(markerWriter, chunkIt, seriesCleaner, nil)
 		if err != nil {
 			return err
 		}
-		if !ok || !bytes.Equal(seriesID, ref) {
-			continue
+		if err := markerWriter.Close(); err != nil {
+			return fmt.Errorf("failed to close marker writer: %w", err)
 		}
-		if err := callback(ref); err != nil {
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := db.Close(); err != nil {
+		return err
+	}
+	// either delete if all entries are removed or upload the new file.
+	if empty {
+		return t.objectClient.DeleteObject(ctx, tableName+delimiter)
+	}
+	// No chunks to delete means no changes to the remote index, we don't need to upload it.
+	if markerWriter.Count() == 0 {
+		return nil
+	}
+	return t.uploadDB(ctx, db, tableKey)
+}
+
+func (t *Marker) uploadDB(ctx context.Context, db *bbolt.DB, objectKey string) error {
+	sourcePath := db.Path()
+	if strings.HasSuffix(objectKey, ".gz") {
+		compressedPath := fmt.Sprintf("%s.gz", sourcePath)
+		err := shipper_util.CompressFile(sourcePath, compressedPath)
+		if err != nil {
 			return err
 		}
+		defer func() {
+			os.Remove(compressedPath)
+		}()
+		sourcePath = compressedPath
 	}
-
-	return nil
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := sourceFile.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close file", "path", sourceFile, "err", err)
+		}
+	}()
+	return t.objectClient.PutObject(ctx, objectKey, sourceFile)
 }
 
-func allBucketsHashes(config chunk.PeriodConfig, userID string) []string {
-	return bucketsHashes(config.From.Time, config.From.Add(config.IndexTables.Period), config, userID)
-}
-
-func bucketsHashes(from, through model.Time, config chunk.PeriodConfig, userID string) []string {
-	var (
-		fromDay    = from.Unix() / int64(config.IndexTables.Period/time.Second)
-		throughDay = through.Unix() / int64(config.IndexTables.Period/time.Second)
-		result     = []string{}
-	)
-	for i := fromDay; i <= throughDay; i++ {
-		result = append(result, fmt.Sprintf("%s:d%d", userID, i))
+func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
+	seriesMap := newUserSeriesMap()
+	var empty bool
+	for chunkIt.Next() {
+		if chunkIt.Err() != nil {
+			return false, chunkIt.Err()
+		}
+		c := chunkIt.Entry()
+		if expiration.Expired(c) {
+			seriesMap.Add(c.SeriesID, c.UserID)
+			if err := chunkIt.Delete(); err != nil {
+				return false, err
+			}
+			if err := marker.Put(c.ChunkID); err != nil {
+				return false, err
+			}
+		}
+		empty = false
 	}
-	return result
+	if empty {
+		return true, nil
+	}
+	return false, seriesMap.ForEach(func(seriesID, userID []byte) error {
+		return seriesCleaner.Cleanup(seriesID, userID)
+	})
 }
