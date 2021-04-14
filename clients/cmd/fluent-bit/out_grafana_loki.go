@@ -1,10 +1,11 @@
 package main
 
 import (
-	"C"
 	"fmt"
 	"time"
 	"unsafe"
+
+	"C"
 
 	"github.com/fluent/fluent-bit-go/output"
 	"github.com/go-kit/kit/log"
