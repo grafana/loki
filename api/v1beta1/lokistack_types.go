@@ -83,27 +83,27 @@ type LokiTemplateSpec struct {
 	// Compactor defines the compaction component spec.
 	//
 	// +optional
-	Compactor *LokiComponentSpec `json:"compactor,omitempty"`
+	Compactor LokiComponentSpec `json:"compactor,omitempty"`
 
 	// Distributor defines the distributor component spec.
 	//
 	// +optional
-	Distributor *LokiComponentSpec `json:"distributor,omitempty"`
+	Distributor LokiComponentSpec `json:"distributor,omitempty"`
 
 	// Ingester defines the ingester component spec.
 	//
 	// +optional
-	Ingester *LokiComponentSpec `json:"ingester,omitempty"`
+	Ingester LokiComponentSpec `json:"ingester,omitempty"`
 
 	// Querier defines the querier component spec.
 	//
 	// +optional
-	Querier *LokiComponentSpec `json:"querier,omitempty"`
+	Querier LokiComponentSpec `json:"querier,omitempty"`
 
 	// QueryFrontend defines the query frontend component spec.
 	//
 	// +optional
-	QueryFrontend *LokiComponentSpec `json:"queryFrontend,omitempty"`
+	QueryFrontend LokiComponentSpec `json:"queryFrontend,omitempty"`
 }
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
@@ -125,7 +125,7 @@ type ObjectStorageSpec struct {
 	// Name of a secret in the same namespace as the cluster logging operator.
 	//
 	// +required
-	Secret *ObjectStorageSecretSpec `json:"secret,omitempty"`
+	Secret ObjectStorageSecretSpec `json:"secret,omitempty"`
 }
 
 // QueryLimitSpec defines the limits applies at the query path.
@@ -206,12 +206,12 @@ type LimitsTemplateSpec struct {
 	// IngestionLimits defines the limits applied on ingested log streams.
 	//
 	// +optional
-	IngestionLimits *IngestionLimitSpec `json:"ingestion,omitempty"`
+	IngestionLimits IngestionLimitSpec `json:"ingestion,omitempty"`
 
 	// QueryLimits defines the limit applied on querying log streams.
 	//
 	// +optional
-	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
+	QueryLimits QueryLimitSpec `json:"queries,omitempty"`
 }
 
 // LimitsSpec defines the spec for limits applied at ingestion or query
@@ -221,7 +221,7 @@ type LimitsSpec struct {
 	// Global defines the limits applied globally across the cluster.
 	//
 	// +optional
-	Global *LimitsTemplateSpec `json:"global,omitempty"`
+	Global LimitsTemplateSpec `json:"global,omitempty"`
 
 	// Tenants defines the limits applied per tenant.
 	//
@@ -256,12 +256,12 @@ type LokiStackSpec struct {
 	// Limits defines the limits to be applied to log stream processing.
 	//
 	// +optional
-	Limits *LimitsSpec `json:"limits,omitempty"`
+	Limits LimitsSpec `json:"limits,omitempty"`
 
 	// Template defines the resource/limits/tolerations/nodeselectors per component
 	//
 	// +optional
-	Template *LokiTemplateSpec `json:"template,omitempty"`
+	Template LokiTemplateSpec `json:"template,omitempty"`
 }
 
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.

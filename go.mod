@@ -6,6 +6,7 @@ require (
 	github.com/ViaQ/logerr v1.0.9
 	github.com/creasty/defaults v1.5.1
 	github.com/go-logr/logr v0.4.0
+	github.com/imdario/mergo v0.3.10
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.3.0
 	github.com/stretchr/testify v1.6.1
 	k8s.io/api v0.20.4

@@ -1,18 +1,19 @@
 package config
 
+import (
+	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
+)
+
 // Options is used to render the loki-config.yaml file template
 type Options struct {
-	// FrontendWorker is required
-	FrontendWorker Address
-	// GossipRing is required
-	GossipRing Address
-	// Querier is required
-	Querier Address
-	// Storage is required
-	StorageDirectory string
+	Stack lokiv1beta1.LokiStackSpec
 
-	// Namespace of the stack
-	Namespace string
+	Namespace        string
+	Name             string
+	FrontendWorker   Address
+	GossipRing       Address
+	Querier          Address
+	StorageDirectory string
 }
 
 // Address FQDN and port for a k8s service.

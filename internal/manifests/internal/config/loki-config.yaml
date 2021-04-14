@@ -30,6 +30,7 @@ ingester:
     join_after: 60s
     num_tokens: 512
     ring:
+      replication_factor: {{ .Stack.ReplicationFactor }}
       heartbeat_timeout: 1m
       kvstore:
         store: memberlist
@@ -40,14 +41,20 @@ ingester_client:
   remote_timeout: 1s
 limits_config:
   enforce_metric_name: false
-  ingestion_burst_size_mb: 20
-  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionBurstSize }}
+  ingestion_rate_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionRate }}
   ingestion_rate_strategy: global
   max_cache_freshness_per_query: 10m
-  max_global_streams_per_user: 25000
+  max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerUser }}
   max_query_length: 12000h
+  max_label_name_length: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelLength }}
+  max_label_value_length: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelValueLength }}
+  max_labels_per_series: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelsPerSeries }}
+  max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
   max_query_parallelism: 32
-  max_streams_per_user: 0
+  max_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxStreamsPerUser }}
+  max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
+  max_entries_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesPerQuery }}
   reject_old_samples: true
   reject_old_samples_max_age: 24h
 memberlist:

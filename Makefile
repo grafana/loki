@@ -2,6 +2,11 @@
 # referenced here as make variables. For example: $(GOLANGCI_LINT)
 include .bingo/Variables.mk
 
+# set the default target here, because the include above will automatically set
+# it to the first defined target
+.DEFAULT_GOAL := default
+default: all
+
 # CLUSTER_LOGGING_VERSION
 # defines the version of the OpenShift Cluster Logging product.
 # Updates this value when a new version of the product should include this operator and its bundle.
@@ -17,7 +22,7 @@ CLUSTER_LOGGING_NS ?= openshift-logging
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.0.1
+VERSION ?= v0.0.1
 CHANNELS ?= "tech-preview"
 DEFAULT_CHANNELS ?= "tech-preview"
 
@@ -44,12 +49,12 @@ REGISTRY_ORG ?= openshift-logging
 
 # BUNDLE_IMG defines the image:tag used for the bundle. 
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator-bundle:v$(VERSION)
+BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
 
 GO_FILES := $(shell find . -type f -name '*.go')
 
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator:v$(VERSION)
+IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator:$(VERSION)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
@@ -61,13 +66,14 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: lint generate manager bin/loki-broker
+all: generate lint manager bin/loki-broker
 
 OCI_RUNTIME ?= $(shell which podman || which docker)
 
 # Run tests
 ENVTEST_ASSETS_DIR=$(CURDIR)/testbin
-test: generate lint manifests
+test: generate go-generate lint manifests
+test: $(GO_FILES)
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.0/hack/setup-envtest.sh
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
@@ -108,15 +114,17 @@ golangci-lint: $(CURDIR)/bin/golangci-lint
 $(CURDIR)/bin/golangci-lint:
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.38.0
 
-lint: $(GOLANGCI_LINT)
+lint: $(GOLANGCI_LINT) | generate
 	$(GOLANGCI_LINT) run ./...
 
 fmt: $(GOFUMPT)
 	find . -type f -name '*.go' -not -path './vendor/*' -exec $(GOFUMPT) -w {} \;
 
+go-generate:
+	go generate ./...
+
 # Generate code
 generate: $(CONTROLLER_GEN)
-	go generate ./...
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 # Build the image
@@ -157,7 +165,7 @@ manifests/$(CLUSTER_LOGGING_VERSION)/loki-operator.v$(CLUSTER_LOGGING_VERSION).c
 bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
 	$(OPERATOR_SDK) bundle validate ./bundle
 	$(MAKE) legacy-manifest-files
 
