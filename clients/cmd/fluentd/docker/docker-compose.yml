@@ -3,8 +3,8 @@ services:
   # Receive forwarded logs and send to /fluentd/logs/data.log and loki
   fluentd:
     build:
-      context: ../../..
-      dockerfile: cmd/fluentd/Dockerfile
+      context: ../../../..
+      dockerfile: ../Dockerfile
     image: fluentd:loki
     volumes:
     - ./fluentd.conf:/fluentd/etc/fluent.conf
