@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/runtime"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -284,6 +285,9 @@ func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
 	return nil
 }
 
+func (s *mockStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {
+}
+
 type mockQuerierServer struct {
 	ctx   context.Context
 	resps []*logproto.QueryResponse
@@ -448,7 +452,6 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-
 	for i, tc := range []struct {
 		in       Config
 		err      bool
