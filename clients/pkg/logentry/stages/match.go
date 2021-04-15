@@ -9,10 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/clients/pkg/logentry/logql"
 )
 
 const (
@@ -37,7 +34,7 @@ type MatcherConfig struct {
 }
 
 // validateMatcherConfig validates the MatcherConfig for the matcherStage
-func validateMatcherConfig(cfg *MatcherConfig) (logql.LogSelectorExpr, error) {
+func validateMatcherConfig(cfg *MatcherConfig) (logql.Expr, error) {
 	if cfg == nil {
 		return nil, errors.New(ErrEmptyMatchStageConfig)
 	}
@@ -62,7 +59,7 @@ func validateMatcherConfig(cfg *MatcherConfig) (logql.LogSelectorExpr, error) {
 		return nil, errors.New(ErrStagesWithDropLine)
 	}
 
-	selector, err := logql.ParseLogSelector(cfg.Selector, false)
+	selector, err := logql.ParseExpr(cfg.Selector)
 	if err != nil {
 		return nil, errors.Wrap(err, ErrSelectorSyntax)
 	}
@@ -96,7 +93,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 		}
 	}
 
-	pipeline, err := selector.Pipeline()
+	filter, err := selector.Filter()
 	if err != nil {
 		return nil, errors.Wrap(err, "error parsing pipeline")
 	}
@@ -112,7 +109,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 		matchers:   selector.Matchers(),
 		stage:      pl,
 		action:     cfg.Action,
-		pipeline:   pipeline,
+		filter:     filter,
 	}, nil
 }
 
@@ -139,7 +136,7 @@ type matcherStage struct {
 	dropReason string
 	dropCount  *prometheus.CounterVec
 	matchers   []*labels.Matcher
-	pipeline   logql.Pipeline
+	filter     logql.Filter
 	stage      Stage
 	action     string
 }
@@ -199,27 +196,11 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 			return e, false
 		}
 	}
-	sp := m.pipeline.ForStream(labels.FromMap(util.ModelLabelSetToMap(e.Labels)))
-	newLine, newLabels, ok := sp.ProcessString(e.Line)
-	if !ok {
-		return e, false
+
+	if m.filter == nil || m.filter([]byte(e.Line)) {
+		return e, true
 	}
-	for k := range e.Labels {
-		delete(e.Labels, k)
-	}
-	for _, l := range newLabels.Labels() {
-		e.Labels[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
-	return Entry{
-		Extracted: e.Extracted,
-		Entry: api.Entry{
-			Labels: e.Labels,
-			Entry: logproto.Entry{
-				Line:      newLine,
-				Timestamp: e.Timestamp,
-			},
-		},
-	}, true
+	return e, false
 }
 
 // Name implements Stage
