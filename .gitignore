@@ -10,9 +10,9 @@ requirements.lock
 mixin/vendor/
 cmd/loki/loki
 cmd/logcli/logcli
-cmd/promtail/promtail
+clients/cmd/promtail/promtail
 cmd/loki/loki-debug
-cmd/promtail/promtail-debug
+clients/cmd/promtail/promtail-debug
 clients/cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
 clients/cmd/fluent-bit/out_grafana_loki.so
