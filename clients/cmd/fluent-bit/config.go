@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 
+	"github.com/grafana/loki/clients/pkg/logentry/logql"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/pkg/logql"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 

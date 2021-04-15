@@ -3,6 +3,7 @@ package lokipush
 import (
 	"flag"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 
@@ -21,7 +23,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 )
 
 type PushTarget struct {
@@ -113,11 +114,12 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	var lastErr error
 	for _, stream := range req.Streams {
-		ls, err := logql.ParseLabels(stream.Labels)
+		ls, err := promql_parser.ParseMetric(stream.Labels)
 		if err != nil {
 			lastErr = err
 			continue
 		}
+		sort.Sort(ls)
 
 		lb := labels.NewBuilder(ls)
 
