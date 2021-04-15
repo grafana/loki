@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
-	logql_log "github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -141,7 +141,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -172,7 +172,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -201,7 +201,7 @@ func Test_packStage_Run(t *testing.T) {
 					Labels: model.LabelSet{},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"bar\":\"baz\",\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"bar\":\"baz\",\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -235,7 +235,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"extr1\":\"etr1val\",\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"extr1\":\"etr1val\",\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -269,7 +269,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -303,7 +303,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0),
-						Line:      "{\"ex\\\"tr2\":\"\\\"fd\\\"\",\"foo\":\"bar\",\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"ex\\\"tr2\":\"\\\"fd\\\"\",\"foo\":\"bar\",\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
@@ -335,7 +335,7 @@ func Test_packStage_Run(t *testing.T) {
 					},
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0), // Ignored in test execution below
-						Line:      "{\"" + logql_log.PackedEntryKey + "\":\"test line 1\"}",
+						Line:      "{\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
 					},
 				},
 			},
