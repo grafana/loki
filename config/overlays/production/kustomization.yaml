@@ -1,3 +1,15 @@
+resources:
+- ../../crd
+- ../../rbac
+- ../../manager
+# [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
+# crd/kustomization.yaml
+#- ../webhook
+# [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
+#- ../certmanager
+# [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
+- ../../prometheus
+
 # Adds namespace to all resources.
 namespace: openshift-logging
 
@@ -17,18 +29,6 @@ commonLabels:
   app.kubernetes.io/version: "0.0.1"
   app.kubernetes.io/part-of: cluster-logging
   app.kubernetes.io/managed-by: operator-lifecycle-manager
-
-bases:
-- ../crd
-- ../rbac
-- ../manager
-# [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
-# crd/kustomization.yaml
-#- ../webhook
-# [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
-#- ../certmanager
-# [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
-- ../prometheus
 
 patchesStrategicMerge:
 # Protect the /metrics endpoint by putting it behind auth.
