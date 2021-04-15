@@ -44,6 +44,10 @@ workflows:
   working_directory: /src/loki
 
 jobs:
+  test:
+    <<: *defaults
+    steps:
+      - checkout
 
   # Promtail
   build/promtail-windows:
