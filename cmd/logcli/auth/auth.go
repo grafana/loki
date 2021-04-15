@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"encoding/json"
@@ -13,11 +13,21 @@ import (
 
 	cv "github.com/nirasan/go-oauth-pkce-code-verifier"
 	"github.com/skratchdot/open-golang/open"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
+type ClientConfig struct {
+	AuthURL     string `yaml:"auth_url"`
+	TokenURL    string `yaml:"token_url"`
+	ClientID    string `yaml:"client_id"`
+	LokiAddr    string `yaml:"loki_addr"`
+	Token       string `yaml:"token"`
+	HeaderName  string `yaml:"header_name"`
+	RedirectUri string `yaml:"redirect_uri"`
+}
+
 // AuthorizeUser implements the PKCE OAuth2 flow.
-func AuthorizeUser(clientID string, authURL string, tokenURL string, redirectURL string) {
+func AuthorizeUser(c ClientConfig, configFile string) {
 	// initialize the code verifier
 	var CodeVerifier, _ = cv.CreateCodeVerifier()
 
@@ -25,14 +35,19 @@ func AuthorizeUser(clientID string, authURL string, tokenURL string, redirectURL
 	codeChallenge := CodeVerifier.CodeChallengeS256()
 
 	// construct the authorization URL (with Auth0 as the authorization provider)
-	authorizationURL := fmt.Sprintf("https://%s?scope=openid profile email offline_access"+
+	authorizationURL := fmt.Sprintf("https://%s?scope=%s"+
 		"&response_type=code&client_id=%s"+
 		"&code_challenge=%s"+
 		"&code_challenge_method=S256&redirect_uri=%s",
-		authURL, clientID, codeChallenge, redirectURL)
+		c.AuthURL,
+		url.QueryEscape("openid profile email offline_access"),
+		c.ClientID,
+		codeChallenge,
+		c.RedirectUri)
+	fmt.Println(authorizationURL)
 
 	// start a web server to listen on a callback URL
-	server := &http.Server{Addr: redirectURL}
+	server := &http.Server{Addr: c.RedirectUri}
 
 	// define a handler that will get the authorization code, call the token endpoint, and close the HTTP server
 	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +64,7 @@ func AuthorizeUser(clientID string, authURL string, tokenURL string, redirectURL
 
 		// trade the authorization code and the code verifier for an access token
 		codeVerifier := CodeVerifier.String()
-		token, err := getIDToken(tokenURL, clientID, codeVerifier, code, redirectURL)
+		token, err := getIDToken(c.TokenURL, c.ClientID, codeVerifier, code, c.RedirectUri)
 		if err != nil {
 			fmt.Println("logcli: could not get access token")
 			io.WriteString(w, "Error: could not retrieve access token\n")
@@ -96,7 +111,7 @@ func AuthorizeUser(clientID string, authURL string, tokenURL string, redirectURL
 	})
 
 	// parse the redirect URL for the port number
-	u, err := url.Parse(redirectURL)
+	u, err := url.Parse(c.RedirectUri)
 	if err != nil {
 		fmt.Printf("logcli: bad redirect URL: %s\n", err)
 		os.Exit(1)

@@ -12,6 +12,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
 
+	"github.com/grafana/loki/cmd/logcli/auth"
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/labelquery"
@@ -110,18 +111,8 @@ This is helpful to find high cardinality labels.
 `)
 	seriesQuery = newSeriesQuery(seriesCmd)
 
-	c ClientConfig
+	c auth.ClientConfig
 )
-
-type ClientConfig struct {
-	AuthURL     string `yaml:"auth_url"`
-	TokenURL    string `yaml:"token_url"`
-	ClientID    string `yaml:"client_id"`
-	LokiAddr    string `yaml:"loki_addr"`
-	Token       string `yaml:"token"`
-	HeaderName  string `yaml:"header_name"`
-	RedirectUri string `yaml:"redirect_uri"`
-}
 
 func lokiConfig() (filepath string) {
 	filepath = os.Getenv("HOME") + "/.loki/config"
@@ -216,7 +207,7 @@ func login(cmd *kingpin.CmdClause) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	AuthorizeUser(c.ClientID, c.AuthURL, c.TokenURL, c.RedirectUri)
+	auth.AuthorizeUser(c, configFile)
 }
 
 func readConfig(filename string) error {
