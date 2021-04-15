@@ -44,17 +44,6 @@ workflows:
   working_directory: /src/loki
 
 jobs:
-  test:
-    <<: *defaults
-    steps:
-      - checkout
-      - run:
-          name: Unit Tests
-          command: make BUILD_IN_CONTAINER=false test
-      - run:
-          name: Upload Codecov
-          command: |
-            bash <(curl -s https://codecov.io/bash)
 
   # Promtail
   build/promtail-windows:
