@@ -21,11 +21,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/cfg"
 	"github.com/grafana/loki/pkg/validation"
 )
 

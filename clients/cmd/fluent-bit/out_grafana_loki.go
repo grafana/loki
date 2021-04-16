@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 
-	_ "github.com/grafana/loki/pkg/build"
+	_ "github.com/grafana/loki/pkg/util/build"
 )
 
 var (
