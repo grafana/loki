@@ -17,10 +17,10 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -196,7 +196,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 			return nil, err
 		}
 
-		defer helpers.LogErrorWithContext(ctx, "closing iterator", iter.Close)
+		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
 		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
@@ -224,7 +224,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 	if err != nil {
 		return nil, err
 	}
-	defer helpers.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
+	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	seriesIndex := map[uint64]*promql.Series{}
 	maxSeries := q.limits.MaxQuerySeries(userID)

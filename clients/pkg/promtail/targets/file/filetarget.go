@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -143,7 +143,7 @@ func (t *FileTarget) Details() interface{} {
 
 func (t *FileTarget) run() {
 	defer func() {
-		helpers.LogError("closing watcher", t.watcher.Close)
+		util.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
 			v.stop()
 		}

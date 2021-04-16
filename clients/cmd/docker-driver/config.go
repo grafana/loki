@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/templates"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -21,7 +23,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -316,7 +317,7 @@ func parsePipeline(logCtx logger.Info) (PipelineConfig, error) {
 		return pipeline, fmt.Errorf("only one of %s or %s can be configured", cfgPipelineStagesFileKey, cfgPipelineStagesFileKey)
 	}
 	if okFile {
-		if err := helpers.LoadConfig(pipelineFile, &pipeline); err != nil {
+		if err := loadConfig(pipelineFile, &pipeline); err != nil {
 			return pipeline, fmt.Errorf("error loading config file %s: %s", pipelineFile, err)
 		}
 	}
@@ -382,4 +383,14 @@ func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, erro
 		return false, err
 	}
 	return b, nil
+}
+
+// loadConfig read YAML-formatted config from filename into cfg.
+func loadConfig(filename string, cfg interface{}) error {
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return errors.Wrap(err, "Error reading config file")
+	}
+
+	return yaml.UnmarshalStrict(buf, cfg)
 }

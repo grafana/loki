@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/metric"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	lokiutil "github.com/grafana/loki/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
@@ -25,8 +26,6 @@ import (
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
-
-	"github.com/grafana/loki/pkg/helpers"
 )
 
 const (
@@ -358,7 +357,7 @@ func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, er
 	if err != nil {
 		return -1, err
 	}
-	defer helpers.LogError("closing response body", resp.Body.Close)
+	defer lokiutil.LogError("closing response body", resp.Body.Close)
 
 	if resp.StatusCode/100 != 2 {
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))

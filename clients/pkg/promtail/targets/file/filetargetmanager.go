@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -119,7 +119,7 @@ func NewFileTargetManager(
 	}
 
 	go tm.run()
-	go helpers.LogError("running target manager", tm.manager.Run)
+	go util.LogError("running target manager", tm.manager.Run)
 
 	return tm, tm.manager.ApplyConfig(configs)
 }
