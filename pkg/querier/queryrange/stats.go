@@ -16,8 +16,8 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type ctxKeyType string
