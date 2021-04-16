@@ -315,27 +315,11 @@ spec:
                 name: loki-operator-controller-manager
             spec:
               containers:
-              - args:
-                - --secure-listen-address=0.0.0.0:8443
-                - --upstream=http://127.0.0.1:8080/
-                - --logtostderr=true
-                - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
-                - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
-                - --v=2
-                image: quay.io/openshift/origin-kube-rbac-proxy:latest
-                name: kube-rbac-proxy
-                ports:
-                - containerPort: 8443
-                  name: https
-                resources: {}
-                volumeMounts:
-                - mountPath: /var/run/secrets/serving-cert
-                  name: loki-operator-metrics-cert
               - command:
                 - /manager
                 env:
-                - name: LOKI_IMAGE
-                  value: docker.io/grafana/loki:2.2.1
+                - name: RELATED_IMAGE_LOKI
+                  value: quay.io/openshift-logging/loki:v2.2.0-10
                 image: quay.io/openshift-logging/loki-operator:v0.0.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
@@ -357,6 +341,22 @@ spec:
                 resources: {}
                 securityContext:
                   allowPrivilegeEscalation: false
+              - args:
+                - --secure-listen-address=0.0.0.0:8443
+                - --upstream=http://127.0.0.1:8080/
+                - --logtostderr=true
+                - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
+                - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
+                - --v=2
+                image: quay.io/openshift/origin-kube-rbac-proxy:latest
+                name: kube-rbac-proxy
+                ports:
+                - containerPort: 8443
+                  name: https
+                resources: {}
+                volumeMounts:
+                - mountPath: /var/run/secrets/serving-cert
+                  name: loki-operator-metrics-cert
               terminationGracePeriodSeconds: 10
               volumes:
               - name: loki-operator-metrics-cert

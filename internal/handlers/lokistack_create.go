@@ -30,7 +30,7 @@ func CreateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client) error 
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	img := os.Getenv("LOKI_IMAGE")
+	img := os.Getenv("RELATED_IMAGE_LOKI")
 	if img == "" {
 		img = manifests.DefaultContainerImage
 	}
