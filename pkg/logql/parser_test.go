@@ -1612,7 +1612,7 @@ func TestParse(t *testing.T) {
 					},
 				},
 					5*time.Minute,
-					newUnwrapExpr("foo", "").addPostFilter(log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotRegexp, log.ErrorLabel, ".+"))),
+					newUnwrapExpr("foo", "").addPostFilter(log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+"))),
 					nil),
 				OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
 			),

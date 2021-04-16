@@ -13,7 +13,6 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -446,7 +445,7 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	ts, vec := r.iter.At(r.agg)
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
-		if s.Metric.Has(log.ErrorLabel) {
+		if s.Metric.Has(logqlmodel.ErrorLabel) {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
@@ -478,7 +477,7 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	ts, vec := r.iter.At(one)
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
-		if s.Metric.Has(log.ErrorLabel) {
+		if s.Metric.Has(logqlmodel.ErrorLabel) {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
