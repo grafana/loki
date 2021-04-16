@@ -85,7 +85,6 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 }
 
 func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
-	// cfg.GRPCUnaryClientInterceptors...
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
 	unaryInterceptors = append(unaryInterceptors,
