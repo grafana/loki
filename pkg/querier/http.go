@@ -308,7 +308,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *Querier) SeriesHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseSeriesQuery(r)
+	req, err := logql.ParseAndValidateSeriesQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return

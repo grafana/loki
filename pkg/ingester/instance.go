@@ -23,7 +23,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -372,7 +371,7 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logpro
 }
 
 func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	groups, err := loghttp.Match(req.GetGroups())
+	groups, err := logql.Match(req.GetGroups())
 	if err != nil {
 		return nil, err
 	}

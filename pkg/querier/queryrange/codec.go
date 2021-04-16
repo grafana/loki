@@ -173,7 +173,7 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 			Shards: req.Shards,
 		}, nil
 	case SeriesOp:
-		req, err := loghttp.ParseSeriesQuery(r)
+		req, err := logql.ParseAndValidateSeriesQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
