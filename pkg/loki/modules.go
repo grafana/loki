@@ -580,7 +580,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.compactor, err = compactor.NewCompactor(t.cfg.CompactorConfig, t.cfg.StorageConfig.Config, t.cfg.SchemaConfig, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.cfg.CompactorConfig, t.cfg.StorageConfig.Config, t.cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

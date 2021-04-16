@@ -116,7 +116,7 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 		}
 
 		seriesCleaner := newSeriesCleaner(bucket, schemaCfg)
-		empty, err = markforDelete(markerWriter, chunkIt, seriesCleaner, nil)
+		empty, err = markforDelete(markerWriter, chunkIt, seriesCleaner, t.expiration)
 		if err != nil {
 			return err
 		}

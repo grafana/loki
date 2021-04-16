@@ -1,6 +1,9 @@
 package retention
 
 import (
+	"time"
+
+	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
 )
 
@@ -9,20 +12,52 @@ type ExpirationChecker interface {
 }
 
 type expirationChecker struct {
-	rules Rules
+	limits Limits
 }
 
-func NewExpirationChecker(rules Rules) ExpirationChecker {
+type Limits interface {
+	RetentionPeriod(userID string) time.Duration
+	StreamRetention(userID string) []validation.StreamRetention
+}
+
+func NewExpirationChecker(limits Limits) ExpirationChecker {
 	return &expirationChecker{
-		rules: rules,
+		limits: limits,
 	}
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
 func (e *expirationChecker) Expired(ref ChunkEntry) bool {
-	// if the series matches a stream rules we'll use that.
-	if ok && r.UserID == string(ref.UserID) {
-		return ref.From.After(model.Now().Add(r.Duration))
+	userID := unsafeGetString(ref.UserID)
+	streamRetentions := e.limits.StreamRetention(userID)
+	globalRetention := e.limits.RetentionPeriod(userID)
+	var (
+		matchedRule validation.StreamRetention
+		found       bool
+	)
+Outer:
+	for _, streamRetention := range streamRetentions {
+		for _, m := range streamRetention.Matchers {
+			if !m.Matches(ref.Labels.Get(m.Name)) {
+				continue Outer
+			}
+		}
+		// the rule is matched.
+		if found {
+			// if the current matched rule has a higher priority we keep it.
+			if matchedRule.Priority > streamRetention.Priority {
+				continue
+			}
+			// if priority is equal we keep the lowest retention.
+			if matchedRule.Priority == streamRetention.Priority && matchedRule.Period <= streamRetention.Period {
+				continue
+			}
+		}
+		found = true
+		matchedRule = streamRetention
 	}
-	return ref.From.After(model.Now().Add(e.TenantRules.PerTenant(unsafeGetString(ref.UserID))))
+	if found {
+		return ref.From.After(model.Now().Add(matchedRule.Period))
+	}
+	return ref.From.After(model.Now().Add(globalRetention))
 }

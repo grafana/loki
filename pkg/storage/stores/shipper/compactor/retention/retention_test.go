@@ -33,20 +33,7 @@ func Test_Retention(t *testing.T) {
 
 	store.Stop()
 
-	retentionRules := fakeRule{
-		streams: []StreamRule{
-			{
-				UserID: "1",
-				Matchers: []labels.Matcher{
-					{
-						Type:  labels.MatchEqual,
-						Name:  "foo",
-						Value: "bar",
-					},
-				},
-			},
-		},
-	}
+	// retentionRules := fakeRule{}
 
 	// 1-  Get all series ID for given retention per stream....
 	// 2 - Delete from index and Mark for delete all chunk  based on retention with seriesID/tenantID.
@@ -67,13 +54,9 @@ func Test_Retention(t *testing.T) {
 			continue
 		}
 		fmt.Fprintf(os.Stdout, "Found Schema for Table %s => %+v\n", table.name, currentSchema)
-		ids, err := findSeriesIDsForRules(table.DB, currentSchema, retentionRules.PerStream())
-		require.NoError(t, err)
-		_ = NewExpirationChecker(getSeriesPerRule(ids, retentionRules.PerStream()), retentionRules)
 
-		// markForDelete(db, marker*bbolt.DB, checker, currentSchema)
+		_ = NewExpirationChecker(nil)
 
-		fmt.Fprintf(os.Stdout, "Found IDS for rules %+v\n", ids)
 		require.NoError(t,
 			table.DB.Update(func(tx *bbolt.Tx) error {
 				return tx.Bucket(bucketName).ForEach(func(k, v []byte) error {

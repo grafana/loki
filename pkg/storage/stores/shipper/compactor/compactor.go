@@ -32,6 +32,7 @@ type Config struct {
 	SharedStoreType      string        `yaml:"shared_store"`
 	SharedStoreKeyPrefix string        `yaml:"shared_store_key_prefix"`
 	CompactionInterval   time.Duration `yaml:"compaction_interval"`
+	RetentionEnabled     bool          `yaml:"retention_enabled"`
 	RetentionInterval    time.Duration `yaml:"retention_interval"`
 }
 
@@ -41,7 +42,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
-	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.retention-interval", 2*time.Hour, "Interval at which to re-run the retention operation.")
+	f.DurationVar(&cfg.RetentionInterval, "boltdb.shipper.compactor.retention-interval", 2*time.Hour, "Interval at which to re-run the retention operation.")
+	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "Activate custom (per-stream,per-tenant) retention.")
 }
 
 func (cfg *Config) IsDefaults() bool {
@@ -64,7 +66,7 @@ type Compactor struct {
 	metrics *metrics
 }
 
-func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
 	if cfg.IsDefaults() {
 		return nil, errors.New("Must specify compactor config")
 	}
@@ -85,7 +87,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 		cfg:          cfg,
 		objectClient: prefixedClient,
 		metrics:      newMetrics(r),
-		tableMarker:  retention.NewMarker(filepath.Join(cfg.WorkingDirectory, "retention"), schemaConfig, prefixedClient, nil),
+		tableMarker:  retention.NewMarker(filepath.Join(cfg.WorkingDirectory, "retention"), schemaConfig, prefixedClient, retention.NewExpirationChecker(limits)),
 	}
 
 	compactor.Service = services.NewBasicService(nil, compactor.loop, nil)
@@ -106,7 +108,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 		}
 	}
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		runCompaction()
@@ -123,22 +125,25 @@ func (c *Compactor) loop(ctx context.Context) error {
 			}
 		}
 	}()
+	if c.cfg.RetentionEnabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-	go func() {
-		defer wg.Done()
+			ticker := time.NewTicker(c.cfg.RetentionInterval)
+			defer ticker.Stop()
 
-		ticker := time.NewTicker(c.cfg.RetentionInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				runRetention()
-			case <-ctx.Done():
-				return
+			for {
+				select {
+				case <-ticker.C:
+					runRetention()
+				case <-ctx.Done():
+					return
+				}
 			}
-		}
-	}()
+		}()
+	}
+
 	wg.Wait()
 	return nil
 }
