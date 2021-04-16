@@ -17,10 +17,9 @@ import (
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
 	logutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/validation"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func init() {

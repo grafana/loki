@@ -29,7 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type streamEntryPair struct {
