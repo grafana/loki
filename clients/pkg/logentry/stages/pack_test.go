@@ -13,6 +13,7 @@ import (
 	ww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+
 	"github.com/grafana/loki/pkg/logproto"
 	logql_log "github.com/grafana/loki/pkg/logql/log"
 )

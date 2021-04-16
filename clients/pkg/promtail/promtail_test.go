@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 

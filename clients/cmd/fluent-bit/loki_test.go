@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 

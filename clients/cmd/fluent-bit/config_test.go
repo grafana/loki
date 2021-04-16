@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
+
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 

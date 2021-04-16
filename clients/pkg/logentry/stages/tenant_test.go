@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
+
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 

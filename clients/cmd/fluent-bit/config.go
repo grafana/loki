@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/logql"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
+
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 

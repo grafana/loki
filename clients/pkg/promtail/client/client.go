@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/metric"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+
 	lokiutil "github.com/grafana/loki/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/util"
