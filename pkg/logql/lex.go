@@ -10,6 +10,8 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 var tokens = map[string]int{
@@ -101,7 +103,7 @@ var functionTokens = map[string]int{
 
 type lexer struct {
 	scanner.Scanner
-	errs    []ParseError
+	errs    []logqlmodel.ParseError
 	builder strings.Builder
 }
 
@@ -201,7 +203,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 }
 
 func (l *lexer) Error(msg string) {
-	l.errs = append(l.errs, newParseError(msg, l.Line, l.Column))
+	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
 }
 
 func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {

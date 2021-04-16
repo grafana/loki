@@ -24,11 +24,12 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -154,7 +155,7 @@ func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, las
 	length := -1
 	var entry []*loghttp.Entry
 	switch value.Type() {
-	case logql.ValueTypeStreams:
+	case logqlmodel.ValueTypeStreams:
 		length, entry = q.printStream(value.(loghttp.Streams), out, lastEntry)
 	case loghttp.ResultTypeScalar:
 		q.printScalar(value.(loghttp.Scalar))

@@ -11,7 +11,7 @@ import (
 
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 // Note that the below methods directly marshal the values passed in.  This is because these objects currently marshal
@@ -20,9 +20,9 @@ import (
 // for loghttp model objects 2) marshal the loghttp model objects
 
 // WriteQueryResponseJSON marshals promql.Value to legacy loghttp JSON and then writes it to the provided io.Writer
-func WriteQueryResponseJSON(v logql.Result, w io.Writer) error {
-	if v.Data.Type() != logql.ValueTypeStreams {
-		return fmt.Errorf("legacy endpoints only support %s result type, current type is %s", logql.ValueTypeStreams, v.Data.Type())
+func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
+	if v.Data.Type() != logqlmodel.ValueTypeStreams {
+		return fmt.Errorf("legacy endpoints only support %s result type, current type is %s", logqlmodel.ValueTypeStreams, v.Data.Type())
 	}
 
 	j := map[string]interface{}{

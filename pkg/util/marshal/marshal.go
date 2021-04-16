@@ -5,7 +5,7 @@ package marshal
 import (
 	"io"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
@@ -17,7 +17,7 @@ import (
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(v logql.Result, w io.Writer) error {
+func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
 	value, err := NewResultValue(v.Data)
 	if err != nil {
 		return err

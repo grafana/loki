@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 // covers responses from /loki/api/v1/query_range and /loki/api/v1/query
@@ -24,7 +24,7 @@ var queryTests = []struct {
 	expected string
 }{
 	{
-		logql.Streams{
+		logqlmodel.Streams{
 			logproto.Stream{
 				Entries: []logproto.Entry{
 					{
@@ -364,7 +364,7 @@ var tailTests = []struct {
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(logql.Result{Data: queryTest.actual}, &b)
+		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b)
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(queryTest.expected), b.Bytes(), "Query Test %d failed", i)
@@ -517,7 +517,7 @@ func Benchmark_Encode(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		for _, queryTest := range queryTests {
-			require.NoError(b, WriteQueryResponseJSON(logql.Result{Data: queryTest.actual}, buf))
+			require.NoError(b, WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, buf))
 		}
 	}
 }

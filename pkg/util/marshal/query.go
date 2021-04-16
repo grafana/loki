@@ -11,7 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
@@ -21,7 +21,7 @@ func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 
 	switch v.Type() {
 	case loghttp.ResultTypeStream:
-		s, ok := v.(logql.Streams)
+		s, ok := v.(logqlmodel.Streams)
 
 		if !ok {
 			return nil, fmt.Errorf("unexpected type %T for streams", s)
@@ -66,7 +66,7 @@ func NewResultValue(v parser.Value) (loghttp.ResultValue, error) {
 }
 
 // NewStreams constructs a Streams from a logql.Streams
-func NewStreams(s logql.Streams) (loghttp.Streams, error) {
+func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 	var err error
 	ret := make([]loghttp.Stream, len(s))
 

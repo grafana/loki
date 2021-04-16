@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 type ctxKeyType string
@@ -92,7 +93,7 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				switch r := resp.(type) {
 				case *LokiResponse:
 					statistics = &r.Statistics
-					res = logql.Streams(r.Data.Result)
+					res = logqlmodel.Streams(r.Data.Result)
 				case *LokiPromResponse:
 					statistics = &r.Statistics
 				default:

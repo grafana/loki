@@ -11,6 +11,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 const errAtleastOneEqualityMatcherRequired = "queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~\".*\" does not meet this requirement, but app=~\".+\" will"
@@ -71,17 +73,17 @@ func ParseExpr(input string) (Expr, error) {
 
 func parseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
-		return nil, newParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
+		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
 			var ok bool
 			if err, ok = r.(error); ok {
-				if errors.Is(err, ErrParse) {
+				if errors.Is(err, logqlmodel.ErrParse) {
 					return
 				}
-				err = newParseError(err.Error(), 0, 0)
+				err = logqlmodel.NewParseError(err.Error(), 0, 0)
 			}
 		}
 	}()
@@ -107,7 +109,7 @@ func validateExpr(expr Expr) error {
 			return err
 		}
 	default:
-		return newParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
+		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
 	return nil
 }
@@ -119,7 +121,7 @@ func validateMatchers(matchers []*labels.Matcher) error {
 	}
 	_, matchers = util.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
-		return newParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
+		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
 
 	return nil

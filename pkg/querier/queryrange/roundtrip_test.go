@@ -26,8 +26,8 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 var (
@@ -67,7 +67,7 @@ var (
 			},
 		},
 	}
-	streams = logql.Streams{
+	streams = logqlmodel.Streams{
 		{
 			Entries: []logproto.Entry{
 				{Timestamp: testTime.Add(-4 * time.Hour), Line: "foo"},
@@ -558,7 +558,7 @@ func promqlResult(v parser.Value) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(logql.Result{Data: v}, w); err != nil {
+		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: v}, w); err != nil {
 			panic(err)
 		}
 		count++

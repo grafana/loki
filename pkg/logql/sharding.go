@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -150,7 +151,7 @@ type DownstreamQuery struct {
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
-	Downstream(context.Context, []DownstreamQuery) ([]Result, error)
+	Downstream(context.Context, []DownstreamQuery) ([]logqlmodel.Result, error)
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -160,7 +161,7 @@ type DownstreamEvaluator struct {
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
-func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]Result, error) {
+func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries)
 	if err != nil {
 		return nil, err
@@ -361,7 +362,7 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 }
 
 // ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
-func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
+func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (
 		start = params.Start()
 		end   = params.End()
@@ -386,10 +387,10 @@ func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
 }
 
 // ResultIterator coerces a downstream streams result into an iter.EntryIterator
-func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
-	streams, ok := res.Data.(Streams)
+func ResultIterator(res logqlmodel.Result, params Params) (iter.EntryIterator, error) {
+	streams, ok := res.Data.(logqlmodel.Streams)
 	if !ok {
-		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), ValueTypeStreams)
+		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), logqlmodel.ValueTypeStreams)
 	}
 	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
 }

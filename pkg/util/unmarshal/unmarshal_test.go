@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy_loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 // covers requests to /loki/api/v1/push

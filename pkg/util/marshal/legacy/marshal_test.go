@@ -11,16 +11,16 @@ import (
 
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 // covers responses from /api/prom/query
 var queryTests = []struct {
-	actual   logql.Streams
+	actual   logqlmodel.Streams
 	expected string
 }{
 	{
-		logql.Streams{
+		logqlmodel.Streams{
 			logproto.Stream{
 				Entries: []logproto.Entry{
 					{
@@ -147,7 +147,7 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(logql.Result{Data: queryTest.actual}, &b)
+		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b)
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(queryTest.expected), b.Bytes(), "Query Test %d failed", i)

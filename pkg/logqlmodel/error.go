@@ -1,4 +1,4 @@
-package logql
+package logqlmodel
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ import (
 )
 
 // Those errors are useful for comparing error returned by the engine.
-// e.g. errors.Is(err,logql.ErrParse) let you know if this is a ast parsing error.
+// e.g. errors.Is(err,logqlmodel.ErrParse) let you know if this is a ast parsing error.
 var (
 	ErrParse    = errors.New("failed to parse the log query")
 	ErrPipeline = errors.New("failed execute pipeline")
@@ -35,7 +35,7 @@ func (p ParseError) Is(target error) bool {
 	return target == ErrParse
 }
 
-func newParseError(msg string, line, col int) ParseError {
+func NewParseError(msg string, line, col int) ParseError {
 	return ParseError{
 		msg:  msg,
 		line: line,
@@ -43,7 +43,7 @@ func newParseError(msg string, line, col int) ParseError {
 	}
 }
 
-func newStageError(expr Expr, err error) ParseError {
+func NewStageError(expr string, err error) ParseError {
 	return ParseError{
 		msg:  fmt.Sprintf(`stage '%s' : %s`, expr, err),
 		line: 0,
@@ -51,19 +51,19 @@ func newStageError(expr Expr, err error) ParseError {
 	}
 }
 
-type pipelineError struct {
+type PipelineError struct {
 	metric    labels.Labels
 	errorType string
 }
 
-func newPipelineErr(metric labels.Labels) *pipelineError {
-	return &pipelineError{
+func NewPipelineErr(metric labels.Labels) *PipelineError {
+	return &PipelineError{
 		metric:    metric,
 		errorType: metric.Get(log.ErrorLabel),
 	}
 }
 
-func (e pipelineError) Error() string {
+func (e PipelineError) Error() string {
 	return fmt.Sprintf(
 		"pipeline error: '%s' for series: '%s'.\n"+
 			"Use a label filter to intentionally skip this error. (e.g | __error__!=\"%s\").\n"+
@@ -73,21 +73,21 @@ func (e pipelineError) Error() string {
 }
 
 // Is allows to use errors.Is(err,ErrPipeline) on this error.
-func (e pipelineError) Is(target error) bool {
+func (e PipelineError) Is(target error) bool {
 	return target == ErrPipeline
 }
 
-type limitError struct {
+type LimitError struct {
 	error
 }
 
-func newSeriesLimitError(limit int) *limitError {
-	return &limitError{
+func NewSeriesLimitError(limit int) *LimitError {
+	return &LimitError{
 		error: fmt.Errorf("maximum of series (%d) reached for a single query", limit),
 	}
 }
 
 // Is allows to use errors.Is(err,ErrLimit) on this error.
-func (e limitError) Is(target error) bool {
+func (e LimitError) Is(target error) bool {
 	return target == ErrLimit
 }

@@ -14,7 +14,8 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
@@ -139,7 +140,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 			},
 			Statistics: res.Statistics,
 		}, nil
-	case logql.ValueTypeStreams:
+	case logqlmodel.ValueTypeStreams:
 		return &LokiResponse{
 			Status:     loghttp.QueryStatusSuccess,
 			Direction:  req.Direction,

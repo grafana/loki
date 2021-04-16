@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/unmarshal"
-	unmarshal2 "github.com/grafana/loki/pkg/logql/unmarshal/legacy"
+	"github.com/grafana/loki/pkg/util/unmarshal"
+	unmarshal2 "github.com/grafana/loki/pkg/util/unmarshal/legacy"
 )
 
 var (
