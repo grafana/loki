@@ -143,7 +143,7 @@ func (c *Config) Validate() error {
 
 // Loki is the root datastructure for Loki.
 type Loki struct {
-	cfg Config
+	Cfg Config
 
 	// set during initialization
 	ModuleManager *modules.Manager
@@ -154,7 +154,7 @@ type Loki struct {
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
 	distributor              *distributor.Distributor
-	ingester                 *ingester.Ingester
+	Ingester                 *ingester.Ingester
 	Querier                  *querier.Querier
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
@@ -175,28 +175,28 @@ type Loki struct {
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
-		cfg: cfg,
+		Cfg: cfg,
 	}
 
 	loki.setupAuthMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
-	storage.RegisterCustomIndexClients(&loki.cfg.StorageConfig, prometheus.DefaultRegisterer)
+	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, prometheus.DefaultRegisterer)
 
 	return loki, nil
 }
 
 func (t *Loki) setupAuthMiddleware() {
-	t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
-	t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
-	if t.cfg.AuthEnabled {
-		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
-		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
+	t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
+	t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
+	if t.Cfg.AuthEnabled {
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
 		t.HTTPAuthMiddleware = middleware.AuthenticateUser
 	} else {
-		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
-		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
 		t.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
 	}
 }
@@ -224,7 +224,7 @@ func newDefaultConfig() *Config {
 
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run() error {
-	serviceMap, err := t.ModuleManager.InitModuleServices(t.cfg.Target)
+	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
 	if err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func (t *Loki) Run() error {
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
 	// This adds a way to see the config and the changes compared to the defaults
-	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.cfg, newDefaultConfig()))
+	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
 
 	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 
@@ -325,8 +325,8 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 		// Ingester has a special check that makes sure that it was able to register into the ring,
 		// and that all other ring entries are OK too.
-		if t.ingester != nil {
-			if err := t.ingester.CheckReady(r.Context()); err != nil {
+		if t.Ingester != nil {
+			if err := t.Ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}
@@ -384,13 +384,13 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
-	if t.cfg.Target == Querier || t.cfg.Target == Ruler {
+	if t.Cfg.Target == Querier || t.Cfg.Target == Ruler {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
 	// If we are running Loki with boltdb-shipper as a single binary, without clustered mode(which should always be the case when using inmemory ring),
 	// we should start compactor as well for better user experience.
-	if storage.UsingBoltdbShipper(t.cfg.SchemaConfig.Configs) && t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
+	if storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) && t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
 		deps[All] = append(deps[All], Compactor)
 	}
 
