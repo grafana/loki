@@ -10,6 +10,8 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 // GZip source string and return compressed string
@@ -76,7 +78,7 @@ func TestParseRequest(t *testing.T) {
 		if len(test.contentEncoding) > 0 {
 			request.Header.Add("Content-Encoding", test.contentEncoding)
 		}
-		data, err := ParseRequest(util_log.Logger, "", request)
+		data, err := util.ParseRequest(util_log.Logger, "", request)
 		if test.valid {
 			assert.Nil(t, err, "Should not give error for %d", index)
 			assert.NotNil(t, data, "Should give data for %d", index)

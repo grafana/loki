@@ -22,8 +22,8 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type PushTarget struct {
@@ -107,7 +107,7 @@ func (t *PushTarget) run() error {
 func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	userID, _ := user.ExtractOrgID(r.Context())
-	req, err := distributor.ParseRequest(logger, userID, r)
+	req, err := util.ParseRequest(logger, userID, r)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
