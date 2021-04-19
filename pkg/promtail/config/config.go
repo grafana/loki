@@ -2,12 +2,14 @@ package config
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/pkg/promtail/server"
 	"github.com/grafana/loki/pkg/promtail/targets/file"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // Config for promtail, describing what files to watch.
@@ -33,4 +35,12 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c Config) String() string {
+	b, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Sprintf("<error creating config string: %s>", err)
+	}
+	return string(b)
 }

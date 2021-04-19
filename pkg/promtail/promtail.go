@@ -88,7 +88,7 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 		return nil, err
 	}
 	promtail.targetManagers = tms
-	server, err := server.New(cfg.ServerConfig, promtail.logger, tms)
+	server, err := server.New(cfg.ServerConfig, promtail.logger, tms, cfg.String())
 	if err != nil {
 		return nil, err
 	}
