@@ -860,6 +860,9 @@ depends_on:
 - docker-amd64
 - docker-arm64
 - docker-arm
+- promtail-amd64
+- promtail-arm64
+- promtail-arm
 
 ---
 kind: pipeline
