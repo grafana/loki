@@ -85,9 +85,9 @@ func configForSize(sizeType lokiv1beta1.LokiStackSizeType) lokiv1beta1.LokiStack
 					MaxStreamsPerUser:  25000,
 				},
 				QueryLimits: lokiv1beta1.QueryLimitSpec{
-					MaxEntriesPerQuery: 0,
-					MaxChunksPerQuery:  0,
-					MaxQuerySeries:     0,
+					MaxEntriesLimitPerQuery: 0,
+					MaxChunksPerQuery:       0,
+					MaxQuerySeries:          0,
 				},
 			},
 		},

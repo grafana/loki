@@ -32,7 +32,6 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	assert.JSONEq(t, string(expected), string(actual))
 }
 
-
 func randomConfigOptions() manifests.Options {
 	return manifests.Options{
 		Name:      uuid.New().String(),
@@ -43,22 +42,22 @@ func randomConfigOptions() manifests.Options {
 			Storage:           lokiv1beta1.ObjectStorageSpec{},
 			StorageClassName:  uuid.New().String(),
 			ReplicationFactor: rand.Int31(),
-			Limits:            lokiv1beta1.LimitsSpec{
-				Global:  lokiv1beta1.LimitsTemplateSpec{
+			Limits: lokiv1beta1.LimitsSpec{
+				Global: lokiv1beta1.LimitsTemplateSpec{
 					IngestionLimits: lokiv1beta1.IngestionLimitSpec{
 						IngestionRate:           rand.Int31(),
 						IngestionBurstSize:      rand.Int31(),
 						MaxLabelLength:          rand.Int31(),
 						MaxLabelValueLength:     rand.Int31(),
-						MaxLabelsPerSeries:      rand.Int31(),
+						MaxLabelNamesPerSeries:  rand.Int31(),
 						MaxStreamsPerUser:       rand.Int31(),
 						MaxGlobalStreamsPerUser: rand.Int31(),
 						MaxLineSize:             rand.Int31(),
 					},
-					QueryLimits:     lokiv1beta1.QueryLimitSpec{
-						MaxEntriesPerQuery: rand.Int31(),
-						MaxChunksPerQuery:  rand.Int31(),
-						MaxQuerySeries:     rand.Int31(),
+					QueryLimits: lokiv1beta1.QueryLimitSpec{
+						MaxEntriesLimitPerQuery: rand.Int31(),
+						MaxChunksPerQuery:       rand.Int31(),
+						MaxQuerySeries:          rand.Int31(),
 					},
 				},
 				Tenants: map[string]lokiv1beta1.LimitsTemplateSpec{
@@ -68,26 +67,26 @@ func randomConfigOptions() manifests.Options {
 							IngestionBurstSize:      rand.Int31(),
 							MaxLabelLength:          rand.Int31(),
 							MaxLabelValueLength:     rand.Int31(),
-							MaxLabelsPerSeries:      rand.Int31(),
+							MaxLabelNamesPerSeries:  rand.Int31(),
 							MaxStreamsPerUser:       rand.Int31(),
 							MaxGlobalStreamsPerUser: rand.Int31(),
 							MaxLineSize:             rand.Int31(),
 						},
-						QueryLimits:     lokiv1beta1.QueryLimitSpec{
-							MaxEntriesPerQuery: rand.Int31(),
-							MaxChunksPerQuery:  rand.Int31(),
-							MaxQuerySeries:     rand.Int31(),
+						QueryLimits: lokiv1beta1.QueryLimitSpec{
+							MaxEntriesLimitPerQuery: rand.Int31(),
+							MaxChunksPerQuery:       rand.Int31(),
+							MaxQuerySeries:          rand.Int31(),
 						},
 					},
 				},
 			},
-			Template:          lokiv1beta1.LokiTemplateSpec{
-				Compactor:     lokiv1beta1.LokiComponentSpec{
-					Replicas:     rand.Int31(),
+			Template: lokiv1beta1.LokiTemplateSpec{
+				Compactor: lokiv1beta1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
 					},
-					Tolerations:  []corev1.Toleration{
+					Tolerations: []corev1.Toleration{
 						{
 							Key:               uuid.New().String(),
 							Operator:          corev1.TolerationOpEqual,
@@ -97,12 +96,12 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				Distributor:   lokiv1beta1.LokiComponentSpec{
-					Replicas:     rand.Int31(),
+				Distributor: lokiv1beta1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
 					},
-					Tolerations:  []corev1.Toleration{
+					Tolerations: []corev1.Toleration{
 						{
 							Key:               uuid.New().String(),
 							Operator:          corev1.TolerationOpEqual,
@@ -112,12 +111,12 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				Ingester:      lokiv1beta1.LokiComponentSpec{
-					Replicas:     rand.Int31(),
+				Ingester: lokiv1beta1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
 					},
-					Tolerations:  []corev1.Toleration{
+					Tolerations: []corev1.Toleration{
 						{
 							Key:               uuid.New().String(),
 							Operator:          corev1.TolerationOpEqual,
@@ -127,12 +126,12 @@ func randomConfigOptions() manifests.Options {
 						},
 					},
 				},
-				Querier:       lokiv1beta1.LokiComponentSpec{
-					Replicas:     rand.Int31(),
+				Querier: lokiv1beta1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
 					},
-					Tolerations:  []corev1.Toleration{
+					Tolerations: []corev1.Toleration{
 						{
 							Key:               uuid.New().String(),
 							Operator:          corev1.TolerationOpEqual,
@@ -143,11 +142,11 @@ func randomConfigOptions() manifests.Options {
 					},
 				},
 				QueryFrontend: lokiv1beta1.LokiComponentSpec{
-					Replicas:     rand.Int31(),
+					Replicas: rand.Int31(),
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
 					},
-					Tolerations:  []corev1.Toleration{
+					Tolerations: []corev1.Toleration{
 						{
 							Key:               uuid.New().String(),
 							Operator:          corev1.TolerationOpEqual,

@@ -72,14 +72,14 @@ spec:
                               of characters allowed for label keys in log streams.
                             format: int32
                             type: integer
+                          maxLabelNamesPerSeries:
+                            description: MaxLabelNamesPerSeries defines the maximum
+                              number of label names per series in each log stream.
+                            format: int32
+                            type: integer
                           maxLabelValueLength:
                             description: MaxLabelValueLength defines the maximum number
                               of characters allowed for label values in log streams.
-                            format: int32
-                            type: integer
-                          maxLabelsPerSeries:
-                            description: MaxLabelsPerSeries defines the maximum number
-                              of labels per series in each log stream.
                             format: int32
                             type: integer
                           maxLineSize:
@@ -102,9 +102,9 @@ spec:
                               of chunks that can be fetched by a single query.
                             format: int32
                             type: integer
-                          maxEntriesPerQuery:
-                            description: MaxEntriesPerQuery defines the aximum number
-                              of log entries that will be returned for a query.
+                          maxEntriesLimitPerQuery:
+                            description: MaxEntriesLimitsPerQuery defines the maximum
+                              number of log entries that will be returned for a query.
                             format: int32
                             type: integer
                           maxQuerySeries:
@@ -145,15 +145,15 @@ spec:
                                 of characters allowed for label keys in log streams.
                               format: int32
                               type: integer
+                            maxLabelNamesPerSeries:
+                              description: MaxLabelNamesPerSeries defines the maximum
+                                number of label names per series in each log stream.
+                              format: int32
+                              type: integer
                             maxLabelValueLength:
                               description: MaxLabelValueLength defines the maximum
                                 number of characters allowed for label values in log
                                 streams.
-                              format: int32
-                              type: integer
-                            maxLabelsPerSeries:
-                              description: MaxLabelsPerSeries defines the maximum
-                                number of labels per series in each log stream.
                               format: int32
                               type: integer
                             maxLineSize:
@@ -176,9 +176,10 @@ spec:
                                 of chunks that can be fetched by a single query.
                               format: int32
                               type: integer
-                            maxEntriesPerQuery:
-                              description: MaxEntriesPerQuery defines the aximum number
-                                of log entries that will be returned for a query.
+                            maxEntriesLimitPerQuery:
+                              description: MaxEntriesLimitsPerQuery defines the maximum
+                                number of log entries that will be returned for a
+                                query.
                               format: int32
                               type: integer
                             maxQuerySeries:

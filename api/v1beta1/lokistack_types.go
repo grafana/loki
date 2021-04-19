@@ -131,11 +131,11 @@ type ObjectStorageSpec struct {
 // QueryLimitSpec defines the limits applies at the query path.
 type QueryLimitSpec struct {
 
-	// MaxEntriesPerQuery defines the aximum number of log entries
+	// MaxEntriesLimitsPerQuery defines the maximum number of log entries
 	// that will be returned for a query.
 	//
 	// +optional
-	MaxEntriesPerQuery int32 `json:"maxEntriesPerQuery,omitempty"`
+	MaxEntriesLimitPerQuery int32 `json:"maxEntriesLimitPerQuery,omitempty"`
 
 	// MaxChunksPerQuery defines the maximum number of chunks
 	// that can be fetched by a single query.
@@ -177,11 +177,11 @@ type IngestionLimitSpec struct {
 	// +optional
 	MaxLabelValueLength int32 `json:"maxLabelValueLength,omitempty"`
 
-	// MaxLabelsPerSeries defines the maximum number of labels per series
+	// MaxLabelNamesPerSeries defines the maximum number of label names per series
 	// in each log stream.
 	//
 	// +optional
-	MaxLabelsPerSeries int32 `json:"maxLabelsPerSeries,omitempty"`
+	MaxLabelNamesPerSeries int32 `json:"maxLabelNamesPerSeries,omitempty"`
 
 	// MaxStreamsPerUser defines the maximum number of active streams
 	// per user, per ingester.

@@ -18,30 +18,30 @@ metadata:
                   "ingestionRate": 60,
                   "maxGlobalStreamsPerUser": 83,
                   "maxLabelLength": 40,
+                  "maxLabelNamesPerSeries": 45,
                   "maxLabelValueLength": 79,
-                  "maxLabelsPerSeries": 45,
                   "maxLineSize": 74,
                   "maxStreamsPerUser": 35
                 },
                 "queries": {
                   "maxChunksPerQuery": 90,
-                  "maxEntriesPerQuery": 8,
+                  "maxEntriesLimitPerQuery": 8,
                   "maxQuerySeries": 71
                 }
               }
             },
-            "replicationFactor": 60,
-            "size": "test",
+            "replicationFactor": 2,
+            "size": "OneXSmall",
             "storage": {
               "secret": {
                 "name": "test"
               },
               "url": "test"
             },
-            "storageClassName": "test",
+            "storageClassName": "standard",
             "template": {
               "compactor": {
-                "replicas": 23,
+                "replicas": 1,
                 "tolerations": [
                   {
                     "effect": "test",
@@ -79,7 +79,7 @@ metadata:
                 ]
               },
               "ingester": {
-                "replicas": 17,
+                "replicas": 3,
                 "tolerations": [
                   {
                     "effect": "test",
@@ -98,7 +98,7 @@ metadata:
                 ]
               },
               "querier": {
-                "replicas": 30,
+                "replicas": 3,
                 "tolerations": [
                   {
                     "effect": "test",
@@ -117,7 +117,7 @@ metadata:
                 ]
               },
               "queryFrontend": {
-                "replicas": 47,
+                "replicas": 3,
                 "tolerations": [
                   {
                     "effect": "test",

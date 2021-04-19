@@ -11,23 +11,23 @@ spec:
         maxGlobalStreamsPerUser: 83
         maxLabelLength: 40
         maxLabelValueLength: 79
-        maxLabelsPerSeries: 45
+        maxLabelNamesPerSeries: 45
         maxLineSize: 74
         maxStreamsPerUser: 35
       queries:
         maxChunksPerQuery: 90
-        maxEntriesPerQuery: 8
+        maxEntriesLimitPerQuery: 8
         maxQuerySeries: 71
-  replicationFactor: 60
-  size: test
+  replicationFactor: 2
+  size: OneXSmall
   storage:
     secret:
       name: test
     url: test
-  storageClassName: test
+  storageClassName: standard
   template:
     compactor:
-      replicas: 23
+      replicas: 1
       tolerations:
         - effect: test
           key: test
@@ -53,7 +53,7 @@ spec:
           tolerationSeconds: 9
           value: test
     ingester:
-      replicas: 17
+      replicas: 3
       tolerations:
         - effect: test
           key: test
@@ -66,7 +66,7 @@ spec:
           tolerationSeconds: 22
           value: test
     querier:
-      replicas: 30
+      replicas: 3
       tolerations:
         - effect: test
           key: test
@@ -79,7 +79,7 @@ spec:
           tolerationSeconds: 73
           value: test
     queryFrontend:
-      replicas: 47
+      replicas: 3
       tolerations:
         - effect: test
           key: test
