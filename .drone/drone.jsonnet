@@ -236,6 +236,9 @@ local manifest(apps) = pipeline('manifest') {
   depends_on: [
     'docker-%s' % arch
     for arch in archs
+  ] + [
+    'promtail-%s' % arch
+    for arch in archs
   ],
 };
 
