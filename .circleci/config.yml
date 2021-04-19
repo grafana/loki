@@ -7,12 +7,12 @@ version: 2
   <<: *tags
   branches: { ignore: "/.*/" }
 
-.tag-or-master: &tag-or-master
-  branches: { only: master }
+.tag-or-main: &tag-or-main
+  branches: { only: main }
   <<: *tags
 
-.no-master: &no-master # contrary to tags, the branches must be excluded
-  branches: { ignore: master }
+.no-main: &no-main # contrary to tags, the branches must be excluded
+  branches: { ignore: main }
 
 workflows:
   version: 2
@@ -27,10 +27,10 @@ workflows:
 
       - build/docker-driver:
           requires: [test]
-          filters: { <<: *no-master }
+          filters: { <<: *no-main }
       - publish/docker-driver:
           requires: [test]
-          filters: { <<: *tag-or-master }
+          filters: { <<: *tag-or-main }
 
       - publish/binaries:
           requires: [test]

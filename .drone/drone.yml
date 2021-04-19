@@ -72,7 +72,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -93,7 +93,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -114,7 +114,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -133,7 +133,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -152,7 +152,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -171,7 +171,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -211,7 +211,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -232,7 +232,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -253,7 +253,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -272,7 +272,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -291,7 +291,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -310,7 +310,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -350,7 +350,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -371,7 +371,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -392,7 +392,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -411,7 +411,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -430,7 +430,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -449,7 +449,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -489,7 +489,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -508,7 +508,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -548,7 +548,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -567,7 +567,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -607,7 +607,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -626,7 +626,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -650,7 +650,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",latest,master" >> .tags
+  - echo ",latest,main" >> .tags
 
 - name: build-fluent-bit-image
   image: plugins/docker
@@ -665,7 +665,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -682,7 +682,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -706,7 +706,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",latest,master" >> .tags
+  - echo ",latest,main" >> .tags
 
 - name: build-fluentd-image
   image: plugins/docker
@@ -721,7 +721,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -738,7 +738,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -762,7 +762,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",latest,master" >> .tags
+  - echo ",latest,main" >> .tags
 
 - name: build-logstash-image
   image: plugins/docker
@@ -777,7 +777,7 @@ steps:
   when:
     ref:
       exclude:
-      - refs/heads/master
+      - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
   depends_on:
@@ -794,7 +794,7 @@ steps:
       from_secret: docker_username
   when:
     ref:
-    - refs/heads/master
+    - refs/heads/main
     - refs/heads/k??
     - refs/tags/v*
   depends_on:
@@ -852,7 +852,7 @@ steps:
 
 trigger:
   ref:
-  - refs/heads/master
+  - refs/heads/main
   - refs/heads/k??
   - refs/tags/v*
 
@@ -885,7 +885,7 @@ steps:
 
 trigger:
   ref:
-  - refs/heads/master
+  - refs/heads/main
   - refs/heads/k??
   - refs/tags/v*
 
