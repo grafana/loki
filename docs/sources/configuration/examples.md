@@ -223,7 +223,7 @@ schema_config:
   configs:
   - from: 2020-05-15
     store: boltdb-shipper
-    object_store: s3
+    object_store: aws
     schema: v11
     index:
       prefix: index_
@@ -268,7 +268,7 @@ configs:
   # Starting from 2020-6-15 we moved from filesystem to AWS S3 for storing the chunks.
   - from: "2020-06-15"
     store: cassandra
-    object_store: s3
+    object_store: aws
     schema: v11
     index:
         period: 168h
