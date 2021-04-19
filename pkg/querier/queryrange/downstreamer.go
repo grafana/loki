@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 const (
@@ -55,8 +56,8 @@ type instance struct {
 	handler     queryrange.Handler
 }
 
-func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logql.Result, error) {
-	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logql.Result, error) {
+func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
+	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
@@ -64,7 +65,7 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
-			return logql.Result{}, err
+			return logqlmodel.Result{}, err
 		}
 		return ResponseToResult(res)
 	})
@@ -74,11 +75,11 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 func (in instance) For(
 	ctx context.Context,
 	queries []logql.DownstreamQuery,
-	fn func(logql.DownstreamQuery) (logql.Result, error),
-) ([]logql.Result, error) {
+	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
+) ([]logqlmodel.Result, error) {
 	type resp struct {
 		i   int
-		res logql.Result
+		res logqlmodel.Result
 		err error
 	}
 
@@ -116,7 +117,7 @@ func (in instance) For(
 		}
 	}()
 
-	results := make([]logql.Result, len(queries))
+	results := make([]logqlmodel.Result, len(queries))
 	for i := 0; i < len(queries); i++ {
 		resp := <-ch
 		if resp.err != nil {
@@ -150,35 +151,35 @@ func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
 	return xs
 }
 
-func ResponseToResult(resp queryrange.Response) (logql.Result, error) {
+func ResponseToResult(resp queryrange.Response) (logqlmodel.Result, error) {
 	switch r := resp.(type) {
 	case *LokiResponse:
 		if r.Error != "" {
-			return logql.Result{}, fmt.Errorf("%s: %s", r.ErrorType, r.Error)
+			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.ErrorType, r.Error)
 		}
 
-		streams := make(logql.Streams, 0, len(r.Data.Result))
+		streams := make(logqlmodel.Streams, 0, len(r.Data.Result))
 
 		for _, stream := range r.Data.Result {
 			streams = append(streams, stream)
 		}
 
-		return logql.Result{
+		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       streams,
 		}, nil
 
 	case *LokiPromResponse:
 		if r.Response.Error != "" {
-			return logql.Result{}, fmt.Errorf("%s: %s", r.Response.ErrorType, r.Response.Error)
+			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.Response.ErrorType, r.Response.Error)
 		}
 
-		return logql.Result{
+		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
 		}, nil
 
 	default:
-		return logql.Result{}, fmt.Errorf("cannot decode (%T)", resp)
+		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}
 }

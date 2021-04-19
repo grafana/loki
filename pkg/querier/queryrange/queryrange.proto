@@ -4,7 +4,7 @@ package queryrange;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
-import "pkg/logql/stats/stats.proto";
+import "pkg/logqlmodel/stats/stats.proto";
 import "github.com/cortexproject/cortex/pkg/querier/queryrange/queryrange.proto";
 import "google/protobuf/timestamp.proto";
 

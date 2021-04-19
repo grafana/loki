@@ -7,9 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -202,7 +201,7 @@ func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
 	if err := ei.Error(); err != nil {
 		i.errs = append(i.errs, err)
 	}
-	helpers.LogError("closing iterator", ei.Close)
+	util.LogError("closing iterator", ei.Close)
 }
 
 func (i *heapIterator) Push(ei EntryIterator) {

@@ -12,8 +12,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/felixge/fgprof"
 
+	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/util/runtime"
+	"github.com/grafana/loki/pkg/validation"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
@@ -46,7 +47,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config is the root config for Loki.

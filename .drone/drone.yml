@@ -99,27 +99,6 @@ steps:
   depends_on:
   - image-tag
 
-- name: build-promtail-image
-  image: plugins/docker
-  settings:
-    build_args:
-    - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/heads/k??
-      - refs/tags/v*
-  depends_on:
-  - image-tag
-
 - name: build-logcli-image
   image: plugins/docker
   settings:
@@ -169,25 +148,6 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    ref:
-    - refs/heads/master
-    - refs/heads/k??
-    - refs/tags/v*
-  depends_on:
-  - image-tag
-
-- name: publish-promtail-image
-  image: plugins/docker
-  settings:
-    build_args:
-    - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
     username:
       from_secret: docker_username
   when:
@@ -278,27 +238,6 @@ steps:
   depends_on:
   - image-tag
 
-- name: build-promtail-image
-  image: plugins/docker
-  settings:
-    build_args:
-    - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/heads/k??
-      - refs/tags/v*
-  depends_on:
-  - image-tag
-
 - name: build-logcli-image
   image: plugins/docker
   settings:
@@ -348,25 +287,6 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
-    username:
-      from_secret: docker_username
-  when:
-    ref:
-    - refs/heads/master
-    - refs/heads/k??
-    - refs/tags/v*
-  depends_on:
-  - image-tag
-
-- name: publish-promtail-image
-  image: plugins/docker
-  settings:
-    build_args:
-    - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
     username:
       from_secret: docker_username
   when:
@@ -457,27 +377,6 @@ steps:
   depends_on:
   - image-tag
 
-- name: build-promtail-image
-  image: plugins/docker
-  settings:
-    build_args:
-    - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile.arm32
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/heads/k??
-      - refs/tags/v*
-  depends_on:
-  - image-tag
-
 - name: build-logcli-image
   image: plugins/docker
   settings:
@@ -537,12 +436,71 @@ steps:
   depends_on:
   - image-tag
 
+- name: publish-logcli-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: cmd/logcli/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: grafana/logcli
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+    - refs/heads/master
+    - refs/heads/k??
+    - refs/tags/v*
+  depends_on:
+  - image-tag
+
+depends_on:
+- check
+
+---
+kind: pipeline
+name: promtail-amd64
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: image-tag
+  image: alpine
+  commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+
+- name: build-promtail-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: clients/cmd/promtail/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/promtail
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/heads/k??
+      - refs/tags/v*
+  depends_on:
+  - image-tag
+
 - name: publish-promtail-image
   image: plugins/docker
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile.arm32
+    dockerfile: clients/cmd/promtail/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/promtail
@@ -556,15 +514,114 @@ steps:
   depends_on:
   - image-tag
 
-- name: publish-logcli-image
+depends_on:
+- check
+
+---
+kind: pipeline
+name: promtail-arm64
+
+platform:
+  os: linux
+  arch: arm64
+
+steps:
+- name: image-tag
+  image: alpine
+  commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm64 > .tags
+
+- name: build-promtail-image
   image: plugins/docker
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/logcli/Dockerfile
+    dockerfile: clients/cmd/promtail/Dockerfile
+    dry_run: true
     password:
       from_secret: docker_password
-    repo: grafana/logcli
+    repo: grafana/promtail
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/heads/k??
+      - refs/tags/v*
+  depends_on:
+  - image-tag
+
+- name: publish-promtail-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: clients/cmd/promtail/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: grafana/promtail
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+    - refs/heads/master
+    - refs/heads/k??
+    - refs/tags/v*
+  depends_on:
+  - image-tag
+
+depends_on:
+- check
+
+---
+kind: pipeline
+name: promtail-arm
+
+platform:
+  os: linux
+  arch: arm
+
+steps:
+- name: image-tag
+  image: alpine
+  commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm > .tags
+
+- name: build-promtail-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: clients/cmd/promtail/Dockerfile.arm32
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/promtail
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/heads/k??
+      - refs/tags/v*
+  depends_on:
+  - image-tag
+
+- name: publish-promtail-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: clients/cmd/promtail/Dockerfile.arm32
+    password:
+      from_secret: docker_password
+    repo: grafana/promtail
     username:
       from_secret: docker_username
   when:
@@ -598,7 +655,7 @@ steps:
 - name: build-fluent-bit-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/fluent-bit/Dockerfile
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
@@ -617,7 +674,7 @@ steps:
 - name: publish-fluent-bit-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/fluent-bit/Dockerfile
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/fluent-bit-plugin-loki
@@ -654,7 +711,7 @@ steps:
 - name: build-fluentd-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/fluentd/Dockerfile
+    dockerfile: clients/cmd/fluentd/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
@@ -673,7 +730,7 @@ steps:
 - name: publish-fluentd-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/fluentd/Dockerfile
+    dockerfile: clients/cmd/fluentd/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/fluent-plugin-loki
@@ -710,7 +767,7 @@ steps:
 - name: build-logstash-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/logstash/Dockerfile
+    dockerfile: clients/cmd/logstash/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
@@ -729,7 +786,7 @@ steps:
 - name: publish-logstash-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/logstash/Dockerfile
+    dockerfile: clients/cmd/logstash/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/logstash-output-loki
@@ -845,6 +902,6 @@ steps:
 - name: test
   image: golang:windowsservercore-1809
   commands:
-  - go test .\pkg\promtail\targets\windows\... -v
+  - go test .\clients\pkg\promtail\targets\windows\... -v
 
 ...

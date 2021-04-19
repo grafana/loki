@@ -24,9 +24,10 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/marshal"
+	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
 var lokiCodec = &codec{}
@@ -172,7 +173,7 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 			Shards: req.Shards,
 		}, nil
 	case SeriesOp:
-		req, err := loghttp.ParseSeriesQuery(r)
+		req, err := logql.ParseAndValidateSeriesQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -374,8 +375,8 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 				Entries: stream.Entries,
 			}
 		}
-		result := logql.Result{
-			Data:       logql.Streams(streams),
+		result := logqlmodel.Result{
+			Data:       logqlmodel.Streams(streams),
 			Statistics: response.Statistics,
 		}
 		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
