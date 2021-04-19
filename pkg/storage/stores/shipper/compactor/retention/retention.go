@@ -193,3 +193,15 @@ func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, serie
 		return seriesCleaner.Cleanup(seriesID, userID)
 	})
 }
+
+type Sweeper struct {
+	workingDirectory string
+	objectClient     chunk.ObjectClient
+}
+
+func NewSweeper(workingDir string, objectClient chunk.ObjectClient) *Sweeper {
+	return &Sweeper{
+		workingDirectory: workingDir,
+		objectClient:     objectClient,
+	}
+}
