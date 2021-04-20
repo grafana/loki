@@ -12,16 +12,18 @@ import (
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
+	ww "github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/user"
+	"go.etcd.io/bbolt"
+
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util/validation"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
-	"go.etcd.io/bbolt"
 )
 
 var (
@@ -153,6 +155,9 @@ func (t *testStore) open() {
 
 func newTestStore(t *testing.T) *testStore {
 	t.Helper()
+	cfg := &ww.Config{}
+	require.Nil(t, cfg.LogLevel.Set("debug"))
+	util_log.InitLogger(cfg)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")

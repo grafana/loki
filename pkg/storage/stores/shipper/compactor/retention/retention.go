@@ -93,11 +93,13 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 	}
 
 	defer func() {
+		path := db.Path()
 		if err := db.Close(); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "failed to close local db", "err", err)
 		}
-		if err := os.Remove(db.Path()); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to removed downloaded db", "err", err)
+
+		if err := os.Remove(path); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to removed downloaded db", "err", err, "path", path)
 		}
 	}()
 
