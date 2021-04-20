@@ -57,7 +57,7 @@ Outer:
 		matchedRule = streamRetention
 	}
 	if found {
-		return ref.From.After(model.Now().Add(matchedRule.Period))
+		return model.Now().Sub(ref.Through) > matchedRule.Period
 	}
-	return ref.From.After(model.Now().Add(globalRetention))
+	return model.Now().Sub(ref.Through) > globalRetention
 }

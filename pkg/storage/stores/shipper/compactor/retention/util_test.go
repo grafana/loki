@@ -123,7 +123,7 @@ func (t *testStore) indexTables() []table {
 	return res
 }
 
-func (t *testStore) requiresHasChunk(c chunk.Chunk) {
+func (t *testStore) HasChunk(c chunk.Chunk) bool {
 	t.t.Helper()
 	var matchers []*labels.Matcher
 	for _, l := range c.Metric {
@@ -132,8 +132,7 @@ func (t *testStore) requiresHasChunk(c chunk.Chunk) {
 	chunks, err := t.Store.Get(user.InjectOrgID(context.Background(), c.UserID),
 		c.UserID, c.From, c.Through, matchers...)
 	require.NoError(t.t, err)
-	require.Len(t.t, chunks, 1)
-	require.Equal(t.t, c.ExternalKey(), chunks[0].ExternalKey())
+	return len(chunks) == 1 && c.ExternalKey() == chunks[0].ExternalKey()
 }
 
 func (t *testStore) open() {

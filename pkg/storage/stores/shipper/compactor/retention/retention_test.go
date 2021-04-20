@@ -23,31 +23,74 @@ import (
 )
 
 func Test_Retention(t *testing.T) {
-	store := newTestStore(t)
-
-	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour))
-	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour))
-	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c1, c2}))
-
-	store.Stop()
-
-	expiration := NewExpirationChecker(fakeLimits{
-		perTenant: map[string]time.Duration{
-			"1": 1000 * time.Hour,
-			"2": 1000 * time.Hour,
+	for _, tt := range []struct {
+		name   string
+		limits Limits
+		chunks []chunk.Chunk
+		alive  []bool
+	}{
+		{
+			"nothing is expiring",
+			fakeLimits{
+				perTenant: map[string]time.Duration{
+					"1": 1000 * time.Hour,
+					"2": 1000 * time.Hour,
+				},
+				perStream: map[string][]validation.StreamRetention{},
+			},
+			[]chunk.Chunk{
+				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
+				createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour)),
+			},
+			[]bool{
+				true,
+				true,
+			},
 		},
-		perStream: map[string][]validation.StreamRetention{},
-	})
-	workDir := filepath.Join(t.TempDir(), "retention")
-	marker := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
+		{
+			"one global expiration",
+			fakeLimits{
+				perTenant: map[string]time.Duration{
+					"1": 10 * time.Hour,
+					"2": 1000 * time.Hour,
+				},
+				perStream: map[string][]validation.StreamRetention{},
+			},
+			[]chunk.Chunk{
+				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
+				createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour)),
+			},
+			[]bool{
+				false,
+				true,
+			},
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			// insert in the store.
+			store := newTestStore(t)
+			for _, c := range tt.chunks {
+				require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c}))
+			}
+			store.Stop()
 
-	for _, table := range store.indexTables() {
-		require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
+			// marks
+			expiration := NewExpirationChecker(tt.limits)
+			workDir := filepath.Join(t.TempDir(), "retention")
+			marker := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
+			for _, table := range store.indexTables() {
+				require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
+			}
+
+			// assert using the store again.
+			store.open()
+			for i, e := range tt.alive {
+				require.Equal(t, e, store.HasChunk(tt.chunks[i]))
+			}
+			store.Stop()
+		})
 	}
-
-	store.open()
-	store.requiresHasChunk(c1)
-	store.requiresHasChunk(c2)
 }
 
 func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time, through model.Time) chunk.Chunk {
