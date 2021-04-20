@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -26,9 +27,10 @@ var (
 )
 
 const (
-	logMetricName = "logs"
-	delimiter     = "/"
-	markersFolder = "markers"
+	logMetricName       = "logs"
+	delimiter           = "/"
+	markersFolder       = "markers"
+	deletionWorkerCount = 10
 )
 
 type Marker struct {
@@ -131,7 +133,7 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 	if err := db.Close(); err != nil {
 		return err
 	}
-	// either delete if all entries are removed or upload the new file.
+	// if the index is empty we can delete the index table.
 	if empty {
 		return t.objectClient.DeleteObject(ctx, tableName+delimiter)
 	}
@@ -195,13 +197,33 @@ func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, serie
 }
 
 type Sweeper struct {
-	workingDirectory string
-	objectClient     chunk.ObjectClient
+	markerProcessor MarkerProcessor
+	objectClient    chunk.ObjectClient
 }
 
-func NewSweeper(workingDir string, objectClient chunk.ObjectClient) *Sweeper {
-	return &Sweeper{
-		workingDirectory: workingDir,
-		objectClient:     objectClient,
+func NewSweeper(workingDir string, objectClient chunk.ObjectClient) (*Sweeper, error) {
+	p, err := newMarkerStorageReader(workingDir, deletionWorkerCount, 2*time.Hour)
+	if err != nil {
+		return nil, err
 	}
+	return &Sweeper{
+		markerProcessor: p,
+		objectClient:    objectClient,
+	}, nil
+}
+
+func (s *Sweeper) Start() {
+	s.markerProcessor.Start(func(ctx context.Context, chunkId []byte) error {
+		chunkIDString := unsafeGetString(chunkId)
+		err := s.objectClient.DeleteObject(ctx, chunkIDString)
+		if err == chunk.ErrStorageObjectNotFound {
+			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
+			return nil
+		}
+		return err
+	})
+}
+
+func (s *Sweeper) Stop() {
+	s.markerProcessor.Stop()
 }

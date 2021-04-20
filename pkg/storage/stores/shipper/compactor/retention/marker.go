@@ -95,6 +95,7 @@ type MarkerProcessor interface {
 	// If deleteFunc returns no error the mark is deleted from the storage.
 	// Otherwise the mark will reappears in future iteration.
 	Start(deleteFunc func(ctx context.Context, chunkId []byte) error)
+	// Stop stops processing marks.
 	Stop()
 }
 
@@ -227,7 +228,7 @@ func processKey(ctx context.Context, key *bytes.Buffer, db *bbolt.DB, deleteFunc
 		return err
 	}
 	// no error we can delete the key
-	return db.Update(func(tx *bbolt.Tx) error {
+	return db.Batch(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
 			return nil
@@ -260,7 +261,6 @@ func (r *markerProcessor) deleteEmptyMarks(path string) error {
 		return err
 	}
 	if empty {
-		fmt.Fprintln(os.Stdout, path)
 		return os.Remove(path)
 	}
 	return nil

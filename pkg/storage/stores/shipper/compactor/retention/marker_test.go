@@ -21,7 +21,6 @@ func initAndFeedMarkerProcessor(t *testing.T) *markerProcessor {
 	dir := t.TempDir()
 	p, err := newMarkerStorageReader(dir, 5, time.Second)
 	require.NoError(t, err)
-	defer p.Stop()
 	go func() {
 		w, err := NewMarkerStorageWriter(dir)
 		require.NoError(t, err)
@@ -40,6 +39,7 @@ func initAndFeedMarkerProcessor(t *testing.T) *markerProcessor {
 
 func Test_markerProcessor_StartRetryKey(t *testing.T) {
 	p := initAndFeedMarkerProcessor(t)
+	defer p.Stop()
 	counts := map[string]int{}
 	l := sync.Mutex{}
 
@@ -68,6 +68,7 @@ func Test_markerProcessor_StartRetryKey(t *testing.T) {
 
 func Test_markerProcessor_StartDeleteOnSuccess(t *testing.T) {
 	p := initAndFeedMarkerProcessor(t)
+	defer p.Stop()
 	counts := map[string]int{}
 	l := sync.Mutex{}
 
