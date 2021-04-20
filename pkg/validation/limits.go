@@ -21,45 +21,45 @@ const (
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRateStrategy  string           `yaml:"ingestion_rate_strategy"`
-	IngestionRateMB        float64          `yaml:"ingestion_rate_mb"`
-	IngestionBurstSizeMB   float64          `yaml:"ingestion_burst_size_mb"`
-	MaxLabelNameLength     int              `yaml:"max_label_name_length"`
-	MaxLabelValueLength    int              `yaml:"max_label_value_length"`
-	MaxLabelNamesPerSeries int              `yaml:"max_label_names_per_series"`
-	RejectOldSamples       bool             `yaml:"reject_old_samples"`
-	RejectOldSamplesMaxAge time.Duration    `yaml:"reject_old_samples_max_age"`
-	CreationGracePeriod    time.Duration    `yaml:"creation_grace_period"`
-	EnforceMetricName      bool             `yaml:"enforce_metric_name"`
-	MaxLineSize            flagext.ByteSize `yaml:"max_line_size"`
+	IngestionRateStrategy  string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
+	IngestionRateMB        float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
+	IngestionBurstSizeMB   float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
+	MaxLabelNameLength     int              `yaml:"max_label_name_length" json:"max_label_name_length"`
+	MaxLabelValueLength    int              `yaml:"max_label_value_length" json:"max_label_value_length"`
+	MaxLabelNamesPerSeries int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	RejectOldSamples       bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
+	RejectOldSamplesMaxAge time.Duration    `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
+	CreationGracePeriod    time.Duration    `yaml:"creation_grace_period" json:"creation_grace_period"`
+	EnforceMetricName      bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
+	MaxLineSize            flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 
 	// Ingester enforced limits.
-	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user"`
-	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user"`
+	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
+	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery          int           `yaml:"max_chunks_per_query"`
-	MaxQuerySeries             int           `yaml:"max_query_series"`
-	MaxQueryLookback           time.Duration `yaml:"max_query_lookback"`
-	MaxQueryLength             time.Duration `yaml:"max_query_length"`
-	MaxQueryParallelism        int           `yaml:"max_query_parallelism"`
-	CardinalityLimit           int           `yaml:"cardinality_limit"`
-	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query"`
-	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests"`
-	MaxEntriesLimitPerQuery    int           `yaml:"max_entries_limit_per_query"`
-	MaxCacheFreshness          time.Duration `yaml:"max_cache_freshness_per_query"`
+	MaxChunksPerQuery          int           `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
+	MaxQuerySeries             int           `yaml:"max_query_series" json:"max_query_series"`
+	MaxQueryLookback           time.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength             time.Duration `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryParallelism        int           `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	CardinalityLimit           int           `yaml:"cardinality_limit" json:"cardinality_limit"`
+	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
+	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery    int           `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
+	MaxCacheFreshness          time.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval"`
+	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        time.Duration `yaml:"ruler_evaluation_delay_duration"`
-	RulerMaxRulesPerRuleGroup   int           `yaml:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int           `yaml:"ruler_max_rule_groups_per_tenant"`
+	RulerEvaluationDelay        time.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerMaxRulesPerRuleGroup   int           `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int           `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 
 	// Config for overrides, convenient if it goes here.
-	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
-	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period"`
+	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
+	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
