@@ -34,6 +34,7 @@ type Config struct {
 	CompactionInterval   time.Duration `yaml:"compaction_interval"`
 	RetentionEnabled     bool          `yaml:"retention_enabled"`
 	RetentionInterval    time.Duration `yaml:"retention_interval"`
+	RetentionDeleteDelay time.Duration `yaml:"retention_delete_delay"`
 }
 
 // RegisterFlags registers flags.
@@ -42,7 +43,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
-	f.DurationVar(&cfg.RetentionInterval, "boltdb.shipper.compactor.retention-interval", 2*time.Hour, "Interval at which to re-run the retention operation.")
+	f.DurationVar(&cfg.RetentionInterval, "boltdb.shipper.compactor.retention-interval", 10*time.Minute, "Interval at which to re-run the retention operation.")
+	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "Activate custom (per-stream,per-tenant) retention.")
 }
 
@@ -62,6 +64,7 @@ type Compactor struct {
 	cfg          Config
 	objectClient chunk.ObjectClient
 	tableMarker  *retention.Marker
+	sweeper      *retention.Sweeper
 
 	metrics *metrics
 }
@@ -82,12 +85,18 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	}
 	prefixedClient := util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix)
 
-	// todo configuration and expiration checker.
+	retentionWorkDir := filepath.Join(cfg.WorkingDirectory, "retention")
+
+	sweeper, err := retention.NewSweeper(retentionWorkDir, retention.NewDeleteClient(objectClient), cfg.RetentionDeleteDelay)
+	if err != nil {
+		return nil, err
+	}
 	compactor := Compactor{
 		cfg:          cfg,
 		objectClient: prefixedClient,
 		metrics:      newMetrics(r),
-		tableMarker:  retention.NewMarker(filepath.Join(cfg.WorkingDirectory, "retention"), schemaConfig, prefixedClient, retention.NewExpirationChecker(limits)),
+		tableMarker:  retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits)),
+		sweeper:      sweeper,
 	}
 
 	compactor.Service = services.NewBasicService(nil, compactor.loop, nil)
@@ -126,10 +135,19 @@ func (c *Compactor) loop(ctx context.Context) error {
 		}
 	}()
 	if c.cfg.RetentionEnabled {
-		wg.Add(1)
+		wg.Add(2)
 		go func() {
+			// starts the chunk sweeper
+			defer func() {
+				c.sweeper.Stop()
+				wg.Done()
+			}()
+			c.sweeper.Start()
+			<-ctx.Done()
+		}()
+		go func() {
+			// start the index marker
 			defer wg.Done()
-
 			ticker := time.NewTicker(c.cfg.RetentionInterval)
 			defer ticker.Stop()
 

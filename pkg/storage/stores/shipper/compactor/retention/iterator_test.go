@@ -19,7 +19,6 @@ func Test_ChunkIterator(t *testing.T) {
 		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
 			store := newTestStore(t)
-			defer store.cleanup()
 			c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
 			c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
 
@@ -74,7 +73,6 @@ func Test_SeriesCleaner(t *testing.T) {
 		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
 			store := newTestStore(t)
-			defer store.cleanup()
 			c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
 			c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
 			c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))

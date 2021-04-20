@@ -2,6 +2,7 @@ package retention
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
@@ -45,6 +47,7 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClien
 		workingDirectory: workingDirectory,
 		config:           config,
 		objectClient:     objectClient,
+		expiration:       expiration,
 	}
 }
 
@@ -77,7 +80,7 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 		return err
 	}
 
-	downloadAt := filepath.Join(t.workingDirectory, tableName)
+	downloadAt := filepath.Join(tableDirectory, tableKey)
 
 	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, tableKey, downloadAt)
 	if err != nil {
@@ -90,6 +93,9 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 	}
 
 	defer func() {
+		if err := db.Close(); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to close local db", "err", err)
+		}
 		if err := os.Remove(db.Path()); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "failed to removed downloaded db", "err", err)
 		}
@@ -128,9 +134,6 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 		return nil
 	})
 	if err != nil {
-		return err
-	}
-	if err := db.Close(); err != nil {
 		return err
 	}
 	// if the index is empty we can delete the index table.
@@ -196,26 +199,46 @@ func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, serie
 	})
 }
 
-type Sweeper struct {
-	markerProcessor MarkerProcessor
-	objectClient    chunk.ObjectClient
+type DeleteClient interface {
+	DeleteObject(ctx context.Context, objectKey string) error
 }
 
-func NewSweeper(workingDir string, objectClient chunk.ObjectClient) (*Sweeper, error) {
-	p, err := newMarkerStorageReader(workingDir, deletionWorkerCount, 2*time.Hour)
+type DeleteClientFunc func(ctx context.Context, objectKey string) error
+
+func (d DeleteClientFunc) DeleteObject(ctx context.Context, objectKey string) error {
+	return d(ctx, objectKey)
+}
+
+func NewDeleteClient(objectClient chunk.ObjectClient) DeleteClient {
+	// filesystem encode64 keys on disk. useful for testing.
+	if fs, ok := objectClient.(*local.FSObjectClient); ok {
+		return DeleteClientFunc(func(ctx context.Context, objectKey string) error {
+			return fs.DeleteObject(ctx, base64.StdEncoding.EncodeToString([]byte(objectKey)))
+		})
+	}
+	return objectClient
+}
+
+type Sweeper struct {
+	markerProcessor MarkerProcessor
+	deleteClient    DeleteClient
+}
+
+func NewSweeper(workingDir string, deleteClient DeleteClient, minAgeDelete time.Duration) (*Sweeper, error) {
+	p, err := newMarkerStorageReader(workingDir, deletionWorkerCount, minAgeDelete)
 	if err != nil {
 		return nil, err
 	}
 	return &Sweeper{
 		markerProcessor: p,
-		objectClient:    objectClient,
+		deleteClient:    deleteClient,
 	}, nil
 }
 
 func (s *Sweeper) Start() {
 	s.markerProcessor.Start(func(ctx context.Context, chunkId []byte) error {
 		chunkIDString := unsafeGetString(chunkId)
-		err := s.objectClient.DeleteObject(ctx, chunkIDString)
+		err := s.deleteClient.DeleteObject(ctx, chunkIDString)
 		if err == chunk.ErrStorageObjectNotFound {
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
 			return nil

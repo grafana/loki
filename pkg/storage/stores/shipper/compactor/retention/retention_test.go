@@ -4,8 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
-	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,67 +15,39 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func Test_Retention(t *testing.T) {
 	store := newTestStore(t)
-	defer store.cleanup()
 
-	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
-		createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, model.Earliest, model.Earliest.Add(1*time.Hour)),
-		createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, model.Earliest.Add(26*time.Hour), model.Earliest.Add(27*time.Hour)),
-	}))
+	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour))
+	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour))
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c1, c2}))
 
 	store.Stop()
 
-	// retentionRules := fakeRule{}
+	expiration := NewExpirationChecker(fakeLimits{
+		perTenant: map[string]time.Duration{
+			"1": 1000 * time.Hour,
+			"2": 1000 * time.Hour,
+		},
+		perStream: map[string][]validation.StreamRetention{},
+	})
+	workDir := filepath.Join(t.TempDir(), "retention")
+	marker := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
 
-	// 1-  Get all series ID for given retention per stream....
-	// 2 - Delete from index and Mark for delete all chunk  based on retention with seriesID/tenantID.
-	// 3 - Seek chunk entries via series id for each series and verify if we still have chunk.
-	// 4 - Delete Label entries for empty series with empty chunk entries.
-
-	// For 1. only equality matcher are OK so we can use GetReadMetricLabelValueQueries
 	for _, table := range store.indexTables() {
-		fmt.Fprintf(os.Stdout, "Opening Table %s\n", table.name)
-
-		// 1 - Get all series ID for given retention per stream....
-
-		// 1.1 find the schema for this table
-
-		currentSchema, ok := schemaPeriodForTable(store.schemaCfg, table.name)
-		if !ok {
-			fmt.Fprintf(os.Stdout, "Could not find Schema for Table %s\n", table.name)
-			continue
-		}
-		fmt.Fprintf(os.Stdout, "Found Schema for Table %s => %+v\n", table.name, currentSchema)
-
-		_ = NewExpirationChecker(nil)
-
-		require.NoError(t,
-			table.DB.Update(func(tx *bbolt.Tx) error {
-				return tx.Bucket(bucketName).ForEach(func(k, v []byte) error {
-					ref, ok, err := parseChunkRef(decodeKey(k))
-					if err != nil {
-						return err
-					}
-					if ok {
-						fmt.Fprintf(os.Stdout, "%+v\n", ref)
-						return nil
-					}
-					_, r := decodeKey(k)
-					components := decodeRangeKey(r, nil)
-					keyType := components[len(components)-1]
-
-					fmt.Fprintf(os.Stdout, "type:%s \n", keyType)
-					return nil
-				})
-			}))
+		require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
 	}
+
+	store.open()
+	store.requiresHasChunk(c1)
+	store.requiresHasChunk(c2)
 }
 
 func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time, through model.Time) chunk.Chunk {
