@@ -3,8 +3,10 @@ package ingester
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const (
@@ -53,9 +55,23 @@ type ingesterMetrics struct {
 	oldestUnflushedChunkTimestamp prometheus.Gauge
 
 	activeSeriesPerUser *prometheus.GaugeVec
+
+	// Global limit metrics
+	maxUsersGauge           prometheus.GaugeFunc
+	maxSeriesGauge          prometheus.GaugeFunc
+	maxIngestionRate        prometheus.GaugeFunc
+	ingestionRate           prometheus.GaugeFunc
+	maxInflightPushRequests prometheus.GaugeFunc
+	inflightRequests        prometheus.GaugeFunc
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, instanceLimitsFn func() *InstanceLimits, ingestionRate *util_math.EwmaRate, inflightRequests *atomic.Int64) *ingesterMetrics {
+	const (
+		instanceLimits     = "cortex_ingester_instance_limits"
+		instanceLimitsHelp = "Instance limits used by this ingester." // Must be same for all registrations.
+		limitLabel         = "limit"
+	)
+
 	m := &ingesterMetrics{
 		flushQueueLength: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
@@ -188,6 +204,70 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		oldestUnflushedChunkTimestamp: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
 			Help: "Unix timestamp of the oldest unflushed chunk in the memory",
+		}),
+
+		maxUsersGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
+			ConstLabels: map[string]string{limitLabel: "max_tenants"},
+		}, func() float64 {
+			if g := instanceLimitsFn(); g != nil {
+				return float64(g.MaxInMemoryTenants)
+			}
+			return 0
+		}),
+
+		maxSeriesGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
+			ConstLabels: map[string]string{limitLabel: "max_series"},
+		}, func() float64 {
+			if g := instanceLimitsFn(); g != nil {
+				return float64(g.MaxInMemorySeries)
+			}
+			return 0
+		}),
+
+		maxIngestionRate: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
+			ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
+		}, func() float64 {
+			if g := instanceLimitsFn(); g != nil {
+				return float64(g.MaxIngestionRate)
+			}
+			return 0
+		}),
+
+		maxInflightPushRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
+			ConstLabels: map[string]string{limitLabel: "max_inflight_push_requests"},
+		}, func() float64 {
+			if g := instanceLimitsFn(); g != nil {
+				return float64(g.MaxInflightPushRequests)
+			}
+			return 0
+		}),
+
+		ingestionRate: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_ingestion_rate_samples_per_second",
+			Help: "Current ingestion rate in samples/sec that ingester is using to limit access.",
+		}, func() float64 {
+			if ingestionRate != nil {
+				return ingestionRate.Rate()
+			}
+			return 0
+		}),
+
+		inflightRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_inflight_push_requests",
+			Help: "Current number of inflight push requests in ingester.",
+		}, func() float64 {
+			if inflightRequests != nil {
+				return float64(inflightRequests.Load())
+			}
+			return 0
 		}),
 
 		// Not registered automatically, but only if activeSeriesEnabled is true.

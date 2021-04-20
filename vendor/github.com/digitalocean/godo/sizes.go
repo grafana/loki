@@ -31,6 +31,7 @@ type Size struct {
 	Regions      []string `json:"regions,omitempty"`
 	Available    bool     `json:"available,omitempty"`
 	Transfer     float64  `json:"transfer,omitempty"`
+	Description  string   `json:"description,omitempty"`
 }
 
 func (s Size) String() string {

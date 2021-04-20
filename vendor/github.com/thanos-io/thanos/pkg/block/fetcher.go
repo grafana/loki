@@ -102,7 +102,7 @@ func NewFetcherMetrics(reg prometheus.Registerer, syncedExtraLabels, modifiedExt
 		Subsystem: fetcherSubSys,
 		Name:      "sync_duration_seconds",
 		Help:      "Duration of the blocks metadata synchronization in seconds",
-		Buckets:   []float64{0.01, 1, 10, 100, 1000},
+		Buckets:   []float64{0.01, 1, 10, 100, 300, 600, 1000},
 	})
 	m.Synced = extprom.NewTxGaugeVec(
 		reg,

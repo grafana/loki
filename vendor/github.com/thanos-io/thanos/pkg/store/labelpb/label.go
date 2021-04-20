@@ -34,8 +34,19 @@ func ZLabelsFromPromLabels(lset labels.Labels) []ZLabel {
 
 // ZLabelsToPromLabels convert slice of labelpb.ZLabel to Prometheus labels in type unsafe manner.
 // It reuses the same memory. Caller should abort using passed []ZLabel.
+// NOTE: Use with care. ZLabels holds memory from the whole protobuf unmarshal, so the returned
+// Prometheus Labels will hold this memory as well.
 func ZLabelsToPromLabels(lset []ZLabel) labels.Labels {
 	return *(*labels.Labels)(unsafe.Pointer(&lset))
+}
+
+// ReAllocZLabelsStrings re-allocates all underlying bytes for string, detaching it from bigger memory pool.
+func ReAllocZLabelsStrings(lset *[]ZLabel) {
+	for j, l := range *lset {
+		// NOTE: This trick converts from string to byte without copy, but copy when creating string.
+		(*lset)[j].Name = string(noAllocBytes(l.Name))
+		(*lset)[j].Value = string(noAllocBytes(l.Value))
+	}
 }
 
 // LabelsFromPromLabels converts Prometheus labels to slice of labelpb.ZLabel in type unsafe manner.
@@ -61,7 +72,7 @@ func ZLabelSetsToPromLabelSets(lss ...ZLabelSet) []labels.Labels {
 
 // ZLabel is a Label (also easily transformable to Prometheus labels.Labels) that can be unmarshalled from protobuf
 // reusing the same memory address for string bytes.
-// NOTE: While unmarshal use exactly same bytes that were allocated for protobuf, this will mean that *whole* protobuf
+// NOTE: While unmarshalling it uses exactly same bytes that were allocated for protobuf. This mean that *whole* protobuf
 // bytes will be not GC-ed as long as ZLabels are referenced somewhere. Use it carefully, only for short living
 // protobuf message processing.
 type ZLabel Label

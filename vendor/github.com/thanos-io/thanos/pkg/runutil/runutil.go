@@ -54,6 +54,8 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -157,4 +159,60 @@ func ExhaustCloseWithErrCapture(err *error, r io.ReadCloser, format string, a ..
 	merr.Add(*err)
 
 	*err = merr.Err()
+}
+
+// DeleteAll deletes all files and directories inside the given
+// dir except for the ignoreDirs directories.
+func DeleteAll(dir string, ignoreDirs ...string) error {
+	entries, err := ioutil.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return errors.Wrap(err, "read dir")
+	}
+	var groupErrs errutil.MultiError
+
+	var matchingIgnores []string
+	for _, d := range entries {
+		if !d.IsDir() {
+			if err := os.RemoveAll(filepath.Join(dir, d.Name())); err != nil {
+				groupErrs.Add(err)
+			}
+			continue
+		}
+
+		// ignoreDirs might be multi-directory paths.
+		matchingIgnores = matchingIgnores[:0]
+		ignore := false
+		for _, ignoreDir := range ignoreDirs {
+			id := strings.Split(ignoreDir, "/")
+			if id[0] == d.Name() {
+				if len(id) == 1 {
+					ignore = true
+					break
+				}
+				matchingIgnores = append(matchingIgnores, filepath.Join(id[1:]...))
+			}
+		}
+
+		if ignore {
+			continue
+		}
+
+		if len(matchingIgnores) == 0 {
+			if err := os.RemoveAll(filepath.Join(dir, d.Name())); err != nil {
+				groupErrs.Add(err)
+			}
+			continue
+		}
+		if err := DeleteAll(filepath.Join(dir, d.Name()), matchingIgnores...); err != nil {
+			groupErrs.Add(err)
+		}
+	}
+
+	if groupErrs.Err() != nil {
+		return errors.Wrap(groupErrs.Err(), "delete file/dir")
+	}
+	return nil
 }

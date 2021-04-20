@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/channelz"
+	imetadata "google.golang.org/grpc/internal/metadata"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver"
@@ -76,10 +77,7 @@ func (lb *lbBalancer) processServerList(l *lbpb.ServerList) {
 			// net.SplitHostPort() will return too many colons error.
 			ipStr = fmt.Sprintf("[%s]", ipStr)
 		}
-		addr := resolver.Address{
-			Addr:     fmt.Sprintf("%s:%d", ipStr, s.Port),
-			Metadata: &md,
-		}
+		addr := imetadata.Set(resolver.Address{Addr: fmt.Sprintf("%s:%d", ipStr, s.Port)}, md)
 		if logger.V(2) {
 			logger.Infof("lbBalancer: server list entry[%d]: ipStr:|%s|, port:|%d|, load balancer token:|%v|",
 				i, ipStr, s.Port, s.LoadBalanceToken)
@@ -163,19 +161,19 @@ func (lb *lbBalancer) refreshSubConns(backendAddrs []resolver.Address, fallback 
 	addrsSet := make(map[resolver.Address]struct{})
 	// Create new SubConns.
 	for _, addr := range backendAddrs {
-		addrWithoutMD := addr
-		addrWithoutMD.Metadata = nil
-		addrsSet[addrWithoutMD] = struct{}{}
-		lb.backendAddrsWithoutMetadata = append(lb.backendAddrsWithoutMetadata, addrWithoutMD)
+		addrWithoutAttrs := addr
+		addrWithoutAttrs.Attributes = nil
+		addrsSet[addrWithoutAttrs] = struct{}{}
+		lb.backendAddrsWithoutMetadata = append(lb.backendAddrsWithoutMetadata, addrWithoutAttrs)
 
-		if _, ok := lb.subConns[addrWithoutMD]; !ok {
+		if _, ok := lb.subConns[addrWithoutAttrs]; !ok {
 			// Use addrWithMD to create the SubConn.
 			sc, err := lb.cc.NewSubConn([]resolver.Address{addr}, opts)
 			if err != nil {
 				logger.Warningf("grpclb: failed to create new SubConn: %v", err)
 				continue
 			}
-			lb.subConns[addrWithoutMD] = sc // Use the addr without MD as key for the map.
+			lb.subConns[addrWithoutAttrs] = sc // Use the addr without MD as key for the map.
 			if _, ok := lb.scStates[sc]; !ok {
 				// Only set state of new sc to IDLE. The state could already be
 				// READY for cached SubConns.

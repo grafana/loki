@@ -33,6 +33,7 @@ type Config struct {
 	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup"`
 	SSL                      bool                `yaml:"SSL"`
 	HostVerification         bool                `yaml:"host_verification"`
+	HostSelectionPolicy      string              `yaml:"host_selection_policy"`
 	CAPath                   string              `yaml:"CA_path"`
 	CertPath                 string              `yaml:"tls_cert_path"`
 	KeyPath                  string              `yaml:"tls_key_path"`
@@ -53,6 +54,11 @@ type Config struct {
 	TableOptions             string              `yaml:"table_options"`
 }
 
+const (
+	HostPolicyRoundRobin = "round-robin"
+	HostPolicyTokenAware = "token-aware"
+)
+
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Addresses, "cassandra.addresses", "", "Comma-separated hostnames or IPs of Cassandra instances.")
@@ -63,6 +69,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableInitialHostLookup, "cassandra.disable-initial-host-lookup", false, "Instruct the cassandra driver to not attempt to get host info from the system.peers table.")
 	f.BoolVar(&cfg.SSL, "cassandra.ssl", false, "Use SSL when connecting to cassandra instances.")
 	f.BoolVar(&cfg.HostVerification, "cassandra.host-verification", true, "Require SSL certificate validation.")
+	f.StringVar(&cfg.HostSelectionPolicy, "cassandra.host-selection-policy", HostPolicyRoundRobin, "Policy for selecting Cassandra host. Supported values are: round-robin, token-aware.")
 	f.StringVar(&cfg.CAPath, "cassandra.ca-path", "", "Path to certificate file to verify the peer.")
 	f.StringVar(&cfg.CertPath, "cassandra.tls-cert-path", "", "Path to certificate file used by TLS.")
 	f.StringVar(&cfg.KeyPath, "cassandra.tls-key-path", "", "Path to private key file used by TLS.")
@@ -180,6 +187,15 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 			}
 		}
 	}
+
+	if cfg.HostSelectionPolicy == HostPolicyRoundRobin {
+		cluster.PoolConfig.HostSelectionPolicy = gocql.RoundRobinHostPolicy()
+	} else if cfg.HostSelectionPolicy == HostPolicyTokenAware {
+		cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
+	} else {
+		return errors.New("Unknown host selection policy")
+	}
+
 	if cfg.Auth {
 		password := cfg.Password.Value
 		if cfg.PasswordFile != "" {
