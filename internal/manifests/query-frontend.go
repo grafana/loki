@@ -179,7 +179,6 @@ func NewQueryFrontendHTTPService(stackName string) *corev1.Service {
 			Labels: l,
 		},
 		Spec: corev1.ServiceSpec{
-			ClusterIP: "None",
 			Ports: []corev1.ServicePort{
 				{
 					Name: "http",

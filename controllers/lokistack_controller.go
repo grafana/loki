@@ -54,7 +54,7 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	err := handlers.CreateLokiStack(ctx, req, r.Client)
+	err := handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
@@ -67,8 +67,11 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *LokiStackReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	createPredicate := predicate.Funcs{
-		UpdateFunc:  func(e event.UpdateEvent) bool { return false },
+	filter := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// Update only if generation changes, filter out anything else
+			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
+		},
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
 		GenericFunc: func(e event.GenericEvent) bool { return false },
@@ -76,6 +79,6 @@ func (r *LokiStackReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&lokiv1beta1.LokiStack{}).
-		WithEventFilter(createPredicate).
+		WithEventFilter(filter).
 		Complete(r)
 }

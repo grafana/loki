@@ -2,23 +2,26 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/ViaQ/logerr/log"
+
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
 	"github.com/ViaQ/loki-operator/internal/manifests"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CreateLokiStack handles a LokiStack create event
-func CreateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client) error {
-	ll := log.WithValues("lokistack", req.NamespacedName, "event", "create")
+// CreateOrUpdateLokiStack handles LokiStack create and update events.
+func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme) error {
+	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
 	var stack lokiv1beta1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
@@ -51,30 +54,37 @@ func CreateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client) error 
 		return err
 	}
 	ll.Info("manifests built", "count", len(objects))
+
+	var errCount int32
 	for _, obj := range objects {
-		l := ll.WithValues("object_name", obj.GetName(),
+		l := ll.WithValues(
+			"object_name", obj.GetName(),
 			"object_kind", obj.GetObjectKind(),
-			"object", obj)
+		)
 
 		obj.SetNamespace(req.Namespace)
-		setOwner(stack, obj)
-		if err := k.Create(ctx, obj); err != nil {
-			l.Error(err, "failed to create object")
-			// TODO requeue the event, but continue anyway
+
+		if err := ctrl.SetControllerReference(&stack, obj, s); err != nil {
+			l.Error(err, "failed to set controller owner reference to resource")
+			errCount++
 			continue
 		}
-		l.Info("Resource created", "resource", obj.GetName())
+
+		desired := obj.DeepCopyObject().(client.Object)
+		mutateFn := manifests.MutateFuncFor(obj, desired)
+
+		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
+		if err != nil {
+			l.Error(err, "failed to configure resource")
+			errCount++
+			continue
+		}
+		l.Info(fmt.Sprintf("Resource has been %s", op))
+	}
+
+	if errCount > 0 {
+		return kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
 	}
 
 	return nil
-}
-
-func setOwner(stack lokiv1beta1.LokiStack, o client.Object) {
-	o.SetOwnerReferences(append(o.GetOwnerReferences(), metav1.OwnerReference{
-		APIVersion: lokiv1beta1.GroupVersion.String(),
-		Kind:       stack.Kind,
-		Name:       stack.Name,
-		UID:        stack.UID,
-		Controller: pointer.BoolPtr(true),
-	}))
 }
