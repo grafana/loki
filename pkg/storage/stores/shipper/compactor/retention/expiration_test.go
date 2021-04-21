@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type fakeLimits struct {
@@ -45,12 +46,12 @@ func Test_expirationChecker_Expired(t *testing.T) {
 		ref  ChunkEntry
 		want bool
 	}{
-		{"expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(2*time.Hour), model.Now().Add(3*time.Hour)), true},
-		{"just expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(1*time.Hour), model.Now().Add(3*time.Hour)), false},
-		{"not expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(30*time.Minute), model.Now().Add(3*time.Hour)), false},
-		{"not expired tenant by far", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(30*time.Minute), model.Now().Add(3*time.Hour)), false},
-		{"expired stream override", newChunkEntry("2", `{foo="bar"}`, model.Now().Add(3*time.Hour), model.Now().Add(4*time.Hour)), true},
-		{"non expired stream override", newChunkEntry("1", `{foo="bar"}`, model.Now().Add(1*time.Hour), model.Now().Add(4*time.Hour)), false},
+		{"expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-2*time.Hour)), true},
+		{"just expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-1*time.Hour+(10*time.Microsecond))), false},
+		{"not expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-30*time.Minute)), false},
+		{"not expired tenant by far", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-72*time.Hour), model.Now().Add(-3*time.Hour)), false},
+		{"expired stream override", newChunkEntry("2", `{foo="bar"}`, model.Now().Add(-12*time.Hour), model.Now().Add(-10*time.Hour)), true},
+		{"non expired stream override", newChunkEntry("1", `{foo="bar"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-90*time.Minute)), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

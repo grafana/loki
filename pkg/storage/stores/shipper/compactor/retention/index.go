@@ -15,11 +15,8 @@ import (
 
 const (
 	chunkTimeRangeKeyV3   = '3'
-	metricNameRangeKeyV1  = '6'
 	seriesRangeKeyV1      = '7'
 	labelSeriesRangeKeyV1 = '8'
-	labelNamesRangeKeyV1  = '9'
-	separator             = "\000"
 )
 
 var ErrInvalidIndexKey = errors.New("invalid index key")

@@ -3,8 +3,9 @@ package retention
 import (
 	"time"
 
-	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type ExpirationChecker interface {

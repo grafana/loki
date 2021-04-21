@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
+
+	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 func Test_ChunkIterator(t *testing.T) {

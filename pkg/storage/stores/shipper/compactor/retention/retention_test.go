@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -69,26 +71,50 @@ func Test_Retention(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			// insert in the store.
-			store := newTestStore(t)
+			var (
+				store         = newTestStore(t)
+				expectDeleted = []string{}
+				actualDeleted = []string{}
+				lock          sync.Mutex
+			)
 			for _, c := range tt.chunks {
 				require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c}))
 			}
 			store.Stop()
 
-			// marks
+			// marks and sweep
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
 			marker := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
 			for _, table := range store.indexTables() {
 				require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
 			}
+			sweep, err := NewSweeper(workDir, DeleteClientFunc(func(ctx context.Context, objectKey string) error {
+				lock.Lock()
+				defer lock.Unlock()
+				actualDeleted = append(actualDeleted, objectKey)
+				return nil
+			}), 0)
+			sweep.Start()
+			defer sweep.Stop()
+			require.NoError(t, err)
 
 			// assert using the store again.
 			store.open()
 			for i, e := range tt.alive {
 				require.Equal(t, e, store.HasChunk(tt.chunks[i]))
+				if !e {
+					expectDeleted = append(expectDeleted, tt.chunks[i].ExternalKey())
+				}
 			}
 			store.Stop()
+			if len(expectDeleted) != 0 {
+				require.Eventually(t, func() bool {
+					lock.Lock()
+					defer lock.Unlock()
+					return assert.Equal(t, expectDeleted, actualDeleted)
+				}, 10*time.Second, 1*time.Second)
+			}
 		})
 	}
 }
