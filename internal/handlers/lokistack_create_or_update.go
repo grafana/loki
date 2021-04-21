@@ -38,7 +38,6 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		img = manifests.DefaultContainerImage
 	}
 
-	// Here we will translate the lokiv1beta1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:      req.Name,
 		Namespace: req.Namespace,

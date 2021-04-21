@@ -7,6 +7,7 @@ import (
 
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/manifests"
+	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,13 +33,33 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	assert.JSONEq(t, string(expected), string(actual))
 }
 
+func TestConfigOptions_AppliesStackSize(t *testing.T) {
+	allSizes := []lokiv1beta1.LokiStackSizeType{
+		lokiv1beta1.SizeOneXExtraSmall,
+		lokiv1beta1.SizeOneXSmall,
+		lokiv1beta1.SizeOneXMedium,
+	}
+	for _, size := range allSizes {
+		res, err := manifests.ConfigOptions(manifests.Options{
+			Name:      "aksjdfadsf",
+			Namespace: "lkjsadfl",
+			Image:     "docker.io/ubuntu",
+			Stack: lokiv1beta1.LokiStackSpec{
+				Size: size,
+			},
+		})
+		require.NoError(t, err)
+		require.EqualValues(t, internal.StackSizeTable[size], res.Stack)
+	}
+}
+
 func randomConfigOptions() manifests.Options {
 	return manifests.Options{
 		Name:      uuid.New().String(),
 		Namespace: uuid.New().String(),
 		Image:     uuid.New().String(),
 		Stack: lokiv1beta1.LokiStackSpec{
-			Size:              lokiv1beta1.OneXExtraSmallSize,
+			Size:              lokiv1beta1.SizeOneXExtraSmall,
 			Storage:           lokiv1beta1.ObjectStorageSpec{},
 			StorageClassName:  uuid.New().String(),
 			ReplicationFactor: rand.Int31(),

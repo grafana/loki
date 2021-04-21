@@ -118,7 +118,7 @@ lint: $(GOLANGCI_LINT) | generate
 	$(GOLANGCI_LINT) run ./...
 
 fmt: $(GOFUMPT)
-	find . -type f -name '*.go' -not -path './vendor/*' -exec $(GOFUMPT) -w {} \;
+	find . -type f -name '*.go' -not -path './vendor/*' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
 
 go-generate:
 	go generate ./...

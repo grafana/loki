@@ -26,33 +26,33 @@ import (
 
 // LokiStackSizeType declares the type for loki cluster scale outs.
 //
-// +kubebuilder:validation:Enum=OneXExtraSmallSize;OneXSmall;OneXMedium
+// +kubebuilder:validation:Enum=SizeOneXExtraSmall;SizeOneXSmall;SizeOneXMedium
 type LokiStackSizeType string
 
 const (
-	// OneXExtraSmallSize defines the size of a single Loki deployment
+	// SizeOneXExtraSmall defines the size of a single Loki deployment
 	// with extra small resources/limits requirements and without HA support.
 	// This size is ultimately dedicated for development and demo purposes.
 	// DO NOT USE THIS IN PRODUCTION!
 	//
 	// FIXME: Add clear description of ingestion/query performance expectations.
-	OneXExtraSmallSize LokiStackSizeType = "1x.extra-small"
+	SizeOneXExtraSmall LokiStackSizeType = "1x.extra-small"
 
-	// OneXSmall defines the size of a single Loki deployment
+	// SizeOneXSmall defines the size of a single Loki deployment
 	// with small resources/limits requirements and HA support for all
 	// Loki components. This size is dedicated for setup **without** the
 	// requirement for single replication factor and auto-compaction.
 	//
 	// FIXME: Add clear description of ingestion/query performance expectations.
-	OneXSmall LokiStackSizeType = "1x.small"
+	SizeOneXSmall LokiStackSizeType = "1x.small"
 
-	// OneXMedium defines the size of a single Loki deployment
+	// SizeOneXMedium defines the size of a single Loki deployment
 	// with small resources/limits requirements and HA support for all
 	// Loki components. This size is dedicated for setup **with** the
 	// requirement for single replication factor and auto-compaction.
 	//
 	// FIXME: Add clear description of ingestion/query performance expectations.
-	OneXMedium LokiStackSizeType = "1x.medium"
+	SizeOneXMedium LokiStackSizeType = "1x.medium"
 )
 
 // LokiComponentSpec defines the requirements to configure scheduling

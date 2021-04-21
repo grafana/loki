@@ -200,9 +200,9 @@ spec:
                 description: Size defines one of the support Loki deployment scale
                   out sizes.
                 enum:
-                - OneXExtraSmallSize
-                - OneXSmall
-                - OneXMedium
+                - SizeOneXExtraSmall
+                - SizeOneXSmall
+                - SizeOneXMedium
                 type: string
               storage:
                 description: Storage defines the spec for the object storage endpoint

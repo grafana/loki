@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -46,8 +47,9 @@ func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: opt.Image,
-				Name:  "loki-query-frontend",
+				Image:     opt.Image,
+				Name:      "loki-query-frontend",
+				Resources: internal.ResourceSizeTable[opt.Stack.Size].QueryFrontend,
 				Args: []string{
 					"-target=query-frontend",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),

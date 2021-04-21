@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -41,8 +42,9 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: opt.Image,
-				Name:  "loki-ingester",
+				Image:     opt.Image,
+				Name:      "loki-ingester",
+				Resources: internal.ResourceSizeTable[opt.Stack.Size].Ingester,
 				Args: []string{
 					"-target=ingester",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
@@ -84,16 +86,6 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 						ContainerPort: gossipPort,
 					},
 				},
-				// Resources: corev1.ResourceRequirements{
-				// 	Limits: corev1.ResourceList{
-				// 		corev1.ResourceMemory: resource.MustParse("1Gi"),
-				// 		corev1.ResourceCPU:    resource.MustParse("1000m"),
-				// 	},
-				// 	Requests: corev1.ResourceList{
-				// 		corev1.ResourceMemory: resource.MustParse("50m"),
-				// 		corev1.ResourceCPU:    resource.MustParse("50m"),
-				// 	},
-				// },
 				VolumeMounts: []corev1.VolumeMount{
 					{
 						Name:      configVolumeName,

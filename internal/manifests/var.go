@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
-
 	gossipPort = 7946
 	httpPort   = 3100
 	grpcPort   = 9095
+
+	// DefaultContainerImage declares the default fallback for loki image.
+	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
 )
 
 func commonLabels(stackName string) map[string]string {

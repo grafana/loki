@@ -21,7 +21,7 @@ func TestServicesMatchPorts(t *testing.T) {
 		Namespace: "test",
 		Image:     "test",
 		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.OneXExtraSmallSize,
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 		},
 	}
 
@@ -81,7 +81,6 @@ func TestServicesMatchPorts(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 // Test that all services match the labels of their deployments/statefulsets so that we know all services will
@@ -97,7 +96,7 @@ func TestServicesMatchLabels(t *testing.T) {
 		Namespace: "test",
 		Image:     "test",
 		Stack: lokiv1beta1.LokiStackSpec{
-			Size: lokiv1beta1.OneXExtraSmallSize,
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 		},
 	}
 
