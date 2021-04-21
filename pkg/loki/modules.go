@@ -119,7 +119,7 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	if t.Cfg.RuntimeConfig.LoadPath == "" {
 		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
-		t.Cfg.RuntimeConfig.ReloadPeriod = t.Cfg.LimitsConfig.PerTenantOverridePeriod
+		t.Cfg.RuntimeConfig.ReloadPeriod = time.Duration(t.Cfg.LimitsConfig.PerTenantOverridePeriod)
 	}
 
 	if t.Cfg.RuntimeConfig.LoadPath == "" {

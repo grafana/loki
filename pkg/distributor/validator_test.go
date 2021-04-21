@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
@@ -39,7 +40,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			func(userID string) *validation.Limits {
 				return &validation.Limits{
 					RejectOldSamples:       true,
-					RejectOldSamplesMaxAge: 1 * time.Hour,
+					RejectOldSamplesMaxAge: model.Duration(1 * time.Hour),
 				}
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},

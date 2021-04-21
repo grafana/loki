@@ -184,7 +184,7 @@ func printHeap(b *testing.B, show bool) {
 
 func getLocalStore() Store {
 	limits, err := validation.NewOverrides(validation.Limits{
-		MaxQueryLength: 6000 * time.Hour,
+		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
 	if err != nil {
 		panic(err)

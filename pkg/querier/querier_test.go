@@ -192,7 +192,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.MaxStreamsMatchersPerQuery = 1
-	defaultLimits.MaxQueryLength = 2 * time.Minute
+	defaultLimits.MaxQueryLength = model.Duration(2 * time.Minute)
 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
