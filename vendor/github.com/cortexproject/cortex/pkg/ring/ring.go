@@ -4,7 +4,6 @@ package ring
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -255,8 +255,25 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		),
 	}
 
-	r.Service = services.NewBasicService(nil, r.loop, nil).WithName(fmt.Sprintf("%s ring client", name))
+	r.Service = services.NewBasicService(r.starting, r.loop, nil).WithName(fmt.Sprintf("%s ring client", name))
 	return r, nil
+}
+
+func (r *Ring) starting(ctx context.Context) error {
+	// Get the initial ring state so that, as soon as the service will be running, the in-memory
+	// ring would be already populated and there's no race condition between when the service is
+	// running and the WatchKey() callback is called for the first time.
+	value, err := r.KVClient.Get(ctx, r.key)
+	if err != nil {
+		return errors.Wrap(err, "unable to initialise ring state")
+	}
+	if value == nil {
+		level.Info(log.Logger).Log("msg", "ring doesn't exist in KV store yet")
+		return nil
+	}
+
+	r.updateRingState(value.(*Desc))
+	return nil
 }
 
 func (r *Ring) loop(ctx context.Context) error {
@@ -266,44 +283,46 @@ func (r *Ring) loop(ctx context.Context) error {
 			return true
 		}
 
-		ringDesc := value.(*Desc)
-
-		r.mtx.RLock()
-		prevRing := r.ringDesc
-		r.mtx.RUnlock()
-
-		rc := prevRing.RingCompare(ringDesc)
-		if rc == Equal || rc == EqualButStatesAndTimestamps {
-			// No need to update tokens or zones. Only states and timestamps
-			// have changed. (If Equal, nothing has changed, but that doesn't happen
-			// when watching the ring for updates).
-			r.mtx.Lock()
-			r.ringDesc = ringDesc
-			r.mtx.Unlock()
-			return true
-		}
-
-		now := time.Now()
-		ringTokens := ringDesc.GetTokens()
-		ringTokensByZone := ringDesc.getTokensByZone()
-		ringInstanceByToken := ringDesc.getTokensInfo()
-		ringZones := getZones(ringTokensByZone)
-
-		r.mtx.Lock()
-		defer r.mtx.Unlock()
-		r.ringDesc = ringDesc
-		r.ringTokens = ringTokens
-		r.ringTokensByZone = ringTokensByZone
-		r.ringInstanceByToken = ringInstanceByToken
-		r.ringZones = ringZones
-		r.lastTopologyChange = now
-		if r.shuffledSubringCache != nil {
-			// Invalidate all cached subrings.
-			r.shuffledSubringCache = make(map[subringCacheKey]*Ring)
-		}
+		r.updateRingState(value.(*Desc))
 		return true
 	})
 	return nil
+}
+
+func (r *Ring) updateRingState(ringDesc *Desc) {
+	r.mtx.RLock()
+	prevRing := r.ringDesc
+	r.mtx.RUnlock()
+
+	rc := prevRing.RingCompare(ringDesc)
+	if rc == Equal || rc == EqualButStatesAndTimestamps {
+		// No need to update tokens or zones. Only states and timestamps
+		// have changed. (If Equal, nothing has changed, but that doesn't happen
+		// when watching the ring for updates).
+		r.mtx.Lock()
+		r.ringDesc = ringDesc
+		r.mtx.Unlock()
+		return
+	}
+
+	now := time.Now()
+	ringTokens := ringDesc.GetTokens()
+	ringTokensByZone := ringDesc.getTokensByZone()
+	ringInstanceByToken := ringDesc.getTokensInfo()
+	ringZones := getZones(ringTokensByZone)
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.ringDesc = ringDesc
+	r.ringTokens = ringTokens
+	r.ringTokensByZone = ringTokensByZone
+	r.ringInstanceByToken = ringInstanceByToken
+	r.ringZones = ringZones
+	r.lastTopologyChange = now
+	if r.shuffledSubringCache != nil {
+		// Invalidate all cached subrings.
+		r.shuffledSubringCache = make(map[subringCacheKey]*Ring)
+	}
 }
 
 // Get returns n (or more) instances which form the replicas for the given key.
@@ -347,7 +366,6 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 			if util.StringsContain(distinctZones, info.Zone) {
 				continue
 			}
-			distinctZones = append(distinctZones, info.Zone)
 		}
 
 		distinctHosts = append(distinctHosts, info.InstanceID)
@@ -357,6 +375,10 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		// this instance.
 		if op.ShouldExtendReplicaSetOnState(instance.State) {
 			n++
+		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
+			// We should only add the zone if we are not going to extend,
+			// as we want to extend the instance in the same AZ.
+			distinctZones = append(distinctZones, info.Zone)
 		}
 
 		instances = append(instances, instance)

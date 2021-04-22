@@ -1,5 +1,11 @@
 # Change Log
 
+## [v1.58.0] - 2021-02-17
+
+- #436 - @MorrisLaw - kubernetes: add name field to associated resources
+- #434 - @andrewsomething - sizes: Add description field.
+- #433 - @andrewsomething - Deprecate Name field in godo.DropletCreateVolume
+
 ## [v1.57.0] - 2021-01-15
 
 - #429 - @varshavaradarajan - kubernetes: support optional cascading deletes for clusters

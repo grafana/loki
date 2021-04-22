@@ -43,14 +43,44 @@ const (
 	DebugMetas = "debug/metas"
 )
 
-// Download downloads directory that is mean to be block directory.
+// Download downloads directory that is mean to be block directory. If any of the files
+// have a hash calculated in the meta file and it matches with what is in the destination path then
+// we do not download it. We always re-download the meta file.
 func Download(ctx context.Context, logger log.Logger, bucket objstore.Bucket, id ulid.ULID, dst string) error {
-	if err := objstore.DownloadDir(ctx, logger, bucket, id.String(), dst); err != nil {
+	if err := os.MkdirAll(dst, 0777); err != nil {
+		return errors.Wrap(err, "create dir")
+	}
+
+	if err := objstore.DownloadFile(ctx, logger, bucket, path.Join(id.String(), MetaFilename), path.Join(dst, MetaFilename)); err != nil {
+		return err
+	}
+	m, err := metadata.ReadFromDir(dst)
+	if err != nil {
+		return errors.Wrapf(err, "reading meta from %s", dst)
+	}
+
+	ignoredPaths := []string{MetaFilename}
+	for _, fl := range m.Thanos.Files {
+		if fl.Hash == nil || fl.Hash.Func == metadata.NoneFunc || fl.RelPath == "" {
+			continue
+		}
+		actualHash, err := metadata.CalculateHash(filepath.Join(dst, fl.RelPath), fl.Hash.Func, logger)
+		if err != nil {
+			level.Info(logger).Log("msg", "failed to calculate hash when downloading; re-downloading", "relPath", fl.RelPath, "err", err)
+			continue
+		}
+
+		if fl.Hash.Equal(&actualHash) {
+			ignoredPaths = append(ignoredPaths, fl.RelPath)
+		}
+	}
+
+	if err := objstore.DownloadDir(ctx, logger, bucket, id.String(), id.String(), dst, ignoredPaths...); err != nil {
 		return err
 	}
 
 	chunksDir := filepath.Join(dst, ChunksDirname)
-	_, err := os.Stat(chunksDir)
+	_, err = os.Stat(chunksDir)
 	if os.IsNotExist(err) {
 		// This can happen if block is empty. We cannot easily upload empty directory, so create one here.
 		return os.Mkdir(chunksDir, os.ModePerm)
@@ -63,12 +93,23 @@ func Download(ctx context.Context, logger log.Logger, bucket objstore.Bucket, id
 	return nil
 }
 
-// Upload uploads block from given block dir that ends with block id.
+// Upload uploads a TSDB block to the object storage. It verifies basic
+// features of Thanos block.
+func Upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir string, hf metadata.HashFunc) error {
+	return upload(ctx, logger, bkt, bdir, hf, true)
+}
+
+// UploadPromBlock uploads a TSDB block to the object storage. It assumes
+// the block is used in Prometheus so it doesn't check Thanos external labels.
+func UploadPromBlock(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir string, hf metadata.HashFunc) error {
+	return upload(ctx, logger, bkt, bdir, hf, false)
+}
+
+// upload uploads block from given block dir that ends with block id.
 // It makes sure cleanup is done on error to avoid partial block uploads.
-// It also verifies basic features of Thanos block.
 // TODO(bplotka): Ensure bucket operations have reasonable backoff retries.
 // NOTE: Upload updates `meta.Thanos.File` section.
-func Upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir string) error {
+func upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir string, hf metadata.HashFunc, checkExternalLabels bool) error {
 	df, err := os.Stat(bdir)
 	if err != nil {
 		return err
@@ -89,20 +130,23 @@ func Upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir st
 		return errors.Wrap(err, "read meta")
 	}
 
-	if meta.Thanos.Labels == nil || len(meta.Thanos.Labels) == 0 {
-		return errors.New("empty external labels are not allowed for Thanos block.")
+	if checkExternalLabels {
+		if meta.Thanos.Labels == nil || len(meta.Thanos.Labels) == 0 {
+			return errors.New("empty external labels are not allowed for Thanos block.")
+		}
 	}
 
-	meta.Thanos.Files, err = gatherFileStats(bdir)
+	metaEncoded := strings.Builder{}
+	meta.Thanos.Files, err = gatherFileStats(bdir, hf, logger)
 	if err != nil {
 		return errors.Wrap(err, "gather meta file stats")
 	}
 
-	metaEncoded := strings.Builder{}
 	if err := meta.Write(&metaEncoded); err != nil {
 		return errors.Wrap(err, "encode meta file")
 	}
 
+	// TODO(yeya24): Remove this step.
 	if err := bkt.Upload(ctx, path.Join(DebugMetas, fmt.Sprintf("%s.json", id)), strings.NewReader(metaEncoded.String())); err != nil {
 		return cleanUp(logger, bkt, id, errors.Wrap(err, "upload debug meta file"))
 	}
@@ -279,26 +323,42 @@ func GetSegmentFiles(blockDir string) []string {
 }
 
 // TODO(bwplotka): Gather stats when dirctly uploading files.
-func gatherFileStats(blockDir string) (res []metadata.File, _ error) {
+func gatherFileStats(blockDir string, hf metadata.HashFunc, logger log.Logger) (res []metadata.File, _ error) {
 	files, err := ioutil.ReadDir(filepath.Join(blockDir, ChunksDirname))
 	if err != nil {
 		return nil, errors.Wrapf(err, "read dir %v", filepath.Join(blockDir, ChunksDirname))
 	}
 	for _, f := range files {
-		res = append(res, metadata.File{
+		mf := metadata.File{
 			RelPath:   filepath.Join(ChunksDirname, f.Name()),
 			SizeBytes: f.Size(),
-		})
+		}
+		if hf != metadata.NoneFunc && !f.IsDir() {
+			h, err := metadata.CalculateHash(filepath.Join(blockDir, ChunksDirname, f.Name()), hf, logger)
+			if err != nil {
+				return nil, errors.Wrapf(err, "calculate hash %v", filepath.Join(ChunksDirname, f.Name()))
+			}
+			mf.Hash = &h
+		}
+		res = append(res, mf)
 	}
 
 	indexFile, err := os.Stat(filepath.Join(blockDir, IndexFilename))
 	if err != nil {
 		return nil, errors.Wrapf(err, "stat %v", filepath.Join(blockDir, IndexFilename))
 	}
-	res = append(res, metadata.File{
+	mf := metadata.File{
 		RelPath:   indexFile.Name(),
 		SizeBytes: indexFile.Size(),
-	})
+	}
+	if hf != metadata.NoneFunc {
+		h, err := metadata.CalculateHash(filepath.Join(blockDir, IndexFilename), hf, logger)
+		if err != nil {
+			return nil, errors.Wrapf(err, "calculate hash %v", indexFile.Name())
+		}
+		mf.Hash = &h
+	}
+	res = append(res, mf)
 
 	metaFile, err := os.Stat(filepath.Join(blockDir, MetaFilename))
 	if err != nil {

@@ -17,7 +17,7 @@ package config
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -533,7 +533,7 @@ func (t *tlsRoundTripper) getCAWithHash() ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	h := md5.Sum(b)
+	h := sha256.Sum256(b)
 	return b, h[:], nil
 
 }

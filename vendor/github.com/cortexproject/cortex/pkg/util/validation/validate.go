@@ -83,15 +83,18 @@ type SampleValidationConfig interface {
 }
 
 // ValidateSample returns an err if the sample is invalid.
-func ValidateSample(cfg SampleValidationConfig, userID string, metricName string, s cortexpb.Sample) ValidationError {
+// The returned error may retain the provided series labels.
+func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.LabelAdapter, s cortexpb.Sample) ValidationError {
+	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
+
 	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
-		return newSampleTimestampTooOldError(metricName, s.TimestampMs)
+		return newSampleTimestampTooOldError(unsafeMetricName, s.TimestampMs)
 	}
 
 	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
-		return newSampleTimestampTooNewError(metricName, s.TimestampMs)
+		return newSampleTimestampTooNewError(unsafeMetricName, s.TimestampMs)
 	}
 
 	return nil
@@ -106,17 +109,18 @@ type LabelValidationConfig interface {
 }
 
 // ValidateLabels returns an err if the labels are invalid.
+// The returned error may retain the provided series labels.
 func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
 	if cfg.EnforceMetricName(userID) {
-		metricName, err := extract.MetricNameFromLabelAdapters(ls)
+		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 		if err != nil {
 			DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
 			return newNoMetricNameError()
 		}
 
-		if !model.IsValidMetricName(model.LabelValue(metricName)) {
+		if !model.IsValidMetricName(model.LabelValue(unsafeMetricName)) {
 			DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
-			return newInvalidMetricNameError(metricName)
+			return newInvalidMetricNameError(unsafeMetricName)
 		}
 	}
 

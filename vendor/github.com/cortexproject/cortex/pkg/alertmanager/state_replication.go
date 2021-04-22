@@ -4,16 +4,25 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+const (
+	defaultSettleReadTimeout = 15 * time.Second
+	defaultStoreReadTimeout  = 15 * time.Second
 )
 
 // state represents the Alertmanager silences and notification log internal state.
@@ -24,11 +33,15 @@ type state struct {
 	logger log.Logger
 	reg    prometheus.Registerer
 
+	settleReadTimeout time.Duration
+	storeReadTimeout  time.Duration
+
 	mtx    sync.Mutex
 	states map[string]cluster.State
 
 	replicationFactor int
 	replicator        Replicator
+	store             alertstore.AlertStore
 
 	partialStateMergesTotal  *prometheus.CounterVec
 	partialStateMergesFailed *prometheus.CounterVec
@@ -39,16 +52,19 @@ type state struct {
 }
 
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
-func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r prometheus.Registerer) *state {
+func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.AlertStore, l log.Logger, r prometheus.Registerer) *state {
 
 	s := &state{
 		logger:            l,
 		userID:            userID,
 		replicationFactor: rf,
 		replicator:        re,
+		store:             st,
 		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
 		msgc:              make(chan *clusterpb.Part),
 		reg:               r,
+		settleReadTimeout: defaultSettleReadTimeout,
+		storeReadTimeout:  defaultStoreReadTimeout,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
@@ -85,8 +101,8 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 	s.stateReplicationFailed.WithLabelValues(key)
 
 	return &stateChannel{
-		msgc: s.msgc,
-		key:  key,
+		s:   s,
+		key: key,
 	}
 }
 
@@ -115,13 +131,69 @@ func (s *state) Position() int {
 	return s.replicator.GetPositionForUser(s.userID)
 }
 
+// GetFullState returns the full internal state.
+func (s *state) GetFullState() (*clusterpb.FullState, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	all := &clusterpb.FullState{
+		Parts: make([]clusterpb.Part, 0, len(s.states)),
+	}
+
+	for key, s := range s.states {
+		b, err := s.MarshalBinary()
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to encode state for key: %v", key)
+		}
+		all.Parts = append(all.Parts, clusterpb.Part{Key: key, Data: b})
+	}
+
+	return all, nil
+}
+
 // starting waits until the alertmanagers are ready (and sets the appropriate internal state when it is).
 // The idea is that we don't want to start working" before we get a chance to know most of the notifications and/or silences.
 func (s *state) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "Waiting for notification and silences to settle...")
 
-	// TODO: Make sure that the state is fully synchronised at this point.
+	// If the replication factor is <= 1, there is nowhere to obtain the state from.
+	if s.replicationFactor <= 1 {
+		level.Info(s.logger).Log("msg", "skipping settling (no replicas)")
+		return nil
+	}
+
 	// We can check other alertmanager(s) and explicitly ask them to propagate their state to us if available.
+	readCtx, cancel := context.WithTimeout(ctx, s.settleReadTimeout)
+	defer cancel()
+
+	fullStates, err := s.replicator.ReadFullStateForUser(readCtx, s.userID)
+	if err == nil {
+		if err = s.mergeFullStates(fullStates); err == nil {
+			level.Info(s.logger).Log("msg", "state settled; proceeding")
+			return nil
+		}
+	}
+
+	level.Info(s.logger).Log("msg", "state not settled; trying to read from storage", "err", err)
+
+	// Attempt to read the state from persistent storage instead.
+	storeReadCtx, cancel := context.WithTimeout(ctx, s.storeReadTimeout)
+	defer cancel()
+
+	fullState, err := s.store.GetFullState(storeReadCtx, s.userID)
+	if errors.Is(err, alertspb.ErrNotFound) {
+		level.Info(s.logger).Log("msg", "no state for user in storage; proceeding", "user", s.userID)
+		return nil
+	}
+	if err == nil {
+		if err = s.mergeFullStates([]*clusterpb.FullState{fullState.State}); err == nil {
+			level.Info(s.logger).Log("msg", "state read from storage; proceeding")
+			return nil
+		}
+	}
+
+	level.Warn(s.logger).Log("msg", "failed to read state from storage; continuing anyway", "err", err)
+
 	return nil
 }
 
@@ -132,6 +204,30 @@ func (s *state) WaitReady(ctx context.Context) error {
 
 func (s *state) Ready() bool {
 	return s.Service.State() == services.Running
+}
+
+// mergeFullStates attempts to merge all full states received from peers during settling.
+func (s *state) mergeFullStates(fs []*clusterpb.FullState) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	for _, f := range fs {
+		for _, p := range f.Parts {
+			level.Debug(s.logger).Log("msg", "merging full state", "user", s.userID, "key", p.Key, "bytes", len(p.Data))
+
+			st, ok := s.states[p.Key]
+			if !ok {
+				level.Error(s.logger).Log("msg", "key not found while merging full state", "user", s.userID, "key", p.Key)
+				continue
+			}
+
+			if err := st.Merge(p.Data); err != nil {
+				return errors.Wrapf(err, "failed to merge part of full state for key: %v", p.Key)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *state) running(ctx context.Context) error {
@@ -154,14 +250,21 @@ func (s *state) running(ctx context.Context) error {
 	}
 }
 
+func (s *state) broadcast(key string, b []byte) {
+	// We should ignore the Merges into the initial state during settling.
+	if s.Ready() {
+		s.msgc <- &clusterpb.Part{Key: key, Data: b}
+	}
+}
+
 // stateChannel allows a state publisher to send messages that will be broadcasted to all other alertmanagers that a tenant
 // belongs to.
 type stateChannel struct {
-	msgc chan *clusterpb.Part
-	key  string
+	s   *state
+	key string
 }
 
 // Broadcast receives a message to be replicated by the state.
 func (c *stateChannel) Broadcast(b []byte) {
-	c.msgc <- &clusterpb.Part{Key: c.key, Data: b}
+	c.s.broadcast(c.key, b)
 }

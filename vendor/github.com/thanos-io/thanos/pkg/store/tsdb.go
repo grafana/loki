@@ -221,7 +221,11 @@ func (s *TSDBStore) LabelValues(ctx context.Context, r *storepb.LabelValuesReque
 	}
 	defer runutil.CloseWithLogOnErr(s.logger, q, "close tsdb querier label values")
 
-	res, _, err := q.LabelValues(r.Label)
+	matchers, err := storepb.MatchersToPromMatchers(r.Matchers...)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	res, _, err := q.LabelValues(r.Label, matchers...)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

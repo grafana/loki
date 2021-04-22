@@ -183,7 +183,7 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *Bucket) IsObjNotFoundErr(err error) bool {
-	return err == storage.ErrObjectNotExist
+	return errors.Is(err, storage.ErrObjectNotExist)
 }
 
 func (b *Bucket) Close() error {

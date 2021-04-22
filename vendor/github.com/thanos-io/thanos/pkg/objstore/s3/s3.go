@@ -66,9 +66,7 @@ var DefaultConfig = Config{
 		MaxIdleConnsPerHost:   100,
 		MaxConnsPerHost:       0,
 	},
-	// Minimum file size after which an HTTP multipart request should be used to upload objects to storage.
-	// Set to 128 MiB as in the minio client.
-	PartSize: 1024 * 1024 * 128,
+	PartSize: 1024 * 1024 * 64, // 64MB.
 }
 
 // Config stores the configuration for s3 bucket.
@@ -85,6 +83,7 @@ type Config struct {
 	TraceConfig        TraceConfig       `yaml:"trace"`
 	ListObjectsVersion string            `yaml:"list_objects_version"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
+	// NOTE we need to make sure this number does not produce more parts than 10 000.
 	PartSize  uint64    `yaml:"part_size"`
 	SSEConfig SSEConfig `yaml:"sse_config"`
 }
@@ -449,7 +448,6 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		size = -1
 	}
 
-	// partSize cannot be larger than object size.
 	partSize := b.partSize
 	if size < int64(partSize) {
 		partSize = 0
@@ -492,7 +490,7 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *Bucket) IsObjNotFoundErr(err error) bool {
-	return minio.ToErrorResponse(err).Code == "NoSuchKey"
+	return minio.ToErrorResponse(errors.Cause(err)).Code == "NoSuchKey"
 }
 
 func (b *Bucket) Close() error { return nil }
