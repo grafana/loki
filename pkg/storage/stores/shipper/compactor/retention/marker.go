@@ -227,8 +227,8 @@ func processKey(ctx context.Context, key *bytes.Buffer, db *bbolt.DB, deleteFunc
 	if err := deleteFunc(ctx, keyData); err != nil {
 		return err
 	}
-	// no error we can delete the key
-	return db.Batch(func(tx *bbolt.Tx) error {
+	// we don't use a batch because it would force us to copy the key.
+	return db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
 			return nil

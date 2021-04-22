@@ -25,6 +25,7 @@ import (
 )
 
 func Test_Retention(t *testing.T) {
+	minListMarkDelay = 1 * time.Second
 	for _, tt := range []struct {
 		name   string
 		limits Limits
@@ -111,11 +112,6 @@ func Test_Retention(t *testing.T) {
 			// marks and sweep
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
-			marker, err := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
-			require.NoError(t, err)
-			for _, table := range store.indexTables() {
-				require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
-			}
 			sweep, err := NewSweeper(workDir, DeleteClientFunc(func(ctx context.Context, objectKey string) error {
 				lock.Lock()
 				defer lock.Unlock()
@@ -123,13 +119,19 @@ func Test_Retention(t *testing.T) {
 				actualDeleted = append(actualDeleted, key)
 				return nil
 			}), 0)
+			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()
+
+			marker, err := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
 			require.NoError(t, err)
+			for _, table := range store.indexTables() {
+				table.Close()
+				require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
+			}
 
 			// assert using the store again.
 			store.open()
-			defer store.Stop()
 
 			for i, e := range tt.alive {
 				require.Equal(t, e, store.HasChunk(tt.chunks[i]), "chunk %d should be %t", i, e)
@@ -137,7 +139,7 @@ func Test_Retention(t *testing.T) {
 					expectDeleted = append(expectDeleted, tt.chunks[i].ExternalKey())
 				}
 			}
-
+			store.Stop()
 			if len(expectDeleted) != 0 {
 				require.Eventually(t, func() bool {
 					lock.Lock()
