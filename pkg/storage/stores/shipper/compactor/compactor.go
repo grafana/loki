@@ -91,11 +91,15 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if err != nil {
 		return nil, err
 	}
+	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits))
+	if err != nil {
+		return nil, err
+	}
 	compactor := Compactor{
 		cfg:          cfg,
 		objectClient: prefixedClient,
 		metrics:      newMetrics(r),
-		tableMarker:  retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits)),
+		tableMarker:  marker,
 		sweeper:      sweeper,
 	}
 

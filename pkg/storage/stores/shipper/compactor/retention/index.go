@@ -201,18 +201,42 @@ func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (LabelSeriesRangeKey, bo
 	}, true, nil
 }
 
-func schemaPeriodForTable(config storage.SchemaConfig, tableName string) (chunk.PeriodConfig, bool) {
+func validatePeriods(config storage.SchemaConfig) error {
 	for _, schema := range config.Configs {
+		if schema.IndexTables.Period != 24*time.Hour {
+			return fmt.Errorf("schema period must be daily, was: %s", schema.IndexTables.Period)
+		}
+	}
+	return nil
+}
+
+func schemaPeriodForTable(config storage.SchemaConfig, tableName string) (chunk.PeriodConfig, bool) {
+	// first round removes configs that does not have the prefix.
+	candidates := []chunk.PeriodConfig{}
+	for _, schema := range config.Configs {
+		if strings.HasPrefix(tableName, schema.IndexTables.Prefix) {
+			candidates = append(candidates, schema)
+		}
+	}
+	// WARN we  assume period is always daily. This is only true for boltdb-shipper.
+	var (
+		matched chunk.PeriodConfig
+		found   bool
+	)
+	for _, schema := range candidates {
 		periodIndex, err := strconv.ParseInt(strings.TrimPrefix(tableName, schema.IndexTables.Prefix), 10, 64)
 		if err != nil {
 			continue
 		}
-		periodSecs := int64((schema.IndexTables.Period) / time.Second)
-		if periodIndex == schema.From.Time.Unix()/periodSecs {
-			return schema, true
+		periodSec := int64(schema.IndexTables.Period / time.Second)
+		tableTs := model.TimeFromUnix(periodIndex * periodSec)
+		if tableTs.After(schema.From.Time) || tableTs == schema.From.Time {
+			matched = schema
+			found = true
 		}
 	}
-	return chunk.PeriodConfig{}, false
+
+	return matched, found
 }
 
 func seriesFromHash(h []byte) (seriesID []byte) {

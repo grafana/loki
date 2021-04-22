@@ -67,6 +67,32 @@ func Test_Retention(t *testing.T) {
 				true,
 			},
 		},
+		{
+			"one global expiration and stream",
+			fakeLimits{
+				perTenant: map[string]time.Duration{
+					"1": 10 * time.Hour,
+					"2": 1000 * time.Hour,
+				},
+				perStream: map[string][]validation.StreamRetention{
+					"1": {
+						{Period: 5 * time.Hour, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "buzz")}},
+					},
+				},
+			},
+			[]chunk.Chunk{
+				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
+				createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "fuzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour)),
+				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, model.Now().Add(-2*time.Hour), model.Now().Add(-1*time.Hour)),
+				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, model.Now().Add(-7*time.Hour), model.Now().Add(-6*time.Hour)),
+			},
+			[]bool{
+				false,
+				true,
+				true,
+				false,
+			},
+		},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
@@ -85,14 +111,16 @@ func Test_Retention(t *testing.T) {
 			// marks and sweep
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
-			marker := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
+			marker, err := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration)
+			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
 			}
 			sweep, err := NewSweeper(workDir, DeleteClientFunc(func(ctx context.Context, objectKey string) error {
 				lock.Lock()
 				defer lock.Unlock()
-				actualDeleted = append(actualDeleted, objectKey)
+				key := string([]byte(objectKey)) // forces a copy, because this string is only valid within the delete fn.
+				actualDeleted = append(actualDeleted, key)
 				return nil
 			}), 0)
 			sweep.Start()
@@ -101,13 +129,15 @@ func Test_Retention(t *testing.T) {
 
 			// assert using the store again.
 			store.open()
+			defer store.Stop()
+
 			for i, e := range tt.alive {
-				require.Equal(t, e, store.HasChunk(tt.chunks[i]))
+				require.Equal(t, e, store.HasChunk(tt.chunks[i]), "chunk %d should be %t", i, e)
 				if !e {
 					expectDeleted = append(expectDeleted, tt.chunks[i].ExternalKey())
 				}
 			}
-			store.Stop()
+
 			if len(expectDeleted) != 0 {
 				require.Eventually(t, func() bool {
 					lock.Lock()

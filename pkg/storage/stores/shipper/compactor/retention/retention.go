@@ -42,13 +42,16 @@ type Marker struct {
 	expiration       ExpirationChecker
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker) *Marker {
+func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker) (*Marker, error) {
+	if err := validatePeriods(config); err != nil {
+		return nil, err
+	}
 	return &Marker{
 		workingDirectory: workingDirectory,
 		config:           config,
 		objectClient:     objectClient,
 		expiration:       expiration,
-	}
+	}, nil
 }
 
 func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error {

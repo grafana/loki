@@ -26,13 +26,24 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
+func dayFromTime(t model.Time) chunk.DayTime {
+	parsed, err := time.Parse("2006-01-02", t.Time().Format("2006-01-02"))
+	if err != nil {
+		panic(err)
+	}
+	return chunk.DayTime{
+		Time: model.TimeFromUnix(parsed.Unix()),
+	}
+}
+
 var (
+	start     = model.Now().Add(-30 * 24 * time.Hour)
 	schemaCfg = storage.SchemaConfig{
 		SchemaConfig: chunk.SchemaConfig{
 			// we want to test over all supported schema.
 			Configs: []chunk.PeriodConfig{
 				{
-					From:       chunk.DayTime{Time: start},
+					From:       dayFromTime(start),
 					IndexType:  "boltdb",
 					ObjectType: "filesystem",
 					Schema:     "v9",
@@ -43,7 +54,7 @@ var (
 					RowShards: 16,
 				},
 				{
-					From:       chunk.DayTime{Time: start.Add(25 * time.Hour)},
+					From:       dayFromTime(start.Add(25 * time.Hour)),
 					IndexType:  "boltdb",
 					ObjectType: "filesystem",
 					Schema:     "v10",
@@ -54,7 +65,7 @@ var (
 					RowShards: 16,
 				},
 				{
-					From:       chunk.DayTime{Time: start.Add(49 * time.Hour)},
+					From:       dayFromTime(start.Add(49 * time.Hour)),
 					IndexType:  "boltdb",
 					ObjectType: "filesystem",
 					Schema:     "v11",
@@ -72,11 +83,10 @@ var (
 		from   model.Time
 		config chunk.PeriodConfig
 	}{
-		{"v9", start, schemaCfg.Configs[0]},
-		{"v10", start.Add(25 * time.Hour), schemaCfg.Configs[1]},
-		{"v11", start.Add(49 * time.Hour), schemaCfg.Configs[2]},
+		{"v9", schemaCfg.Configs[0].From.Time, schemaCfg.Configs[0]},
+		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
+		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
 	}
-	start = model.Now().Add(-30 * 24 * time.Hour)
 )
 
 func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {
