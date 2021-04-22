@@ -115,7 +115,7 @@ type testStore struct {
 	objectClient       chunk.ObjectClient
 	indexDir, chunkDir string
 	schemaCfg          storage.SchemaConfig
-	t                  *testing.T
+	t                  testing.TB
 	limits             cortex_storage.StoreLimits
 }
 
@@ -166,7 +166,7 @@ func (t *testStore) open() {
 	t.Store = store
 }
 
-func newTestStore(t *testing.T) *testStore {
+func newTestStore(t testing.TB) *testStore {
 	t.Helper()
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))

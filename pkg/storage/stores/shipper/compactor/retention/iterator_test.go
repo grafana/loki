@@ -3,16 +3,14 @@ package retention
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
-
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 func Test_ChunkIterator(t *testing.T) {
@@ -150,21 +148,25 @@ func entryFromChunk(c chunk.Chunk) ChunkEntry {
 var chunkEntry ChunkEntry
 
 func Benchmark_ChunkIterator(b *testing.B) {
+	store := newTestStore(b)
+	for i := 0; i < 100; i++ {
+		require.NoError(b, store.Put(context.TODO(),
+			[]chunk.Chunk{
+				createChunk(b, "1",
+					labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "i", Value: fmt.Sprintf("%d", i)}},
+					allSchemas[0].from, allSchemas[0].from.Add(1*time.Hour)),
+			},
+		))
+	}
+	store.Stop()
 	b.ReportAllocs()
+	b.ResetTimer()
 
-	db, err := shipper_util.SafeOpenBoltdbFile("/Users/ctovena/Downloads/index_loki_ops_index_18669_compactor-1617841099")
-	require.NoError(b, err)
-	t, err := time.Parse("2006-01-02", "2020-07-31")
-	require.NoError(b, err)
 	var total int64
-	db.Update(func(tx *bbolt.Tx) error {
+	_ = store.indexTables()[0].Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(bucketName)
 		for n := 0; n < b.N; n++ {
-			it, err := newChunkIndexIterator(bucket, chunk.PeriodConfig{
-				From:      chunk.DayTime{Time: model.TimeFromUnix(t.Unix())},
-				Schema:    "v11",
-				RowShards: 16,
-			})
+			it, err := newChunkIndexIterator(bucket, allSchemas[0].config)
 			require.NoError(b, err)
 			for it.Next() {
 				chunkEntry = it.Entry()
