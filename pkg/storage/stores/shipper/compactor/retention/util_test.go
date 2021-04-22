@@ -90,7 +90,6 @@ var (
 	}
 
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
-	markMetrics  = newMarkerMetrics(prometheus.DefaultRegisterer)
 )
 
 func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {

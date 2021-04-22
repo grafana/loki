@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
-	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func Test_LoadRetentionRules(t *testing.T) {
