@@ -53,6 +53,18 @@ func TestConfigOptions_AppliesStackSize(t *testing.T) {
 	}
 }
 
+func TestConfigOptions_CompactorHasOnlyOneReplica(t *testing.T) {
+	// regardless of what is provided by the default sizing parameters we should always prefer
+	// the user-defined values. This creates an all-inclusive manifests.Options and then checks
+	// that every value is present in the result
+	opts := randomConfigOptions()
+
+	res, err := manifests.ConfigOptions(opts)
+	require.NoError(t, err)
+
+	require.Equal(t, int32(1), res.Stack.Template.Compactor.Replicas)
+}
+
 func randomConfigOptions() manifests.Options {
 	return manifests.Options{
 		Name:      uuid.New().String(),
@@ -103,7 +115,7 @@ func randomConfigOptions() manifests.Options {
 			},
 			Template: lokiv1beta1.LokiTemplateSpec{
 				Compactor: lokiv1beta1.LokiComponentSpec{
-					Replicas: rand.Int31(),
+					Replicas: 1,
 					NodeSelector: map[string]string{
 						uuid.New().String(): uuid.New().String(),
 					},

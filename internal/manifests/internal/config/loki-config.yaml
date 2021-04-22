@@ -3,6 +3,10 @@ auth_enabled: false
 chunk_store_config:
   chunk_cache_config:
     enable_fifocache: yes
+compactor:
+  compaction_interval: 2h
+  shared_store: s3
+  working_directory: {{ .StorageDirectory }}/compactor
 distributor:
   ring:
     kvstore:

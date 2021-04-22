@@ -28,6 +28,7 @@ func BuildAll(opt Options) ([]client.Object, error) {
 	}
 	res = append(res, querierObjects...)
 
+	res = append(res, BuildCompactor(opt)...)
 	res = append(res, BuildQueryFrontend(opt)...)
 	res = append(res, LokiGossipRingService(opt.Name))
 

@@ -54,6 +54,13 @@ func TestServicesMatchPorts(t *testing.T) {
 				NewQueryFrontendHTTPService(opt.Name),
 			},
 		},
+		{
+			Containers: NewCompactorStatefulSet(opt).Spec.Template.Spec.Containers,
+			Services: []*corev1.Service{
+				NewCompactorGRPCService(opt),
+				NewCompactorHTTPService(opt),
+			},
+		},
 	}
 
 	containerHasPort := func(containers []corev1.Container, port int32) bool {

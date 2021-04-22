@@ -61,6 +61,14 @@ func serviceNameDistributorHTTP(stackName string) string {
 	return fmt.Sprintf("loki-distributor-http-%s", stackName)
 }
 
+func serviceNameCompactorGRPC(stackName string) string {
+	return fmt.Sprintf("loki-compactor-grpc-%s", stackName)
+}
+
+func serviceNameCompactorHTTP(stackName string) string {
+	return fmt.Sprintf("loki-compactor-http-%s", stackName)
+}
+
 func fqdn(serviceName, namespace string) string {
 	return fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
 }
