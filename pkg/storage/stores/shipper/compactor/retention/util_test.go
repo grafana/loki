@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func dayFromTime(t model.Time) chunk.DayTime {

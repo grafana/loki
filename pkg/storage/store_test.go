@@ -31,9 +31,9 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -184,7 +184,7 @@ func printHeap(b *testing.B, show bool) {
 
 func getLocalStore() Store {
 	limits, err := validation.NewOverrides(validation.Limits{
-		MaxQueryLength: 6000 * time.Hour,
+		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
 	if err != nil {
 		panic(err)
@@ -623,6 +623,55 @@ func Test_store_SelectSample(t *testing.T) {
 			}
 			assertSeries(t, tt.expected, series.Series)
 		})
+	}
+}
+
+type fakeChunkFilterer struct{}
+
+func (f fakeChunkFilterer) ForRequest(ctx context.Context) ChunkFilterer {
+	return f
+}
+
+func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
+	return metric.Get("foo") == "bazz"
+}
+
+func Test_ChunkFilterer(t *testing.T) {
+	s := &store{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	s.SetChunkFilterer(&fakeChunkFilterer{})
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour))})
+	if err != nil {
+		t.Errorf("store.SelectSamples() error = %v", err)
+		return
+	}
+	defer it.Close()
+	for it.Next() {
+		v := mustParseLabels(it.Labels())["foo"]
+		require.NotEqual(t, "bazz", v)
+	}
+
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
+	if err != nil {
+		t.Errorf("store.SelectLogs() error = %v", err)
+		return
+	}
+	defer logit.Close()
+	for logit.Next() {
+		v := mustParseLabels(it.Labels())["foo"]
+		require.NotEqual(t, "bazz", v)
+	}
+	ids, err := s.GetSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
+	require.NoError(t, err)
+	for _, id := range ids {
+		v := id.Labels["foo"]
+		require.NotEqual(t, "bazz", v)
 	}
 }
 

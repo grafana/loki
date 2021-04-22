@@ -1,14 +1,14 @@
-local apps = ['loki', 'loki-canary', 'promtail', 'logcli'];
+local apps = ['loki', 'loki-canary', 'logcli'];
 local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
 
 local condition(verb) = {
-  tagMaster: {
+  tagMain: {
     ref: {
       [verb]:
         [
-          'refs/heads/master',
+          'refs/heads/main',
           'refs/heads/k??',
           'refs/tags/v*',
         ],
@@ -44,6 +44,18 @@ local docker(arch, app) = {
   },
 };
 
+local clients_docker(arch, app) = {
+  name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
+  image: 'plugins/docker',
+  settings: {
+    repo: 'grafana/%s' % app,
+    dockerfile: 'clients/cmd/%s/Dockerfile' % app,
+    username: { from_secret: 'docker_username' },
+    password: { from_secret: 'docker_password' },
+    dry_run: false,
+  },
+};
+
 local arch_image(arch, tags='') = {
   platform: {
     os: 'linux',
@@ -70,27 +82,27 @@ local promtail_win() = pipeline('promtail-windows') {
     name: 'test',
     image: 'golang:windowsservercore-1809',
     commands: [
-      'go test .\\pkg\\promtail\\targets\\windows\\... -v',
+      'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
     ],
   }],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,master') {
+local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,main') {
   steps+: [
-    // dry run for everything that is not tag or master
-    docker('amd64', 'fluent-bit') {
+    // dry run for everything that is not tag or main
+    clients_docker('amd64', 'fluent-bit') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMaster,
+      when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
         repo: 'grafana/fluent-bit-plugin-loki',
       },
     },
   ] + [
-    // publish for tag or master
-    docker('amd64', 'fluent-bit') {
+    // publish for tag or main
+    clients_docker('amd64', 'fluent-bit') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMaster,
+      when: condition('include').tagMain,
       settings+: {
         repo: 'grafana/fluent-bit-plugin-loki',
       },
@@ -99,22 +111,22 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
   depends_on: ['check'],
 };
 
-local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,master') {
+local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,main') {
   steps+: [
-    // dry run for everything that is not tag or master
-    docker('amd64', 'fluentd') {
+    // dry run for everything that is not tag or main
+    clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMaster,
+      when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
         repo: 'grafana/fluent-plugin-loki',
       },
     },
   ] + [
-    // publish for tag or master
-    docker('amd64', 'fluentd') {
+    // publish for tag or main
+    clients_docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMaster,
+      when: condition('include').tagMain,
       settings+: {
         repo: 'grafana/fluent-plugin-loki',
       },
@@ -123,36 +135,60 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,master
   depends_on: ['check'],
 };
 
-local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'latest,master') {
+local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'latest,main') {
   steps+: [
-    // dry run for everything that is not tag or master
-    docker('amd64', 'logstash') {
+    // dry run for everything that is not tag or main
+    clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMaster,
+      when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
         repo: 'grafana/logstash-output-loki',
       },
     },
   ] + [
-    // publish for tag or master
-    docker('amd64', 'logstash') {
+    // publish for tag or main
+    clients_docker('amd64', 'logstash') {
       depends_on: ['image-tag'],
-      when: condition('include').tagMaster,
+      when: condition('include').tagMain,
       settings+: {
         repo: 'grafana/logstash-output-loki',
       },
     },
+  ],
+  depends_on: ['check'],
+};
+
+local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
+steps+: [
+    // dry run for everything that is not tag or main
+    clients_docker(arch, 'promtail') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+        build_args: ['TOUCH_PROTOS=1'],
+      },
+    }
+  ] + [
+    // publish for tag or main
+    clients_docker(arch, 'promtail') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        build_args: ['TOUCH_PROTOS=1'],
+      },
+    }
   ],
   depends_on: ['check'],
 };
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or master
+    // dry run for everything that is not tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
-      when: condition('exclude').tagMaster,
+      when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
         build_args: ['TOUCH_PROTOS=1'],
@@ -160,10 +196,10 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     }
     for app in apps
   ] + [
-    // publish for tag or master
+    // publish for tag or main
     docker(arch, app) {
       depends_on: ['image-tag'],
-      when: condition('include').tagMaster,
+      when: condition('include').tagMain,
       settings+: {
         build_args: ['TOUCH_PROTOS=1'],
       },
@@ -200,6 +236,9 @@ local manifest(apps) = pipeline('manifest') {
   depends_on: [
     'docker-%s' % arch
     for arch in archs
+  ] + [
+    'promtail-%s' % arch
+    for arch in archs
   ],
 };
 
@@ -217,7 +256,10 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [
-  multiarch_image(arch) + (
+  multiarch_image(arch)
+  for arch in archs
+] + [
+  promtail(arch) + (
     // When we're building Promtail for ARM, we want to use Dockerfile.arm32 to fix
     // a problem with the published Drone image. See Dockerfile.arm32 for more
     // information.
@@ -228,10 +270,10 @@ local manifest(apps) = pipeline('manifest') {
     then {
       steps: [
         step + (
-          if std.objectHas(step, 'settings') && step.settings.dockerfile == 'cmd/promtail/Dockerfile'
+          if std.objectHas(step, 'settings') && step.settings.dockerfile == 'clients/cmd/promtail/Dockerfile'
           then {
             settings+: {
-              dockerfile: 'cmd/promtail/Dockerfile.arm32',
+              dockerfile: 'clients/cmd/promtail/Dockerfile.arm32',
             },
           }
           else {}
@@ -242,17 +284,17 @@ local manifest(apps) = pipeline('manifest') {
     else {}
   )
   for arch in archs
-] + [
+] +[
   fluentbit(),
   fluentd(),
   logstash(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
-    trigger: condition('include').tagMaster,
+    trigger: condition('include').tagMain,
   },
 ] + [
   pipeline('deploy') {
-    trigger: condition('include').tagMaster,
+    trigger: condition('include').tagMain,
     depends_on: ['manifest'],
     steps: [
       {

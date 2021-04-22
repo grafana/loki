@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -222,7 +223,7 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false, "GET")
 
 	// Legacy Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/push"), push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
 	a.RegisterRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false, "GET")
 	a.RegisterRoute("/ha-tracker", d.HATracker, false, "GET")
 }
@@ -258,14 +259,14 @@ func (a *API) RegisterIngester(i Ingester, pushConfig distributor.Config) {
 func (a *API) RegisterChunksPurger(store *purger.DeleteStore, deleteRequestCancelPeriod time.Duration) {
 	deleteRequestHandler := purger.NewDeleteRequestHandler(store, deleteRequestCancelPeriod, prometheus.DefaultRegisterer)
 
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/cancel_delete_request", http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/cancel_delete_request"), http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
 
 	// Legacy Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/cancel_delete_request", http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/cancel_delete_request"), http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
 }
 
 func (a *API) RegisterTenantDeletion(api *purger.TenantDeletionAPI) {
@@ -290,8 +291,8 @@ func (a *API) RegisterRuler(r *ruler.Ruler) {
 // RegisterRulerAPI registers routes associated with the Ruler API
 func (a *API) RegisterRulerAPI(r *ruler.API) {
 	// Prometheus Rule API Routes
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/rules"), http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/alerts"), http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Ruler API Routes
 	a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
@@ -302,16 +303,16 @@ func (a *API) RegisterRulerAPI(r *ruler.API) {
 	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 
 	// Legacy Prometheus Rule API Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/rules"), http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/alerts"), http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Legacy Ruler API Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules", http.HandlerFunc(r.ListRules), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules"), http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}/{groupName}"), http.HandlerFunc(r.GetRuleGroup), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}/{groupName}"), http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 }
 
 // RegisterRing registers the ring UI page associated with the distributor for writes.
@@ -347,28 +348,28 @@ func (a *API) RegisterQueryable(
 	a.RegisterRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
 	a.RegisterRoute("/api/v1/chunks", querier.ChunksHandler(queryable), true, "GET")
 
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/chunks", querier.ChunksHandler(queryable), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/user_stats"), http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/chunks"), querier.ChunksHandler(queryable), true, "GET")
 }
 
 // RegisterQueryAPI registers the Prometheus API routes with the provided handler.
 func (a *API) RegisterQueryAPI(handler http.Handler) {
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/read", handler, true, "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query", handler, true, "GET", "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/query_range", handler, true, "GET", "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/labels", handler, true, "GET", "POST")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/label/{name}/values", handler, true, "GET")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/series", handler, true, "GET", "POST", "DELETE")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/metadata", handler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/read"), handler, true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query_range"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/labels"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/metadata"), handler, true, "GET")
 
 	// Register Legacy Routers
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/read", handler, true, "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query", handler, true, "GET", "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/query_range", handler, true, "GET", "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/labels", handler, true, "GET", "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/label/{name}/values", handler, true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/series", handler, true, "GET", "POST", "DELETE")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/metadata", handler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/read"), handler, true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query_range"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/labels"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/metadata"), handler, true, "GET")
 }
 
 // RegisterQueryFrontend registers the Prometheus routes supported by the

@@ -16,7 +16,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		selector     string
 		expectFilter bool
 	}{
-		{`{foo!~"bar"}`, false},
+		{`{foo="bar"}`, false},
 		{`{foo="bar", bar!="baz"}`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
@@ -37,7 +37,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		tt := tt
 		t.Run(tt.selector, func(t *testing.T) {
 			t.Parallel()
-			expr, err := ParseLogSelector(tt.selector)
+			expr, err := ParseLogSelector(tt.selector, true)
 			if err != nil {
 				t.Fatalf("failed to parse log selector: %s", err)
 			}
@@ -115,6 +115,8 @@ func Test_SampleExpr_String(t *testing.T) {
 			count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
 		)`,
 		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
+		`last_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
+		`first_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`absent_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`sum by (job) (
 			sum_over_time(
@@ -176,7 +178,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 		`{namespace="dev", container_name="cart"} |= "bleep" |= "bloop" |= ""`,
 	} {
 		t.Run(tc, func(t *testing.T) {
-			expr, err := ParseLogSelector(tc)
+			expr, err := ParseLogSelector(tc, true)
 			require.Nil(t, err)
 
 			p, err := expr.Pipeline()
@@ -265,7 +267,7 @@ func Test_FilterMatcher(t *testing.T) {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()
-			expr, err := ParseLogSelector(tt.q)
+			expr, err := ParseLogSelector(tt.q, true)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expectedMatchers, expr.Matchers())
 			p, err := expr.Pipeline()
@@ -323,7 +325,7 @@ func TestStringer(t *testing.T) {
 }
 
 func BenchmarkContainsFilter(b *testing.B) {
-	expr, err := ParseLogSelector(`{app="foo"} |= "foo"`)
+	expr, err := ParseLogSelector(`{app="foo"} |= "foo"`, true)
 	if err != nil {
 		b.Fatal(err)
 	}

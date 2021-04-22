@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -42,7 +42,7 @@ func Test_batchIterSafeStart(t *testing.T) {
 		newLazyChunk(stream),
 	}
 
-	batch := newBatchChunkIterator(context.Background(), chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{})
+	batch := newBatchChunkIterator(context.Background(), chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil)
 
 	// if it was started already, we should see a panic before this
 	time.Sleep(time.Millisecond)
@@ -52,11 +52,9 @@ func Test_batchIterSafeStart(t *testing.T) {
 	batch.Start()
 
 	require.NotNil(t, batch.Next())
-
 }
 
 func Test_newLogBatchChunkIterator(t *testing.T) {
-
 	tests := map[string]struct {
 		chunks     []*LazyChunk
 		expected   []logproto.Stream
@@ -946,7 +944,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end)
+			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
 			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
@@ -955,13 +953,11 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 			}
 
 			assertStream(t, tt.expected, streams.Streams)
-
 		})
 	}
 }
 
 func Test_newSampleBatchChunkIterator(t *testing.T) {
-
 	tests := map[string]struct {
 		chunks     []*LazyChunk
 		expected   []logproto.Series
@@ -1234,7 +1230,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)
 
-			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end)
+			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()
@@ -1243,7 +1239,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			}
 
 			assertSeries(t, tt.expected, series.Series)
-
 		})
 	}
 }
@@ -1514,7 +1509,7 @@ func TestBatchCancel(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	it, err := newLogBatchIterator(ctx, NilMetrics, chunks, 1, newMatchers(fooLabels), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now())
+	it, err := newLogBatchIterator(ctx, NilMetrics, chunks, 1, newMatchers(fooLabels), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
 	require.NoError(t, err)
 	defer require.NoError(t, it.Close())
 	for it.Next() {

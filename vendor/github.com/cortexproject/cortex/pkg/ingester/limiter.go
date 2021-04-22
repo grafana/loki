@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-const (
-	errMaxSeriesPerMetricLimitExceeded   = "per-metric series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
-	errMaxSeriesPerUserLimitExceeded     = "per-user series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
-	errMaxMetadataPerMetricLimitExceeded = "per-metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
-	errMaxMetadataPerUserLimitExceeded   = "per-user metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
+var (
+	errMaxSeriesPerMetricLimitExceeded   = errors.New("per-metric series limit exceeded")
+	errMaxMetadataPerMetricLimitExceeded = errors.New("per-metric metadata limit exceeded")
+	errMaxSeriesPerUserLimitExceeded     = errors.New("per-user series limit exceeded")
+	errMaxMetadataPerUserLimitExceeded   = errors.New("per-user metric metadata limit exceeded")
 )
 
 // RingCount is the interface exposed by a ring implementation which allows
@@ -56,64 +58,99 @@ func NewLimiter(
 // AssertMaxSeriesPerMetric limit has not been reached compared to the current
 // number of series in input and returns an error if so.
 func (l *Limiter) AssertMaxSeriesPerMetric(userID string, series int) error {
-	actualLimit := l.maxSeriesPerMetric(userID)
-	if series < actualLimit {
+	if actualLimit := l.maxSeriesPerMetric(userID); series < actualLimit {
 		return nil
 	}
 
-	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
-	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
-
-	return fmt.Errorf(errMaxSeriesPerMetricLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return errMaxSeriesPerMetricLimitExceeded
 }
 
 // AssertMaxMetadataPerMetric limit has not been reached compared to the current
 // number of metadata per metric in input and returns an error if so.
 func (l *Limiter) AssertMaxMetadataPerMetric(userID string, metadata int) error {
-	actualLimit := l.maxMetadataPerMetric(userID)
-
-	if metadata < actualLimit {
+	if actualLimit := l.maxMetadataPerMetric(userID); metadata < actualLimit {
 		return nil
 	}
 
-	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
-	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
-
-	return fmt.Errorf(errMaxMetadataPerMetricLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return errMaxMetadataPerMetricLimitExceeded
 }
 
 // AssertMaxSeriesPerUser limit has not been reached compared to the current
 // number of series in input and returns an error if so.
 func (l *Limiter) AssertMaxSeriesPerUser(userID string, series int) error {
-	actualLimit := l.maxSeriesPerUser(userID)
-	if series < actualLimit {
+	if actualLimit := l.maxSeriesPerUser(userID); series < actualLimit {
 		return nil
 	}
 
-	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
-	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
-
-	return fmt.Errorf(errMaxSeriesPerUserLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return errMaxSeriesPerUserLimitExceeded
 }
 
 // AssertMaxMetricsWithMetadataPerUser limit has not been reached compared to the current
 // number of metrics with metadata in input and returns an error if so.
 func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int) error {
-	actualLimit := l.maxMetadataPerUser(userID)
-
-	if metrics < actualLimit {
+	if actualLimit := l.maxMetadataPerUser(userID); metrics < actualLimit {
 		return nil
 	}
 
-	localLimit := l.limits.MaxLocalMetricsWithMetadataPerUser(userID)
-	globalLimit := l.limits.MaxGlobalMetricsWithMetadataPerUser(userID)
-
-	return fmt.Errorf(errMaxMetadataPerUserLimitExceeded, minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return errMaxMetadataPerUserLimitExceeded
 }
 
 // MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
 func (l *Limiter) MaxSeriesPerQuery(userID string) int {
 	return l.limits.MaxSeriesPerQuery(userID)
+}
+
+// FormatError returns the input error enriched with the actual limits for the given user.
+// It acts as pass-through if the input error is unknown.
+func (l *Limiter) FormatError(userID string, err error) error {
+	switch err {
+	case errMaxSeriesPerUserLimitExceeded:
+		return l.formatMaxSeriesPerUserError(userID)
+	case errMaxSeriesPerMetricLimitExceeded:
+		return l.formatMaxSeriesPerMetricError(userID)
+	case errMaxMetadataPerUserLimitExceeded:
+		return l.formatMaxMetadataPerUserError(userID)
+	case errMaxMetadataPerMetricLimitExceeded:
+		return l.formatMaxMetadataPerMetricError(userID)
+	default:
+		return err
+	}
+}
+
+func (l *Limiter) formatMaxSeriesPerUserError(userID string) error {
+	actualLimit := l.maxSeriesPerUser(userID)
+	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
+	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
+
+	return fmt.Errorf("per-user series limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+}
+
+func (l *Limiter) formatMaxSeriesPerMetricError(userID string) error {
+	actualLimit := l.maxSeriesPerMetric(userID)
+	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
+	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
+
+	return fmt.Errorf("per-metric series limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+}
+
+func (l *Limiter) formatMaxMetadataPerUserError(userID string) error {
+	actualLimit := l.maxMetadataPerUser(userID)
+	localLimit := l.limits.MaxLocalMetricsWithMetadataPerUser(userID)
+	globalLimit := l.limits.MaxGlobalMetricsWithMetadataPerUser(userID)
+
+	return fmt.Errorf("per-user metric metadata limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+}
+
+func (l *Limiter) formatMaxMetadataPerMetricError(userID string) error {
+	actualLimit := l.maxMetadataPerMetric(userID)
+	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
+	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
+
+	return fmt.Errorf("per-metric metadata limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) maxSeriesPerMetric(userID string) int {

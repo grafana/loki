@@ -139,7 +139,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return r.next.RoundTrip(req)
 		}
 	case SeriesOp:
-		_, err := loghttp.ParseSeriesQuery(req)
+		_, err := logql.ParseAndValidateSeriesQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -269,7 +269,9 @@ func NewSeriesTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
 			// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, cfg.SplitQueriesByInterval), codec, splitByTime, splitByMetrics),
+			// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
+			// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
+			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, splitByMetrics),
 		)
 	}
 	if cfg.MaxRetries > 0 {

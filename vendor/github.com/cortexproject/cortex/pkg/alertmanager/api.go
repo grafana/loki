@@ -153,14 +153,14 @@ func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
 	// not to configured data dir, and on the flipside, it'll fail if we can't write
 	// to tmpDir. Ignoring both cases for now as they're ultra rare but will revisit if
 	// we see this in the wild.
-	tmpDir, err := ioutil.TempDir("", "validate-config")
+	userTempDir, err := ioutil.TempDir("", "validate-config-"+cfg.User)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(userTempDir)
 
 	for _, tmpl := range cfg.Templates {
-		_, err := createTemplateFile(tmpDir, cfg.User, tmpl.Filename, tmpl.Body)
+		_, err := storeTemplateFile(userTempDir, tmpl.Filename, tmpl.Body)
 		if err != nil {
 			level.Error(logger).Log("msg", "unable to create template file", "err", err, "user", cfg.User)
 			return fmt.Errorf("unable to create template file '%s'", tmpl.Filename)
@@ -169,7 +169,7 @@ func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
 
 	templateFiles := make([]string, len(amCfg.Templates))
 	for i, t := range amCfg.Templates {
-		templateFiles[i] = filepath.Join(tmpDir, "templates", cfg.User, t)
+		templateFiles[i] = filepath.Join(userTempDir, t)
 	}
 
 	_, err = template.FromGlobs(templateFiles...)

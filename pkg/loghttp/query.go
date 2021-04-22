@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 var (
@@ -222,7 +222,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, err
 	}
 
-	if result.End.Before(result.Start) || result.Start.Equal(result.End) {
+	if result.End.Before(result.Start) {
 		return nil, errEndBeforeStart
 	}
 

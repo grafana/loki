@@ -22,14 +22,14 @@ import (
 	cutil "github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/stats"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -89,9 +89,11 @@ type instance struct {
 	flushOnShutdownSwitch *OnceSwitch
 
 	metrics *ingesterMetrics
+
+	chunkFilter storage.RequestChunkFilterer
 }
 
-func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch) *instance {
+func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter storage.RequestChunkFilterer) *instance {
 	i := &instance{
 		cfg:         cfg,
 		streams:     map[string]*stream{},
@@ -110,6 +112,8 @@ func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runt
 		wal:                   wal,
 		metrics:               metrics,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
+
+		chunkFilter: chunkFilter,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -295,7 +299,9 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 
 	ingStats := stats.GetIngesterData(ctx)
 	var iters []iter.EntryIterator
+
 	err = i.forMatchingStreams(
+		ctx,
 		expr.Matchers(),
 		func(stream *stream) error {
 			iter, err := stream.Iterator(ctx, ingStats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
@@ -326,6 +332,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	ingStats := stats.GetIngesterData(ctx)
 	var iters []iter.SampleIterator
 	err = i.forMatchingStreams(
+		ctx,
 		expr.Selector().Matchers(),
 		func(stream *stream) error {
 			iter, err := stream.SampleIterator(ctx, ingStats, req.Start, req.End, extractor.ForStream(stream.labels))
@@ -363,8 +370,8 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logpro
 	}, nil
 }
 
-func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	groups, err := loghttp.Match(req.GetGroups())
+func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	groups, err := logql.Match(req.GetGroups())
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +381,7 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 	// If no matchers were supplied we include all streams.
 	if len(groups) == 0 {
 		series = make([]logproto.SeriesIdentifier, 0, len(i.streams))
-		err = i.forAllStreams(func(stream *stream) error {
+		err = i.forAllStreams(ctx, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req) {
 				series = append(series, logproto.SeriesIdentifier{
@@ -389,7 +396,7 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 	} else {
 		dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
 		for _, matchers := range groups {
-			err = i.forMatchingStreams(matchers, func(stream *stream) error {
+			err = i.forMatchingStreams(ctx, matchers, func(stream *stream) error {
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req) {
 					// exit early when this stream was added by an earlier group
@@ -426,11 +433,18 @@ func (i *instance) numStreams() int {
 
 // forAllStreams will execute a function for all streams in the instance.
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
-func (i *instance) forAllStreams(fn func(*stream) error) error {
+func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) error {
 	i.streamsMtx.RLock()
 	defer i.streamsMtx.RUnlock()
+	var chunkFilter storage.ChunkFilterer
+	if i.chunkFilter != nil {
+		chunkFilter = i.chunkFilter.ForRequest(ctx)
+	}
 
 	for _, stream := range i.streams {
+		if chunkFilter != nil && chunkFilter.ShouldFilter(stream.labels) {
+			continue
+		}
 		err := fn(stream)
 		if err != nil {
 			return err
@@ -442,6 +456,7 @@ func (i *instance) forAllStreams(fn func(*stream) error) error {
 // forMatchingStreams will execute a function for each stream that satisfies a set of requirements (time range, matchers, etc).
 // It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forMatchingStreams(
+	ctx context.Context,
 	matchers []*labels.Matcher,
 	fn func(*stream) error,
 ) error {
@@ -450,7 +465,10 @@ func (i *instance) forMatchingStreams(
 
 	filters, matchers := cutil.SplitFiltersAndMatchers(matchers)
 	ids := i.index.Lookup(matchers)
-
+	var chunkFilter storage.ChunkFilterer
+	if i.chunkFilter != nil {
+		chunkFilter = i.chunkFilter.ForRequest(ctx)
+	}
 outer:
 	for _, streamID := range ids {
 		stream, ok := i.streamsByFP[streamID]
@@ -462,7 +480,9 @@ outer:
 				continue outer
 			}
 		}
-
+		if chunkFilter != nil && chunkFilter.ShouldFilter(stream.labels) {
+			continue
+		}
 		err := fn(stream)
 		if err != nil {
 			return err
@@ -471,8 +491,8 @@ outer:
 	return nil
 }
 
-func (i *instance) addNewTailer(t *tailer) error {
-	if err := i.forMatchingStreams(t.matchers, func(s *stream) error {
+func (i *instance) addNewTailer(ctx context.Context, t *tailer) error {
+	if err := i.forMatchingStreams(ctx, t.matchers, func(s *stream) error {
 		s.addTailer(t)
 		return nil
 	}); err != nil {
@@ -494,8 +514,15 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 		if t.isClosed() {
 			continue
 		}
+		var chunkFilter storage.ChunkFilterer
+		if i.chunkFilter != nil {
+			chunkFilter = i.chunkFilter.ForRequest(t.conn.Context())
+		}
 
 		if isMatching(stream.labels, t.matchers) {
+			if chunkFilter != nil && chunkFilter.ShouldFilter(stream.labels) {
+				continue
+			}
 			stream.addTailer(t)
 		}
 	}
@@ -578,7 +605,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	// send until the limit is reached.
 	sent := uint32(0)
 	for sent < limit && !isDone(queryServer.Context()) {
-		batch, batchSize, err := iter.ReadBatch(i, helpers.MinUint32(queryBatchSize, limit-sent))
+		batch, batchSize, err := iter.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
 		}

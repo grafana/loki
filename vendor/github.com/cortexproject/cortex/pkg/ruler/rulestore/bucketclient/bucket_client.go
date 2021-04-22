@@ -29,6 +29,9 @@ const (
 
 var (
 	errInvalidRuleGroupKey = errors.New("invalid rule group object key")
+	errEmptyUser           = errors.New("empty user")
+	errEmptyNamespace      = errors.New("empty namespace")
+	errEmptyGroupName      = errors.New("empty group name")
 )
 
 // BucketRuleStore is used to support the RuleStore interface against an object storage backend. It is implemented
@@ -97,14 +100,14 @@ func (b *BucketRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements rules.RuleStore.
-func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
-	out := map[string]rulestore.RuleGroupList{}
+func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
+	out := map[string]rulespb.RuleGroupList{}
 
 	// List rule groups for all tenants.
 	err := b.bucket.Iter(ctx, "", func(key string) error {
 		userID, namespace, group, err := parseRuleGroupObjectKeyWithUser(key)
 		if err != nil {
-			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "key", key)
+			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "key", key, "err", err)
 
 			// Do not fail just because of a spurious item in the bucket.
 			return nil
@@ -126,10 +129,10 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 }
 
 // ListRuleGroupsForUserAndNamespace implements rules.RuleStore.
-func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
+func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 
-	groupList := rulestore.RuleGroupList{}
+	groupList := rulespb.RuleGroupList{}
 
 	// The prefix to list objects depends on whether the namespace has been
 	// specified in the request.
@@ -141,7 +144,7 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 	err := userBucket.Iter(ctx, prefix, func(key string) error {
 		namespace, group, err := parseRuleGroupObjectKey(key)
 		if err != nil {
-			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "user", userID, "key", key)
+			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "user", userID, "key", key, "err", err)
 
 			// Do not fail just because of a spurious item in the bucket.
 			return nil
@@ -162,7 +165,7 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 }
 
 // LoadRuleGroups implements rules.RuleStore.
-func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulestore.RuleGroupList) error {
+func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
 	ch := make(chan *rulespb.RuleGroupDesc)
 
 	// Given we store one file per rule group. With this, we create a pool of workers that will
@@ -280,12 +283,15 @@ func parseRuleGroupObjectKeyWithUser(key string) (user, namespace, group string,
 	}
 
 	user = parts[0]
+	if user == "" {
+		return "", "", "", errEmptyUser
+	}
 	namespace, group, err = parseRuleGroupObjectKey(parts[1])
 	return
 }
 
 // parseRuleGroupObjectKey parses a bucket object key in the format "<namespace>/<rules group>".
-func parseRuleGroupObjectKey(key string) (namespace, group string, err error) {
+func parseRuleGroupObjectKey(key string) (namespace, group string, _ error) {
 	parts := strings.Split(key, objstore.DirDelim)
 	if len(parts) != 2 {
 		return "", "", errInvalidRuleGroupKey
@@ -293,12 +299,20 @@ func parseRuleGroupObjectKey(key string) (namespace, group string, err error) {
 
 	decodedNamespace, err := base64.URLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return
+		return "", "", err
+	}
+
+	if len(decodedNamespace) == 0 {
+		return "", "", errEmptyNamespace
 	}
 
 	decodedGroup, err := base64.URLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return
+		return "", "", err
+	}
+
+	if len(decodedGroup) == 0 {
+		return "", "", errEmptyGroupName
 	}
 
 	return string(decodedNamespace), string(decodedGroup), nil

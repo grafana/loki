@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	lstore "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -84,7 +84,6 @@ func getStore() (lstore.Store, error) {
 }
 
 func fillStore() error {
-
 	store, err := getStore()
 	if err != nil {
 		return err
@@ -134,7 +133,6 @@ func fillStore() error {
 					chunkEnc = chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, 262144, 1572864)
 				}
 			}
-
 		}(i)
 
 	}

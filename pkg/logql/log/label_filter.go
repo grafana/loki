@@ -9,6 +9,8 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 var (
@@ -332,7 +334,7 @@ func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 }
 
 func (s *StringLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if s.Name == ErrorLabel {
+	if s.Name == logqlmodel.ErrorLabel {
 		return line, s.Matches(lbs.GetErr())
 	}
 	v, _ := lbs.Get(s.Name)

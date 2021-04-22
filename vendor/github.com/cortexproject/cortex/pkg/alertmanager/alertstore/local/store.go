@@ -20,6 +20,7 @@ const (
 
 var (
 	errReadOnly = errors.New("local alertmanager config storage is read-only")
+	errState    = errors.New("local alertmanager storage does not support state persistency")
 )
 
 // StoreConfig configures a static file alertmanager store
@@ -98,6 +99,21 @@ func (f *Store) SetAlertConfig(_ context.Context, cfg alertspb.AlertConfigDesc) 
 // DeleteAlertConfig implements alertstore.AlertStore.
 func (f *Store) DeleteAlertConfig(_ context.Context, user string) error {
 	return errReadOnly
+}
+
+// GetFullState implements alertstore.AlertStore.
+func (f *Store) GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error) {
+	return alertspb.FullStateDesc{}, errState
+}
+
+// SetFullState implements alertstore.AlertStore.
+func (f *Store) SetFullState(ctx context.Context, user string, cfg alertspb.FullStateDesc) error {
+	return errState
+}
+
+// DeleteFullState implements alertstore.AlertStore.
+func (f *Store) DeleteFullState(ctx context.Context, user string) error {
+	return errState
 }
 
 func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {

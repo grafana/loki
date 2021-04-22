@@ -26,17 +26,6 @@ type RateLimiter struct {
 	tenants     map[string]*tenantLimiter
 }
 
-// Reservation is similar to rate.Reservation but excludes interfaces which do
-// not make sense to expose, because we are following the semantics of AllowN,
-// being an immediate reservation, i.e. not delayed into the future.
-type Reservation interface {
-	// CancelAt returns the reservation to the rate limiter for use by other
-	// requests. Note that typically the reservation should be canceled with
-	// the same timestamp it was requested with, or not all the tokens
-	// consumed will be returned.
-	CancelAt(now time.Time)
-}
-
 type tenantLimiter struct {
 	limiter   *rate.Limiter
 	recheckAt time.Time
@@ -53,29 +42,9 @@ func NewRateLimiter(strategy RateLimiterStrategy, recheckPeriod time.Duration) *
 	}
 }
 
-// AllowN reports whether n tokens may be consumed happen at time now. The
-// reservation of tokens can be canceled using CancelAt on the returned object.
-func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) (bool, Reservation) {
-
-	// Using ReserveN allows cancellation of the reservation, but
-	// the semantics are subtly different to AllowN.
-	r := l.getTenantLimiter(now, tenantID).ReserveN(now, n)
-	if !r.OK() {
-		return false, nil
-	}
-
-	// ReserveN will still return OK if the necessary tokens are
-	// available in the future, and tells us this time delay. In
-	// order to mimic the semantics of AllowN, we must check that
-	// there is no delay before we can use them.
-	if r.DelayFrom(now) > 0 {
-		// Having decided not to use the reservation, return the
-		// tokens to the rate limiter.
-		r.CancelAt(now)
-		return false, nil
-	}
-
-	return true, r
+// AllowN reports whether n tokens may be consumed happen at time now.
+func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) bool {
+	return l.getTenantLimiter(now, tenantID).AllowN(now, n)
 }
 
 // Limit returns the currently configured maximum overall tokens rate.

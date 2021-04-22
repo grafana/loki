@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type ChunkMetrics struct {
@@ -84,6 +84,7 @@ type batchChunkIterator struct {
 	lastOverlapping []*LazyChunk
 	metrics         *ChunkMetrics
 	matchers        []*labels.Matcher
+	chunkFilterer   ChunkFilterer
 
 	begun      bool
 	ctx        context.Context
@@ -101,21 +102,23 @@ func newBatchChunkIterator(
 	start, end time.Time,
 	metrics *ChunkMetrics,
 	matchers []*labels.Matcher,
+	chunkFilterer ChunkFilterer,
 ) *batchChunkIterator {
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
 	// The same applies to the sharding label which is injected by the cortex storage code.
 	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
 	res := &batchChunkIterator{
-		batchSize: batchSize,
-		metrics:   metrics,
-		matchers:  matchers,
-		start:     start,
-		end:       end,
-		direction: direction,
-		ctx:       ctx,
-		chunks:    lazyChunks{direction: direction, chunks: chunks},
-		next:      make(chan *chunkBatch),
+		batchSize:     batchSize,
+		metrics:       metrics,
+		matchers:      matchers,
+		start:         start,
+		end:           end,
+		direction:     direction,
+		ctx:           ctx,
+		chunks:        lazyChunks{direction: direction, chunks: chunks},
+		next:          make(chan *chunkBatch),
+		chunkFilterer: chunkFilterer,
 	}
 	sort.Sort(res.chunks)
 	return res
@@ -267,7 +270,7 @@ func (it *batchChunkIterator) nextBatch() *chunkBatch {
 		}
 	}
 	// download chunk for this batch.
-	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, batch, it.matchers)
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, batch, it.matchers, it.chunkFilterer)
 	if err != nil {
 		return &chunkBatch{err: err}
 	}
@@ -307,13 +310,14 @@ func newLogBatchIterator(
 	pipeline logql.Pipeline,
 	direction logproto.Direction,
 	start, end time.Time,
+	chunkFilterer ChunkFilterer,
 ) (iter.EntryIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &logBatchIterator{
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, metrics, matchers),
+		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
 
@@ -441,13 +445,14 @@ func newSampleBatchIterator(
 	matchers []*labels.Matcher,
 	extractor logql.SampleExtractor,
 	start, end time.Time,
+	chunkFilterer ChunkFilterer,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &sampleBatchIterator{
 		extractor:          extractor,
 		ctx:                ctx,
 		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers),
+		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
 
@@ -506,7 +511,6 @@ func (it *sampleBatchIterator) Next() bool {
 
 // newChunksIterator creates an iterator over a set of lazychunks.
 func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIterator, error) {
-
 	iters, err := it.buildIterators(b.chunksBySeries, b.from, b.through, b.nextChunk)
 	if err != nil {
 		return nil, err
@@ -526,7 +530,6 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 			}
 			result = append(result, iterator)
 		}
-
 	}
 
 	return result, nil
@@ -565,7 +568,13 @@ func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels
 	return matchers
 }
 
-func fetchChunkBySeries(ctx context.Context, metrics *ChunkMetrics, chunks []*LazyChunk, matchers []*labels.Matcher) (map[model.Fingerprint][][]*LazyChunk, error) {
+func fetchChunkBySeries(
+	ctx context.Context,
+	metrics *ChunkMetrics,
+	chunks []*LazyChunk,
+	matchers []*labels.Matcher,
+	chunkFilter ChunkFilterer,
+) (map[model.Fingerprint][][]*LazyChunk, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
 	// Make sure the initial chunks are loaded. This is not one chunk
@@ -576,7 +585,7 @@ func fetchChunkBySeries(ctx context.Context, metrics *ChunkMetrics, chunks []*La
 
 	// Now that we have the first chunk for each series loaded,
 	// we can proceed to filter the series that don't match.
-	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers, metrics)
+	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers, chunkFilter, metrics)
 
 	var allChunks []*LazyChunk
 	for _, series := range chksBySeries {
@@ -600,23 +609,30 @@ func fetchChunkBySeries(ctx context.Context, metrics *ChunkMetrics, chunks []*La
 func filterSeriesByMatchers(
 	chks map[model.Fingerprint][][]*LazyChunk,
 	matchers []*labels.Matcher,
+	chunkFilterer ChunkFilterer,
 	metrics *ChunkMetrics,
 ) map[model.Fingerprint][][]*LazyChunk {
 	var filteredSeries, filteredChks int
+
+	removeSeries := func(fp model.Fingerprint, chunks [][]*LazyChunk) {
+		delete(chks, fp)
+		filteredSeries++
+
+		for _, grp := range chunks {
+			filteredChks += len(grp)
+		}
+	}
 outer:
 	for fp, chunks := range chks {
 		for _, matcher := range matchers {
 			if !matcher.Matches(chunks[0][0].Chunk.Metric.Get(matcher.Name)) {
-
-				delete(chks, fp)
-				filteredSeries++
-
-				for _, grp := range chunks {
-					filteredChks += len(grp)
-				}
-
+				removeSeries(fp, chunks)
 				continue outer
 			}
+		}
+		if chunkFilterer != nil && chunkFilterer.ShouldFilter(chunks[0][0].Chunk.Metric) {
+			removeSeries(fp, chunks)
+			continue outer
 		}
 	}
 	metrics.chunks.WithLabelValues(statusDiscarded).Add(float64(filteredChks))

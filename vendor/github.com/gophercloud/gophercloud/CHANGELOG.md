@@ -1,4 +1,37 @@
-## 0.16.0 (Unreleased)
+## 0.17.0 (Unreleased)
+
+## 0.16.0 (February 23, 2021)
+
+UPGRADE NOTES
+
+* `baremetal/v1/nodes.CleanStep.Interface` has changed from `string` to `StepInterface` [GH-2120](https://github.com/gophercloud/gophercloud/pull/2120)
+
+BUG FIXES
+
+* Fixed `xor` logic issues in `loadbalancers/v2/l7policies.CreateOpts` [GH-2087](https://github.com/gophercloud/gophercloud/pull/2087)
+* Fixed `xor` logic issues in `loadbalancers/v2/listeners.CreateOpts` [GH-2087](https://github.com/gophercloud/gophercloud/pull/2087)
+* Fixed `If-Modified-Since` so it's correctly sent in a `objectstorage/v1/objects.Download` request [GH-2108](https://github.com/gophercloud/gophercloud/pull/2108)
+* Fixed `If-Unmodified-Since` so it's correctly sent in a `objectstorage/v1/objects.Download` request [GH-2108](https://github.com/gophercloud/gophercloud/pull/2108)
+
+IMPROVEMENTS
+
+* Added `blockstorage/extensions/limits.Get` [GH-2084](https://github.com/gophercloud/gophercloud/pull/2084)
+* `clustering/v1/clusters.RemoveNodes` now returns an `ActionResult` [GH-2089](https://github.com/gophercloud/gophercloud/pull/2089)
+* Added `identity/v3/projects.ListAvailable` [GH-2090](https://github.com/gophercloud/gophercloud/pull/2090)
+* Added `blockstorage/extensions/backups.ListDetail` [GH-2085](https://github.com/gophercloud/gophercloud/pull/2085)
+* Allow all ports to be removed in `networking/v2/extensions/fwaas_v2/groups.UpdateOpts` [GH-2073]
+* Added `imageservice/v2/images.ListOpts.Hidden` [GH-2094](https://github.com/gophercloud/gophercloud/pull/2094)
+* Added `imageservice/v2/images.CreateOpts.Hidden` [GH-2094](https://github.com/gophercloud/gophercloud/pull/2094)
+* Added `imageservice/v2/images.ReplaceImageHidden` [GH-2094](https://github.com/gophercloud/gophercloud/pull/2094)
+* Added `imageservice/v2/images.Image.Hidden` [GH-2094](https://github.com/gophercloud/gophercloud/pull/2094)
+* Added `containerinfra/v1/clusters.CreateOpts.MasterLBEnabled` [GH-2102](https://github.com/gophercloud/gophercloud/pull/2102)
+* Added the ability to define a custom function to handle "Retry-After" (429) responses [GH-2097](https://github.com/gophercloud/gophercloud/pull/2097)
+* Added `baremetal/v1/nodes.JBOD` constant for the `RAIDLevel` type [GH-2103](https://github.com/gophercloud/gophercloud/pull/2103)
+* Added support for Block Storage quotas of volume typed resources [GH-2109](https://github.com/gophercloud/gophercloud/pull/2109)
+* Added `blockstorage/extensions/volumeactions.ChangeType` [GH-2113](https://github.com/gophercloud/gophercloud/pull/2113)
+* Added `baremetal/v1/nodes.DeployStep` [GH-2120](https://github.com/gophercloud/gophercloud/pull/2120)
+* Added `baremetal/v1/nodes.ProvisionStateOpts.DeploySteps` [GH-2120](https://github.com/gophercloud/gophercloud/pull/2120)
+* Added `baremetal/v1/nodes.CreateOpts.AutomatedClean` [GH-2122](https://github.com/gophercloud/gophercloud/pull/2122)
 
 ## 0.15.0 (December 27, 2020)
 

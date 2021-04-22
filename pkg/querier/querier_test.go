@@ -11,6 +11,7 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/validation"
 
 	"github.com/grafana/loki/pkg/storage"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (
@@ -192,7 +192,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.MaxStreamsMatchersPerQuery = 1
-	defaultLimits.MaxQueryLength = 2 * time.Minute
+	defaultLimits.MaxQueryLength = model.Duration(2 * time.Minute)
 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)

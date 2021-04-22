@@ -340,11 +340,10 @@ func (co *Conn) Write(p []byte) (int, error) {
 		return co.Conn.Write(p)
 	}
 
-	l := make([]byte, 2)
-	binary.BigEndian.PutUint16(l, uint16(len(p)))
-
-	n, err := (&net.Buffers{l, p}).WriteTo(co.Conn)
-	return int(n), err
+	msg := make([]byte, 2+len(p))
+	binary.BigEndian.PutUint16(msg, uint16(len(p)))
+	copy(msg[2:], p)
+	return co.Conn.Write(msg)
 }
 
 // Return the appropriate timeout for a specific request
@@ -380,7 +379,7 @@ func Dial(network, address string) (conn *Conn, err error) {
 func ExchangeContext(ctx context.Context, m *Msg, a string) (r *Msg, err error) {
 	client := Client{Net: "udp"}
 	r, _, err = client.ExchangeContext(ctx, m, a)
-	// ignorint rtt to leave the original ExchangeContext API unchanged, but
+	// ignoring rtt to leave the original ExchangeContext API unchanged, but
 	// this function will go away
 	return r, err
 }

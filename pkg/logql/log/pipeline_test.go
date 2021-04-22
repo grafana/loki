@@ -6,6 +6,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func TestNoopPipeline(t *testing.T) {
@@ -68,7 +70,7 @@ func Benchmark_Pipeline(b *testing.B) {
 		),
 		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
 		NewJSONParser(),
-		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, ErrorLabel, errJSON)),
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
 	}
 	p := NewPipeline(stages)
@@ -191,8 +193,8 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 
-		if resLbs.Labels().Get(ErrorLabel) != errJSON {
-			b.Fatalf("no %s label found: %+v\n", ErrorLabel, resLbs.Labels())
+		if resLbs.Labels().Get(logqlmodel.ErrorLabel) != errJSON {
+			b.Fatalf("no %s label found: %+v\n", logqlmodel.ErrorLabel, resLbs.Labels())
 		}
 	}
 }

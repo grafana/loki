@@ -457,9 +457,15 @@ type ClusterlintOwner struct {
 
 // KubernetesAssociatedResources represents a cluster's associated resources
 type KubernetesAssociatedResources struct {
-	Volumes         []string `json:"volumes"`
-	VolumeSnapshots []string `json:"volume_snapshots"`
-	LoadBalancers   []string `json:"load_balancers"`
+	Volumes         []*AssociatedResource `json:"volumes"`
+	VolumeSnapshots []*AssociatedResource `json:"volume_snapshots"`
+	LoadBalancers   []*AssociatedResource `json:"load_balancers"`
+}
+
+// AssociatedResource is the object to represent a Kubernetes cluster associated resource's Id and Name.
+type AssociatedResource struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type kubernetesClustersRoot struct {

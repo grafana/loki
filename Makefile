@@ -89,8 +89,8 @@ YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 
 # Promtail UI files
-PROMTAIL_GENERATED_FILE := pkg/promtail/server/ui/assets_vfsdata.go
-PROMTAIL_UI_FILES := $(shell find ./pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
+PROMTAIL_GENERATED_FILE := clients/pkg/promtail/server/ui/assets_vfsdata.go
+PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
 
 ##########
 # Docker #
@@ -127,7 +127,7 @@ binfmt:
 all: promtail logcli loki loki-canary check-generated-files
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: touch-protobuf-sources yacc protos pkg/promtail/server/ui/assets_vfsdata.go
+check-generated-files: touch-protobuf-sources yacc protos clients/pkg/promtail/server/ui/assets_vfsdata.go
 	@if ! (git diff --exit-code $(YACC_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
@@ -207,22 +207,22 @@ PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
 
-promtail: yacc cmd/promtail/promtail
-promtail-debug: yacc cmd/promtail/promtail-debug
+promtail: yacc clients/cmd/promtail/promtail
+promtail-debug: yacc clients/cmd/promtail/promtail-debug
 
 promtail-clean-assets:
-	rm -rf pkg/promtail/server/ui/assets_vfsdata.go
+	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
 
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
-cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
+clients/cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) clients/cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsdata.go cmd/promtail/main.go
+clients/cmd/promtail/promtail-debug: $(APP_GO_FILES) clients/pkg/promtail/server/ui/assets_vfsdata.go clients/cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -246,8 +246,8 @@ dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -274,16 +274,16 @@ test: all
 #########
 
 clean:
-	rm -rf cmd/promtail/promtail
+	rm -rf clients/cmd/promtail/promtail
 	rm -rf cmd/loki/loki
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf cmd/querytee/querytee
 	rm -rf .cache
-	rm -rf cmd/docker-driver/rootfs
+	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf dist/
-	rm -rf cmd/fluent-bit/out_grafana_loki.h
-	rm -rf cmd/fluent-bit/out_grafana_loki.so
+	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
+	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/migrate/migrate
 	go clean $(MOD_FLAG) ./...
 
@@ -350,16 +350,16 @@ PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
 
 docker-driver: docker-driver-clean
-	mkdir cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f cmd/docker-driver/Dockerfile .
+	mkdir clients/cmd/docker-driver/rootfs
+	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 	ID=$$(docker create rootfsimage true) && \
-	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
+	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
-	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) clients/cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) clients/cmd/docker-driver
 
-cmd/docker-driver/docker-driver: $(APP_GO_FILES)
+clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -374,16 +374,16 @@ docker-driver-clean:
 	-docker plugin disable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	-docker plugin rm $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	-docker plugin rm $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
-	rm -rf cmd/docker-driver/rootfs
+	rm -rf clients/cmd/docker-driver/rootfs
 
 #####################
 # fluent-bit plugin #
 #####################
 fluent-bit-plugin:
-	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o cmd/fluent-bit/out_grafana_loki.so ./cmd/fluent-bit/
+	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o clients/cmd/fluent-bit/out_grafana_loki.so ./clients/cmd/fluent-bit/
 
 fluent-bit-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f cmd/fluent-bit/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluent-bit/Dockerfile .
 
 fluent-bit-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
@@ -400,28 +400,28 @@ fluent-bit-test:
 fluentd-plugin:
 	gem install bundler --version 1.16.2
 	bundle config silence_root_warning true
-	bundle install --gemfile=cmd/fluentd/Gemfile --path=cmd/fluentd/vendor/bundle
+	bundle install --gemfile=clients/cmd/fluentd/Gemfile --path=clients/cmd/fluentd/vendor/bundle
 
 fluentd-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f cmd/fluentd/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
 
 fluentd-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
 fluentd-test:
-	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 ##################
 # logstash plugin #
 ##################
 logstash-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f cmd/logstash/Dockerfile ./
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f clients/cmd/logstash/Dockerfile ./
 
 # Send 10 lines to the local Loki instance.
 logstash-push-test-logs: LOKI_URL ?= http://host.docker.internal:3100/loki/api/v1/push
 logstash-push-test-logs:
-	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
+	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/clients/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
 		$(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f loki.conf
 
 logstash-push:
@@ -429,7 +429,7 @@ logstash-push:
 
 # Enter an env already configure to build and test logstash output plugin.
 logstash-env:
-	$(SUDO) docker run -v  `pwd`/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+	$(SUDO) docker run -v  `pwd`/clients/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
 ########################
 # Bigtable Backup Tool #
@@ -474,13 +474,13 @@ endef
 
 # promtail
 promtail-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f cmd/promtail/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile .
 promtail-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f cmd/promtail/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
 promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f cmd/promtail/Dockerfile.debug .
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
 
 promtail-push: promtail-image-cross
 	$(call push-image,promtail)
@@ -582,3 +582,9 @@ lint-jsonnet:
 fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
+
+# usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
+# this will run the fuzzing using /tmp/testcase and save benchmark locally.
+test-fuzz:
+	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
+		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s

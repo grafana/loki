@@ -8,8 +8,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // runtimeConfigValues are values that can be reloaded from configuration file while Loki is running.

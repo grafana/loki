@@ -551,7 +551,7 @@ timestamp:
   [location: <string>]
 ```
 
-##### output
+#### output
 
 The output stage takes data from the extracted map and sets the contents of the
 log entry that will be stored by Loki.

@@ -39,6 +39,16 @@ type AlertStore interface {
 	// DeleteAlertConfig deletes the alertmanager configuration for an user.
 	// If configuration for the user doesn't exist, no error is reported.
 	DeleteAlertConfig(ctx context.Context, user string) error
+
+	// GetFullState loads and returns the alertmanager state for the given user.
+	GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error)
+
+	// SetFullState stores the alertmanager state for the given user.
+	SetFullState(ctx context.Context, user string, fs alertspb.FullStateDesc) error
+
+	// DeleteFullState deletes the alertmanager state for an user.
+	// If state for the user doesn't exist, no error is reported.
+	DeleteFullState(ctx context.Context, user string) error
 }
 
 // NewLegacyAlertStore returns a new alertmanager storage backend poller and store

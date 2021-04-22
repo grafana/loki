@@ -22,6 +22,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -32,7 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	"github.com/cortexproject/cortex/pkg/util/math"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -45,11 +46,17 @@ var (
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
+
+	// Distributor instance limits errors.
+	errTooManyInflightPushRequests    = errors.New("too many inflight push requests in distributor")
+	errMaxSamplesPushRateLimitReached = errors.New("distributor's samples push rate limit reached")
 )
 
 const (
 	typeSamples  = "samples"
 	typeMetadata = "metadata"
+
+	instanceIngestionRateTickInterval = time.Second
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -78,6 +85,9 @@ type Distributor struct {
 	subservicesWatcher *services.FailureWatcher
 
 	activeUsers *util.ActiveUsersCleanupService
+
+	ingestionRate        *util_math.EwmaRate
+	inflightPushRequests atomic.Int64
 
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
@@ -123,6 +133,14 @@ type Config struct {
 
 	// This config is dynamically injected because defined in the querier config.
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
+
+	// Limits for distributor
+	InstanceLimits InstanceLimits `yaml:"instance_limits"`
+}
+
+type InstanceLimits struct {
+	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
+	MaxInflightPushRequests int     `yaml:"max_inflight_push_requests"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -137,6 +155,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
+
+	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
+	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
 }
 
 // Validate config and returns error on failure
@@ -151,6 +172,12 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 
 	return cfg.HATrackerConfig.Validate()
 }
+
+const (
+	instanceLimitsMetric     = "cortex_distributor_instance_limits"
+	instanceLimitsMetricHelp = "Instance limits used by this distributor." // Must be same for all registrations.
+	limitLabel               = "limit"
+)
 
 // New constructs a new Distributor
 func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer, log log.Logger) (*Distributor, error) {
@@ -200,6 +227,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		HATracker:            haTracker,
+		ingestionRate:        util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -273,6 +301,31 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
 	}
+
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_inflight_push_requests"},
+	}).Set(float64(cfg.InstanceLimits.MaxInflightPushRequests))
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
+	}).Set(cfg.InstanceLimits.MaxIngestionRate)
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_distributor_inflight_push_requests",
+		Help: "Current number of inflight push requests in distributor.",
+	}, func() float64 {
+		return float64(d.inflightPushRequests.Load())
+	})
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_distributor_ingestion_rate_samples_per_second",
+		Help: "Current ingestion rate in samples/sec that distributor is using to limit access.",
+	}, func() float64 {
+		return d.ingestionRate.Rate()
+	})
+
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
 
@@ -294,10 +347,16 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
+	ingestionRateTicker := time.NewTicker(instanceIngestionRateTickInterval)
+	defer ingestionRateTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+
+		case <-ingestionRateTicker.C:
+			d.ingestionRate.Tick()
 
 		case err := <-d.subservicesWatcher.Chan():
 			return errors.Wrap(err, "distributor subservice failed")
@@ -334,11 +393,11 @@ func (d *Distributor) tokenForLabels(userID string, labels []cortexpb.LabelAdapt
 		return shardByAllLabels(userID, labels), nil
 	}
 
-	metricName, err := extract.MetricNameFromLabelAdapters(labels)
+	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(labels)
 	if err != nil {
 		return 0, err
 	}
-	return shardByMetricName(userID, metricName), nil
+	return shardByMetricName(userID, unsafeMetricName), nil
 }
 
 func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 {
@@ -349,6 +408,8 @@ func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 
 	return shardByUser(userID)
 }
 
+// shardByMetricName returns the token for the given metric. The provided metricName
+// is guaranteed to not be retained.
 func shardByMetricName(userID string, metricName string) uint32 {
 	h := shardByUser(userID)
 	h = ingester_client.HashAdd32(h, metricName)
@@ -410,16 +471,16 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
-func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool) (cortexpb.PreallocTimeseries, error) {
+// The returned error may retain the series labels.
+func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 
-	metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
 	samples := make([]cortexpb.Sample, 0, len(ts.Samples))
 	for _, s := range ts.Samples {
-		if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
+		if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
 			return emptyPreallocSeries, err
 		}
 		samples = append(samples, s)
@@ -439,6 +500,20 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// We will report *this* request in the error too.
+	inflight := d.inflightPushRequests.Inc()
+	defer d.inflightPushRequests.Dec()
+
+	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
+		return nil, errTooManyInflightPushRequests
+	}
+
+	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
+		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
+			return nil, errMaxSamplesPushRateLimitReached
+		}
 	}
 
 	now := time.Now()
@@ -506,7 +581,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	for _, ts := range req.Timeseries {
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
-			latestSampleTimestampMs = math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+			latestSampleTimestampMs = util_math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 
 		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
@@ -544,12 +619,14 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 
 		skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
-		validatedSeries, err := d.validateSeries(ts, userID, skipLabelNameValidation)
+		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
-		if err != nil && firstPartialErr == nil {
-			firstPartialErr = err
+		if validationErr != nil && firstPartialErr == nil {
+			// The series labels may be retained by validationErr but that's not a problem for this
+			// use case because we format it calling Error() and then we discard it.
+			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
 		}
 
 		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
@@ -588,8 +665,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	totalN := validatedSamples + len(validatedMetadata)
-	rateOK, rateReservation := d.ingestionRateLimiter.AllowN(now, userID, totalN)
-	if !rateOK {
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)
 
@@ -599,6 +675,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}
+
+	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
+	d.ingestionRate.Add(int64(totalN))
 
 	subRing := d.ingestersRing
 
@@ -641,8 +720,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { cortexpb.ReuseSlice(req.Timeseries) })
 	if err != nil {
-		// Ingestion failed, so roll-back the reservation from the rate limiter.
-		rateReservation.CancelAt(now)
 		return nil, err
 	}
 	return &cortexpb.WriteResponse{}, firstPartialErr
@@ -912,7 +989,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, ingester := range replicationSet.Ingesters {
+	for _, ingester := range replicationSet.Instances {
 		client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err

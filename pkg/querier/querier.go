@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
 	listutil "github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -75,6 +75,10 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
 
 	return &querier, nil
+}
+
+func (q *Querier) SetQueryable(queryable logql.Querier) {
+	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits)
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.

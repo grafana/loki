@@ -11,6 +11,7 @@ import (
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
+// Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
 // LoadBalancerClient is the client API for LoadBalancer service.
@@ -30,7 +31,7 @@ func NewLoadBalancerClient(cc grpc.ClientConnInterface) LoadBalancerClient {
 }
 
 func (c *loadBalancerClient) BalanceLoad(ctx context.Context, opts ...grpc.CallOption) (LoadBalancer_BalanceLoadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_LoadBalancer_serviceDesc.Streams[0], "/grpc.lb.v1.LoadBalancer/BalanceLoad", opts...)
+	stream, err := c.cc.NewStream(ctx, &LoadBalancer_ServiceDesc.Streams[0], "/grpc.lb.v1.LoadBalancer/BalanceLoad", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ type UnsafeLoadBalancerServer interface {
 }
 
 func RegisterLoadBalancerServer(s grpc.ServiceRegistrar, srv LoadBalancerServer) {
-	s.RegisterService(&_LoadBalancer_serviceDesc, srv)
+	s.RegisterService(&LoadBalancer_ServiceDesc, srv)
 }
 
 func _LoadBalancer_BalanceLoad_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -113,7 +114,10 @@ func (x *loadBalancerBalanceLoadServer) Recv() (*LoadBalanceRequest, error) {
 	return m, nil
 }
 
-var _LoadBalancer_serviceDesc = grpc.ServiceDesc{
+// LoadBalancer_ServiceDesc is the grpc.ServiceDesc for LoadBalancer service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var LoadBalancer_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "grpc.lb.v1.LoadBalancer",
 	HandlerType: (*LoadBalancerServer)(nil),
 	Methods:     []grpc.MethodDesc{},
