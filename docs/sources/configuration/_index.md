@@ -927,6 +927,12 @@ lifecycler:
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
 
+# Forget ingesters having hearbeat timestamps older than `ring.kvstore.heartbeat_timeout`
+# It is equivalent to clicking on `/ring` `forget` button in the UI: the ingester is removed from the ring
+# It is useful when you are pretty sure that unhealthy nodes won't come back (ex: not using stateful sets or equivalent)
+# You may use `memberlist.rejoin_interval` > 0 to handle network partition cases when using memberlist
+# CLI flag: -ingester.autoforget-unhealthy
+[autoforget_unhealthy: <boolean> | default = false]
 
 # The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
 wal:

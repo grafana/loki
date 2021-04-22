@@ -53,16 +53,17 @@ type Config struct {
 	// Config for transferring chunks.
 	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
-	ConcurrentFlushes int               `yaml:"concurrent_flushes"`
-	FlushCheckPeriod  time.Duration     `yaml:"flush_check_period"`
-	FlushOpTimeout    time.Duration     `yaml:"flush_op_timeout"`
-	RetainPeriod      time.Duration     `yaml:"chunk_retain_period"`
-	MaxChunkIdle      time.Duration     `yaml:"chunk_idle_period"`
-	BlockSize         int               `yaml:"chunk_block_size"`
-	TargetChunkSize   int               `yaml:"chunk_target_size"`
-	ChunkEncoding     string            `yaml:"chunk_encoding"`
-	parsedEncoding    chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
-	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
+	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
+	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
+	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
+	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
+	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
+	BlockSize           int               `yaml:"chunk_block_size"`
+	TargetChunkSize     int               `yaml:"chunk_target_size"`
+	ChunkEncoding       string            `yaml:"chunk_encoding"`
+	parsedEncoding      chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge         time.Duration     `yaml:"max_chunk_age"`
+	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
 
 	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
 	SyncPeriod         time.Duration `yaml:"sync_period"`
@@ -98,6 +99,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
+	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Enable to remove unhealthy ingesters from the ring after `ring.kvstore.heartbeat_timeout`")
 }
 
 func (cfg *Config) Validate() error {
@@ -218,11 +220,85 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
+
+	i.setupAutoForget()
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+// setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
+// when enabled, unhealthy ingesters that reach `ring.kvstore.heartbeat_timeout` are removed from the ring every `HeartbeatPeriod`
+func (i *Ingester) setupAutoForget() {
+	if !i.cfg.AutoForgetUnhealthy {
+		return
+	}
+
+	go func() {
+		ctx := context.Background()
+		err := i.Service.AwaitRunning(ctx)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
+			return
+		}
+
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+
+		ticker := time.NewTicker(i.cfg.LifecyclerConfig.HeartbeatPeriod)
+		defer ticker.Stop()
+
+		var forgetList []string
+		for range ticker.C {
+			err := i.lifecycler.KVStore.CAS(ctx, ring.IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				forgetList = forgetList[:0]
+				if in == nil {
+					return nil, false, nil
+				}
+
+				ringDesc, ok := in.(*ring.Desc)
+				if !ok {
+					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
+					return nil, false, nil
+				}
+
+				for id, ingester := range ringDesc.Ingesters {
+					if !ingester.IsHealthy(ring.Reporting, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout, time.Now()) {
+						if i.lifecycler.ID == id {
+							level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
+							return nil, false, nil
+						}
+						forgetList = append(forgetList, id)
+					}
+				}
+
+				if len(forgetList) == len(ringDesc.Ingesters)-1 {
+					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
+					forgetList = forgetList[:0]
+					return nil, false, nil
+				}
+
+				if len(forgetList) > 0 {
+					for _, id := range forgetList {
+						ringDesc.RemoveIngester(id)
+					}
+					return ringDesc, true, nil
+				}
+				return nil, false, nil
+			})
+			if err != nil {
+				level.Warn(util_log.Logger).Log("msg", err)
+				continue
+			}
+
+			for _, id := range forgetList {
+				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+			}
+			i.metrics.autoForgetUnhealthyIngestersTotal.Add(float64(len(forgetList)))
+		}
+	}()
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
