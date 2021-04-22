@@ -19,11 +19,10 @@ spec:
         maxEntriesLimitPerQuery: 8
         maxQuerySeries: 71
   replicationFactor: 2
-  size: OneXSmall
+  size: SizeOneXSmall
   storage:
     secret:
       name: test
-    url: test
   storageClassName: standard
   template:
     compactor:

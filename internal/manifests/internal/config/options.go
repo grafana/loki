@@ -14,6 +14,7 @@ type Options struct {
 	GossipRing       Address
 	Querier          Address
 	StorageDirectory string
+	ObjectStorage    ObjectStorage
 }
 
 // Address FQDN and port for a k8s service.
@@ -22,4 +23,13 @@ type Address struct {
 	FQDN string
 	// Port is required
 	Port int
+}
+
+// ObjectStorage for storage config.
+type ObjectStorage struct {
+	Endpoint        string
+	Region          string
+	Buckets         string
+	AccessKeyID     string
+	AccessKeySecret string
 }

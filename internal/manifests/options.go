@@ -12,4 +12,15 @@ type Options struct {
 	Image     string
 
 	Stack lokiv1beta1.LokiStackSpec
+
+	ObjectStorage ObjectStorage
+}
+
+// ObjectStorage for storage config.
+type ObjectStorage struct {
+	Endpoint        string
+	Region          string
+	Buckets         string
+	AccessKeyID     string
+	AccessKeySecret string
 }

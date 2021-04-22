@@ -59,6 +59,13 @@ func ConfigOptions(opt Options) (config.Options, error) {
 			Port: httpPort,
 		},
 		StorageDirectory: strings.TrimRight(dataDirectory, "/"),
+		ObjectStorage: config.ObjectStorage{
+			Endpoint:        opt.ObjectStorage.Endpoint,
+			Buckets:         opt.ObjectStorage.Buckets,
+			Region:          opt.ObjectStorage.Region,
+			AccessKeyID:     opt.ObjectStorage.AccessKeyID,
+			AccessKeySecret: opt.ObjectStorage.AccessKeySecret,
+		},
 	}
 
 	// Now merge any configuration provided by the custom resource

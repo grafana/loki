@@ -85,9 +85,9 @@ schema_config:
       index:
         period: 24h
         prefix: index_
-      object_store: filesystem
+      object_store: s3
       schema: v11
-      store: boltdb
+      store: boltdb-shipper
 server:
   graceful_shutdown_timeout: 5s
   grpc_server_max_concurrent_streams: 1000
@@ -98,9 +98,18 @@ server:
   http_server_write_timeout: 1m
   log_level: info
 storage_config:
-  boltdb:
-    directory: {{ .StorageDirectory }}/index
-  filesystem:
-    directory: {{ .StorageDirectory }}/chunks
+  boltdb_shipper:
+    active_index_directory: {{ .StorageDirectory }}/index
+    cache_location: {{ .StorageDirectory }}/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    shared_store: s3
+  aws:
+    s3: {{ .ObjectStorage.Endpoint }}
+    bucketnames: {{ .ObjectStorage.Buckets }}
+    region: {{ .ObjectStorage.Region }}
+    access_key_id: {{ .ObjectStorage.AccessKeyID }}
+    secret_access_key: {{ .ObjectStorage.AccessKeySecret }}
+    s3forcepathstyle: true
 tracing:
   enabled: false

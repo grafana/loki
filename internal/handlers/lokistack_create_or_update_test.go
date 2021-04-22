@@ -30,7 +30,31 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var scheme = runtime.NewScheme()
+var (
+	scheme = runtime.NewScheme()
+
+	defaultSecret = corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "some-stack-secret",
+			Namespace: "some-ns",
+		},
+		Data: map[string][]byte{
+			"endpoint":          []byte("s3://your-endpoint"),
+			"region":            []byte("a-region"),
+			"bucketnames":       []byte("bucket1,bucket2"),
+			"access_key_id":     []byte("a-secret-id"),
+			"access_key_secret": []byte("a-secret-key"),
+		},
+	}
+
+	invalidSecret = corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "some-stack-secret",
+			Namespace: "some-ns",
+		},
+		Data: map[string][]byte{},
+	}
+)
 
 func TestMain(m *testing.M) {
 	testing.Init()
@@ -106,8 +130,31 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 		},
 	}
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, _ client.Object) error {
+	stack := lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+				},
+			},
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(out, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(out, &defaultSecret)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
@@ -143,12 +190,23 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+				},
+			},
+		},
 	}
 
 	// Create looks up the CR first, so we need to return our fake stack
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
@@ -208,12 +266,22 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 			Namespace: "invalid-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+				},
+			},
+		},
 	}
 
 	// Create looks up the CR first, so we need to return our fake stack
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
 		}
 		return nil
 	}
@@ -241,6 +309,13 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			Name:      "someStack",
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+				},
+			},
 		},
 	}
 
@@ -293,11 +368,13 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
 
+		}
 		if svc.Name == name.Name && svc.Namespace == name.Namespace {
 			k.SetClientObject(object, &svc)
 		}
-
 		return nil
 	}
 
@@ -329,6 +406,13 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+				},
+			},
+		},
 	}
 
 	// GetStub looks up the CR first, so we need to return our fake stack
@@ -336,6 +420,10 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
@@ -370,6 +458,13 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			Namespace: "some-ns",
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+				},
+			},
+		},
 	}
 
 	svc := corev1.Service{
@@ -422,6 +517,9 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+		}
 		if svc.Name == name.Name && svc.Namespace == name.Namespace {
 			k.SetClientObject(object, &svc)
 		}
@@ -437,4 +535,108 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
+}
+
+func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme)
+
+	// make sure error is returned to re-trigger reconciliation
+	require.NoError(t, err)
+
+	// make sure status and status-update calls
+	require.NotZero(t, k.StatusCallCount())
+	require.NotZero(t, sw.UpdateCallCount())
+}
+
+func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := &lokiv1beta1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1beta1.LokiStackSpec{
+			Storage: lokiv1beta1.ObjectStorageSpec{
+				Secret: lokiv1beta1.ObjectStorageSecretSpec{
+					Name: invalidSecret.Name,
+				},
+			},
+		},
+	}
+
+	// GetStub looks up the CR first, so we need to return our fake stack
+	// return NotFound for everything else to trigger create.
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+			return nil
+		}
+		if name.Name == invalidSecret.Name {
+			k.SetClientObject(object, &invalidSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme)
+
+	// make sure error is returned to re-trigger reconciliation
+	require.NoError(t, err)
+
+	// make sure status and status-update calls
+	require.NotZero(t, k.StatusCallCount())
+	require.NotZero(t, sw.UpdateCallCount())
 }
