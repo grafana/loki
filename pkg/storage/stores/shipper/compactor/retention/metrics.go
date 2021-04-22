@@ -9,6 +9,10 @@ const (
 	statusFailure  = "failure"
 	statusSuccess  = "success"
 	statusNotFound = "notfound"
+
+	tableActionModified = "modified"
+	tableActionDeleted  = "deleted"
+	tableActionNone     = "none"
 )
 
 type sweeperMetrics struct {
@@ -47,5 +51,32 @@ func newSweeperMetrics(r prometheus.Registerer) *sweeperMetrics {
 			Name:      "retention_sweeper_marker_files_deleted_total",
 			Help:      "The total of marker files deleted after being fully processed.",
 		}),
+	}
+}
+
+type markerMetrics struct {
+	tableProcessedTotal           *prometheus.CounterVec
+	tableMarksCreatedTotal        *prometheus.CounterVec
+	tableProcessedDurationSeconds *prometheus.HistogramVec
+}
+
+func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
+	return &markerMetrics{
+		tableProcessedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_marker_table_processed_total",
+			Help:      "Total amount of table processed per action.",
+		}, []string{"table", "action"}),
+		tableMarksCreatedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_marker_count_total",
+			Help:      "Total count of markers created per table.",
+		}, []string{"table"}),
+		tableProcessedDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_marker_table_processed_duration_seconds",
+			Help:      "Time (in seconds) spent in marking table for chunks to delete",
+			Buckets:   []float64{1, 2.5, 5, 10, 20, 40, 90, 360, 600, 1800},
+		}, []string{"table", "status"}),
 	}
 }

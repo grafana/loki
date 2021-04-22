@@ -91,7 +91,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if err != nil {
 		return nil, err
 	}
-	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits))
+	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits), r)
 	if err != nil {
 		return nil, err
 	}

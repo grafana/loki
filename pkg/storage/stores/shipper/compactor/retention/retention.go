@@ -41,21 +41,37 @@ type Marker struct {
 	config           storage.SchemaConfig
 	objectClient     chunk.ObjectClient
 	expiration       ExpirationChecker
+	markerMetrics    *markerMetrics
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker) (*Marker, error) {
+func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
+	metrics := newMarkerMetrics(r)
 	return &Marker{
 		workingDirectory: workingDirectory,
 		config:           config,
 		objectClient:     objectClient,
 		expiration:       expiration,
+		markerMetrics:    metrics,
 	}, nil
 }
 
 func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error {
+	start := time.Now()
+	status := statusSuccess
+	defer func() {
+		t.markerMetrics.tableProcessedDurationSeconds.WithLabelValues(tableName, status).Observe(time.Since(start).Seconds())
+	}()
+	if err := t.markTable(ctx, tableName); err != nil {
+		status = statusFailure
+		return err
+	}
+	return nil
+}
+
+func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	objects, err := util.ListDirectory(ctx, tableName, t.objectClient)
 	if err != nil {
 		return err
@@ -133,6 +149,7 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 		if err != nil {
 			return err
 		}
+		t.markerMetrics.tableMarksCreatedTotal.WithLabelValues(tableName).Add(float64(markerWriter.Count()))
 		if err := markerWriter.Close(); err != nil {
 			return fmt.Errorf("failed to close marker writer: %w", err)
 		}
@@ -143,12 +160,15 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 	}
 	// if the index is empty we can delete the index table.
 	if empty {
+		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
 		return t.objectClient.DeleteObject(ctx, tableName+delimiter)
 	}
 	// No chunks to delete means no changes to the remote index, we don't need to upload it.
 	if markerWriter.Count() == 0 {
+		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionNone).Inc()
 		return nil
 	}
+	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionModified).Inc()
 	return t.uploadDB(ctx, db, tableKey)
 }
 
