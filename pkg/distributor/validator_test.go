@@ -102,7 +102,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"test",
 			nil,
 			"{}",
-			nil,
+			httpgrpc.Errorf(http.StatusBadRequest, validation.MissingLabelsErrorMsg),
 		},
 		{
 			"test too many labels",
