@@ -1,3 +1,3 @@
 * Everquote
 * Grafana Labs
-* Red Hat
+* [Red Hat](https://www.redhat.com)
