@@ -29,6 +29,14 @@ scrape_configs:
      labels:
       job: syslog
       __path__: /var/log/syslog
+ - job_name: system1
+   pipeline_stages:
+   static_configs:
+   - targets:
+      - localhost
+     labels:
+      job: apache
+      __path__: /var/log/apache.log
 ```
 
 This config will tail one file and assign one label: `job=syslog`. You could query it like this:
