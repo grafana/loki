@@ -29,7 +29,7 @@ scrape_configs:
      labels:
       job: syslog
       __path__: /var/log/syslog
- - job_name: system1
+ - job_name: apache
    pipeline_stages:
    static_configs:
    - targets:
