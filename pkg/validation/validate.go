@@ -7,7 +7,10 @@ import (
 const (
 	discardReasonLabel = "reason"
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
-	InvalidLabels         = "invalid_labels"
+	InvalidLabels = "invalid_labels"
+	MissingLabels = "missing_labels"
+
+	MissingLabelsErrorMsg = "error at least one label pair is required per stream"
 	InvalidLabelsErrorMsg = "Error parsing labels '%s' with error: %s"
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.

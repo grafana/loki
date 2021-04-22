@@ -16,8 +16,10 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
-var testStreamLabels = "FIXME"
-var testTime = time.Now()
+var (
+	testStreamLabels = "FIXME"
+	testTime         = time.Now()
+)
 
 func TestValidator_ValidateEntry(t *testing.T) {
 	tests := []struct {
@@ -93,6 +95,13 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"test",
 			nil,
 			"{foo=\"bar\"}",
+			nil,
+		},
+		{
+			"empty",
+			"test",
+			nil,
+			"{}",
 			nil,
 		},
 		{

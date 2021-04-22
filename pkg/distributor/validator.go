@@ -81,6 +81,10 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 
 // Validate labels returns an error if the labels are invalid
 func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, stream logproto.Stream) error {
+	if len(ls) == 0 {
+		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.MissingLabelsErrorMsg)
+	}
 	numLabelNames := len(ls)
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
 		validation.DiscardedSamples.WithLabelValues(validation.MaxLabelNamesPerSeries, ctx.userID).Inc()
