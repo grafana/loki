@@ -107,9 +107,11 @@ type markerProcessor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	sweeperMetrics *sweeperMetrics
 }
 
-func newMarkerStorageReader(workingDir string, maxParallelism int, minAgeFile time.Duration) (*markerProcessor, error) {
+func newMarkerStorageReader(workingDir string, maxParallelism int, minAgeFile time.Duration, sweeperMetrics *sweeperMetrics) (*markerProcessor, error) {
 	folder := filepath.Join(workingDir, markersFolder)
 	err := chunk_util.EnsureDirectory(folder)
 	if err != nil {
@@ -122,6 +124,7 @@ func newMarkerStorageReader(workingDir string, maxParallelism int, minAgeFile ti
 		cancel:         cancel,
 		maxParallelism: maxParallelism,
 		minAgeFile:     minAgeFile,
+		sweeperMetrics: sweeperMetrics,
 	}, nil
 }
 
@@ -144,18 +147,20 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				// cancelled
 				return
 			}
-			paths, err := r.availablePath()
+			paths, times, err := r.availablePath()
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
 				continue
 			}
+			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
 			if len(paths) == 0 {
 				level.Info(util_log.Logger).Log("msg", "No marks file found")
 			}
-			for _, path := range paths {
+			for i, path := range paths {
 				if r.ctx.Err() != nil {
 					return
 				}
+				r.sweeperMetrics.markerFileCurrentTime.Set(float64(times[i].UnixNano()) / 1e9)
 				if err := r.processPath(path, deleteFunc); err != nil {
 					level.Warn(util_log.Logger).Log("msg", "failed to process marks", "path", path, "err", err)
 					continue
@@ -261,13 +266,14 @@ func (r *markerProcessor) deleteEmptyMarks(path string) error {
 		return err
 	}
 	if empty {
+		r.sweeperMetrics.markerFilesDeletedTotal.Inc()
 		return os.Remove(path)
 	}
 	return nil
 }
 
 // availablePath returns markers path in chronological order, skipping file that are not old enough.
-func (r *markerProcessor) availablePath() ([]string, error) {
+func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
 	found := []int64{}
 	if err := filepath.WalkDir(r.folder, func(path string, d fs.DirEntry, err error) error {
 		if d == nil || err != nil {
@@ -292,17 +298,19 @@ func (r *markerProcessor) availablePath() ([]string, error) {
 		}
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(found) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i] < found[j] })
 	res := make([]string, len(found))
+	resTime := make([]time.Time, len(found))
 	for i, f := range found {
 		res[i] = filepath.Join(r.folder, fmt.Sprintf("%d", f))
+		resTime[i] = time.Unix(0, f)
 	}
-	return res, nil
+	return res, resTime, nil
 }
 
 func (r *markerProcessor) Stop() {

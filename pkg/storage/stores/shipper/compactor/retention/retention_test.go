@@ -118,7 +118,7 @@ func Test_Retention(t *testing.T) {
 				key := string([]byte(objectKey)) // forces a copy, because this string is only valid within the delete fn.
 				actualDeleted = append(actualDeleted, key)
 				return nil
-			}), 0)
+			}), 0, nil)
 			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()

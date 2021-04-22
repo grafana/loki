@@ -6,54 +6,46 @@ import (
 )
 
 const (
-	statusFailure = "failure"
-	statusSuccess = "success"
+	statusFailure  = "failure"
+	statusSuccess  = "success"
+	statusNotFound = "notfound"
 )
 
-type metrics struct {
-	deletedChunkTotal *prometheus.CounterVec
-	// compactTablesOperationDurationSeconds prometheus.Gauge
-	// compactTablesOperationLastSuccess     prometheus.Gauge
-
-	// retentionOperationTotal           *prometheus.CounterVec
-	// retentionOperationDurationSeconds prometheus.Gauge
-	// retentionOperationLastSuccess     prometheus.Gauge
+type sweeperMetrics struct {
+	deleteChunkTotal           *prometheus.CounterVec
+	deleteChunkDurationSeconds *prometheus.HistogramVec
+	markerFileCurrentTime      prometheus.Gauge
+	markerFilesCurrent         prometheus.Gauge
+	markerFilesDeletedTotal    prometheus.Counter
 }
 
-func newMetrics(r prometheus.Registerer) *metrics {
-	m := metrics{
-		deletedChunkTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+func newSweeperMetrics(r prometheus.Registerer) *sweeperMetrics {
+	return &sweeperMetrics{
+		deleteChunkTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_chunk_deleted_total",
+			Name:      "retention_sweeper_chunk_deleted_total",
 			Help:      "Total number of chunks deleted by retention",
 		}, []string{"status"}),
-		// compactTablesOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		// 	Namespace: "loki_boltdb_shipper",
-		// 	Name:      "compact_tables_operation_duration_seconds",
-		// 	Help:      "Time (in seconds) spent in compacting all the tables",
-		// }),
-		// compactTablesOperationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		// 	Namespace: "loki_boltdb_shipper",
-		// 	Name:      "compact_tables_operation_last_successful_run_timestamp_seconds",
-		// 	Help:      "Unix timestamp of the last successful compaction run",
-		// }),
-
-		// retentionOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		// 	Namespace: "loki_boltdb_shipper",
-		// 	Name:      "retention_operation_total",
-		// 	Help:      "Total number of retention applied by status",
-		// }, []string{"status"}),
-		// retentionOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		// 	Namespace: "loki_boltdb_shipper",
-		// 	Name:      "retention_operation_duration_seconds",
-		// 	Help:      "Time (in seconds) spent in applying retention for all the tables",
-		// }),
-		// retentionOperationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		// 	Namespace: "loki_boltdb_shipper",
-		// 	Name:      "retention_operation_last_successful_run_timestamp_seconds",
-		// 	Help:      "Unix timestamp of the last successful retention run",
-		// }),
+		deleteChunkDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_sweeper_chunk_deleted_duration_seconds",
+			Help:      "Time (in seconds) spent in deleting chunk",
+			Buckets:   prometheus.ExponentialBuckets(0.1, 2, 8),
+		}, []string{"status"}),
+		markerFilesCurrent: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_sweeper_marker_files_current",
+			Help:      "The current total of marker files valid for deletion.",
+		}),
+		markerFileCurrentTime: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_sweeper_marker_file_processing_current_time",
+			Help:      "The current time of creation of the marker file being processed.",
+		}),
+		markerFilesDeletedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "retention_sweeper_marker_files_deleted_total",
+			Help:      "The total of marker files deleted after being fully processed.",
+		}),
 	}
-
-	return &m
 }

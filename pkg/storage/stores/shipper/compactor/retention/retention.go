@@ -15,6 +15,7 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage"
@@ -128,8 +129,7 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 			return fmt.Errorf("failed to create chunk index iterator: %w", err)
 		}
 
-		seriesCleaner := newSeriesCleaner(bucket, schemaCfg)
-		empty, err = markforDelete(markerWriter, chunkIt, seriesCleaner, t.expiration)
+		empty, err = markforDelete(markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration)
 		if err != nil {
 			return err
 		}
@@ -227,26 +227,39 @@ func NewDeleteClient(objectClient chunk.ObjectClient) DeleteClient {
 type Sweeper struct {
 	markerProcessor MarkerProcessor
 	deleteClient    DeleteClient
+	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir string, deleteClient DeleteClient, minAgeDelete time.Duration) (*Sweeper, error) {
-	p, err := newMarkerStorageReader(workingDir, deletionWorkerCount, minAgeDelete)
+func NewSweeper(workingDir string, deleteClient DeleteClient, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+	m := newSweeperMetrics(r)
+	p, err := newMarkerStorageReader(workingDir, deletionWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
 	return &Sweeper{
 		markerProcessor: p,
 		deleteClient:    deleteClient,
+		sweeperMetrics:  m,
 	}, nil
 }
 
 func (s *Sweeper) Start() {
 	s.markerProcessor.Start(func(ctx context.Context, chunkId []byte) error {
+		status := statusSuccess
+		start := time.Now()
+		defer func() {
+			s.sweeperMetrics.deleteChunkTotal.WithLabelValues(status).Inc()
+			s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
+		}()
 		chunkIDString := unsafeGetString(chunkId)
 		err := s.deleteClient.DeleteObject(ctx, chunkIDString)
 		if err == chunk.ErrStorageObjectNotFound {
+			status = statusNotFound
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
 			return nil
+		}
+		if err != nil {
+			status = statusFailure
 		}
 		return err
 	})

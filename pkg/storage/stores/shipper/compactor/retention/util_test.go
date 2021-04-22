@@ -12,6 +12,7 @@ import (
 	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -87,6 +88,8 @@ var (
 		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
 		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
 	}
+
+	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
 )
 
 func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {

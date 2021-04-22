@@ -19,7 +19,7 @@ func initAndFeedMarkerProcessor(t *testing.T) *markerProcessor {
 	t.Helper()
 	minListMarkDelay = time.Second
 	dir := t.TempDir()
-	p, err := newMarkerStorageReader(dir, 5, time.Second)
+	p, err := newMarkerStorageReader(dir, 5, time.Second, sweepMetrics)
 	require.NoError(t, err)
 	go func() {
 		w, err := NewMarkerStorageWriter(dir)
@@ -98,15 +98,15 @@ func Test_markerProcessor_StartDeleteOnSuccess(t *testing.T) {
 func Test_markerProcessor_availablePath(t *testing.T) {
 	now := time.Now()
 	for _, tt := range []struct {
-		name         string
-		expectedPath func(dir string) []string
+		name     string
+		expected func(dir string) ([]string, []time.Time)
 	}{
-		{"empty", func(_ string) []string { return nil }},
-		{"skips bad files", func(dir string) []string {
+		{"empty", func(_ string) ([]string, []time.Time) { return nil, nil }},
+		{"skips bad files", func(dir string) ([]string, []time.Time) {
 			_, _ = os.Create(filepath.Join(dir, "foo"))
-			return nil
+			return nil, nil
 		}},
-		{"happy path", func(dir string) []string {
+		{"happy path", func(dir string) ([]string, []time.Time) {
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.UnixNano())))
 			_, _ = os.Create(filepath.Join(dir, "foo"))
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.Add(-30*time.Minute).UnixNano())))
@@ -115,22 +115,27 @@ func Test_markerProcessor_availablePath(t *testing.T) {
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano())))
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano())))
 			return []string{
-				filepath.Join(dir, fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano())), // oldest should be first
-				filepath.Join(dir, fmt.Sprintf("%d", now.Add(-3*time.Hour).UnixNano())),
-				filepath.Join(dir, fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano())),
-			}
+					filepath.Join(dir, fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano())), // oldest should be first
+					filepath.Join(dir, fmt.Sprintf("%d", now.Add(-3*time.Hour).UnixNano())),
+					filepath.Join(dir, fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano())),
+				}, []time.Time{
+					time.Unix(0, now.Add(-48*time.Hour).UnixNano()),
+					time.Unix(0, now.Add(-3*time.Hour).UnixNano()),
+					time.Unix(0, now.Add(-2*time.Hour).UnixNano()),
+				}
 		}},
 	} {
 		t.Run("", func(t *testing.T) {
 			dir := t.TempDir()
-			p, err := newMarkerStorageReader(dir, 5, 2*time.Hour)
+			p, err := newMarkerStorageReader(dir, 5, 2*time.Hour, sweepMetrics)
 
-			expected := tt.expectedPath(p.folder)
+			expectedPath, expectedTimes := tt.expected(p.folder)
 
 			require.NoError(t, err)
-			paths, err := p.availablePath()
+			paths, times, err := p.availablePath()
 			require.Nil(t, err)
-			require.Equal(t, expected, paths)
+			require.Equal(t, expectedPath, paths)
+			require.Equal(t, expectedTimes, times)
 		})
 	}
 }
