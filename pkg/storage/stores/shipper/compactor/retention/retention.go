@@ -30,10 +30,9 @@ var (
 )
 
 const (
-	logMetricName       = "logs"
-	delimiter           = "/"
-	markersFolder       = "markers"
-	deletionWorkerCount = 10
+	logMetricName = "logs"
+	delimiter     = "/"
+	markersFolder = "markers"
 )
 
 type Marker struct {
@@ -63,7 +62,10 @@ func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error
 	status := statusSuccess
 	defer func() {
 		t.markerMetrics.tableProcessedDurationSeconds.WithLabelValues(tableName, status).Observe(time.Since(start).Seconds())
+		level.Debug(util_log.Logger).Log("msg", "finished to process table", "table", tableName, "duration", time.Since(start))
 	}()
+	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
+
 	if err := t.markTable(ctx, tableName); err != nil {
 		status = statusFailure
 		return err
@@ -99,10 +101,8 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	if err != nil {
 		return err
 	}
-	level.Debug(util_log.Logger).Log("msg", "table dir", "dir", tableDirectory)
 
 	downloadAt := filepath.Join(tableDirectory, fmt.Sprintf("retention-%d", time.Now().UnixNano()))
-	level.Debug(util_log.Logger).Log("msg", "Downloading", "key", tableKey, "at", downloadAt)
 
 	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, tableKey, downloadAt)
 	if err != nil {
@@ -254,9 +254,9 @@ type Sweeper struct {
 	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir string, deleteClient DeleteClient, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+func NewSweeper(workingDir string, deleteClient DeleteClient, minAgeDelete time.Duration, deleteWorkerCount int, r prometheus.Registerer) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
-	p, err := newMarkerStorageReader(workingDir, deletionWorkerCount, minAgeDelete, m)
+	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +283,7 @@ func (s *Sweeper) Start() {
 			return nil
 		}
 		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error deleting chunk", "chunkID", chunkIDString, "err", err)
 			status = statusFailure
 		}
 		return err

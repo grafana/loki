@@ -28,13 +28,14 @@ import (
 const delimiter = "/"
 
 type Config struct {
-	WorkingDirectory     string        `yaml:"working_directory"`
-	SharedStoreType      string        `yaml:"shared_store"`
-	SharedStoreKeyPrefix string        `yaml:"shared_store_key_prefix"`
-	CompactionInterval   time.Duration `yaml:"compaction_interval"`
-	RetentionEnabled     bool          `yaml:"retention_enabled"`
-	RetentionInterval    time.Duration `yaml:"retention_interval"`
-	RetentionDeleteDelay time.Duration `yaml:"retention_delete_delay"`
+	WorkingDirectory         string        `yaml:"working_directory"`
+	SharedStoreType          string        `yaml:"shared_store"`
+	SharedStoreKeyPrefix     string        `yaml:"shared_store_key_prefix"`
+	CompactionInterval       time.Duration `yaml:"compaction_interval"`
+	RetentionEnabled         bool          `yaml:"retention_enabled"`
+	RetentionInterval        time.Duration `yaml:"retention_interval"`
+	RetentionDeleteDelay     time.Duration `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount int           `yaml:"retention_delete_worker_count"`
 }
 
 // RegisterFlags registers flags.
@@ -46,6 +47,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetentionInterval, "boltdb.shipper.compactor.retention-interval", 10*time.Minute, "Interval at which to re-run the retention operation.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "Activate custom (per-stream,per-tenant) retention.")
+	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 }
 
 func (cfg *Config) IsDefaults() bool {
@@ -87,7 +89,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 
 	retentionWorkDir := filepath.Join(cfg.WorkingDirectory, "retention")
 
-	sweeper, err := retention.NewSweeper(retentionWorkDir, retention.NewDeleteClient(objectClient), cfg.RetentionDeleteDelay, r)
+	sweeper, err := retention.NewSweeper(retentionWorkDir, retention.NewDeleteClient(objectClient), cfg.RetentionDeleteDelay, cfg.RetentionDeleteWorkCount, r)
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +225,14 @@ func (c *Compactor) RunRetention(ctx context.Context) error {
 	start := time.Now()
 
 	defer func() {
+		level.Debug(util_log.Logger).Log("msg", "finished to processing retention on all  all tables", "status", status, "duration", time.Since(start))
 		c.metrics.retentionOperationTotal.WithLabelValues(status).Inc()
 		if status == statusSuccess {
 			c.metrics.retentionOperationDurationSeconds.Set(time.Since(start).Seconds())
 			c.metrics.retentionOperationLastSuccess.SetToCurrentTime()
 		}
 	}()
+	level.Debug(util_log.Logger).Log("msg", "starting to processing retention on all  all tables")
 
 	_, dirs, err := c.objectClient.List(ctx, "", delimiter)
 	if err != nil {

@@ -157,6 +157,7 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				level.Info(util_log.Logger).Log("msg", "No marks file found")
 			}
 			for i, path := range paths {
+				level.Debug(util_log.Logger).Log("msg", "processing mark file:")
 				if r.ctx.Err() != nil {
 					return
 				}
@@ -233,6 +234,7 @@ func processKey(ctx context.Context, key *bytes.Buffer, db *bbolt.DB, deleteFunc
 		return err
 	}
 	// we don't use a batch because it would force us to copy the key.
+	// but we most likely want to do batch in the future.
 	return db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
