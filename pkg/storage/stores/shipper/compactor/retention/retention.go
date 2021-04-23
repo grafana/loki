@@ -99,16 +99,20 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	if err != nil {
 		return err
 	}
+	level.Debug(util_log.Logger).Log("msg", "table dir", "dir", tableDirectory)
 
 	downloadAt := filepath.Join(tableDirectory, tableKey)
+	level.Debug(util_log.Logger).Log("msg", "Downloading", "key", tableKey, "at", downloadAt)
 
 	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, tableKey, downloadAt)
 	if err != nil {
+		level.Warn(util_log.Logger).Log("msg", "failed to download table", "err", err, "path", downloadAt, "tableKey", tableKey)
 		return err
 	}
 
 	db, err := shipper_util.SafeOpenBoltdbFile(downloadAt)
 	if err != nil {
+		level.Warn(util_log.Logger).Log("msg", "failed to open db", "err", err, "path", downloadAt)
 		return err
 	}
 
