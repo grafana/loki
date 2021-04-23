@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -781,59 +780,6 @@ func TestChunkStoreError(t *testing.T) {
 			})
 		}
 	}
-}
-
-func TestStoreMaxLookBack(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-	metric := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-	}
-	storeMaker := stores[0]
-	storeCfg := storeMaker.configFn()
-
-	// Creating 2 stores, One with no look back limit and another with 30 Mins look back limit
-	storeWithoutLookBackLimit := newTestChunkStoreConfig(t, "v9", storeCfg)
-	defer storeWithoutLookBackLimit.Stop()
-
-	storeCfg.MaxLookBackPeriod = model.Duration(30 * time.Minute)
-	storeWithLookBackLimit := newTestChunkStoreConfig(t, "v9", storeCfg)
-	defer storeWithLookBackLimit.Stop()
-
-	now := model.Now()
-
-	// Populating both stores with chunks
-	fooChunk1 := dummyChunkFor(now, metric)
-	err := fooChunk1.Encode()
-	require.NoError(t, err)
-	err = storeWithoutLookBackLimit.Put(ctx, []Chunk{fooChunk1})
-	require.NoError(t, err)
-	err = storeWithLookBackLimit.Put(ctx, []Chunk{fooChunk1})
-	require.NoError(t, err)
-
-	fooChunk2 := dummyChunkFor(now.Add(-time.Hour*1), metric)
-	err = fooChunk2.Encode()
-	require.NoError(t, err)
-	err = storeWithoutLookBackLimit.Put(ctx, []Chunk{fooChunk2})
-	require.NoError(t, err)
-	err = storeWithLookBackLimit.Put(ctx, []Chunk{fooChunk2})
-	require.NoError(t, err)
-
-	matchers, err := parser.ParseMetricSelector(`foo{bar="baz"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Both the chunks should be returned
-	chunks, err := storeWithoutLookBackLimit.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
-	require.NoError(t, err)
-	require.Equal(t, 2, len(chunks))
-
-	// Single chunk should be returned with newer timestamp
-	chunks, err = storeWithLookBackLimit.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
-	require.NoError(t, err)
-	require.Equal(t, 1, len(chunks))
-	require.Equal(t, now, chunks[0].Through)
 }
 
 func benchmarkParseIndexEntries(i int64, regex string, b *testing.B) {

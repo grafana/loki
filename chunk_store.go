@@ -20,7 +20,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -58,9 +57,6 @@ type StoreConfig struct {
 
 	CacheLookupsOlderThan model.Duration `yaml:"cache_lookups_older_than"`
 
-	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
-	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
-
 	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
 	// This exists in case we don't want to cache all the chunks but still want to take advantage of
 	// ingester chunk write deduplication. But for the queriers we need the full value. So when this option
@@ -78,16 +74,10 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
-	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Deprecated: use -querier.max-query-lookback instead. Limit how long back data can be queried. This setting applies to chunks storage only.") // To be removed in Cortex 1.8.
 }
 
 // Validate validates the store config.
 func (cfg *StoreConfig) Validate(logger log.Logger) error {
-	if cfg.MaxLookBackPeriod > 0 {
-		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
-	}
-
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
 	}
@@ -317,13 +307,6 @@ func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, f
 		// time-span start is in future ... regard as legal
 		level.Info(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
 		return true, nil
-	}
-
-	if c.cfg.MaxLookBackPeriod != 0 {
-		oldestStartTime := model.Now().Add(-time.Duration(c.cfg.MaxLookBackPeriod))
-		if oldestStartTime.After(*from) {
-			*from = oldestStartTime
-		}
 	}
 
 	if through.After(now.Add(5 * time.Minute)) {
