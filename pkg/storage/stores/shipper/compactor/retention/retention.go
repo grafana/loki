@@ -101,7 +101,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	}
 	level.Debug(util_log.Logger).Log("msg", "table dir", "dir", tableDirectory)
 
-	downloadAt := filepath.Join(tableDirectory, tableKey)
+	downloadAt := filepath.Join(tableDirectory, fmt.Sprintf("retention-%d", time.Now().UnixNano()))
 	level.Debug(util_log.Logger).Log("msg", "Downloading", "key", tableKey, "at", downloadAt)
 
 	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, tableKey, downloadAt)
