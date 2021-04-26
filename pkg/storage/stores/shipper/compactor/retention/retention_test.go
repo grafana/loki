@@ -145,7 +145,7 @@ func Test_Retention(t *testing.T) {
 				require.Eventually(t, func() bool {
 					lock.Lock()
 					defer lock.Unlock()
-					return assert.Equal(t, expectDeleted, actualDeleted)
+					return assert.ObjectsAreEqual(expectDeleted, actualDeleted)
 				}, 10*time.Second, 1*time.Second)
 			}
 		})
