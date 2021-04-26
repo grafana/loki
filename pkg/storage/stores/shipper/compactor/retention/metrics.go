@@ -16,7 +16,6 @@ const (
 )
 
 type sweeperMetrics struct {
-	deleteChunkTotal           *prometheus.CounterVec
 	deleteChunkDurationSeconds *prometheus.HistogramVec
 	markerFileCurrentTime      prometheus.Gauge
 	markerFilesCurrent         prometheus.Gauge
@@ -25,11 +24,6 @@ type sweeperMetrics struct {
 
 func newSweeperMetrics(r prometheus.Registerer) *sweeperMetrics {
 	return &sweeperMetrics{
-		deleteChunkTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_sweeper_chunk_deleted_total",
-			Help:      "Total number of chunks deleted by retention",
-		}, []string{"status"}),
 		deleteChunkDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "retention_sweeper_chunk_deleted_duration_seconds",

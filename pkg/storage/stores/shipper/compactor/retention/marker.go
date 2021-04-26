@@ -129,6 +129,7 @@ func newMarkerStorageReader(workingDir string, maxParallelism int, minAgeFile ti
 }
 
 func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []byte) error) {
+	level.Info(util_log.Logger).Log("msg", "mark processor started", "workers", r.maxParallelism, "delay", r.minAgeFile)
 	r.wg.Wait() // only one start at a time.
 	r.wg.Add(1)
 	go func() {
@@ -154,10 +155,10 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 			}
 			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
 			if len(paths) == 0 {
-				level.Info(util_log.Logger).Log("msg", "No marks file found")
+				level.Info(util_log.Logger).Log("msg", "no marks file found")
 			}
 			for i, path := range paths {
-				level.Debug(util_log.Logger).Log("msg", "processing mark file:")
+				level.Debug(util_log.Logger).Log("msg", "processing mark file", "path", path)
 				if r.ctx.Err() != nil {
 					return
 				}
