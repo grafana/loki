@@ -236,7 +236,7 @@ func processKey(ctx context.Context, key *bytes.Buffer, db *bbolt.DB, deleteFunc
 	}
 	// we don't use a batch because it would force us to copy the key.
 	// but we most likely want to do batch in the future.
-	return db.Update(func(tx *bbolt.Tx) error {
+	return db.Batch(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
 			return nil

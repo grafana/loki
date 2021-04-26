@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func initAndFeedMarkerProcessor(t *testing.T) *markerProcessor {
+func initAndFeedMarkerProcessor(t *testing.T, deleteWorkerCount int) *markerProcessor {
 	t.Helper()
 	minListMarkDelay = time.Second
 	dir := t.TempDir()
-	p, err := newMarkerStorageReader(dir, 5, time.Second, sweepMetrics)
+	p, err := newMarkerStorageReader(dir, deleteWorkerCount, time.Second, sweepMetrics)
 	require.NoError(t, err)
 	go func() {
 		w, err := NewMarkerStorageWriter(dir)
@@ -37,8 +37,31 @@ func initAndFeedMarkerProcessor(t *testing.T) *markerProcessor {
 	return p
 }
 
+func Test_marlkerProcessor_Deadlock(t *testing.T) {
+	minListMarkDelay = time.Second
+	dir := t.TempDir()
+	p, err := newMarkerStorageReader(dir, 150, 0, sweepMetrics)
+	require.NoError(t, err)
+	w, err := NewMarkerStorageWriter(dir)
+	require.NoError(t, err)
+	for i := 0; i <= 200; i++ {
+		require.NoError(t, w.Put([]byte(fmt.Sprintf("%d", i))))
+	}
+	require.NoError(t, w.Close())
+	defer p.Stop()
+	p.Start(func(ctx context.Context, id []byte) error {
+		return nil
+	})
+
+	require.Eventually(t, func() bool {
+		path, _, err := p.availablePath()
+		require.NoError(t, err)
+		return len(path) == 0
+	}, 20*time.Second, 100*time.Millisecond)
+}
+
 func Test_markerProcessor_StartRetryKey(t *testing.T) {
-	p := initAndFeedMarkerProcessor(t)
+	p := initAndFeedMarkerProcessor(t, 5)
 	defer p.Stop()
 	counts := map[string]int{}
 	l := sync.Mutex{}
@@ -67,7 +90,7 @@ func Test_markerProcessor_StartRetryKey(t *testing.T) {
 }
 
 func Test_markerProcessor_StartDeleteOnSuccess(t *testing.T) {
-	p := initAndFeedMarkerProcessor(t)
+	p := initAndFeedMarkerProcessor(t, 5)
 	defer p.Stop()
 	counts := map[string]int{}
 	l := sync.Mutex{}
