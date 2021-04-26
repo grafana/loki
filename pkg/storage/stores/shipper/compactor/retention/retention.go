@@ -254,7 +254,7 @@ type Sweeper struct {
 	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir string, deleteClient DeleteClient, minAgeDelete time.Duration, deleteWorkerCount int, r prometheus.Registerer) (*Sweeper, error) {
+func NewSweeper(workingDir string, deleteClient DeleteClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {

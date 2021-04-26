@@ -89,7 +89,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 
 	retentionWorkDir := filepath.Join(cfg.WorkingDirectory, "retention")
 
-	sweeper, err := retention.NewSweeper(retentionWorkDir, retention.NewDeleteClient(objectClient), cfg.RetentionDeleteDelay, cfg.RetentionDeleteWorkCount, r)
+	sweeper, err := retention.NewSweeper(retentionWorkDir, retention.NewDeleteClient(objectClient), cfg.RetentionDeleteWorkCount, cfg.RetentionDeleteDelay, r)
 	if err != nil {
 		return nil, err
 	}

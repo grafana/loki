@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -182,28 +183,55 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 		wg    sync.WaitGroup
 		queue = make(chan *bytes.Buffer)
 	)
-	db, err := shipper_util.SafeOpenBoltdbFile(path)
+	// we use a copy to view the file so that we can read and update at the same time.
+	viewFile, err := ioutil.TempFile("/tmp/", "marker-view-")
+	if err != nil {
+		return err
+	}
+	if err := viewFile.Close(); err != nil {
+		return fmt.Errorf("failed to close view file: %w", err)
+	}
+	defer func() {
+		if err := os.Remove(viewFile.Name()); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to delete view file", "file", viewFile.Name(), "err", err)
+		}
+	}()
+	if _, err := copyFile(path, viewFile.Name()); err != nil {
+		return fmt.Errorf("failed to copy view file: %w", err)
+	}
+	dbView, err := shipper_util.SafeOpenBoltdbFile(viewFile.Name())
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := dbView.Close(); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to close db view", "err", err)
+		}
+	}()
+	dbUpdate, err := shipper_util.SafeOpenBoltdbFile(path)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		close(queue)
 		wg.Wait()
-		db.Close()
+		if err := dbUpdate.Close(); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to close db", "err", err)
+		}
 	}()
 	for i := 0; i < r.maxParallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for key := range queue {
-				if err := processKey(r.ctx, key, db, deleteFunc); err != nil {
+				if err := processKey(r.ctx, key, dbUpdate, deleteFunc); err != nil {
 					level.Warn(util_log.Logger).Log("msg", "failed to delete key", "key", key.String(), "err", err)
 				}
 				putKeyBuffer(key)
 			}
 		}()
 	}
-	if err := db.View(func(tx *bbolt.Tx) error {
+	if err := dbView.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
 			return nil
@@ -234,8 +262,6 @@ func processKey(ctx context.Context, key *bytes.Buffer, db *bbolt.DB, deleteFunc
 	if err := deleteFunc(ctx, keyData); err != nil {
 		return err
 	}
-	// we don't use a batch because it would force us to copy the key.
-	// but we most likely want to do batch in the future.
 	return db.Batch(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
