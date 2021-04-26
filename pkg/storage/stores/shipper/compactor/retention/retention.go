@@ -272,7 +272,6 @@ func (s *Sweeper) Start() {
 		status := statusSuccess
 		start := time.Now()
 		defer func() {
-			s.sweeperMetrics.deleteChunkTotal.WithLabelValues(status).Inc()
 			s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
 		}()
 		chunkIDString := unsafeGetString(chunkId)
