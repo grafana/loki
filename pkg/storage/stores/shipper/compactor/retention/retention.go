@@ -57,7 +57,8 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClien
 	}, nil
 }
 
-func (t *Marker) MarkTableForDelete(ctx context.Context, tableName string) error {
+// MarkForDelete marks all chunks expired for a given table.
+func (t *Marker) MarkForDelete(ctx context.Context, tableName string) error {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
@@ -89,10 +90,10 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 		level.Debug(util_log.Logger).Log("msg", "skipping retention for non-compacted table", "name", tableName)
 		return nil
 	}
-	tableKey := objects[0].Key
+	objectKey := objects[0].Key
 
-	if shipper_util.IsDirectory(tableKey) {
-		level.Debug(util_log.Logger).Log("msg", "skipping retention no table file found", "key", tableKey)
+	if shipper_util.IsDirectory(objectKey) {
+		level.Debug(util_log.Logger).Log("msg", "skipping retention no table file found", "objectKey", objectKey)
 		return nil
 	}
 
@@ -104,9 +105,9 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 
 	downloadAt := filepath.Join(tableDirectory, fmt.Sprintf("retention-%d", time.Now().UnixNano()))
 
-	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, tableKey, downloadAt)
+	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, objectKey, downloadAt)
 	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to download table", "err", err, "path", downloadAt, "tableKey", tableKey)
+		level.Warn(util_log.Logger).Log("msg", "failed to download table", "err", err, "path", downloadAt, "objectKey", objectKey)
 		return err
 	}
 
@@ -173,7 +174,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 		return nil
 	}
 	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionModified).Inc()
-	return t.uploadDB(ctx, db, tableKey)
+	return t.uploadDB(ctx, db, objectKey)
 }
 
 func (t *Marker) uploadDB(ctx context.Context, db *bbolt.DB, objectKey string) error {

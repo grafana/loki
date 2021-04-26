@@ -225,7 +225,7 @@ func (c *Compactor) RunRetention(ctx context.Context) error {
 	start := time.Now()
 
 	defer func() {
-		level.Debug(util_log.Logger).Log("msg", "finished to processing retention on all  all tables", "status", status, "duration", time.Since(start))
+		level.Debug(util_log.Logger).Log("msg", "finished to processing retention on all tables", "status", status, "duration", time.Since(start))
 		c.metrics.retentionOperationTotal.WithLabelValues(status).Inc()
 		if status == statusSuccess {
 			c.metrics.retentionOperationDurationSeconds.Set(time.Since(start).Seconds())
@@ -248,7 +248,7 @@ func (c *Compactor) RunRetention(ctx context.Context) error {
 	var errs errUtil.MultiError
 
 	for _, tableName := range tables {
-		if err := c.tableMarker.MarkTableForDelete(ctx, tableName); err != nil {
+		if err := c.tableMarker.MarkForDelete(ctx, tableName); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to mark table for deletes", "table", tableName, "err", err)
 			errs.Add(err)
 			status = statusFailure

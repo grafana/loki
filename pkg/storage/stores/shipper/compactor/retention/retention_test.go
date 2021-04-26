@@ -128,7 +128,7 @@ func Test_Retention(t *testing.T) {
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				table.Close()
-				require.NoError(t, marker.MarkTableForDelete(context.Background(), table.name))
+				require.NoError(t, marker.MarkForDelete(context.Background(), table.name))
 			}
 
 			// assert using the store again.
