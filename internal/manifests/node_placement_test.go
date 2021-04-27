@@ -63,3 +63,54 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 		assert.Empty(t, NewCompactorStatefulSet(Options{}).Spec.Template.Spec.Tolerations)
 	})
 }
+
+func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
+	nodeSelectors := map[string]string{"type": "storage"}
+	optsWithNodeSelectors := Options{
+		Stack: lokiv1beta1.LokiStackSpec{
+			Template: lokiv1beta1.LokiTemplateSpec{
+				Compactor: lokiv1beta1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+				},
+				Distributor: lokiv1beta1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+				},
+				Ingester: lokiv1beta1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+				},
+				Querier: lokiv1beta1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+				},
+				QueryFrontend: lokiv1beta1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+				},
+			},
+		},
+		ObjectStorage: ObjectStorage{},
+	}
+
+	t.Run("distributor", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewDistributorDeployment(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewDistributorDeployment(Options{}).Spec.Template.Spec.NodeSelector)
+	})
+
+	t.Run("query_frontend", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewQueryFrontendDeployment(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewQueryFrontendDeployment(Options{}).Spec.Template.Spec.NodeSelector)
+	})
+
+	t.Run("querier", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewQuerierStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewQuerierStatefulSet(Options{}).Spec.Template.Spec.NodeSelector)
+	})
+
+	t.Run("ingester", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewIngesterStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewIngesterStatefulSet(Options{}).Spec.Template.Spec.NodeSelector)
+	})
+
+	t.Run("compactor", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewCompactorStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewCompactorStatefulSet(Options{}).Spec.Template.Spec.NodeSelector)
+	})
+}

@@ -370,7 +370,6 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 		}
 		if defaultSecret.Name == name.Name {
 			k.SetClientObject(object, &defaultSecret)
-
 		}
 		if svc.Name == name.Name && svc.Namespace == name.Namespace {
 			k.SetClientObject(object, &svc)
