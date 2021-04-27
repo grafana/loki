@@ -13,6 +13,9 @@ Configuration examples can be found in the [Configuration Examples](examples/) d
 - [Configuring Loki](#configuring-loki)
   - [Printing Loki Config At Runtime](#printing-loki-config-at-runtime)
   - [Configuration File Reference](#configuration-file-reference)
+    - [Use environment variables in the configuration](#use-environment-variables-in-the-configuration)
+    - [Generic placeholders:](#generic-placeholders)
+    - [Supported contents and default values of `loki.yaml`:](#supported-contents-and-default-values-of-lokiyaml)
   - [server_config](#server_config)
   - [distributor_config](#distributor_config)
   - [querier_config](#querier_config)
@@ -24,13 +27,13 @@ Configuration examples can be found in the [Configuration Examples](examples/) d
   - [ingester_config](#ingester_config)
   - [consul_config](#consul_config)
   - [etcd_config](#etcd_config)
-  - [compactor_config](#compactor_config)
   - [memberlist_config](#memberlist_config)
   - [storage_config](#storage_config)
   - [chunk_store_config](#chunk_store_config)
   - [cache_config](#cache_config)
   - [schema_config](#schema_config)
     - [period_config](#period_config)
+  - [compactor_config](#compactor_config)
   - [limits_config](#limits_config)
     - [grpc_client_config](#grpc_client_config)
   - [table_manager_config](#table_manager_config)
@@ -38,6 +41,7 @@ Configuration examples can be found in the [Configuration Examples](examples/) d
       - [auto_scaling_config](#auto_scaling_config)
   - [tracing_config](#tracing_config)
   - [Runtime Configuration file](#runtime-configuration-file)
+    - [Generic placeholders](#generic-placeholders-1)
 
 ## Printing Loki Config At Runtime
 
@@ -265,6 +269,8 @@ ring:
   # reading and writing.
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+# When enabled, writes to the ingesters will succeed if there is a sloppy quorum of ingesters available, providing much higher availability than the default replication strategy when the number of nodes is greater than the replication factor
+[sloppy_quorum: <boolean> | default = false]
 ```
 
 ## querier_config

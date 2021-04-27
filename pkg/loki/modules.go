@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortex"
 	cortex_querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
@@ -107,10 +108,26 @@ func (t *Loki) initServer() (services.Service, error) {
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
+
+	store, err := kv.NewClient(
+		t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore,
+		ring.GetCodec(),
+		kv.RegistererWithKVName(prometheus.DefaultRegisterer, "ingester-ring"),
+	)
 	if err != nil {
 		return
 	}
+
+	t.replicationStrategy = distributor.DefaultReplicationStrategy
+	if t.Cfg.Distributor.SloppyQuorum {
+		t.replicationStrategy = distributor.NewSloppyQuorumReplicationStrategy()
+	}
+
+	t.ring, err = ring.NewWithStoreClientAndStrategy(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, store, t.replicationStrategy)
+	if err != nil {
+		return
+	}
+
 	prometheus.MustRegister(t.ring)
 	t.Server.HTTP.Handle("/ring", t.ring)
 	return t.ring, nil
@@ -153,7 +170,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	var err error
-	t.distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.tenantConfigs, t.ring, t.overrides, prometheus.DefaultRegisterer)
+	t.distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.tenantConfigs, t.ring, t.overrides, t.replicationStrategy, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

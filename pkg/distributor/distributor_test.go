@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -259,6 +260,142 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+// inMemoryRing returns a ring running in-memory
+func inMemoryRing(ringConfig ring.Config, desc *ring.Desc, replicationStrategy ring.ReplicationStrategy) (*ring.Ring, error) {
+	codec := ring.GetCodec()
+	store := consul.NewInMemoryClient(codec)
+
+	r, err := ring.NewWithStoreClientAndStrategy(ringConfig,
+		"test",
+		ring.IngesterRingKey,
+		store,
+		replicationStrategy,
+	)
+	if err != nil {
+		return nil, err
+	}
+	err = r.StartAsync(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	err = r.AwaitRunning(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	err = store.CAS(context.Background(), ring.IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		return desc, false, nil
+	})
+
+	return r, err
+}
+
+func awaitInstance(id string, r *ring.Ring) {
+	for {
+		if r.HasInstance(id) {
+			return
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+}
+
+func TestDistributorReplicationStrategies(t *testing.T) {
+	t.Parallel()
+
+	const heartbeatTimeout = time.Hour
+	now := time.Now()
+
+	ringConfig := ring.Config{HeartbeatTimeout: heartbeatTimeout, ReplicationFactor: 3}
+	tests := map[string]struct {
+		ringInstances       map[string]ring.InstanceDesc
+		expectedErrForWrite error
+		expectedSetForWrite []string
+		strategy            *ReplicationStrategy
+	}{
+
+		"should return all instances": {
+			strategy: DefaultReplicationStrategy,
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{1}},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{2}},
+				"instance-3": {Addr: "127.0.0.3", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{3}},
+				"instance-4": {Addr: "127.0.0.4", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{4}},
+				"instance-5": {Addr: "127.0.0.5", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{5}},
+			},
+			expectedSetForWrite: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+		},
+
+		"should fail with default replication strategy": {
+			strategy: DefaultReplicationStrategy,
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{1}},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{2}},
+				"instance-3": {Addr: "127.0.0.3", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{3}},
+				"instance-4": {Addr: "127.0.0.4", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{4}},
+				"instance-5": {Addr: "127.0.0.5", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{5}},
+			},
+			expectedErrForWrite: errors.New("at least 2 live replicas required, could only find 0"),
+		},
+		"should succeed with sloppy quorum replication strategy and everyone healthy": {
+			strategy: NewSloppyQuorumReplicationStrategy(),
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{1}},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{2}},
+				"instance-3": {Addr: "127.0.0.3", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{3}},
+				"instance-4": {Addr: "127.0.0.4", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{4}},
+				"instance-5": {Addr: "127.0.0.5", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{5}},
+			},
+			expectedSetForWrite: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+		},
+		"should succeed with sloppy quorum replication strategy and a quorum for the write": {
+			strategy: NewSloppyQuorumReplicationStrategy(),
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{1}},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{2}},
+				"instance-3": {Addr: "127.0.0.3", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{3}},
+				"instance-4": {Addr: "127.0.0.4", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{4}},
+				"instance-5": {Addr: "127.0.0.5", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{5}},
+			},
+			expectedSetForWrite: []string{"127.0.0.1", "127.0.0.5"},
+		},
+		"should fail with sloppy quorum replication strategy": {
+			strategy: NewSloppyQuorumReplicationStrategy(),
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{1}},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{2}},
+				"instance-3": {Addr: "127.0.0.3", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{3}},
+				"instance-4": {Addr: "127.0.0.4", State: ring.ACTIVE, Timestamp: now.Add(-2 * time.Hour).Unix(), Tokens: []uint32{4}},
+				"instance-5": {Addr: "127.0.0.5", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: []uint32{5}},
+			},
+			expectedErrForWrite: errors.New("at least 2 healthy replicas required, could only find 1"),
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+			// Init the ring.
+			ringDesc := &ring.Desc{Ingesters: testData.ringInstances}
+			for id, instance := range ringDesc.Ingesters {
+				ringDesc.Ingesters[id] = instance
+			}
+			r, err := inMemoryRing(ringConfig, ringDesc, testData.strategy.ReplicationStrategy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				r.StopAsync()
+				_ = r.AwaitTerminated(context.Background())
+			}()
+			awaitInstance("instance-1", r)
+
+			set, err := r.Get(0, testData.strategy.Op, nil, nil, nil)
+			require.Equal(t, testData.expectedErrForWrite, err)
+			assert.ElementsMatch(t, testData.expectedSetForWrite, set.GetAddresses())
+		})
+	}
+}
+
 // loopbackInterfaceName search for the name of a loopback interface in the list
 // of the system's network interfaces.
 func loopbackInterfaceName() (string, error) {
@@ -315,7 +452,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 		}
 	}
 
-	d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, nil)
+	d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, DefaultReplicationStrategy, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 

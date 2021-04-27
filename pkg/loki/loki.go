@@ -151,6 +151,7 @@ type Loki struct {
 
 	Server                   *server.Server
 	ring                     *ring.Ring
+	replicationStrategy      *distributor.ReplicationStrategy
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
 	distributor              *distributor.Distributor

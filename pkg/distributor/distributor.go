@@ -40,12 +40,16 @@ type Config struct {
 	// Distributors ring
 	DistributorRing cortex_distributor.RingConfig `yaml:"ring,omitempty"`
 
+	// Writes succeed if we can write a quorum of replicas
+	SloppyQuorum bool `yaml:"sloppy_quorum"`
+
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.SloppyQuorum, "distributor.sloppy-quorum", false, "Enable to allow writes to other healthy nodes when some nodes are unhealthy")
 	cfg.DistributorRing.RegisterFlags(f)
 }
 
@@ -53,12 +57,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Distributor struct {
 	services.Service
 
-	cfg           Config
-	clientCfg     client.Config
-	tenantConfigs *runtime.TenantConfigs
-	ingestersRing ring.ReadRing
-	validator     *Validator
-	pool          *ring_client.Pool
+	cfg                 Config
+	clientCfg           client.Config
+	tenantConfigs       *runtime.TenantConfigs
+	ingestersRing       ring.ReadRing
+	validator           *Validator
+	pool                *ring_client.Pool
+	replicationStrategy *ReplicationStrategy
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -78,7 +83,7 @@ type Distributor struct {
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, registerer prometheus.Registerer) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, ingestersRing ring.ReadRing, overrides *validation.Overrides, replicationStrategy *ReplicationStrategy, registerer prometheus.Registerer) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (ring_client.PoolClient, error) {
@@ -114,6 +119,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	if err != nil {
 		return nil, err
 	}
+
 	d := Distributor{
 		cfg:                  cfg,
 		clientCfg:            clientCfg,
@@ -122,6 +128,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		distributorsRing:     distributorsRing,
 		validator:            validator,
 		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		replicationStrategy:  replicationStrategy,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:           labelCache,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -258,7 +265,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	samplesByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
+		replicationSet, err := d.ingestersRing.Get(key, d.replicationStrategy.Op, descs[:0], nil, nil)
 		if err != nil {
 			return nil, err
 		}
