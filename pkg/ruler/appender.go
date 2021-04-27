@@ -3,7 +3,9 @@ package ruler
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/prometheus/prometheus/pkg/exemplar"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -25,7 +27,7 @@ type RemoteWriteAppender struct {
 	remoteWriter *remote.WriteClient
 
 	labels  []labels.Labels
-	samples []client.Sample
+	samples []cortexpb.Sample
 }
 
 // from github.com/prometheus/prometheus/storage/remote/codec.go
@@ -43,7 +45,7 @@ func labelsToLabelsProto(labels labels.Labels, buf []prompb.Label) []prompb.Labe
 	return result
 }
 
-func (a *RemoteWriteAppender) encodeRequest(l labels.Labels, s client.Sample) ([]byte, error) {
+func (a *RemoteWriteAppender) encodeRequest(l labels.Labels, s cortexpb.Sample) ([]byte, error) {
 	ts := prompb.TimeSeries{
 		Labels: labelsToLabelsProto(l, nil),
 		Samples: []prompb.Sample{
@@ -71,28 +73,40 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 }
 
-// Add adds a sample pair for the given series. A reference number is
-// returned which can be used to add further samples in the same or later
-// transactions.
+// Append adds a sample pair for the given series.
+// An optional reference number can be provided to accelerate calls.
+// A reference number is returned which can be used to add further
+// samples in the same or later transactions.
 // Returned reference numbers are ephemeral and may be rejected in calls
-// to AddFast() at any point. Adding the sample via Add() returns a new
+// to Append() at any point. Adding the sample via Append() returns a new
 // reference number.
 // If the reference is 0 it must not be used for caching.
-func (a *RemoteWriteAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *RemoteWriteAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 
-	a.samples = append(a.samples, client.Sample{
+	a.samples = append(a.samples, cortexpb.Sample{
 		TimestampMs: t,
 		Value:       v,
 	})
 
+	level.Warn(a.logger).Log("msg", "writing sample", "sample", fmt.Sprintf("%+v", a.samples[len(a.samples)-1]))
+
 	return 0, nil
 }
 
-// AddFast adds a sample pair for the referenced series. It is generally
-// faster than adding a sample by providing its full label set.
-func (a *RemoteWriteAppender) AddFast(ref uint64, t int64, v float64) error {
-	return storage.ErrNotFound
+// AppendExemplar adds an exemplar for the given series labels.
+// An optional reference number can be provided to accelerate calls.
+// A reference number is returned which can be used to add further
+// exemplars in the same or later transactions.
+// Returned reference numbers are ephemeral and may be rejected in calls
+// to Append() at any point. Adding the sample via Append() returns a new
+// reference number.
+// If the reference is 0 it must not be used for caching.
+// Note that in our current implementation of Prometheus' exemplar storage
+// calls to Append should generate the reference numbers, AppendExemplar
+// generating a new reference number should be considered possible erroneous behaviour and be logged.
+func (a *RemoteWriteAppender) AppendExemplar(_ uint64, _ labels.Labels, _ exemplar.Exemplar) (uint64, error) {
+	return 0, errors.New("exemplars are unsupported")
 }
 
 // Commit submits the collected samples and purges the batch. If Commit
@@ -122,7 +136,7 @@ func (a *RemoteWriteAppender) Commit() error {
 }
 
 func (a *RemoteWriteAppender) prepareRequest() ([]byte, error) {
-	req := client.ToWriteRequest(a.labels, a.samples, nil, client.API)
+	req := cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE)
 	reqBytes, err := req.Marshal()
 	if err != nil {
 		return nil, err
