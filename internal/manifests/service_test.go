@@ -136,6 +136,13 @@ func TestServicesMatchLabels(t *testing.T) {
 				NewQueryFrontendHTTPService(opt.Name),
 			},
 		},
+		{
+			Object: NewCompactorStatefulSet(opt),
+			Services: []*corev1.Service{
+				NewCompactorGRPCService(opt),
+				NewCompactorHTTPService(opt),
+			},
+		},
 	}
 
 	for _, tst := range table {

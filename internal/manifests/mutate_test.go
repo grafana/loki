@@ -1,8 +1,9 @@
-package manifests
+package manifests_test
 
 import (
 	"testing"
 
+	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -35,7 +36,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 		},
 	}
 
-	f := MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -47,7 +48,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
 	got := &corev1.ServiceAccount{}
 	want := &corev1.ServiceAccount{}
-	f := MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want)
 
 	require.Error(t, f())
 }
@@ -63,7 +64,7 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 		BinaryData: map[string][]byte{"btest": []byte("btestss")},
 	}
 
-	f := MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -112,7 +113,7 @@ func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
 		},
 	}
 
-	f := MutateFuncFor(got, want)
+	f := manifests.MutateFuncFor(got, want)
 	err := f()
 	require.NoError(t, err)
 
@@ -233,7 +234,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
@@ -390,7 +391,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := MutateFuncFor(tst.got, tst.want)
+			f := manifests.MutateFuncFor(tst.got, tst.want)
 			err := f()
 			require.NoError(t, err)
 
