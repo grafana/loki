@@ -28,6 +28,7 @@ func BuildCompactor(opts Options) []client.Object {
 // NewCompactorStatefulSet creates a statefulset object for a compactor.
 func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
+		Tolerations: opt.Stack.Template.Compactor.Tolerations,
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,

@@ -33,6 +33,7 @@ func BuildDistributor(opt Options) []client.Object {
 // NewDistributorDeployment creates a deployment object for a distributor
 func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		Tolerations: opt.Stack.Template.Distributor.Tolerations,
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,

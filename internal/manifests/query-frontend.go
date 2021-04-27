@@ -27,6 +27,7 @@ func BuildQueryFrontend(opt Options) []client.Object {
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		Tolerations: opt.Stack.Template.QueryFrontend.Tolerations,
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
