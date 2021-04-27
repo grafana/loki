@@ -85,7 +85,7 @@ scrape_configs:
       job: syslog
       env: dev
       __path__: /var/log/syslog
- - job_name: system
+ - job_name: apache
    pipeline_stages:
    static_configs:
    - targets:
