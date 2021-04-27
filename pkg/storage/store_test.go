@@ -31,9 +31,9 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -184,7 +184,7 @@ func printHeap(b *testing.B, show bool) {
 
 func getLocalStore() Store {
 	limits, err := validation.NewOverrides(validation.Limits{
-		MaxQueryLength: 6000 * time.Hour,
+		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
 	if err != nil {
 		panic(err)

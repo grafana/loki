@@ -10,10 +10,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 )
 
 const (
@@ -75,23 +73,6 @@ func interval(r *http.Request) (time.Duration, error) {
 		return 0, nil
 	}
 	return parseSecondsOrDuration(value)
-}
-
-// Match extracts and parses multiple matcher groups from a slice of strings
-func Match(xs []string) ([][]*labels.Matcher, error) {
-	groups := make([][]*labels.Matcher, 0, len(xs))
-	for _, x := range xs {
-		ms, err := logql.ParseMatchers(x)
-		if err != nil {
-			return nil, err
-		}
-		if len(ms) == 0 {
-			return nil, errors.Errorf("0 matchers in group: %s", x)
-		}
-		groups = append(groups, ms)
-	}
-
-	return groups, nil
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,

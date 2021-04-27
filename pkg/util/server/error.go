@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request
@@ -36,7 +36,7 @@ func WriteError(err error, w http.ResponseWriter) {
 		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
 	case errors.As(err, &queryErr):
 		http.Error(w, err.Error(), http.StatusBadRequest)
-	case errors.Is(err, logql.ErrLimit) || errors.Is(err, logql.ErrParse) || errors.Is(err, logql.ErrPipeline):
+	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, user.ErrNoOrgID):
 		http.Error(w, err.Error(), http.StatusBadRequest)

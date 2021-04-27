@@ -22,10 +22,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/unmarshal"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/unmarshal"
 )
 
 var (
@@ -294,7 +294,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	tss := []time.Time{}
 	value := decoded.Data.Result
 	switch value.Type() {
-	case logql.ValueTypeStreams:
+	case logqlmodel.ValueTypeStreams:
 		for _, stream := range value.(loghttp.Streams) {
 			for _, entry := range stream.Entries {
 				ts, err := parseResponse(&entry)

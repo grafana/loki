@@ -1026,7 +1026,11 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 			err = g.Wait()
 		})
 		if err != nil {
-			return status.Error(codes.Aborted, err.Error())
+			code := codes.Aborted
+			if s, ok := status.FromError(errors.Cause(err)); ok {
+				code = s.Code()
+			}
+			return status.Error(code, err.Error())
 		}
 		stats.blocksQueried = len(res)
 		stats.getAllDuration = time.Since(begin)

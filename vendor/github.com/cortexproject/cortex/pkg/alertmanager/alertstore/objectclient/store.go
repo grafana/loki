@@ -30,6 +30,10 @@ const (
 	fetchConcurrency = 16
 )
 
+var (
+	errState = errors.New("legacy object alertmanager storage does not support state persistency")
+)
+
 // AlertStore allows cortex alertmanager configs to be stored using an object store backend.
 type AlertStore struct {
 	client chunk.ObjectClient
@@ -136,4 +140,19 @@ func (a *AlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
 		return nil
 	}
 	return err
+}
+
+// GetFullState implements alertstore.AlertStore.
+func (a *AlertStore) GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error) {
+	return alertspb.FullStateDesc{}, errState
+}
+
+// SetFullState implements alertstore.AlertStore.
+func (a *AlertStore) SetFullState(ctx context.Context, user string, cfg alertspb.FullStateDesc) error {
+	return errState
+}
+
+// DeleteFullState implements alertstore.AlertStore.
+func (a *AlertStore) DeleteFullState(ctx context.Context, user string) error {
+	return errState
 }

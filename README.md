@@ -4,7 +4,6 @@
 <a href="https://circleci.com/gh/grafana/loki/tree/master"><img src="https://circleci.com/gh/grafana/loki.svg?style=shield&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d" alt="CircleCI" /></a>
 <a href="https://goreportcard.com/report/github.com/grafana/loki"><img src="https://goreportcard.com/badge/github.com/grafana/loki" alt="Go Report Card" /></a>
 <a href="https://slack.grafana.com/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
-<a href="https://codecov.io/gh/grafana/loki"><img src="https://codecov.io/gh/grafana/loki/branch/master/graph/badge.svg" alt="Codecov" /></a>
 
 # Loki: like Prometheus, but for logs.
 
@@ -145,4 +144,4 @@ $ CGO_ENABLED=0 go build ./cmd/promtail
 
 ## License
 
-Apache License 2.0, see [LICENSE](LICENSE).
+Grafana Loki is distributed under [AGPL-3.0-only](LICENSE). For Apache-2.0 exceptions, see [LICENSING.md](LICENSING.md).
