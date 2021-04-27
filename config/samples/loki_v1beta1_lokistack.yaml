@@ -8,12 +8,12 @@ spec:
       ingestion:
         ingestionBurstSize: 90
         ingestionRate: 60
-        maxGlobalStreamsPerUser: 83
+        maxGlobalStreamsPerTenant: 83
         maxLabelLength: 40
         maxLabelValueLength: 79
         maxLabelNamesPerSeries: 45
         maxLineSize: 74
-        maxStreamsPerUser: 35
+        maxStreamsPerTenant: 35
       queries:
         maxChunksPerQuery: 90
         maxEntriesLimitPerQuery: 8

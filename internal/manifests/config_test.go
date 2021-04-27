@@ -78,14 +78,14 @@ func randomConfigOptions() manifests.Options {
 			Limits: lokiv1beta1.LimitsSpec{
 				Global: lokiv1beta1.LimitsTemplateSpec{
 					IngestionLimits: lokiv1beta1.IngestionLimitSpec{
-						IngestionRate:           rand.Int31(),
-						IngestionBurstSize:      rand.Int31(),
-						MaxLabelLength:          rand.Int31(),
-						MaxLabelValueLength:     rand.Int31(),
-						MaxLabelNamesPerSeries:  rand.Int31(),
-						MaxStreamsPerUser:       rand.Int31(),
-						MaxGlobalStreamsPerUser: rand.Int31(),
-						MaxLineSize:             rand.Int31(),
+						IngestionRate:             rand.Int31(),
+						IngestionBurstSize:        rand.Int31(),
+						MaxLabelLength:            rand.Int31(),
+						MaxLabelValueLength:       rand.Int31(),
+						MaxLabelNamesPerSeries:    rand.Int31(),
+						MaxStreamsPerTenant:       rand.Int31(),
+						MaxGlobalStreamsPerTenant: rand.Int31(),
+						MaxLineSize:               rand.Int31(),
 					},
 					QueryLimits: lokiv1beta1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: rand.Int31(),
@@ -96,14 +96,14 @@ func randomConfigOptions() manifests.Options {
 				Tenants: map[string]lokiv1beta1.LimitsTemplateSpec{
 					uuid.New().String(): {
 						IngestionLimits: lokiv1beta1.IngestionLimitSpec{
-							IngestionRate:           rand.Int31(),
-							IngestionBurstSize:      rand.Int31(),
-							MaxLabelLength:          rand.Int31(),
-							MaxLabelValueLength:     rand.Int31(),
-							MaxLabelNamesPerSeries:  rand.Int31(),
-							MaxStreamsPerUser:       rand.Int31(),
-							MaxGlobalStreamsPerUser: rand.Int31(),
-							MaxLineSize:             rand.Int31(),
+							IngestionRate:             rand.Int31(),
+							IngestionBurstSize:        rand.Int31(),
+							MaxLabelLength:            rand.Int31(),
+							MaxLabelValueLength:       rand.Int31(),
+							MaxLabelNamesPerSeries:    rand.Int31(),
+							MaxStreamsPerTenant:       rand.Int31(),
+							MaxGlobalStreamsPerTenant: rand.Int31(),
+							MaxLineSize:               rand.Int31(),
 						},
 						QueryLimits: lokiv1beta1.QueryLimitSpec{
 							MaxEntriesLimitPerQuery: rand.Int31(),

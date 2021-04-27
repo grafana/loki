@@ -49,14 +49,14 @@ limits_config:
   ingestion_rate_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionRate }}
   ingestion_rate_strategy: global
   max_cache_freshness_per_query: 10m
-  max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerUser }}
+  max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_query_length: 12000h
   max_label_name_length: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelLength }}
   max_label_value_length: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelValueLength }}
   max_label_names_per_series: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelNamesPerSeries }}
   max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
   max_query_parallelism: 32
-  max_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxStreamsPerUser }}
+  max_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
   max_entries_limit_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery }}
   reject_old_samples: true

@@ -55,8 +55,8 @@ spec:
                             description: IngestionRate defines the sample size per second. Units MB.
                             format: int32
                             type: integer
-                          maxGlobalStreamsPerUser:
-                            description: MaxGlobalStreamsPerUser defines the maximum number of active streams per user, across the cluster.
+                          maxGlobalStreamsPerTenant:
+                            description: MaxGlobalStreamsPerTenant defines the maximum number of active streams per tenant, across the cluster.
                             format: int32
                             type: integer
                           maxLabelLength:
@@ -75,8 +75,8 @@ spec:
                             description: MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
-                          maxStreamsPerUser:
-                            description: MaxStreamsPerUser defines the maximum number of active streams per user, per ingester.
+                          maxStreamsPerTenant:
+                            description: MaxStreamsPerTenant defines the maximum number of active streams per tenant, per ingester.
                             format: int32
                             type: integer
                         type: object
@@ -112,8 +112,8 @@ spec:
                               description: IngestionRate defines the sample size per second. Units MB.
                               format: int32
                               type: integer
-                            maxGlobalStreamsPerUser:
-                              description: MaxGlobalStreamsPerUser defines the maximum number of active streams per user, across the cluster.
+                            maxGlobalStreamsPerTenant:
+                              description: MaxGlobalStreamsPerTenant defines the maximum number of active streams per tenant, across the cluster.
                               format: int32
                               type: integer
                             maxLabelLength:
@@ -132,8 +132,8 @@ spec:
                               description: MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
                               format: int32
                               type: integer
-                            maxStreamsPerUser:
-                              description: MaxStreamsPerUser defines the maximum number of active streams per user, per ingester.
+                            maxStreamsPerTenant:
+                              description: MaxStreamsPerTenant defines the maximum number of active streams per tenant, per ingester.
                               format: int32
                               type: integer
                           type: object
@@ -157,16 +157,24 @@ spec:
                     description: Tenants defines the limits applied per tenant.
                     type: object
                 type: object
+              managementState:
+                default: Managed
+                description: ManagementState defines if the CR should be managed by the operator or not. Default is managed.
+                enum:
+                - Managed
+                - Unmanaged
+                type: string
               replicationFactor:
                 description: ReplicationFactor defines the policy for log stream replication.
                 format: int32
+                minimum: 1
                 type: integer
               size:
                 description: Size defines one of the support Loki deployment scale out sizes.
                 enum:
-                - OneXExtraSmallSize
-                - OneXSmall
-                - OneXMedium
+                - SizeOneXExtraSmall
+                - SizeOneXSmall
+                - SizeOneXMedium
                 type: string
               storage:
                 description: Storage defines the spec for the object storage endpoint to store logs.
@@ -180,9 +188,6 @@ spec:
                     required:
                     - name
                     type: object
-                  url:
-                    description: URL of the object storage to store logs.
-                    type: string
                 type: object
               storageClassName:
                 description: Storage class name defines the storage class for ingester/querier PVCs.

@@ -51,6 +51,12 @@ spec:
         name: ""
         version: v1
       specDescriptors:
+      - description: ManagementState defines if the CR should be managed by the operator or not. Default is managed.
+        displayName: Management State
+        path: managementState
+      - description: ReplicationFactor defines the policy for log stream replication.
+        displayName: Replication Factor
+        path: replicationFactor
       - description: Size defines one of the support Loki deployment scale out sizes.
         displayName: Loki Stack Size
         path: size

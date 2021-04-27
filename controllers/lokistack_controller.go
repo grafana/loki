@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ViaQ/loki-operator/controllers/internal/management/state"
 	"github.com/ViaQ/loki-operator/internal/handlers"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -54,7 +55,20 @@ type LokiStackReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	err := handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme)
+	ok, err := state.IsManaged(ctx, req, r.Client)
+	if err != nil {
+		return ctrl.Result{
+			Requeue:      true,
+			RequeueAfter: time.Second,
+		}, err
+	}
+	if !ok {
+		r.Log.Info("Skipping reconciliation for unmanaged lokistack resource", "name", req.NamespacedName)
+		// Stop requeueing for unmanaged LokiStack custom resources
+		return ctrl.Result{}, nil
+	}
+
+	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,

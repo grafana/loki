@@ -24,6 +24,21 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// ManagementStateType defines the type for CR management states.
+//
+// +kubebuilder:validation:Enum=Managed;Unmanaged
+type ManagementStateType string
+
+const (
+	// ManagementStateManaged when the LokiStack custom resource should be
+	// reconciled by the operator.
+	ManagementStateManaged ManagementStateType = "Managed"
+
+	// ManagementStateUnmanaged when the LokiStack custom resource should not be
+	// reconciled by the operator.
+	ManagementStateUnmanaged ManagementStateType = "Unmanaged"
+)
+
 // LokiStackSizeType declares the type for loki cluster scale outs.
 //
 // +kubebuilder:validation:Enum=SizeOneXExtraSmall;SizeOneXSmall;SizeOneXMedium
@@ -117,10 +132,6 @@ type ObjectStorageSecretSpec struct {
 // ObjectStorageSpec defines the requirements to access the object
 // storage bucket to persist logs by the ingester component.
 type ObjectStorageSpec struct {
-
-	// URL of the object storage to store logs.
-	URL string `json:"url,omitempty"`
-
 	// Secret for object storage authentication.
 	// Name of a secret in the same namespace as the cluster logging operator.
 	//
@@ -183,17 +194,17 @@ type IngestionLimitSpec struct {
 	// +optional
 	MaxLabelNamesPerSeries int32 `json:"maxLabelNamesPerSeries,omitempty"`
 
-	// MaxStreamsPerUser defines the maximum number of active streams
-	// per user, per ingester.
+	// MaxStreamsPerTenant defines the maximum number of active streams
+	// per tenant, per ingester.
 	//
 	// +optional
-	MaxStreamsPerUser int32 `json:"maxStreamsPerUser,omitempty"`
+	MaxStreamsPerTenant int32 `json:"maxStreamsPerTenant,omitempty"`
 
-	// MaxGlobalStreamsPerUser defines the maximum number of active streams
-	// per user, across the cluster.
+	// MaxGlobalStreamsPerTenant defines the maximum number of active streams
+	// per tenant, across the cluster.
 	//
 	// +optional
-	MaxGlobalStreamsPerUser int32 `json:"maxGlobalStreamsPerUser,omitempty"`
+	MaxGlobalStreamsPerTenant int32 `json:"maxGlobalStreamsPerTenant,omitempty"`
 
 	// MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
 	//
@@ -232,6 +243,14 @@ type LimitsSpec struct {
 // LokiStackSpec defines the desired state of LokiStack
 type LokiStackSpec struct {
 
+	// ManagementState defines if the CR should be managed by the operator or not.
+	// Default is managed.
+	//
+	// +required
+	// +kubebuilder:default:=Managed
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Management State"
+	ManagementState ManagementStateType `json:"managementState,omitempty"`
+
 	// Size defines one of the support Loki deployment scale out sizes.
 	//
 	// +required
@@ -251,6 +270,8 @@ type LokiStackSpec struct {
 	// ReplicationFactor defines the policy for log stream replication.
 	//
 	// +required
+	// +kubebuilder:validation:Minimum:=1
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor,omitempty"`
 
 	// Limits defines the limits to be applied to log stream processing.

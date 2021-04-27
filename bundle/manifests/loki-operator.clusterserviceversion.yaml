@@ -16,12 +16,12 @@ metadata:
                 "ingestion": {
                   "ingestionBurstSize": 90,
                   "ingestionRate": 60,
-                  "maxGlobalStreamsPerUser": 83,
+                  "maxGlobalStreamsPerTenant": 83,
                   "maxLabelLength": 40,
                   "maxLabelNamesPerSeries": 45,
                   "maxLabelValueLength": 79,
                   "maxLineSize": 74,
-                  "maxStreamsPerUser": 35
+                  "maxStreamsPerTenant": 35
                 },
                 "queries": {
                   "maxChunksPerQuery": 90,
@@ -31,12 +31,11 @@ metadata:
               }
             },
             "replicationFactor": 2,
-            "size": "OneXSmall",
+            "size": "SizeOneXSmall",
             "storage": {
               "secret": {
                 "name": "test"
-              },
-              "url": "test"
+              }
             },
             "storageClassName": "standard",
             "template": {
@@ -189,6 +188,12 @@ spec:
         name: ""
         version: v1
       specDescriptors:
+      - description: ManagementState defines if the CR should be managed by the operator or not. Default is managed.
+        displayName: Management State
+        path: managementState
+      - description: ReplicationFactor defines the policy for log stream replication.
+        displayName: Replication Factor
+        path: replicationFactor
       - description: Size defines one of the support Loki deployment scale out sizes.
         displayName: Loki Stack Size
         path: size

@@ -139,9 +139,9 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 		Limits: lokiv1beta1.LimitsSpec{
 			Global: lokiv1beta1.LimitsTemplateSpec{
 				IngestionLimits: lokiv1beta1.IngestionLimitSpec{
-					IngestionRate:      20,
-					IngestionBurstSize: 10,
-					MaxStreamsPerUser:  25000,
+					IngestionRate:       20,
+					IngestionBurstSize:  10,
+					MaxStreamsPerTenant: 25000,
 				},
 				QueryLimits: lokiv1beta1.QueryLimitSpec{
 					MaxEntriesLimitPerQuery: 0,
@@ -175,9 +175,9 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 		Limits: lokiv1beta1.LimitsSpec{
 			Global: lokiv1beta1.LimitsTemplateSpec{
 				IngestionLimits: lokiv1beta1.IngestionLimitSpec{
-					IngestionRate:      20,
-					IngestionBurstSize: 10,
-					MaxStreamsPerUser:  25000,
+					IngestionRate:       20,
+					IngestionBurstSize:  10,
+					MaxStreamsPerTenant: 25000,
 				},
 				QueryLimits: lokiv1beta1.QueryLimitSpec{
 					MaxEntriesLimitPerQuery: 0,
@@ -211,9 +211,9 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 		Limits: lokiv1beta1.LimitsSpec{
 			Global: lokiv1beta1.LimitsTemplateSpec{
 				IngestionLimits: lokiv1beta1.IngestionLimitSpec{
-					IngestionRate:      20,
-					IngestionBurstSize: 10,
-					MaxStreamsPerUser:  25000,
+					IngestionRate:       20,
+					IngestionBurstSize:  10,
+					MaxStreamsPerTenant: 25000,
 				},
 				QueryLimits: lokiv1beta1.QueryLimitSpec{
 					MaxEntriesLimitPerQuery: 0,
