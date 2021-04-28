@@ -31,7 +31,6 @@ var (
 
 const (
 	logMetricName = "logs"
-	delimiter     = "/"
 	markersFolder = "markers"
 )
 
