@@ -43,8 +43,8 @@ type Notifier struct {
 }
 
 // New returns a new OpsGenie notifier.
-func New(c *config.OpsGenieConfig, t *template.Template, l log.Logger) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "opsgenie", false, false)
+func New(c *config.OpsGenieConfig, t *template.Template, l log.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "opsgenie", append(httpOpts, commoncfg.WithHTTP2Disabled())...)
 	if err != nil {
 		return nil, err
 	}

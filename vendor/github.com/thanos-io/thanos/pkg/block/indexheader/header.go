@@ -35,6 +35,6 @@ type Reader interface {
 	// then empty string is returned and no error.
 	LabelValues(name string) ([]string, error)
 
-	// LabelNames returns all label names.
+	// LabelNames returns all label names in sorted order.
 	LabelNames() ([]string, error)
 }

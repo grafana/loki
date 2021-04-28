@@ -379,10 +379,9 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	roundTripper, frontendV1, _, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
 		// Don't set FrontendV2 field to make sure that only frontendV1 can be initialized.
-		Handler:           t.Cfg.Frontend.Handler,
-		FrontendV1:        t.Cfg.Frontend.FrontendV1,
-		CompressResponses: t.Cfg.Frontend.CompressResponses,
-		DownstreamURL:     t.Cfg.Frontend.DownstreamURL,
+		Handler:       t.Cfg.Frontend.Handler,
+		FrontendV1:    t.Cfg.Frontend.FrontendV1,
+		DownstreamURL: t.Cfg.Frontend.DownstreamURL,
 	}, disabledShuffleShardingLimits{}, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err

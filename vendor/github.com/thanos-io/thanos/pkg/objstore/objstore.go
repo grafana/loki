@@ -126,6 +126,9 @@ type ObjectAttributes struct {
 }
 
 // TryToGetSize tries to get upfront size from reader.
+// Some implementations may return only size of unread data in the reader, so it's best to call this method before
+// doing any reading.
+//
 // TODO(https://github.com/thanos-io/thanos/issues/678): Remove guessing length when minio provider will support multipart upload without this.
 func TryToGetSize(r io.Reader) (int64, error) {
 	switch f := r.(type) {
@@ -137,10 +140,32 @@ func TryToGetSize(r io.Reader) (int64, error) {
 		return fileInfo.Size(), nil
 	case *bytes.Buffer:
 		return int64(f.Len()), nil
+	case *bytes.Reader:
+		// Returns length of unread data only.
+		return int64(f.Len()), nil
 	case *strings.Reader:
 		return f.Size(), nil
+	case ObjectSizer:
+		return f.ObjectSize()
 	}
 	return 0, errors.Errorf("unsupported type of io.Reader: %T", r)
+}
+
+// ObjectSizer can return size of object.
+type ObjectSizer interface {
+	// ObjectSize returns the size of the object in bytes, or error if it is not available.
+	ObjectSize() (int64, error)
+}
+
+type nopCloserWithObjectSize struct{ io.Reader }
+
+func (nopCloserWithObjectSize) Close() error                 { return nil }
+func (n nopCloserWithObjectSize) ObjectSize() (int64, error) { return TryToGetSize(n.Reader) }
+
+// NopCloserWithSize returns a ReadCloser with a no-op Close method wrapping
+// the provided Reader r. Returned ReadCloser also implements Size method.
+func NopCloserWithSize(r io.Reader) io.ReadCloser {
+	return nopCloserWithObjectSize{r}
 }
 
 // UploadDir uploads all files in srcdir to the bucket with into a top-level directory

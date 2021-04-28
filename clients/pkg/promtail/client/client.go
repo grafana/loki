@@ -181,7 +181,7 @@ func New(reg prometheus.Registerer, cfg Config, logger log.Logger) (Client, erro
 		return nil, err
 	}
 
-	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail", false, false)
+	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail", config.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
 	}

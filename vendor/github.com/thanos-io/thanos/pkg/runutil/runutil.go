@@ -163,6 +163,7 @@ func ExhaustCloseWithErrCapture(err *error, r io.ReadCloser, format string, a ..
 
 // DeleteAll deletes all files and directories inside the given
 // dir except for the ignoreDirs directories.
+// NOTE: DeleteAll is not idempotent.
 func DeleteAll(dir string, ignoreDirs ...string) error {
 	entries, err := ioutil.ReadDir(dir)
 	if os.IsNotExist(err) {

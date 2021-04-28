@@ -145,7 +145,6 @@ type headMetrics struct {
 	samplesAppended          prometheus.Counter
 	outOfBoundSamples        prometheus.Counter
 	outOfOrderSamples        prometheus.Counter
-	outOfOrderExemplars      prometheus.Counter
 	walTruncateDuration      prometheus.Summary
 	walCorruptionsTotal      prometheus.Counter
 	walTotalReplayDuration   prometheus.Gauge
@@ -222,10 +221,6 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 			Name: "prometheus_tsdb_out_of_order_samples_total",
 			Help: "Total number of out of order samples ingestion failed attempts.",
 		}),
-		outOfOrderExemplars: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "prometheus_tsdb_out_of_order_exemplars_total",
-			Help: "Total number of out of order exemplars ingestion failed attempts.",
-		}),
 		headTruncateFail: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "prometheus_tsdb_head_truncations_failed_total",
 			Help: "Total number of head truncations that failed.",
@@ -273,7 +268,6 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 			m.samplesAppended,
 			m.outOfBoundSamples,
 			m.outOfOrderSamples,
-			m.outOfOrderExemplars,
 			m.headTruncateFail,
 			m.headTruncateTotal,
 			m.checkpointDeleteFail,
@@ -1092,7 +1086,7 @@ func (a *initAppender) Append(ref uint64, lset labels.Labels, t int64, v float64
 
 func (a *initAppender) AppendExemplar(ref uint64, l labels.Labels, e exemplar.Exemplar) (uint64, error) {
 	// Check if exemplar storage is enabled.
-	if a.head.opts.NumExemplars == 0 {
+	if a.head.opts.NumExemplars <= 0 {
 		return 0, nil
 	}
 
@@ -1148,6 +1142,12 @@ func (h *Head) appender() *headAppender {
 	appendID := h.iso.newAppendID()
 	cleanupAppendIDsBelow := h.iso.lowWatermark()
 
+	// Allocate the exemplars buffer only if exemplars are enabled.
+	var exemplarsBuf []exemplarWithSeriesRef
+	if h.opts.NumExemplars > 0 {
+		exemplarsBuf = h.getExemplarBuffer()
+	}
+
 	return &headAppender{
 		head:                  h,
 		minValidTime:          h.appendableMinValidTime(),
@@ -1155,7 +1155,7 @@ func (h *Head) appender() *headAppender {
 		maxt:                  math.MinInt64,
 		samples:               h.getAppendBuffer(),
 		sampleSeries:          h.getSeriesBuffer(),
-		exemplars:             h.getExemplarBuffer(),
+		exemplars:             exemplarsBuf,
 		appendID:              appendID,
 		cleanupAppendIDsBelow: cleanupAppendIDsBelow,
 		exemplarAppender:      h.exemplars,
@@ -1210,6 +1210,10 @@ func (h *Head) getExemplarBuffer() []exemplarWithSeriesRef {
 }
 
 func (h *Head) putExemplarBuffer(b []exemplarWithSeriesRef) {
+	if b == nil {
+		return
+	}
+
 	//nolint:staticcheck // Ignore SA6002 safe to ignore and actually fixing it has some performance penalty.
 	h.exemplarsPool.Put(b[:0])
 }
@@ -1323,7 +1327,7 @@ func (a *headAppender) Append(ref uint64, lset labels.Labels, t int64, v float64
 // use getOrCreate or make any of the lset sanity checks that Append does.
 func (a *headAppender) AppendExemplar(ref uint64, _ labels.Labels, e exemplar.Exemplar) (uint64, error) {
 	// Check if exemplar storage is enabled.
-	if a.head.opts.NumExemplars == 0 {
+	if a.head.opts.NumExemplars <= 0 {
 		return 0, nil
 	}
 
@@ -1387,19 +1391,20 @@ func (a *headAppender) Commit() (err error) {
 	}
 	defer func() { a.closed = true }()
 	if err := a.log(); err != nil {
-		//nolint: errcheck
-		a.Rollback() // Most likely the same error will happen again.
+		_ = a.Rollback() // Most likely the same error will happen again.
 		return errors.Wrap(err, "write to WAL")
 	}
 
 	// No errors logging to WAL, so pass the exemplars along to the in memory storage.
 	for _, e := range a.exemplars {
 		s := a.head.series.getByID(e.ref)
-		err := a.exemplarAppender.AddExemplar(s.lset, e.exemplar)
-		if err == storage.ErrOutOfOrderExemplar {
-			a.head.metrics.outOfOrderExemplars.Inc()
-		} else if err != nil {
+		// We don't instrument exemplar appends here, all is instrumented by storage.
+		if err := a.exemplarAppender.AddExemplar(s.lset, e.exemplar); err != nil {
+			if err == storage.ErrOutOfOrderExemplar {
+				continue
+			}
 			level.Debug(a.head.logger).Log("msg", "Unknown error while adding exemplar", "err", err)
+			continue
 		}
 	}
 

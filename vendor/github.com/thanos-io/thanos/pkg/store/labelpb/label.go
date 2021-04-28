@@ -14,9 +14,12 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
+
+var sep = []byte{'\xff'}
 
 func noAllocString(buf []byte) string {
 	return *(*string)(unsafe.Pointer(&buf))
@@ -313,6 +316,34 @@ func DeepCopy(lbls []ZLabel) []ZLabel {
 		ret[i].Value = string(noAllocBytes(lbls[i].Value))
 	}
 	return ret
+}
+
+// HashWithPrefix returns a hash for the given prefix and labels.
+func HashWithPrefix(prefix string, lbls []ZLabel) uint64 {
+	// Use xxhash.Sum64(b) for fast path as it's faster.
+	b := make([]byte, 0, 1024)
+	b = append(b, prefix...)
+	b = append(b, sep[0])
+
+	for i, v := range lbls {
+		if len(b)+len(v.Name)+len(v.Value)+2 >= cap(b) {
+			// If labels entry is 1KB allocate do not allocate whole entry.
+			h := xxhash.New()
+			_, _ = h.Write(b)
+			for _, v := range lbls[i:] {
+				_, _ = h.WriteString(v.Name)
+				_, _ = h.Write(sep)
+				_, _ = h.WriteString(v.Value)
+				_, _ = h.Write(sep)
+			}
+			return h.Sum64()
+		}
+		b = append(b, v.Name...)
+		b = append(b, sep[0])
+		b = append(b, v.Value...)
+		b = append(b, sep[0])
+	}
+	return xxhash.Sum64(b)
 }
 
 // ZLabelSets is a sortable list of ZLabelSet. It assumes the label pairs in each ZLabelSet element are already sorted.

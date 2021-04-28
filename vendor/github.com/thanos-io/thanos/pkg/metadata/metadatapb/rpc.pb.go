@@ -29,24 +29,24 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-type MetadataRequest struct {
+type MetricMetadataRequest struct {
 	Metric                  string                          `protobuf:"bytes,1,opt,name=metric,proto3" json:"metric,omitempty"`
 	Limit                   int32                           `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	PartialResponseStrategy storepb.PartialResponseStrategy `protobuf:"varint,3,opt,name=partial_response_strategy,json=partialResponseStrategy,proto3,enum=thanos.PartialResponseStrategy" json:"partial_response_strategy,omitempty"`
 }
 
-func (m *MetadataRequest) Reset()         { *m = MetadataRequest{} }
-func (m *MetadataRequest) String() string { return proto.CompactTextString(m) }
-func (*MetadataRequest) ProtoMessage()    {}
-func (*MetadataRequest) Descriptor() ([]byte, []int) {
+func (m *MetricMetadataRequest) Reset()         { *m = MetricMetadataRequest{} }
+func (m *MetricMetadataRequest) String() string { return proto.CompactTextString(m) }
+func (*MetricMetadataRequest) ProtoMessage()    {}
+func (*MetricMetadataRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1d9ae5661e0dc3fc, []int{0}
 }
-func (m *MetadataRequest) XXX_Unmarshal(b []byte) error {
+func (m *MetricMetadataRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *MetadataRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *MetricMetadataRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_MetadataRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_MetricMetadataRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -56,37 +56,37 @@ func (m *MetadataRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *MetadataRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MetadataRequest.Merge(m, src)
+func (m *MetricMetadataRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MetricMetadataRequest.Merge(m, src)
 }
-func (m *MetadataRequest) XXX_Size() int {
+func (m *MetricMetadataRequest) XXX_Size() int {
 	return m.Size()
 }
-func (m *MetadataRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_MetadataRequest.DiscardUnknown(m)
+func (m *MetricMetadataRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_MetricMetadataRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_MetadataRequest proto.InternalMessageInfo
+var xxx_messageInfo_MetricMetadataRequest proto.InternalMessageInfo
 
-type MetadataResponse struct {
+type MetricMetadataResponse struct {
 	// Types that are valid to be assigned to Result:
-	//	*MetadataResponse_Metadata
-	//	*MetadataResponse_Warning
-	Result isMetadataResponse_Result `protobuf_oneof:"result"`
+	//	*MetricMetadataResponse_Metadata
+	//	*MetricMetadataResponse_Warning
+	Result isMetricMetadataResponse_Result `protobuf_oneof:"result"`
 }
 
-func (m *MetadataResponse) Reset()         { *m = MetadataResponse{} }
-func (m *MetadataResponse) String() string { return proto.CompactTextString(m) }
-func (*MetadataResponse) ProtoMessage()    {}
-func (*MetadataResponse) Descriptor() ([]byte, []int) {
+func (m *MetricMetadataResponse) Reset()         { *m = MetricMetadataResponse{} }
+func (m *MetricMetadataResponse) String() string { return proto.CompactTextString(m) }
+func (*MetricMetadataResponse) ProtoMessage()    {}
+func (*MetricMetadataResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1d9ae5661e0dc3fc, []int{1}
 }
-func (m *MetadataResponse) XXX_Unmarshal(b []byte) error {
+func (m *MetricMetadataResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *MetadataResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *MetricMetadataResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_MetadataResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_MetricMetadataResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -96,60 +96,60 @@ func (m *MetadataResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return b[:n], nil
 	}
 }
-func (m *MetadataResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MetadataResponse.Merge(m, src)
+func (m *MetricMetadataResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MetricMetadataResponse.Merge(m, src)
 }
-func (m *MetadataResponse) XXX_Size() int {
+func (m *MetricMetadataResponse) XXX_Size() int {
 	return m.Size()
 }
-func (m *MetadataResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_MetadataResponse.DiscardUnknown(m)
+func (m *MetricMetadataResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MetricMetadataResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_MetadataResponse proto.InternalMessageInfo
+var xxx_messageInfo_MetricMetadataResponse proto.InternalMessageInfo
 
-type isMetadataResponse_Result interface {
-	isMetadataResponse_Result()
+type isMetricMetadataResponse_Result interface {
+	isMetricMetadataResponse_Result()
 	MarshalTo([]byte) (int, error)
 	Size() int
 }
 
-type MetadataResponse_Metadata struct {
+type MetricMetadataResponse_Metadata struct {
 	Metadata *MetricMetadata `protobuf:"bytes,1,opt,name=metadata,proto3,oneof" json:"metadata,omitempty"`
 }
-type MetadataResponse_Warning struct {
+type MetricMetadataResponse_Warning struct {
 	Warning string `protobuf:"bytes,2,opt,name=warning,proto3,oneof" json:"warning,omitempty"`
 }
 
-func (*MetadataResponse_Metadata) isMetadataResponse_Result() {}
-func (*MetadataResponse_Warning) isMetadataResponse_Result()  {}
+func (*MetricMetadataResponse_Metadata) isMetricMetadataResponse_Result() {}
+func (*MetricMetadataResponse_Warning) isMetricMetadataResponse_Result()  {}
 
-func (m *MetadataResponse) GetResult() isMetadataResponse_Result {
+func (m *MetricMetadataResponse) GetResult() isMetricMetadataResponse_Result {
 	if m != nil {
 		return m.Result
 	}
 	return nil
 }
 
-func (m *MetadataResponse) GetMetadata() *MetricMetadata {
-	if x, ok := m.GetResult().(*MetadataResponse_Metadata); ok {
+func (m *MetricMetadataResponse) GetMetadata() *MetricMetadata {
+	if x, ok := m.GetResult().(*MetricMetadataResponse_Metadata); ok {
 		return x.Metadata
 	}
 	return nil
 }
 
-func (m *MetadataResponse) GetWarning() string {
-	if x, ok := m.GetResult().(*MetadataResponse_Warning); ok {
+func (m *MetricMetadataResponse) GetWarning() string {
+	if x, ok := m.GetResult().(*MetricMetadataResponse_Warning); ok {
 		return x.Warning
 	}
 	return ""
 }
 
 // XXX_OneofWrappers is for the internal use of the proto package.
-func (*MetadataResponse) XXX_OneofWrappers() []interface{} {
+func (*MetricMetadataResponse) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
-		(*MetadataResponse_Metadata)(nil),
-		(*MetadataResponse_Warning)(nil),
+		(*MetricMetadataResponse_Metadata)(nil),
+		(*MetricMetadataResponse_Warning)(nil),
 	}
 }
 
@@ -267,8 +267,8 @@ func (m *Meta) XXX_DiscardUnknown() {
 var xxx_messageInfo_Meta proto.InternalMessageInfo
 
 func init() {
-	proto.RegisterType((*MetadataRequest)(nil), "thanos.MetadataRequest")
-	proto.RegisterType((*MetadataResponse)(nil), "thanos.MetadataResponse")
+	proto.RegisterType((*MetricMetadataRequest)(nil), "thanos.MetricMetadataRequest")
+	proto.RegisterType((*MetricMetadataResponse)(nil), "thanos.MetricMetadataResponse")
 	proto.RegisterType((*MetricMetadata)(nil), "thanos.MetricMetadata")
 	proto.RegisterMapType((map[string]MetricMetadataEntry)(nil), "thanos.MetricMetadata.MetadataEntry")
 	proto.RegisterType((*MetricMetadataEntry)(nil), "thanos.MetricMetadataEntry")
@@ -278,36 +278,37 @@ func init() {
 func init() { proto.RegisterFile("metadata/metadatapb/rpc.proto", fileDescriptor_1d9ae5661e0dc3fc) }
 
 var fileDescriptor_1d9ae5661e0dc3fc = []byte{
-	// 463 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x53, 0xcd, 0x6e, 0xd3, 0x40,
-	0x10, 0xf6, 0xe6, 0x8f, 0x74, 0x02, 0xa5, 0x5a, 0xaa, 0xd6, 0x35, 0xe0, 0x44, 0x16, 0x07, 0x9f,
-	0x62, 0x30, 0x1c, 0x10, 0x97, 0x4a, 0x91, 0x40, 0x95, 0x50, 0x25, 0xb4, 0x5c, 0x10, 0x1c, 0xca,
-	0xa6, 0xac, 0x52, 0x0b, 0xc7, 0x5e, 0x76, 0xd7, 0x20, 0xbf, 0x05, 0x0f, 0xc0, 0x53, 0xf0, 0x14,
-	0x39, 0xf6, 0xc8, 0xa9, 0x82, 0xe4, 0xc6, 0x53, 0xa0, 0xdd, 0xb5, 0x5b, 0x47, 0xf8, 0x32, 0xfa,
-	0x66, 0xbe, 0xcf, 0x33, 0x9f, 0x66, 0xc7, 0xf0, 0x70, 0xc9, 0x14, 0xfd, 0x44, 0x15, 0x8d, 0x6a,
-	0xc0, 0xe7, 0x91, 0xe0, 0xe7, 0x53, 0x2e, 0x72, 0x95, 0xe3, 0x81, 0xba, 0xa0, 0x59, 0x2e, 0xbd,
-	0x23, 0xa9, 0x72, 0xc1, 0x22, 0x13, 0xf9, 0x3c, 0x52, 0x25, 0x67, 0xd2, 0x4a, 0xbc, 0xfd, 0x45,
-	0xbe, 0xc8, 0x0d, 0x8c, 0x34, 0xb2, 0xd5, 0xe0, 0x07, 0x82, 0xbb, 0xa7, 0x55, 0x47, 0xc2, 0xbe,
-	0x14, 0x4c, 0x2a, 0x7c, 0x00, 0x83, 0x25, 0x53, 0x22, 0x39, 0x77, 0xd1, 0x04, 0x85, 0x3b, 0xa4,
-	0xca, 0xf0, 0x3e, 0xf4, 0xd3, 0x64, 0x99, 0x28, 0xb7, 0x33, 0x41, 0x61, 0x9f, 0xd8, 0x04, 0x7f,
-	0x80, 0x23, 0x4e, 0x85, 0x4a, 0x68, 0x7a, 0x26, 0x98, 0xe4, 0x79, 0x26, 0xd9, 0x99, 0x54, 0x82,
-	0x2a, 0xb6, 0x28, 0xdd, 0xee, 0x04, 0x85, 0xbb, 0xf1, 0x78, 0x6a, 0xed, 0x4d, 0xdf, 0x58, 0x21,
-	0xa9, 0x74, 0x6f, 0x2b, 0x19, 0x39, 0xe4, 0xed, 0x44, 0x90, 0xc1, 0xde, 0x8d, 0x3b, 0xcb, 0xe1,
-	0x67, 0x30, 0xac, 0x77, 0x60, 0x0c, 0x8e, 0xe2, 0x83, 0xba, 0xff, 0xa9, 0x31, 0x5a, 0x7f, 0x71,
-	0xe2, 0x90, 0x6b, 0x25, 0xf6, 0xe0, 0xd6, 0x37, 0x2a, 0xb2, 0x24, 0x5b, 0x18, 0xfb, 0x3b, 0x27,
-	0x0e, 0xa9, 0x0b, 0xb3, 0x21, 0x0c, 0x04, 0x93, 0x45, 0xaa, 0x82, 0x9f, 0x08, 0x76, 0xb7, 0x9b,
-	0xe0, 0x57, 0x5b, 0xe3, 0xba, 0xe1, 0x28, 0x7e, 0xd4, 0x3e, 0x6e, 0x5a, 0x83, 0x97, 0x99, 0x12,
-	0xe5, 0xac, 0xb7, 0xba, 0x1a, 0x37, 0x0c, 0x78, 0xef, 0xe0, 0xce, 0x96, 0x00, 0xef, 0x41, 0xf7,
-	0x33, 0x2b, 0xab, 0x1d, 0x6b, 0x88, 0x9f, 0x40, 0xff, 0x2b, 0x4d, 0x0b, 0x66, 0x1c, 0x8e, 0xe2,
-	0xfb, 0xed, 0x73, 0xcc, 0xd7, 0xc4, 0x2a, 0x5f, 0x74, 0x9e, 0xa3, 0xe0, 0x18, 0xee, 0xb5, 0x28,
-	0x70, 0x08, 0x7d, 0x3d, 0x5c, 0xba, 0x1d, 0xe3, 0xfa, 0x76, 0xa3, 0x1b, 0xad, 0xdc, 0x59, 0x41,
-	0xf0, 0x11, 0x7a, 0xba, 0x88, 0x1f, 0x40, 0x4f, 0x5f, 0x8c, 0xb5, 0x34, 0x1b, 0xfe, 0xbd, 0x1a,
-	0x9b, 0x9c, 0x98, 0xa8, 0xd9, 0x0b, 0x96, 0x72, 0xbb, 0x3e, 0xcb, 0xea, 0x9c, 0x98, 0xa8, 0xd9,
-	0x22, 0x4b, 0x94, 0x79, 0xf1, 0x8a, 0xd5, 0x39, 0x31, 0x31, 0x7e, 0x0d, 0xc3, 0xeb, 0x85, 0x1e,
-	0x37, 0xf0, 0x61, 0xd3, 0x54, 0xe3, 0x06, 0x3d, 0xf7, 0x7f, 0xc2, 0x3e, 0xff, 0x63, 0x34, 0x0b,
-	0x57, 0x7f, 0x7c, 0x67, 0xb5, 0xf6, 0xd1, 0xe5, 0xda, 0x47, 0xbf, 0xd7, 0x3e, 0xfa, 0xbe, 0xf1,
-	0x9d, 0xcb, 0x8d, 0xef, 0xfc, 0xda, 0xf8, 0xce, 0x7b, 0xb8, 0xf9, 0x41, 0xe6, 0x03, 0x73, 0xe4,
-	0x4f, 0xff, 0x05, 0x00, 0x00, 0xff, 0xff, 0x08, 0x77, 0xe4, 0x56, 0x3e, 0x03, 0x00, 0x00,
+	// 465 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x53, 0xcd, 0x6e, 0x13, 0x31,
+	0x10, 0x5e, 0xe7, 0x8f, 0x74, 0x02, 0x15, 0x32, 0x25, 0xa4, 0x0b, 0xdd, 0x44, 0x2b, 0x0e, 0x7b,
+	0xca, 0xc2, 0xc2, 0x01, 0x71, 0x41, 0x8a, 0x04, 0xea, 0xa5, 0x12, 0x98, 0x0b, 0x02, 0xa1, 0xe2,
+	0x14, 0x2b, 0x5d, 0xb1, 0xd9, 0x35, 0xf6, 0x04, 0x94, 0xb7, 0xe0, 0x19, 0x78, 0x04, 0x9e, 0x22,
+	0xc7, 0x1e, 0x39, 0x55, 0x90, 0xdc, 0x78, 0x0a, 0x64, 0x7b, 0xb7, 0x34, 0xb0, 0x5c, 0x46, 0x33,
+	0xf3, 0x7d, 0x9e, 0xf9, 0x3c, 0x1e, 0xc3, 0xc1, 0x5c, 0x20, 0x7f, 0xcf, 0x91, 0xc7, 0x95, 0x23,
+	0xa7, 0xb1, 0x92, 0x27, 0x63, 0xa9, 0x0a, 0x2c, 0x68, 0x07, 0x4f, 0x79, 0x5e, 0x68, 0x7f, 0x5f,
+	0x63, 0xa1, 0x44, 0x6c, 0xad, 0x9c, 0xc6, 0xb8, 0x94, 0x42, 0x3b, 0x8a, 0xbf, 0x37, 0x2b, 0x66,
+	0x85, 0x75, 0x63, 0xe3, 0xb9, 0x6c, 0xf8, 0x95, 0xc0, 0xcd, 0x23, 0x81, 0x2a, 0x3d, 0x39, 0x2a,
+	0xeb, 0x32, 0xf1, 0x71, 0x21, 0x34, 0xd2, 0x3e, 0x74, 0xe6, 0x16, 0x18, 0x90, 0x11, 0x89, 0x76,
+	0x58, 0x19, 0xd1, 0x3d, 0x68, 0x67, 0xe9, 0x3c, 0xc5, 0x41, 0x63, 0x44, 0xa2, 0x36, 0x73, 0x01,
+	0x7d, 0x03, 0xfb, 0x92, 0x2b, 0x4c, 0x79, 0x76, 0xac, 0x84, 0x96, 0x45, 0xae, 0xc5, 0xb1, 0x46,
+	0xc5, 0x51, 0xcc, 0x96, 0x83, 0xe6, 0x88, 0x44, 0xbb, 0xc9, 0x70, 0xec, 0x44, 0x8e, 0x9f, 0x3b,
+	0x22, 0x2b, 0x79, 0x2f, 0x4b, 0x1a, 0xbb, 0x25, 0xeb, 0x81, 0x10, 0xa1, 0xff, 0xb7, 0x46, 0xc7,
+	0xa0, 0x0f, 0xa1, 0x5b, 0xcd, 0xc3, 0xca, 0xec, 0x25, 0xfd, 0xaa, 0xcb, 0xf6, 0x89, 0x43, 0x8f,
+	0x5d, 0x30, 0xa9, 0x0f, 0x57, 0x3e, 0x73, 0x95, 0xa7, 0xf9, 0xcc, 0x5e, 0x62, 0xe7, 0xd0, 0x63,
+	0x55, 0x62, 0xd2, 0x85, 0x8e, 0x12, 0x7a, 0x91, 0x61, 0xf8, 0x8d, 0xc0, 0xee, 0x76, 0x11, 0xfa,
+	0x6c, 0xab, 0x5d, 0x33, 0xea, 0x25, 0x77, 0xeb, 0xdb, 0x8d, 0x2b, 0xe7, 0x69, 0x8e, 0x6a, 0x39,
+	0x69, 0xad, 0xce, 0x87, 0x97, 0x04, 0xf8, 0xaf, 0xe0, 0xda, 0x16, 0x81, 0x5e, 0x87, 0xe6, 0x07,
+	0xb1, 0x2c, 0x27, 0x6d, 0x5c, 0x7a, 0x1f, 0xda, 0x9f, 0x78, 0xb6, 0x10, 0x56, 0x61, 0x2f, 0xb9,
+	0x5d, 0xdf, 0xc7, 0x9e, 0x66, 0x8e, 0xf9, 0xb8, 0xf1, 0x88, 0x84, 0x4f, 0xe0, 0x46, 0x0d, 0x83,
+	0x46, 0xd0, 0x36, 0xcd, 0xf5, 0xa0, 0x61, 0x55, 0x5f, 0xbd, 0x54, 0x8d, 0x97, 0xea, 0x1c, 0x21,
+	0x7c, 0x07, 0x2d, 0x93, 0xa4, 0x77, 0xa0, 0x65, 0xb6, 0xc7, 0x49, 0x9a, 0x74, 0x7f, 0x9d, 0x0f,
+	0x6d, 0xcc, 0xac, 0x35, 0xe8, 0xa9, 0xc8, 0xa4, 0x1b, 0x9f, 0x43, 0x4d, 0xcc, 0xac, 0x35, 0xe8,
+	0x22, 0x4f, 0xd1, 0xbe, 0x7b, 0x89, 0x9a, 0x98, 0x59, 0x9b, 0xbc, 0x85, 0xee, 0xc5, 0x40, 0x5f,
+	0xfc, 0x33, 0xe2, 0x83, 0xfa, 0x8b, 0x96, 0x5b, 0xe9, 0x07, 0xff, 0x83, 0xdd, 0x42, 0xdc, 0x23,
+	0x93, 0x68, 0xf5, 0x33, 0xf0, 0x56, 0xeb, 0x80, 0x9c, 0xad, 0x03, 0xf2, 0x63, 0x1d, 0x90, 0x2f,
+	0x9b, 0xc0, 0x3b, 0xdb, 0x04, 0xde, 0xf7, 0x4d, 0xe0, 0xbd, 0x86, 0x3f, 0xdf, 0x67, 0xda, 0xb1,
+	0x5f, 0xe0, 0xc1, 0xef, 0x00, 0x00, 0x00, 0xff, 0xff, 0xfa, 0x76, 0xe8, 0xa7, 0x5c, 0x03, 0x00,
+	0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -322,7 +323,7 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type MetadataClient interface {
-	Metadata(ctx context.Context, in *MetadataRequest, opts ...grpc.CallOption) (Metadata_MetadataClient, error)
+	MetricMetadata(ctx context.Context, in *MetricMetadataRequest, opts ...grpc.CallOption) (Metadata_MetricMetadataClient, error)
 }
 
 type metadataClient struct {
@@ -333,12 +334,12 @@ func NewMetadataClient(cc *grpc.ClientConn) MetadataClient {
 	return &metadataClient{cc}
 }
 
-func (c *metadataClient) Metadata(ctx context.Context, in *MetadataRequest, opts ...grpc.CallOption) (Metadata_MetadataClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_Metadata_serviceDesc.Streams[0], "/thanos.Metadata/Metadata", opts...)
+func (c *metadataClient) MetricMetadata(ctx context.Context, in *MetricMetadataRequest, opts ...grpc.CallOption) (Metadata_MetricMetadataClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Metadata_serviceDesc.Streams[0], "/thanos.Metadata/MetricMetadata", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &metadataMetadataClient{stream}
+	x := &metadataMetricMetadataClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -348,17 +349,17 @@ func (c *metadataClient) Metadata(ctx context.Context, in *MetadataRequest, opts
 	return x, nil
 }
 
-type Metadata_MetadataClient interface {
-	Recv() (*MetadataResponse, error)
+type Metadata_MetricMetadataClient interface {
+	Recv() (*MetricMetadataResponse, error)
 	grpc.ClientStream
 }
 
-type metadataMetadataClient struct {
+type metadataMetricMetadataClient struct {
 	grpc.ClientStream
 }
 
-func (x *metadataMetadataClient) Recv() (*MetadataResponse, error) {
-	m := new(MetadataResponse)
+func (x *metadataMetricMetadataClient) Recv() (*MetricMetadataResponse, error) {
+	m := new(MetricMetadataResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -367,39 +368,39 @@ func (x *metadataMetadataClient) Recv() (*MetadataResponse, error) {
 
 // MetadataServer is the server API for Metadata service.
 type MetadataServer interface {
-	Metadata(*MetadataRequest, Metadata_MetadataServer) error
+	MetricMetadata(*MetricMetadataRequest, Metadata_MetricMetadataServer) error
 }
 
 // UnimplementedMetadataServer can be embedded to have forward compatible implementations.
 type UnimplementedMetadataServer struct {
 }
 
-func (*UnimplementedMetadataServer) Metadata(req *MetadataRequest, srv Metadata_MetadataServer) error {
-	return status.Errorf(codes.Unimplemented, "method Metadata not implemented")
+func (*UnimplementedMetadataServer) MetricMetadata(req *MetricMetadataRequest, srv Metadata_MetricMetadataServer) error {
+	return status.Errorf(codes.Unimplemented, "method MetricMetadata not implemented")
 }
 
 func RegisterMetadataServer(s *grpc.Server, srv MetadataServer) {
 	s.RegisterService(&_Metadata_serviceDesc, srv)
 }
 
-func _Metadata_Metadata_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(MetadataRequest)
+func _Metadata_MetricMetadata_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(MetricMetadataRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(MetadataServer).Metadata(m, &metadataMetadataServer{stream})
+	return srv.(MetadataServer).MetricMetadata(m, &metadataMetricMetadataServer{stream})
 }
 
-type Metadata_MetadataServer interface {
-	Send(*MetadataResponse) error
+type Metadata_MetricMetadataServer interface {
+	Send(*MetricMetadataResponse) error
 	grpc.ServerStream
 }
 
-type metadataMetadataServer struct {
+type metadataMetricMetadataServer struct {
 	grpc.ServerStream
 }
 
-func (x *metadataMetadataServer) Send(m *MetadataResponse) error {
+func (x *metadataMetricMetadataServer) Send(m *MetricMetadataResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -409,15 +410,15 @@ var _Metadata_serviceDesc = grpc.ServiceDesc{
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Metadata",
-			Handler:       _Metadata_Metadata_Handler,
+			StreamName:    "MetricMetadata",
+			Handler:       _Metadata_MetricMetadata_Handler,
 			ServerStreams: true,
 		},
 	},
 	Metadata: "metadata/metadatapb/rpc.proto",
 }
 
-func (m *MetadataRequest) Marshal() (dAtA []byte, err error) {
+func (m *MetricMetadataRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -427,12 +428,12 @@ func (m *MetadataRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MetadataRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *MetricMetadataRequest) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MetadataRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MetricMetadataRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -457,7 +458,7 @@ func (m *MetadataRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *MetadataResponse) Marshal() (dAtA []byte, err error) {
+func (m *MetricMetadataResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -467,12 +468,12 @@ func (m *MetadataResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MetadataResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *MetricMetadataResponse) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MetadataResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MetricMetadataResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -489,12 +490,12 @@ func (m *MetadataResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *MetadataResponse_Metadata) MarshalTo(dAtA []byte) (int, error) {
+func (m *MetricMetadataResponse_Metadata) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MetadataResponse_Metadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MetricMetadataResponse_Metadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Metadata != nil {
 		{
@@ -510,12 +511,12 @@ func (m *MetadataResponse_Metadata) MarshalToSizedBuffer(dAtA []byte) (int, erro
 	}
 	return len(dAtA) - i, nil
 }
-func (m *MetadataResponse_Warning) MarshalTo(dAtA []byte) (int, error) {
+func (m *MetricMetadataResponse_Warning) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MetadataResponse_Warning) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MetricMetadataResponse_Warning) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i -= len(m.Warning)
 	copy(dAtA[i:], m.Warning)
@@ -663,7 +664,7 @@ func encodeVarintRpc(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *MetadataRequest) Size() (n int) {
+func (m *MetricMetadataRequest) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -682,7 +683,7 @@ func (m *MetadataRequest) Size() (n int) {
 	return n
 }
 
-func (m *MetadataResponse) Size() (n int) {
+func (m *MetricMetadataResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -694,7 +695,7 @@ func (m *MetadataResponse) Size() (n int) {
 	return n
 }
 
-func (m *MetadataResponse_Metadata) Size() (n int) {
+func (m *MetricMetadataResponse_Metadata) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -706,7 +707,7 @@ func (m *MetadataResponse_Metadata) Size() (n int) {
 	}
 	return n
 }
-func (m *MetadataResponse_Warning) Size() (n int) {
+func (m *MetricMetadataResponse_Warning) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -776,7 +777,7 @@ func sovRpc(x uint64) (n int) {
 func sozRpc(x uint64) (n int) {
 	return sovRpc(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (m *MetadataRequest) Unmarshal(dAtA []byte) error {
+func (m *MetricMetadataRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -799,10 +800,10 @@ func (m *MetadataRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MetadataRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: MetricMetadataRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MetadataRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MetricMetadataRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -896,7 +897,7 @@ func (m *MetadataRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MetadataResponse) Unmarshal(dAtA []byte) error {
+func (m *MetricMetadataResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -919,10 +920,10 @@ func (m *MetadataResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MetadataResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: MetricMetadataResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MetadataResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MetricMetadataResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -958,7 +959,7 @@ func (m *MetadataResponse) Unmarshal(dAtA []byte) error {
 			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Result = &MetadataResponse_Metadata{v}
+			m.Result = &MetricMetadataResponse_Metadata{v}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
@@ -990,7 +991,7 @@ func (m *MetadataResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Result = &MetadataResponse_Warning{string(dAtA[iNdEx:postIndex])}
+			m.Result = &MetricMetadataResponse_Warning{string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

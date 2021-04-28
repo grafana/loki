@@ -536,7 +536,10 @@ func (p *Peer) peerUpdate(n *memberlist.Node) {
 // AddState adds a new state that will be gossiped. It returns a channel to which
 // broadcast messages for the state can be sent.
 func (p *Peer) AddState(key string, s State, reg prometheus.Registerer) ClusterChannel {
+	p.mtx.Lock()
 	p.states[key] = s
+	p.mtx.Unlock()
+
 	send := func(b []byte) {
 		p.delegate.bcast.QueueBroadcast(simpleBroadcast(b))
 	}

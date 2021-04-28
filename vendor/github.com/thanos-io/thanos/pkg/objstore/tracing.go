@@ -40,7 +40,7 @@ func (t TracingBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 		return nil, err
 	}
 
-	return &tracingReadCloser{r: r, s: span}, nil
+	return newTracingReadCloser(r, span), nil
 }
 
 func (t TracingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
@@ -54,7 +54,7 @@ func (t TracingBucket) GetRange(ctx context.Context, name string, off, length in
 		return nil, err
 	}
 
-	return &tracingReadCloser{r: r, s: span}, nil
+	return newTracingReadCloser(r, span), nil
 }
 
 func (t TracingBucket) Exists(ctx context.Context, name string) (exists bool, err error) {
@@ -113,9 +113,25 @@ func (t TracingBucket) ReaderWithExpectedErrs(expectedFunc IsOpFailureExpectedFu
 }
 
 type tracingReadCloser struct {
-	r    io.ReadCloser
-	s    opentracing.Span
+	r io.ReadCloser
+	s opentracing.Span
+
+	objSize    int64
+	objSizeErr error
+
 	read int
+}
+
+func newTracingReadCloser(r io.ReadCloser, span opentracing.Span) io.ReadCloser {
+	// Since TryToGetSize can only reliably return size before doing any read calls,
+	// we call during "construction" and remember the results.
+	objSize, objSizeErr := TryToGetSize(r)
+
+	return &tracingReadCloser{r: r, s: span, objSize: objSize, objSizeErr: objSizeErr}
+}
+
+func (t *tracingReadCloser) ObjectSize() (int64, error) {
+	return t.objSize, t.objSizeErr
 }
 
 func (t *tracingReadCloser) Read(p []byte) (int, error) {
