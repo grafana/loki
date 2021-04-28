@@ -355,7 +355,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 	filtered := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
-	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
+	maxChunksPerQuery := c.limits.MaxChunksPerQueryFromStore(userID)
 	if maxChunksPerQuery > 0 && len(filtered) > maxChunksPerQuery {
 		err := QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), maxChunksPerQuery))
 		level.Error(log).Log("err", err)

@@ -73,7 +73,7 @@ func RegisterIndexStore(name string, indexClientFactory IndexClientFactoryFunc, 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	CardinalityLimit(userID string) int
-	MaxChunksPerQuery(userID string) int
+	MaxChunksPerQueryFromStore(userID string) int
 	MaxQueryLength(userID string) time.Duration
 }
 
