@@ -2,11 +2,14 @@ package validation
 
 import (
 	"flag"
+	"fmt"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/flagext"
-
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const (
@@ -61,9 +64,20 @@ type Limits struct {
 	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 
+	// Global and per tenant retention
+	RetentionPeriod time.Duration     `yaml:"retention_period" json:"retention_period"`
+	StreamRetention []StreamRetention `yaml:"retention_stream" json:"retention_stream"`
+
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
 	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
+}
+
+type StreamRetention struct {
+	Period   time.Duration     `yaml:"period"`
+	Priority int               `yaml:"priority"`
+	Selector string            `yaml:"selector"`
+	Matchers []*labels.Matcher `yaml:"-"` // populated during validation.
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -110,6 +124,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
+	f.DurationVar(&l.RetentionPeriod, "store.retention", 31*24*time.Hour, "How long before chunks will be deleted from the store. (requires compactor retention enabled).")
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Period with this to reload the overrides.")
@@ -127,6 +142,30 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 	type plain Limits
 	return unmarshal((*plain)(l))
+}
+
+// Validate validates that this limits config is valid.
+func (l *Limits) Validate() error {
+	if l.StreamRetention != nil {
+		for i, rule := range l.StreamRetention {
+			matchers, err := logql.ParseMatchers(rule.Selector)
+			if err != nil {
+				return fmt.Errorf("invalid labels matchers: %w", err)
+			}
+			if rule.Period < 24*time.Hour {
+				return fmt.Errorf("retention period must be >= 24h was %s", rule.Period)
+			}
+			// populate matchers during validation
+			l.StreamRetention[i] = StreamRetention{
+				Period:   rule.Period,
+				Priority: rule.Priority,
+				Selector: rule.Selector,
+				Matchers: matchers,
+			}
+
+		}
+	}
+	return nil
 }
 
 // When we load YAML from disk, we want the various per-customer limits
@@ -308,6 +347,16 @@ func (o *Overrides) RulerMaxRulesPerRuleGroup(userID string) int {
 // RulerMaxRuleGroupsPerTenant returns the maximum number of rule groups for a given user.
 func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
+}
+
+// RetentionPeriod returns the retention period for a given user.
+func (o *Overrides) RetentionPeriod(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RetentionPeriod
+}
+
+// RetentionPeriod returns the retention period for a given user.
+func (o *Overrides) StreamRetention(userID string) []StreamRetention {
+	return o.getOverridesForUser(userID).StreamRetention
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

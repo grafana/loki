@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -61,9 +62,7 @@ func newTable(ctx context.Context, workingDirectory string, objectClient chunk.O
 }
 
 func (t *table) compact() error {
-	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
-	// This is due to the object stores not having a concept of directories.
-	objects, _, err := t.storageClient.List(t.ctx, t.name+delimiter, delimiter)
+	objects, err := util.ListDirectory(t.ctx, t.name, t.storageClient)
 	if err != nil {
 		return err
 	}
@@ -82,6 +81,7 @@ func (t *table) compact() error {
 		}
 	}()
 
+	// create a new compacted db
 	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (t *table) compact() error {
 	readObjectChan := make(chan string)
 	n := util_math.Min(len(objects), readDBsParallelism)
 
-	// read files parallelly
+	// read files in parallel
 	for i := 0; i < n; i++ {
 		go func() {
 			var err error
@@ -137,7 +137,6 @@ func (t *table) compact() error {
 					return
 				}
 			}
-
 		}()
 	}
 
@@ -268,7 +267,7 @@ func (t *table) readFile(path string) error {
 				if err != nil {
 					return err
 				}
-
+				// todo(cyriltovena) we should just re-slice to avoid allocations
 				writeBatch = make([]indexEntry, 0, batchSize)
 			}
 

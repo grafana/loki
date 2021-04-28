@@ -580,8 +580,11 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 }
 
 func (t *Loki) initCompactor() (services.Service, error) {
-	var err error
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, prometheus.DefaultRegisterer)
+	err := t.Cfg.SchemaConfig.Load()
+	if err != nil {
+		return nil, err
+	}
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

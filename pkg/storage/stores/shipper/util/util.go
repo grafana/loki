@@ -191,3 +191,13 @@ func ValidateSharedStoreKeyPrefix(prefix string) error {
 
 	return nil
 }
+
+func ListDirectory(ctx context.Context, dirName string, objectClient chunk.ObjectClient) ([]chunk.StorageObject, error) {
+	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
+	// This is due to the object stores not having a concept of directories.
+	objects, _, err := objectClient.List(ctx, dirName+delimiter, delimiter)
+	if err != nil {
+		return nil, err
+	}
+	return objects, nil
+}
