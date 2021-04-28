@@ -103,7 +103,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 		return err
 	}
 	defer func() {
-		if err := os.Remove(tableDirectory); err != nil {
+		if err := os.RemoveAll(tableDirectory); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "failed to remove temporary table directory", "err", err, "path", tableDirectory)
 		}
 	}()
@@ -123,13 +123,8 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	}
 
 	defer func() {
-		path := db.Path()
 		if err := db.Close(); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "failed to close local db", "err", err)
-		}
-
-		if err := os.Remove(path); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to removed downloaded db", "err", err, "path", path)
 		}
 	}()
 
