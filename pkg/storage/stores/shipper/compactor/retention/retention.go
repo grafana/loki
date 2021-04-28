@@ -171,10 +171,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	// if the index is empty we can delete the index table.
 	if empty {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
-		if err := t.objectClient.DeleteObject(ctx, objectKey); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to delete empty index table", "err", err, "objectKey", objectKey)
-		}
-		return t.objectClient.DeleteObject(ctx, tableName+delimiter)
+		return t.objectClient.DeleteObject(ctx, objectKey)
 	}
 	// No chunks to delete means no changes to the remote index, we don't need to upload it.
 	if markerWriter.Count() == 0 {

@@ -124,11 +124,6 @@ type testObjectClient struct {
 	path string
 }
 
-func (t testObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	_ = t.ObjectClient.DeleteObject(ctx, objectKey) // locally we don't have a table folder so we swallow the error.
-	return nil
-}
-
 func newTestObjectClient(path string) chunk.ObjectClient {
 	c, err := cortex_storage.NewObjectClient("filesystem", cortex_storage.Config{
 		FSConfig: local.FSConfig{
