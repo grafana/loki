@@ -102,6 +102,11 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := os.Remove(tableDirectory); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to remove temporary table directory", "err", err, "path", tableDirectory)
+		}
+	}()
 
 	downloadAt := filepath.Join(tableDirectory, fmt.Sprintf("retention-%d", time.Now().UnixNano()))
 
@@ -166,6 +171,9 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 	// if the index is empty we can delete the index table.
 	if empty {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
+		if err := t.objectClient.DeleteObject(ctx, objectKey); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to delete empty index table", "err", err, "objectKey", objectKey)
+		}
 		return t.objectClient.DeleteObject(ctx, tableName+delimiter)
 	}
 	// No chunks to delete means no changes to the remote index, we don't need to upload it.
@@ -204,7 +212,7 @@ func (t *Marker) uploadDB(ctx context.Context, db *bbolt.DB, objectKey string) e
 
 func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
 	seriesMap := newUserSeriesMap()
-	var empty bool
+	empty := true
 	for chunkIt.Next() {
 		if chunkIt.Err() != nil {
 			return false, chunkIt.Err()
@@ -218,6 +226,7 @@ func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, serie
 			if err := marker.Put(c.ChunkID); err != nil {
 				return false, err
 			}
+			continue
 		}
 		empty = false
 	}

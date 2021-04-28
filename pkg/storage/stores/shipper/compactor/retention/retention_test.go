@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -150,6 +151,42 @@ func Test_Retention(t *testing.T) {
 			}
 		})
 	}
+}
+
+type noopWriter struct{}
+
+func (noopWriter) Put(chunkID []byte) error { return nil }
+func (noopWriter) Count() int64             { return 0 }
+func (noopWriter) Close() error             { return nil }
+
+type noopCleaner struct{}
+
+func (noopCleaner) Cleanup(seriesID []byte, userID []byte) error { return nil }
+
+func Test_EmptyTable(t *testing.T) {
+	schema := allSchemas[0]
+	store := newTestStore(t)
+	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, schema.from, schema.from.Add(1*time.Hour))
+	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, schema.from, schema.from.Add(1*time.Hour))
+	c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, schema.from, schema.from.Add(1*time.Hour))
+
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
+		c1, c2, c3,
+	}))
+
+	store.Stop()
+
+	tables := store.indexTables()
+	require.Len(t, tables, 1)
+	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
+		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
+		require.NoError(t, err)
+		empty, err := markforDelete(noopWriter{}, it, noopCleaner{}, NewExpirationChecker(&fakeLimits{perTenant: map[string]time.Duration{"1": 0, "2": 0}}))
+		require.NoError(t, err)
+		require.True(t, empty)
+		return nil
+	})
+	require.NoError(t, err)
 }
 
 func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time, through model.Time) chunk.Chunk {

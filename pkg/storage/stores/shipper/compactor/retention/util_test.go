@@ -118,6 +118,32 @@ type testStore struct {
 	limits             cortex_storage.StoreLimits
 }
 
+// testObjectClient is a testing object client
+type testObjectClient struct {
+	chunk.ObjectClient
+	path string
+}
+
+func (t testObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	_ = t.ObjectClient.DeleteObject(ctx, objectKey) // locally we don't have a table folder so we swallow the error.
+	return nil
+}
+
+func newTestObjectClient(path string) chunk.ObjectClient {
+	c, err := cortex_storage.NewObjectClient("filesystem", cortex_storage.Config{
+		FSConfig: local.FSConfig{
+			Directory: path,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return &testObjectClient{
+		ObjectClient: c,
+		path:         path,
+	}
+}
+
 type table struct {
 	name string
 	*bbolt.DB
@@ -206,13 +232,6 @@ func newTestStore(t testing.TB) *testStore {
 			Mode:                 shipper.ModeReadWrite,
 		},
 	}
-	objectClient, err := cortex_storage.NewObjectClient("filesystem", cortex_storage.Config{
-		FSConfig: local.FSConfig{
-			Directory: workdir,
-		},
-	})
-	require.NoError(t, err)
-
 	chunkStore, err := cortex_storage.NewStore(
 		config.Config,
 		chunk.StoreConfig{},
@@ -232,7 +251,7 @@ func newTestStore(t testing.TB) *testStore {
 		t:            t,
 		Store:        store,
 		schemaCfg:    schemaCfg,
-		objectClient: objectClient,
+		objectClient: newTestObjectClient(workdir),
 		cfg:          config,
 		limits:       limits,
 	}
