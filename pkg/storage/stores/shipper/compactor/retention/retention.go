@@ -28,7 +28,7 @@ const (
 )
 
 type TableMarker interface {
-	// MarkForDelete marks a given table and returns if it's empty and how many marks were created.
+	// MarkForDelete marks chunks to delete for a given table and returns if it's empty and how many marks were created.
 	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error)
 }
 
