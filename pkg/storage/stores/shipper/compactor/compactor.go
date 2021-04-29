@@ -67,8 +67,8 @@ type Compactor struct {
 	objectClient chunk.ObjectClient
 	tableMarker  *retention.Marker
 	sweeper      *retention.Sweeper
-
-	metrics *metrics
+	mutex        sync.Mutex
+	metrics      *metrics
 }
 
 func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
@@ -93,20 +93,20 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if err != nil {
 		return nil, err
 	}
-	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits), r)
-	if err != nil {
-		return nil, err
-	}
-	compactor := Compactor{
+
+	compactor := &Compactor{
 		cfg:          cfg,
 		objectClient: prefixedClient,
 		metrics:      newMetrics(r),
-		tableMarker:  marker,
 		sweeper:      sweeper,
 	}
-
+	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits), compactor, r)
+	if err != nil {
+		return nil, err
+	}
+	compactor.tableMarker = marker
 	compactor.Service = services.NewBasicService(nil, compactor.loop, nil)
-	return &compactor, nil
+	return compactor, nil
 }
 
 func (c *Compactor) loop(ctx context.Context) error {
@@ -172,6 +172,39 @@ func (c *Compactor) loop(ctx context.Context) error {
 	return nil
 }
 
+// Compact implements retention.TableCompactor.
+func (c *Compactor) Compact(ctx context.Context, tableName string, destinationPath string) (string, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
+	if err != nil {
+		return "", err
+	}
+
+	objectKey, err := table.compactTo(destinationPath, true)
+	if err != nil {
+		return "", err
+	}
+	return objectKey, nil
+}
+
+func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
+		return err
+	}
+
+	err = table.compact()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+		return err
+	}
+	return nil
+}
+
 func (c *Compactor) RunCompaction(ctx context.Context) error {
 	status := statusSuccess
 	start := time.Now()
@@ -196,19 +229,9 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 	}
 
 	for _, tableName := range tables {
-		table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
-		if err != nil {
+		if err := c.CompactTable(ctx, tableName); err != nil {
 			status = statusFailure
-			level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
-			continue
 		}
-
-		err = table.compact()
-		if err != nil {
-			status = statusFailure
-			level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
-		}
-
 		// check if context was cancelled before going for next table.
 		select {
 		case <-ctx.Done():

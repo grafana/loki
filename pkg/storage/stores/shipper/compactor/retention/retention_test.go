@@ -125,7 +125,7 @@ func Test_Retention(t *testing.T) {
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration, prometheus.NewRegistry())
+			marker, err := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				table.Close()

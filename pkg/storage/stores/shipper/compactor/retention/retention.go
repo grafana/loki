@@ -34,15 +34,23 @@ const (
 	markersFolder = "markers"
 )
 
+// TableCompactor can compact tables.
+type TableCompactor interface {
+	// Compact compacts the given tableName and output the result at the destinationPath then returns the object key.
+	// The object key is expected to be already uploaded and the local path is expected to be a copy of it.
+	Compact(ctx context.Context, tableName string, destinationPath string) (string, error)
+}
+
 type Marker struct {
 	workingDirectory string
 	config           storage.SchemaConfig
 	objectClient     chunk.ObjectClient
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
+	compactor        TableCompactor
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker, compactor TableCompactor, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
@@ -53,6 +61,7 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClien
 		objectClient:     objectClient,
 		expiration:       expiration,
 		markerMetrics:    metrics,
+		compactor:        compactor,
 	}, nil
 }
 
@@ -74,30 +83,8 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string) error {
 }
 
 func (t *Marker) markTable(ctx context.Context, tableName string) error {
-	objects, err := util.ListDirectory(ctx, tableName, t.objectClient)
-	if err != nil {
-		return err
-	}
-
-	if len(objects) != 1 {
-		// todo(1): in the future we would want to support more tables so that we can apply retention below 1d.
-		// for simplicity and to avoid conflict with compactor we'll support only compacted db file.
-		// Possibly we should apply retention right before the compactor upload compacted db.
-
-		// todo(2): Depending on the retention rules we should be able to skip tables.
-		// For instance if there isn't a retention rules below 1 week, then we can skip the first 7 tables.
-		level.Debug(util_log.Logger).Log("msg", "skipping retention for non-compacted table", "name", tableName)
-		return nil
-	}
-	objectKey := objects[0].Key
-
-	if shipper_util.IsDirectory(objectKey) {
-		level.Debug(util_log.Logger).Log("msg", "skipping retention no table file found", "objectKey", objectKey)
-		return nil
-	}
-
 	tableDirectory := path.Join(t.workingDirectory, tableName)
-	err = chunk_util.EnsureDirectory(tableDirectory)
+	err := chunk_util.EnsureDirectory(tableDirectory)
 	if err != nil {
 		return err
 	}
@@ -109,15 +96,40 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 
 	downloadAt := filepath.Join(tableDirectory, fmt.Sprintf("retention-%d", time.Now().UnixNano()))
 
+	objects, err := util.ListDirectory(ctx, tableName, t.objectClient)
+	if err != nil {
+		return err
+	}
+	if len(objects) != 1 {
+		level.Info(util_log.Logger).Log("msg", "compacting table before applying retention", "table", tableName)
+		// if there are more than one table file let's compact first.
+		objectKey, err := t.compactor.Compact(ctx, tableName, downloadAt)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to compact files before retention", "table", tableName, "err", err)
+			return err
+		}
+		return t.markTableFromPath(ctx, tableName, objectKey, downloadAt)
+	}
+
+	objectKey := objects[0].Key
+
+	if shipper_util.IsDirectory(objectKey) {
+		level.Debug(util_log.Logger).Log("msg", "skipping retention no table file found", "objectKey", objectKey)
+		return nil
+	}
+
 	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, objectKey, downloadAt)
 	if err != nil {
 		level.Warn(util_log.Logger).Log("msg", "failed to download table", "err", err, "path", downloadAt, "objectKey", objectKey)
 		return err
 	}
+	return t.markTableFromPath(ctx, tableName, objectKey, downloadAt)
+}
 
-	db, err := shipper_util.SafeOpenBoltdbFile(downloadAt)
+func (t *Marker) markTableFromPath(ctx context.Context, tableName, objectKey, filepath string) error {
+	db, err := shipper_util.SafeOpenBoltdbFile(filepath)
 	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to open db", "err", err, "path", downloadAt)
+		level.Warn(util_log.Logger).Log("msg", "failed to open db", "err", err, "path", filepath)
 		return err
 	}
 
