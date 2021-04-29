@@ -4,23 +4,16 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
-	"path"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 var (
@@ -34,23 +27,19 @@ const (
 	markersFolder = "markers"
 )
 
-// TableCompactor can compact tables.
-type TableCompactor interface {
-	// Compact compacts the given tableName and output the result at the destinationPath then returns the object key.
-	// The object key is expected to be already uploaded and the local path is expected to be a copy of it.
-	Compact(ctx context.Context, tableName string, destinationPath string) (string, error)
+type TableMarker interface {
+	// MarkForDelete marks a given table and returns if it's empty and how many marks were created.
+	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error)
 }
 
 type Marker struct {
 	workingDirectory string
 	config           storage.SchemaConfig
-	objectClient     chunk.ObjectClient
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
-	compactor        TableCompactor
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker, compactor TableCompactor, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
@@ -58,15 +47,13 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClien
 	return &Marker{
 		workingDirectory: workingDirectory,
 		config:           config,
-		objectClient:     objectClient,
 		expiration:       expiration,
 		markerMetrics:    metrics,
-		compactor:        compactor,
 	}, nil
 }
 
 // MarkForDelete marks all chunks expired for a given table.
-func (t *Marker) MarkForDelete(ctx context.Context, tableName string) error {
+func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
@@ -75,78 +62,23 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string) error {
 	}()
 	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
 
-	if err := t.markTable(ctx, tableName); err != nil {
+	empty, markCount, err := t.markTable(ctx, tableName, db)
+	if err != nil {
 		status = statusFailure
-		return err
+		return false, 0, err
 	}
-	return nil
+	return empty, markCount, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName string) error {
-	tableDirectory := path.Join(t.workingDirectory, tableName)
-	err := chunk_util.EnsureDirectory(tableDirectory)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := os.RemoveAll(tableDirectory); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to remove temporary table directory", "err", err, "path", tableDirectory)
-		}
-	}()
-
-	downloadAt := filepath.Join(tableDirectory, fmt.Sprintf("retention-%d", time.Now().UnixNano()))
-
-	objects, err := util.ListDirectory(ctx, tableName, t.objectClient)
-	if err != nil {
-		return err
-	}
-	if len(objects) != 1 {
-		level.Info(util_log.Logger).Log("msg", "compacting table before applying retention", "table", tableName)
-		// if there are more than one table file let's compact first.
-		objectKey, err := t.compactor.Compact(ctx, tableName, downloadAt)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to compact files before retention", "table", tableName, "err", err)
-			return err
-		}
-		return t.markTableFromPath(ctx, tableName, objectKey, downloadAt)
-	}
-
-	objectKey := objects[0].Key
-
-	if shipper_util.IsDirectory(objectKey) {
-		level.Debug(util_log.Logger).Log("msg", "skipping retention no table file found", "objectKey", objectKey)
-		return nil
-	}
-
-	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, objectKey, downloadAt)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to download table", "err", err, "path", downloadAt, "objectKey", objectKey)
-		return err
-	}
-	return t.markTableFromPath(ctx, tableName, objectKey, downloadAt)
-}
-
-func (t *Marker) markTableFromPath(ctx context.Context, tableName, objectKey, filepath string) error {
-	db, err := shipper_util.SafeOpenBoltdbFile(filepath)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to open db", "err", err, "path", filepath)
-		return err
-	}
-
-	defer func() {
-		if err := db.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close local db", "err", err)
-		}
-	}()
-
+func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
 	schemaCfg, ok := schemaPeriodForTable(t.config, tableName)
 	if !ok {
-		return fmt.Errorf("could not find schema for table: %s", tableName)
+		return false, 0, fmt.Errorf("could not find schema for table: %s", tableName)
 	}
 
 	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
 	if err != nil {
-		return fmt.Errorf("failed to create marker writer: %w", err)
+		return false, 0, fmt.Errorf("failed to create marker writer: %w", err)
 	}
 
 	var empty bool
@@ -172,45 +104,18 @@ func (t *Marker) markTableFromPath(ctx context.Context, tableName, objectKey, fi
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, 0, err
 	}
-	// if the index is empty we can delete the index table.
 	if empty {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
-		return t.objectClient.DeleteObject(ctx, objectKey)
+		return empty, markerWriter.Count(), nil
 	}
-	// No chunks to delete means no changes to the remote index, we don't need to upload it.
 	if markerWriter.Count() == 0 {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionNone).Inc()
-		return nil
+		return empty, markerWriter.Count(), nil
 	}
 	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionModified).Inc()
-	return t.uploadDB(ctx, db, objectKey)
-}
-
-func (t *Marker) uploadDB(ctx context.Context, db *bbolt.DB, objectKey string) error {
-	sourcePath := db.Path()
-	if strings.HasSuffix(objectKey, ".gz") {
-		compressedPath := fmt.Sprintf("%s.gz", sourcePath)
-		err := shipper_util.CompressFile(sourcePath, compressedPath)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			os.Remove(compressedPath)
-		}()
-		sourcePath = compressedPath
-	}
-	sourceFile, err := os.Open(sourcePath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := sourceFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close file", "path", sourceFile, "err", err)
-		}
-	}()
-	return t.objectClient.PutObject(ctx, objectKey, sourceFile)
+	return empty, markerWriter.Count(), nil
 }
 
 func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {

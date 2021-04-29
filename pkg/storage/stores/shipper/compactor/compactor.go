@@ -22,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/util"
-	errUtil "github.com/grafana/loki/pkg/util"
 )
 
 const delimiter = "/"
@@ -65,9 +64,8 @@ type Compactor struct {
 
 	cfg          Config
 	objectClient chunk.ObjectClient
-	tableMarker  *retention.Marker
+	tableMarker  retention.TableMarker
 	sweeper      *retention.Sweeper
-	mutex        sync.Mutex
 	metrics      *metrics
 }
 
@@ -100,7 +98,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 		metrics:      newMetrics(r),
 		sweeper:      sweeper,
 	}
-	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, prefixedClient, retention.NewExpirationChecker(limits), compactor, r)
+	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, retention.NewExpirationChecker(limits), r)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +112,6 @@ func (c *Compactor) loop(ctx context.Context) error {
 		err := c.RunCompaction(ctx)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
-		}
-	}
-	runRetention := func() {
-		err := c.RunRetention(ctx)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to run retention", "err", err)
 		}
 	}
 	var wg sync.WaitGroup
@@ -141,7 +133,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 		}
 	}()
 	if c.cfg.RetentionEnabled {
-		wg.Add(2)
+		wg.Add(1)
 		go func() {
 			// starts the chunk sweeper
 			defer func() {
@@ -151,47 +143,14 @@ func (c *Compactor) loop(ctx context.Context) error {
 			c.sweeper.Start()
 			<-ctx.Done()
 		}()
-		go func() {
-			// start the index marker
-			defer wg.Done()
-			ticker := time.NewTicker(c.cfg.RetentionInterval)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ticker.C:
-					runRetention()
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
 	}
 
 	wg.Wait()
 	return nil
 }
 
-// Compact implements retention.TableCompactor.
-func (c *Compactor) Compact(ctx context.Context, tableName string, destinationPath string) (string, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
-	if err != nil {
-		return "", err
-	}
-
-	objectKey, err := table.compactTo(destinationPath, true)
-	if err != nil {
-		return "", err
-	}
-	return objectKey, nil
-}
-
 func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient, c.cfg.RetentionEnabled, c.tableMarker)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
@@ -241,41 +200,4 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (c *Compactor) RunRetention(ctx context.Context) error {
-	status := statusSuccess
-	start := time.Now()
-
-	defer func() {
-		level.Debug(util_log.Logger).Log("msg", "finished to processing retention on all tables", "status", status, "duration", time.Since(start))
-		c.metrics.retentionOperationTotal.WithLabelValues(status).Inc()
-		if status == statusSuccess {
-			c.metrics.retentionOperationDurationSeconds.Set(time.Since(start).Seconds())
-			c.metrics.retentionOperationLastSuccess.SetToCurrentTime()
-		}
-	}()
-	level.Debug(util_log.Logger).Log("msg", "starting to processing retention on all  all tables")
-
-	_, dirs, err := c.objectClient.List(ctx, "", delimiter)
-	if err != nil {
-		status = statusFailure
-		return err
-	}
-
-	tables := make([]string, len(dirs))
-	for i, dir := range dirs {
-		tables[i] = strings.TrimSuffix(string(dir), delimiter)
-	}
-
-	var errs errUtil.MultiError
-
-	for _, tableName := range tables {
-		if err := c.tableMarker.MarkForDelete(ctx, tableName); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to mark table for deletes", "table", tableName, "err", err)
-			errs.Add(err)
-			status = statusFailure
-		}
-	}
-	return errs.Err()
 }

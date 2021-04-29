@@ -22,7 +22,6 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -125,11 +124,13 @@ func Test_Retention(t *testing.T) {
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, store.schemaCfg, util.NewPrefixedObjectClient(store.objectClient, "index/"), expiration, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(workDir, store.schemaCfg, expiration, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
+				_, _, err := marker.MarkForDelete(context.Background(), table.name, table.DB)
+				require.Nil(t, err)
 				table.Close()
-				require.NoError(t, marker.MarkForDelete(context.Background(), table.name))
+
 			}
 
 			// assert using the store again.

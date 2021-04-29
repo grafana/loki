@@ -55,7 +55,7 @@ func TestTable_Compaction(t *testing.T) {
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 	require.NoError(t, err)
 
-	table, err := newTable(context.Background(), tableWorkingDirectory, objectClient)
+	table, err := newTable(context.Background(), tableWorkingDirectory, objectClient, false, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, table.compact())
@@ -104,7 +104,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 	require.NoError(t, err)
 
-	table, err := newTable(context.Background(), tableWorkingDirectory, objectClient)
+	table, err := newTable(context.Background(), tableWorkingDirectory, objectClient, false, nil)
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
@@ -121,7 +121,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	// remove the non-boltdb file and ensure that compaction succeeds now.
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, "fail.txt")))
 
-	table, err = newTable(context.Background(), tableWorkingDirectory, objectClient)
+	table, err = newTable(context.Background(), tableWorkingDirectory, objectClient, false, nil)
 	require.NoError(t, err)
 	require.NoError(t, table.compact())
 
@@ -168,7 +168,6 @@ func compareCompactedDB(t *testing.T, compactedDBPath string, sourceDBsPath stri
 					require.Equal(t, v, val)
 					return nil
 				})
-
 			})
 			require.NoError(t, err)
 
