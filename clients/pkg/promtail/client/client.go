@@ -157,8 +157,15 @@ type client struct {
 	cancel context.CancelFunc
 }
 
+// Tripperware can wrap a roundtripper.
+type Tripperware func(http.RoundTripper) http.RoundTripper
+
 // New makes a new Client.
 func New(reg prometheus.Registerer, cfg Config, logger log.Logger) (Client, error) {
+	return newClient(reg, cfg, logger)
+}
+
+func newClient(reg prometheus.Registerer, cfg Config, logger log.Logger) (*client, error) {
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
 	}
@@ -196,6 +203,20 @@ func New(reg prometheus.Registerer, cfg Config, logger log.Logger) (Client, erro
 
 	c.wg.Add(1)
 	go c.run()
+	return c, nil
+}
+
+// NewWithTripperware creates a new Loki client with a custom tripperware.
+func NewWithTripperware(reg prometheus.Registerer, cfg Config, logger log.Logger, tp Tripperware) (Client, error) {
+	c, err := newClient(reg, cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	if tp != nil {
+		c.client.Transport = tp(c.client.Transport)
+	}
+
 	return c, nil
 }
 
