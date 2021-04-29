@@ -92,8 +92,10 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 		if err != nil {
 			return fmt.Errorf("failed to create chunk index iterator: %w", err)
 		}
-
-		empty, err = markforDelete(markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration)
 		if err != nil {
 			return err
 		}
@@ -118,7 +120,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 	return empty, markerWriter.Count(), nil
 }
 
-func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
+func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
 	seriesMap := newUserSeriesMap()
 	empty := true
 	for chunkIt.Next() {
@@ -140,6 +142,9 @@ func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, serie
 	}
 	if empty {
 		return true, nil
+	}
+	if ctx.Err() != nil {
+		return false, ctx.Err()
 	}
 	return false, seriesMap.ForEach(func(seriesID, userID []byte) error {
 		return seriesCleaner.Cleanup(seriesID, userID)
