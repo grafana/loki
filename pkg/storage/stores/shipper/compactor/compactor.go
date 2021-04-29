@@ -32,7 +32,6 @@ type Config struct {
 	SharedStoreKeyPrefix     string        `yaml:"shared_store_key_prefix"`
 	CompactionInterval       time.Duration `yaml:"compaction_interval"`
 	RetentionEnabled         bool          `yaml:"retention_enabled"`
-	RetentionInterval        time.Duration `yaml:"retention_interval"`
 	RetentionDeleteDelay     time.Duration `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount int           `yaml:"retention_delete_worker_count"`
 }
