@@ -182,7 +182,7 @@ func Test_EmptyTable(t *testing.T) {
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
 		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 		require.NoError(t, err)
-		empty, err := markforDelete(noopWriter{}, it, noopCleaner{}, NewExpirationChecker(&fakeLimits{perTenant: map[string]time.Duration{"1": 0, "2": 0}}))
+		empty, err := markforDelete(context.Background(), noopWriter{}, it, noopCleaner{}, NewExpirationChecker(&fakeLimits{perTenant: map[string]time.Duration{"1": 0, "2": 0}}))
 		require.NoError(t, err)
 		require.True(t, empty)
 		return nil
