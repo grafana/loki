@@ -33,6 +33,12 @@ const (
 
 	// How often to check for tenant deletion mark.
 	DeletionMarkCheckInterval = 1 * time.Hour
+
+	// Default minimum bucket size (bytes) of the chunk pool.
+	ChunkPoolDefaultMinBucketSize = store.EstimatedMaxChunkSize
+
+	// Default maximum bucket size (bytes) of the chunk pool.
+	ChunkPoolDefaultMaxBucketSize = 50e6
 )
 
 // Validation errors
@@ -215,7 +221,6 @@ func (cfg *TSDBConfig) IsBlocksShippingEnabled() bool {
 type BucketStoreConfig struct {
 	SyncDir                  string              `yaml:"sync_dir"`
 	SyncInterval             time.Duration       `yaml:"sync_interval"`
-	MaxChunkPoolBytes        uint64              `yaml:"max_chunk_pool_bytes"`
 	MaxConcurrent            int                 `yaml:"max_concurrent"`
 	TenantSyncConcurrency    int                 `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency     int                 `yaml:"block_sync_concurrency"`
@@ -226,6 +231,11 @@ type BucketStoreConfig struct {
 	MetadataCache            MetadataCacheConfig `yaml:"metadata_cache"`
 	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
 	BucketIndex              BucketIndexConfig   `yaml:"bucket_index"`
+
+	// Chunk pool.
+	MaxChunkPoolBytes           uint64 `yaml:"max_chunk_pool_bytes"`
+	ChunkPoolMinBucketSizeBytes int    `yaml:"chunk_pool_min_bucket_size_bytes" doc:"hidden"`
+	ChunkPoolMaxBucketSizeBytes int    `yaml:"chunk_pool_max_bucket_size_bytes" doc:"hidden"`
 
 	// Controls whether index-header lazy loading is enabled.
 	IndexHeaderLazyLoadingEnabled     bool          `yaml:"index_header_lazy_loading_enabled"`
@@ -253,6 +263,8 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SyncDir, "blocks-storage.bucket-store.sync-dir", "tsdb-sync", "Directory to store synchronized TSDB index headers.")
 	f.DurationVar(&cfg.SyncInterval, "blocks-storage.bucket-store.sync-interval", 15*time.Minute, "How frequently to scan the bucket, or to refresh the bucket index (if enabled), in order to look for changes (new blocks shipped by ingesters and blocks deleted by retention or compaction).")
 	f.Uint64Var(&cfg.MaxChunkPoolBytes, "blocks-storage.bucket-store.max-chunk-pool-bytes", uint64(2*units.Gibibyte), "Max size - in bytes - of a chunks pool, used to reduce memory allocations. The pool is shared across all tenants. 0 to disable the limit.")
+	f.IntVar(&cfg.ChunkPoolMinBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-min-bucket-size-bytes", ChunkPoolDefaultMinBucketSize, "Size - in bytes - of the smallest chunks pool bucket.")
+	f.IntVar(&cfg.ChunkPoolMaxBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-max-bucket-size-bytes", ChunkPoolDefaultMaxBucketSize, "Size - in bytes - of the largest chunks pool bucket.")
 	f.IntVar(&cfg.MaxConcurrent, "blocks-storage.bucket-store.max-concurrent", 100, "Max number of concurrent queries to execute against the long-term storage. The limit is shared across all tenants.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "blocks-storage.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "blocks-storage.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")

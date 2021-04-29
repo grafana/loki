@@ -81,6 +81,10 @@ func ForEach(ctx context.Context, jobs []interface{}, concurrency int, jobFunc f
 	for ix := 0; ix < util_math.Min(concurrency, len(jobs)); ix++ {
 		g.Go(func() error {
 			for job := range ch {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+
 				if err := jobFunc(ctx, job); err != nil {
 					return err
 				}

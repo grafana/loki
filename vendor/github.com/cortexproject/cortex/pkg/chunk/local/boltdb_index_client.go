@@ -264,16 +264,15 @@ func (b *BoltIndexClient) QueryWithCursor(_ context.Context, c *bbolt.Cursor, qu
 	var batch boltReadBatch
 
 	for k, v := c.Seek(start); k != nil; k, v = c.Next() {
-		if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
-			continue
+		if !bytes.HasPrefix(k, rowPrefix) {
+			break
 		}
 
 		if len(query.RangeValuePrefix) > 0 && !bytes.HasPrefix(k, start) {
 			break
 		}
-
-		if !bytes.HasPrefix(k, rowPrefix) {
-			break
+		if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
+			continue
 		}
 
 		// make a copy since k, v are only valid for the life of the transaction.

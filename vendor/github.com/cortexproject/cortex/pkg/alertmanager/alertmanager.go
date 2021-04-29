@@ -40,10 +40,12 @@ import (
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -59,12 +61,13 @@ const (
 
 // Config configures an Alertmanager.
 type Config struct {
-	UserID      string
-	Logger      log.Logger
-	Peer        *cluster.Peer
-	PeerTimeout time.Duration
-	Retention   time.Duration
-	ExternalURL *url.URL
+	UserID            string
+	Logger            log.Logger
+	Peer              *cluster.Peer
+	PeerTimeout       time.Duration
+	Retention         time.Duration
+	ExternalURL       *url.URL
+	ReceiversFirewall FirewallConfig
 
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
@@ -94,6 +97,7 @@ type Alertmanager struct {
 	wg              sync.WaitGroup
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
+	firewallDialer  *util_net.FirewallDialer
 
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
@@ -147,6 +151,10 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		cfg:    cfg,
 		logger: log.With(cfg.Logger, "user", cfg.UserID),
 		stop:   make(chan struct{}),
+		firewallDialer: util_net.NewFirewallDialer(util_net.FirewallDialerConfig{
+			BlockCIDRNetworks:     cfg.ReceiversFirewall.Block.CIDRNetworks,
+			BlockPrivateAddresses: cfg.ReceiversFirewall.Block.PrivateAddresses,
+		}),
 		configHashMetric: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "alertmanager_config_hash",
 			Help: "Hash of the currently loaded alertmanager configuration.",
@@ -280,10 +288,13 @@ func clusterWait(position func() int, timeout time.Duration) func() time.Duratio
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg string) error {
 	templateFiles := make([]string, len(conf.Templates))
-	if len(conf.Templates) > 0 {
-		for i, t := range conf.Templates {
-			templateFiles[i] = filepath.Join(am.cfg.TenantDataDir, templatesDir, t)
+	for i, t := range conf.Templates {
+		templateFilepath, err := safeTemplateFilepath(filepath.Join(am.cfg.TenantDataDir, templatesDir), t)
+		if err != nil {
+			return err
 		}
+
+		templateFiles[i] = templateFilepath
 	}
 
 	tmpl, err := template.FromGlobs(templateFiles...)
@@ -315,7 +326,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return d + waitFunc()
 	}
 
-	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.logger)
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.firewallDialer, am.logger)
 	if err != nil {
 		return nil
 	}
@@ -407,10 +418,10 @@ func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
 // list of receiver config.
-func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger log.Logger) (map[string][]notify.Integration, error) {
+func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) (map[string][]notify.Integration, error) {
 	integrationsMap := make(map[string][]notify.Integration, len(nc))
 	for _, rcv := range nc {
-		integrations, err := buildReceiverIntegrations(rcv, tmpl, logger)
+		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -422,7 +433,7 @@ func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger
 // buildReceiverIntegrations builds a list of integration notifiers off of a
 // receiver config.
 // Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
-func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, logger log.Logger) ([]notify.Integration, error) {
+func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) ([]notify.Integration, error) {
 	var (
 		errs         types.MultiError
 		integrations []notify.Integration
@@ -436,29 +447,34 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 		}
 	)
 
+	// Inject the firewall to any receiver integration supporting it.
+	httpOps := []commoncfg.HTTPClientOption{
+		commoncfg.WithDialContextFunc(firewallDialer.DialContext),
+	}
+
 	for i, c := range nc.WebhookConfigs {
-		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l) })
+		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.EmailConfigs {
 		add("email", i, c, func(l log.Logger) (notify.Notifier, error) { return email.New(c, tmpl, l), nil })
 	}
 	for i, c := range nc.PagerdutyConfigs {
-		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l) })
+		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.OpsGenieConfigs {
-		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l) })
+		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.WechatConfigs {
-		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l) })
+		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.SlackConfigs {
-		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l) })
+		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.VictorOpsConfigs {
-		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l) })
+		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.PushoverConfigs {
-		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l) })
+		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l, httpOps...) })
 	}
 	if errs.Len() > 0 {
 		return nil, &errs

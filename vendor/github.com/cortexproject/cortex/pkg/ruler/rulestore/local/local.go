@@ -132,7 +132,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 	root := filepath.Join(l.cfg.Directory, userID)
 	infos, err := ioutil.ReadDir(root)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to read dir %s", root)
+		return nil, errors.Wrapf(err, "unable to read rule dir %s", root)
 	}
 
 	for _, info := range infos {
@@ -141,9 +141,10 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 
 		if info.Mode()&os.ModeSymlink != 0 {
 			// ioutil.ReadDir only returns result of LStat. Calling Stat resolves symlink.
-			info, err = os.Stat(filepath.Join(root, info.Name()))
+			path := filepath.Join(root, info.Name())
+			info, err = os.Stat(path)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "unable to stat rule file %s", path)
 			}
 		}
 

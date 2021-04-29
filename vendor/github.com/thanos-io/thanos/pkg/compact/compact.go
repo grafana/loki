@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/runutil"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -89,7 +90,7 @@ func newSyncerMetrics(reg prometheus.Registerer, blocksMarkedForDeletion prometh
 
 // NewMetaSyncer returns a new Syncer for the given Bucket and directory.
 // Blocks must be at least as old as the sync delay for being considered.
-func NewSyncer(logger log.Logger, reg prometheus.Registerer, bkt objstore.Bucket, fetcher block.MetadataFetcher, duplicateBlocksFilter *block.DeduplicateFilter, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter, blockSyncConcurrency int) (*Syncer, error) {
+func NewMetaSyncer(logger log.Logger, reg prometheus.Registerer, bkt objstore.Bucket, fetcher block.MetadataFetcher, duplicateBlocksFilter *block.DeduplicateFilter, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter, blockSyncConcurrency int) (*Syncer, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -310,7 +311,7 @@ func (g *DefaultGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*Gro
 			groups[groupKey] = group
 			res = append(res, group)
 		}
-		if err := group.Add(m); err != nil {
+		if err := group.AppendMeta(m); err != nil {
 			return nil, errors.Wrap(err, "add compaction group")
 		}
 	}
@@ -388,8 +389,8 @@ func (cg *Group) Key() string {
 	return cg.key
 }
 
-// Add the block with the given meta to the group.
-func (cg *Group) Add(meta *metadata.Meta) error {
+// AppendMeta the block with the given meta to the group.
+func (cg *Group) AppendMeta(meta *metadata.Meta) error {
 	cg.mtx.Lock()
 	defer cg.mtx.Unlock()
 
@@ -1011,13 +1012,15 @@ type GatherNoCompactionMarkFilter struct {
 	logger             log.Logger
 	bkt                objstore.InstrumentedBucketReader
 	noCompactMarkedMap map[ulid.ULID]*metadata.NoCompactMark
+	concurrency        int
 }
 
 // NewGatherNoCompactionMarkFilter creates GatherNoCompactionMarkFilter.
-func NewGatherNoCompactionMarkFilter(logger log.Logger, bkt objstore.InstrumentedBucketReader) *GatherNoCompactionMarkFilter {
+func NewGatherNoCompactionMarkFilter(logger log.Logger, bkt objstore.InstrumentedBucketReader, concurrency int) *GatherNoCompactionMarkFilter {
 	return &GatherNoCompactionMarkFilter{
-		logger: logger,
-		bkt:    bkt,
+		logger:      logger,
+		bkt:         bkt,
+		concurrency: concurrency,
 	}
 }
 
@@ -1030,21 +1033,67 @@ func (f *GatherNoCompactionMarkFilter) NoCompactMarkedBlocks() map[ulid.ULID]*me
 func (f *GatherNoCompactionMarkFilter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
 	f.noCompactMarkedMap = make(map[ulid.ULID]*metadata.NoCompactMark)
 
+	// Make a copy of block IDs to check, in order to avoid concurrency issues
+	// between the scheduler and workers.
+	blockIDs := make([]ulid.ULID, 0, len(metas))
 	for id := range metas {
-		m := &metadata.NoCompactMark{}
-		// TODO(bwplotka): Hook up bucket cache here + reset API so we don't introduce API calls .
-		if err := metadata.ReadMarker(ctx, f.logger, f.bkt, id.String(), m); err != nil {
-			if errors.Cause(err) == metadata.ErrorMarkerNotFound {
-				continue
-			}
-			if errors.Cause(err) == metadata.ErrorUnmarshalMarker {
-				level.Warn(f.logger).Log("msg", "found partial no-compact-mark.json; if we will see it happening often for the same block, consider manually deleting no-compact-mark.json from the object storage", "block", id, "err", err)
-				continue
-			}
-			return err
-		}
-		synced.WithLabelValues(block.MarkedForNoCompactionMeta).Inc()
-		f.noCompactMarkedMap[id] = m
+		blockIDs = append(blockIDs, id)
 	}
+
+	var (
+		eg  errgroup.Group
+		ch  = make(chan ulid.ULID, f.concurrency)
+		mtx sync.Mutex
+	)
+
+	for i := 0; i < f.concurrency; i++ {
+		eg.Go(func() error {
+			var lastErr error
+			for id := range ch {
+				m := &metadata.NoCompactMark{}
+				// TODO(bwplotka): Hook up bucket cache here + reset API so we don't introduce API calls .
+				if err := metadata.ReadMarker(ctx, f.logger, f.bkt, id.String(), m); err != nil {
+					if errors.Cause(err) == metadata.ErrorMarkerNotFound {
+						continue
+					}
+					if errors.Cause(err) == metadata.ErrorUnmarshalMarker {
+						level.Warn(f.logger).Log("msg", "found partial no-compact-mark.json; if we will see it happening often for the same block, consider manually deleting no-compact-mark.json from the object storage", "block", id, "err", err)
+						continue
+					}
+					// Remember the last error and continue draining the channel.
+					lastErr = err
+					continue
+				}
+
+				mtx.Lock()
+				f.noCompactMarkedMap[id] = m
+				mtx.Unlock()
+				synced.WithLabelValues(block.MarkedForNoCompactionMeta).Inc()
+			}
+
+			return lastErr
+		})
+	}
+
+	// Workers scheduled, distribute blocks.
+	eg.Go(func() error {
+		defer close(ch)
+
+		for _, id := range blockIDs {
+			select {
+			case ch <- id:
+				// Nothing to do.
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		return nil
+	})
+
+	if err := eg.Wait(); err != nil {
+		return errors.Wrap(err, "filter blocks marked for no compaction")
+	}
+
 	return nil
 }

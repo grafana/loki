@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -342,6 +343,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
+	if d.cfg.InstanceLimits != (InstanceLimits{}) {
+		util_log.WarnExperimentalUse("distributor instance limits")
+	}
+
 	// Only report success if all sub-services start properly
 	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
 }

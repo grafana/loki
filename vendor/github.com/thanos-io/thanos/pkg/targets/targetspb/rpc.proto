@@ -1,0 +1,79 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
+syntax = "proto3";
+package thanos;
+
+import "store/storepb/types.proto";
+import "gogoproto/gogo.proto";
+import "store/labelpb/types.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "targetspb";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+
+// Do not generate XXX fields to reduce memory footprint and opening a door
+// for zero-copy casts to/from prometheus data types.
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
+
+/// Targets represents API that is responsible for gathering targets and their states.
+service Targets {
+    /// Targets has info for all targets.
+    /// Returned targets are expected to include external labels.
+    rpc Targets (TargetsRequest) returns (stream TargetsResponse);
+}
+
+message TargetsRequest {
+    enum State {
+        ANY = 0;
+        /// This will make sure strings.ToLower(.String()) will match 'active' and 'dropped' values for
+        /// Prometheus HTTP API.
+        ACTIVE = 1;
+        DROPPED = 2;
+    }
+    State state = 1;
+    PartialResponseStrategy partial_response_strategy = 2;
+}
+
+message TargetsResponse {
+    oneof result {
+        /// structure with targets. It is up to server implementation to decide how many of those to put here within single frame.
+        TargetDiscovery targets = 1;
+
+        /// warning is considered an information piece in place of series for warning purposes.
+        /// It is used to warn rule API users about suspicious cases or partial response (if enabled).
+        string warning = 2;
+    }
+}
+
+message TargetDiscovery {
+    repeated ActiveTarget activeTargets = 1 [(gogoproto.jsontag) = "activeTargets"];
+    repeated DroppedTarget droppedTargets = 2 [(gogoproto.jsontag) = "droppedTargets"];
+}
+
+enum TargetHealth {
+    DOWN = 0;
+    UP = 1;
+}
+
+message ActiveTarget {
+    ZLabelSet discoveredLabels = 1 [(gogoproto.jsontag) = "discoveredLabels", (gogoproto.nullable) = false];
+    ZLabelSet labels = 2 [(gogoproto.jsontag) = "labels", (gogoproto.nullable) = false];
+    string scrapePool = 3 [(gogoproto.jsontag) = "scrapePool"];
+    string scrapeUrl = 4 [(gogoproto.jsontag) = "scrapeUrl"];
+    string globalUrl = 5 [(gogoproto.jsontag) = "globalUrl"];
+    string lastError = 6 [(gogoproto.jsontag) = "lastError"];
+    google.protobuf.Timestamp lastScrape = 7 [(gogoproto.jsontag) = "lastScrape", (gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+    double lastScrapeDuration = 8 [(gogoproto.jsontag) = "lastScrapeDuration"];
+    TargetHealth health = 9 [(gogoproto.jsontag) = "health"];
+}
+
+message DroppedTarget {
+    ZLabelSet discoveredLabels = 1 [(gogoproto.jsontag) = "discoveredLabels", (gogoproto.nullable) = false];
+}
