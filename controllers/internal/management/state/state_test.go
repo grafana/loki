@@ -69,9 +69,7 @@ func TestIsManaged(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
-			t.Parallel()
 			k.GetStub = func(_ context.Context, _ types.NamespacedName, object client.Object) error {
 				k.SetClientObject(object, &tst.stack)
 				return nil
@@ -110,12 +108,8 @@ func TestIsManaged_WhenError_ReturnNotManagedWithError(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
-			t.Parallel()
-			k.GetStub = func(_ context.Context, _ types.NamespacedName, _ client.Object) error {
-				return tst.apierror
-			}
+			k.GetReturns(tst.apierror)
 			ok, err := state.IsManaged(context.TODO(), r, k)
 			require.Equal(t, tst.wantErr, err)
 			require.False(t, ok)
