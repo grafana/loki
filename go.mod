@@ -12,7 +12,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.8.1-0.20210416143250-2d8477c4a325
+	github.com/cortexproject/cortex v1.8.2-0.20210428155238-d382e1d80eaf
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.5+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
@@ -41,7 +41,7 @@ require (
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.10
 	github.com/klauspost/compress v1.11.3
-	github.com/mitchellh/mapstructure v1.3.3
+	github.com/mitchellh/mapstructure v1.4.1
 	github.com/modern-go/reflect2 v1.0.1
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.2.0
@@ -50,8 +50,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.20.0
-	github.com/prometheus/prometheus v1.8.2-0.20210324152458-c7a62b95cea0
+	github.com/prometheus/common v0.21.0
+	github.com/prometheus/prometheus v1.8.2-0.20210421143221-52df5ef7a3be
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
 	github.com/segmentio/fasthash v1.0.2
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
@@ -61,10 +61,10 @@ require (
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120
+	github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
 	go.etcd.io/bbolt v1.3.5
 	go.uber.org/atomic v1.7.0
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
+	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/net v0.0.0-20210324051636-2c4c8ecb7826
 	golang.org/x/sys v0.0.0-20210324051608-47abb6519492
 	google.golang.org/api v0.42.0
@@ -83,10 +83,9 @@ replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20201004203643
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 
-// Keeping this same as Cortex to avoid dependency issues.
-replace k8s.io/client-go => k8s.io/client-go v0.19.4
+replace k8s.io/client-go => k8s.io/client-go v0.21.0
 
-replace k8s.io/api => k8s.io/api v0.19.4
+replace k8s.io/api => k8s.io/api v0.21.0
 
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
@@ -99,10 +98,3 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 // Same as Cortex
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
-
-// Fix errors like too many arguments in call to "github.com/go-openapi/errors".Required
-//   have (string, string)
-//   want (string, string, interface {})
-replace github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
-
-replace github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8

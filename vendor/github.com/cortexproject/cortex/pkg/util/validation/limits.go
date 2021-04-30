@@ -69,13 +69,14 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric" json:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery    int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
-	MaxQueryLookback     model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
-	MaxQueryLength       model.Duration `yaml:"max_query_length" json:"max_query_length"`
-	MaxQueryParallelism  int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	CardinalityLimit     int            `yaml:"cardinality_limit" json:"cardinality_limit"`
-	MaxCacheFreshness    model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
-	MaxQueriersPerTenant int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxChunksPerQueryFromStore int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"` // TODO Remove in Cortex 1.12.
+	MaxChunksPerQuery          int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
+	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
+	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
+	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -94,10 +95,6 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
-
-	// Config for overrides, convenient if it goes here. [Deprecated in favor of RuntimeConfig flag in cortex.Config]
-	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
-	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -135,8 +132,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalMetadataPerMetric, "ingester.max-metadata-per-metric", 10, "The maximum number of metadata per metric, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalMetricsWithMetadataPerUser, "ingester.max-global-metadata-per-user", 0, "The maximum number of active metrics with metadata per user, across the cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalMetadataPerMetric, "ingester.max-global-metadata-per-metric", 0, "The maximum number of metadata per metric, across the cluster. 0 to disable.")
-
-	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage. When running the Cortex chunks storage, this limit is enforced in the querier, while when running the Cortex blocks storage this limit is both enforced in the querier and store-gateway. 0 to disable.")
+	f.IntVar(&l.MaxChunksPerQueryFromStore, "store.query-chunk-limit", 2e6, "Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its respective YAML config option instead. Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage only. When running the Cortex chunks storage, this limit is enforced in the querier and ruler, while when running the Cortex blocks storage this limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
+	f.IntVar(&l.MaxChunksPerQuery, "querier.max-fetched-chunks-per-query", 0, "Maximum number of chunks that can be fetched in a single query from ingesters and long-term storage: the total number of actual fetched chunks could be 2x the limit, being independently applied when querying ingesters and long-term storage. This limit is enforced in the ingester (if chunks streaming is enabled), querier, ruler and store-gateway. Takes precedence over the deprecated -store.query-chunk-limit. 0 to disable.")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
@@ -151,10 +148,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
 	f.Var(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", "Delete blocks containing samples older than the specified retention period. 0 to disable.")
-
-	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
-	_ = l.PerTenantOverridePeriod.Set("10s")
-	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
 
 	// Store-gateway.
 	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -342,8 +335,21 @@ func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalSeriesPerMetric
 }
 
-// MaxChunksPerQuery returns the maximum number of chunks allowed per query.
-func (o *Overrides) MaxChunksPerQuery(userID string) int {
+// MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching
+// chunks from the long-term storage.
+func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int {
+	// If the new config option is set, then it should take precedence.
+	if value := o.getOverridesForUser(userID).MaxChunksPerQuery; value > 0 {
+		return value
+	}
+
+	// Fallback to the deprecated config option.
+	return o.getOverridesForUser(userID).MaxChunksPerQueryFromStore
+}
+
+// MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching
+// chunks from ingesters.
+func (o *Overrides) MaxChunksPerQueryFromIngesters(userID string) int {
 	return o.getOverridesForUser(userID).MaxChunksPerQuery
 }
 

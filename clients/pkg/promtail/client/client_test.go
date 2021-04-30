@@ -1,9 +1,11 @@
 package client
 
 import (
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -458,4 +460,36 @@ func createServerHandler(receivedReqsChan chan receivedReq, status int) http.Han
 
 		rw.WriteHeader(status)
 	})
+}
+
+type RoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (r RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return r(req)
+}
+
+func Test_Tripperware(t *testing.T) {
+	url, err := url.Parse("http://foo.com")
+	require.NoError(t, err)
+	var called bool
+	c, err := NewWithTripperware(nil, Config{
+		URL: flagext.URLValue{URL: url},
+	}, log.NewNopLogger(), func(rt http.RoundTripper) http.RoundTripper {
+		return RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			require.Equal(t, r.URL.String(), "http://foo.com")
+			called = true
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+			}, nil
+		})
+	})
+	require.NoError(t, err)
+
+	c.Chan() <- api.Entry{
+		Labels: model.LabelSet{"foo": "bar"},
+		Entry:  logproto.Entry{Timestamp: time.Now(), Line: "foo"},
+	}
+	c.Stop()
+	require.True(t, called)
 }

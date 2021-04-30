@@ -17,11 +17,13 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,6 +38,12 @@ import (
 // DefaultHTTPClientConfig is the default HTTP client configuration.
 var DefaultHTTPClientConfig = HTTPClientConfig{
 	FollowRedirects: true,
+}
+
+// defaultHTTPClientOptions holds the default HTTP client options.
+var defaultHTTPClientOptions = httpClientOptions{
+	keepAlivesEnabled: true,
+	http2Enabled:      true,
 }
 
 type closeIdler interface {
@@ -194,15 +202,50 @@ func (a *BasicAuth) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return unmarshal((*plain)(a))
 }
 
+// DialContextFunc defines the signature of the DialContext() function implemented
+// by net.Dialer.
+type DialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+type httpClientOptions struct {
+	dialContextFunc   DialContextFunc
+	keepAlivesEnabled bool
+	http2Enabled      bool
+}
+
+// HTTPClientOption defines an option that can be applied to the HTTP client.
+type HTTPClientOption func(options *httpClientOptions)
+
+// WithDialContextFunc allows you to override func gets used for the actual dialing. The default is `net.Dialer.DialContext`.
+func WithDialContextFunc(fn DialContextFunc) HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.dialContextFunc = fn
+	}
+}
+
+// WithKeepAlivesDisabled allows to disable HTTP keepalive.
+func WithKeepAlivesDisabled() HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.keepAlivesEnabled = false
+	}
+}
+
+// WithHTTP2Disabled allows to disable HTTP2.
+func WithHTTP2Disabled() HTTPClientOption {
+	return func(opts *httpClientOptions) {
+		opts.http2Enabled = false
+	}
+}
+
 // NewClient returns a http.Client using the specified http.RoundTripper.
 func newClient(rt http.RoundTripper) *http.Client {
 	return &http.Client{Transport: rt}
 }
 
 // NewClientFromConfig returns a new HTTP client configured for the
-// given config.HTTPClientConfig. The name is used as go-conntrack metric label.
-func NewClientFromConfig(cfg HTTPClientConfig, name string, disableKeepAlives, enableHTTP2 bool) (*http.Client, error) {
-	rt, err := NewRoundTripperFromConfig(cfg, name, disableKeepAlives, enableHTTP2)
+// given config.HTTPClientConfig and config.HTTPClientOption.
+// The name is used as go-conntrack metric label.
+func NewClientFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HTTPClientOption) (*http.Client, error) {
+	rt, err := NewRoundTripperFromConfig(cfg, name, optFuncs...)
 	if err != nil {
 		return nil, err
 	}
@@ -216,8 +259,27 @@ func NewClientFromConfig(cfg HTTPClientConfig, name string, disableKeepAlives, e
 }
 
 // NewRoundTripperFromConfig returns a new HTTP RoundTripper configured for the
-// given config.HTTPClientConfig. The name is used as go-conntrack metric label.
-func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, disableKeepAlives, enableHTTP2 bool) (http.RoundTripper, error) {
+// given config.HTTPClientConfig and config.HTTPClientOption.
+// The name is used as go-conntrack metric label.
+func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HTTPClientOption) (http.RoundTripper, error) {
+	opts := defaultHTTPClientOptions
+	for _, f := range optFuncs {
+		f(&opts)
+	}
+
+	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+
+	if opts.dialContextFunc != nil {
+		dialContext = conntrack.NewDialContextFunc(
+			conntrack.DialWithDialContextFunc((func(context.Context, string, string) (net.Conn, error))(opts.dialContextFunc)),
+			conntrack.DialWithTracing(),
+			conntrack.DialWithName(name))
+	} else {
+		dialContext = conntrack.NewDialContextFunc(
+			conntrack.DialWithTracing(),
+			conntrack.DialWithName(name))
+	}
+
 	newRT := func(tlsConfig *tls.Config) (http.RoundTripper, error) {
 		// The only timeout we care about is the configured scrape timeout.
 		// It is applied on request. So we leave out any timings here.
@@ -225,7 +287,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, disableKeepAli
 			Proxy:               http.ProxyURL(cfg.ProxyURL.URL),
 			MaxIdleConns:        20000,
 			MaxIdleConnsPerHost: 1000, // see https://github.com/golang/go/issues/13801
-			DisableKeepAlives:   disableKeepAlives,
+			DisableKeepAlives:   !opts.keepAlivesEnabled,
 			TLSClientConfig:     tlsConfig,
 			DisableCompression:  true,
 			// 5 minutes is typically above the maximum sane scrape interval. So we can
@@ -233,12 +295,9 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, disableKeepAli
 			IdleConnTimeout:       5 * time.Minute,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
-			DialContext: conntrack.NewDialContextFunc(
-				conntrack.DialWithTracing(),
-				conntrack.DialWithName(name),
-			),
+			DialContext:           dialContext,
 		}
-		if enableHTTP2 {
+		if opts.http2Enabled {
 			// HTTP/2 support is golang has many problematic cornercases where
 			// dead connections would be kept and used in connection pools.
 			// https://github.com/golang/go/issues/32388

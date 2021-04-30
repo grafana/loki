@@ -20,7 +20,7 @@ func TestMappingEquivalence(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second

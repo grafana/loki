@@ -435,6 +435,10 @@ func (c *Context) Authorize(request *http.Request, route *MatchedRoute) (interfa
 	}
 	if route.Authorizer != nil {
 		if err := route.Authorizer.Authorize(request, usr); err != nil {
+			if _, ok := err.(errors.Error); ok {
+				return nil, nil, err
+			}
+
 			return nil, nil, errors.New(http.StatusForbidden, err.Error())
 		}
 	}
@@ -565,6 +569,26 @@ func (c *Context) Respond(rw http.ResponseWriter, r *http.Request, produces []st
 	}
 
 	c.api.ServeErrorFor(route.Operation.ID)(rw, r, errors.New(http.StatusInternalServerError, "can't produce response"))
+}
+
+func (c *Context) APIHandlerSwaggerUI(builder Builder) http.Handler {
+	b := builder
+	if b == nil {
+		b = PassthroughBuilder
+	}
+
+	var title string
+	sp := c.spec.Spec()
+	if sp != nil && sp.Info != nil && sp.Info.Title != "" {
+		title = sp.Info.Title
+	}
+
+	swaggerUIOpts := SwaggerUIOpts{
+		BasePath: c.BasePath(),
+		Title:    title,
+	}
+
+	return Spec("", c.spec.Raw(), SwaggerUI(swaggerUIOpts, c.RoutesHandler(b)))
 }
 
 // APIHandler returns a handler to serve the API, this includes a swagger spec, router and the contract defined in the swagger spec

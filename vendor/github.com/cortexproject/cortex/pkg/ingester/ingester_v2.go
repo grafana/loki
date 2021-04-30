@@ -637,6 +637,11 @@ func (i *Ingester) stoppingV2(_ error) error {
 }
 
 func (i *Ingester) updateLoop(ctx context.Context) error {
+	if limits := i.getInstanceLimits(); limits != nil && *limits != (InstanceLimits{}) {
+		// This check will not cover enabling instance limits in runtime, but it will do for now.
+		logutil.WarnExperimentalUse("ingester instance limits")
+	}
+
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 

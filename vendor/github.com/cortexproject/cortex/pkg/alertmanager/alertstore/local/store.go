@@ -120,7 +120,7 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 	configs := map[string]alertspb.AlertConfigDesc{}
 	err := filepath.Walk(f.cfg.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return errors.Wrap(err, "unable to walk file path")
+			return errors.Wrapf(err, "unable to walk file path at %s", path)
 		}
 
 		// Ignore files that are directories or not yaml files
@@ -132,13 +132,13 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 		// Ensure the file is a valid Alertmanager Config.
 		_, err = config.LoadFile(path)
 		if err != nil {
-			return errors.Wrapf(err, "unable to load file %s", path)
+			return errors.Wrapf(err, "unable to load alertmanager config %s", path)
 		}
 
 		// Load the file to be returned by the store.
 		content, err := ioutil.ReadFile(path)
 		if err != nil {
-			return errors.Wrapf(err, "unable to read file %s", path)
+			return errors.Wrapf(err, "unable to read alertmanager config %s", path)
 		}
 
 		// The file name must correspond to the user tenant ID

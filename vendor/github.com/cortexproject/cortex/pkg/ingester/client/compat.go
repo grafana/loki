@@ -25,7 +25,7 @@ func ToQueryRequest(from, to model.Time, matchers []*labels.Matcher) (*QueryRequ
 
 // FromQueryRequest unpacks a QueryRequest proto.
 func FromQueryRequest(req *QueryRequest) (model.Time, model.Time, []*labels.Matcher, error) {
-	matchers, err := fromLabelMatchers(req.Matchers)
+	matchers, err := FromLabelMatchers(req.Matchers)
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -90,7 +90,7 @@ func ToMetricsForLabelMatchersRequest(from, to model.Time, matchers []*labels.Ma
 func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (model.Time, model.Time, [][]*labels.Matcher, error) {
 	matchersSet := make([][]*labels.Matcher, 0, len(req.MatchersSet))
 	for _, matchers := range req.MatchersSet {
-		matchers, err := fromLabelMatchers(matchers.Matchers)
+		matchers, err := FromLabelMatchers(matchers.Matchers)
 		if err != nil {
 			return 0, 0, nil, err
 		}
@@ -131,7 +131,7 @@ func FromLabelValuesRequest(req *LabelValuesRequest) (string, int64, int64, []*l
 	var matchers []*labels.Matcher
 
 	if req.Matchers != nil {
-		matchers, err = fromLabelMatchers(req.Matchers.Matchers)
+		matchers, err = FromLabelMatchers(req.Matchers.Matchers)
 		if err != nil {
 			return "", 0, 0, nil, err
 		}
@@ -165,7 +165,7 @@ func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {
 	return result, nil
 }
 
-func fromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
+func FromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 	result := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
 		var mtype labels.MatchType

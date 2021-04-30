@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -21,15 +22,26 @@ type runtimeConfigValues struct {
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
 
+func (r runtimeConfigValues) validate() error {
+	for t, c := range r.TenantLimits {
+		if err := c.Validate(); err != nil {
+			return fmt.Errorf("invalid override for tenant %s: %w", t, err)
+		}
+	}
+	return nil
+}
+
 func loadRuntimeConfig(r io.Reader) (interface{}, error) {
-	var overrides = &runtimeConfigValues{}
+	overrides := &runtimeConfigValues{}
 
 	decoder := yaml.NewDecoder(r)
 	decoder.SetStrict(true)
 	if err := decoder.Decode(&overrides); err != nil {
 		return nil, err
 	}
-
+	if err := overrides.validate(); err != nil {
+		return nil, err
+	}
 	return overrides, nil
 }
 

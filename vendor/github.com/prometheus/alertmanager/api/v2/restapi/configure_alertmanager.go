@@ -20,9 +20,9 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	errors "github.com/go-openapi/errors"
-	runtime "github.com/go-openapi/runtime"
-	middleware "github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/errors"
+	"github.com/go-openapi/runtime"
+	"github.com/go-openapi/runtime/middleware"
 
 	"github.com/prometheus/alertmanager/api/v2/restapi/operations"
 	"github.com/prometheus/alertmanager/api/v2/restapi/operations/alert"
@@ -97,6 +97,8 @@ func configureAPI(api *operations.AlertmanagerAPI) http.Handler {
 			return middleware.NotImplemented("operation silence.PostSilences has not yet been implemented")
 		})
 	}
+
+	api.PreServerShutdown = func() {}
 
 	api.ServerShutdown = func() {}
 

@@ -378,7 +378,7 @@ func (t *Loki) setupModuleManager() error {
 		QueryFrontend:   {Server, Overrides, TenantConfigs},
 		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:    {Server},
-		Compactor:       {Server},
+		Compactor:       {Server, Overrides},
 		IngesterQuerier: {Ring},
 		All:             {Querier, Ingester, Distributor, TableManager, Ruler},
 	}

@@ -112,7 +112,7 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 	chunks := chks[0]
 	fetcher := fetchers[0]
 	// Protect ourselves against OOMing.
-	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
+	maxChunksPerQuery := c.limits.MaxChunksPerQueryFromStore(userID)
 	if maxChunksPerQuery > 0 && len(chunks) > maxChunksPerQuery {
 		err := QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunks), maxChunksPerQuery))
 		level.Error(log).Log("err", err)

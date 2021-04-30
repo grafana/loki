@@ -62,13 +62,13 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to get rule group %s", objectKey)
 	}
 	defer func() { _ = reader.Close() }()
 
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to read rule group %s", objectKey)
 	}
 
 	if rg == nil {
@@ -79,7 +79,7 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 
 	err = proto.Unmarshal(buf, rg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to unmarshal rule group %s", objectKey)
 	}
 
 	return rg, nil

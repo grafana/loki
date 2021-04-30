@@ -50,7 +50,8 @@ var (
 
 const (
 	// Number of concurrent group list and group loads operations.
-	loadRulesConcurrency = 10
+	loadRulesConcurrency  = 10
+	fetchRulesConcurrency = 16
 
 	rulerSyncReasonInitial    = "initial"
 	rulerSyncReasonPeriodic   = "periodic"
@@ -59,6 +60,9 @@ const (
 	// Limit errors
 	errMaxRuleGroupsPerUserLimitExceeded        = "per-user rule groups limit (limit: %d actual: %d) exceeded"
 	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
+
+	// errors
+	errListAllUser = "unable to list the ruler users"
 )
 
 // Config is the configuration for the recording rules server.
@@ -839,4 +843,43 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 
 	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", userID)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
+	logger := util_log.WithContext(req.Context(), r.logger)
+
+	userIDs, err := r.store.ListAllUsers(req.Context())
+	if err != nil {
+		level.Error(logger).Log("msg", errListAllUser, "err", err)
+		http.Error(w, fmt.Sprintf("%s: %s", errListAllUser, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	done := make(chan struct{})
+	iter := make(chan interface{})
+
+	go func() {
+		util.StreamWriteYAMLResponse(w, iter, logger)
+		close(done)
+	}()
+
+	err = concurrency.ForEachUser(req.Context(), userIDs, fetchRulesConcurrency, func(ctx context.Context, userID string) error {
+		rg, err := r.store.ListRuleGroupsForUserAndNamespace(ctx, userID, "")
+		if err != nil {
+			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
+		}
+		data := map[string]map[string][]rulefmt.RuleGroup{userID: rg.Formatted()}
+
+		select {
+		case iter <- data:
+		case <-done: // stop early, if sending response has already finished
+		}
+
+		return nil
+	})
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to list all ruler configs", "err", err)
+	}
+	close(iter)
+	<-done
 }

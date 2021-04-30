@@ -24,13 +24,13 @@ import (
 	"net/http"
 	"strings"
 
-	errors "github.com/go-openapi/errors"
-	loads "github.com/go-openapi/loads"
-	runtime "github.com/go-openapi/runtime"
-	middleware "github.com/go-openapi/runtime/middleware"
-	security "github.com/go-openapi/runtime/security"
-	spec "github.com/go-openapi/spec"
-	strfmt "github.com/go-openapi/strfmt"
+	"github.com/go-openapi/errors"
+	"github.com/go-openapi/loads"
+	"github.com/go-openapi/runtime"
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/runtime/security"
+	"github.com/go-openapi/spec"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 
 	"github.com/prometheus/alertmanager/api/v2/restapi/operations/alert"
@@ -49,40 +49,44 @@ func NewAlertmanagerAPI(spec *loads.Document) *AlertmanagerAPI {
 		defaultProduces:     "application/json",
 		customConsumers:     make(map[string]runtime.Consumer),
 		customProducers:     make(map[string]runtime.Producer),
+		PreServerShutdown:   func() {},
 		ServerShutdown:      func() {},
 		spec:                spec,
 		ServeError:          errors.ServeError,
 		BasicAuthenticator:  security.BasicAuth,
 		APIKeyAuthenticator: security.APIKeyAuth,
 		BearerAuthenticator: security.BearerAuth,
-		JSONConsumer:        runtime.JSONConsumer(),
-		JSONProducer:        runtime.JSONProducer(),
+
+		JSONConsumer: runtime.JSONConsumer(),
+
+		JSONProducer: runtime.JSONProducer(),
+
 		SilenceDeleteSilenceHandler: silence.DeleteSilenceHandlerFunc(func(params silence.DeleteSilenceParams) middleware.Responder {
-			return middleware.NotImplemented("operation SilenceDeleteSilence has not yet been implemented")
+			return middleware.NotImplemented("operation silence.DeleteSilence has not yet been implemented")
 		}),
 		AlertgroupGetAlertGroupsHandler: alertgroup.GetAlertGroupsHandlerFunc(func(params alertgroup.GetAlertGroupsParams) middleware.Responder {
-			return middleware.NotImplemented("operation AlertgroupGetAlertGroups has not yet been implemented")
+			return middleware.NotImplemented("operation alertgroup.GetAlertGroups has not yet been implemented")
 		}),
 		AlertGetAlertsHandler: alert.GetAlertsHandlerFunc(func(params alert.GetAlertsParams) middleware.Responder {
-			return middleware.NotImplemented("operation AlertGetAlerts has not yet been implemented")
+			return middleware.NotImplemented("operation alert.GetAlerts has not yet been implemented")
 		}),
 		ReceiverGetReceiversHandler: receiver.GetReceiversHandlerFunc(func(params receiver.GetReceiversParams) middleware.Responder {
-			return middleware.NotImplemented("operation ReceiverGetReceivers has not yet been implemented")
+			return middleware.NotImplemented("operation receiver.GetReceivers has not yet been implemented")
 		}),
 		SilenceGetSilenceHandler: silence.GetSilenceHandlerFunc(func(params silence.GetSilenceParams) middleware.Responder {
-			return middleware.NotImplemented("operation SilenceGetSilence has not yet been implemented")
+			return middleware.NotImplemented("operation silence.GetSilence has not yet been implemented")
 		}),
 		SilenceGetSilencesHandler: silence.GetSilencesHandlerFunc(func(params silence.GetSilencesParams) middleware.Responder {
-			return middleware.NotImplemented("operation SilenceGetSilences has not yet been implemented")
+			return middleware.NotImplemented("operation silence.GetSilences has not yet been implemented")
 		}),
 		GeneralGetStatusHandler: general.GetStatusHandlerFunc(func(params general.GetStatusParams) middleware.Responder {
-			return middleware.NotImplemented("operation GeneralGetStatus has not yet been implemented")
+			return middleware.NotImplemented("operation general.GetStatus has not yet been implemented")
 		}),
 		AlertPostAlertsHandler: alert.PostAlertsHandlerFunc(func(params alert.PostAlertsParams) middleware.Responder {
-			return middleware.NotImplemented("operation AlertPostAlerts has not yet been implemented")
+			return middleware.NotImplemented("operation alert.PostAlerts has not yet been implemented")
 		}),
 		SilencePostSilencesHandler: silence.PostSilencesHandlerFunc(func(params silence.PostSilencesParams) middleware.Responder {
-			return middleware.NotImplemented("operation SilencePostSilences has not yet been implemented")
+			return middleware.NotImplemented("operation silence.PostSilences has not yet been implemented")
 		}),
 	}
 }
@@ -109,10 +113,12 @@ type AlertmanagerAPI struct {
 	// It has a default implementation in the security package, however you can replace it for your particular usage.
 	BearerAuthenticator func(string, security.ScopedTokenAuthentication) runtime.Authenticator
 
-	// JSONConsumer registers a consumer for a "application/json" mime type
+	// JSONConsumer registers a consumer for the following mime types:
+	//   - application/json
 	JSONConsumer runtime.Consumer
 
-	// JSONProducer registers a producer for a "application/json" mime type
+	// JSONProducer registers a producer for the following mime types:
+	//   - application/json
 	JSONProducer runtime.Producer
 
 	// SilenceDeleteSilenceHandler sets the operation handler for the delete silence operation
@@ -133,10 +139,13 @@ type AlertmanagerAPI struct {
 	AlertPostAlertsHandler alert.PostAlertsHandler
 	// SilencePostSilencesHandler sets the operation handler for the post silences operation
 	SilencePostSilencesHandler silence.PostSilencesHandler
-
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
 	ServeError func(http.ResponseWriter, *http.Request, error)
+
+	// PreServerShutdown is called before the HTTP(S) server is shutdown
+	// This allows for custom functions to get executed before the HTTP(S) server stops accepting traffic
+	PreServerShutdown func()
 
 	// ServerShutdown is called when the HTTP(S) server is shut down and done
 	// handling all active connections and does not accept connections any more
@@ -199,35 +208,27 @@ func (o *AlertmanagerAPI) Validate() error {
 	if o.SilenceDeleteSilenceHandler == nil {
 		unregistered = append(unregistered, "silence.DeleteSilenceHandler")
 	}
-
 	if o.AlertgroupGetAlertGroupsHandler == nil {
 		unregistered = append(unregistered, "alertgroup.GetAlertGroupsHandler")
 	}
-
 	if o.AlertGetAlertsHandler == nil {
 		unregistered = append(unregistered, "alert.GetAlertsHandler")
 	}
-
 	if o.ReceiverGetReceiversHandler == nil {
 		unregistered = append(unregistered, "receiver.GetReceiversHandler")
 	}
-
 	if o.SilenceGetSilenceHandler == nil {
 		unregistered = append(unregistered, "silence.GetSilenceHandler")
 	}
-
 	if o.SilenceGetSilencesHandler == nil {
 		unregistered = append(unregistered, "silence.GetSilencesHandler")
 	}
-
 	if o.GeneralGetStatusHandler == nil {
 		unregistered = append(unregistered, "general.GetStatusHandler")
 	}
-
 	if o.AlertPostAlertsHandler == nil {
 		unregistered = append(unregistered, "alert.PostAlertsHandler")
 	}
-
 	if o.SilencePostSilencesHandler == nil {
 		unregistered = append(unregistered, "silence.PostSilencesHandler")
 	}
@@ -246,28 +247,22 @@ func (o *AlertmanagerAPI) ServeErrorFor(operationID string) func(http.ResponseWr
 
 // AuthenticatorsFor gets the authenticators for the specified security schemes
 func (o *AlertmanagerAPI) AuthenticatorsFor(schemes map[string]spec.SecurityScheme) map[string]runtime.Authenticator {
-
 	return nil
-
 }
 
 // Authorizer returns the registered authorizer
 func (o *AlertmanagerAPI) Authorizer() runtime.Authorizer {
-
 	return nil
-
 }
 
-// ConsumersFor gets the consumers for the specified media types
+// ConsumersFor gets the consumers for the specified media types.
+// MIME type parameters are ignored here.
 func (o *AlertmanagerAPI) ConsumersFor(mediaTypes []string) map[string]runtime.Consumer {
-
-	result := make(map[string]runtime.Consumer)
+	result := make(map[string]runtime.Consumer, len(mediaTypes))
 	for _, mt := range mediaTypes {
 		switch mt {
-
 		case "application/json":
 			result["application/json"] = o.JSONConsumer
-
 		}
 
 		if c, ok := o.customConsumers[mt]; ok {
@@ -275,19 +270,16 @@ func (o *AlertmanagerAPI) ConsumersFor(mediaTypes []string) map[string]runtime.C
 		}
 	}
 	return result
-
 }
 
-// ProducersFor gets the producers for the specified media types
+// ProducersFor gets the producers for the specified media types.
+// MIME type parameters are ignored here.
 func (o *AlertmanagerAPI) ProducersFor(mediaTypes []string) map[string]runtime.Producer {
-
-	result := make(map[string]runtime.Producer)
+	result := make(map[string]runtime.Producer, len(mediaTypes))
 	for _, mt := range mediaTypes {
 		switch mt {
-
 		case "application/json":
 			result["application/json"] = o.JSONProducer
-
 		}
 
 		if p, ok := o.customProducers[mt]; ok {
@@ -295,7 +287,6 @@ func (o *AlertmanagerAPI) ProducersFor(mediaTypes []string) map[string]runtime.P
 		}
 	}
 	return result
-
 }
 
 // HandlerFor gets a http.Handler for the provided operation method and path
@@ -325,7 +316,6 @@ func (o *AlertmanagerAPI) Context() *middleware.Context {
 
 func (o *AlertmanagerAPI) initHandlerCache() {
 	o.Context() // don't care about the result, just that the initialization happened
-
 	if o.handlers == nil {
 		o.handlers = make(map[string]map[string]http.Handler)
 	}
@@ -334,47 +324,38 @@ func (o *AlertmanagerAPI) initHandlerCache() {
 		o.handlers["DELETE"] = make(map[string]http.Handler)
 	}
 	o.handlers["DELETE"]["/silence/{silenceID}"] = silence.NewDeleteSilence(o.context, o.SilenceDeleteSilenceHandler)
-
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/alerts/groups"] = alertgroup.NewGetAlertGroups(o.context, o.AlertgroupGetAlertGroupsHandler)
-
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/alerts"] = alert.NewGetAlerts(o.context, o.AlertGetAlertsHandler)
-
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/receivers"] = receiver.NewGetReceivers(o.context, o.ReceiverGetReceiversHandler)
-
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/silence/{silenceID}"] = silence.NewGetSilence(o.context, o.SilenceGetSilenceHandler)
-
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/silences"] = silence.NewGetSilences(o.context, o.SilenceGetSilencesHandler)
-
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/status"] = general.NewGetStatus(o.context, o.GeneralGetStatusHandler)
-
 	if o.handlers["POST"] == nil {
 		o.handlers["POST"] = make(map[string]http.Handler)
 	}
 	o.handlers["POST"]["/alerts"] = alert.NewPostAlerts(o.context, o.AlertPostAlertsHandler)
-
 	if o.handlers["POST"] == nil {
 		o.handlers["POST"] = make(map[string]http.Handler)
 	}
 	o.handlers["POST"]["/silences"] = silence.NewPostSilences(o.context, o.SilencePostSilencesHandler)
-
 }
 
 // Serve creates a http handler to serve the API over HTTP
@@ -403,4 +384,16 @@ func (o *AlertmanagerAPI) RegisterConsumer(mediaType string, consumer runtime.Co
 // RegisterProducer allows you to add (or override) a producer for a media type.
 func (o *AlertmanagerAPI) RegisterProducer(mediaType string, producer runtime.Producer) {
 	o.customProducers[mediaType] = producer
+}
+
+// AddMiddlewareFor adds a http middleware to existing handler
+func (o *AlertmanagerAPI) AddMiddlewareFor(method, path string, builder middleware.Builder) {
+	um := strings.ToUpper(method)
+	if path == "/" {
+		path = ""
+	}
+	o.Init()
+	if h, ok := o.handlers[um][path]; ok {
+		o.handlers[method][path] = builder(h)
+	}
 }

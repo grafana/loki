@@ -182,7 +182,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
-	client, err := config.NewClientFromConfig(clientConfig, "logcli", false, false)
+	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
 	if err != nil {
 		return err
 	}

@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-openapi/runtime"
 
-	models "github.com/prometheus/alertmanager/api/v2/models"
+	"github.com/prometheus/alertmanager/api/v2/models"
 )
 
 // GetSilencesOKCode is the HTTP code returned for type GetSilencesOK

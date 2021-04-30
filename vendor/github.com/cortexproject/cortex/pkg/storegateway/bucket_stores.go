@@ -126,7 +126,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 	}
 
 	// Init the chunks bytes pool.
-	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
+	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.ChunkPoolMinBucketSizeBytes, cfg.BucketStore.ChunkPoolMaxBucketSizeBytes, cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
 		return nil, errors.Wrap(err, "create chunks bytes pool")
 	}
 
@@ -141,7 +141,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 func (u *BucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
-	if err := u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
 		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
@@ -161,7 +161,7 @@ func (u *BucketStores) SyncBlocks(ctx context.Context) error {
 
 func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: 100 * time.Millisecond,
+		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 3,
 	})
@@ -476,26 +476,31 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	}
 
 	bucketStoreReg := prometheus.NewRegistry()
+	bucketStoreOpts := []store.BucketStoreOption{
+		store.WithLogger(userLogger),
+		store.WithRegistry(bucketStoreReg),
+		store.WithIndexCache(u.indexCache),
+		store.WithQueryGate(u.queryGate),
+		store.WithChunkPool(u.chunksPool),
+	}
+	if u.logLevel.String() == "debug" {
+		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
+	}
+
 	bs, err := store.NewBucketStore(
-		userLogger,
-		bucketStoreReg,
 		userBkt,
 		fetcher,
 		u.syncDirForUser(userID),
-		u.indexCache,
-		u.queryGate,
-		u.chunksPool,
 		newChunksLimiterFactory(u.limits, userID),
 		store.NewSeriesLimiterFactory(0), // No series limiter.
 		u.partitioner,
-		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
-		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
 		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,
 		u.cfg.BucketStore.IndexHeaderLazyLoadingIdleTimeout,
+		bucketStoreOpts...,
 	)
 	if err != nil {
 		return nil, err
@@ -618,7 +623,7 @@ func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		return &chunkLimiter{
-			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter),
+			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQueryFromStore(userID)), failedCounter),
 		}
 	}
 }

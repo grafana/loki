@@ -22,7 +22,7 @@ package receiver
 import (
 	"net/http"
 
-	middleware "github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/runtime/middleware"
 )
 
 // GetReceiversHandlerFunc turns a function with the right signature into a get receivers handler

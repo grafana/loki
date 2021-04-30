@@ -1241,6 +1241,8 @@ scrape_configs:
       __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
 ```
 
+If you are rotating logs, be careful when using a wildcard pattern like `*.log`, and make sure it doesn't match the rotated log file. For example, if you move your logs from `server.log` to `server.01-01-1970.log` in the same directory every night, a static config with a wildcard search pattern like `*.log` will pick up that new file and read it, effectively causing the entire days logs to be re-ingested.
+
 ## Example Static Config without targets
 
 While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
