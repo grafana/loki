@@ -22,18 +22,18 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
         )
         .addRow(
-          $.row('Marker')
+          $.row('Compact and Mark')
           .addPanel(
-            $.fromNowPanel('Last Mark Operation Success', 'loki_boltdb_shipper_retention_operation_last_successful_run_timestamp_seconds')
+            $.fromNowPanel('Last Compact and Mark Operation Success', 'loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds')
           )
           .addPanel(
-            $.panel('Mark Operations Duration') +
-            $.queryPanel(['loki_boltdb_shipper_retention_operation_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']) +
+            $.panel('Compact and Mark Operations Duration') +
+            $.queryPanel(['loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']) +
             { yaxes: $.yaxes('s') },
           )
           .addPanel(
-            $.panel('Marks Operations Per Status') +
-            $.queryPanel(['sum by (status)(rate(loki_boltdb_shipper_retention_operation_total{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{success}}']),
+            $.panel('Compact and Mark Operations Per Status') +
+            $.queryPanel(['sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{success}}']),
           )
         )
         .addRow(
