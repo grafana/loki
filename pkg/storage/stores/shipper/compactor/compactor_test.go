@@ -19,8 +19,7 @@ func TestIsDefaults(t *testing.T) {
 		{&Config{}, false},
 		{&Config{
 			SharedStoreKeyPrefix:     "index/",
-			CompactionInterval:       2 * time.Hour,
-			RetentionInterval:        10 * time.Minute,
+			CompactionInterval:       10 * time.Minute,
 			RetentionDeleteDelay:     2 * time.Hour,
 			RetentionDeleteWorkCount: 150,
 		}, true},

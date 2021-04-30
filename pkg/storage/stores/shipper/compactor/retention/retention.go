@@ -4,23 +4,16 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
-	"path"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 var (
@@ -34,15 +27,19 @@ const (
 	markersFolder = "markers"
 )
 
+type TableMarker interface {
+	// MarkForDelete marks chunks to delete for a given table and returns if it's empty and how many marks were created.
+	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error)
+}
+
 type Marker struct {
 	workingDirectory string
 	config           storage.SchemaConfig
-	objectClient     chunk.ObjectClient
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClient chunk.ObjectClient, expiration ExpirationChecker, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
@@ -50,14 +47,13 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, objectClien
 	return &Marker{
 		workingDirectory: workingDirectory,
 		config:           config,
-		objectClient:     objectClient,
 		expiration:       expiration,
 		markerMetrics:    metrics,
 	}, nil
 }
 
 // MarkForDelete marks all chunks expired for a given table.
-func (t *Marker) MarkForDelete(ctx context.Context, tableName string) error {
+func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
@@ -66,75 +62,23 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string) error {
 	}()
 	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
 
-	if err := t.markTable(ctx, tableName); err != nil {
+	empty, markCount, err := t.markTable(ctx, tableName, db)
+	if err != nil {
 		status = statusFailure
-		return err
+		return false, 0, err
 	}
-	return nil
+	return empty, markCount, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName string) error {
-	objects, err := util.ListDirectory(ctx, tableName, t.objectClient)
-	if err != nil {
-		return err
-	}
-
-	if len(objects) != 1 {
-		// todo(1): in the future we would want to support more tables so that we can apply retention below 1d.
-		// for simplicity and to avoid conflict with compactor we'll support only compacted db file.
-		// Possibly we should apply retention right before the compactor upload compacted db.
-
-		// todo(2): Depending on the retention rules we should be able to skip tables.
-		// For instance if there isn't a retention rules below 1 week, then we can skip the first 7 tables.
-		level.Debug(util_log.Logger).Log("msg", "skipping retention for non-compacted table", "name", tableName)
-		return nil
-	}
-	objectKey := objects[0].Key
-
-	if shipper_util.IsDirectory(objectKey) {
-		level.Debug(util_log.Logger).Log("msg", "skipping retention no table file found", "objectKey", objectKey)
-		return nil
-	}
-
-	tableDirectory := path.Join(t.workingDirectory, tableName)
-	err = chunk_util.EnsureDirectory(tableDirectory)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := os.RemoveAll(tableDirectory); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to remove temporary table directory", "err", err, "path", tableDirectory)
-		}
-	}()
-
-	downloadAt := filepath.Join(tableDirectory, fmt.Sprintf("retention-%d", time.Now().UnixNano()))
-
-	err = shipper_util.GetFileFromStorage(ctx, t.objectClient, objectKey, downloadAt)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to download table", "err", err, "path", downloadAt, "objectKey", objectKey)
-		return err
-	}
-
-	db, err := shipper_util.SafeOpenBoltdbFile(downloadAt)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "failed to open db", "err", err, "path", downloadAt)
-		return err
-	}
-
-	defer func() {
-		if err := db.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close local db", "err", err)
-		}
-	}()
-
+func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
 	schemaCfg, ok := schemaPeriodForTable(t.config, tableName)
 	if !ok {
-		return fmt.Errorf("could not find schema for table: %s", tableName)
+		return false, 0, fmt.Errorf("could not find schema for table: %s", tableName)
 	}
 
 	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
 	if err != nil {
-		return fmt.Errorf("failed to create marker writer: %w", err)
+		return false, 0, fmt.Errorf("failed to create marker writer: %w", err)
 	}
 
 	var empty bool
@@ -148,8 +92,10 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create chunk index iterator: %w", err)
 		}
-
-		empty, err = markforDelete(markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration)
 		if err != nil {
 			return err
 		}
@@ -160,48 +106,21 @@ func (t *Marker) markTable(ctx context.Context, tableName string) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, 0, err
 	}
-	// if the index is empty we can delete the index table.
 	if empty {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
-		return t.objectClient.DeleteObject(ctx, objectKey)
+		return empty, markerWriter.Count(), nil
 	}
-	// No chunks to delete means no changes to the remote index, we don't need to upload it.
 	if markerWriter.Count() == 0 {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionNone).Inc()
-		return nil
+		return empty, markerWriter.Count(), nil
 	}
 	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionModified).Inc()
-	return t.uploadDB(ctx, db, objectKey)
+	return empty, markerWriter.Count(), nil
 }
 
-func (t *Marker) uploadDB(ctx context.Context, db *bbolt.DB, objectKey string) error {
-	sourcePath := db.Path()
-	if strings.HasSuffix(objectKey, ".gz") {
-		compressedPath := fmt.Sprintf("%s.gz", sourcePath)
-		err := shipper_util.CompressFile(sourcePath, compressedPath)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			os.Remove(compressedPath)
-		}()
-		sourcePath = compressedPath
-	}
-	sourceFile, err := os.Open(sourcePath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := sourceFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close file", "path", sourceFile, "err", err)
-		}
-	}()
-	return t.objectClient.PutObject(ctx, objectKey, sourceFile)
-}
-
-func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
+func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
 	seriesMap := newUserSeriesMap()
 	empty := true
 	for chunkIt.Next() {
@@ -223,6 +142,9 @@ func markforDelete(marker MarkerStorageWriter, chunkIt ChunkEntryIterator, serie
 	}
 	if empty {
 		return true, nil
+	}
+	if ctx.Err() != nil {
+		return false, ctx.Err()
 	}
 	return false, seriesMap.ForEach(func(seriesID, userID []byte) error {
 		return seriesCleaner.Cleanup(seriesID, userID)
