@@ -21,6 +21,7 @@ import (
 var boltBucketName = []byte("index")
 
 func AddRecordsToDB(t *testing.T, path string, dbClient *local.BoltIndexClient, start, numRecords int) {
+	t.Helper()
 	db, err := local.OpenBoltdbFile(path)
 	require.NoError(t, err)
 
@@ -45,6 +46,7 @@ type SingleTableQuerier interface {
 }
 
 func TestSingleTableQuery(t *testing.T, queries []chunk.IndexQuery, querier SingleTableQuerier, start, numRecords int) {
+	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
@@ -60,6 +62,7 @@ type SingleDBQuerier interface {
 }
 
 func TestSingleDBQuery(t *testing.T, query chunk.IndexQuery, db *bbolt.DB, querier SingleDBQuerier, start, numRecords int) {
+	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
@@ -75,6 +78,7 @@ type MultiTableQuerier interface {
 }
 
 func TestMultiTableQuery(t *testing.T, queries []chunk.IndexQuery, querier MultiTableQuerier, start, numRecords int) {
+	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
 	fetchedRecords := make(map[string]string)
@@ -86,6 +90,7 @@ func TestMultiTableQuery(t *testing.T, queries []chunk.IndexQuery, querier Multi
 }
 
 func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
+	t.Helper()
 	recordsMtx := sync.Mutex{}
 	return func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
 		itr := batch.Iterator()
@@ -106,6 +111,7 @@ func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]s
 }
 
 func CompareDBs(t *testing.T, db1, db2 *bbolt.DB) {
+	t.Helper()
 	db1Records := readDB(t, db1)
 	db2Records := readDB(t, db2)
 
@@ -113,6 +119,7 @@ func CompareDBs(t *testing.T, db1, db2 *bbolt.DB) {
 }
 
 func readDB(t *testing.T, db *bbolt.DB) map[string]string {
+	t.Helper()
 	dbRecords := map[string]string{}
 
 	err := db.View(func(tx *bbolt.Tx) error {
@@ -134,6 +141,7 @@ type DBRecords struct {
 }
 
 func SetupDBTablesAtPath(t *testing.T, tableName, path string, dbs map[string]DBRecords, compressRandomFiles bool) string {
+	t.Helper()
 	boltIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: path})
 	require.NoError(t, err)
 
@@ -155,6 +163,7 @@ func SetupDBTablesAtPath(t *testing.T, tableName, path string, dbs map[string]DB
 }
 
 func compressFile(t *testing.T, filepath string) {
+	t.Helper()
 	uncompressedFile, err := os.Open(filepath)
 	require.NoError(t, err)
 
@@ -173,6 +182,7 @@ func compressFile(t *testing.T, filepath string) {
 }
 
 func DecompressFile(t *testing.T, src, dest string) {
+	t.Helper()
 	// open compressed file from storage
 	compressedFile, err := os.Open(src)
 	require.NoError(t, err)

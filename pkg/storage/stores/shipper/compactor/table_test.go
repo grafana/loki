@@ -20,6 +20,7 @@ import (
 const (
 	objectsStorageDirName = "objects"
 	workingDirName        = "working-dir"
+	tableName             = "test"
 )
 
 func TestTable_Compaction(t *testing.T) {
@@ -30,7 +31,6 @@ func TestTable_Compaction(t *testing.T) {
 		require.NoError(t, os.RemoveAll(tempDir))
 	}()
 
-	tableName := "test"
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
 	tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
@@ -80,13 +80,13 @@ func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName string, db
 func TestTable_CompactionRetention(t *testing.T) {
 	for name, tt := range map[string]struct {
 		dbCount     int
-		assert      func(t *testing.T, storagePath string)
+		assert      func(t *testing.T, storagePath, tableName string)
 		tableMarker retention.TableMarker
 	}{
 		"emptied table": {
 			dbCount: 2,
-			assert: func(t *testing.T, storagePath string) {
-				_, err := os.Stat(storagePath)
+			assert: func(t *testing.T, storagePath, tableName string) {
+				_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.True(t, os.IsNotExist(err))
 			},
 			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
@@ -95,11 +95,12 @@ func TestTable_CompactionRetention(t *testing.T) {
 		},
 		"marked table": {
 			dbCount: 2,
-			assert: func(t *testing.T, storagePath string) {
-				files, err := ioutil.ReadDir(storagePath)
+			assert: func(t *testing.T, storagePath, tableName string) {
+				files, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.NoError(t, err)
 				require.Len(t, files, 1)
 				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
 			},
 			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
 				return false, 100, nil
@@ -107,11 +108,12 @@ func TestTable_CompactionRetention(t *testing.T) {
 		},
 		"already compacted table": {
 			dbCount: 1,
-			assert: func(t *testing.T, storagePath string) {
-				files, err := ioutil.ReadDir(storagePath)
+			assert: func(t *testing.T, storagePath, tableName string) {
+				files, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.NoError(t, err)
 				require.Len(t, files, 1)
 				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
 			},
 			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
 				return false, 100, nil
@@ -119,11 +121,12 @@ func TestTable_CompactionRetention(t *testing.T) {
 		},
 		"not modified": {
 			dbCount: 1,
-			assert: func(t *testing.T, storagePath string) {
-				files, err := ioutil.ReadDir(storagePath)
+			assert: func(t *testing.T, storagePath, tableName string) {
+				files, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.NoError(t, err)
 				require.Len(t, files, 1)
 				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
 			},
 			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
 				return false, 0, nil
@@ -134,7 +137,6 @@ func TestTable_CompactionRetention(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tempDir := t.TempDir()
 
-			tableName := "test"
 			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
 			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
@@ -163,7 +165,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 			require.NoError(t, err)
 
 			require.NoError(t, table.compact())
-			tt.assert(t, filepath.Join(objectStoragePath, tableName))
+			tt.assert(t, objectStoragePath, tableName)
 		})
 	}
 }
