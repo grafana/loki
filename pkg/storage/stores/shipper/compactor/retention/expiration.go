@@ -9,7 +9,7 @@ import (
 )
 
 type ExpirationChecker interface {
-	Expired(ref ChunkEntry) bool
+	Expired(ref ChunkEntry, now model.Time) bool
 }
 
 type expirationChecker struct {
@@ -28,7 +28,7 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
-func (e *expirationChecker) Expired(ref ChunkEntry) bool {
+func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) bool {
 	userID := unsafeGetString(ref.UserID)
 	streamRetentions := e.limits.StreamRetention(userID)
 	globalRetention := e.limits.RetentionPeriod(userID)
@@ -58,7 +58,7 @@ Outer:
 		matchedRule = streamRetention
 	}
 	if found {
-		return model.Now().Sub(ref.Through) > matchedRule.Period
+		return now.Sub(ref.Through) > matchedRule.Period
 	}
-	return model.Now().Sub(ref.Through) > globalRetention
+	return now.Sub(ref.Through) > globalRetention
 }
