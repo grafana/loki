@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"strings"
 
@@ -14,16 +15,23 @@ import (
 )
 
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
-func LokiConfigMap(opt Options) (*corev1.ConfigMap, error) {
+func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg, err := ConfigOptions(opt)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	b, err := config.Build(cfg)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+
+	s := sha1.New()
+	_, err = s.Write(b)
+	if err != nil {
+		return nil, "", err
+	}
+	sha1 := fmt.Sprintf("%x", s.Sum(nil))
 
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
@@ -37,7 +45,7 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, error) {
 		BinaryData: map[string][]byte{
 			config.LokiConfigFileName: b,
 		},
-	}, nil
+	}, sha1, nil
 }
 
 // ConfigOptions converts Options to config.Options

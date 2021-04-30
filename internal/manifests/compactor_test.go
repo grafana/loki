@@ -3,7 +3,6 @@ package manifests_test
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 )
@@ -18,14 +17,22 @@ func TestNewCompactorStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	ss := manifests.NewCompactorStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Stack: lokiv1beta1.LokiStackSpec{
-			StorageClassName: "standard",
-		},
 	})
-
 	l := ss.Spec.Template.GetObjectMeta().GetLabels()
 	for key, value := range ss.Spec.Selector.MatchLabels {
 		require.Contains(t, l, key)
 		require.Equal(t, l[key], value)
 	}
+}
+
+func TestNewCompactorStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
+	ss := manifests.NewCompactorStatefulSet(manifests.Options{
+		Name:       "abcd",
+		Namespace:  "efgh",
+		ConfigSHA1: "deadbeef",
+	})
+	expected := "loki.openshift.io/config-hash"
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, expected)
+	require.Equal(t, annotations[expected], "deadbeef")
 }

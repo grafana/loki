@@ -116,6 +116,7 @@ func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 	}
 
 	l := ComponentLabels("distributor", opt.Name)
+	a := commonAnnotations(opt.ConfigSHA1)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -133,8 +134,9 @@ func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   fmt.Sprintf("loki-distributor-%s", opt.Name),
-					Labels: labels.Merge(l, GossipLabels()),
+					Name:        fmt.Sprintf("loki-distributor-%s", opt.Name),
+					Labels:      labels.Merge(l, GossipLabels()),
+					Annotations: a,
 				},
 				Spec: podSpec,
 			},

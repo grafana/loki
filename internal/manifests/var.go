@@ -15,6 +15,12 @@ const (
 	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
 )
 
+func commonAnnotations(sha string) map[string]string {
+	return map[string]string{
+		"loki.openshift.io/config-hash": sha,
+	}
+}
+
 func commonLabels(stackName string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":     "loki",

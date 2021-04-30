@@ -99,7 +99,8 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 	}
 
-	compactorLabels := ComponentLabels("compactor", opt.Name)
+	l := ComponentLabels("compactor", opt.Name)
+	a := commonAnnotations(opt.ConfigSHA1)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -108,26 +109,27 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fmt.Sprintf("loki-compactor-%s", opt.Name),
-			Labels: compactorLabels,
+			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
 			RevisionHistoryLimit: pointer.Int32Ptr(10),
 			Replicas:             pointer.Int32Ptr(opt.Stack.Template.Compactor.Replicas),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: labels.Merge(compactorLabels, GossipLabels()),
+				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   fmt.Sprintf("loki-compactor-%s", opt.Name),
-					Labels: labels.Merge(compactorLabels, GossipLabels()),
+					Name:        fmt.Sprintf("loki-compactor-%s", opt.Name),
+					Labels:      labels.Merge(l, GossipLabels()),
+					Annotations: a,
 				},
 				Spec: podSpec,
 			},
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Labels: compactorLabels,
+						Labels: l,
 						Name:   storageVolumeName,
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{

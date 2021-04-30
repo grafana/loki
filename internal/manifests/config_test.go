@@ -15,6 +15,15 @@ import (
 	"k8s.io/utils/pointer"
 )
 
+func TestConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
+	opts := randomConfigOptions()
+
+	_, sha1, err := manifests.LokiConfigMap(opts)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, sha1)
+}
+
 func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	// regardless of what is provided by the default sizing parameters we should always prefer
 	// the user-defined values. This creates an all-inclusive manifests.Options and then checks

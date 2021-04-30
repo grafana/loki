@@ -19,3 +19,16 @@ func TestNewDistributorDeployment_SelectorMatchesLabels(t *testing.T) {
 		require.Equal(t, l[key], value)
 	}
 }
+
+func TestNewDistributorDeployme_HasTemplateConfigHashAnnotation(t *testing.T) {
+	ss := manifests.NewDistributorDeployment(manifests.Options{
+		Name:       "abcd",
+		Namespace:  "efgh",
+		ConfigSHA1: "deadbeef",
+	})
+
+	expected := "loki.openshift.io/config-hash"
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, expected)
+	require.Equal(t, annotations[expected], "deadbeef")
+}

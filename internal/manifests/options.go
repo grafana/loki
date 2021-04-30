@@ -7,9 +7,10 @@ import (
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
 // Most of this should be provided - either directly or indirectly - by the user.
 type Options struct {
-	Name      string
-	Namespace string
-	Image     string
+	Name       string
+	Namespace  string
+	Image      string
+	ConfigSHA1 string
 
 	Stack lokiv1beta1.LokiStackSpec
 

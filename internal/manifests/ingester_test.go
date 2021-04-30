@@ -8,6 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewIngesterStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
+	ss := manifests.NewIngesterStatefulSet(manifests.Options{
+		Name:       "abcd",
+		Namespace:  "efgh",
+		ConfigSHA1: "deadbeef",
+		Stack: lokiv1beta1.LokiStackSpec{
+			StorageClassName: "standard",
+		},
+	})
+
+	expected := "loki.openshift.io/config-hash"
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, expected)
+	require.Equal(t, annotations[expected], "deadbeef")
+}
+
 func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	// You must set the .spec.selector field of a StatefulSet to match the labels of
 	// its .spec.template.metadata.labels. Prior to Kubernetes 1.8, the
