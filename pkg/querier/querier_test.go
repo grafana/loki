@@ -8,26 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/validation"
-
-	"github.com/grafana/loki/pkg/storage"
-
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -326,7 +320,6 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{Labels: map[string]string{"a": "1", "b": "2"}},
 					{Labels: map[string]string{"a": "1", "b": "3"}},
 				}, nil)
-
 			},
 			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -365,7 +358,6 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 }
 
 func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
-
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
@@ -395,7 +387,6 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-
 			req := logproto.QueryRequest{
 				Selector:  `{app="foo"}`,
 				Limit:     1000,
@@ -437,7 +428,6 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 			queryClient.AssertExpectations(t)
 			ingesterClient.AssertExpectations(t)
 			store.AssertExpectations(t)
-
 		})
 	}
 }
@@ -691,7 +681,45 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 				ingesterQueryInterval: ingesterQueryInterval,
 				storeQueryInterval:    storeQueryInterval,
 			})
+		})
+	}
+}
 
+type fakeTimeLimits struct {
+	maxQueryLookback time.Duration
+	maxQueryLength   time.Duration
+}
+
+func (f fakeTimeLimits) MaxQueryLookback(_ string) time.Duration { return f.maxQueryLookback }
+func (f fakeTimeLimits) MaxQueryLength(_ string) time.Duration   { return f.maxQueryLength }
+
+func Test_validateQueryTimeRangeLimits(t *testing.T) {
+	now := time.Now()
+	nowFunc = func() time.Time { return now }
+	tests := []struct {
+		name        string
+		limits      timeRangeLimits
+		from        time.Time
+		through     time.Time
+		wantFrom    time.Time
+		wantThrough time.Time
+		wantErr     bool
+	}{
+		{"no change", fakeTimeLimits{1000 * time.Hour, 1000 * time.Hour}, now, now.Add(24 * time.Hour), now, now.Add(24 * time.Hour), false},
+		{"clamped to 24h", fakeTimeLimits{24 * time.Hour, 1000 * time.Hour}, now.Add(-48 * time.Hour), now, now.Add(-24 * time.Hour), now, false},
+		{"end before start", fakeTimeLimits{}, now, now.Add(-48 * time.Hour), time.Time{}, time.Time{}, true},
+		{"query too long", fakeTimeLimits{maxQueryLength: 24 * time.Hour}, now.Add(-48 * time.Hour), now, time.Time{}, time.Time{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			from, through, err := validateQueryTimeRangeLimits(context.Background(), "foo", tt.limits, tt.from, tt.through)
+			if tt.wantErr {
+				require.NotNil(t, err)
+			} else {
+				require.Nil(t, err)
+			}
+			require.Equal(t, tt.wantFrom, from, "wanted (%s) got (%s)", tt.wantFrom, from)
+			require.Equal(t, tt.wantThrough, through)
 		})
 	}
 }

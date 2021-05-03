@@ -11,6 +11,9 @@ import (
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -67,6 +70,27 @@ func (cfg *SchemaConfig) Validate() error {
 	}
 
 	return cfg.SchemaConfig.Validate()
+}
+
+type ChunkStoreConfig struct {
+	chunk.StoreConfig `yaml:",inline"`
+
+	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
+	// Will be deprecated in the next major release.
+	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
+}
+
+// RegisterFlags adds the flags required to configure this flag set.
+func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.StoreConfig.RegisterFlags(f)
+}
+
+func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
+	if cfg.MaxLookBackPeriod > 0 {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
+	}
+	return cfg.StoreConfig.Validate(logger)
 }
 
 // Store is the Loki chunk store to retrieve and save chunks.
