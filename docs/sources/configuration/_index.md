@@ -186,7 +186,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 [http_listen_port: <int> | default = 80]
 
 # gRPC server listen host
-# CLI flag: -server.grpc-listen-address
+# CLI flag: -server.comlisten-address
 [grpc_listen_address: <string>]
 
 # gRPC server listen port
@@ -1776,7 +1776,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 
 # Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)
 # CLI flag: -<prefix>.grpc-compression
-[grpc-compression: <string> | default = '']
+[grpc_compression: <string> | default = '']
 
 # Rate limit for gRPC client. 0 is disabled.
 # CLI flag: -<prefix>.grpc-client-rate-limit
