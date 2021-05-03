@@ -43,13 +43,17 @@ type Client interface {
 	GetOrgID() string
 }
 
+// Tripperware can wrap a roundtripper.
+type Tripperware func(http.RoundTripper) http.RoundTripper
+
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig config.TLSConfig
-	Username  string
-	Password  string
-	Address   string
-	OrgID     string
+	TLSConfig   config.TLSConfig
+	Username    string
+	Password    string
+	Address     string
+	OrgID       string
+	Tripperware Tripperware
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -186,7 +190,9 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	if err != nil {
 		return err
 	}
-
+	if c.Tripperware != nil {
+		client.Transport = c.Tripperware(client.Transport)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
