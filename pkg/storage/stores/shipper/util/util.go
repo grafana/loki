@@ -8,17 +8,59 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
-
-	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 const delimiter = "/"
+
+var (
+	gzipReader = sync.Pool{}
+	gzipWriter = sync.Pool{}
+)
+
+// getGzipReader gets or creates a new CompressionReader and reset it to read from src
+func getGzipReader(src io.Reader) io.Reader {
+	if r := gzipReader.Get(); r != nil {
+		reader := r.(*gzip.Reader)
+		err := reader.Reset(src)
+		if err != nil {
+			panic(err)
+		}
+		return reader
+	}
+	reader, err := gzip.NewReader(src)
+	if err != nil {
+		panic(err)
+	}
+	return reader
+}
+
+// putGzipReader places back in the pool a CompressionReader
+func putGzipReader(reader io.Reader) {
+	gzipReader.Put(reader)
+}
+
+// getGzipWriter gets or creates a new CompressionWriter and reset it to write to dst
+func getGzipWriter(dst io.Writer) io.WriteCloser {
+	if w := gzipWriter.Get(); w != nil {
+		writer := w.(*gzip.Writer)
+		writer.Reset(dst)
+		return writer
+	}
+	return gzip.NewWriter(dst)
+}
+
+// PutWriter places back in the pool a CompressionWriter
+func putGzipWriter(writer io.WriteCloser) {
+	gzipWriter.Put(writer)
+}
 
 type StorageClient interface {
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
@@ -44,8 +86,8 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 
 	var objectReader io.Reader = readCloser
 	if strings.HasSuffix(objectKey, ".gz") {
-		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
-		defer chunkenc.Gzip.PutReader(decompressedReader)
+		decompressedReader := getGzipReader(readCloser)
+		defer putGzipReader(decompressedReader)
 
 		objectReader = decompressedReader
 	}
@@ -108,8 +150,8 @@ func CompressFile(src, dest string) error {
 		}
 	}()
 
-	compressedWriter := chunkenc.Gzip.GetWriter(compressedFile)
-	defer chunkenc.Gzip.PutWriter(compressedWriter)
+	compressedWriter := getGzipWriter(compressedFile)
+	defer putGzipWriter(compressedWriter)
 
 	_, err = io.Copy(compressedWriter, uncompressedFile)
 	if err != nil {
