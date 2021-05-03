@@ -189,7 +189,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return err
 	}

@@ -61,7 +61,7 @@ type Config struct {
 	IngesterClient   client.Config               `yaml:"ingester_client,omitempty"`
 	Ingester         ingester.Config             `yaml:"ingester,omitempty"`
 	StorageConfig    storage.Config              `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig chunk.StoreConfig           `yaml:"chunk_store_config,omitempty"`
+	ChunkStoreConfig storage.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
 	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
@@ -137,6 +137,13 @@ func (c *Config) Validate() error {
 	}
 	if err := c.CompactorConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
+	}
+	if err := c.ChunkStoreConfig.Validate(util_log.Logger); err != nil {
+		return errors.Wrap(err, "invalid chunk store config")
+	}
+	// TODO(cyriltovena): remove when MaxLookBackPeriod in the storage will be fully deprecated.
+	if c.ChunkStoreConfig.MaxLookBackPeriod > 0 {
+		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
 	}
 	return nil
 }

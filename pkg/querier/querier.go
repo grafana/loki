@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -28,6 +30,8 @@ const (
 	// check loop)
 	tailerWaitEntryThrottle = time.Second / 2
 )
+
+var nowFunc = func() time.Time { return time.Now() }
 
 type interval struct {
 	start, end time.Time
@@ -83,7 +87,8 @@ func (q *Querier) SetQueryable(queryable logql.Querier) {
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
-	err := q.validateQueryRequest(ctx, params)
+	var err error
+	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +130,8 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 }
 
 func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	err := q.validateQueryRequest(ctx, params)
+	var err error
+	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +253,7 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 		return nil, err
 	}
 
-	if err = q.validateQueryTimeRange(userID, *req.Start, *req.End); err != nil {
+	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
 		return nil, err
 	}
 
@@ -303,7 +309,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		},
 	}
 
-	err = q.validateQueryRequest(ctx, histReq)
+	histReq.Start, histReq.End, err = q.validateQueryRequest(ctx, histReq)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +354,7 @@ func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 		return nil, err
 	}
 
-	if err = q.validateQueryTimeRange(userID, req.Start, req.End); err != nil {
+	if req.Start, req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
 		return nil, err
 	}
 
@@ -357,11 +363,9 @@ func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
-
 }
 
 func (q *Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-
 	// buffer the channels to the # of calls they're expecting su
 	series := make(chan [][]logproto.SeriesIdentifier, 2)
 	errs := make(chan error, 2)
@@ -465,38 +469,52 @@ func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time,
 	return ids, nil
 }
 
-func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) error {
+func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return err
+		return time.Time{}, time.Time{}, err
 	}
 
 	selector, err := req.LogSelector()
 	if err != nil {
-		return err
+		return time.Time{}, time.Time{}, err
 	}
 	matchers := selector.Matchers()
 
 	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(userID)
 	if len(matchers) > maxStreamMatchersPerQuery {
-		return httpgrpc.Errorf(http.StatusBadRequest,
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest,
 			"max streams matchers per query exceeded, matchers-count > limit (%d > %d)", len(matchers), maxStreamMatchersPerQuery)
 	}
 
-	return q.validateQueryTimeRange(userID, req.GetStart(), req.GetEnd())
+	return validateQueryTimeRangeLimits(ctx, userID, q.limits, req.GetStart(), req.GetEnd())
 }
 
-func (q *Querier) validateQueryTimeRange(userID string, from time.Time, through time.Time) error {
-	if (through).Before(from) {
-		return httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
-	}
+type timeRangeLimits interface {
+	MaxQueryLookback(string) time.Duration
+	MaxQueryLength(string) time.Duration
+}
 
-	maxQueryLength := q.limits.MaxQueryLength(userID)
-	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
-		return httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
-	}
+func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
+	now := nowFunc()
+	// Clamp the time range based on the max query lookback.
+	if maxQueryLookback := limits.MaxQueryLookback(userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
+		origStartTime := from
+		from = now.Add(-maxQueryLookback)
 
-	return nil
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
+			"original", origStartTime,
+			"updated", from)
+
+	}
+	if maxQueryLength := limits.MaxQueryLength(userID); maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
+	}
+	if through.Before(from) {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+	}
+	return from, through, nil
 }
 
 func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
