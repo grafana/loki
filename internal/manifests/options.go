@@ -2,6 +2,7 @@ package manifests
 
 import (
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
+	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 )
 
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
@@ -12,7 +13,8 @@ type Options struct {
 	Image      string
 	ConfigSHA1 string
 
-	Stack lokiv1beta1.LokiStackSpec
+	Stack                lokiv1beta1.LokiStackSpec
+	ResourceRequirements internal.ResourceRequirements
 
 	ObjectStorage ObjectStorage
 }

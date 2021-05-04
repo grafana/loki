@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -44,7 +43,7 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 			{
 				Image:     opt.Image,
 				Name:      "loki-querier",
-				Resources: internal.ResourceSizeTable[opt.Stack.Size].Querier,
+				Resources: opt.ResourceRequirements.Querier,
 				Args: []string{
 					"-target=querier",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),

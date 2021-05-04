@@ -3,90 +3,9 @@ kind: LokiStack
 metadata:
   name: lokistack-sample
 spec:
-  limits:
-    global:
-      ingestion:
-        ingestionBurstSize: 90
-        ingestionRate: 60
-        maxGlobalStreamsPerTenant: 83
-        maxLabelLength: 40
-        maxLabelValueLength: 79
-        maxLabelNamesPerSeries: 45
-        maxLineSize: 74
-        maxStreamsPerTenant: 35
-      queries:
-        maxChunksPerQuery: 90
-        maxEntriesLimitPerQuery: 8
-        maxQuerySeries: 71
+  size: 1x.small
   replicationFactor: 2
-  size: SizeOneXSmall
   storage:
     secret:
       name: test
   storageClassName: standard
-  template:
-    compactor:
-      replicas: 1
-      tolerations:
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 35
-          value: test
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 43
-          value: test
-    distributor:
-      replicas: 3
-      tolerations:
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 72
-          value: test
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 9
-          value: test
-    ingester:
-      replicas: 3
-      tolerations:
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 20
-          value: test
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 22
-          value: test
-    querier:
-      replicas: 3
-      tolerations:
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 22
-          value: test
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 73
-          value: test
-    queryFrontend:
-      replicas: 3
-      tolerations:
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 9
-          value: test
-        - effect: test
-          key: test
-          operator: test
-          tolerationSeconds: 23
-          value: test

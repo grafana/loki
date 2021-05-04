@@ -5,20 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ViaQ/logerr/kverrors"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
-	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
-	cfg, err := ConfigOptions(opt)
-	if err != nil {
-		return nil, "", err
-	}
-
+	cfg := ConfigOptions(opt)
 	b, err := config.Build(cfg)
 	if err != nil {
 		return nil, "", err
@@ -47,18 +41,17 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 }
 
 // ConfigOptions converts Options to config.Options
-func ConfigOptions(opt Options) (config.Options, error) {
-	// First define the default values determined by our sizing table
-	cfg := config.Options{
+func ConfigOptions(opt Options) config.Options {
+	return config.Options{
 		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
 		FrontendWorker: config.Address{
-			FQDN: "",
-			Port: 0,
+			FQDN: fqdn(NewQueryFrontendHTTPService(opt.Name).GetName(), opt.Namespace),
+			Port: httpPort,
 		},
 		GossipRing: config.Address{
-			FQDN: fqdn(LokiGossipRingService(opt.Name).GetName(), opt.Namespace),
+			FQDN: fqdn(BuildLokiGossipRingService(opt.Name).GetName(), opt.Namespace),
 			Port: gossipPort,
 		},
 		Querier: config.Address{
@@ -73,13 +66,11 @@ func ConfigOptions(opt Options) (config.Options, error) {
 			AccessKeyID:     opt.ObjectStorage.AccessKeyID,
 			AccessKeySecret: opt.ObjectStorage.AccessKeySecret,
 		},
+		QueryParallelism: config.Parallelism{
+			QuerierCPULimits:      opt.ResourceRequirements.Querier.Requests.Cpu().Value(),
+			QueryFrontendReplicas: opt.Stack.Template.QueryFrontend.Replicas,
+		},
 	}
-
-	// Now merge any configuration provided by the custom resource
-	if err := mergo.Merge(&cfg.Stack, opt.Stack, mergo.WithOverride); err != nil {
-		return config.Options{}, kverrors.Wrap(err, "failed to merge configs")
-	}
-	return cfg, nil
 }
 
 func lokiConfigMapName(stackName string) string {

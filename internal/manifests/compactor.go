@@ -42,8 +42,9 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: opt.Image,
-				Name:  "loki-compactor",
+				Image:     opt.Image,
+				Name:      "loki-compactor",
+				Resources: opt.ResourceRequirements.Compactor,
 				Args: []string{
 					"-target=compactor",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),

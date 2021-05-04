@@ -13,14 +13,15 @@ distributor:
       store: memberlist
 frontend:
   downstream_url: {{ .Querier.FQDN }}:{{ .Querier.Port }}
+  tail_proxy_url: {{ .Querier.FQDN }}:{{ .Querier.Port }}
   compress_responses: true
-  max_outstanding_per_tenant: 200
+  max_outstanding_per_tenant: 256
   log_queries_longer_than: 5s
 frontend_worker:
-#  frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
-#  grpc_client_config:
-#    max_send_msg_size: 104857600
-  parallelism: 32
+  frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
+  grpc_client_config:
+    max_send_msg_size: 104857600
+  parallelism: {{ .QueryParallelism.Value }}
 ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
@@ -31,36 +32,48 @@ ingester:
     heartbeat_period: 5s
     interface_names:
       - eth0
-    join_after: 60s
+    join_after: 30s
     num_tokens: 512
     ring:
       replication_factor: {{ .Stack.ReplicationFactor }}
       heartbeat_timeout: 1m
       kvstore:
         store: memberlist
-  max_transfer_retries: 0
+  max_transfer_retries: 60
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
   remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
 limits_config:
-  enforce_metric_name: false
-  ingestion_burst_size_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionBurstSize }}
-  ingestion_rate_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionRate }}
   ingestion_rate_strategy: global
-  max_cache_freshness_per_query: 10m
-  max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
-  max_query_length: 12000h
-  max_label_name_length: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelLength }}
+  ingestion_rate_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionRate }}
+  ingestion_burst_size_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionBurstSize }}
+  max_label_name_length: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelNameLength }}
   max_label_value_length: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelValueLength }}
   max_label_names_per_series: {{ .Stack.Limits.Global.IngestionLimits.MaxLabelNamesPerSeries }}
-  max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
-  max_query_parallelism: 32
-  max_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxStreamsPerTenant }}
-  max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
-  max_entries_limit_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery }}
   reject_old_samples: true
-  reject_old_samples_max_age: 24h
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  enforce_metric_name: false
+  max_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxStreamsPerTenant }}
+  max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
+  max_entries_limit_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery }}
+  max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
+  max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
+  max_query_length: 12000h
+  max_query_parallelism: 16
+  max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: {{ .GossipRing.Port }}
@@ -71,11 +84,11 @@ memberlist:
   min_join_backoff: 1s
 querier:
   engine:
-    max_look_back_period: 5m
+    max_look_back_period: 30s
     timeout: 3m
   extra_query_delay: 0s
   query_ingesters_within: 2h
-  query_timeout: 1h
+  query_timeout: 1m
   tail_max_duration: 1h
 query_range:
   align_queries_with_step: true
@@ -83,6 +96,7 @@ query_range:
   max_retries: 5
   results_cache: {}
   split_queries_by_interval: 30m
+  parallelise_shardable_queries: false
 schema_config:
   configs:
     - from: "2020-10-01"

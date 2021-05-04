@@ -30,7 +30,7 @@ func BuildAll(opt Options) ([]client.Object, error) {
 	res = append(res, BuildQuerier(opt)...)
 	res = append(res, BuildCompactor(opt)...)
 	res = append(res, BuildQueryFrontend(opt)...)
-	res = append(res, LokiGossipRingService(opt.Name))
+	res = append(res, BuildLokiGossipRingService(opt.Name))
 
 	return res, nil
 }
@@ -55,6 +55,7 @@ func applyUserOptions(opt Options) (Options, error) {
 		return Options{}, kverrors.Wrap(err, "failed to merge strict defaults")
 	}
 
+	opt.ResourceRequirements = internal.ResourceRequirementsTable[opt.Stack.Size]
 	opt.Stack = *spec
 	return opt, nil
 }

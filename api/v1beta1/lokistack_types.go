@@ -191,12 +191,12 @@ type IngestionLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	IngestionBurstSize int32 `json:"ingestionBurstSize,omitempty"`
 
-	// MaxLabelLength defines the maximum number of characters allowed
+	// MaxLabelNameLength defines the maximum number of characters allowed
 	// for label keys in log streams.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	MaxLabelLength int32 `json:"maxLabelLength,omitempty"`
+	MaxLabelNameLength int32 `json:"maxLabelNameLength,omitempty"`
 
 	// MaxLabelValueLength defines the maximum number of characters allowed
 	// for label values in log streams.

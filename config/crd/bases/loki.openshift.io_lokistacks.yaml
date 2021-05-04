@@ -67,8 +67,8 @@ spec:
                               number of active streams per tenant, across the cluster.
                             format: int32
                             type: integer
-                          maxLabelLength:
-                            description: MaxLabelLength defines the maximum number
+                          maxLabelNameLength:
+                            description: MaxLabelNameLength defines the maximum number
                               of characters allowed for label keys in log streams.
                             format: int32
                             type: integer
@@ -140,9 +140,10 @@ spec:
                                 number of active streams per tenant, across the cluster.
                               format: int32
                               type: integer
-                            maxLabelLength:
-                              description: MaxLabelLength defines the maximum number
-                                of characters allowed for label keys in log streams.
+                            maxLabelNameLength:
+                              description: MaxLabelNameLength defines the maximum
+                                number of characters allowed for label keys in log
+                                streams.
                               format: int32
                               type: integer
                             maxLabelNamesPerSeries:

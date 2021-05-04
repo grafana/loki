@@ -29,8 +29,7 @@ func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {
 	// that every value is present in the result
 	opts := randomConfigOptions()
 
-	res, err := manifests.ConfigOptions(opts)
-	require.NoError(t, err)
+	res := manifests.ConfigOptions(opts)
 
 	expected, err := json.Marshal(opts.Stack)
 	require.NoError(t, err)
@@ -56,7 +55,7 @@ func randomConfigOptions() manifests.Options {
 					IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
 						IngestionRate:             rand.Int31(),
 						IngestionBurstSize:        rand.Int31(),
-						MaxLabelLength:            rand.Int31(),
+						MaxLabelNameLength:        rand.Int31(),
 						MaxLabelValueLength:       rand.Int31(),
 						MaxLabelNamesPerSeries:    rand.Int31(),
 						MaxStreamsPerTenant:       rand.Int31(),
@@ -74,7 +73,7 @@ func randomConfigOptions() manifests.Options {
 						IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
 							IngestionRate:             rand.Int31(),
 							IngestionBurstSize:        rand.Int31(),
-							MaxLabelLength:            rand.Int31(),
+							MaxLabelNameLength:        rand.Int31(),
 							MaxLabelValueLength:       rand.Int31(),
 							MaxLabelNamesPerSeries:    rand.Int31(),
 							MaxStreamsPerTenant:       rand.Int31(),

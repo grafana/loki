@@ -6,8 +6,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// ResourceSizes is a map of component->requests/limits
-type ResourceSizes struct {
+// ResourceRequirements is a map of component->requests/limits
+type ResourceRequirements struct {
 	Querier       corev1.ResourceRequirements
 	Ingester      corev1.ResourceRequirements
 	Distributor   corev1.ResourceRequirements
@@ -15,8 +15,8 @@ type ResourceSizes struct {
 	Compactor     corev1.ResourceRequirements
 }
 
-// ResourceSizeTable defines the default resource requests and limits for each size
-var ResourceSizeTable = map[lokiv1beta1.LokiStackSizeType]ResourceSizes{
+// ResourceRequirementsTable defines the default resource requests and limits for each size
+var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ResourceRequirements{
 	lokiv1beta1.SizeOneXExtraSmall: {
 		Querier: corev1.ResourceRequirements{
 			Limits: nil,
@@ -139,14 +139,20 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 		Limits: &lokiv1beta1.LimitsSpec{
 			Global: &lokiv1beta1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
-					IngestionRate:       20,
-					IngestionBurstSize:  10,
-					MaxStreamsPerTenant: 25000,
+					// Defaults from Loki docs
+					IngestionRate:          4,
+					IngestionBurstSize:     6,
+					MaxStreamsPerTenant:    10000,
+					MaxLabelNameLength:     1024,
+					MaxLabelValueLength:    2048,
+					MaxLabelNamesPerSeries: 30,
+					MaxLineSize:            256000,
 				},
 				QueryLimits: &lokiv1beta1.QueryLimitSpec{
-					MaxEntriesLimitPerQuery: 0,
-					MaxChunksPerQuery:       0,
-					MaxQuerySeries:          0,
+					// Defaults from Loki docs
+					MaxEntriesLimitPerQuery: 5000,
+					MaxChunksPerQuery:       2000000,
+					MaxQuerySeries:          500,
 				},
 			},
 		},
@@ -175,14 +181,22 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 		Limits: &lokiv1beta1.LimitsSpec{
 			Global: &lokiv1beta1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
-					IngestionRate:       20,
-					IngestionBurstSize:  10,
-					MaxStreamsPerTenant: 25000,
+					// Custom for 1x.small
+					IngestionRate:             10,
+					IngestionBurstSize:        20,
+					MaxStreamsPerTenant:       10000,
+					MaxGlobalStreamsPerTenant: 10000,
+					// Defaults from Loki docs
+					MaxLabelNameLength:     1024,
+					MaxLabelValueLength:    2048,
+					MaxLabelNamesPerSeries: 30,
+					MaxLineSize:            256000,
 				},
 				QueryLimits: &lokiv1beta1.QueryLimitSpec{
-					MaxEntriesLimitPerQuery: 0,
-					MaxChunksPerQuery:       0,
-					MaxQuerySeries:          0,
+					// Defaults from Loki docs
+					MaxEntriesLimitPerQuery: 5000,
+					MaxChunksPerQuery:       2000000,
+					MaxQuerySeries:          500,
 				},
 			},
 		},
@@ -211,14 +225,22 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 		Limits: &lokiv1beta1.LimitsSpec{
 			Global: &lokiv1beta1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1beta1.IngestionLimitSpec{
-					IngestionRate:       20,
-					IngestionBurstSize:  10,
-					MaxStreamsPerTenant: 25000,
+					// Custom for 1x.medium
+					IngestionRate:             10,
+					IngestionBurstSize:        20,
+					MaxStreamsPerTenant:       25000,
+					MaxGlobalStreamsPerTenant: 25000,
+					// Defaults from Loki docs
+					MaxLabelNameLength:     1024,
+					MaxLabelValueLength:    2048,
+					MaxLabelNamesPerSeries: 30,
+					MaxLineSize:            256000,
 				},
 				QueryLimits: &lokiv1beta1.QueryLimitSpec{
-					MaxEntriesLimitPerQuery: 0,
-					MaxChunksPerQuery:       0,
-					MaxQuerySeries:          0,
+					// Defaults from Loki docs
+					MaxEntriesLimitPerQuery: 5000,
+					MaxChunksPerQuery:       2000000,
+					MaxQuerySeries:          500,
 				},
 			},
 		},

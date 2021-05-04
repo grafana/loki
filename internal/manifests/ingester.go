@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -44,7 +43,7 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 			{
 				Image:     opt.Image,
 				Name:      "loki-ingester",
-				Resources: internal.ResourceSizeTable[opt.Stack.Size].Ingester,
+				Resources: opt.ResourceRequirements.Ingester,
 				Args: []string{
 					"-target=ingester",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),

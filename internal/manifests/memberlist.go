@@ -7,8 +7,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// LokiGossipRingService creates a k8s service for the gossip/memberlist members of the cluster
-func LokiGossipRingService(stackName string) *corev1.Service {
+// BuildLokiGossipRingService creates a k8s service for the gossip/memberlist members of the cluster
+func BuildLokiGossipRingService(stackName string) *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",

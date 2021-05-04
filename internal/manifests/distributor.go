@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,7 +54,7 @@ func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 			{
 				Image:     opt.Image,
 				Name:      "loki-distributor",
-				Resources: internal.ResourceSizeTable[opt.Stack.Size].Distributor,
+				Resources: opt.ResourceRequirements.Distributor,
 				Args: []string{
 					"-target=distributor",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
