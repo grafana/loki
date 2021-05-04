@@ -17,19 +17,17 @@ import (
 )
 
 // BuildQuerier returns a list of k8s objects for Loki Querier
-func BuildQuerier(opt Options) ([]client.Object, error) {
+func BuildQuerier(opt Options) []client.Object {
 	return []client.Object{
 		NewQuerierStatefulSet(opt),
 		NewQuerierGRPCService(opt.Name),
 		NewQuerierHTTPService(opt.Name),
-	}, nil
+	}
 }
 
 // NewQuerierStatefulSet creates a deployment object for a querier
 func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
-		Tolerations:  opt.Stack.Template.Querier.Tolerations,
-		NodeSelector: opt.Stack.Template.Querier.NodeSelector,
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -102,6 +100,11 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 				},
 			},
 		},
+	}
+
+	if opt.Stack.Template != nil && opt.Stack.Template.Querier != nil {
+		podSpec.Tolerations = opt.Stack.Template.Querier.Tolerations
+		podSpec.NodeSelector = opt.Stack.Template.Querier.NodeSelector
 	}
 
 	l := ComponentLabels("querier", opt.Name)

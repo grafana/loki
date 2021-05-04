@@ -140,6 +140,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
@@ -191,6 +192,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
@@ -267,6 +269,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
@@ -311,6 +314,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
@@ -406,6 +410,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
@@ -458,6 +463,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
@@ -556,6 +562,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: defaultSecret.Name,
@@ -606,6 +613,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
 		},
 		Spec: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Storage: lokiv1beta1.ObjectStorageSpec{
 				Secret: lokiv1beta1.ObjectStorageSecretSpec{
 					Name: invalidSecret.Name,

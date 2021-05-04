@@ -15,6 +15,11 @@ func TestNewIngesterStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 		ConfigSHA1: "deadbeef",
 		Stack: lokiv1beta1.LokiStackSpec{
 			StorageClassName: "standard",
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Ingester: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
 		},
 	})
 
@@ -31,16 +36,21 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	// failing to specify a matching Pod Selector will result in a validation error
 	// during StatefulSet creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	ss := manifests.NewIngesterStatefulSet(manifests.Options{
+	sts := manifests.NewIngesterStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1beta1.LokiStackSpec{
 			StorageClassName: "standard",
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Ingester: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
 		},
 	})
 
-	l := ss.Spec.Template.GetObjectMeta().GetLabels()
-	for key, value := range ss.Spec.Selector.MatchLabels {
+	l := sts.Spec.Template.GetObjectMeta().GetLabels()
+	for key, value := range sts.Spec.Selector.MatchLabels {
 		require.Contains(t, l, key)
 		require.Equal(t, l[key], value)
 	}

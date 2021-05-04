@@ -3,6 +3,7 @@ package manifests_test
 import (
 	"testing"
 
+	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 )
@@ -14,12 +15,21 @@ func TestNewCompactorStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	// failing to specify a matching Pod Selector will result in a validation error
 	// during StatefulSet creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	ss := manifests.NewCompactorStatefulSet(manifests.Options{
+	sts := manifests.NewCompactorStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
+		Stack: lokiv1beta1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Compactor: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
 	})
-	l := ss.Spec.Template.GetObjectMeta().GetLabels()
-	for key, value := range ss.Spec.Selector.MatchLabels {
+
+	l := sts.Spec.Template.GetObjectMeta().GetLabels()
+	for key, value := range sts.Spec.Selector.MatchLabels {
 		require.Contains(t, l, key)
 		require.Equal(t, l[key], value)
 	}
@@ -30,6 +40,14 @@ func TestNewCompactorStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
+		Stack: lokiv1beta1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Compactor: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
 	})
 	expected := "loki.openshift.io/config-hash"
 	annotations := ss.Spec.Template.Annotations

@@ -41,7 +41,7 @@ const (
 
 // LokiStackSizeType declares the type for loki cluster scale outs.
 //
-// +kubebuilder:validation:Enum=SizeOneXExtraSmall;SizeOneXSmall;SizeOneXMedium
+// +kubebuilder:validation:Enum="1x.extra-small";"1x.small";"1x.medium"
 type LokiStackSizeType string
 
 const (
@@ -76,18 +76,21 @@ type LokiComponentSpec struct {
 	// Replicas defines the number of replica pods of the component.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	Replicas int32 `json:"replicas,omitempty"`
 
 	// NodeSelector defines the labels required by a node to schedule
 	// the component onto it.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
 	// Tolerations defines the tolerations required by a node to schedule
 	// the component onto it.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
@@ -98,27 +101,32 @@ type LokiTemplateSpec struct {
 	// Compactor defines the compaction component spec.
 	//
 	// +optional
-	Compactor LokiComponentSpec `json:"compactor,omitempty"`
+	// +kubebuilder:validation:Optional
+	Compactor *LokiComponentSpec `json:"compactor,omitempty"`
 
 	// Distributor defines the distributor component spec.
 	//
 	// +optional
-	Distributor LokiComponentSpec `json:"distributor,omitempty"`
+	// +kubebuilder:validation:Optional
+	Distributor *LokiComponentSpec `json:"distributor,omitempty"`
 
 	// Ingester defines the ingester component spec.
 	//
 	// +optional
-	Ingester LokiComponentSpec `json:"ingester,omitempty"`
+	// +kubebuilder:validation:Optional
+	Ingester *LokiComponentSpec `json:"ingester,omitempty"`
 
 	// Querier defines the querier component spec.
 	//
 	// +optional
-	Querier LokiComponentSpec `json:"querier,omitempty"`
+	// +kubebuilder:validation:Optional
+	Querier *LokiComponentSpec `json:"querier,omitempty"`
 
 	// QueryFrontend defines the query frontend component spec.
 	//
 	// +optional
-	QueryFrontend LokiComponentSpec `json:"queryFrontend,omitempty"`
+	// +kubebuilder:validation:Optional
+	QueryFrontend *LokiComponentSpec `json:"queryFrontend,omitempty"`
 }
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
@@ -126,6 +134,7 @@ type ObjectStorageSecretSpec struct {
 	// Name of a secret in the namespace configured for object storage secrets.
 	//
 	// +required
+	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
 
@@ -136,7 +145,8 @@ type ObjectStorageSpec struct {
 	// Name of a secret in the same namespace as the cluster logging operator.
 	//
 	// +required
-	Secret ObjectStorageSecretSpec `json:"secret,omitempty"`
+	// +kubebuilder:validation:Required
+	Secret ObjectStorageSecretSpec `json:"secret"`
 }
 
 // QueryLimitSpec defines the limits applies at the query path.
@@ -146,18 +156,21 @@ type QueryLimitSpec struct {
 	// that will be returned for a query.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxEntriesLimitPerQuery int32 `json:"maxEntriesLimitPerQuery,omitempty"`
 
 	// MaxChunksPerQuery defines the maximum number of chunks
 	// that can be fetched by a single query.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxChunksPerQuery int32 `json:"maxChunksPerQuery,omitempty"`
 
 	// MaxQuerySeries defines the the maximum of unique series
 	// that is returned by a metric query.
 	//
 	// + optional
+	// +kubebuilder:validation:Optional
 	MaxQuerySeries int32 `json:"maxQuerySeries,omitempty"`
 }
 
@@ -167,6 +180,7 @@ type IngestionLimitSpec struct {
 	// IngestionRate defines the sample size per second. Units MB.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	IngestionRate int32 `json:"ingestionRate,omitempty"`
 
 	// IngestionBurstSize defines the local rate-limited sample size per
@@ -174,41 +188,48 @@ type IngestionLimitSpec struct {
 	// maximum logs size expected in a single push request.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	IngestionBurstSize int32 `json:"ingestionBurstSize,omitempty"`
 
 	// MaxLabelLength defines the maximum number of characters allowed
 	// for label keys in log streams.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxLabelLength int32 `json:"maxLabelLength,omitempty"`
 
 	// MaxLabelValueLength defines the maximum number of characters allowed
 	// for label values in log streams.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxLabelValueLength int32 `json:"maxLabelValueLength,omitempty"`
 
 	// MaxLabelNamesPerSeries defines the maximum number of label names per series
 	// in each log stream.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxLabelNamesPerSeries int32 `json:"maxLabelNamesPerSeries,omitempty"`
 
 	// MaxStreamsPerTenant defines the maximum number of active streams
 	// per tenant, per ingester.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxStreamsPerTenant int32 `json:"maxStreamsPerTenant,omitempty"`
 
 	// MaxGlobalStreamsPerTenant defines the maximum number of active streams
 	// per tenant, across the cluster.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxGlobalStreamsPerTenant int32 `json:"maxGlobalStreamsPerTenant,omitempty"`
 
 	// MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
 }
 
@@ -217,12 +238,14 @@ type LimitsTemplateSpec struct {
 	// IngestionLimits defines the limits applied on ingested log streams.
 	//
 	// +optional
-	IngestionLimits IngestionLimitSpec `json:"ingestion,omitempty"`
+	// +kubebuilder:validation:Optional
+	IngestionLimits *IngestionLimitSpec `json:"ingestion,omitempty"`
 
 	// QueryLimits defines the limit applied on querying log streams.
 	//
 	// +optional
-	QueryLimits QueryLimitSpec `json:"queries,omitempty"`
+	// +kubebuilder:validation:Optional
+	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
 }
 
 // LimitsSpec defines the spec for limits applied at ingestion or query
@@ -232,11 +255,13 @@ type LimitsSpec struct {
 	// Global defines the limits applied globally across the cluster.
 	//
 	// +optional
-	Global LimitsTemplateSpec `json:"global,omitempty"`
+	// +kubebuilder:validation:Optional
+	Global *LimitsTemplateSpec `json:"global,omitempty"`
 
 	// Tenants defines the limits applied per tenant.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
@@ -247,6 +272,7 @@ type LokiStackSpec struct {
 	// Default is managed.
 	//
 	// +required
+	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=Managed
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Management State"
 	ManagementState ManagementStateType `json:"managementState,omitempty"`
@@ -254,35 +280,41 @@ type LokiStackSpec struct {
 	// Size defines one of the support Loki deployment scale out sizes.
 	//
 	// +required
+	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Loki Stack Size"
-	Size LokiStackSizeType `json:"size,omitempty"`
+	Size LokiStackSizeType `json:"size"`
 
 	// Storage defines the spec for the object storage endpoint to store logs.
 	//
 	// +required
-	Storage ObjectStorageSpec `json:"storage,omitempty"`
+	// +kubebuilder:validation:Required
+	Storage ObjectStorageSpec `json:"storage"`
 
 	// Storage class name defines the storage class for ingester/querier PVCs.
 	//
 	// +required
-	StorageClassName string `json:"storageClassName,omitempty"`
+	// +kubebuilder:validation:Required
+	StorageClassName string `json:"storageClassName"`
 
 	// ReplicationFactor defines the policy for log stream replication.
 	//
 	// +required
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum:=1
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Replication Factor"
-	ReplicationFactor int32 `json:"replicationFactor,omitempty"`
+	ReplicationFactor int32 `json:"replicationFactor"`
 
 	// Limits defines the limits to be applied to log stream processing.
 	//
 	// +optional
-	Limits LimitsSpec `json:"limits,omitempty"`
+	// +kubebuilder:validation:Optional
+	Limits *LimitsSpec `json:"limits,omitempty"`
 
 	// Template defines the resource/limits/tolerations/nodeselectors per component
 	//
 	// +optional
-	Template LokiTemplateSpec `json:"template,omitempty"`
+	// +kubebuilder:validation:Optional
+	Template *LokiTemplateSpec `json:"template,omitempty"`
 }
 
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.
@@ -318,6 +350,7 @@ type LokiStackStatus struct {
 	// Conditions of the Loki deployment health.
 	//
 	// +optional
+	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 

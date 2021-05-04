@@ -209,9 +209,9 @@ spec:
                 description: Size defines one of the support Loki deployment scale
                   out sizes.
                 enum:
-                - SizeOneXExtraSmall
-                - SizeOneXSmall
-                - SizeOneXMedium
+                - 1x.extra-small
+                - 1x.small
+                - 1x.medium
                 type: string
               storage:
                 description: Storage defines the spec for the object storage endpoint
@@ -228,6 +228,8 @@ spec:
                     required:
                     - name
                     type: object
+                required:
+                - secret
                 type: object
               storageClassName:
                 description: Storage class name defines the storage class for ingester/querier
@@ -529,6 +531,11 @@ spec:
                         type: array
                     type: object
                 type: object
+            required:
+            - replicationFactor
+            - size
+            - storage
+            - storageClassName
             type: object
           status:
             description: LokiStackStatus defines the observed state of LokiStack

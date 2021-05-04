@@ -15,6 +15,11 @@ func TestNewQuerierStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 		ConfigSHA1: "deadbeef",
 		Stack: lokiv1beta1.LokiStackSpec{
 			StorageClassName: "standard",
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Querier: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
 		},
 	})
 
@@ -36,6 +41,11 @@ func TestNewQuerierStatefulSet_SelectorMatchesLabels(t *testing.T) {
 		Namespace: "efgh",
 		Stack: lokiv1beta1.LokiStackSpec{
 			StorageClassName: "standard",
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Querier: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
 		},
 	})
 

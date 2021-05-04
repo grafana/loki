@@ -22,6 +22,23 @@ func TestServicesMatchPorts(t *testing.T) {
 		Image:     "test",
 		Stack: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Compactor: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Distributor: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ingester: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Querier: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
 		},
 	}
 
@@ -104,6 +121,23 @@ func TestServicesMatchLabels(t *testing.T) {
 		Image:     "test",
 		Stack: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Compactor: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Distributor: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ingester: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Querier: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
 		},
 	}
 

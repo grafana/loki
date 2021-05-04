@@ -28,8 +28,6 @@ func BuildCompactor(opts Options) []client.Object {
 // NewCompactorStatefulSet creates a statefulset object for a compactor.
 func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
-		Tolerations:  opt.Stack.Template.Compactor.Tolerations,
-		NodeSelector: opt.Stack.Template.Compactor.NodeSelector,
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -97,6 +95,11 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 				},
 			},
 		},
+	}
+
+	if opt.Stack.Template != nil && opt.Stack.Template.Compactor != nil {
+		podSpec.Tolerations = opt.Stack.Template.Compactor.Tolerations
+		podSpec.NodeSelector = opt.Stack.Template.Compactor.NodeSelector
 	}
 
 	l := ComponentLabels("compactor", opt.Name)

@@ -27,8 +27,6 @@ func BuildQueryFrontend(opt Options) []client.Object {
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
-		Tolerations:  opt.Stack.Template.QueryFrontend.Tolerations,
-		NodeSelector: opt.Stack.Template.QueryFrontend.NodeSelector,
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -89,16 +87,6 @@ func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 						ContainerPort: grpcPort,
 					},
 				},
-				// Resources: corev1.ResourceRequirements{
-				// 	Limits: corev1.ResourceList{
-				// 		corev1.ResourceMemory: resource.MustParse("1Gi"),
-				// 		corev1.ResourceCPU:    resource.MustParse("1000m"),
-				// 	},
-				// 	Requests: corev1.ResourceList{
-				// 		corev1.ResourceMemory: resource.MustParse("50m"),
-				// 		corev1.ResourceCPU:    resource.MustParse("50m"),
-				// 	},
-				// },
 				VolumeMounts: []corev1.VolumeMount{
 					{
 						Name:      configVolumeName,
@@ -113,6 +101,11 @@ func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 				},
 			},
 		},
+	}
+
+	if opt.Stack.Template != nil && opt.Stack.Template.QueryFrontend != nil {
+		podSpec.Tolerations = opt.Stack.Template.QueryFrontend.Tolerations
+		podSpec.NodeSelector = opt.Stack.Template.QueryFrontend.NodeSelector
 	}
 
 	l := ComponentLabels("query-frontend", opt.Name)

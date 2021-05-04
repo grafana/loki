@@ -17,19 +17,17 @@ import (
 )
 
 // BuildIngester builds the k8s objects required to run Loki Ingester
-func BuildIngester(opts Options) ([]client.Object, error) {
+func BuildIngester(opts Options) []client.Object {
 	return []client.Object{
 		NewIngesterStatefulSet(opts),
 		NewIngesterGRPCService(opts),
 		NewIngesterHTTPService(opts),
-	}, nil
+	}
 }
 
 // NewIngesterStatefulSet creates a deployment object for an ingester
 func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
-		Tolerations:  opt.Stack.Template.Ingester.Tolerations,
-		NodeSelector: opt.Stack.Template.Ingester.NodeSelector,
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -102,6 +100,11 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 				},
 			},
 		},
+	}
+
+	if opt.Stack.Template != nil && opt.Stack.Template.Ingester != nil {
+		podSpec.Tolerations = opt.Stack.Template.Ingester.Tolerations
+		podSpec.NodeSelector = opt.Stack.Template.Ingester.NodeSelector
 	}
 
 	l := ComponentLabels("ingester", opt.Name)

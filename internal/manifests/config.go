@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"github.com/ViaQ/logerr/kverrors"
-	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
-	"github.com/ViaQ/loki-operator/internal/manifests/internal"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
@@ -52,7 +50,7 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 func ConfigOptions(opt Options) (config.Options, error) {
 	// First define the default values determined by our sizing table
 	cfg := config.Options{
-		Stack:     internal.StackSizeTable[opt.Stack.Size],
+		Stack:     opt.Stack,
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
 		FrontendWorker: config.Address{
@@ -81,24 +79,6 @@ func ConfigOptions(opt Options) (config.Options, error) {
 	if err := mergo.Merge(&cfg.Stack, opt.Stack, mergo.WithOverride); err != nil {
 		return config.Options{}, kverrors.Wrap(err, "failed to merge configs")
 	}
-
-	operatorOverrides := config.Options{
-		Stack: lokiv1beta1.LokiStackSpec{
-			Template: lokiv1beta1.LokiTemplateSpec{
-				Compactor: lokiv1beta1.LokiComponentSpec{
-					// Compactor is a singelton application.
-					// Only on replica allowed!!!
-					Replicas: 1,
-				},
-			},
-		},
-	}
-
-	// Now merge defaults configuration provided
-	if err := mergo.Merge(&cfg.Stack, operatorOverrides.Stack, mergo.WithOverride); err != nil {
-		return config.Options{}, kverrors.Wrap(err, "failed to merge operator overrides")
-	}
-
 	return cfg, nil
 }
 
