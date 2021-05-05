@@ -79,7 +79,7 @@ overrides:
               period: 5h
               priority: 10
 `))
-	require.Equal(t, "invalid override for tenant 29: retention period must be >= 24h was 5h0m0s", err.Error())
+	require.Equal(t, "invalid override for tenant 29: retention period must be >= 24h was 5h", err.Error())
 }
 
 func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
