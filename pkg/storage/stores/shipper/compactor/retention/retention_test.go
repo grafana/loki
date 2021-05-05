@@ -26,6 +26,26 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+type mockChunkClient struct {
+	mtx           sync.Mutex
+	deletedChunks []string
+}
+
+func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkId string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	m.deletedChunks = append(m.deletedChunks, string([]byte(chunkId))) // forces a copy, because this string is only valid within the delete fn.
+	return nil
+}
+
+func (m *mockChunkClient) getDeletedChunkIds() []string {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	return m.deletedChunks
+}
+
 func Test_Retention(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	for _, tt := range []struct {
@@ -103,8 +123,6 @@ func Test_Retention(t *testing.T) {
 			var (
 				store         = newTestStore(t)
 				expectDeleted = []string{}
-				actualDeleted = []string{}
-				lock          sync.Mutex
 			)
 			for _, c := range tt.chunks {
 				require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c}))
@@ -114,13 +132,8 @@ func Test_Retention(t *testing.T) {
 			// marks and sweep
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
-			sweep, err := NewSweeper(workDir, DeleteClientFunc(func(ctx context.Context, objectKey string) error {
-				lock.Lock()
-				defer lock.Unlock()
-				key := string([]byte(objectKey)) // forces a copy, because this string is only valid within the delete fn.
-				actualDeleted = append(actualDeleted, key)
-				return nil
-			}), 10, 0, nil)
+			chunkClient := &mockChunkClient{}
+			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, nil)
 			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()
@@ -146,9 +159,7 @@ func Test_Retention(t *testing.T) {
 			store.Stop()
 			if len(expectDeleted) != 0 {
 				require.Eventually(t, func() bool {
-					lock.Lock()
-					defer lock.Unlock()
-					return assert.ObjectsAreEqual(expectDeleted, actualDeleted)
+					return assert.ObjectsAreEqual(expectDeleted, chunkClient.getDeletedChunkIds())
 				}, 10*time.Second, 1*time.Second)
 			}
 		})

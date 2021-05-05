@@ -2,13 +2,12 @@ package retention
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -175,33 +174,17 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 	})
 }
 
-type DeleteClient interface {
-	DeleteObject(ctx context.Context, objectKey string) error
-}
-
-type DeleteClientFunc func(ctx context.Context, objectKey string) error
-
-func (d DeleteClientFunc) DeleteObject(ctx context.Context, objectKey string) error {
-	return d(ctx, objectKey)
-}
-
-func NewDeleteClient(objectClient chunk.ObjectClient) DeleteClient {
-	// filesystem encode64 keys on disk. useful for testing.
-	if fs, ok := objectClient.(*local.FSObjectClient); ok {
-		return DeleteClientFunc(func(ctx context.Context, objectKey string) error {
-			return fs.DeleteObject(ctx, base64.StdEncoding.EncodeToString([]byte(objectKey)))
-		})
-	}
-	return objectClient
+type ChunkClient interface {
+	DeleteChunk(ctx context.Context, userId, chunkId string) error
 }
 
 type Sweeper struct {
 	markerProcessor MarkerProcessor
-	deleteClient    DeleteClient
+	chunkClient     ChunkClient
 	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir string, deleteClient DeleteClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+func NewSweeper(workingDir string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
@@ -209,7 +192,7 @@ func NewSweeper(workingDir string, deleteClient DeleteClient, deleteWorkerCount 
 	}
 	return &Sweeper{
 		markerProcessor: p,
-		deleteClient:    deleteClient,
+		chunkClient:     deleteClient,
 		sweeperMetrics:  m,
 	}, nil
 }
@@ -222,7 +205,12 @@ func (s *Sweeper) Start() {
 			s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
 		}()
 		chunkIDString := unsafeGetString(chunkId)
-		err := s.deleteClient.DeleteObject(ctx, chunkIDString)
+		userId, err := getUserIdFromChunkId(chunkIDString)
+		if err != nil {
+			return err
+		}
+
+		err = s.chunkClient.DeleteChunk(ctx, userId, chunkIDString)
 		if err == chunk.ErrStorageObjectNotFound {
 			status = statusNotFound
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
@@ -234,6 +222,15 @@ func (s *Sweeper) Start() {
 		}
 		return err
 	})
+}
+
+func getUserIdFromChunkId(chunkId string) (string, error) {
+	parts := strings.Split(chunkId, "/")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid chunk ID %q", chunkId)
+	}
+
+	return parts[0], nil
 }
 
 func (s *Sweeper) Stop() {

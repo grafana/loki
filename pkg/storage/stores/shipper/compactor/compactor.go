@@ -91,9 +91,15 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	}
 	prefixedClient := util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix)
 
-	retentionWorkDir := filepath.Join(cfg.WorkingDirectory, "retention")
+	var encoder objectclient.KeyEncoder
+	if _, ok := objectClient.(*local.FSObjectClient); ok {
+		encoder = objectclient.Base64Encoder
+	}
 
-	sweeper, err := retention.NewSweeper(retentionWorkDir, retention.NewDeleteClient(objectClient), cfg.RetentionDeleteWorkCount, cfg.RetentionDeleteDelay, r)
+	chunkClient := objectclient.NewClient(objectClient, encoder)
+
+	retentionWorkDir := filepath.Join(cfg.WorkingDirectory, "retention")
+	sweeper, err := retention.NewSweeper(retentionWorkDir, chunkClient, cfg.RetentionDeleteWorkCount, cfg.RetentionDeleteDelay, r)
 	if err != nil {
 		return nil, err
 	}
@@ -115,12 +121,8 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	}
 
 	expirationChecker := newExpirationChecker(retention.NewExpirationChecker(limits), compactor.deleteRequestsManager)
-	var encoder objectclient.KeyEncoder
-	if _, ok := objectClient.(*local.FSObjectClient); ok {
-		encoder = objectclient.Base64Encoder
-	}
 
-	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, expirationChecker, objectclient.NewClient(objectClient, encoder), r)
+	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, expirationChecker, chunkClient, r)
 	if err != nil {
 		return nil, err
 	}
