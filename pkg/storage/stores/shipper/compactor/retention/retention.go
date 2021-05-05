@@ -3,6 +3,7 @@ package retention
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage"
 )
 
@@ -26,6 +28,7 @@ var (
 const (
 	logMetricName = "logs"
 	markersFolder = "markers"
+	separator     = "\000"
 )
 
 type TableMarker interface {
@@ -38,9 +41,10 @@ type Marker struct {
 	config           storage.SchemaConfig
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
+	chunkClient      chunk.Client
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, chunkClient chunk.Client, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
@@ -50,6 +54,7 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration 
 		config:           config,
 		expiration:       expiration,
 		markerMetrics:    metrics,
+		chunkClient:      chunkClient,
 	}, nil
 }
 
@@ -96,7 +101,12 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration)
+		chunkRewriter, err := newChunkRewriter(t.chunkClient, schemaCfg, tableName, bucket)
+		if err != nil {
+			return err
+		}
+
+		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration, chunkRewriter)
 		if err != nil {
 			return err
 		}
@@ -121,7 +131,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 	return empty, markerWriter.Count(), nil
 }
 
-func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
+func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, error) {
 	seriesMap := newUserSeriesMap()
 	empty := true
 	now := model.Now()
@@ -130,8 +140,20 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 			return false, chunkIt.Err()
 		}
 		c := chunkIt.Entry()
-		if expiration.Expired(c, now) {
-			seriesMap.Add(c.SeriesID, c.UserID)
+		if expired, nonDeletedIntervals := expiration.Expired(c, now); expired {
+			if len(nonDeletedIntervals) == 0 {
+				seriesMap.Add(c.SeriesID, c.UserID)
+			} else {
+				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
+				if err != nil {
+					return false, err
+				}
+
+				if !wroteChunks {
+					seriesMap.Add(c.SeriesID, c.UserID)
+				}
+			}
+
 			if err := chunkIt.Delete(); err != nil {
 				return false, err
 			}

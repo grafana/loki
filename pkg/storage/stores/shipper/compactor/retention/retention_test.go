@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -124,7 +125,7 @@ func Test_Retention(t *testing.T) {
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, store.schemaCfg, expiration, prometheus.NewRegistry())
+			marker, err := NewMarker(workDir, store.schemaCfg, expiration, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				_, _, err := marker.MarkForDelete(context.Background(), table.name, table.DB)
@@ -182,7 +183,8 @@ func Test_EmptyTable(t *testing.T) {
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
 		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 		require.NoError(t, err)
-		empty, err := markforDelete(context.Background(), noopWriter{}, it, noopCleaner{}, NewExpirationChecker(&fakeLimits{perTenant: map[string]time.Duration{"1": 0, "2": 0}}))
+		empty, err := markforDelete(context.Background(), noopWriter{}, it, noopCleaner{},
+			NewExpirationChecker(&fakeLimits{perTenant: map[string]time.Duration{"1": 0, "2": 0}}), nil)
 		require.NoError(t, err)
 		require.True(t, empty)
 		return nil

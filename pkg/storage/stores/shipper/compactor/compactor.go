@@ -11,12 +11,15 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
@@ -68,6 +71,7 @@ type Compactor struct {
 	tableMarker           retention.TableMarker
 	sweeper               *retention.Sweeper
 	DeleteRequestsHandler *deletion.DeleteRequestHandler
+	deleteRequestsManager *deletion.DeleteRequestsManager
 	metrics               *metrics
 }
 
@@ -107,9 +111,16 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 		metrics:               newMetrics(r),
 		sweeper:               sweeper,
 		DeleteRequestsHandler: deletion.NewDeleteRequestHandler(deletesStore, time.Hour, prometheus.DefaultRegisterer),
+		deleteRequestsManager: deletion.NewDeleteRequestsManager(deletesStore, cfg.DeleteRequestCancelPeriod),
 	}
 
-	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, retention.NewExpirationChecker(limits), r)
+	expirationChecker := newExpirationChecker(retention.NewExpirationChecker(limits), compactor.deleteRequestsManager)
+	var encoder objectclient.KeyEncoder
+	if _, ok := objectClient.(*local.FSObjectClient); ok {
+		encoder = objectclient.Base64Encoder
+	}
+
+	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, expirationChecker, objectclient.NewClient(objectClient, encoder), r)
 	if err != nil {
 		return nil, err
 	}
@@ -179,11 +190,21 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 	status := statusSuccess
 	start := time.Now()
 
+	if c.cfg.RetentionEnabled {
+		c.deleteRequestsManager.MarkPhaseStarted()
+	}
+
 	defer func() {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+		dmCallback := c.deleteRequestsManager.MarkPhaseFailed
 		if status == statusSuccess {
+			dmCallback = c.deleteRequestsManager.MarkPhaseFinished
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
 			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
+		}
+
+		if c.cfg.RetentionEnabled {
+			dmCallback()
 		}
 	}()
 
@@ -211,4 +232,21 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+type expirationChecker struct {
+	retentionExpiryChecker retention.ExpirationChecker
+	deletionExpiryChecker  retention.ExpirationChecker
+}
+
+func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retention.ExpirationChecker) retention.ExpirationChecker {
+	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
+}
+
+func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, []model.Interval) {
+	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
+		return expired, nonDeletedIntervals
+	}
+
+	return e.deletionExpiryChecker.Expired(ref, now)
 }
