@@ -58,7 +58,7 @@ Outer:
 		matchedRule = streamRetention
 	}
 	if found {
-		return now.Sub(ref.Through) > matchedRule.Period
+		return now.Sub(ref.Through) > time.Duration(matchedRule.Period)
 	}
 	return now.Sub(ref.Through) > globalRetention
 }
