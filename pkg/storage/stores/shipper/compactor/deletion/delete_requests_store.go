@@ -13,7 +13,6 @@ import (
 	"unsafe"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -44,18 +43,6 @@ var (
 
 type Interval struct {
 	from, through model.Time
-}
-
-// DeleteRequest holds all the details about a delete request.
-type DeleteRequest struct {
-	RequestID string              `json:"request_id"`
-	UserID    string              `json:"-"`
-	StartTime model.Time          `json:"start_time"`
-	EndTime   model.Time          `json:"end_time"`
-	Selectors []string            `json:"selectors"`
-	Status    DeleteRequestStatus `json:"status"`
-	Matchers  [][]*labels.Matcher `json:"-"`
-	CreatedAt model.Time          `json:"created_at"`
 }
 
 // deleteRequestsStore provides all the methods required to manage lifecycle of delete request and things related to it.
