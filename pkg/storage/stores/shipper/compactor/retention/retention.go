@@ -11,6 +11,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage"
@@ -123,12 +124,13 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
 	seriesMap := newUserSeriesMap()
 	empty := true
+	now := model.Now()
 	for chunkIt.Next() {
 		if chunkIt.Err() != nil {
 			return false, chunkIt.Err()
 		}
 		c := chunkIt.Entry()
-		if expiration.Expired(c) {
+		if expiration.Expired(c, now) {
 			seriesMap.Add(c.SeriesID, c.UserID)
 			if err := chunkIt.Delete(); err != nil {
 				return false, err
