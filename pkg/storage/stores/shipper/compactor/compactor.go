@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/util"
@@ -27,13 +28,14 @@ import (
 const delimiter = "/"
 
 type Config struct {
-	WorkingDirectory         string        `yaml:"working_directory"`
-	SharedStoreType          string        `yaml:"shared_store"`
-	SharedStoreKeyPrefix     string        `yaml:"shared_store_key_prefix"`
-	CompactionInterval       time.Duration `yaml:"compaction_interval"`
-	RetentionEnabled         bool          `yaml:"retention_enabled"`
-	RetentionDeleteDelay     time.Duration `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount int           `yaml:"retention_delete_worker_count"`
+	WorkingDirectory          string        `yaml:"working_directory"`
+	SharedStoreType           string        `yaml:"shared_store"`
+	SharedStoreKeyPrefix      string        `yaml:"shared_store_key_prefix"`
+	CompactionInterval        time.Duration `yaml:"compaction_interval"`
+	RetentionEnabled          bool          `yaml:"retention_enabled"`
+	RetentionDeleteDelay      time.Duration `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount  int           `yaml:"retention_delete_worker_count"`
+	DeleteRequestCancelPeriod time.Duration `yaml:"delete_request_cancel_period"`
 }
 
 // RegisterFlags registers flags.
@@ -45,6 +47,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
+	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "purger.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 }
 
 func (cfg *Config) IsDefaults() bool {
@@ -60,11 +63,12 @@ func (cfg *Config) Validate() error {
 type Compactor struct {
 	services.Service
 
-	cfg          Config
-	objectClient chunk.ObjectClient
-	tableMarker  retention.TableMarker
-	sweeper      *retention.Sweeper
-	metrics      *metrics
+	cfg                   Config
+	objectClient          chunk.ObjectClient
+	tableMarker           retention.TableMarker
+	sweeper               *retention.Sweeper
+	DeleteRequestsHandler *deletion.DeleteRequestHandler
+	metrics               *metrics
 }
 
 func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
@@ -90,12 +94,21 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 		return nil, err
 	}
 
-	compactor := &Compactor{
-		cfg:          cfg,
-		objectClient: prefixedClient,
-		metrics:      newMetrics(r),
-		sweeper:      sweeper,
+	deletionWorkDir := filepath.Join(cfg.WorkingDirectory, "deletion")
+
+	deletesStore, err := deletion.NewDeleteStore(deletionWorkDir, prefixedClient)
+	if err != nil {
+		return nil, err
 	}
+
+	compactor := &Compactor{
+		cfg:                   cfg,
+		objectClient:          prefixedClient,
+		metrics:               newMetrics(r),
+		sweeper:               sweeper,
+		DeleteRequestsHandler: deletion.NewDeleteRequestHandler(deletesStore, time.Hour, prometheus.DefaultRegisterer),
+	}
+
 	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, retention.NewExpirationChecker(limits), r)
 	if err != nil {
 		return nil, err
