@@ -41,24 +41,35 @@ var (
 	ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
 )
 
-type Interval struct {
-	from, through model.Time
+type DeleteRequestsStore interface {
+	AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error
+	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
+	GetDeleteRequestsForUserByStatus(ctx context.Context, userID string, status DeleteRequestStatus) ([]DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
+	UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error
+	GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error)
+	GetPendingDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
+	RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error
+	Stop()
 }
 
 // deleteRequestsStore provides all the methods required to manage lifecycle of delete request and things related to it.
 type deleteRequestsStore struct {
 	indexClient chunk.IndexClient
-	done        chan struct{}
 }
 
 // NewDeleteStore creates a store for managing delete requests.
-func NewDeleteStore(workingDirectory string, objectClient chunk.ObjectClient) (*deleteRequestsStore, error) {
+func NewDeleteStore(workingDirectory string, objectClient chunk.ObjectClient) (DeleteRequestsStore, error) {
 	indexClient, err := newDeleteRequestsTable(workingDirectory, objectClient)
 	if err != nil {
 		return nil, err
 	}
 
 	return &deleteRequestsStore{indexClient: indexClient}, nil
+}
+
+func (ds *deleteRequestsStore) Stop() {
+	ds.indexClient.Stop()
 }
 
 // AddDeleteRequest creates entries for a new delete request.

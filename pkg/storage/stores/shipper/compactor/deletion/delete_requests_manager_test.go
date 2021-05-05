@@ -26,6 +26,34 @@ func (m mockDeleteRequestsStore) UpdateStatus(ctx context.Context, userID, reque
 	return nil
 }
 
+func (m mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
+	panic("implement me")
+}
+
+func (m mockDeleteRequestsStore) GetDeleteRequestsForUserByStatus(ctx context.Context, userID string, status DeleteRequestStatus) ([]DeleteRequest, error) {
+	panic("implement me")
+}
+
+func (m mockDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+	panic("implement me")
+}
+
+func (m mockDeleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error) {
+	panic("implement me")
+}
+
+func (m mockDeleteRequestsStore) GetPendingDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+	panic("implement me")
+}
+
+func (m mockDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error {
+	panic("implement me")
+}
+
+func (m mockDeleteRequestsStore) Stop() {
+	panic("implement me")
+}
+
 func TestDeleteRequestsManager_Expired(t *testing.T) {
 	type resp struct {
 		isExpired           bool

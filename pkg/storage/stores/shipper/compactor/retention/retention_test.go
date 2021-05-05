@@ -31,11 +31,11 @@ type mockChunkClient struct {
 	deletedChunks []string
 }
 
-func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkId string) error {
+func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkID string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	m.deletedChunks = append(m.deletedChunks, string([]byte(chunkId))) // forces a copy, because this string is only valid within the delete fn.
+	m.deletedChunks = append(m.deletedChunks, string([]byte(chunkID))) // forces a copy, because this string is only valid within the delete fn.
 	return nil
 }
 

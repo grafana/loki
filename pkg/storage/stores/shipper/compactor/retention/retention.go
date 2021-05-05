@@ -175,7 +175,7 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 }
 
 type ChunkClient interface {
-	DeleteChunk(ctx context.Context, userId, chunkId string) error
+	DeleteChunk(ctx context.Context, userID, chunkID string) error
 }
 
 type Sweeper struct {
@@ -205,12 +205,12 @@ func (s *Sweeper) Start() {
 			s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
 		}()
 		chunkIDString := unsafeGetString(chunkId)
-		userId, err := getUserIdFromChunkId(chunkIDString)
+		userID, err := getUserIDFromChunkID(chunkIDString)
 		if err != nil {
 			return err
 		}
 
-		err = s.chunkClient.DeleteChunk(ctx, userId, chunkIDString)
+		err = s.chunkClient.DeleteChunk(ctx, userID, chunkIDString)
 		if err == chunk.ErrStorageObjectNotFound {
 			status = statusNotFound
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
@@ -224,10 +224,10 @@ func (s *Sweeper) Start() {
 	})
 }
 
-func getUserIdFromChunkId(chunkId string) (string, error) {
-	parts := strings.Split(chunkId, "/")
+func getUserIDFromChunkID(chunkID string) (string, error) {
+	parts := strings.Split(chunkID, "/")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid chunk ID %q", chunkId)
+		return "", fmt.Errorf("invalid chunk ID %q", chunkID)
 	}
 
 	return parts[0], nil
@@ -238,11 +238,9 @@ func (s *Sweeper) Stop() {
 }
 
 type chunkRewriter struct {
-	chunkFetcher *chunk.Fetcher
-	chunkClient  chunk.Client
-	schemaCfg    chunk.PeriodConfig
-	tableName    string
-	bucket       *bbolt.Bucket
+	chunkClient chunk.Client
+	tableName   string
+	bucket      *bbolt.Bucket
 
 	seriesStoreSchema chunk.SeriesStoreSchema
 }

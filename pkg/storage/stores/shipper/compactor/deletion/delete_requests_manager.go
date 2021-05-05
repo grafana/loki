@@ -14,11 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
-type DeleteRequestsStore interface {
-	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
-	UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error
-}
-
 type DeleteRequestsManager struct {
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration

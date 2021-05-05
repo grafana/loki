@@ -70,6 +70,7 @@ type Compactor struct {
 	objectClient          chunk.ObjectClient
 	tableMarker           retention.TableMarker
 	sweeper               *retention.Sweeper
+	deleteRequestsStore   deletion.DeleteRequestsStore
 	DeleteRequestsHandler *deletion.DeleteRequestHandler
 	deleteRequestsManager *deletion.DeleteRequestsManager
 	metrics               *metrics
@@ -116,6 +117,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 		objectClient:          prefixedClient,
 		metrics:               newMetrics(r),
 		sweeper:               sweeper,
+		deleteRequestsStore:   deletesStore,
 		DeleteRequestsHandler: deletion.NewDeleteRequestHandler(deletesStore, time.Hour, prometheus.DefaultRegisterer),
 		deleteRequestsManager: deletion.NewDeleteRequestsManager(deletesStore, cfg.DeleteRequestCancelPeriod),
 	}
@@ -170,6 +172,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 	}
 
 	wg.Wait()
+	c.deleteRequestsStore.Stop()
 	return nil
 }
 

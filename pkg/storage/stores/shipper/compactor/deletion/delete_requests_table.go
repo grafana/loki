@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -26,6 +27,7 @@ type deleteRequestsTable struct {
 	boltdbIndexClient *local.BoltIndexClient
 	db                *bbolt.DB
 	done              chan struct{}
+	wg                sync.WaitGroup
 }
 
 const objectPathInStorage = deleteRequestsTableName + "/" + deleteRequestsTableName + ".gz"
@@ -75,6 +77,8 @@ func (t *deleteRequestsTable) loop() {
 	uploadTicker := time.NewTicker(5 * time.Minute)
 	defer uploadTicker.Stop()
 
+	t.wg.Add(1)
+
 	for {
 		select {
 		case <-uploadTicker.C:
@@ -82,13 +86,14 @@ func (t *deleteRequestsTable) loop() {
 				level.Error(util_log.Logger).Log("msg", "failed to upload delete requests file", "err", err)
 			}
 		case <-t.done:
+			t.wg.Done()
 			return
 		}
 	}
 }
 
 func (t *deleteRequestsTable) uploadFile() error {
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("uploading delete requests db"))
+	level.Debug(util_log.Logger).Log("msg", "uploading delete requests db")
 
 	tempFilePath := fmt.Sprintf("%s.%s", t.dbPath, tempFileSuffix)
 	f, err := os.Create(tempFilePath)
@@ -138,6 +143,7 @@ func (t *deleteRequestsTable) uploadFile() error {
 
 func (t *deleteRequestsTable) Stop() {
 	close(t.done)
+	t.wg.Wait()
 
 	if err := t.uploadFile(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to upload delete requests file during shutdown", "err", err)
