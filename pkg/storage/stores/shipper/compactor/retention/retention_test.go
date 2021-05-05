@@ -202,12 +202,14 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	fp := client.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, blockSize, targetSize)
 
-	for ts := from; ts.Before(through); ts = ts.Add(1 * time.Minute) {
+	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		require.NoError(t, chunkEnc.Append(&logproto.Entry{
 			Timestamp: ts.Time(),
 			Line:      ts.String(),
 		}))
 	}
+
+	require.NoError(t, chunkEnc.Close())
 	c := chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
 	require.NoError(t, c.Encode())
 	return c
@@ -254,4 +256,128 @@ func labelsString(ls labels.Labels) string {
 	b.WriteByte('}')
 
 	return b.String()
+}
+
+func TestChunkRewriter(t *testing.T) {
+	minListMarkDelay = 1 * time.Second
+	now := model.Now()
+	for _, tt := range []struct {
+		name             string
+		chunk            chunk.Chunk
+		rewriteIntervals []model.Interval
+	}{
+		{
+			name:  "no rewrites",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-time.Hour), now),
+		},
+		{
+			name:  "no rewrites with chunk spanning multiple tables",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-48*time.Hour), now),
+		},
+		{
+			name:  "rewrite first half",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
+			rewriteIntervals: []model.Interval{
+				{
+					Start: now.Add(-2 * time.Hour),
+					End:   now.Add(-1 * time.Hour),
+				},
+			},
+		},
+		{
+			name:  "rewrite second half",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
+			rewriteIntervals: []model.Interval{
+				{
+					Start: now.Add(-time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:  "rewrite multiple intervals",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-12*time.Hour), now),
+			rewriteIntervals: []model.Interval{
+				{
+					Start: now.Add(-12 * time.Hour),
+					End:   now.Add(-10 * time.Hour),
+				},
+				{
+					Start: now.Add(-9 * time.Hour),
+					End:   now.Add(-5 * time.Hour),
+				},
+				{
+					Start: now.Add(-2 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:  "rewrite chunk spanning multiple days with multiple intervals",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-72*time.Hour), now),
+			rewriteIntervals: []model.Interval{
+				{
+					Start: now.Add(-71 * time.Hour),
+					End:   now.Add(-47 * time.Hour),
+				},
+				{
+					Start: now.Add(-40 * time.Hour),
+					End:   now.Add(-30 * time.Hour),
+				},
+				{
+					Start: now.Add(-2 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			store := newTestStore(t)
+			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
+			store.Stop()
+
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder)
+			for _, indexTable := range store.indexTables() {
+				err := indexTable.DB.Update(func(tx *bbolt.Tx) error {
+					bucket := tx.Bucket(bucketName)
+					if bucket == nil {
+						return nil
+					}
+
+					cr, err := newChunkRewriter(chunkClient, store.schemaCfg.SchemaConfig.Configs[0], indexTable.name, bucket)
+					require.NoError(t, err)
+
+					wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(tt.chunk), tt.rewriteIntervals)
+					require.NoError(t, err)
+					if len(tt.rewriteIntervals) == 0 {
+						require.False(t, wroteChunks)
+					}
+					return nil
+				})
+				require.NoError(t, err)
+				require.NoError(t, indexTable.DB.Close())
+			}
+
+			store.open()
+			chunks := store.GetChunks(tt.chunk.UserID, tt.chunk.From, tt.chunk.Through, tt.chunk.Metric)
+
+			// number of chunks should be the new re-written chunks + the source chunk
+			require.Len(t, chunks, len(tt.rewriteIntervals)+1)
+			for _, interval := range tt.rewriteIntervals {
+				expectedChk := createChunk(t, tt.chunk.UserID, labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, interval.Start, interval.End)
+				for i, chk := range chunks {
+					if chk.ExternalKey() == expectedChk.ExternalKey() {
+						chunks = append(chunks[:i], chunks[i+1:]...)
+						break
+					}
+				}
+			}
+
+			// the source chunk should still be there in the store
+			require.Len(t, chunks, 1)
+			require.Equal(t, tt.chunk.ExternalKey(), chunks[0].ExternalKey())
+			store.Stop()
+		})
+	}
 }

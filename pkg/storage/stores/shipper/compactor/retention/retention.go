@@ -217,3 +217,107 @@ func (s *Sweeper) Start() {
 func (s *Sweeper) Stop() {
 	s.markerProcessor.Stop()
 }
+
+type chunkRewriter struct {
+	chunkFetcher *chunk.Fetcher
+	chunkClient  chunk.Client
+	schemaCfg    chunk.PeriodConfig
+	tableName    string
+	bucket       *bbolt.Bucket
+
+	seriesStoreSchema chunk.SeriesStoreSchema
+}
+
+func newChunkRewriter(chunkClient chunk.Client, schemaCfg chunk.PeriodConfig,
+	tableName string, bucket *bbolt.Bucket) (*chunkRewriter, error) {
+	schema, err := schemaCfg.CreateSchema()
+	if err != nil {
+		return nil, err
+	}
+
+	seriesStoreSchema, ok := schema.(chunk.SeriesStoreSchema)
+	if !ok {
+		return nil, errors.New("invalid schema")
+	}
+
+	return &chunkRewriter{
+		chunkClient:       chunkClient,
+		tableName:         tableName,
+		bucket:            bucket,
+		seriesStoreSchema: seriesStoreSchema,
+	}, nil
+}
+
+func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, intervals []model.Interval) (bool, error) {
+	userID := unsafeGetString(ce.UserID)
+	chunkID := unsafeGetString(ce.ChunkID)
+
+	chk, err := chunk.ParseExternalKey(userID, chunkID)
+	if err != nil {
+		return false, err
+	}
+
+	chks, err := c.chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
+	if err != nil {
+		return false, err
+	}
+
+	if len(chks) != 1 {
+		return false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", chunkID, len(chks))
+	}
+
+	wroteChunks := false
+
+	for _, interval := range intervals {
+		newChunkData, err := chks[0].Data.Rebound(interval.Start, interval.End)
+		if err != nil {
+			return false, err
+		}
+
+		facade, ok := newChunkData.(*chunkenc.Facade)
+		if !ok {
+			return false, errors.New("invalid chunk type")
+		}
+
+		newChunk := chunk.NewChunk(
+			userID, chks[0].Fingerprint, chks[0].Metric,
+			facade,
+			interval.Start,
+			interval.End,
+		)
+
+		err = newChunk.Encode()
+		if err != nil {
+			return false, err
+		}
+
+		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, newChunk.ExternalKey())
+		if err != nil {
+			return false, err
+		}
+
+		uploadChunk := false
+
+		for _, entry := range entries {
+			// write an entry only if it belongs to this table
+			if entry.TableName == c.tableName {
+				key := entry.HashValue + separator + string(entry.RangeValue)
+				if err := c.bucket.Put([]byte(key), nil); err != nil {
+					return false, err
+				}
+				uploadChunk = true
+			}
+		}
+
+		// upload chunk only if an entry was written
+		if uploadChunk {
+			err = c.chunkClient.PutChunks(ctx, []chunk.Chunk{newChunk})
+			if err != nil {
+				return false, err
+			}
+			wroteChunks = true
+		}
+	}
+
+	return wroteChunks, nil
+}
