@@ -78,7 +78,7 @@ func Test_Retention(t *testing.T) {
 				},
 				perStream: map[string][]validation.StreamRetention{
 					"1": {
-						{Period: 5 * time.Hour, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "buzz")}},
+						{Period: model.Duration(5 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "buzz")}},
 					},
 				},
 			},
