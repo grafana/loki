@@ -67,7 +67,7 @@ type StorageClient interface {
 }
 
 // GetFileFromStorage downloads a file from storage to given location.
-func GetFileFromStorage(ctx context.Context, storageClient StorageClient, objectKey, destination string) error {
+func GetFileFromStorage(ctx context.Context, storageClient StorageClient, objectKey, destination string, sync bool) error {
 	readCloser, err := storageClient.GetObject(ctx, objectKey)
 	if err != nil {
 		return err
@@ -84,6 +84,11 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 		return err
 	}
 
+	defer func() {
+		if err := f.Close(); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to close file", "file", destination)
+		}
+	}()
 	var objectReader io.Reader = readCloser
 	if strings.HasSuffix(objectKey, ".gz") {
 		decompressedReader := getGzipReader(readCloser)
@@ -98,8 +103,10 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 	}
 
 	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
-
-	return f.Sync()
+	if sync {
+		return f.Sync()
+	}
+	return nil
 }
 
 func GetDBNameFromObjectKey(objectKey string) (string, error) {
@@ -126,7 +133,7 @@ func BuildObjectKey(tableName, uploader, dbName string) string {
 	return objectKey
 }
 
-func CompressFile(src, dest string) error {
+func CompressFile(src, dest string, sync bool) error {
 	level.Info(util_log.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
 	uncompressedFile, err := os.Open(src)
 	if err != nil {
@@ -162,8 +169,10 @@ func CompressFile(src, dest string) error {
 	if err == nil {
 		return err
 	}
-
-	return compressedFile.Sync()
+	if sync {
+		return compressedFile.Sync()
+	}
+	return nil
 }
 
 type result struct {
