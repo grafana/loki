@@ -114,7 +114,7 @@ func (t *table) compact() error {
 	if len(objects) == 1 {
 		// download the db
 		downloadAt := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
-		err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[0].Key, downloadAt)
+		err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[0].Key, downloadAt, false)
 		if err != nil {
 			return err
 		}
@@ -122,6 +122,8 @@ func (t *table) compact() error {
 		if err != nil {
 			return err
 		}
+		// no need to enforce write to disk, we'll upload and delete the file anyway.
+		t.compactedDB.NoSync = true
 	}
 
 	if t.compactedDB == nil {
@@ -158,7 +160,9 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 	if err != nil {
 		return err
 	}
-
+	// no need to enforce write to disk, we'll upload and delete the file anyway.
+	// in case of failure we'll restart the whole process anyway.
+	t.compactedDB.NoSync = true
 	level.Info(util_log.Logger).Log("msg", "starting compaction of dbs")
 
 	errChan := make(chan error)
@@ -193,7 +197,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 
 					downloadAt := filepath.Join(t.workingDirectory, dbName)
 
-					err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objectKey, downloadAt)
+					err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objectKey, downloadAt, false)
 					if err != nil {
 						return
 					}
@@ -293,7 +297,7 @@ func (t *table) readFile(path string) error {
 	if err != nil {
 		return err
 	}
-
+	db.NoSync = true
 	defer func() {
 		if err := db.Close(); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to close db", "path", path, "err", err)
@@ -360,7 +364,7 @@ func (t *table) upload() error {
 
 	// compress the compactedDB.
 	compressedDBPath := fmt.Sprintf("%s.gz", compactedDBPath)
-	err = shipper_util.CompressFile(compactedDBPath, compressedDBPath)
+	err = shipper_util.CompressFile(compactedDBPath, compressedDBPath, false)
 	if err != nil {
 		return err
 	}
