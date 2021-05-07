@@ -18,11 +18,11 @@ func BuildAll(opt Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	cm, sha1, err := LokiConfigMap(opt)
+	cm, sha1C, err := LokiConfigMap(opt)
 	if err != nil {
 		return nil, err
 	}
-	opt.ConfigSHA1 = sha1
+	opt.ConfigSHA1 = sha1C
 
 	res = append(res, cm)
 	res = append(res, BuildDistributor(opt)...)

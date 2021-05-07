@@ -47,6 +47,7 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 				Args: []string{
 					"-target=querier",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
+					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
 				},
 				ReadinessProbe: &corev1.Probe{
 					Handler: corev1.Handler{

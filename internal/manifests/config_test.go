@@ -17,10 +17,9 @@ import (
 func TestConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 	opts := randomConfigOptions()
 
-	_, sha1, err := manifests.LokiConfigMap(opts)
+	_, sha1C, err := manifests.LokiConfigMap(opts)
 	require.NoError(t, err)
-
-	require.NotEmpty(t, sha1)
+	require.NotEmpty(t, sha1C)
 }
 
 func TestConfigOptions_UserOptionsTakePrecedence(t *testing.T) {

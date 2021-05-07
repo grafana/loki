@@ -12,25 +12,45 @@ import (
 const (
 	// LokiConfigFileName is the name of the config file in the configmap
 	LokiConfigFileName = "config.yaml"
+	// LokiRuntimeConfigFileName is the name of the runtime config file in the configmap
+	LokiRuntimeConfigFileName = "runtime-config.yaml"
 	// LokiConfigMountDir is the path that is mounted from the configmap
 	LokiConfigMountDir = "/etc/loki/config"
 )
 
-//go:embed loki-config.yaml
-var lokiConfigYAMLTmplFile embed.FS
+var (
+	//go:embed loki-config.yaml
+	lokiConfigYAMLTmplFile embed.FS
 
-var lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
+	//go:embed loki-runtime-config.yaml
+	lokiRuntimeConfigYAMLTmplFile embed.FS
 
-// Build builds a loki stack configuration file
-func Build(opts Options) ([]byte, error) {
+	lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
+
+	lokiRuntimeConfigYAMLTmpl = template.Must(template.ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
+)
+
+// Build builds a loki stack configuration files
+func Build(opts Options) ([]byte, []byte, error) {
+	// Build loki config yaml
 	w := bytes.NewBuffer(nil)
 	err := lokiConfigYAMLTmpl.Execute(w, opts)
 	if err != nil {
-		return nil, kverrors.Wrap(err, "failed to create loki configuration")
+		return nil, nil, kverrors.Wrap(err, "failed to create loki configuration")
 	}
-	b, err := ioutil.ReadAll(w)
+	cfg, err := ioutil.ReadAll(w)
 	if err != nil {
-		return nil, kverrors.Wrap(err, "failed to read configuration from buffer")
+		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
-	return b, nil
+	// Build loki runtime config yaml
+	w = bytes.NewBuffer(nil)
+	err = lokiRuntimeConfigYAMLTmpl.Execute(w, opts)
+	if err != nil {
+		return nil, nil, kverrors.Wrap(err, "failed to create loki runtime configuration")
+	}
+	rcfg, err := ioutil.ReadAll(w)
+	if err != nil {
+		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
+	}
+	return cfg, rcfg, nil
 }

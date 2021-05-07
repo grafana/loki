@@ -13,17 +13,17 @@ import (
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
 func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg := ConfigOptions(opt)
-	b, err := config.Build(cfg)
+	c, rc, err := config.Build(cfg)
 	if err != nil {
 		return nil, "", err
 	}
 
 	s := sha1.New()
-	_, err = s.Write(b)
+	_, err = s.Write(c)
 	if err != nil {
 		return nil, "", err
 	}
-	sha1 := fmt.Sprintf("%x", s.Sum(nil))
+	sha1C := fmt.Sprintf("%x", s.Sum(nil))
 
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
@@ -35,9 +35,10 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 			Labels: commonLabels(opt.Name),
 		},
 		BinaryData: map[string][]byte{
-			config.LokiConfigFileName: b,
+			config.LokiConfigFileName:        c,
+			config.LokiRuntimeConfigFileName: rc,
 		},
-	}, sha1, nil
+	}, sha1C, nil
 }
 
 // ConfigOptions converts Options to config.Options

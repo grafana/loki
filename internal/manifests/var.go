@@ -15,9 +15,9 @@ const (
 	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
 )
 
-func commonAnnotations(sha string) map[string]string {
+func commonAnnotations(h string) map[string]string {
 	return map[string]string{
-		"loki.openshift.io/config-hash": sha,
+		"loki.openshift.io/config-hash": h,
 	}
 }
 
