@@ -3,7 +3,7 @@ package alertspb
 import "errors"
 
 var (
-	ErrNotFound = errors.New("alertmanager config not found")
+	ErrNotFound = errors.New("alertmanager storage object not found")
 )
 
 // ToProto transforms a yaml Alertmanager config and map of template files to an AlertConfigDesc

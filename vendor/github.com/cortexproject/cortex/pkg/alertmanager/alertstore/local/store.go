@@ -20,6 +20,7 @@ const (
 
 var (
 	errReadOnly = errors.New("local alertmanager config storage is read-only")
+	errState    = errors.New("local alertmanager storage does not support state persistency")
 )
 
 // StoreConfig configures a static file alertmanager store
@@ -100,11 +101,26 @@ func (f *Store) DeleteAlertConfig(_ context.Context, user string) error {
 	return errReadOnly
 }
 
+// GetFullState implements alertstore.AlertStore.
+func (f *Store) GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error) {
+	return alertspb.FullStateDesc{}, errState
+}
+
+// SetFullState implements alertstore.AlertStore.
+func (f *Store) SetFullState(ctx context.Context, user string, cfg alertspb.FullStateDesc) error {
+	return errState
+}
+
+// DeleteFullState implements alertstore.AlertStore.
+func (f *Store) DeleteFullState(ctx context.Context, user string) error {
+	return errState
+}
+
 func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 	configs := map[string]alertspb.AlertConfigDesc{}
 	err := filepath.Walk(f.cfg.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return errors.Wrap(err, "unable to walk file path")
+			return errors.Wrapf(err, "unable to walk file path at %s", path)
 		}
 
 		// Ignore files that are directories or not yaml files
@@ -116,13 +132,13 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 		// Ensure the file is a valid Alertmanager Config.
 		_, err = config.LoadFile(path)
 		if err != nil {
-			return errors.Wrapf(err, "unable to load file %s", path)
+			return errors.Wrapf(err, "unable to load alertmanager config %s", path)
 		}
 
 		// Load the file to be returned by the store.
 		content, err := ioutil.ReadFile(path)
 		if err != nil {
-			return errors.Wrapf(err, "unable to read file %s", path)
+			return errors.Wrapf(err, "unable to read alertmanager config %s", path)
 		}
 
 		// The file name must correspond to the user tenant ID

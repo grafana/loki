@@ -40,6 +40,11 @@ func translateError(err error) error {
 		}
 
 		s, ok := status.FromError(err)
+
+		if !ok {
+			s, ok = status.FromError(errors.Cause(err))
+		}
+
 		if ok {
 			code := s.Code()
 

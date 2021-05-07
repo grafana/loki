@@ -281,7 +281,6 @@
             consistent_hash: true,
           },
         },
-        max_look_back_period: 0,
       },
 
       // Default schema config is boltdb-shipper/gcs, this will need to be overridden for other stores

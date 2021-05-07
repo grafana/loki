@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// ReplicationSet describes the ingesters to talk to for a given key, and how
+// ReplicationSet describes the instances to talk to for a given key, and how
 // many errors to tolerate.
 type ReplicationSet struct {
-	Ingesters []InstanceDesc
+	Instances []InstanceDesc
 
 	// Maximum number of tolerated failing instances. Max errors and max unavailable zones are
 	// mutually exclusive.
@@ -32,23 +32,23 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	// Initialise the result tracker, which is use to keep track of successes and failures.
 	var tracker replicationSetResultTracker
 	if r.MaxUnavailableZones > 0 {
-		tracker = newZoneAwareResultTracker(r.Ingesters, r.MaxUnavailableZones)
+		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones)
 	} else {
-		tracker = newDefaultResultTracker(r.Ingesters, r.MaxErrors)
+		tracker = newDefaultResultTracker(r.Instances, r.MaxErrors)
 	}
 
 	var (
-		ch         = make(chan instanceResult, len(r.Ingesters))
+		ch         = make(chan instanceResult, len(r.Instances))
 		forceStart = make(chan struct{}, r.MaxErrors)
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Spawn a goroutine for each instance.
-	for i := range r.Ingesters {
+	for i := range r.Instances {
 		go func(i int, ing *InstanceDesc) {
 			// Wait to send extra requests. Works only when zone-awareness is disabled.
-			if delay > 0 && r.MaxUnavailableZones == 0 && i >= len(r.Ingesters)-r.MaxErrors {
+			if delay > 0 && r.MaxUnavailableZones == 0 && i >= len(r.Instances)-r.MaxErrors {
 				after := time.NewTimer(delay)
 				defer after.Stop()
 				select {
@@ -64,10 +64,10 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 				err:      err,
 				instance: ing,
 			}
-		}(i, &r.Ingesters[i])
+		}(i, &r.Instances[i])
 	}
 
-	results := make([]interface{}, 0, len(r.Ingesters))
+	results := make([]interface{}, 0, len(r.Instances))
 
 	for !tracker.succeeded() {
 		select {
@@ -96,7 +96,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 
 // Includes returns whether the replication set includes the replica with the provided addr.
 func (r ReplicationSet) Includes(addr string) bool {
-	for _, instance := range r.Ingesters {
+	for _, instance := range r.Instances {
 		if instance.GetAddr() == addr {
 			return true
 		}
@@ -108,9 +108,21 @@ func (r ReplicationSet) Includes(addr string) bool {
 // GetAddresses returns the addresses of all instances within the replication set. Returned slice
 // order is not guaranteed.
 func (r ReplicationSet) GetAddresses() []string {
-	addrs := make([]string, 0, len(r.Ingesters))
-	for _, desc := range r.Ingesters {
+	addrs := make([]string, 0, len(r.Instances))
+	for _, desc := range r.Instances {
 		addrs = append(addrs, desc.Addr)
+	}
+	return addrs
+}
+
+// GetAddressesWithout returns the addresses of all instances within the replication set while
+// excluding the specified address. Returned slice order is not guaranteed.
+func (r ReplicationSet) GetAddressesWithout(exclude string) []string {
+	addrs := make([]string, 0, len(r.Instances))
+	for _, desc := range r.Instances {
+		if desc.Addr != exclude {
+			addrs = append(addrs, desc.Addr)
+		}
 	}
 	return addrs
 }
@@ -118,8 +130,8 @@ func (r ReplicationSet) GetAddresses() []string {
 // HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
 // false if they differ in any way (number of instances, instance states, tokens, zones, ...).
 func HasReplicationSetChanged(before, after ReplicationSet) bool {
-	beforeInstances := before.Ingesters
-	afterInstances := after.Ingesters
+	beforeInstances := before.Instances
+	afterInstances := after.Instances
 
 	if len(beforeInstances) != len(afterInstances) {
 		return true

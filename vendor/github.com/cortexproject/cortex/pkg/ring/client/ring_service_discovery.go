@@ -17,7 +17,7 @@ func NewRingServiceDiscovery(r ring.ReadRing) PoolServiceDiscovery {
 		}
 
 		var addrs []string
-		for _, instance := range replicationSet.Ingesters {
+		for _, instance := range replicationSet.Instances {
 			addrs = append(addrs, instance.Addr)
 		}
 		return addrs, nil

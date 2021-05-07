@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -58,13 +58,12 @@ func NewLiteralParams(
 
 // LiteralParams impls Params
 type LiteralParams struct {
-	qs         string
-	start, end time.Time
-	step       time.Duration
-	interval   time.Duration
-	direction  logproto.Direction
-	limit      uint32
-	shards     []string
+	qs             string
+	start, end     time.Time
+	step, interval time.Duration
+	direction      logproto.Direction
+	limit          uint32
+	shards         []string
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
@@ -175,8 +174,8 @@ func (ev *DefaultEvaluator) StepEvaluator(
 			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr SampleExpr, p Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.left.interval),
-						End:      q.End(),
+						Start:    q.Start().Add(-rangExpr.left.interval).Add(-rangExpr.left.offset),
+						End:      q.End().Add(-rangExpr.left.offset),
 						Selector: e.String(), // intentionally send the the vector for reducing labels.
 						Shards:   q.Shards(),
 					},
@@ -184,15 +183,15 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				if err != nil {
 					return nil, err
 				}
-				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q)
+				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.left.offset)
 			})
 		}
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *rangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.left.interval),
-				End:      q.End(),
+				Start:    q.Start().Add(-e.left.interval).Add(-e.left.offset),
+				End:      q.End().Add(-e.left.offset),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
 			},
@@ -200,7 +199,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q)
+		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.left.offset)
 	case *binOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	case *labelReplaceExpr:
@@ -407,6 +406,7 @@ func rangeAggEvaluator(
 	it iter.PeekingSampleIterator,
 	expr *rangeAggregationExpr,
 	q Params,
+	o time.Duration,
 ) (StepEvaluator, error) {
 	agg, err := expr.aggregator()
 	if err != nil {
@@ -416,7 +416,7 @@ func rangeAggEvaluator(
 		it,
 		expr.left.interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano(),
+		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 	)
 	if expr.operation == OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{
@@ -445,8 +445,8 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	ts, vec := r.iter.At(r.agg)
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
-		if s.Metric.Has(log.ErrorLabel) {
-			r.err = newPipelineErr(s.Metric)
+		if s.Metric.Has(logqlmodel.ErrorLabel) {
+			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
 	}
@@ -477,8 +477,8 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	ts, vec := r.iter.At(one)
 	for _, s := range vec {
 		// Errors are not allowed in metrics.
-		if s.Metric.Has(log.ErrorLabel) {
-			r.err = newPipelineErr(s.Metric)
+		if s.Metric.Has(logqlmodel.ErrorLabel) {
+			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
 	}

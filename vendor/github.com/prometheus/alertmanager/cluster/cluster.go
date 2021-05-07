@@ -536,7 +536,10 @@ func (p *Peer) peerUpdate(n *memberlist.Node) {
 // AddState adds a new state that will be gossiped. It returns a channel to which
 // broadcast messages for the state can be sent.
 func (p *Peer) AddState(key string, s State, reg prometheus.Registerer) ClusterChannel {
+	p.mtx.Lock()
 	p.states[key] = s
+	p.mtx.Unlock()
+
 	send := func(b []byte) {
 		p.delegate.bcast.QueueBroadcast(simpleBroadcast(b))
 	}
@@ -584,8 +587,13 @@ func (p *Peer) Ready() bool {
 }
 
 // Wait until Settle() has finished.
-func (p *Peer) WaitReady() {
-	<-p.readyc
+func (p *Peer) WaitReady(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.readyc:
+		return nil
+	}
 }
 
 // Return a status string representing the peer state.

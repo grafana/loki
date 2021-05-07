@@ -27,7 +27,7 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 
-	models "github.com/prometheus/alertmanager/api/v2/models"
+	"github.com/prometheus/alertmanager/api/v2/models"
 )
 
 // NewPostSilencesParams creates a new PostSilencesParams object
@@ -67,7 +67,7 @@ func (o *PostSilencesParams) BindRequest(r *http.Request, route *middleware.Matc
 		var body models.PostableSilence
 		if err := route.Consumer.Consume(r.Body, &body); err != nil {
 			if err == io.EOF {
-				res = append(res, errors.Required("silence", "body"))
+				res = append(res, errors.Required("silence", "body", ""))
 			} else {
 				res = append(res, errors.NewParseError("silence", "body", "", err))
 			}
@@ -82,7 +82,7 @@ func (o *PostSilencesParams) BindRequest(r *http.Request, route *middleware.Matc
 			}
 		}
 	} else {
-		res = append(res, errors.Required("silence", "body"))
+		res = append(res, errors.Required("silence", "body", ""))
 	}
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)

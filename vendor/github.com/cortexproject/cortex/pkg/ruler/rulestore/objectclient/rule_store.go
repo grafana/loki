@@ -59,13 +59,13 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to get rule group %s", objectKey)
 	}
 	defer func() { _ = reader.Close() }()
 
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to read rule group %s", objectKey)
 	}
 
 	if rg == nil {
@@ -76,7 +76,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 
 	err = proto.Unmarshal(buf, rg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to unmarshal rule group %s", objectKey)
 	}
 
 	return rg, nil
@@ -104,7 +104,7 @@ func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements rules.RuleStore.
-func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
+func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	// No delimiter to get *all* rule groups for all users and namespaces.
 	ruleGroupObjects, _, err := o.client.List(ctx, rulePrefix, "")
 	if err != nil {
@@ -114,7 +114,7 @@ func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore
 	return convertRuleGroupObjectsToMap(ruleGroupObjects), nil
 }
 
-func (o *RuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rulestore.RuleGroupList, error) {
+func (o *RuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rulespb.RuleGroupList, error) {
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (o *RuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userI
 	return convertRuleGroupObjectsToMap(ruleGroupObjects)[userID], nil
 }
 
-func (o *RuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulestore.RuleGroupList) error {
+func (o *RuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
 	ch := make(chan *rulespb.RuleGroupDesc)
 
 	// Given we store one file per rule group. With this, we create a pool of workers that will
@@ -176,8 +176,8 @@ outer:
 	return g.Wait()
 }
 
-func convertRuleGroupObjectsToMap(ruleGroupObjects []chunk.StorageObject) map[string]rulestore.RuleGroupList {
-	result := map[string]rulestore.RuleGroupList{}
+func convertRuleGroupObjectsToMap(ruleGroupObjects []chunk.StorageObject) map[string]rulespb.RuleGroupList {
+	result := map[string]rulespb.RuleGroupList{}
 	for _, rg := range ruleGroupObjects {
 		user, namespace, group := decomposeRuleObjectKey(rg.Key)
 		if user == "" || namespace == "" || group == "" {

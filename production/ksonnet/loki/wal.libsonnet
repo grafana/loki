@@ -12,7 +12,7 @@
         wal+: {
           enabled: true,
           dir: '/loki/wal',
-          replay_memory_ceiling: '9GB', // between the requests & limits
+          replay_memory_ceiling: '7GB', // should be set upto ~50% of available memory
         },
       },
     }),

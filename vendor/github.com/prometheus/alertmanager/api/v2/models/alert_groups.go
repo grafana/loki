@@ -22,13 +22,13 @@ package models
 import (
 	"strconv"
 
-	strfmt "github.com/go-openapi/strfmt"
-
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // AlertGroups alert groups
+//
 // swagger:model alertGroups
 type AlertGroups []*AlertGroup
 

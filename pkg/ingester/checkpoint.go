@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"bytes"
+	"context"
 	fmt "fmt"
 	"io/ioutil"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log"
@@ -206,7 +207,7 @@ func newStreamsIterator(ing ingesterInstances) *streamIterator {
 		inst.streamsMtx.RLock()
 		streams := make([]*stream, 0, len(inst.streams))
 		inst.streamsMtx.RUnlock()
-		_ = inst.forAllStreams(func(s *stream) error {
+		_ = inst.forAllStreams(context.Background(), func(s *stream) error {
 			streams = append(streams, s)
 			return nil
 		})
@@ -267,7 +268,7 @@ func (s *streamIterator) Next() bool {
 
 	s.current.UserID = currentInstance.id
 	s.current.Fingerprint = uint64(stream.fp)
-	s.current.Labels = client.FromLabelsToLabelAdapters(stream.labels)
+	s.current.Labels = cortexpb.FromLabelsToLabelAdapters(stream.labels)
 
 	s.current.To = stream.lastLine.ts
 	s.current.LastLine = stream.lastLine.content

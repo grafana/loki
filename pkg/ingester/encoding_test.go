@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
@@ -242,7 +242,7 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	s := &Series{
 		UserID:      "fake",
 		Fingerprint: 123,
-		Labels:      client.FromLabelsToLabelAdapters(ls),
+		Labels:      cortexpb.FromLabelsToLabelAdapters(ls),
 		To:          time.Unix(10, 0),
 		LastLine:    "lastLine",
 		Chunks: []Chunk{

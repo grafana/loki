@@ -551,7 +551,7 @@ timestamp:
   [location: <string>]
 ```
 
-##### output
+#### output
 
 The output stage takes data from the extracted map and sets the contents of the
 log entry that will be stored by Loki.
@@ -771,6 +771,9 @@ labels:
 # When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
 # Default is false
 use_incoming_timestamp: <bool>
+
+# Sets the maximum limit to the length of syslog messages
+max_message_length: <int>
 ```
 
 #### Available Labels
@@ -1237,6 +1240,8 @@ scrape_configs:
       host: yourhost # A `host` label will help identify logs from this machine vs others
       __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
 ```
+
+If you are rotating logs, be careful when using a wildcard pattern like `*.log`, and make sure it doesn't match the rotated log file. For example, if you move your logs from `server.log` to `server.01-01-1970.log` in the same directory every night, a static config with a wildcard search pattern like `*.log` will pick up that new file and read it, effectively causing the entire days logs to be re-ingested.
 
 ## Example Static Config without targets
 

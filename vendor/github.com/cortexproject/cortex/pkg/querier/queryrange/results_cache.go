@@ -25,7 +25,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -385,10 +385,17 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		extents = append(extents, extent)
 	}
 	sort.Slice(extents, func(i, j int) bool {
+		if extents[i].Start == extents[j].Start {
+			// as an optimization, for two extents starts at the same time, we
+			// put bigger extent at the front of the slice, which helps
+			// to reduce the amount of merge we have to do later.
+			return extents[i].End > extents[j].End
+		}
+
 		return extents[i].Start < extents[j].Start
 	})
 
-	// Merge any extents - they're guaranteed not to overlap.
+	// Merge any extents - potentially overlapping
 	accumulator, err := newAccumulator(extents[0])
 	if err != nil {
 		return nil, nil, err
@@ -405,6 +412,10 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 			if err != nil {
 				return nil, nil, err
 			}
+			continue
+		}
+
+		if accumulator.End >= extents[i].End {
 			continue
 		}
 
@@ -485,12 +496,13 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 			continue
 		}
 
-		// If this extent is tiny, discard it: more efficient to do a few larger queries.
+		// If this extent is tiny and request is not tiny, discard it: more efficient to do a few larger queries.
+		// Hopefully tiny request can make tiny extent into not-so-tiny extent.
 
 		// However if the step is large enough, the split_query_by_interval middleware would generate a query with same start and end.
 		// For example, if the step size is more than 12h and the interval is 24h.
 		// This means the extent's start and end time would be same, even if the timerange covers several hours.
-		if (req.GetStart() != req.GetEnd()) && (extent.End-extent.Start < s.minCacheExtent) {
+		if (req.GetStart() != req.GetEnd()) && (req.GetEnd()-req.GetStart() > s.minCacheExtent) && (extent.End-extent.Start < s.minCacheExtent) {
 			continue
 		}
 
@@ -617,7 +629,7 @@ func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, bool) {
 	result := SampleStream{
 		Labels:  stream.Labels,
-		Samples: make([]client.Sample, 0, len(stream.Samples)),
+		Samples: make([]cortexpb.Sample, 0, len(stream.Samples)),
 	}
 	for _, sample := range stream.Samples {
 		if start <= sample.TimestampMs && sample.TimestampMs <= end {

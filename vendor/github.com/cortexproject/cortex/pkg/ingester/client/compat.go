@@ -25,7 +25,7 @@ func ToQueryRequest(from, to model.Time, matchers []*labels.Matcher) (*QueryRequ
 
 // FromQueryRequest unpacks a QueryRequest proto.
 func FromQueryRequest(req *QueryRequest) (model.Time, model.Time, []*labels.Matcher, error) {
-	matchers, err := fromLabelMatchers(req.Matchers)
+	matchers, err := FromLabelMatchers(req.Matchers)
 	if err != nil {
 		return 0, 0, nil, err
 	}
@@ -39,11 +39,11 @@ func ToQueryResponse(matrix model.Matrix) *QueryResponse {
 	resp := &QueryResponse{}
 	for _, ss := range matrix {
 		ts := cortexpb.TimeSeries{
-			Labels:  FromMetricsToLabelAdapters(ss.Metric),
-			Samples: make([]Sample, 0, len(ss.Values)),
+			Labels:  cortexpb.FromMetricsToLabelAdapters(ss.Metric),
+			Samples: make([]cortexpb.Sample, 0, len(ss.Values)),
 		}
 		for _, s := range ss.Values {
-			ts.Samples = append(ts.Samples, Sample{
+			ts.Samples = append(ts.Samples, cortexpb.Sample{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			})
@@ -58,7 +58,7 @@ func FromQueryResponse(resp *QueryResponse) model.Matrix {
 	m := make(model.Matrix, 0, len(resp.Timeseries))
 	for _, ts := range resp.Timeseries {
 		var ss model.SampleStream
-		ss.Metric = FromLabelAdaptersToMetric(ts.Labels)
+		ss.Metric = cortexpb.FromLabelAdaptersToMetric(ts.Labels)
 		ss.Values = make([]model.SamplePair, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
 			ss.Values = append(ss.Values, model.SamplePair{
@@ -90,7 +90,7 @@ func ToMetricsForLabelMatchersRequest(from, to model.Time, matchers []*labels.Ma
 func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (model.Time, model.Time, [][]*labels.Matcher, error) {
 	matchersSet := make([][]*labels.Matcher, 0, len(req.MatchersSet))
 	for _, matchers := range req.MatchersSet {
-		matchers, err := fromLabelMatchers(matchers.Matchers)
+		matchers, err := FromLabelMatchers(matchers.Matchers)
 		if err != nil {
 			return 0, 0, nil, err
 		}
@@ -105,7 +105,7 @@ func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (mo
 func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) []model.Metric {
 	metrics := []model.Metric{}
 	for _, m := range resp.Metric {
-		metrics = append(metrics, FromLabelAdaptersToMetric(m.Labels))
+		metrics = append(metrics, cortexpb.FromLabelAdaptersToMetric(m.Labels))
 	}
 	return metrics
 }
@@ -131,7 +131,7 @@ func FromLabelValuesRequest(req *LabelValuesRequest) (string, int64, int64, []*l
 	var matchers []*labels.Matcher
 
 	if req.Matchers != nil {
-		matchers, err = fromLabelMatchers(req.Matchers.Matchers)
+		matchers, err = FromLabelMatchers(req.Matchers.Matchers)
 		if err != nil {
 			return "", 0, 0, nil, err
 		}
@@ -165,7 +165,7 @@ func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {
 	return result, nil
 }
 
-func fromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
+func FromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 	result := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
 		var mtype labels.MatchType
@@ -191,7 +191,7 @@ func fromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 }
 
 // FastFingerprint runs the same algorithm as Prometheus labelSetToFastFingerprint()
-func FastFingerprint(ls []LabelAdapter) model.Fingerprint {
+func FastFingerprint(ls []cortexpb.LabelAdapter) model.Fingerprint {
 	if len(ls) == 0 {
 		return model.Metric(nil).FastFingerprint()
 	}

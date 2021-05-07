@@ -7,17 +7,17 @@ import (
 	"unsafe"
 )
 
-func NewMetadataResponse(metadata *MetricMetadata) *MetadataResponse {
-	return &MetadataResponse{
-		Result: &MetadataResponse_Metadata{
+func NewMetricMetadataResponse(metadata *MetricMetadata) *MetricMetadataResponse {
+	return &MetricMetadataResponse{
+		Result: &MetricMetadataResponse_Metadata{
 			Metadata: metadata,
 		},
 	}
 }
 
-func NewWarningMetadataResponse(warning error) *MetadataResponse {
-	return &MetadataResponse{
-		Result: &MetadataResponse_Warning{
+func NewWarningMetadataResponse(warning error) *MetricMetadataResponse {
+	return &MetricMetadataResponse{
+		Result: &MetricMetadataResponse_Warning{
 			Warning: warning.Error(),
 		},
 	}

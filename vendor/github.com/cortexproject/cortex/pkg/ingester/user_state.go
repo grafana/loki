@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -16,11 +15,13 @@ import (
 	"github.com/segmentio/fasthash/fnv1a"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -42,8 +43,8 @@ type userState struct {
 	fpToSeries          *seriesMap
 	mapper              *fpMapper
 	index               *index.InvertedIndex
-	ingestedAPISamples  *ewmaRate
-	ingestedRuleSamples *ewmaRate
+	ingestedAPISamples  *util_math.EwmaRate
+	ingestedRuleSamples *util_math.EwmaRate
 	activeSeries        *ActiveSeries
 	logger              log.Logger
 
@@ -98,8 +99,8 @@ func (us *userStates) gc() {
 func (us *userStates) updateRates() {
 	us.states.Range(func(key, value interface{}) bool {
 		state := value.(*userState)
-		state.ingestedAPISamples.tick()
-		state.ingestedRuleSamples.tick()
+		state.ingestedAPISamples.Tick()
+		state.ingestedRuleSamples.Tick()
 		return true
 	})
 }
@@ -107,7 +108,7 @@ func (us *userStates) updateRates() {
 // Labels will be copied if they are kept.
 func (us *userStates) updateActiveSeriesForUser(userID string, now time.Time, lbls []labels.Label) {
 	if s, ok := us.get(userID); ok {
-		s.activeSeries.UpdateSeries(lbls, now, func(l labels.Labels) labels.Labels { return client.CopyLabels(l) })
+		s.activeSeries.UpdateSeries(lbls, now, func(l labels.Labels) labels.Labels { return cortexpb.CopyLabels(l) })
 	}
 }
 
@@ -142,8 +143,8 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			fpToSeries:          newSeriesMap(),
 			fpLocker:            newFingerprintLocker(16 * 1024),
 			index:               index.New(),
-			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			ingestedAPISamples:  util_math.NewEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			ingestedRuleSamples: util_math.NewEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      newMetricCounter(us.limiter),
 			logger:              logger,
 
@@ -180,7 +181,7 @@ func (us *userStates) teardown() {
 func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("no user id")
+		return nil, false, err
 	}
 	state, ok := us.get(userID)
 	return state, ok, nil
@@ -188,7 +189,7 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *WALRecord) (*userState, model.Fingerprint, *memorySeries, error) {
+func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []cortexpb.LabelAdapter, record *WALRecord) (*userState, model.Fingerprint, *memorySeries, error) {
 	state := us.getOrCreate(userID)
 	// WARNING: `err` may have a reference to unsafe memory in `labels`
 	fp, series, err := state.getSeries(labels, record)
@@ -229,7 +230,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 
 	if !recovery {
 		if err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length()); err != nil {
-			return nil, makeLimitError(perUserSeriesLimit, err)
+			return nil, makeLimitError(perUserSeriesLimit, u.limiter.FormatError(u.userID, err))
 		}
 	}
 
@@ -243,7 +244,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 		// Check if the per-metric limit has been exceeded
 		if err = u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
 			// WARNING: returns a reference to `metric`
-			return nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabels(metric), err)
+			return nil, makeMetricLimitError(perMetricSeriesLimit, cortexpb.FromLabelAdaptersToLabels(metric), u.limiter.FormatError(u.userID, err))
 		}
 	}
 

@@ -68,6 +68,10 @@ type processor interface {
 	//
 	// processorManager (not processor) is responsible for starting as many goroutines as needed for each connection.
 	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string)
+
+	// notifyShutdown notifies the remote query-frontend or query-scheduler that the querier is
+	// shutting down.
+	notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string)
 }
 
 type querierWorker struct {

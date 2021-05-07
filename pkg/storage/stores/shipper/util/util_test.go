@@ -31,7 +31,7 @@ func Test_GetFileFromStorage(t *testing.T) {
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
 	require.NoError(t, err)
 
-	require.NoError(t, GetFileFromStorage(context.Background(), objectClient, "src", filepath.Join(tempDir, "dest")))
+	require.NoError(t, GetFileFromStorage(context.Background(), objectClient, "src", filepath.Join(tempDir, "dest"), false))
 
 	// verify the contents of the downloaded file.
 	b, err := ioutil.ReadFile(filepath.Join(tempDir, "dest"))
@@ -40,11 +40,11 @@ func Test_GetFileFromStorage(t *testing.T) {
 	require.Equal(t, testData, b)
 
 	// compress the file in storage
-	err = CompressFile(filepath.Join(tempDir, "src"), filepath.Join(tempDir, "src.gz"))
+	err = CompressFile(filepath.Join(tempDir, "src"), filepath.Join(tempDir, "src.gz"), true)
 	require.NoError(t, err)
 
 	// get the compressed file from storage
-	require.NoError(t, GetFileFromStorage(context.Background(), objectClient, "src.gz", filepath.Join(tempDir, "dest.gz")))
+	require.NoError(t, GetFileFromStorage(context.Background(), objectClient, "src.gz", filepath.Join(tempDir, "dest.gz"), false))
 
 	// verify the contents of the downloaded gz file.
 	b, err = ioutil.ReadFile(filepath.Join(tempDir, "dest.gz"))
@@ -69,7 +69,7 @@ func Test_CompressFile(t *testing.T) {
 
 	require.NoError(t, ioutil.WriteFile(uncompressedFilePath, testData, 0666))
 
-	require.NoError(t, CompressFile(uncompressedFilePath, compressedFilePath))
+	require.NoError(t, CompressFile(uncompressedFilePath, compressedFilePath, true))
 	require.FileExists(t, compressedFilePath)
 
 	testutil.DecompressFile(t, compressedFilePath, decompressedFilePath)

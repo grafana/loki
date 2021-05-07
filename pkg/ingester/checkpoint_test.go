@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -21,8 +21,8 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // small util for ensuring data exists as we expect
@@ -242,7 +242,6 @@ func TestUnflushedChunks(t *testing.T) {
 }
 
 func TestIngesterWALBackpressureSegments(t *testing.T) {
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
@@ -287,7 +286,6 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 }
 
 func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
@@ -353,7 +351,6 @@ func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Du
 			return
 		}
 	}
-
 }
 
 // mkPush makes approximately totalSize bytes of log lines across min(500, totalSize) streams
@@ -456,7 +453,7 @@ func Test_SeriesIterator(t *testing.T) {
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
 	for i := 0; i < 3; i++ {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil)
+		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream2}}))
 		instances = append(instances, inst)
@@ -476,7 +473,7 @@ func Test_SeriesIterator(t *testing.T) {
 			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
 			require.NoError(t, err)
 			stream := logproto.Stream{
-				Labels: cortex_client.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
+				Labels: cortexpb.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
 			}
 			for it.Next() {
 				stream.Entries = append(stream.Entries, it.Entry())
@@ -506,7 +503,7 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, nil, noopWAL{}, NilMetrics, nil)
+		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, nil, noopWAL{}, NilMetrics, nil, nil)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{
@@ -552,7 +549,7 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 		require.NoError(b, writer.Write(&Series{
 			UserID:      "foo",
 			Fingerprint: lbs.Hash(),
-			Labels:      cortex_client.FromLabelsToLabelAdapters(lbs),
+			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),
 			Chunks:      chunks,
 		}))
 	}

@@ -4,6 +4,8 @@ import (
 	"sort"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 var emptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
@@ -210,7 +212,7 @@ func (b *LabelsBuilder) Labels() labels.Labels {
 		if b.err == "" {
 			return b.base
 		}
-		res := append(b.base.Copy(), labels.Label{Name: ErrorLabel, Value: b.err})
+		res := append(b.base.Copy(), labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 		sort.Sort(res)
 		return res
 	}
@@ -234,7 +236,7 @@ Outer:
 	}
 	res = append(res, b.add...)
 	if b.err != "" {
-		res = append(res, labels.Label{Name: ErrorLabel, Value: b.err})
+		res = append(res, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 	}
 	sort.Sort(res)
 

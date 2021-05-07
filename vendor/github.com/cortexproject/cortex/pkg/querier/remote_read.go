@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -79,11 +80,11 @@ func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error
 
 	for s.Next() {
 		series := s.At()
-		samples := []client.Sample{}
+		samples := []cortexpb.Sample{}
 		it := series.Iterator()
 		for it.Next() {
 			t, v := it.At()
-			samples = append(samples, client.Sample{
+			samples = append(samples, cortexpb.Sample{
 				TimestampMs: t,
 				Value:       v,
 			})
@@ -91,8 +92,8 @@ func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error
 		if err := it.Err(); err != nil {
 			return nil, err
 		}
-		result.Timeseries = append(result.Timeseries, client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.Labels()),
+		result.Timeseries = append(result.Timeseries, cortexpb.TimeSeries{
+			Labels:  cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 			Samples: samples,
 		})
 	}

@@ -27,7 +27,7 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 
-	models "github.com/prometheus/alertmanager/api/v2/models"
+	"github.com/prometheus/alertmanager/api/v2/models"
 )
 
 // NewPostAlertsParams creates a new PostAlertsParams object
@@ -67,7 +67,7 @@ func (o *PostAlertsParams) BindRequest(r *http.Request, route *middleware.Matche
 		var body models.PostableAlerts
 		if err := route.Consumer.Consume(r.Body, &body); err != nil {
 			if err == io.EOF {
-				res = append(res, errors.Required("alerts", "body"))
+				res = append(res, errors.Required("alerts", "body", ""))
 			} else {
 				res = append(res, errors.NewParseError("alerts", "body", "", err))
 			}
@@ -82,7 +82,7 @@ func (o *PostAlertsParams) BindRequest(r *http.Request, route *middleware.Matche
 			}
 		}
 	} else {
-		res = append(res, errors.Required("alerts", "body"))
+		res = append(res, errors.Required("alerts", "body", ""))
 	}
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)

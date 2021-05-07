@@ -95,7 +95,7 @@ func NewHTTPClient(cfg ClientConfig, name string) (*http.Client, error) {
 		return nil, err
 	}
 
-	client, err := config_util.NewClientFromConfig(httpClientConfig, name, false, false)
+	client, err := config_util.NewClientFromConfig(httpClientConfig, name, config_util.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
 	}

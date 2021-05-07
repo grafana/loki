@@ -7,11 +7,10 @@ import (
 )
 
 func Test_optimizeSampleExpr(t *testing.T) {
-
 	tests := []struct {
 		in, expected string
 	}{
-		//noop
+		// noop
 		{`1`, `1`},
 		{`1 + 1`, `2`},
 		{`topk(10,sum by(name)(rate({region="us-east1"}[5m])))`, `topk(10,sum by(name)(rate({region="us-east1"}[5m])))`},

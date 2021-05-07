@@ -21,7 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -364,7 +364,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 			}
 
 			err = p.chunkStore.DeleteChunk(ctx, chunkRef.From, chunkRef.Through, chunkRef.UserID,
-				chunkDetails.ID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels), partiallyDeletedInterval)
+				chunkDetails.ID, cortexpb.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels), partiallyDeletedInterval)
 			if err != nil {
 				if isMissingChunkErr(err) {
 					level.Error(logger).Log("msg", "chunk not found for deletion. We may have already deleted it",
@@ -379,7 +379,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 
 		// this is mostly required to clean up series ids from series store
 		err := p.chunkStore.DeleteSeriesIDs(ctx, model.Time(plan.PlanInterval.StartTimestampMs), model.Time(plan.PlanInterval.EndTimestampMs),
-			userID, client.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels))
+			userID, cortexpb.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels))
 		if err != nil {
 			return err
 		}
@@ -692,7 +692,7 @@ func groupChunks(chunks []chunk.Chunk, deleteFrom, deleteThrough model.Time, inc
 		metricString := chk.Metric.String()
 		group, ok := metricToChunks[metricString]
 		if !ok {
-			group = ChunksGroup{Labels: client.FromLabelsToLabelAdapters(chk.Metric)}
+			group = ChunksGroup{Labels: cortexpb.FromLabelsToLabelAdapters(chk.Metric)}
 		}
 
 		chunkDetails := ChunkDetails{ID: chunkID}

@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	loki_runtime "github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	loki_runtime "github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type MemoryWALReader struct {

@@ -42,8 +42,8 @@ type Notifier struct {
 }
 
 // New returns a new Pushover notifier.
-func New(c *config.PushoverConfig, t *template.Template, l log.Logger) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "pushover", false, false)
+func New(c *config.PushoverConfig, t *template.Template, l log.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "pushover", append(httpOpts, commoncfg.WithHTTP2Disabled())...)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,8 @@
 package util
 
 import (
+	"strings"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -13,4 +15,21 @@ func LabelsToMetric(ls labels.Labels) model.Metric {
 		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 	}
 	return m
+}
+
+// LabelMatchersToString returns a string representing the input label matchers.
+func LabelMatchersToString(matchers []*labels.Matcher) string {
+	out := strings.Builder{}
+	out.WriteRune('{')
+
+	for idx, m := range matchers {
+		if idx > 0 {
+			out.WriteRune(',')
+		}
+
+		out.WriteString(m.String())
+	}
+
+	out.WriteRune('}')
+	return out.String()
 }

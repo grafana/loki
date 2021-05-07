@@ -47,14 +47,6 @@ func TestParseSeriesQuery(t *testing.T) {
 			mkSeriesRequest(t, "1000", "2000", []string{}),
 		},
 		{
-			"malformed",
-			withForm(url.Values{
-				"match": []string{`{a="}`},
-			}),
-			true,
-			nil,
-		},
-		{
 			"multiple matches",
 			withForm(url.Values{
 				"start": []string{"1000"},

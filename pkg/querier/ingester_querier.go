@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type responseFromIngesters struct {
@@ -177,7 +177,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	// Look for disconnected ingesters or new one we should (re)connect to
 	reconnectIngesters := []ring.InstanceDesc{}
 
-	for _, ingester := range replicationSet.Ingesters {
+	for _, ingester := range replicationSet.Instances {
 		if _, ok := connected[ingester.Addr]; ok {
 			continue
 		}
@@ -195,7 +195,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	}
 
 	// Instance a tail client for each ingester to re(connect)
-	reconnectClients, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Ingesters: reconnectIngesters}, func(client logproto.QuerierClient) (interface{}, error) {
+	reconnectClients, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Instances: reconnectIngesters}, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
@@ -233,9 +233,9 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 
 	// we want to check count of active tailers with only active ingesters
 	ingesters := make([]ring.InstanceDesc, 0, 1)
-	for i := range replicationSet.Ingesters {
-		if replicationSet.Ingesters[i].State == ring.ACTIVE {
-			ingesters = append(ingesters, replicationSet.Ingesters[i])
+	for i := range replicationSet.Instances {
+		if replicationSet.Instances[i].State == ring.ACTIVE {
+			ingesters = append(ingesters, replicationSet.Instances[i])
 		}
 	}
 
@@ -244,7 +244,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 	}
 
 	responses, err := q.forGivenIngesters(ctx, replicationSet, func(querierClient logproto.QuerierClient) (interface{}, error) {
-		resp, err := querierClient.TailersCount(ctx, nil)
+		resp, err := querierClient.TailersCount(ctx, &logproto.TailersCountRequest{})
 		if err != nil {
 			return nil, err
 		}

@@ -26,23 +26,12 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
-	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_ingester_appends_total",
-		Help:      "The total number of batch appends sent to ingesters.",
-	}, []string{"ingester"})
-	ingesterAppendFailures = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "distributor_ingester_append_failures_total",
-		Help:      "The total number of failed batch appends sent to ingesters.",
-	}, []string{"ingester"})
-
 	maxLabelCacheSize = 100000
 )
 
@@ -81,6 +70,11 @@ type Distributor struct {
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
 	labelCache           *lru.Cache
+
+	// metrics
+	ingesterAppends        *prometheus.CounterVec
+	ingesterAppendFailures *prometheus.CounterVec
+	replicationFactor      prometheus.Gauge
 }
 
 // New a distributor creates.
@@ -130,7 +124,23 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:           labelCache,
+		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "distributor_ingester_appends_total",
+			Help:      "The total number of batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		ingesterAppendFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "distributor_ingester_append_failures_total",
+			Help:      "The total number of failed batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Name:      "distributor_replication_factor",
+			Help:      "The configured replication factor.",
+		}),
 	}
+	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 
 	servs = append(servs, d.pool)
 	d.subservices, err = services.NewManager(servs...)
@@ -235,7 +245,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if ok, _ := d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize); !ok {
+	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
@@ -253,9 +263,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return nil, err
 		}
 
-		streams[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
+		streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
 		streams[i].maxFailures = replicationSet.MaxErrors
-		for _, ingester := range replicationSet.Ingesters {
+		for _, ingester := range replicationSet.Instances {
 			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &streams[i])
 			ingesterDescs[ingester.Addr] = ingester
 		}
@@ -335,9 +345,9 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Instance
 	}
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
-	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
+	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
-		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
 }

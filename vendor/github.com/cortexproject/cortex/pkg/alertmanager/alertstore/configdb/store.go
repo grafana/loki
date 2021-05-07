@@ -15,6 +15,7 @@ const (
 
 var (
 	errReadOnly = errors.New("configdb alertmanager config storage is read-only")
+	errState    = errors.New("configdb alertmanager storage does not support state persistency")
 )
 
 // Store is a concrete implementation of RuleStore that sources rules from the config service
@@ -90,6 +91,21 @@ func (c *Store) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc
 // DeleteAlertConfig implements alertstore.AlertStore.
 func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
 	return errReadOnly
+}
+
+// GetFullState implements alertstore.AlertStore.
+func (c *Store) GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error) {
+	return alertspb.FullStateDesc{}, errState
+}
+
+// SetFullState implements alertstore.AlertStore.
+func (c *Store) SetFullState(ctx context.Context, user string, cfg alertspb.FullStateDesc) error {
+	return errState
+}
+
+// DeleteFullState implements alertstore.AlertStore.
+func (c *Store) DeleteFullState(ctx context.Context, user string) error {
+	return errState
 }
 
 func (c *Store) reloadConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {

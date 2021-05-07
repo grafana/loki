@@ -18,16 +18,19 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
+	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -48,6 +51,8 @@ const (
 var (
 	// This is initialised if the WAL is enabled and the records are fetched from this pool.
 	recordPool sync.Pool
+
+	errIngesterStopping = errors.New("ingester stopping")
 )
 
 // Config for an Ingester.
@@ -90,6 +95,9 @@ type Config struct {
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
+	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
+	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -118,6 +126,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
+
+	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that ingester will accept. This limit is per-ingester, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. This limit only works when using blocks engine. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -164,6 +177,10 @@ type Ingester struct {
 
 	// Prometheus block storage
 	TSDBState TSDBState
+
+	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
+	ingestionRate        *util_math.EwmaRate
+	inflightPushRequests atomic.Int64
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -173,6 +190,8 @@ type ChunkStore interface {
 
 // New constructs a new Ingester.
 func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+	defaultInstanceLimits = &cfg.DefaultLimits
+
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -206,7 +225,6 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled),
 
 		limits:           limits,
 		chunkStore:       chunkStore,
@@ -216,6 +234,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		registerer:       registerer,
 		logger:           logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, nil, &i.inflightPushRequests)
 
 	var err error
 	// During WAL recovery, it will create new user states which requires the limiter.
@@ -298,7 +317,6 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 
 	i := &Ingester{
 		cfg:              cfg,
-		metrics:          newIngesterMetrics(registerer, true, false),
 		chunkStore:       chunkStore,
 		flushQueues:      make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
@@ -306,6 +324,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		limits:           limits,
 		logger:           logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, true, false, i.getInstanceLimits, nil, &i.inflightPushRequests)
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
 	return i, nil
@@ -436,9 +455,20 @@ func (i *Ingester) checkRunningOrStopping() error {
 }
 
 // Push implements client.IngesterServer
-func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	if err := i.checkRunningOrStopping(); err != nil {
 		return nil, err
+	}
+
+	// We will report *this* request in the error too.
+	inflight := i.inflightPushRequests.Inc()
+	defer i.inflightPushRequests.Dec()
+
+	gl := i.getInstanceLimits()
+	if gl != nil && gl.MaxInflightPushRequests > 0 {
+		if inflight > gl.MaxInflightPushRequests {
+			return nil, errTooManyInflightPushRequests
+		}
 	}
 
 	if i.cfg.BlocksStorageEnabled {
@@ -447,11 +477,11 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
 	// retain anything from `req` past the call to ReuseSlice
-	defer client.ReuseSlice(req.Timeseries)
+	defer cortexpb.ReuseSlice(req.Timeseries)
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
@@ -511,15 +541,15 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	if firstPartialErr != nil {
 		// grpcForwardableError turns the error into a string so it no longer references `req`
-		return &client.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
+		return &cortexpb.WriteResponse{}, grpcForwardableError(userID, firstPartialErr.code, firstPartialErr)
 	}
 
-	return &client.WriteResponse{}, nil
+	return &cortexpb.WriteResponse{}, nil
 }
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *WALRecord) error {
+func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source cortexpb.WriteRequest_SourceEnum, record *WALRecord) error {
 	labels.removeBlanks()
 
 	var (
@@ -534,7 +564,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		}
 	}()
 	if i.stopped {
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 
 	// getOrCreateSeries copies the memory for `labels`, except on the error path.
@@ -585,31 +615,38 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 	i.metrics.ingestedSamples.Inc()
 	switch source {
-	case client.RULE:
-		state.ingestedRuleSamples.inc()
-	case client.API:
+	case cortexpb.RULE:
+		state.ingestedRuleSamples.Inc()
+	case cortexpb.API:
 		fallthrough
 	default:
-		state.ingestedAPISamples.inc()
+		state.ingestedAPISamples.Inc()
 	}
 
 	return err
 }
 
-func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*client.MetricMetadata) {
+// pushMetadata returns number of ingested metadata.
+func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*cortexpb.MetricMetadata) int {
+	ingestedMetadata := 0
+	failedMetadata := 0
+
 	var firstMetadataErr error
 	for _, metadata := range metadata {
 		err := i.appendMetadata(userID, metadata)
 		if err == nil {
-			i.metrics.ingestedMetadata.Inc()
+			ingestedMetadata++
 			continue
 		}
 
-		i.metrics.ingestedMetadataFail.Inc()
+		failedMetadata++
 		if firstMetadataErr == nil {
 			firstMetadataErr = err
 		}
 	}
+
+	i.metrics.ingestedMetadata.Add(float64(ingestedMetadata))
+	i.metrics.ingestedMetadataFail.Add(float64(failedMetadata))
 
 	// If we have any error with regard to metadata we just log and no-op.
 	// We consider metadata a best effort approach, errors here should not stop processing.
@@ -617,13 +654,15 @@ func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*
 		logger := logutil.WithContext(ctx, i.logger)
 		level.Warn(logger).Log("msg", "failed to ingest some metadata", "err", firstMetadataErr)
 	}
+
+	return ingestedMetadata
 }
 
-func (i *Ingester) appendMetadata(userID string, m *client.MetricMetadata) error {
+func (i *Ingester) appendMetadata(userID string, m *cortexpb.MetricMetadata) error {
 	i.userStatesMtx.RLock()
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
-		return fmt.Errorf("ingester stopping")
+		return errIngesterStopping
 	}
 	i.userStatesMtx.RUnlock()
 
@@ -744,12 +783,12 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
 		}
 
-		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.metric),
-			Samples: make([]client.Sample, 0, len(values)),
+		ts := cortexpb.TimeSeries{
+			Labels:  cortexpb.FromLabelsToLabelAdapters(series.metric),
+			Samples: make([]cortexpb.Sample, 0, len(values)),
 		}
 		for _, s := range values {
-			ts.Samples = append(ts.Samples, client.Sample{
+			ts.Samples = append(ts.Samples, cortexpb.Sample{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			})
@@ -820,7 +859,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapters(series.metric),
+			Labels: cortexpb.FromLabelsToLabelAdapters(series.metric),
 			Chunks: wireChunks,
 		})
 
@@ -934,10 +973,10 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	result := &client.MetricsForLabelMatchersResponse{
-		Metric: make([]*client.Metric, 0, len(lss)),
+		Metric: make([]*cortexpb.Metric, 0, len(lss)),
 	}
 	for _, ls := range lss {
-		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapters(ls)})
+		result.Metric = append(result.Metric, &cortexpb.Metric{Labels: cortexpb.FromLabelsToLabelAdapters(ls)})
 	}
 
 	return result, nil
@@ -954,7 +993,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	userMetadata := i.getUserMetadata(userID)
@@ -985,8 +1024,8 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return &client.UserStatsResponse{}, nil
 	}
 
-	apiRate := state.ingestedAPISamples.rate()
-	ruleRate := state.ingestedRuleSamples.rate()
+	apiRate := state.ingestedAPISamples.Rate()
+	ruleRate := state.ingestedRuleSamples.Rate()
 	return &client.UserStatsResponse{
 		IngestionRate:     apiRate + ruleRate,
 		ApiIngestionRate:  apiRate,
@@ -1013,8 +1052,8 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
 	}
 	for userID, state := range users {
-		apiRate := state.ingestedAPISamples.rate()
-		ruleRate := state.ingestedRuleSamples.rate()
+		apiRate := state.ingestedAPISamples.Rate()
+		ruleRate := state.ingestedRuleSamples.Rate()
 		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
 			UserId: userID,
 			Data: &client.UserStatsResponse{
@@ -1038,9 +1077,9 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 }
 
 // labels will be copied if needed.
-func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []client.LabelAdapter) {
+func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []cortexpb.LabelAdapter) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
-	i.userStates.updateActiveSeriesForUser(userID, now, client.FromLabelAdaptersToLabels(labels))
+	i.userStates.updateActiveSeriesForUser(userID, now, cortexpb.FromLabelAdaptersToLabels(labels))
 }

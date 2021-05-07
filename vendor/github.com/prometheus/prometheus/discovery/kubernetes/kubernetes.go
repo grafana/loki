@@ -66,7 +66,9 @@ var (
 		[]string{"role", "event"},
 	)
 	// DefaultSDConfig is the default Kubernetes SD configuration
-	DefaultSDConfig = SDConfig{}
+	DefaultSDConfig = SDConfig{
+		HTTPClientConfig: config.DefaultHTTPClientConfig,
+	}
 )
 
 func init() {
@@ -152,7 +154,7 @@ type resourceSelector struct {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	*c = SDConfig{}
+	*c = DefaultSDConfig
 	type plain SDConfig
 	err := unmarshal((*plain)(c))
 	if err != nil {
@@ -165,7 +167,7 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err != nil {
 		return err
 	}
-	if c.APIServer.URL == nil && !reflect.DeepEqual(c.HTTPClientConfig, config.HTTPClientConfig{}) {
+	if c.APIServer.URL == nil && !reflect.DeepEqual(c.HTTPClientConfig, config.DefaultHTTPClientConfig) {
 		return errors.Errorf("to use custom HTTP client configuration please provide the 'api_server' URL explicitly")
 	}
 
@@ -263,7 +265,7 @@ func New(l log.Logger, conf *SDConfig) (*Discovery, error) {
 		}
 		level.Info(l).Log("msg", "Using pod service account via in-cluster config")
 	} else {
-		rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "kubernetes_sd", false, false)
+		rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "kubernetes_sd", config.WithHTTP2Disabled())
 		if err != nil {
 			return nil, err
 		}

@@ -20,10 +20,6 @@ type CombinedFrontendConfig struct {
 	FrontendV1 v1.Config               `yaml:",inline"`
 	FrontendV2 v2.Config               `yaml:",inline"`
 
-	// Deprecated. Replaced with pkg/api/Config.ResponseCompression field.
-	// TODO: To be removed in Cortex 1.8.
-	CompressResponses bool `yaml:"compress_responses"`
-
 	DownstreamURL string `yaml:"downstream_url"`
 }
 
@@ -31,8 +27,6 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Handler.RegisterFlags(f)
 	cfg.FrontendV1.RegisterFlags(f)
 	cfg.FrontendV2.RegisterFlags(f)
-
-	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "This flag is about to be deprecated. Please use -api.response-compression-enabled instead.")
 
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
@@ -70,7 +64,10 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 
 	default:
 		// No scheduler = use original frontend.
-		fr := v1.New(cfg.FrontendV1, limits, log, reg)
+		fr, err := v1.New(cfg.FrontendV1, limits, log, reg)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), fr, nil, nil
 	}
 }

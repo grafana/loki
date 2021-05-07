@@ -17,10 +17,11 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -32,40 +33,6 @@ var (
 	}, []string{"query_type"})
 	lastEntryMinTime = time.Unix(-100, 0)
 )
-
-// ValueTypeStreams promql.ValueType for log streams
-const ValueTypeStreams = "streams"
-
-// Streams is promql.Value
-type Streams []logproto.Stream
-
-func (streams Streams) Len() int      { return len(streams) }
-func (streams Streams) Swap(i, j int) { streams[i], streams[j] = streams[j], streams[i] }
-func (streams Streams) Less(i, j int) bool {
-	return streams[i].Labels <= streams[j].Labels
-}
-
-// Type implements `promql.Value`
-func (Streams) Type() promql_parser.ValueType { return ValueTypeStreams }
-
-// String implements `promql.Value`
-func (Streams) String() string {
-	return ""
-}
-
-func (streams Streams) lines() int64 {
-	var res int64
-	for _, s := range streams {
-		res += int64(len(s.Entries))
-	}
-	return res
-}
-
-// Result is the result of a query execution.
-type Result struct {
-	Data       promql_parser.Value
-	Statistics stats.Result
-}
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
@@ -124,7 +91,7 @@ func (ng *Engine) Query(params Params) Query {
 // Query is a LogQL query to be executed.
 type Query interface {
 	// Exec processes the query.
-	Exec(ctx context.Context) (Result, error)
+	Exec(ctx context.Context) (logqlmodel.Result, error)
 }
 
 type query struct {
@@ -137,7 +104,7 @@ type query struct {
 }
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
-func (q *query) Exec(ctx context.Context) (Result, error) {
+func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	log, ctx := spanlogger.New(ctx, "query.Exec")
 	defer log.Finish()
 
@@ -158,9 +125,9 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	status := "200"
 	if err != nil {
 		status = "500"
-		if errors.Is(err, ErrParse) ||
-			errors.Is(err, ErrPipeline) ||
-			errors.Is(err, ErrLimit) ||
+		if errors.Is(err, logqlmodel.ErrParse) ||
+			errors.Is(err, logqlmodel.ErrPipeline) ||
+			errors.Is(err, logqlmodel.ErrLimit) ||
 			errors.Is(err, context.Canceled) {
 			status = "400"
 		}
@@ -170,7 +137,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 		RecordMetrics(ctx, q.params, status, statResult, data)
 	}
 
-	return Result{
+	return logqlmodel.Result{
 		Data:       data,
 		Statistics: statResult,
 	}, err
@@ -196,7 +163,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 			return nil, err
 		}
 
-		defer helpers.LogErrorWithContext(ctx, "closing iterator", iter.Close)
+		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
 		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
@@ -224,7 +191,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 	if err != nil {
 		return nil, err
 	}
-	defer helpers.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
+	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	seriesIndex := map[uint64]*promql.Series{}
 	maxSeries := q.limits.MaxQuerySeries(userID)
@@ -236,7 +203,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 
 	// fail fast for the first step or instant query
 	if len(vec) > maxSeries {
-		return nil, newSeriesLimitError(maxSeries)
+		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
 
 	if GetRangeType(q.params) == InstantType {
@@ -272,7 +239,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 		}
 		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
 		if len(seriesIndex) > maxSeries {
-			return nil, newSeriesLimitError(maxSeries)
+			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
 		next, ts, vec = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
@@ -327,7 +294,7 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
@@ -356,7 +323,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 		}
 	}
 
-	result := make(Streams, 0, len(streams))
+	result := make(logqlmodel.Streams, 0, len(streams))
 	for _, stream := range streams {
 		result = append(result, *stream)
 	}

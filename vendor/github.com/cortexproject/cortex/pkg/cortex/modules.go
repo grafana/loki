@@ -4,11 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
-	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
@@ -146,11 +148,6 @@ func (t *Cortex) initRing() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initRuntimeConfig() (services.Service, error) {
-	if t.Cfg.RuntimeConfig.LoadPath == "" {
-		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
-		t.Cfg.RuntimeConfig.ReloadPeriod = t.Cfg.LimitsConfig.PerTenantOverridePeriod
-	}
-
 	if t.Cfg.RuntimeConfig.LoadPath == "" {
 		// no need to initialize module if load path is empty
 		return nil, nil
@@ -324,6 +321,11 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 			t.Cfg.Worker.FrontendAddress = address
 		}
 
+		// Add a middleware to extract the trace context and add a header.
+		internalQuerierRouter = nethttp.MiddlewareFunc(opentracing.GlobalTracer(), internalQuerierRouter.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
+			return "internalQuerier"
+		}))
+
 		// If queries are processed using the external HTTP Server, we need wrap the internal querier with
 		// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
 		// request context.
@@ -416,6 +418,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.DistributorShardingStrategy = t.Cfg.Distributor.ShardingStrategy
 	t.Cfg.Ingester.DistributorShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
 	t.Cfg.Ingester.StreamTypeFn = ingesterChunkStreaming(t.RuntimeConfig)
+	t.Cfg.Ingester.InstanceLimitsFn = ingesterInstanceLimits(t.RuntimeConfig)
 	t.tsdbIngesterConfig()
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Overrides, t.Store, prometheus.DefaultRegisterer, util_log.Logger)
@@ -554,10 +557,6 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
 	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
-	if t.Cfg.Frontend.CompressResponses {
-		handler = gziphandler.GzipHandler(handler)
-	}
-
 	t.API.RegisterQueryFrontendHandler(handler)
 
 	if frontendV1 != nil {
@@ -642,7 +641,7 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	if !t.Cfg.Ruler.StoreConfig.IsDefaults() {
 		t.RulerStorage, err = ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, rules.FileLoader{}, util_log.Logger)
 	} else {
-		t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+		t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.Overrides, rules.FileLoader{}, util_log.Logger, prometheus.DefaultRegisterer)
 	}
 	return
 }

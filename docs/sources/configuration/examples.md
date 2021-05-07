@@ -244,6 +244,10 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
+compactor:
+  working_directory: /data/compactor
+  shared_store: s3
+  compaction_interval: 5m
 ```
 
 ## schema_config

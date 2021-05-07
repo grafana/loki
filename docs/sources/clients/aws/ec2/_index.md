@@ -166,7 +166,7 @@ Alright we should be ready to fire up promtail, we're going to run it using the 
 If everything is going well Promtail should print out log lines with their labels discovered instead of sending them to Loki, like shown below:
 
 ```bash
-2020-07-08T14:51:38	{filename="/var/log/cloud-init.log", instance="i-041b0be05c2d5cfad", name="promtail-demo", zone="us-east-2c"}	Jul 07 21:37:24 cloud-init[3035]: util.py[DEBUG]: loaded blob returned None, returning default.
+2020-07-08T14:51:38-0700	{filename="/var/log/cloud-init.log", instance="i-041b0be05c2d5cfad", name="promtail-demo", zone="us-east-2c"}	Jul 07 21:37:24 cloud-init[3035]: util.py[DEBUG]: loaded blob returned None, returning default.
 ```
 
 Don't hesitate to edit the your config file and start Promtail again to try your config out.

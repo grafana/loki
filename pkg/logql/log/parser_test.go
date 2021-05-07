@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
@@ -57,7 +59,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{n}`),
 			labels.Labels{},
 			labels.Labels{
-				{Name: ErrorLabel, Value: errJSON},
+				{Name: logqlmodel.ErrorLabel, Value: errJSON},
 			},
 		},
 		{
@@ -318,7 +320,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-				{Name: ErrorLabel, Value: errJSON},
+				{Name: logqlmodel.ErrorLabel, Value: errJSON},
 			},
 		},
 	}
@@ -538,7 +540,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-				{Name: ErrorLabel, Value: errLogfmt},
+				{Name: logqlmodel.ErrorLabel, Value: errLogfmt},
 			},
 		},
 		{
@@ -721,10 +723,13 @@ func Test_unpackParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
+			copy := string(tt.line)
 			l, _ := j.Process(tt.line, b)
 			sort.Sort(tt.wantLbs)
 			require.Equal(t, tt.wantLbs, b.Labels())
 			require.Equal(t, tt.wantLine, l)
+			require.Equal(t, string(tt.wantLine), string(l))
+			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
 		})
 	}
 }

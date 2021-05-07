@@ -130,7 +130,7 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
     ],
     "entryPoint": ["sh","-c"],
     "essential": true,
-    "image": "alpine:3.12",
+    "image": "alpine:3.13",
     "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {

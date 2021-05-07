@@ -328,7 +328,8 @@ type SlackConfig struct {
 
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
-	APIURL *SecretURL `yaml:"api_url,omitempty" json:"api_url,omitempty"`
+	APIURL     *SecretURL `yaml:"api_url,omitempty" json:"api_url,omitempty"`
+	APIURLFile string     `yaml:"api_url_file,omitempty" json:"api_url_file,omitempty"`
 
 	// Slack channel override, (like #other-channel or @username).
 	Channel  string `yaml:"channel,omitempty" json:"channel,omitempty"`
@@ -357,7 +358,15 @@ type SlackConfig struct {
 func (c *SlackConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*c = DefaultSlackConfig
 	type plain SlackConfig
-	return unmarshal((*plain)(c))
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+
+	if c.APIURL != nil && len(c.APIURLFile) > 0 {
+		return fmt.Errorf("at most one of api_url & api_url_file must be configured")
+	}
+
+	return nil
 }
 
 // WebhookConfig configures notifications via a generic webhook.
@@ -490,7 +499,8 @@ type VictorOpsConfig struct {
 
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
-	APIKey            Secret            `yaml:"api_key" json:"api_key"`
+	APIKey            Secret            `yaml:"api_key,omitempty" json:"api_key,omitempty"`
+	APIKeyFile        Secret            `yaml:"api_key_file,omitempty" json:"api_key_file,omitempty"`
 	APIURL            *URL              `yaml:"api_url" json:"api_url"`
 	RoutingKey        string            `yaml:"routing_key" json:"routing_key"`
 	MessageType       string            `yaml:"message_type" json:"message_type"`

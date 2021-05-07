@@ -14,6 +14,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -344,7 +345,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 			err = client.SendTimeSeriesChunk(stream, &client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
-				Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
+				Labels:         cortexpb.FromLabelsToLabelAdapters(pair.series.metric),
 				Chunks:         chunks,
 			})
 			state.fpLocker.Unlock(pair.fp)

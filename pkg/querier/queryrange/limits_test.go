@@ -18,8 +18,8 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 func TestLimits(t *testing.T) {
@@ -101,13 +101,13 @@ func Test_seriesLimiter(t *testing.T) {
 		}()
 		// first time returns  a single series
 		if *c == 0 {
-			if err := marshal.WriteQueryResponseJSON(logql.Result{Data: matrix}, rw); err != nil {
+			if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: matrix}, rw); err != nil {
 				panic(err)
 			}
 			return
 		}
 		// second time returns a different series.
-		if err := marshal.WriteQueryResponseJSON(logql.Result{
+		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{
 			Data: promql.Matrix{
 				{
 					Points: []promql.Point{

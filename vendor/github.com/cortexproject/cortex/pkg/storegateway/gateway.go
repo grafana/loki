@@ -330,7 +330,7 @@ func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValues
 	return g.stores.LabelValues(ctx, req)
 }
 
-func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.IngesterState, ring.Tokens) {
+func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the store-gateway instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any) or the ones loaded from file.

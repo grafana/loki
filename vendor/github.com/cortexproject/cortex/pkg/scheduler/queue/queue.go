@@ -3,10 +3,18 @@ package queue
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+const (
+	// How frequently to check for disconnected queriers that should be forgotten.
+	forgetCheckPeriod = 5 * time.Second
 )
 
 var (
@@ -40,6 +48,8 @@ type Request interface{}
 // and when querier asks for next request to handle (using GetNextRequestForQuerier), it returns requests
 // in a fair fashion.
 type RequestQueue struct {
+	services.Service
+
 	connectedQuerierWorkers *atomic.Int32
 
 	mtx     sync.Mutex
@@ -51,15 +61,16 @@ type RequestQueue struct {
 	discardedRequests *prometheus.CounterVec // Per user.
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
 	q := &RequestQueue{
-		queues:                  newUserQueues(maxOutstandingPerTenant),
+		queues:                  newUserQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		queueLength:             queueLength,
 		discardedRequests:       discardedRequests,
 	}
 
 	q.cond = sync.NewCond(&q.mtx)
+	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedQueriers, q.stopping).WithName("request queue")
 
 	return q
 }
@@ -151,7 +162,20 @@ FindQueue:
 	goto FindQueue
 }
 
-func (q *RequestQueue) Stop() {
+func (q *RequestQueue) forgetDisconnectedQueriers(_ context.Context) error {
+	q.mtx.Lock()
+	defer q.mtx.Unlock()
+
+	if q.queues.forgetDisconnectedQueriers(time.Now()) > 0 {
+		// We need to notify goroutines cause having removed some queriers
+		// may have caused a resharding.
+		q.cond.Broadcast()
+	}
+
+	return nil
+}
+
+func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -164,6 +188,8 @@ func (q *RequestQueue) Stop() {
 
 	// If there are still goroutines in GetNextRequestForQuerier method, they get notified.
 	q.cond.Broadcast()
+
+	return nil
 }
 
 func (q *RequestQueue) RegisterQuerierConnection(querier string) {
@@ -179,7 +205,13 @@ func (q *RequestQueue) UnregisterQuerierConnection(querier string) {
 
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
-	q.queues.removeQuerierConnection(querier)
+	q.queues.removeQuerierConnection(querier, time.Now())
+}
+
+func (q *RequestQueue) NotifyQuerierShutdown(querierID string) {
+	q.mtx.Lock()
+	defer q.mtx.Unlock()
+	q.queues.notifyQuerierShutdown(querierID)
 }
 
 // When querier is waiting for next request, this unblocks the method.

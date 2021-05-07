@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/pkg/logqlmodel"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -18,7 +19,6 @@ const (
 	duplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
-	PackedEntryKey  = "_entry"
 )
 
 var (
@@ -357,12 +357,11 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 		switch iter.WhatIsNext() {
 		case jsoniter.StringValue:
 			// we only unpack map[string]string. Anything else is skipped.
-			if field == PackedEntryKey {
-				s := iter.ReadString()
+			if field == logqlmodel.PackedEntryKey {
 				// todo(ctovena): we should just reslice the original line since the property is contiguous
 				// but jsoniter doesn't allow us to do this right now.
 				// https://github.com/buger/jsonparser might do a better job at this.
-				entry = append(entry[:0], []byte(s)...)
+				entry = []byte(iter.ReadString())
 				isPacked = true
 				return true
 			}

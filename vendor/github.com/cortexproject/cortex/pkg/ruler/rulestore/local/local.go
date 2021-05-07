@@ -11,7 +11,10 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+)
+
+const (
+	Name = "local"
 )
 
 type Config struct {
@@ -70,13 +73,13 @@ func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements rules.RuleStore. This method also loads the rules.
-func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
+func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	users, err := l.ListAllUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	lists := make(map[string]rulestore.RuleGroupList)
+	lists := make(map[string]rulespb.RuleGroupList)
 	for _, user := range users {
 		list, err := l.loadAllRulesGroupsForUser(ctx, user)
 		if err != nil {
@@ -90,7 +93,7 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.Ru
 }
 
 // ListRuleGroupsForUserAndNamespace implements rules.RuleStore. This method also loads the rules.
-func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
+func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	if namespace != "" {
 		return l.loadAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 	}
@@ -98,7 +101,7 @@ func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID s
 	return l.loadAllRulesGroupsForUser(ctx, userID)
 }
 
-func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rulestore.RuleGroupList) error {
+func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rulespb.RuleGroupList) error {
 	// This Client already loads the rules in its List methods, there is nothing left to do here.
 	return nil
 }
@@ -123,13 +126,13 @@ func (l *Client) DeleteNamespace(ctx context.Context, userID, namespace string) 
 	return errors.New("DeleteNamespace unsupported in rule local store")
 }
 
-func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (rulestore.RuleGroupList, error) {
-	var allLists rulestore.RuleGroupList
+func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (rulespb.RuleGroupList, error) {
+	var allLists rulespb.RuleGroupList
 
 	root := filepath.Join(l.cfg.Directory, userID)
 	infos, err := ioutil.ReadDir(root)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to read dir %s", root)
+		return nil, errors.Wrapf(err, "unable to read rule dir %s", root)
 	}
 
 	for _, info := range infos {
@@ -138,9 +141,10 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 
 		if info.Mode()&os.ModeSymlink != 0 {
 			// ioutil.ReadDir only returns result of LStat. Calling Stat resolves symlink.
-			info, err = os.Stat(filepath.Join(root, info.Name()))
+			path := filepath.Join(root, info.Name())
+			info, err = os.Stat(path)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "unable to stat rule file %s", path)
 			}
 		}
 
@@ -159,7 +163,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 	return allLists, nil
 }
 
-func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
+func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
 	rulegroups, allErrors := l.loader.Load(filename)
@@ -167,7 +171,7 @@ func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}
 
-	var list rulestore.RuleGroupList
+	var list rulespb.RuleGroupList
 
 	for _, group := range rulegroups.Groups {
 		desc := rulespb.ToProto(userID, namespace, group)

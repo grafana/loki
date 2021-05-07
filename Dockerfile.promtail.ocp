@@ -1,19 +1,19 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.7 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.16-openshift-4.8 AS builder
 ARG GOARCH="amd64"
 WORKDIR /go/src/github.com/grafana/loki
 COPY . .
 RUN touch loki-build-image/.uptodate && mkdir /build
-RUN make BUILD_IN_CONTAINER=false cmd/promtail/promtail
+RUN make clean && make touch-protos && make BUILD_IN_CONTAINER=false clients/cmd/promtail/promtail
 
-FROM  registry.ci.openshift.org/ocp/4.7:base
+FROM  registry.ci.openshift.org/ocp/4.8:base
 LABEL io.k8s.display-name="OpenShift Loki Promtail" \
       io.k8s.description="An agent responsible for gathering logs and sending them to Loki." \
       io.openshift.tags="grafana,prometheus,monitoring" \
       maintainer="OpenShift Development <dev@lists.openshift.redhat.com>" \
-      version="v2.1.0"
+      version="v2.2.1"
 
-COPY --from=builder /go/src/github.com/grafana/loki/cmd/promtail/promtail /usr/bin/promtail
-COPY --from=builder /go/src/github.com/grafana/loki/cmd/promtail/promtail-local-config.yaml \
-		    /go/src/github.com/grafana/loki/cmd/promtail/promtail-docker-config.yaml \
+COPY --from=builder /go/src/github.com/grafana/loki/clients/cmd/promtail/promtail /usr/bin/promtail
+COPY --from=builder /go/src/github.com/grafana/loki/clients/cmd/promtail/promtail-local-config.yaml \
+		    /go/src/github.com/grafana/loki/clients/cmd/promtail/promtail-docker-config.yaml \
 		    /etc/promtail/
 ENTRYPOINT ["/usr/bin/promtail"]

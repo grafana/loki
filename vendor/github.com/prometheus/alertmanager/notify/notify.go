@@ -44,7 +44,7 @@ type ResolvedSender interface {
 // Peer represents the cluster node from where we are the sending the notification.
 type Peer interface {
 	// WaitReady waits until the node silences and notifications have settled before attempting to send a notification.
-	WaitReady()
+	WaitReady(context.Context) error
 }
 
 // MinTimeout is the minimum timeout that is set for the context of a call
@@ -231,7 +231,7 @@ type NotificationLog interface {
 	Query(params ...nflog.QueryParam) ([]*nflogpb.Entry, error)
 }
 
-type metrics struct {
+type Metrics struct {
 	numNotifications                   *prometheus.CounterVec
 	numTotalFailedNotifications        *prometheus.CounterVec
 	numNotificationRequestsTotal       *prometheus.CounterVec
@@ -239,8 +239,8 @@ type metrics struct {
 	notificationLatencySeconds         *prometheus.HistogramVec
 }
 
-func newMetrics(r prometheus.Registerer) *metrics {
-	m := &metrics{
+func NewMetrics(r prometheus.Registerer) *Metrics {
+	m := &Metrics{
 		numNotifications: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notifications_total",
@@ -293,12 +293,12 @@ func newMetrics(r prometheus.Registerer) *metrics {
 }
 
 type PipelineBuilder struct {
-	metrics *metrics
+	metrics *Metrics
 }
 
 func NewPipelineBuilder(r prometheus.Registerer) *PipelineBuilder {
 	return &PipelineBuilder{
-		metrics: newMetrics(r),
+		metrics: NewMetrics(r),
 	}
 }
 
@@ -332,7 +332,7 @@ func createReceiverStage(
 	integrations []Integration,
 	wait func() time.Duration,
 	notificationLog NotificationLog,
-	metrics *metrics,
+	metrics *Metrics,
 ) Stage {
 	var fs FanoutStage
 	for i := range integrations {
@@ -430,7 +430,9 @@ func NewGossipSettleStage(p Peer) *GossipSettleStage {
 
 func (n *GossipSettleStage) Exec(ctx context.Context, _ log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	if n.peer != nil {
-		n.peer.WaitReady()
+		if err := n.peer.WaitReady(ctx); err != nil {
+			return ctx, nil, err
+		}
 	}
 	return ctx, alerts, nil
 }
@@ -520,7 +522,7 @@ func getHashBuffer() []byte {
 
 func putHashBuffer(b []byte) {
 	b = b[:0]
-	//lint:ignore SA6002 relax staticcheck verification.
+	//nolint:staticcheck // Ignore SA6002 relax staticcheck verification.
 	hashBuffers.Put(b)
 }
 
@@ -636,11 +638,11 @@ func (n *DedupStage) Exec(ctx context.Context, _ log.Logger, alerts ...*types.Al
 type RetryStage struct {
 	integration Integration
 	groupName   string
-	metrics     *metrics
+	metrics     *Metrics
 }
 
 // NewRetryStage returns a new instance of a RetryStage.
-func NewRetryStage(i Integration, groupName string, metrics *metrics) *RetryStage {
+func NewRetryStage(i Integration, groupName string, metrics *Metrics) *RetryStage {
 	return &RetryStage{
 		integration: i,
 		groupName:   groupName,

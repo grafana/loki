@@ -1,0 +1,54 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
+syntax = "proto3";
+package thanos;
+
+import "store/storepb/types.proto";
+import "store/labelpb/types.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "exemplarspb";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+
+// Do not generate XXX fields to reduce memory footprint and opening a door
+// for zero-copy casts to/from prometheus data types.
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
+
+/// Exemplars represents API that is responsible for gathering exemplars and their states.
+service Exemplars {
+    /// Exemplars has info for all exemplars.
+    /// Returned exemplars are expected to include external labels.
+    rpc Exemplars(ExemplarsRequest) returns (stream ExemplarsResponse);
+}
+
+message ExemplarsRequest {
+    string query = 1;
+    int64 start = 2;
+    int64 end = 3;
+    PartialResponseStrategy partial_response_strategy = 4;
+}
+
+message ExemplarsResponse {
+    oneof result {
+        ExemplarData data = 1;
+        string warning = 2;
+    }
+}
+
+message ExemplarData {
+    ZLabelSet seriesLabels = 1 [(gogoproto.jsontag) = "seriesLabels", (gogoproto.nullable) = false];
+    repeated Exemplar exemplars = 2 [(gogoproto.jsontag) = "exemplars"];
+}
+
+message Exemplar {
+    ZLabelSet labels = 1 [(gogoproto.jsontag) = "labels", (gogoproto.nullable) = false];
+    double value = 2 [(gogoproto.jsontag) = "value"];
+    int64 ts = 3 [(gogoproto.jsontag) = "timestamp"];
+}

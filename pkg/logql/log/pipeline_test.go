@@ -6,6 +6,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func TestNoopPipeline(t *testing.T) {
@@ -49,14 +51,17 @@ func TestPipeline(t *testing.T) {
 }
 
 var (
-	resOK   bool
-	resLine []byte
-	resLbs  LabelsResult
+	resOK         bool
+	resLine       []byte
+	resLineString string
+	resLbs        LabelsResult
+	resSample     float64
 )
 
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
-	p := NewPipeline([]Stage{
+
+	stages := []Stage{
 		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
 		NewLogfmtParser(),
 		NewAndLabelFilter(
@@ -65,10 +70,12 @@ func Benchmark_Pipeline(b *testing.B) {
 		),
 		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
 		NewJSONParser(),
-		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, ErrorLabel, errJSON)),
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
-	})
+	}
+	p := NewPipeline(stages)
 	line := []byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 org_id=29 traceID=29a0f088b047eb8c latency=fast query="{stream=\"stdout\",pod=\"loki-canary-xmjzp\"}" query_type=limited range_type=range length=20s step=1s duration=58.126671ms status=200 throughput_mb=2.496547 total_bytes_mb=0.145116`)
+	lineString := string(line)
 	lbs := labels.Labels{
 		{Name: "cluster", Value: "ops-tool1"},
 		{Name: "name", Value: "querier"},
@@ -79,12 +86,54 @@ func Benchmark_Pipeline(b *testing.B) {
 		{Name: "job", Value: "loki-dev/querier"},
 		{Name: "pod_template_hash", Value: "5896759c79"},
 	}
-	b.ResetTimer()
-	sp := p.ForStream(lbs)
-	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resOK = sp.Process(line)
-	}
 
+	sp := p.ForStream(lbs)
+
+	b.Run("pipeline bytes", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resLine, resLbs, resOK = sp.Process(line)
+		}
+	})
+	b.Run("pipeline string", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resLineString, resLbs, resOK = sp.ProcessString(lineString)
+		}
+	})
+
+	extractor, err := NewLineSampleExtractor(CountExtractor, stages, []string{"cluster", "level"}, false, false)
+	require.NoError(b, err)
+	ex := extractor.ForStream(lbs)
+	b.Run("line extractor bytes", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resSample, resLbs, resOK = ex.Process(line)
+		}
+	})
+	b.Run("line extractor string", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resSample, resLbs, resOK = ex.ProcessString(lineString)
+		}
+	})
+
+	extractor, err = LabelExtractorWithStages("duration", "duration", []string{"cluster", "level"}, false, false, stages, NoopStage)
+	require.NoError(b, err)
+	ex = extractor.ForStream(lbs)
+
+	b.Run("label extractor bytes", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resSample, resLbs, resOK = ex.Process(line)
+		}
+	})
+	b.Run("label extractor string", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resSample, resLbs, resOK = ex.ProcessString(lineString)
+		}
+	})
 }
 
 func mustFilter(f Filterer, err error) Filterer {
@@ -144,8 +193,8 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 
-		if resLbs.Labels().Get(ErrorLabel) != errJSON {
-			b.Fatalf("no %s label found: %+v\n", ErrorLabel, resLbs.Labels())
+		if resLbs.Labels().Get(logqlmodel.ErrorLabel) != errJSON {
+			b.Fatalf("no %s label found: %+v\n", logqlmodel.ErrorLabel, resLbs.Labels())
 		}
 	}
 }
