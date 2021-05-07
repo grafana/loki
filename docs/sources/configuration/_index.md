@@ -289,6 +289,11 @@ The `querier_config` block configures the Loki Querier.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 
+# Only query the store, do not attempt to query any ingesters,
+# useful for running a standalone querier pool opearting only against stored data.
+# CLI flag: -querier.query-store-only
+[query_store_only: <boolean> | default = false]
+
 # Configuration options for the LogQL engine.
 engine:
   # Timeout for query execution

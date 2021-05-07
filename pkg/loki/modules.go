@@ -326,6 +326,10 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		boltdbShipperMinIngesterQueryStoreDuration := boltdbShipperMinIngesterQueryStoreDuration(t.Cfg)
 		switch t.Cfg.Target {
 		case Querier, Ruler:
+			// Do not use the AsyncStore if the querier is configured with QueryStoreOnly set to true
+			if t.Cfg.Querier.QueryStoreOnly {
+				break
+			}
 			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
 			// Only queriers should use the AsyncStore, it should never be used in ingesters.
 			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier,
