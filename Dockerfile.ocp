@@ -3,7 +3,7 @@ ARG GOARCH="amd64"
 WORKDIR /go/src/github.com/grafana/loki
 COPY . .
 RUN touch loki-build-image/.uptodate && mkdir /build
-RUN make BUILD_IN_CONTAINER=false cmd/loki/loki
+RUN make clean && make touch-protos && make BUILD_IN_CONTAINER=false cmd/loki/loki
 
 FROM  registry.ci.openshift.org/ocp/4.8:base
 LABEL io.k8s.display-name="OpenShift Loki" \
