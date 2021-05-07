@@ -288,12 +288,14 @@ type LokiStackSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Loki Object Storage"
 	Storage ObjectStorageSpec `json:"storage"`
 
 	// Storage class name defines the storage class for ingester/querier PVCs.
 	//
 	// +required
 	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Loki Storage Class Name"
 	StorageClassName string `json:"storageClassName"`
 
 	// ReplicationFactor defines the policy for log stream replication.
@@ -351,6 +353,7 @@ type LokiStackStatus struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:text"
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 

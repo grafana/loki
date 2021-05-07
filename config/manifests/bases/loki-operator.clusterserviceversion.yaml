@@ -60,6 +60,18 @@ spec:
       - description: Size defines one of the support Loki deployment scale out sizes.
         displayName: Loki Stack Size
         path: size
+      - description: Storage defines the spec for the object storage endpoint to store logs.
+        displayName: Loki Object Storage
+        path: storage
+      - description: Storage class name defines the storage class for ingester/querier PVCs.
+        displayName: Loki Storage Class Name
+        path: storageClassName
+      statusDescriptors:
+      - description: Conditions of the Loki deployment health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:text
       version: v1beta1
   description: |
     The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.

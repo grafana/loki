@@ -1,4 +1,4 @@
-# include the bingo binary variables. This enables the bingo versions to be 
+# include the bingo binary variables. This enables the bingo versions to be
 # referenced here as make variables. For example: $(GOLANGCI_LINT)
 include .bingo/Variables.mk
 
@@ -17,7 +17,7 @@ CLUSTER_LOGGING_VERSION ?= 5.1.preview.1
 CLUSTER_LOGGING_NS ?= openshift-logging
 
 # VERSION
-# defines the project version for the bundle. 
+# defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
@@ -26,7 +26,7 @@ VERSION ?= v0.0.1
 CHANNELS ?= "tech-preview"
 DEFAULT_CHANNELS ?= "tech-preview"
 
-# CHANNELS define the bundle channels used in the bundle. 
+# CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
 # - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=preview,fast,stable)
@@ -35,7 +35,7 @@ ifneq ($(origin CHANNELS), undefined)
 BUNDLE_CHANNELS := --channels=$(CHANNELS)
 endif
 
-# DEFAULT_CHANNEL defines the default channel used in the bundle. 
+# DEFAULT_CHANNEL defines the default channel used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
 # To re-generate a bundle for any other default channel without changing the default setup, you can:
 # - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
@@ -47,7 +47,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 REGISTRY_ORG ?= openshift-logging
 
-# BUNDLE_IMG defines the image:tag used for the bundle. 
+# BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
 
@@ -74,6 +74,10 @@ OCI_RUNTIME ?= $(shell which podman || which docker)
 test: generate go-generate lint manifests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
+
+#Runs scorecard test
+scorecard: generate go-generate bundle
+	$(OPERATOR_SDK) scorecard bundle
 
 # Build manager binary
 manager: generate
