@@ -1,10 +1,8 @@
 reviewers:
 - kakkoyun
-- LiliC
 - paulfantom
 - s-urbaniak
 - squat
-- blockloop
 - ewolinetz
 - jcantrill
 - lukas-vlcek
@@ -16,7 +14,6 @@ reviewers:
 
 approvers:
 - kakkoyun
-- LiliC
 - paulfantom
 - s-urbaniak
 - squat
