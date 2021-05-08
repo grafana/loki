@@ -22,7 +22,7 @@ package silence
 import (
 	"net/http"
 
-	middleware "github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/runtime/middleware"
 )
 
 // GetSilenceHandlerFunc turns a function with the right signature into a get silence handler

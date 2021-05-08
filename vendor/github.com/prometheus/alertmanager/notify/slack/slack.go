@@ -18,8 +18,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
+	"io/ioutil"
 	"net/http"
+
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/kit/log"
 	commoncfg "github.com/prometheus/common/config"
@@ -40,8 +42,8 @@ type Notifier struct {
 }
 
 // New returns a new Slack notification handler.
-func New(c *config.SlackConfig, t *template.Template, l log.Logger) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "slack", false, false)
+func New(c *config.SlackConfig, t *template.Template, l log.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "slack", append(httpOpts, commoncfg.WithHTTP2Disabled())...)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +177,17 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		return false, err
 	}
 
-	u := n.conf.APIURL.String()
+	var u string
+	if n.conf.APIURL != nil {
+		u = n.conf.APIURL.String()
+	} else {
+		content, err := ioutil.ReadFile(n.conf.APIURLFile)
+		if err != nil {
+			return false, err
+		}
+		u = string(content)
+	}
+
 	resp, err := notify.PostJSON(ctx, n.client, u, &buf)
 	if err != nil {
 		return true, notify.RedactURL(err)

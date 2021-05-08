@@ -353,6 +353,15 @@ func (c *Compactor) starting(ctx context.Context) error {
 	// Create the users scanner.
 	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.ownUser, c.parentLogger)
 
+	// Create the blocks cleaner (service).
+	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
+		DeletionDelay:                      c.compactorCfg.DeletionDelay,
+		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
+		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
+		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
+		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
+	}, c.bucketClient, c.usersScanner, c.cfgProvider, c.parentLogger, c.registerer)
+
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
 		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
@@ -406,15 +415,6 @@ func (c *Compactor) starting(ctx context.Context) error {
 		}
 	}
 
-	// Create the blocks cleaner (service).
-	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
-		DeletionDelay:                      c.compactorCfg.DeletionDelay,
-		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
-		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
-		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
-		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
-	}, c.bucketClient, c.usersScanner, c.cfgProvider, c.parentLogger, c.registerer)
-
 	// Ensure an initial cleanup occurred before starting the compactor.
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
 		c.ringSubservices.StopAsync()
@@ -455,11 +455,12 @@ func (c *Compactor) running(ctx context.Context) error {
 
 func (c *Compactor) compactUsers(ctx context.Context) {
 	succeeded := false
+	compactionErrorCount := 0
 
 	c.compactionRunsStarted.Inc()
 
 	defer func() {
-		if succeeded {
+		if succeeded && compactionErrorCount == 0 {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
 		} else {
@@ -526,6 +527,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		if err = c.compactUserWithRetries(ctx, userID); err != nil {
 			c.compactionRunFailedTenants.Inc()
+			compactionErrorCount++
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
 			continue
 		}
@@ -625,7 +627,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return err
 	}
 
-	syncer, err := compact.NewSyncer(
+	syncer, err := compact.NewMetaSyncer(
 		ulogger,
 		reg,
 		bucket,

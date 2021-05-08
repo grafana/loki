@@ -101,13 +101,13 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.A
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, errors.Wrapf(err, "failed to read alertmanager config %s", key)
 	}
 
 	config := alertspb.AlertConfigDesc{}
 	err = config.Unmarshal(buf)
 	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, errors.Wrapf(err, "failed to unmarshal alertmanager config %s", key)
 	}
 
 	return config, nil
