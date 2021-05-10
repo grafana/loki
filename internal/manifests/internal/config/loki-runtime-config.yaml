@@ -18,9 +18,6 @@ overrides:
     {{ if $l.MaxLabelNamesPerSeries }}
     max_label_names_per_series: {{ $l.MaxLabelNamesPerSeries }}
     {{- end -}}
-    {{ if $l.MaxStreamsPerTenant }}
-    max_streams_per_user: {{ $l.MaxStreamsPerTenant }}
-    {{- end -}}
     {{ if $l.MaxLineSize }}
     max_line_size: {{ $l.MaxLineSize }}
     {{- end -}}

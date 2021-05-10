@@ -212,13 +212,6 @@ type IngestionLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	MaxLabelNamesPerSeries int32 `json:"maxLabelNamesPerSeries,omitempty"`
 
-	// MaxStreamsPerTenant defines the maximum number of active streams
-	// per tenant, per ingester.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	MaxStreamsPerTenant int32 `json:"maxStreamsPerTenant,omitempty"`
-
 	// MaxGlobalStreamsPerTenant defines the maximum number of active streams
 	// per tenant, across the cluster.
 	//

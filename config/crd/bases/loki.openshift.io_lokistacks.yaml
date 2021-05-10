@@ -87,11 +87,6 @@ spec:
                               on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
-                          maxStreamsPerTenant:
-                            description: MaxStreamsPerTenant defines the maximum number
-                              of active streams per tenant, per ingester.
-                            format: int32
-                            type: integer
                         type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
@@ -160,11 +155,6 @@ spec:
                             maxLineSize:
                               description: MaxLineSize defines the aximum line size
                                 on ingestion path. Units in Bytes.
-                              format: int32
-                              type: integer
-                            maxStreamsPerTenant:
-                              description: MaxStreamsPerTenant defines the maximum
-                                number of active streams per tenant, per ingester.
                               format: int32
                               type: integer
                           type: object

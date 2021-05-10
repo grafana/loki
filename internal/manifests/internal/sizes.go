@@ -142,7 +142,6 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 					// Defaults from Loki docs
 					IngestionRate:          4,
 					IngestionBurstSize:     6,
-					MaxStreamsPerTenant:    10000,
 					MaxLabelNameLength:     1024,
 					MaxLabelValueLength:    2048,
 					MaxLabelNamesPerSeries: 30,
@@ -184,7 +183,6 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 					// Custom for 1x.small
 					IngestionRate:             10,
 					IngestionBurstSize:        20,
-					MaxStreamsPerTenant:       10000,
 					MaxGlobalStreamsPerTenant: 10000,
 					// Defaults from Loki docs
 					MaxLabelNameLength:     1024,
@@ -228,7 +226,6 @@ var StackSizeTable = map[lokiv1beta1.LokiStackSizeType]lokiv1beta1.LokiStackSpec
 					// Custom for 1x.medium
 					IngestionRate:             10,
 					IngestionBurstSize:        20,
-					MaxStreamsPerTenant:       25000,
 					MaxGlobalStreamsPerTenant: 25000,
 					// Defaults from Loki docs
 					MaxLabelNameLength:     1024,
