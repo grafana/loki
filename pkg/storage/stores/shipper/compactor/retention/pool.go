@@ -19,7 +19,10 @@ var (
 	}
 	keyPool = sync.Pool{
 		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, 512))
+			return &keyPair{
+				key:   bytes.NewBuffer(make([]byte, 0, 512)),
+				value: bytes.NewBuffer(make([]byte, 0, 512)),
+			}
 		},
 	}
 )
@@ -34,16 +37,26 @@ func putComponents(ref *componentRef) {
 	componentPools.Put(ref)
 }
 
-func getKeyBuffer(key []byte) (*bytes.Buffer, error) {
-	buf := keyPool.Get().(*bytes.Buffer)
-	if _, err := buf.Write(key); err != nil {
-		putKeyBuffer(buf)
-		return nil, err
-	}
-	return buf, nil
+type keyPair struct {
+	key   *bytes.Buffer
+	value *bytes.Buffer
 }
 
-func putKeyBuffer(buf *bytes.Buffer) {
-	buf.Reset()
-	keyPool.Put(buf)
+func getKeyPairBuffer(key, value []byte) (*keyPair, error) {
+	keyBuf := keyPool.Get().(*keyPair)
+	if _, err := keyBuf.key.Write(key); err != nil {
+		putKeyBuffer(keyBuf)
+		return nil, err
+	}
+	if _, err := keyBuf.value.Write(value); err != nil {
+		putKeyBuffer(keyBuf)
+		return nil, err
+	}
+	return keyBuf, nil
+}
+
+func putKeyBuffer(pair *keyPair) {
+	pair.key.Reset()
+	pair.value.Reset()
+	keyPool.Put(pair)
 }
