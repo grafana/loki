@@ -20,7 +20,7 @@ var (
 	keyPool = sync.Pool{
 		New: func() interface{} {
 			return &keyPair{
-				key:   bytes.NewBuffer(make([]byte, 0, 512)),
+				key:   bytes.NewBuffer(make([]byte, 0, 8)),
 				value: bytes.NewBuffer(make([]byte, 0, 512)),
 			}
 		},
