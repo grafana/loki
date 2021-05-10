@@ -873,15 +873,29 @@ platform:
   arch: amd64
 
 steps:
-- name: trigger
-  image: grafana/loki-build-image:0.13.0
+- name: image-tag
+  image: alpine
   commands:
-  - ./tools/deploy.sh
-  environment:
-    CIRCLE_TOKEN:
-      from_secret: circle_token
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag) > .tag
   depends_on:
   - clone
+
+- name: trigger
+  image: us.gcr.io/kubernetes-dev/drone/plugins/deploy-image
+  settings:
+    docker_tag_file: .tag
+    github_token:
+      from_secret: github_token
+    images_json:
+      from_secret: deploy_config
+  depends_on:
+  - clone
+  - image-tag
+
+image_pull_secrets:
+- dockerconfigjson
 
 trigger:
   ref:
@@ -906,5 +920,45 @@ steps:
   image: golang:windowsservercore-1809
   commands:
   - go test .\clients\pkg\promtail\targets\windows\... -v
+
+---
+kind: secret
+name: github_token
+
+get:
+  path: infra/data/ci/github/grafanabot
+  name: pat
+
+---
+kind: secret
+name: dockerconfigjson
+
+get:
+  path: secret/data/common/gcr
+  name: .dockerconfigjson
+
+---
+kind: secret
+name: docker_username
+
+get:
+  path: infra/data/ci/docker_hub
+  name: username
+
+---
+kind: secret
+name: docker_password
+
+get:
+  path: infra/data/ci/docker_hub
+  name: password
+
+---
+kind: secret
+name: deploy_config
+
+get:
+  path: infra/data/ci/loki/deploy
+  name: config.json
 
 ...

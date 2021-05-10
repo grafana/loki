@@ -22,6 +22,23 @@ local pipeline(name) = {
   steps: [],
 };
 
+local secret(name, vault_path, vault_key) = {
+  kind: 'secret',
+  name: name,
+  get: {
+    path: vault_path,
+    name: vault_key,
+  },
+};
+local docker_username_secret = secret('docker_username', 'infra/data/ci/docker_hub', 'username');
+local docker_password_secret = secret('docker_password', 'infra/data/ci/docker_hub', 'password');
+local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.dockerconfigjson');
+local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
+
+// Injected in a secret because this is a public repository and having the config here would leak our environment names
+local deploy_configuration = secret('deploy_config', 'infra/data/ci/loki/deploy', 'config.json');
+
+
 local run(name, commands) = {
   name: name,
   image: 'grafana/loki-build-image:%s' % build_image_version,
@@ -38,8 +55,8 @@ local docker(arch, app) = {
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
-    username: { from_secret: 'docker_username' },
-    password: { from_secret: 'docker_password' },
+    username: { from_secret: docker_username_secret.name },
+    password: { from_secret: docker_password_secret.name },
     dry_run: false,
   },
 };
@@ -50,8 +67,8 @@ local clients_docker(arch, app) = {
   settings: {
     repo: 'grafana/%s' % app,
     dockerfile: 'clients/cmd/%s/Dockerfile' % app,
-    username: { from_secret: 'docker_username' },
-    password: { from_secret: 'docker_password' },
+    username: { from_secret: docker_username_secret.name },
+    password: { from_secret: docker_password_secret.name },
     dry_run: false,
   },
 };
@@ -160,7 +177,7 @@ local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'latest,main
 };
 
 local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
-steps+: [
+  steps+: [
     // dry run for everything that is not tag or main
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
@@ -169,7 +186,7 @@ steps+: [
         dry_run: true,
         build_args: ['TOUCH_PROTOS=1'],
       },
-    }
+    },
   ] + [
     // publish for tag or main
     clients_docker(arch, 'promtail') {
@@ -178,7 +195,7 @@ steps+: [
       settings+: {
         build_args: ['TOUCH_PROTOS=1'],
       },
-    }
+    },
   ],
   depends_on: ['check'],
 };
@@ -220,8 +237,8 @@ local manifest(apps) = pipeline('manifest') {
         target: app,
         spec: '.drone/docker-manifest.tmpl',
         ignore_missing: false,
-        username: { from_secret: 'docker_username' },
-        password: { from_secret: 'docker_password' },
+        username: { from_secret: docker_username_secret.name },
+        password: { from_secret: docker_password_secret.name },
       },
       depends_on: ['clone'] + (
         // Depend on the previous app, if any.
@@ -284,7 +301,7 @@ local manifest(apps) = pipeline('manifest') {
     else {}
   )
   for arch in archs
-] +[
+] + [
   fluentbit(),
   fluentd(),
   logstash(),
@@ -296,18 +313,29 @@ local manifest(apps) = pipeline('manifest') {
   pipeline('deploy') {
     trigger: condition('include').tagMain,
     depends_on: ['manifest'],
+    image_pull_secrets: [pull_secret.name],
     steps: [
       {
-        name: 'trigger',
-        image: 'grafana/loki-build-image:%s' % build_image_version,
-        environment: {
-          CIRCLE_TOKEN: { from_secret: 'circle_token' },
-        },
+        name: 'image-tag',
+        image: 'alpine',
         commands: [
-          './tools/deploy.sh',
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
+          'echo $(./tools/image-tag) > .tag',
         ],
         depends_on: ['clone'],
+      },
+      {
+        name: 'trigger',
+        image: 'us.gcr.io/kubernetes-dev/drone/plugins/deploy-image',
+        settings: {
+          github_token: { from_secret: github_secret.name },
+          images_json: { from_secret: deploy_configuration.name },
+          docker_tag_file: '.tag',
+        },
+        depends_on: ['clone', 'image-tag'],
       },
     ],
   },
 ] + [promtail_win()]
++ [github_secret, pull_secret, docker_username_secret, docker_password_secret, deploy_configuration]
