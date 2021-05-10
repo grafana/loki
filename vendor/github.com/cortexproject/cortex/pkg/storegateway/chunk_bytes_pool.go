@@ -4,7 +4,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/pool"
-	"github.com/thanos-io/thanos/pkg/store"
 )
 
 type chunkBytesPool struct {
@@ -15,8 +14,8 @@ type chunkBytesPool struct {
 	returnedBytes  prometheus.Counter
 }
 
-func newChunkBytesPool(maxChunkPoolBytes uint64, reg prometheus.Registerer) (*chunkBytesPool, error) {
-	upstream, err := pool.NewBucketedBytes(store.EstimatedMaxChunkSize, 50e6, 2, maxChunkPoolBytes)
+func newChunkBytesPool(minBucketSize, maxBucketSize int, maxChunkPoolBytes uint64, reg prometheus.Registerer) (*chunkBytesPool, error) {
+	upstream, err := pool.NewBucketedBytes(minBucketSize, maxBucketSize, 2, maxChunkPoolBytes)
 	if err != nil {
 		return nil, err
 	}

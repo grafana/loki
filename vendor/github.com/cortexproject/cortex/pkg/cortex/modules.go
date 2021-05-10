@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -149,11 +148,6 @@ func (t *Cortex) initRing() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initRuntimeConfig() (services.Service, error) {
-	if t.Cfg.RuntimeConfig.LoadPath == "" {
-		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
-		t.Cfg.RuntimeConfig.ReloadPeriod = time.Duration(t.Cfg.LimitsConfig.PerTenantOverridePeriod)
-	}
-
 	if t.Cfg.RuntimeConfig.LoadPath == "" {
 		// no need to initialize module if load path is empty
 		return nil, nil
@@ -563,10 +557,6 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
 	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
-	if t.Cfg.Frontend.CompressResponses {
-		handler = gziphandler.GzipHandler(handler)
-	}
-
 	t.API.RegisterQueryFrontendHandler(handler)
 
 	if frontendV1 != nil {

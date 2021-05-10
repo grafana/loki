@@ -316,7 +316,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := cortex_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := cortex_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -378,10 +378,9 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	roundTripper, frontendV1, _, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
 		// Don't set FrontendV2 field to make sure that only frontendV1 can be initialized.
-		Handler:           t.Cfg.Frontend.Handler,
-		FrontendV1:        t.Cfg.Frontend.FrontendV1,
-		CompressResponses: t.Cfg.Frontend.CompressResponses,
-		DownstreamURL:     t.Cfg.Frontend.DownstreamURL,
+		Handler:       t.Cfg.Frontend.Handler,
+		FrontendV1:    t.Cfg.Frontend.FrontendV1,
+		DownstreamURL: t.Cfg.Frontend.DownstreamURL,
 	}, disabledShuffleShardingLimits{}, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
@@ -462,6 +461,16 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	// defer tail endpoints to the default handler
 	t.Server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
 	t.Server.HTTP.Handle("/api/prom/tail", defaultHandler)
+
+	if t.frontend == nil {
+		return services.NewIdleService(nil, func(_ error) error {
+			if t.stopper != nil {
+				t.stopper.Stop()
+				t.stopper = nil
+			}
+			return nil
+		}), nil
+	}
 
 	return services.NewIdleService(func(ctx context.Context) error {
 		return services.StartAndAwaitRunning(ctx, t.frontend)
@@ -579,8 +588,11 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 }
 
 func (t *Loki) initCompactor() (services.Service, error) {
-	var err error
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, prometheus.DefaultRegisterer)
+	err := t.Cfg.SchemaConfig.Load()
+	if err != nil {
+		return nil, err
+	}
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, t.Cfg.StorageConfig.Config, t.Cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

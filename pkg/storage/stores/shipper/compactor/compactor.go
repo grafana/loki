@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -17,6 +18,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
+	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/storage/stores/util"
 )
@@ -24,10 +27,13 @@ import (
 const delimiter = "/"
 
 type Config struct {
-	WorkingDirectory     string        `yaml:"working_directory"`
-	SharedStoreType      string        `yaml:"shared_store"`
-	SharedStoreKeyPrefix string        `yaml:"shared_store_key_prefix"`
-	CompactionInterval   time.Duration `yaml:"compaction_interval"`
+	WorkingDirectory         string        `yaml:"working_directory"`
+	SharedStoreType          string        `yaml:"shared_store"`
+	SharedStoreKeyPrefix     string        `yaml:"shared_store_key_prefix"`
+	CompactionInterval       time.Duration `yaml:"compaction_interval"`
+	RetentionEnabled         bool          `yaml:"retention_enabled"`
+	RetentionDeleteDelay     time.Duration `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount int           `yaml:"retention_delete_worker_count"`
 }
 
 // RegisterFlags registers flags.
@@ -35,7 +41,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "Shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
-	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 2*time.Hour, "Interval at which to re-run the compaction operation.")
+	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
+	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
+	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
+	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 }
 
 func (cfg *Config) IsDefaults() bool {
@@ -53,11 +62,12 @@ type Compactor struct {
 
 	cfg          Config
 	objectClient chunk.ObjectClient
-
-	metrics *metrics
+	tableMarker  retention.TableMarker
+	sweeper      *retention.Sweeper
+	metrics      *metrics
 }
 
-func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
 	if cfg.IsDefaults() {
 		return nil, errors.New("Must specify compactor config")
 	}
@@ -71,41 +81,88 @@ func NewCompactor(cfg Config, storageConfig storage.Config, r prometheus.Registe
 	if err != nil {
 		return nil, err
 	}
+	prefixedClient := util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix)
 
-	compactor := Compactor{
-		cfg:          cfg,
-		objectClient: util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix),
-		metrics:      newMetrics(r),
+	retentionWorkDir := filepath.Join(cfg.WorkingDirectory, "retention")
+
+	sweeper, err := retention.NewSweeper(retentionWorkDir, retention.NewDeleteClient(objectClient), cfg.RetentionDeleteWorkCount, cfg.RetentionDeleteDelay, r)
+	if err != nil {
+		return nil, err
 	}
 
+	compactor := &Compactor{
+		cfg:          cfg,
+		objectClient: prefixedClient,
+		metrics:      newMetrics(r),
+		sweeper:      sweeper,
+	}
+	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, retention.NewExpirationChecker(limits), r)
+	if err != nil {
+		return nil, err
+	}
+	compactor.tableMarker = marker
 	compactor.Service = services.NewBasicService(nil, compactor.loop, nil)
-	return &compactor, nil
+	return compactor, nil
 }
 
 func (c *Compactor) loop(ctx context.Context) error {
 	runCompaction := func() {
-		err := c.Run(ctx)
+		err := c.RunCompaction(ctx)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 		}
 	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runCompaction()
 
-	runCompaction()
+		ticker := time.NewTicker(c.cfg.CompactionInterval)
+		defer ticker.Stop()
 
-	ticker := time.NewTicker(c.cfg.CompactionInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			runCompaction()
-		case <-ctx.Done():
-			return nil
+		for {
+			select {
+			case <-ticker.C:
+				runCompaction()
+			case <-ctx.Done():
+				return
+			}
 		}
+	}()
+	if c.cfg.RetentionEnabled {
+		wg.Add(1)
+		go func() {
+			// starts the chunk sweeper
+			defer func() {
+				c.sweeper.Stop()
+				wg.Done()
+			}()
+			c.sweeper.Start()
+			<-ctx.Done()
+		}()
 	}
+
+	wg.Wait()
+	return nil
 }
 
-func (c *Compactor) Run(ctx context.Context) error {
+func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient, c.cfg.RetentionEnabled, c.tableMarker)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
+		return err
+	}
+
+	err = table.compact()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Compactor) RunCompaction(ctx context.Context) error {
 	status := statusSuccess
 	start := time.Now()
 
@@ -129,19 +186,9 @@ func (c *Compactor) Run(ctx context.Context) error {
 	}
 
 	for _, tableName := range tables {
-		table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient)
-		if err != nil {
+		if err := c.CompactTable(ctx, tableName); err != nil {
 			status = statusFailure
-			level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
-			continue
 		}
-
-		err = table.compact()
-		if err != nil {
-			status = statusFailure
-			level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
-		}
-
 		// check if context was cancelled before going for next table.
 		select {
 		case <-ctx.Done():

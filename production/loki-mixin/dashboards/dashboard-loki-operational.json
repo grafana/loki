@@ -13,7 +13,7 @@
       {
         "datasource": "$logs",
         "enable": true,
-        "expr": "{cluster=\"$cluster\", diff_namespace=\"$namespace\", container=\"kube-diff-logger\"}",
+        "expr": "{cluster=\"$cluster\", container=\"kube-diff-logger\"} | json | namespace_extracted=\"$namespace\"",
         "hide": true,
         "iconColor": "rgba(255, 96, 96, 1)",
         "name": "deployments",

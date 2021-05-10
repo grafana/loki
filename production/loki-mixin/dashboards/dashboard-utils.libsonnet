@@ -4,13 +4,28 @@ local utils = import 'mixin-utils/utils.libsonnet';
   // Override the dashboard constructor to add:
   // - default tags,
   // - some links that propagate the selectred cluster.
-  dashboard(title)::
-    super.dashboard(title) + {
+  dashboard(title, uid='')::
+    super.dashboard(title, uid) + {
       addRowIf(condition, row)::
         if condition
         then self.addRow(row)
         else self,
-
+      addLog(name='logs'):: self {
+        templating+: {
+          list+: [
+            {
+              hide: 0,
+              label: null,
+              name: name,
+              options: [],
+              query: 'loki',
+              refresh: 1,
+              regex: '',
+              type: 'datasource',
+            },
+          ],
+        },
+      },
       addClusterSelectorTemplates(multi=true)::
         local d = self {
           tags: $._config.tags,
@@ -30,11 +45,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
         if multi then
           d.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
-           .addMultiTemplate('namespace', 'loki_build_info', 'namespace')
+          .addMultiTemplate('namespace', 'loki_build_info', 'namespace')
         else
           d.addTemplate('cluster', 'loki_build_info', 'cluster')
-           .addTemplate('namespace', 'loki_build_info', 'namespace'),
-
+          .addTemplate('namespace', 'loki_build_info', 'namespace'),
     },
 
   jobMatcher(job)::
@@ -42,7 +56,66 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
   namespaceMatcher()::
     'cluster=~"$cluster", namespace=~"$namespace"',
-
+  logPanel(title, selector, datasource='$logs'):: {
+    title: title,
+    type: 'logs',
+    datasource: datasource,
+    targets: [
+      {
+        refId: 'A',
+        expr: selector,
+      },
+    ],
+  },
+  fromNowPanel(title, metric_name)::
+    $.panel(title) +
+    {
+      type: 'stat',
+      title: title,
+      fieldConfig: {
+        defaults: {
+          custom: {},
+          thresholds: {
+            mode: 'absolute',
+            steps: [
+              {
+                color: 'green',
+                value: null,
+              },
+            ],
+          },
+          color: {
+            mode: 'fixed',
+            fixedColor: 'blue',
+          },
+          unit: 'dateTimeFromNow',
+        },
+      },
+      targets: [
+        {
+          expr: '%s{%s} * 1e3' % [metric_name, $.namespaceMatcher()],
+          refId: 'A',
+          instant: true,
+          format: 'time_series',
+        },
+      ],
+      options: {
+        reduceOptions: {
+          values: false,
+          calcs: [
+            'lastNotNull',
+          ],
+          fields: '',
+        },
+        orientation: 'auto',
+        text: {},
+        textMode: 'auto',
+        colorMode: 'value',
+        graphMode: 'area',
+        justifyMode: 'auto',
+      },
+      datasource: '$datasource',
+    },
   containerCPUUsagePanel(title, containerName)::
     $.panel(title) +
     $.queryPanel([

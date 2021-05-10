@@ -59,13 +59,13 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to get rule group %s", objectKey)
 	}
 	defer func() { _ = reader.Close() }()
 
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to read rule group %s", objectKey)
 	}
 
 	if rg == nil {
@@ -76,7 +76,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 
 	err = proto.Unmarshal(buf, rg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to unmarshal rule group %s", objectKey)
 	}
 
 	return rg, nil

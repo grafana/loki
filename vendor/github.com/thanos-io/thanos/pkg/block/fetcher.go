@@ -820,6 +820,7 @@ func (f *IgnoreDeletionMarkFilter) Filter(ctx context.Context, metas map[ulid.UL
 
 	for i := 0; i < f.concurrency; i++ {
 		eg.Go(func() error {
+			var lastErr error
 			for id := range ch {
 				m := &metadata.DeletionMark{}
 				if err := metadata.ReadMarker(ctx, f.logger, f.bkt, id.String(), m); err != nil {
@@ -830,7 +831,9 @@ func (f *IgnoreDeletionMarkFilter) Filter(ctx context.Context, metas map[ulid.UL
 						level.Warn(f.logger).Log("msg", "found partial deletion-mark.json; if we will see it happening often for the same block, consider manually deleting deletion-mark.json from the object storage", "block", id, "err", err)
 						continue
 					}
-					return err
+					// Remember the last error and continue to drain the channel.
+					lastErr = err
+					continue
 				}
 
 				// Keep track of the blocks marked for deletion and filter them out if their
@@ -844,7 +847,7 @@ func (f *IgnoreDeletionMarkFilter) Filter(ctx context.Context, metas map[ulid.UL
 				mtx.Unlock()
 			}
 
-			return nil
+			return lastErr
 		})
 	}
 

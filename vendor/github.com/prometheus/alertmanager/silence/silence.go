@@ -29,6 +29,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	uuid "github.com/gofrs/uuid"
 	"github.com/matttproud/golang_protobuf_extensions/pbutil"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
@@ -37,7 +38,6 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	uuid "github.com/satori/go.uuid"
 )
 
 // ErrNotFound is returned if a silence was not found.
@@ -540,7 +540,11 @@ func (s *Silences) Set(sil *pb.Silence) (string, error) {
 		}
 	}
 	// If we got here it's either a new silence or a replacing one.
-	sil.Id = uuid.NewV4().String()
+	uid, err := uuid.NewV4()
+	if err != nil {
+		return "", errors.Wrap(err, "generate uuid")
+	}
+	sil.Id = uid.String()
 
 	if sil.StartsAt.Before(now) {
 		sil.StartsAt = now

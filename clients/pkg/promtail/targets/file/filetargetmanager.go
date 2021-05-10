@@ -267,7 +267,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 	}
 
 	for key, target := range s.targets {
-		if _, ok := targets[key]; !ok {
+		if _, ok := targets[key]; !ok || !target.Ready() {
 			level.Info(s.log).Log("msg", "Removing target", "key", key)
 			target.Stop()
 			s.metrics.targetsActive.Add(-1.)

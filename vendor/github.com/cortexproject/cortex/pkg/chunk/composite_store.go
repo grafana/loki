@@ -14,7 +14,7 @@ import (
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
-	MaxChunksPerQuery(userID string) int
+	MaxChunksPerQueryFromStore(userID string) int
 	MaxQueryLength(userID string) time.Duration
 }
 
