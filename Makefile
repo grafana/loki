@@ -32,7 +32,6 @@ endif
 #############
 
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
-IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 
 # Certain aspects of the build are done in containers for consistency (e.g. yacc/protobuf generation)
 # If you have the correct tools installed and you want to speed up development you can run
@@ -450,12 +449,6 @@ push-bigtable-backup: bigtable-backup
 ##########
 
 images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
-
-print-images:
-	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
-	@echo > /dev/null
-
-IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
 
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
