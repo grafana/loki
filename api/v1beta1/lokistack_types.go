@@ -77,6 +77,7 @@ type LokiComponentSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:hidden"
 	Replicas int32 `json:"replicas,omitempty"`
 
 	// NodeSelector defines the labels required by a node to schedule
@@ -102,30 +103,35 @@ type LokiTemplateSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Compactor pods"
 	Compactor *LokiComponentSpec `json:"compactor,omitempty"`
 
 	// Distributor defines the distributor component spec.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Distributor pods"
 	Distributor *LokiComponentSpec `json:"distributor,omitempty"`
 
 	// Ingester defines the ingester component spec.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Ingester pods"
 	Ingester *LokiComponentSpec `json:"ingester,omitempty"`
 
 	// Querier defines the querier component spec.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Querier pods"
 	Querier *LokiComponentSpec `json:"querier,omitempty"`
 
 	// QueryFrontend defines the query frontend component spec.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Frontend pods"
 	QueryFrontend *LokiComponentSpec `json:"queryFrontend,omitempty"`
 }
 
@@ -135,6 +141,7 @@ type ObjectStorageSecretSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:Secret",displayName="Object Storage Secret"
 	Name string `json:"name"`
 }
 
@@ -157,6 +164,7 @@ type QueryLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Entries Limit per Query"
 	MaxEntriesLimitPerQuery int32 `json:"maxEntriesLimitPerQuery,omitempty"`
 
 	// MaxChunksPerQuery defines the maximum number of chunks
@@ -164,6 +172,7 @@ type QueryLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Chunk per Query"
 	MaxChunksPerQuery int32 `json:"maxChunksPerQuery,omitempty"`
 
 	// MaxQuerySeries defines the the maximum of unique series
@@ -171,6 +180,7 @@ type QueryLimitSpec struct {
 	//
 	// + optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Query Series"
 	MaxQuerySeries int32 `json:"maxQuerySeries,omitempty"`
 }
 
@@ -181,6 +191,7 @@ type IngestionLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Ingestion Rate (in MB)"
 	IngestionRate int32 `json:"ingestionRate,omitempty"`
 
 	// IngestionBurstSize defines the local rate-limited sample size per
@@ -189,6 +200,7 @@ type IngestionLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Ingestion Burst Size (in MB)"
 	IngestionBurstSize int32 `json:"ingestionBurstSize,omitempty"`
 
 	// MaxLabelNameLength defines the maximum number of characters allowed
@@ -196,6 +208,7 @@ type IngestionLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Label Name Length"
 	MaxLabelNameLength int32 `json:"maxLabelNameLength,omitempty"`
 
 	// MaxLabelValueLength defines the maximum number of characters allowed
@@ -203,6 +216,7 @@ type IngestionLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Label Value Length"
 	MaxLabelValueLength int32 `json:"maxLabelValueLength,omitempty"`
 
 	// MaxLabelNamesPerSeries defines the maximum number of label names per series
@@ -210,6 +224,7 @@ type IngestionLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Labels Names per Series"
 	MaxLabelNamesPerSeries int32 `json:"maxLabelNamesPerSeries,omitempty"`
 
 	// MaxGlobalStreamsPerTenant defines the maximum number of active streams
@@ -217,12 +232,14 @@ type IngestionLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Global Streams per  Tenant"
 	MaxGlobalStreamsPerTenant int32 `json:"maxGlobalStreamsPerTenant,omitempty"`
 
 	// MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Line Size"
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
 }
 
@@ -249,12 +266,14 @@ type LimitsSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Global Limits"
 	Global *LimitsTemplateSpec `json:"global,omitempty"`
 
 	// Tenants defines the limits applied per tenant.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Limits per Tenant"
 	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
@@ -267,28 +286,28 @@ type LokiStackSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=Managed
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Management State"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:Managed","urn:alm:descriptor:com.tectonic.ui:select:Unmanaged"},displayName="Management State"
 	ManagementState ManagementStateType `json:"managementState,omitempty"`
 
 	// Size defines one of the support Loki deployment scale out sizes.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Loki Stack Size"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small","urn:alm:descriptor:com.tectonic.ui:select:1x.small","urn:alm:descriptor:com.tectonic.ui:select:1x.medium"},displayName="LokiStack Size"
 	Size LokiStackSizeType `json:"size"`
 
 	// Storage defines the spec for the object storage endpoint to store logs.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Loki Object Storage"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Object Storage"
 	Storage ObjectStorageSpec `json:"storage"`
 
 	// Storage class name defines the storage class for ingester/querier PVCs.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Loki Storage Class Name"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:StorageClass",displayName="Storage Class Name"
 	StorageClassName string `json:"storageClassName"`
 
 	// ReplicationFactor defines the policy for log stream replication.
@@ -296,19 +315,21 @@ type LokiStackSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum:=1
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Replication Factor"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor"`
 
 	// Limits defines the limits to be applied to log stream processing.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rate Limiting"
 	Limits *LimitsSpec `json:"limits,omitempty"`
 
 	// Template defines the resource/limits/tolerations/nodeselectors per component
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Node Placement"
 	Template *LokiTemplateSpec `json:"template,omitempty"`
 }
 
@@ -346,7 +367,7 @@ type LokiStackStatus struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:text"
+	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:io.kubernetes.conditions"
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 

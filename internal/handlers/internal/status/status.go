@@ -25,10 +25,11 @@ func SetDegradedCondition(ctx context.Context, k k8s.Client, s *lokiv1beta1.Loki
 	}
 
 	degraded := metav1.Condition{
-		Type:    string(lokiv1beta1.ConditionDegraded),
-		Message: msg,
-		Reason:  reasonStr,
-		Status:  metav1.ConditionTrue,
+		Type:               string(lokiv1beta1.ConditionDegraded),
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reasonStr,
+		Message:            msg,
 	}
 
 	status.Conditions = append(status.Conditions, degraded)
