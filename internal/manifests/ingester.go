@@ -41,9 +41,12 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image:     opt.Image,
-				Name:      "loki-ingester",
-				Resources: opt.ResourceRequirements.Ingester,
+				Image: opt.Image,
+				Name:  "loki-ingester",
+				Resources: corev1.ResourceRequirements{
+					Limits:   opt.ResourceRequirements.Ingester.Limits,
+					Requests: opt.ResourceRequirements.Ingester.Requests,
+				},
 				Args: []string{
 					"-target=ingester",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
@@ -147,7 +150,7 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: resource.MustParse("1Gi"),
+								corev1.ResourceStorage: opt.ResourceRequirements.Ingester.PVCSize,
 							},
 						},
 						StorageClassName: pointer.StringPtr(opt.Stack.StorageClassName),

@@ -14,7 +14,7 @@ type Options struct {
 	ConfigSHA1 string
 
 	Stack                lokiv1beta1.LokiStackSpec
-	ResourceRequirements internal.ResourceRequirements
+	ResourceRequirements internal.ComponentResources
 
 	ObjectStorage ObjectStorage
 }

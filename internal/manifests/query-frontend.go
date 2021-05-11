@@ -46,9 +46,12 @@ func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 		},
 		Containers: []corev1.Container{
 			{
-				Image:     opt.Image,
-				Name:      "loki-query-frontend",
-				Resources: opt.ResourceRequirements.QueryFrontend,
+				Image: opt.Image,
+				Name:  "loki-query-frontend",
+				Resources: corev1.ResourceRequirements{
+					Limits:   opt.ResourceRequirements.QueryFrontend.Limits,
+					Requests: opt.ResourceRequirements.QueryFrontend.Requests,
+				},
 				Args: []string{
 					"-target=query-frontend",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),

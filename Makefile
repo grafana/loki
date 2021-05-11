@@ -109,12 +109,6 @@ manifests: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 
-# Download golangci-lint locally if necessary
-GOLANGCI_LINT = $(CURDIR)/bin/golangci-lint
-golangci-lint: $(CURDIR)/bin/golangci-lint
-$(CURDIR)/bin/golangci-lint:
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.38.0
-
 lint: $(GOLANGCI_LINT) | generate
 	$(GOLANGCI_LINT) run ./...
 

@@ -41,9 +41,12 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image:     opt.Image,
-				Name:      "loki-querier",
-				Resources: opt.ResourceRequirements.Querier,
+				Image: opt.Image,
+				Name:  "loki-querier",
+				Resources: corev1.ResourceRequirements{
+					Limits:   opt.ResourceRequirements.Querier.Limits,
+					Requests: opt.ResourceRequirements.Querier.Requests,
+				},
 				Args: []string{
 					"-target=querier",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
@@ -147,7 +150,7 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: resource.MustParse("1Gi"),
+								corev1.ResourceStorage: opt.ResourceRequirements.Querier.PVCSize,
 							},
 						},
 						StorageClassName: pointer.StringPtr(opt.Stack.StorageClassName),

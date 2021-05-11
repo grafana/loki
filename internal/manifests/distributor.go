@@ -52,9 +52,12 @@ func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 		},
 		Containers: []corev1.Container{
 			{
-				Image:     opt.Image,
-				Name:      "loki-distributor",
-				Resources: opt.ResourceRequirements.Distributor,
+				Image: opt.Image,
+				Name:  "loki-distributor",
+				Resources: corev1.ResourceRequirements{
+					Limits:   opt.ResourceRequirements.Distributor.Limits,
+					Requests: opt.ResourceRequirements.Distributor.Requests,
+				},
 				Args: []string{
 					"-target=distributor",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),

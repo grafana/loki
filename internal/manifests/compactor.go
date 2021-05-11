@@ -42,9 +42,12 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image:     opt.Image,
-				Name:      "loki-compactor",
-				Resources: opt.ResourceRequirements.Compactor,
+				Image: opt.Image,
+				Name:  "loki-compactor",
+				Resources: corev1.ResourceRequirements{
+					Limits:   opt.ResourceRequirements.Compactor.Limits,
+					Requests: opt.ResourceRequirements.Compactor.Requests,
+				},
 				Args: []string{
 					"-target=compactor",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
@@ -144,7 +147,7 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: resource.MustParse("1Gi"),
+								corev1.ResourceStorage: opt.ResourceRequirements.Compactor.PVCSize,
 							},
 						},
 						StorageClassName: pointer.StringPtr(opt.Stack.StorageClassName),

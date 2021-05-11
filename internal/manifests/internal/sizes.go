@@ -6,48 +6,54 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// ResourceRequirements is a map of component->requests/limits
-type ResourceRequirements struct {
-	Querier       corev1.ResourceRequirements
-	Ingester      corev1.ResourceRequirements
+// ComponentResources is a map of component->requests/limits
+type ComponentResources struct {
+	Querier   ResourceRequirements
+	Ingester  ResourceRequirements
+	Compactor ResourceRequirements
+	// these two don't need a PVCSize
 	Distributor   corev1.ResourceRequirements
 	QueryFrontend corev1.ResourceRequirements
-	Compactor     corev1.ResourceRequirements
+}
+
+// ResourceRequirements sets CPU, Memory, and PVC requirements for a component
+type ResourceRequirements struct {
+	Limits   corev1.ResourceList
+	Requests corev1.ResourceList
+	PVCSize  resource.Quantity
 }
 
 // ResourceRequirementsTable defines the default resource requests and limits for each size
-var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ResourceRequirements{
+var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ComponentResources{
 	lokiv1beta1.SizeOneXExtraSmall: {
-		Querier: corev1.ResourceRequirements{
-			Limits: nil,
+		Querier: ResourceRequirements{
+			PVCSize: resource.MustParse("1Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("1"),
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
 		},
-		Ingester: corev1.ResourceRequirements{
-			Limits: nil,
+		Ingester: ResourceRequirements{
+			PVCSize: resource.MustParse("1Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("1"),
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
-			Limits: nil,
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("1"),
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
 		QueryFrontend: corev1.ResourceRequirements{
-			Limits: nil,
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("200m"),
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
-		Compactor: corev1.ResourceRequirements{
-			Limits: nil,
+		Compactor: ResourceRequirements{
+			PVCSize: resource.MustParse("1Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("1"),
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
@@ -55,36 +61,34 @@ var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ResourceRequir
 		},
 	},
 	lokiv1beta1.SizeOneXSmall: {
-		Querier: corev1.ResourceRequirements{
-			Limits: nil,
+		Querier: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("4"),
 				corev1.ResourceMemory: resource.MustParse("4Gi"),
 			},
 		},
-		Ingester: corev1.ResourceRequirements{
-			Limits: nil,
+		Ingester: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("4"),
 				corev1.ResourceMemory: resource.MustParse("20Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
-			Limits: nil,
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("2"),
 				corev1.ResourceMemory: resource.MustParse("2Gi"),
 			},
 		},
 		QueryFrontend: corev1.ResourceRequirements{
-			Limits: nil,
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("4"),
 				corev1.ResourceMemory: resource.MustParse("2.5Gi"),
 			},
 		},
-		Compactor: corev1.ResourceRequirements{
-			Limits: nil,
+		Compactor: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("2"),
 				corev1.ResourceMemory: resource.MustParse("4Gi"),
@@ -92,36 +96,34 @@ var ResourceRequirementsTable = map[lokiv1beta1.LokiStackSizeType]ResourceRequir
 		},
 	},
 	lokiv1beta1.SizeOneXMedium: {
-		Querier: corev1.ResourceRequirements{
-			Limits: nil,
+		Querier: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("6"),
 				corev1.ResourceMemory: resource.MustParse("10Gi"),
 			},
 		},
-		Ingester: corev1.ResourceRequirements{
-			Limits: nil,
+		Ingester: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("6"),
 				corev1.ResourceMemory: resource.MustParse("30Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
-			Limits: nil,
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("2"),
 				corev1.ResourceMemory: resource.MustParse("2Gi"),
 			},
 		},
 		QueryFrontend: corev1.ResourceRequirements{
-			Limits: nil,
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("4"),
 				corev1.ResourceMemory: resource.MustParse("2.5Gi"),
 			},
 		},
-		Compactor: corev1.ResourceRequirements{
-			Limits: nil,
+		Compactor: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("2"),
 				corev1.ResourceMemory: resource.MustParse("4Gi"),
