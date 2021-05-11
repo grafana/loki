@@ -118,8 +118,8 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 		metrics:               newMetrics(r),
 		sweeper:               sweeper,
 		deleteRequestsStore:   deletesStore,
-		DeleteRequestsHandler: deletion.NewDeleteRequestHandler(deletesStore, time.Hour, prometheus.DefaultRegisterer),
-		deleteRequestsManager: deletion.NewDeleteRequestsManager(deletesStore, cfg.DeleteRequestCancelPeriod),
+		DeleteRequestsHandler: deletion.NewDeleteRequestHandler(deletesStore, time.Hour, r),
+		deleteRequestsManager: deletion.NewDeleteRequestsManager(deletesStore, cfg.DeleteRequestCancelPeriod, r),
 	}
 
 	expirationChecker := newExpirationChecker(retention.NewExpirationChecker(limits), compactor.deleteRequestsManager)
@@ -172,6 +172,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 	}
 
 	wg.Wait()
+	c.deleteRequestsManager.Stop()
 	c.deleteRequestsStore.Stop()
 	return nil
 }

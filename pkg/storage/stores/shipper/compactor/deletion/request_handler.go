@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -16,22 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
-
-type deleteRequestHandlerMetrics struct {
-	deleteRequestsReceivedTotal *prometheus.CounterVec
-}
-
-func newDeleteRequestHandlerMetrics(r prometheus.Registerer) *deleteRequestHandlerMetrics {
-	m := deleteRequestHandlerMetrics{}
-
-	m.deleteRequestsReceivedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "purger_delete_requests_received_total",
-		Help:      "Number of delete requests received per user",
-	}, []string{"user"})
-
-	return &m
-}
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {

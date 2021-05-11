@@ -7,11 +7,17 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+)
+
+const (
+	statusSuccess = "success"
+	statusFail    = "fail"
 )
 
 type DeleteRequestsManager struct {
@@ -20,13 +26,78 @@ type DeleteRequestsManager struct {
 
 	deleteRequestsToProcess    []DeleteRequest
 	deleteRequestsToProcessMtx sync.Mutex
+	metrics                    *deleteRequestsManagerMetrics
+	wg                         sync.WaitGroup
+	done                       chan struct{}
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration) *DeleteRequestsManager {
-	return &DeleteRequestsManager{
+func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestsManager {
+	dm := &DeleteRequestsManager{
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		metrics:                   newDeleteRequestsManagerMetrics(registerer),
+		done:                      make(chan struct{}),
 	}
+
+	go dm.loop()
+
+	return dm
+}
+
+func (d *DeleteRequestsManager) loop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	d.wg.Add(1)
+	defer d.wg.Done()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := d.updateMetrics(); err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to update metrics", "err", err)
+			}
+		case <-d.done:
+			break
+		}
+	}
+}
+
+func (d *DeleteRequestsManager) Stop() {
+	close(d.done)
+	d.wg.Wait()
+}
+
+func (d *DeleteRequestsManager) updateMetrics() error {
+	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	if err != nil {
+		return err
+	}
+
+	pendingDeleteRequestsCount := 0
+	oldestPendingRequestCreatedAt := model.Time(0)
+
+	for _, deleteRequest := range deleteRequests {
+		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
+		if deleteRequest.Status != StatusReceived || deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
+			continue
+		}
+
+		pendingDeleteRequestsCount++
+		if oldestPendingRequestCreatedAt == 0 || deleteRequest.CreatedAt.Before(oldestPendingRequestCreatedAt) {
+			oldestPendingRequestCreatedAt = deleteRequest.CreatedAt
+		}
+	}
+
+	// track age of oldest delete request since they became eligible for processing
+	oldestPendingRequestAge := time.Duration(0)
+	if oldestPendingRequestCreatedAt != 0 {
+		oldestPendingRequestAge = model.Now().Sub(oldestPendingRequestCreatedAt.Add(d.deleteRequestCancelPeriod))
+	}
+	d.metrics.oldestPendingDeleteRequestAgeSeconds.Set(float64(oldestPendingRequestAge / time.Second))
+	d.metrics.pendingDeleteRequestsCount.Set(float64(pendingDeleteRequestsCount))
+
+	return nil
 }
 
 func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
@@ -77,6 +148,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 
 		intervalsToRetain = rebuiltIntervals
 		if len(intervalsToRetain) == 0 {
+			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
 		}
 	}
@@ -85,13 +157,17 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
+	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 	return true, intervalsToRetain
 }
 
 func (d *DeleteRequestsManager) MarkPhaseStarted() {
+	status := statusSuccess
 	if err := d.loadDeleteRequestsToProcess(); err != nil {
+		status = statusFail
 		level.Error(util_log.Logger).Log("msg", "failed to load delete requests to process", "err", err)
 	}
+	d.metrics.loadPendingRequestsAttemptsTotal.WithLabelValues(status).Inc()
 }
 
 func (d *DeleteRequestsManager) MarkPhaseFailed() {
@@ -109,5 +185,6 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to mark delete request %s for user %s as processed", deleteRequest.RequestID, deleteRequest.UserID), "err", err)
 		}
+		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}
 }

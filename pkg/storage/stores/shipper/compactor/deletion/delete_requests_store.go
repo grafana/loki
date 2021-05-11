@@ -36,19 +36,15 @@ const (
 )
 
 var (
-	pendingDeleteRequestStatuses = []DeleteRequestStatus{StatusReceived}
-
 	ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
 )
 
 type DeleteRequestsStore interface {
 	AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error
 	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
-	GetDeleteRequestsForUserByStatus(ctx context.Context, userID string, status DeleteRequestStatus) ([]DeleteRequest, error)
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 	UpdateStatus(ctx context.Context, userID, requestID string, newStatus DeleteRequestStatus) error
 	GetDeleteRequest(ctx context.Context, userID, requestID string) (*DeleteRequest, error)
-	GetPendingDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 	RemoveDeleteRequest(ctx context.Context, userID, requestID string, createdAt, startTime, endTime model.Time) error
 	Stop()
 }
@@ -74,12 +70,12 @@ func (ds *deleteRequestsStore) Stop() {
 
 // AddDeleteRequest creates entries for a new delete request.
 func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
-	return ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, selectors)
-
+	_, err := ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, selectors)
+	return err
 }
 
 // addDeleteRequest is also used for tests to create delete requests with different createdAt time.
-func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID string, createdAt, startTime, endTime model.Time, selectors []string) error {
+func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID string, createdAt, startTime, endTime model.Time, selectors []string) ([]byte, error) {
 	requestID := generateUniqueID(userID, selectors)
 
 	for {
@@ -88,7 +84,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 			if err == ErrDeleteRequestNotFound {
 				break
 			}
-			return err
+			return nil, err
 		}
 
 		// we have a collision here, lets recreate a new requestID and check for collision
@@ -109,7 +105,12 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 	writeBatch.Add(deleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
 		[]byte(rangeValue), []byte(strings.Join(selectors, separator)))
 
-	return ds.indexClient.BatchWrite(ctx, writeBatch)
+	err := ds.indexClient.BatchWrite(ctx, writeBatch)
+	if err != nil {
+		return nil, err
+	}
+
+	return requestID, nil
 }
 
 // GetDeleteRequestsByStatus returns all delete requests for given status.
@@ -118,16 +119,6 @@ func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, st
 		TableName:  deleteRequestsTableName,
 		HashValue:  string(deleteRequestID),
 		ValueEqual: []byte(status),
-	})
-}
-
-// GetDeleteRequestsForUserByStatus returns all delete requests for a user with given status.
-func (ds *deleteRequestsStore) GetDeleteRequestsForUserByStatus(ctx context.Context, userID string, status DeleteRequestStatus) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, chunk.IndexQuery{
-		TableName:        deleteRequestsTableName,
-		HashValue:        string(deleteRequestID),
-		RangeValuePrefix: []byte(userID),
-		ValueEqual:       []byte(status),
 	})
 }
 
@@ -169,21 +160,6 @@ func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, req
 	}
 
 	return &deleteRequests[0], nil
-}
-
-// GetPendingDeleteRequestsForUser returns all delete requests for a user which are not processed.
-func (ds *deleteRequestsStore) GetPendingDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	pendingDeleteRequests := []DeleteRequest{}
-	for _, status := range pendingDeleteRequestStatuses {
-		deleteRequests, err := ds.GetDeleteRequestsForUserByStatus(ctx, userID, status)
-		if err != nil {
-			return nil, err
-		}
-
-		pendingDeleteRequests = append(pendingDeleteRequests, deleteRequests...)
-	}
-
-	return pendingDeleteRequests, nil
 }
 
 func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery chunk.IndexQuery) ([]DeleteRequest, error) {

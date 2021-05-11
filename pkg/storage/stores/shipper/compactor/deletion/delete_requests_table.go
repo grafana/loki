@@ -43,6 +43,7 @@ func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectCl
 		objectClient:      objectClient,
 		dbPath:            dbPath,
 		boltdbIndexClient: boltdbIndexClient,
+		done:              make(chan struct{}),
 	}
 
 	err = table.init()
@@ -78,6 +79,7 @@ func (t *deleteRequestsTable) loop() {
 	defer uploadTicker.Stop()
 
 	t.wg.Add(1)
+	defer t.wg.Done()
 
 	for {
 		select {
@@ -86,7 +88,6 @@ func (t *deleteRequestsTable) loop() {
 				level.Error(util_log.Logger).Log("msg", "failed to upload delete requests file", "err", err)
 			}
 		case <-t.done:
-			t.wg.Done()
 			return
 		}
 	}
