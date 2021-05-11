@@ -161,7 +161,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 			}
 		}
 	}
-	if Debug{
+	if Debug {
 		level.Debug(r.logger).Log("msg", "extracted data debug in replace stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }

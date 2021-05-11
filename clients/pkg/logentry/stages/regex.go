@@ -128,7 +128,7 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 			extracted[name] = match[i]
 		}
 	}
-	if Debug{
+	if Debug {
 		level.Debug(r.logger).Log("msg", "extracted data debug in regex stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }
