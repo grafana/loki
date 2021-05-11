@@ -164,8 +164,9 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			extracted[n] = string(jm)
 		}
 	}
-	level.Debug(j.logger).Log("msg", "extracted data debug in json stage", "extracted data", fmt.Sprintf("%v", extracted))
-
+	if Debug{
+		level.Debug(j.logger).Log("msg", "extracted data debug in json stage", "extracted data", fmt.Sprintf("%v", extracted))
+	}
 }
 
 // Name implements Stage
