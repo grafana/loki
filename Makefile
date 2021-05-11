@@ -6,7 +6,7 @@
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
-.PHONY: migrate migrate-image
+.PHONY: migrate migrate-image lint-markdown
 
 SHELL = /usr/bin/env bash
 
@@ -38,7 +38,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.13.0
+BUILD_IMAGE_VERSION := 0.14.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -575,6 +575,19 @@ lint-jsonnet:
 fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
+
+# search for dead link in our documentation.
+# To avoid being rate limited by Github you can use an env variable GITHUB_TOKEN to pass a github token API.
+# see https://github.com/settings/tokens
+lint-markdown:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	lychee --verbose --config .lychee.toml ./*.md  ./docs/**/*.md  ./production/**/*.md ./cmd/**/*.md ./clients/**/*.md ./tools/**/*.md
+endif
+
 
 # usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
