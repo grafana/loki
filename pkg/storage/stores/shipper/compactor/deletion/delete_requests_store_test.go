@@ -64,7 +64,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 
 	// add requests for both the users to the store
 	for i := 0; i < len(user1ExpectedRequests); i++ {
-		requestId, err := testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
+		requestID, err := testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
 			context.Background(),
 			user1ExpectedRequests[i].UserID,
 			user1ExpectedRequests[i].CreatedAt,
@@ -73,9 +73,9 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user1ExpectedRequests[i].Selectors,
 		)
 		require.NoError(t, err)
-		user1ExpectedRequests[i].RequestID = string(requestId)
+		user1ExpectedRequests[i].RequestID = string(requestID)
 
-		requestId, err = testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
+		requestID, err = testDeleteRequestsStore.(*deleteRequestsStore).addDeleteRequest(
 			context.Background(),
 			user2ExpectedRequests[i].UserID,
 			user2ExpectedRequests[i].CreatedAt,
@@ -84,7 +84,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			user2ExpectedRequests[i].Selectors,
 		)
 		require.NoError(t, err)
-		user2ExpectedRequests[i].RequestID = string(requestId)
+		user2ExpectedRequests[i].RequestID = string(requestID)
 	}
 
 	// get all requests with StatusReceived and see if they have expected values
