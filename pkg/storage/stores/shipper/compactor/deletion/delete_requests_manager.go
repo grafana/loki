@@ -104,7 +104,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	d.deleteRequestsToProcess = nil
+	d.deleteRequestsToProcess = d.deleteRequestsToProcess[:0]
 	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ func (d *DeleteRequestsManager) MarkPhaseFailed() {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	d.deleteRequestsToProcess = nil
+	d.deleteRequestsToProcess = d.deleteRequestsToProcess[:0]
 }
 
 func (d *DeleteRequestsManager) MarkPhaseFinished() {

@@ -11,13 +11,14 @@ import (
 // DeleteRequest holds all the details about a delete request.
 type DeleteRequest struct {
 	RequestID string              `json:"request_id"`
-	UserID    string              `json:"-"`
 	StartTime model.Time          `json:"start_time"`
 	EndTime   model.Time          `json:"end_time"`
 	Selectors []string            `json:"selectors"`
 	Status    DeleteRequestStatus `json:"status"`
-	Matchers  [][]*labels.Matcher `json:"-"`
 	CreatedAt model.Time          `json:"created_at"`
+
+	UserID   string              `json:"-"`
+	Matchers [][]*labels.Matcher `json:"-"`
 }
 
 func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, []model.Interval) {
