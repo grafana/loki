@@ -463,6 +463,16 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
 	t.Server.HTTP.Handle("/api/prom/tail", defaultHandler)
 
+	if t.frontend == nil {
+		return services.NewIdleService(nil, func(_ error) error {
+			if t.stopper != nil {
+				t.stopper.Stop()
+				t.stopper = nil
+			}
+			return nil
+		}), nil
+	}
+
 	return services.NewIdleService(func(ctx context.Context) error {
 		return services.StartAndAwaitRunning(ctx, t.frontend)
 	}, func(_ error) error {

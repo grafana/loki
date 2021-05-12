@@ -307,7 +307,6 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 			return nil
 		})
-
 		if err != nil {
 			return err
 		}
@@ -453,7 +452,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	folderPath, _ := t.folderPathForTable(false)
 	filePath := path.Join(folderPath, dbName)
 
-	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, filePath)
+	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, filePath, true)
 	if err != nil {
 		return err
 	}
@@ -528,7 +527,7 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 				}
 
 				filePath := path.Join(folderPathForTable, dbName)
-				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath)
+				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath, true)
 				if err != nil {
 					break
 				}
@@ -546,7 +545,6 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 			case <-ctx.Done():
 				break
 			}
-
 		}
 		close(queue)
 	}()

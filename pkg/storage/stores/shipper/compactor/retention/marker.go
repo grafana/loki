@@ -203,6 +203,8 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 	if err != nil {
 		return err
 	}
+	// we don't need to force sync to file, we just view the file.
+	dbView.NoSync = true
 	defer func() {
 		if err := dbView.Close(); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "failed to close db view", "err", err)
@@ -212,6 +214,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 	if err != nil {
 		return err
 	}
+	dbUpdate.MaxBatchDelay = 1 * time.Second // 1 s is way enough for saving changes, worst case this operation is idempotent.
 	defer func() {
 		close(queue)
 		wg.Wait()

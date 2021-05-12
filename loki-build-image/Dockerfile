@@ -7,6 +7,14 @@ RUN apk add --no-cache curl && \
     mv /tmp/linux-amd64/helm /usr/bin/helm && \
     rm -rf /tmp/linux-amd64 /tmp/helm-$HELM_VER.tgz
 
+FROM alpine as lychee
+ARG LYCHEE_VER="0.7.0"
+RUN apk add --no-cache curl && \
+    curl -L -o /tmp/lychee-$LYCHEE_VER.tgz https://github.com/lycheeverse/lychee/releases/download/${LYCHEE_VER}/lychee-${LYCHEE_VER}-x86_64-unknown-linux-gnu.tar.gz && \
+    tar -xz -C /tmp -f /tmp/lychee-$LYCHEE_VER.tgz && \
+    mv /tmp/lychee /usr/bin/lychee && \
+    rm -rf /tmp/linux-amd64 /tmp/lychee-$LYCHEE_VER.tgz
+
 FROM alpine as golangci
 RUN apk add --no-cache curl && \
     cd / && \
@@ -40,6 +48,7 @@ RUN apt-get update && \
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
+COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=drone /go/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint

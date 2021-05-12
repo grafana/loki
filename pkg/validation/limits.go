@@ -65,7 +65,7 @@ type Limits struct {
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 
 	// Global and per tenant retention
-	RetentionPeriod time.Duration     `yaml:"retention_period" json:"retention_period"`
+	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
 	StreamRetention []StreamRetention `yaml:"retention_stream" json:"retention_stream"`
 
 	// Config for overrides, convenient if it goes here.
@@ -74,10 +74,10 @@ type Limits struct {
 }
 
 type StreamRetention struct {
-	Period   time.Duration     `yaml:"period"`
-	Priority int               `yaml:"priority"`
-	Selector string            `yaml:"selector"`
-	Matchers []*labels.Matcher `yaml:"-"` // populated during validation.
+	Period   model.Duration    `yaml:"period" json:"period"`
+	Priority int               `yaml:"priority" json:"priority"`
+	Selector string            `yaml:"selector" json:"selector"`
+	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -124,7 +124,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
-	f.DurationVar(&l.RetentionPeriod, "store.retention", 31*24*time.Hour, "How long before chunks will be deleted from the store. (requires compactor retention enabled).")
+	_ = l.RetentionPeriod.Set("744h")
+	f.Var(&l.RetentionPeriod, "store.retention", "How long before chunks will be deleted from the store. (requires compactor retention enabled).")
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Period with this to reload the overrides.")
@@ -152,7 +153,7 @@ func (l *Limits) Validate() error {
 			if err != nil {
 				return fmt.Errorf("invalid labels matchers: %w", err)
 			}
-			if rule.Period < 24*time.Hour {
+			if time.Duration(rule.Period) < 24*time.Hour {
 				return fmt.Errorf("retention period must be >= 24h was %s", rule.Period)
 			}
 			// populate matchers during validation
@@ -355,7 +356,7 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 
 // RetentionPeriod returns the retention period for a given user.
 func (o *Overrides) RetentionPeriod(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RetentionPeriod
+	return time.Duration(o.getOverridesForUser(userID).RetentionPeriod)
 }
 
 // RetentionPeriod returns the retention period for a given user.

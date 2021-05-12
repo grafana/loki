@@ -1,0 +1,98 @@
+###
+### Display
+###
+# Verbose program output
+verbose = false
+
+# Show progress
+progress = false
+
+
+###
+### Runtime
+###
+# Number of threads to utilize.
+# Defaults to number of cores available to the system if omitted.
+#threads = 2
+
+# Maximum number of allowed redirects
+max_redirects = 10
+
+
+###
+### Requests
+###
+# User agent to send with each request
+user_agent = "curl/7.71.1"
+
+# Website timeout from connect to response finished
+timeout = 9
+
+# Comma-separated list of accepted status codes for valid links.
+# Omit to accept all response types.
+#accept = "text/html"
+
+# Proceed for server connections considered insecure (invalid TLS)
+insecure = true
+
+# Only test links with the given scheme (e.g. https)
+# Omit to check links with any scheme
+#scheme = "https"
+
+# Request method
+method = "get"
+
+# Custom request headers
+headers = []
+
+
+###
+### Exclusions
+###
+# Exclude URLs from checking (supports regex)
+exclude = [
+    # "github", todo github token
+    "file://.*",
+    "host.docker.internal:3100",
+    "fileb://.*",
+    "ec2-user@.*.compute.amazonaws.com",
+    "querier",
+    "loki:3100",
+    "ip_or_hostname_where_loki_run:3100",
+    "dynamodb://.*",
+    "s3://.*",
+    "ec2-13-59-62-37",
+    "promtail.default",
+    "loki_addr:3100",
+    "localhost",
+    "example.com",
+    "HelloAkkaHttpServer",
+    "https://loki/",
+    "http://loki/",
+    "logs-prod-us-central1.grafana.net",
+    "ip_or_hostname_where_loki_runs",
+    "inmemory://",
+    "myloki.domain:3100",
+    "grafana/cortex-rules-action@v0.4.0",
+    "loki.git",
+    "https://github.com/grafana/website",
+    "https://github.com/settings/keys",
+]
+
+include = []
+
+# Exclude all private IPs from checking
+# Equivalent to setting `exclude_private`, `exclude_link_local`, and `exclude_loopback` to true
+exclude_all_private = false
+
+# Exclude private IP address ranges from checking
+exclude_private = false
+
+# Exclude link-local IP address range from checking
+exclude_link_local = false
+
+# Exclude loopback IP address range from checking
+exclude_loopback = true
+
+# Exclude all mail addresses from checking
+exclude_mail = false

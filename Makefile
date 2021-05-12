@@ -6,7 +6,7 @@
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
-.PHONY: migrate migrate-image ragel
+.PHONY: migrate migrate-image lint-markdown ragel
 
 SHELL = /usr/bin/env bash
 
@@ -32,7 +32,6 @@ endif
 #############
 
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
-IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 
 # Certain aspects of the build are done in containers for consistency (e.g. yacc/protobuf generation)
 # If you have the correct tools installed and you want to speed up development you can run
@@ -474,12 +473,6 @@ push-bigtable-backup: bigtable-backup
 
 images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
 
-print-images:
-	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
-	@echo > /dev/null
-
-IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
-
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
 define push
@@ -605,6 +598,19 @@ lint-jsonnet:
 fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
+
+# search for dead link in our documentation.
+# To avoid being rate limited by Github you can use an env variable GITHUB_TOKEN to pass a github token API.
+# see https://github.com/settings/tokens
+lint-markdown:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	lychee --verbose --config .lychee.toml ./*.md  ./docs/**/*.md  ./production/**/*.md ./cmd/**/*.md ./clients/**/*.md ./tools/**/*.md
+endif
+
 
 # usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
