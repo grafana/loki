@@ -19,6 +19,9 @@ func NewDocker(logger log.Logger, registerer prometheus.Registerer) (Stage, erro
 				},
 			}},
 		PipelineStage{
+			StageTypeDockerRecombine: nil,
+		},
+		PipelineStage{
 			StageTypeLabel: LabelsConfig{
 				"stream": nil,
 			}},

@@ -52,8 +52,8 @@ func TestNewDocker(t *testing.T) {
 			},
 		},
 		"invalid json": {
-			"i'm not json!",
-			"i'm not json!",
+			"i'm not json!\n",
+			"i'm not json!\n",
 			dockerTestTimeNow,
 			dockerTestTimeNow,
 			map[string]string{},
