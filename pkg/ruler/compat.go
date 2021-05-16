@@ -101,7 +101,7 @@ func MemstoreTenantManager(
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
+		// We'll ignore the passed registerer and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
 		if metrics == nil {
 			metrics = NewMetrics(prometheus.DefaultRegisterer)
