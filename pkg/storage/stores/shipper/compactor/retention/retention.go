@@ -225,7 +225,7 @@ func (s *Sweeper) Start() {
 }
 
 func getUserIDFromChunkID(chunkID []byte) ([]byte, error) {
-	idx := bytes.Index(chunkID, []byte("/"))
+	idx := bytes.IndexByte(chunkID, '/')
 	if idx <= 0 {
 		return nil, fmt.Errorf("invalid chunk ID %q", chunkID)
 	}
