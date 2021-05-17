@@ -186,7 +186,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 [http_listen_port: <int> | default = 80]
 
 # gRPC server listen host
-# CLI flag: -server.comlisten-address
+# CLI flag: -server.grpc-listen-address
 [grpc_listen_address: <string>]
 
 # gRPC server listen port
