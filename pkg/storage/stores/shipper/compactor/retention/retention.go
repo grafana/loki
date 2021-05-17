@@ -1,10 +1,10 @@
 package retention
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -205,12 +205,12 @@ func (s *Sweeper) Start() {
 			s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
 		}()
 		chunkIDString := unsafeGetString(chunkId)
-		userID, err := getUserIDFromChunkID(chunkIDString)
+		userID, err := getUserIDFromChunkID(chunkId)
 		if err != nil {
 			return err
 		}
 
-		err = s.chunkClient.DeleteChunk(ctx, userID, chunkIDString)
+		err = s.chunkClient.DeleteChunk(ctx, unsafeGetString(userID), chunkIDString)
 		if err == chunk.ErrStorageObjectNotFound {
 			status = statusNotFound
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
@@ -224,13 +224,13 @@ func (s *Sweeper) Start() {
 	})
 }
 
-func getUserIDFromChunkID(chunkID string) (string, error) {
-	parts := strings.Split(chunkID, "/")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid chunk ID %q", chunkID)
+func getUserIDFromChunkID(chunkID []byte) ([]byte, error) {
+	idx := bytes.Index(chunkID, []byte("/"))
+	if idx <= 0 {
+		return nil, fmt.Errorf("invalid chunk ID %q", chunkID)
 	}
 
-	return parts[0], nil
+	return chunkID[:idx], nil
 }
 
 func (s *Sweeper) Stop() {
