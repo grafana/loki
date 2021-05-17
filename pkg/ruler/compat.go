@@ -4,16 +4,16 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
-	"net/url"
 	"strings"
 	"time"
+
+	"github.com/prometheus/prometheus/storage"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -111,7 +111,7 @@ func MemstoreTenantManager(
 		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      &RemoteWriteAppendable{remoteWriter: newRemoteWriter(logger, cfg), logger: logger},
+			Appendable:      newAppendable(cfg, logger, userID),
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
@@ -132,24 +132,34 @@ func MemstoreTenantManager(
 	})
 }
 
+func newAppendable(cfg Config, logger log.Logger, userID string) storage.Appendable {
+	if !cfg.RemoteWrite.Enabled() {
+		level.Warn(logger).Log("msg", "remote write client not configured")
+		return &NoopAppender{}
+	}
+
+	return &RemoteWriteAppendable{
+		remoteWriter: newRemoteWriter(logger, cfg),
+		logger:       logger,
+		userID:       userID,
+		cfg:          cfg,
+	}
+}
+
 func newRemoteWriter(logger log.Logger, cfg Config) *remote.WriteClient {
-	if cfg.RemoteWriteConfig.URL == "" {
+	if !cfg.RemoteWrite.Enabled() {
+		level.Warn(logger).Log("msg", "remote write client not configured")
 		return nil
 	}
 
-	u, err := url.Parse(cfg.RemoteWriteConfig.URL)
-	if err != nil {
-		level.Warn(logger).Log("url", cfg.RemoteWriteConfig.URL, "msg", "cannot parse remote_write url", "err", err)
-		return nil
-	}
-
-	writeClient, err := remote.NewWriteClient("cortex", &remote.ClientConfig{
-		URL:              &config.URL{u},
-		Timeout:          model.Duration(5 * time.Second),
-		HTTPClientConfig: config.HTTPClientConfig{},
+	writeClient, err := remote.NewWriteClient("recording_rules", &remote.ClientConfig{
+		URL:              cfg.RemoteWrite.Client.URL,
+		Timeout:          cfg.RemoteWrite.Client.RemoteTimeout,
+		HTTPClientConfig: cfg.RemoteWrite.Client.HTTPClientConfig,
+		Headers:          cfg.RemoteWrite.Client.Headers,
 	})
 	if err != nil {
-		level.Warn(logger).Log("remote_write_url", cfg.RemoteWriteConfig.URL, "msg", "cannot create remote_write client", "err", err)
+		level.Warn(logger).Log("remote_write_url", cfg.RemoteWrite.Client.URL.String(), "msg", "cannot create remote_write client", "err", err)
 		return nil
 	}
 

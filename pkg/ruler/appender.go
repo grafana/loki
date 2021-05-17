@@ -24,6 +24,8 @@ import (
 
 type RemoteWriteAppendable struct {
 	groupAppender map[string]*RemoteWriteAppender
+	userID        string
+	cfg           Config
 
 	logger       log.Logger
 	remoteWriter *remote.WriteClient
@@ -35,7 +37,7 @@ type RemoteWriteAppender struct {
 	remoteWriter *remote.WriteClient
 	groupKey     string
 
-	queue *RemoteWriteQueue
+	queue *remoteWriteQueue
 }
 
 func (a *RemoteWriteAppender) encodeRequest(l labels.Labels, s cortexpb.Sample) ([]byte, error) {
@@ -59,14 +61,13 @@ func (a *RemoteWriteAppender) encodeRequest(l labels.Labels, s cortexpb.Sample) 
 }
 
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
+	var appender *RemoteWriteAppender
 
 	if a.groupAppender == nil {
 		a.groupAppender = make(map[string]*RemoteWriteAppender)
 	}
 
 	groupKey := retrieveGroupKeyFromContext(ctx)
-
-	var appender *RemoteWriteAppender
 
 	appender, found := a.groupAppender[groupKey]
 	if !found {
@@ -76,28 +77,23 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 			remoteWriter: a.remoteWriter,
 			groupKey:     groupKey,
 
-			queue: NewRemoteWriteQueue(15000),
+			queue: newRemoteWriteQueue(a.cfg.RemoteWrite.BufferSize, a.userID, groupKey),
 		}
 
 		// only track reference if groupKey was retrieved
-		if groupKey != "" {
-			a.groupAppender[groupKey] = appender
+		if groupKey == "" {
+			level.Warn(a.logger).Log("msg", "blank group key passed via context; creating new appender")
+			return appender
 		}
+
+		a.groupAppender[groupKey] = appender
 	}
 
 	return appender
 }
 
-// Append adds a sample pair for the given series.
-// An optional reference number can be provided to accelerate calls.
-// A reference number is returned which can be used to add further
-// samples in the same or later transactions.
-// Returned reference numbers are ephemeral and may be rejected in calls
-// to Append() at any point. Adding the sample via Append() returns a new
-// reference number.
-// If the reference is 0 it must not be used for caching.
 func (a *RemoteWriteAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
-	a.queue.Append(l, cortexpb.Sample{
+	a.queue.append(l, cortexpb.Sample{
 		Value:       v,
 		TimestampMs: t,
 	})
@@ -105,52 +101,37 @@ func (a *RemoteWriteAppender) Append(_ uint64, l labels.Labels, t int64, v float
 	return 0, nil
 }
 
-// AppendExemplar adds an exemplar for the given series labels.
-// An optional reference number can be provided to accelerate calls.
-// A reference number is returned which can be used to add further
-// exemplars in the same or later transactions.
-// Returned reference numbers are ephemeral and may be rejected in calls
-// to Append() at any point. Adding the sample via Append() returns a new
-// reference number.
-// If the reference is 0 it must not be used for caching.
-// Note that in our current implementation of Prometheus' exemplar storage
-// calls to Append should generate the reference numbers, AppendExemplar
-// generating a new reference number should be considered possible erroneous behaviour and be logged.
 func (a *RemoteWriteAppender) AppendExemplar(_ uint64, _ labels.Labels, _ exemplar.Exemplar) (uint64, error) {
 	return 0, errors.New("exemplars are unsupported")
 }
 
-// Commit submits the collected samples and purges the batch. If Commit
-// returns a non-nil error, it also rolls back all modifications made in
-// the appender so far, as Rollback would do. In any case, an Appender
-// must not be used anymore after Commit has been called.
 func (a *RemoteWriteAppender) Commit() error {
-	if a.queue.Length() <= 0 {
+	if a.queue.length() <= 0 {
 		return nil
 	}
 
 	if a.remoteWriter == nil {
-		level.Debug(a.logger).Log("msg", "no remote_write client defined, skipping commit")
+		level.Warn(a.logger).Log("msg", "no remote_write client defined, skipping commit")
 		return nil
 	}
 
 	writer := *a.remoteWriter
-	level.Warn(a.logger).Log("msg", "writing samples to remote_write target", "target", writer.Endpoint(), "count", a.queue.Length())
+	level.Debug(a.logger).Log("msg", "writing samples to remote_write target", "target", writer.Endpoint(), "count", a.queue.length())
 
 	req, err := a.prepareRequest()
 	if err != nil {
-		level.Warn(a.logger).Log("msg", "could not prepare", "err", err)
+		level.Error(a.logger).Log("msg", "could not prepare remote-write request", "err", err)
 		return err
 	}
 
 	err = writer.Store(a.ctx, req)
 	if err != nil {
-		level.Warn(a.logger).Log("msg", "could not store", "err", err)
+		level.Error(a.logger).Log("msg", "could not store recording rule samples", "err", err)
 		return err
 	}
 
 	// clear the queue on a successful response
-	a.queue.Clear()
+	a.queue.clear()
 
 	return nil
 }
@@ -167,10 +148,8 @@ func (a *RemoteWriteAppender) prepareRequest() ([]byte, error) {
 	return snappy.Encode(nil, reqBytes), nil
 }
 
-// Rollback rolls back all modifications made in the appender so far.
-// Appender has to be discarded after rollback.
 func (a *RemoteWriteAppender) Rollback() error {
-	a.queue.Clear()
+	a.queue.clear()
 
 	return nil
 }
@@ -197,19 +176,4 @@ func retrieveGroupKeyFromContext(ctx context.Context) string {
 	}
 
 	return rules.GroupKey(file, name)
-}
-
-// from github.com/prometheus/prometheus/storage/remote/codec.go
-func labelsToLabelsProto(labels labels.Labels, buf []prompb.Label) []prompb.Label {
-	result := buf[:0]
-	if cap(buf) < len(labels) {
-		result = make([]prompb.Label, 0, len(labels))
-	}
-	for _, l := range labels {
-		result = append(result, prompb.Label{
-			Name:  l.Name,
-			Value: l.Value,
-		})
-	}
-	return result
 }
