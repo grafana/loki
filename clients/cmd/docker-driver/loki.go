@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"sync"
 
 	"github.com/docker/docker/daemon/logger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -23,6 +25,9 @@ type loki struct {
 	handler api.EntryHandler
 	labels  model.LabelSet
 	logger  log.Logger
+
+	closed bool
+	mutex  sync.RWMutex
 
 	stop func()
 }
@@ -59,6 +64,13 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 
 // Log implements `logger.Logger`
 func (l *loki) Log(m *logger.Message) error {
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
+
+	if l.closed {
+		return errors.New("client closed")
+	}
+
 	if len(bytes.Fields(m.Line)) == 0 {
 		level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
@@ -84,7 +96,10 @@ func (l *loki) Name() string {
 
 // Log implements `logger.Logger`
 func (l *loki) Close() error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
 	l.stop()
 	l.client.StopNow()
+	l.closed = true
 	return nil
 }
