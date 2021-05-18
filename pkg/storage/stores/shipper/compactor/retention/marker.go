@@ -116,7 +116,11 @@ func (m *markerStorageWriter) Put(chunkID []byte) error {
 		return err
 	}
 	binary.BigEndian.PutUint64(m.buf, id) // insert in order using sequence id.
-	if err := m.bucket.Put(m.buf, chunkID); err != nil {
+	// boltdb requires a the value to be valid for the whole tx.
+	// so we make a copy.
+	value := make([]byte, len(chunkID))
+	copy(value, chunkID)
+	if err := m.bucket.Put(m.buf, value); err != nil {
 		return err
 	}
 	m.count++
