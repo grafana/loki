@@ -116,7 +116,7 @@ func (m *markerStorageWriter) Put(chunkID []byte) error {
 		return err
 	}
 	binary.BigEndian.PutUint64(m.buf, id) // insert in order using sequence id.
-	// boltdb requires a the value to be valid for the whole tx.
+	// boltdb requires the value to be valid for the whole tx.
 	// so we make a copy.
 	value := make([]byte, len(chunkID))
 	copy(value, chunkID)
