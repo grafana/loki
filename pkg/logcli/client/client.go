@@ -63,7 +63,7 @@ func (c *DefaultClient) Query(queryStr string, limit int, time time.Time, direct
 	qsb := util.NewQueryStringBuilder()
 	qsb.SetString("query", queryStr)
 	qsb.SetInt("limit", int64(limit))
-	qsb.SetInt("start", time.UnixNano())
+	qsb.SetInt("time", time.UnixNano())
 	qsb.SetString("direction", direction.String())
 
 	return c.doQuery(queryPath, qsb.Encode(), quiet)
