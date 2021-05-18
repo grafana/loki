@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
-	uuid "github.com/gofrs/uuid"
+	"github.com/gofrs/uuid"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -18,7 +18,15 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-var instanceID = uuid.NewV4()
+var instanceID uuid.UUID
+
+func init() {
+	id, err := uuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+	instanceID = id
+}
 
 // LogEntry that will be written to the pubsub topic.
 // According to the following spec.
