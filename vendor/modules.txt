@@ -442,6 +442,7 @@ github.com/gocql/gocql/internal/streams
 ## explicit
 github.com/gofrs/flock
 # github.com/gofrs/uuid v4.0.0+incompatible
+## explicit
 github.com/gofrs/uuid
 # github.com/gogo/googleapis v1.1.0
 github.com/gogo/googleapis/google/rpc
@@ -857,9 +858,6 @@ github.com/prometheus/prometheus/web/api/v1
 github.com/rs/cors
 # github.com/rs/xid v1.2.1
 github.com/rs/xid
-# github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b => github.com/satori/go.uuid v1.2.0
-## explicit
-github.com/satori/go.uuid
 # github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
 github.com/sean-/seed
 # github.com/segmentio/fasthash v1.0.2
@@ -1599,6 +1597,5 @@ sigs.k8s.io/yaml
 # k8s.io/client-go => k8s.io/client-go v0.21.0
 # k8s.io/api => k8s.io/api v0.21.0
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
-# github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
