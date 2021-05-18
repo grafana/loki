@@ -7,12 +7,18 @@ import (
 
 var samplesDiscarded = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "loki",
-	Name:      "recording_rule_queue_samples_discarded_total",
-	Help:      "Number of samples discarded from queue - buffer is full.",
+	Name:      "recording_rules_queue_samples_discarded_total",
+	Help:      "Number of samples discarded from queue; buffer is full!",
 }, []string{"user_id", "group_key"})
 
-var samplesBuffered = promauto.NewCounterVec(prometheus.CounterOpts{
+var samplesBufferedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "loki",
-	Name:      "recording_rule_queue_samples_buffered_total",
-	Help:      "Number of samples buffered in queue.",
+	Name:      "recording_rules_queue_samples_buffered_total",
+	Help:      "Number of samples buffered in queue in total.",
+}, []string{"user_id", "group_key"})
+
+var samplesBufferedCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: "loki",
+	Name:      "recording_rules_queue_samples_buffered_current",
+	Help:      "Number of samples currently buffered in queue.",
 }, []string{"user_id", "group_key"})

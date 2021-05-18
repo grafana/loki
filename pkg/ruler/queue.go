@@ -42,7 +42,8 @@ func (q *remoteWriteQueue) append(labels labels.Labels, sample cortexpb.Sample) 
 	q.labels = append(q.labels, labels)
 	q.samples = append(q.samples, sample)
 
-	samplesBuffered.WithLabelValues(q.userID, q.key).Inc()
+	samplesBufferedCurrent.WithLabelValues(q.userID, q.key).Set(float64(q.length()))
+	samplesBufferedTotal.WithLabelValues(q.userID, q.key).Inc()
 }
 
 func (q *remoteWriteQueue) length() int {
@@ -52,4 +53,6 @@ func (q *remoteWriteQueue) length() int {
 func (q *remoteWriteQueue) clear() {
 	q.samples = nil
 	q.labels = nil
+
+	samplesBufferedCurrent.WithLabelValues(q.userID, q.key).Set(0)
 }
