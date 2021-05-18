@@ -169,6 +169,19 @@ func (t *testStore) HasChunk(c chunk.Chunk) bool {
 	return len(chunks) == 1 && c.ExternalKey() == chunks[0].ExternalKey()
 }
 
+func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
+	t.t.Helper()
+	var matchers []*labels.Matcher
+	for _, l := range metric {
+		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
+	}
+	chunks, err := t.Store.Get(user.InjectOrgID(context.Background(), userID),
+		userID, from, through, matchers...)
+	require.NoError(t.t, err)
+
+	return chunks
+}
+
 func (t *testStore) open() {
 	chunkStore, err := cortex_storage.NewStore(
 		t.cfg.Config,

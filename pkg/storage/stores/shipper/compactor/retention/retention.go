@@ -1,19 +1,20 @@
 package retention
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage"
 )
 
@@ -26,6 +27,7 @@ var (
 const (
 	logMetricName = "logs"
 	markersFolder = "markers"
+	separator     = "\000"
 )
 
 type TableMarker interface {
@@ -38,9 +40,10 @@ type Marker struct {
 	config           storage.SchemaConfig
 	expiration       ExpirationChecker
 	markerMetrics    *markerMetrics
+	chunkClient      chunk.Client
 }
 
-func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration ExpirationChecker, chunkClient chunk.Client, r prometheus.Registerer) (*Marker, error) {
 	if err := validatePeriods(config); err != nil {
 		return nil, err
 	}
@@ -50,6 +53,7 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration 
 		config:           config,
 		expiration:       expiration,
 		markerMetrics:    metrics,
+		chunkClient:      chunkClient,
 	}, nil
 }
 
@@ -96,7 +100,12 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration)
+		chunkRewriter, err := newChunkRewriter(t.chunkClient, schemaCfg, tableName, bucket)
+		if err != nil {
+			return err
+		}
+
+		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration, chunkRewriter)
 		if err != nil {
 			return err
 		}
@@ -121,7 +130,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 	return empty, markerWriter.Count(), nil
 }
 
-func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker) (bool, error) {
+func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, error) {
 	seriesMap := newUserSeriesMap()
 	empty := true
 	now := model.Now()
@@ -130,8 +139,20 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 			return false, chunkIt.Err()
 		}
 		c := chunkIt.Entry()
-		if expiration.Expired(c, now) {
-			seriesMap.Add(c.SeriesID, c.UserID)
+		if expired, nonDeletedIntervals := expiration.Expired(c, now); expired {
+			if len(nonDeletedIntervals) == 0 {
+				seriesMap.Add(c.SeriesID, c.UserID)
+			} else {
+				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
+				if err != nil {
+					return false, err
+				}
+
+				if !wroteChunks {
+					seriesMap.Add(c.SeriesID, c.UserID)
+				}
+			}
+
 			if err := chunkIt.Delete(); err != nil {
 				return false, err
 			}
@@ -153,33 +174,17 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 	})
 }
 
-type DeleteClient interface {
-	DeleteObject(ctx context.Context, objectKey string) error
-}
-
-type DeleteClientFunc func(ctx context.Context, objectKey string) error
-
-func (d DeleteClientFunc) DeleteObject(ctx context.Context, objectKey string) error {
-	return d(ctx, objectKey)
-}
-
-func NewDeleteClient(objectClient chunk.ObjectClient) DeleteClient {
-	// filesystem encode64 keys on disk. useful for testing.
-	if fs, ok := objectClient.(*local.FSObjectClient); ok {
-		return DeleteClientFunc(func(ctx context.Context, objectKey string) error {
-			return fs.DeleteObject(ctx, base64.StdEncoding.EncodeToString([]byte(objectKey)))
-		})
-	}
-	return objectClient
+type ChunkClient interface {
+	DeleteChunk(ctx context.Context, userID, chunkID string) error
 }
 
 type Sweeper struct {
 	markerProcessor MarkerProcessor
-	deleteClient    DeleteClient
+	chunkClient     ChunkClient
 	sweeperMetrics  *sweeperMetrics
 }
 
-func NewSweeper(workingDir string, deleteClient DeleteClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+func NewSweeper(workingDir string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
@@ -187,7 +192,7 @@ func NewSweeper(workingDir string, deleteClient DeleteClient, deleteWorkerCount 
 	}
 	return &Sweeper{
 		markerProcessor: p,
-		deleteClient:    deleteClient,
+		chunkClient:     deleteClient,
 		sweeperMetrics:  m,
 	}, nil
 }
@@ -200,7 +205,12 @@ func (s *Sweeper) Start() {
 			s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
 		}()
 		chunkIDString := unsafeGetString(chunkId)
-		err := s.deleteClient.DeleteObject(ctx, chunkIDString)
+		userID, err := getUserIDFromChunkID(chunkId)
+		if err != nil {
+			return err
+		}
+
+		err = s.chunkClient.DeleteChunk(ctx, unsafeGetString(userID), chunkIDString)
 		if err == chunk.ErrStorageObjectNotFound {
 			status = statusNotFound
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
@@ -214,6 +224,117 @@ func (s *Sweeper) Start() {
 	})
 }
 
+func getUserIDFromChunkID(chunkID []byte) ([]byte, error) {
+	idx := bytes.IndexByte(chunkID, '/')
+	if idx <= 0 {
+		return nil, fmt.Errorf("invalid chunk ID %q", chunkID)
+	}
+
+	return chunkID[:idx], nil
+}
+
 func (s *Sweeper) Stop() {
 	s.markerProcessor.Stop()
+}
+
+type chunkRewriter struct {
+	chunkClient chunk.Client
+	tableName   string
+	bucket      *bbolt.Bucket
+
+	seriesStoreSchema chunk.SeriesStoreSchema
+}
+
+func newChunkRewriter(chunkClient chunk.Client, schemaCfg chunk.PeriodConfig,
+	tableName string, bucket *bbolt.Bucket) (*chunkRewriter, error) {
+	schema, err := schemaCfg.CreateSchema()
+	if err != nil {
+		return nil, err
+	}
+
+	seriesStoreSchema, ok := schema.(chunk.SeriesStoreSchema)
+	if !ok {
+		return nil, errors.New("invalid schema")
+	}
+
+	return &chunkRewriter{
+		chunkClient:       chunkClient,
+		tableName:         tableName,
+		bucket:            bucket,
+		seriesStoreSchema: seriesStoreSchema,
+	}, nil
+}
+
+func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, intervals []model.Interval) (bool, error) {
+	userID := unsafeGetString(ce.UserID)
+	chunkID := unsafeGetString(ce.ChunkID)
+
+	chk, err := chunk.ParseExternalKey(userID, chunkID)
+	if err != nil {
+		return false, err
+	}
+
+	chks, err := c.chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
+	if err != nil {
+		return false, err
+	}
+
+	if len(chks) != 1 {
+		return false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", chunkID, len(chks))
+	}
+
+	wroteChunks := false
+
+	for _, interval := range intervals {
+		newChunkData, err := chks[0].Data.Rebound(interval.Start, interval.End)
+		if err != nil {
+			return false, err
+		}
+
+		facade, ok := newChunkData.(*chunkenc.Facade)
+		if !ok {
+			return false, errors.New("invalid chunk type")
+		}
+
+		newChunk := chunk.NewChunk(
+			userID, chks[0].Fingerprint, chks[0].Metric,
+			facade,
+			interval.Start,
+			interval.End,
+		)
+
+		err = newChunk.Encode()
+		if err != nil {
+			return false, err
+		}
+
+		entries, err := c.seriesStoreSchema.GetChunkWriteEntries(interval.Start, interval.End, userID, "logs", newChunk.Metric, newChunk.ExternalKey())
+		if err != nil {
+			return false, err
+		}
+
+		uploadChunk := false
+
+		for _, entry := range entries {
+			// write an entry only if it belongs to this table
+			if entry.TableName == c.tableName {
+				key := entry.HashValue + separator + string(entry.RangeValue)
+				if err := c.bucket.Put([]byte(key), nil); err != nil {
+					return false, err
+				}
+				uploadChunk = true
+			}
+		}
+
+		// upload chunk only if an entry was written
+		if uploadChunk {
+			err = c.chunkClient.PutChunks(ctx, []chunk.Chunk{newChunk})
+			if err != nil {
+				return false, err
+			}
+			wroteChunks = true
+		}
+	}
+
+	return wroteChunks, nil
 }
