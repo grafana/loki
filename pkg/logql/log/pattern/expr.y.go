@@ -11,9 +11,10 @@ type exprSymType struct {
 	Expr []node
 	Node node
 
-	literal rune
-	str     string
-	token   int
+	literal  rune
+	Literals []rune
+	str      string
+	token    int
 }
 
 const IDENTIFIER = 57346
@@ -47,35 +48,35 @@ var exprExca = [...]int{
 
 const exprPrivate = 57344
 
-const exprLast = 6
+const exprLast = 8
 
 var exprAct = [...]int{
 
-	4, 5, 3, 2, 1, 6,
+	4, 6, 8, 3, 5, 2, 7, 1,
 }
 var exprPact = [...]int{
 
-	-4, -1000, -4, -1000, -1000, -1000, -1000,
+	-4, -1000, -4, -1000, -1000, -3, -1000, -1000, -1000,
 }
 var exprPgo = [...]int{
 
-	0, 4, 3, 2,
+	0, 7, 5, 3, 4,
 }
 var exprR1 = [...]int{
 
-	0, 1, 2, 2, 3, 3,
+	0, 1, 2, 2, 3, 3, 4, 4,
 }
 var exprR2 = [...]int{
 
-	0, 1, 1, 2, 1, 1,
+	0, 1, 1, 2, 1, 1, 1, 2,
 }
 var exprChk = [...]int{
 
-	-1000, -1, -2, -3, 4, 5, -3,
+	-1000, -1, -2, -3, 4, -4, 5, -3, 5,
 }
 var exprDef = [...]int{
 
-	0, -2, 1, 2, 4, 5, 3,
+	0, -2, 1, 2, 4, 5, 6, 3, 7,
 }
 var exprTok1 = [...]int{
 
@@ -448,7 +449,17 @@ exprdefault:
 	case 5:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.Node = literal(exprDollar[1].literal)
+			exprVAL.Node = runesToLiterals(exprDollar[1].Literals)
+		}
+	case 6:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+		{
+			exprVAL.Literals = []rune{exprDollar[1].literal}
+		}
+	case 7:
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+		{
+			exprVAL.Literals = append(exprDollar[1].Literals, exprDollar[2].literal)
 		}
 	}
 	goto exprstack /* stack new state and value */

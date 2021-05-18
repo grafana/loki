@@ -9,6 +9,7 @@ package pattern
   Node                 node
 
   literal              rune
+  Literals             []rune
   str                  string
   token                int
 }
@@ -17,6 +18,7 @@ package pattern
 
 %type <Expr>             expr
 %type <Node>             node
+%type <Literals>         literals
 
 %token <str>              IDENTIFIER
 %token <literal>          LITERAL
@@ -34,6 +36,10 @@ expr:
 
 node:
      IDENTIFIER  { $$ = capture($1) }
-    | LITERAL  { $$ = literal($1) }
+    | literals  { $$ = runesToLiterals($1) }
     ;
+
+literals:
+    LITERAL { $$ = []rune{$1} }
+    | literals LITERAL { $$ = append($1, $2) }
 %%

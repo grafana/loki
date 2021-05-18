@@ -14,22 +14,22 @@ func Test_Parse(t *testing.T) {
 	}{
 		{
 			"<foo> bar f <f>",
-			expr{capture("foo"), literal(' '), literal('b'), literal('a'), literal('r'), literal(' '), literal('f'), literal(' '), capture("f")},
+			expr{capture("foo"), literals(" bar f "), capture("f")},
 			nil,
 		},
 		{
 			"<foo",
-			expr{literal('<'), literal('f'), literal('o'), literal('o')},
+			expr{literals("<foo")},
 			nil,
 		},
 		{
 			"<foo ><bar>",
-			expr{literal('<'), literal('f'), literal('o'), literal('o'), literal(' '), literal('>'), capture("bar")},
+			expr{literals("<foo >"), capture("bar")},
 			nil,
 		},
 		{
 			"<>",
-			expr{literal('<'), literal('>')},
+			expr{literals("<>")},
 			nil,
 		},
 		{
@@ -39,12 +39,12 @@ func Test_Parse(t *testing.T) {
 		},
 		{
 			"<1_>",
-			expr{literal('<'), literal('1'), literal('_'), literal('>')},
+			expr{literals("<1_>")},
 			nil,
 		},
 		{
-			"<ip> - <user> [<_>] “<method> <path> <_>” <status> <size> <url> <user_agent>",
-			expr{capture("ip"), literal(' '), literal('-'), literal(' '), capture("user"), literal(' '), literal('['), capture("_"), literal(']'), literal(' ')},
+			`<ip> - <user> [<_>] "<method> <path> <_>" <status> <size> <url> <user_agent>`,
+			expr{capture("ip"), literals(" - "), capture("user"), literals(" ["), capture("_"), literals(`] "`), capture("method"), literals(" "), capture("path"), literals(" "), capture('_'), literals(`" `), capture("status"), literals(" "), capture("size"), literals(" "), capture("url"), literals(" "), capture("user_agent")},
 			nil,
 		},
 	} {
