@@ -21,7 +21,6 @@ import (
 var (
 	bucketName  = []byte("index")
 	chunkBucket = []byte("chunks")
-	empty       = []byte("-")
 )
 
 const (
