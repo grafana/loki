@@ -42,7 +42,7 @@ $ export LOKI_ADDR=http://localhost:3100
 
 > Note: If you are running Loki behind a proxy server and you have
 > authentication configured, you will also have to pass in LOKI_USERNAME
-> and LOKI_PASSWORD accordingly.
+> and LOKI_PASSWORD, LOKI_BEARER_TOKEN or LOKI_BEARER_TOKEN_FILE accordingly.
 
 ```bash
 $ logcli labels job
