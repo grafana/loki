@@ -32,7 +32,7 @@ const (
 	deleteRequestDetails indexType = "2"
 
 	tempFileSuffix          = ".temp"
-	deleteRequestsTableName = "delete_requests"
+	DeleteRequestsTableName = "delete_requests"
 )
 
 var (
@@ -98,11 +98,11 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 	// Add an entry with userID, requestID as range key and status as value to make it easy to manage and lookup status
 	// We don't want to set anything in hash key here since we would want to find delete requests by just status
 	writeBatch := ds.indexClient.NewWriteBatch()
-	writeBatch.Add(deleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
+	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(createdAt), int64(startTime), int64(endTime))
-	writeBatch.Add(deleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
+	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
 		[]byte(rangeValue), []byte(strings.Join(selectors, separator)))
 
 	err := ds.indexClient.BatchWrite(ctx, writeBatch)
@@ -116,7 +116,7 @@ func (ds *deleteRequestsStore) addDeleteRequest(ctx context.Context, userID stri
 // GetDeleteRequestsByStatus returns all delete requests for given status.
 func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, chunk.IndexQuery{
-		TableName:  deleteRequestsTableName,
+		TableName:  DeleteRequestsTableName,
 		HashValue:  string(deleteRequestID),
 		ValueEqual: []byte(status),
 	})
@@ -125,7 +125,7 @@ func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, st
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
 func (ds *deleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, chunk.IndexQuery{
-		TableName:        deleteRequestsTableName,
+		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userID),
 	})
@@ -136,7 +136,7 @@ func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, userID, request
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
 	writeBatch := ds.indexClient.NewWriteBatch()
-	writeBatch.Add(deleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
+	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
@@ -146,7 +146,7 @@ func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, req
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
 	deleteRequests, err := ds.queryDeleteRequests(ctx, chunk.IndexQuery{
-		TableName:        deleteRequestsTableName,
+		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userIDAndRequestID),
 	})
@@ -185,7 +185,7 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 	for i, deleteRequest := range deleteRequests {
 		deleteRequestQuery := []chunk.IndexQuery{
 			{
-				TableName: deleteRequestsTableName,
+				TableName: DeleteRequestsTableName,
 				HashValue: fmt.Sprintf("%s:%s:%s", deleteRequestDetails, deleteRequest.UserID, deleteRequest.RequestID),
 			},
 		}
@@ -224,11 +224,11 @@ func (ds *deleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID, 
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
 	writeBatch := ds.indexClient.NewWriteBatch()
-	writeBatch.Delete(deleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID))
+	writeBatch.Delete(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID))
 
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(createdAt), int64(startTime), int64(endTime))
-	writeBatch.Delete(deleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
+	writeBatch.Delete(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID),
 		[]byte(rangeValue))
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)

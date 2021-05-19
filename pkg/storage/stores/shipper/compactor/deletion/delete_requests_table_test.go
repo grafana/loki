@@ -41,7 +41,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 
 	// add some records to the db
 	batch := testDeleteRequestsTable.NewWriteBatch()
-	testutil.AddRecordsToBatch(batch, deleteRequestsTableName, 0, 10)
+	testutil.AddRecordsToBatch(batch, DeleteRequestsTableName, 0, 10)
 	require.NoError(t, testDeleteRequestsTable.BatchWrite(context.Background(), batch))
 
 	// see if right records were written
@@ -56,7 +56,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	checkRecordsInStorage(t, storageFilePath, 0, 10)
 
 	// add more records to the db
-	testutil.AddRecordsToBatch(batch, deleteRequestsTableName, 10, 10)
+	testutil.AddRecordsToBatch(batch, DeleteRequestsTableName, 10, 10)
 	require.NoError(t, testDeleteRequestsTable.BatchWrite(context.Background(), batch))
 
 	// stop the table which should upload the db to storage
@@ -88,7 +88,7 @@ func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecor
 	defer func() {
 		require.NoError(t, os.RemoveAll(tempDir))
 	}()
-	tempFilePath := filepath.Join(tempDir, deleteRequestsTableName)
+	tempFilePath := filepath.Join(tempDir, DeleteRequestsTableName)
 	require.NoError(t, err)
 	testutil.DecompressFile(t, storageFilePath, tempFilePath)
 
