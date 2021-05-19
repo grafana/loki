@@ -5,7 +5,10 @@ import (
 	"errors"
 )
 
-var ErrNoCapture = errors.New("at least one capture is required")
+var (
+	ErrNoCapture   = errors.New("at least one capture is required")
+	ErrInvalidExpr = errors.New("invalid expression")
+)
 
 type Matcher interface {
 	Matches(in []byte) [][]byte
@@ -22,10 +25,9 @@ func New(in string) (Matcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !e.hasCapture() {
-		return nil, ErrNoCapture
+	if err := e.validate(); err != nil {
+		return nil, err
 	}
-	// todo validate that two consecutive capture are literal never exists.
 	return &matcher{
 		e:        e,
 		captures: make([][]byte, 0, e.captureCount()),
@@ -67,7 +69,10 @@ func (m *matcher) Matches(in []byte) [][]byte {
 		expr = expr[2:]
 		i := bytes.Index(in, ls)
 		if i == -1 {
-			captures = append(captures, in)
+			// if a capture is missed we return up to the end as the capture.
+			if !cap.isUnamed() {
+				captures = append(captures, in)
+			}
 			return captures
 		}
 

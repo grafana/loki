@@ -1,6 +1,7 @@
 package pattern
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -114,6 +115,28 @@ func Test_matcher_Matches(t *testing.T) {
 				actualStrings = append(actualStrings, string(a))
 			}
 			require.Equal(t, tt.expected, actualStrings)
+		})
+	}
+}
+
+func Test_Error(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{"<f>", nil},
+		{"<f> <a>", nil},
+		{"", newParseError("syntax error: unexpected $end, expecting IDENTIFIER or LITERAL", 1, 1)},
+		{"<_>", ErrNoCapture},
+		{"foo <_> bar <_>", ErrNoCapture},
+		{"foo bar buzz", ErrNoCapture},
+		{"<f><f>", fmt.Errorf("found consecutive capture: %w", ErrInvalidExpr)},
+		{"<f> f<d><b>", fmt.Errorf("found consecutive capture: %w", ErrInvalidExpr)},
+		{"<f> f<f>", fmt.Errorf("duplicate capture name (f): %w", ErrInvalidExpr)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(tt.name)
+			require.Equal(t, tt.err, err)
 		})
 	}
 }
