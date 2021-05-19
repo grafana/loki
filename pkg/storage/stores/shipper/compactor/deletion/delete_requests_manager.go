@@ -58,7 +58,7 @@ func (d *DeleteRequestsManager) loop() {
 				level.Error(util_log.Logger).Log("msg", "failed to update metrics", "err", err)
 			}
 		case <-d.done:
-			break
+			return
 		}
 	}
 }
