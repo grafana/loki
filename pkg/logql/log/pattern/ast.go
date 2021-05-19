@@ -62,7 +62,7 @@ func (c capture) String() string {
 }
 
 func (c capture) isUnamed() bool {
-	return string(c) == tokens[UNDERSCORE]
+	return string(c) == underscore
 }
 
 type literals []byte

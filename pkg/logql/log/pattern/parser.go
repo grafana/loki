@@ -2,10 +2,12 @@ package pattern
 
 import "fmt"
 
+const underscore = "_"
+
 var tokens = map[int]string{
 	LESS_THAN:  "<",
 	MORE_THAN:  ">",
-	UNDERSCORE: "_",
+	UNDERSCORE: underscore,
 }
 
 func init() {

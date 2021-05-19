@@ -12,12 +12,14 @@ var (
 
 type Matcher interface {
 	Matches(in []byte) [][]byte
+	Names() []string
 }
 
 type matcher struct {
 	e expr
 
 	captures [][]byte
+	names    []string
 }
 
 func New(in string) (Matcher, error) {
@@ -31,6 +33,7 @@ func New(in string) (Matcher, error) {
 	return &matcher{
 		e:        e,
 		captures: make([][]byte, 0, e.captureCount()),
+		names:    e.captures(),
 	}, nil
 }
 
@@ -85,4 +88,8 @@ func (m *matcher) Matches(in []byte) [][]byte {
 	}
 
 	return captures
+}
+
+func (m *matcher) Names() []string {
+	return m.names
 }
