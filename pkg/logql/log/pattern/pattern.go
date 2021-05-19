@@ -13,6 +13,8 @@ type Matcher interface {
 
 type matcher struct {
 	e expr
+
+	captures [][]byte
 }
 
 func New(in string) (Matcher, error) {
@@ -23,9 +25,15 @@ func New(in string) (Matcher, error) {
 	if !e.hasCapture() {
 		return nil, ErrNoCapture
 	}
-	return &matcher{e: e}, nil
+	// todo validate that two consecutive capture are literal never exists.
+	return &matcher{
+		e:        e,
+		captures: make([][]byte, 0, e.captureCount()),
+	}, nil
 }
 
+// Matches matches the given line with the provided pattern.
+// Matches invalidates the previous returned captures array.
 func (m *matcher) Matches(in []byte) [][]byte {
 	if len(in) == 0 {
 		return nil
@@ -33,7 +41,7 @@ func (m *matcher) Matches(in []byte) [][]byte {
 	if len(m.e) == 0 {
 		return nil
 	}
-	captures := make([][]byte, 0, m.e.captureCount())
+	captures := m.captures[:0]
 	expr := m.e
 	if ls, ok := expr[0].(literals); ok {
 		i := bytes.Index(in, ls)
@@ -47,9 +55,11 @@ func (m *matcher) Matches(in []byte) [][]byte {
 		return nil
 	}
 	// from now we have capture - literals - capture ... (literals)?
-	for len(expr) != 0 || len(in) != 0 {
+	for len(expr) != 0 {
 		if len(expr) == 1 { // we're ending on a capture.
-			captures = append(captures, in)
+			if !(expr[0].(capture)).isUnamed() {
+				captures = append(captures, in)
+			}
 			return captures
 		}
 		cap := expr[0].(capture)
@@ -57,6 +67,7 @@ func (m *matcher) Matches(in []byte) [][]byte {
 		expr = expr[2:]
 		i := bytes.Index(in, ls)
 		if i == -1 {
+			captures = append(captures, in)
 			return captures
 		}
 
