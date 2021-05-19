@@ -226,6 +226,10 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 	}
 
 	for _, tableName := range tables {
+		if tableName == deletion.DeleteRequestsTableName {
+			// we do not want to compact or apply retention on delete requests table
+			continue
+		}
 		if err := c.CompactTable(ctx, tableName); err != nil {
 			status = statusFailure
 		}

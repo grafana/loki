@@ -30,10 +30,10 @@ type deleteRequestsTable struct {
 	wg                sync.WaitGroup
 }
 
-const objectPathInStorage = deleteRequestsTableName + "/" + deleteRequestsTableName + ".gz"
+const objectPathInStorage = DeleteRequestsTableName + "/" + DeleteRequestsTableName + ".gz"
 
 func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectClient) (chunk.IndexClient, error) {
-	dbPath := filepath.Join(workingDirectory, deleteRequestsTableName, deleteRequestsTableName)
+	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, DeleteRequestsTableName)
 	boltdbIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: filepath.Dir(dbPath)})
 	if err != nil {
 		return nil, err
