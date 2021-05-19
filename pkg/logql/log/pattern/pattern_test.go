@@ -80,22 +80,28 @@ func Test_matcher_Matches(t *testing.T) {
 			[]string{"POST", "/loki/api/v1/push", "204", "1.238734ms"},
 		},
 		{
-			// etcd
+			// Etcd
 			`<_> <_> <level> | <component>: <_> peer <peer_id> <_> tcp <ip>:<_>`,
 			`2021-05-19 08:16:50.181436 W | rafthttp: health check for peer fd8275e521cfb532 could not connect: dial tcp 10.32.85.85:2380: connect: connection refused`,
 			[]string{"W", "rafthttp", "fd8275e521cfb532", "10.32.85.85"},
 		},
 		{
-			// kafka
+			// Kafka
 			`<_>] <level> [Log partition=<part>, dir=<dir>] `,
 			`[2021-05-19 08:35:28,681] INFO [Log partition=p-636-L-fs-117, dir=/data/kafka-logs] Deleting segment 455976081 (kafka.log.Log)`,
 			[]string{"INFO", "p-636-L-fs-117", "/data/kafka-logs"},
 		},
 		{
-			// elastic
+			// Elastic
 			`<_>][<level>][<component>] [<id>] [<index>]`,
 			`[2021-05-19T06:54:06,994][INFO ][o.e.c.m.MetaDataMappingService] [1f605d47-8454-4bfb-a67f-49f318bf837a] [usage-stats-2021.05.19/O2Je9IbmR8CqFyUvNpTttA] update_mapping [report]`,
 			[]string{"INFO ", "o.e.c.m.MetaDataMappingService", "1f605d47-8454-4bfb-a67f-49f318bf837a", "usage-stats-2021.05.19/O2Je9IbmR8CqFyUvNpTttA"},
+		},
+		{
+			// Envoy
+			`<_> "<method> <path> <_>" <status> <_> <received_bytes> <sent_bytes> <duration> <upstream_time> "<forward_for>" "<agent>" <_> <_> "<upstream>"`,
+			`[2016-04-15T20:17:00.310Z] "POST /api/v1/locations HTTP/2" 204 - 154 0 226 100 "10.0.35.28" "nsq2http" "cc21d9b0-cf5c-432b-8c7e-98aeb7988cd2" "locations" "tcp://10.0.2.1:80"`,
+			[]string{"POST", "/api/v1/locations", "204", "154", "0", "226", "100", "10.0.35.28", "nsq2http", "tcp://10.0.2.1:80"},
 		},
 	} {
 		tt := tt
