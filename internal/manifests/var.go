@@ -15,6 +15,19 @@ const (
 	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
 )
 
+const (
+	// LabelCompactorComponent is the label value for the compactor component
+	LabelCompactorComponent string = "compactor"
+	// LabelDistributorComponent is the label value for the distributor component
+	LabelDistributorComponent string = "distributor"
+	// LabelIngesterComponent is the label value for the ingester component
+	LabelIngesterComponent string = "ingester"
+	// LabelQuerierComponent is the label value for the querier component
+	LabelQuerierComponent string = "querier"
+	// LabelQueryFrontendComponent is the label value for the query frontend component
+	LabelQueryFrontendComponent string = "query-frontend"
+)
+
 func commonAnnotations(h string) map[string]string {
 	return map[string]string{
 		"loki.openshift.io/config-hash": h,
@@ -41,6 +54,31 @@ func GossipLabels() map[string]string {
 	return map[string]string{
 		"loki.grafana.com/gossip": "true",
 	}
+}
+
+// CompactorName is the name of the compactor statefulset
+func CompactorName(stackName string) string {
+	return fmt.Sprintf("loki-compactor-%s", stackName)
+}
+
+// DistributorName is the name of the distibutor deployment
+func DistributorName(stackName string) string {
+	return fmt.Sprintf("loki-distributor-%s", stackName)
+}
+
+// IngesterName is the name of the compactor statefulset
+func IngesterName(stackName string) string {
+	return fmt.Sprintf("loki-ingester-%s", stackName)
+}
+
+// QuerierName is the name of the querier statefulset
+func QuerierName(stackName string) string {
+	return fmt.Sprintf("loki-querier-%s", stackName)
+}
+
+// QueryFrontendName is the name of the query-frontend statefulset
+func QueryFrontendName(stackName string) string {
+	return fmt.Sprintf("loki-query-frontend-%s", stackName)
 }
 
 func serviceNameQuerierHTTP(stackName string) string {

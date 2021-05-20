@@ -121,7 +121,7 @@ func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opt.Stack.Template.Distributor.NodeSelector
 	}
 
-	l := ComponentLabels("distributor", opt.Name)
+	l := ComponentLabels(LabelDistributorComponent, opt.Name)
 	a := commonAnnotations(opt.ConfigSHA1)
 
 	return &appsv1.Deployment{
@@ -130,7 +130,7 @@ func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-distributor-%s", opt.Name),
+			Name:   DistributorName(opt.Name),
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{

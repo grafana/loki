@@ -110,7 +110,7 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opt.Stack.Template.Querier.NodeSelector
 	}
 
-	l := ComponentLabels("querier", opt.Name)
+	l := ComponentLabels(LabelQuerierComponent, opt.Name)
 	a := commonAnnotations(opt.ConfigSHA1)
 
 	return &appsv1.StatefulSet{
@@ -119,7 +119,7 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-querier-%s", opt.Name),
+			Name:   QuerierName(opt.Name),
 			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{

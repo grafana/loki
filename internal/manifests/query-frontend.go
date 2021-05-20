@@ -111,7 +111,7 @@ func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opt.Stack.Template.QueryFrontend.NodeSelector
 	}
 
-	l := ComponentLabels("query-frontend", opt.Name)
+	l := ComponentLabels(LabelQueryFrontendComponent, opt.Name)
 	a := commonAnnotations(opt.ConfigSHA1)
 
 	return &appsv1.Deployment{
@@ -120,7 +120,7 @@ func NewQueryFrontendDeployment(opt Options) *appsv1.Deployment {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-query-frontend-%s", opt.Name),
+			Name:   QueryFrontendName(opt.Name),
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{

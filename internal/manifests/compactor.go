@@ -107,7 +107,7 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opt.Stack.Template.Compactor.NodeSelector
 	}
 
-	l := ComponentLabels("compactor", opt.Name)
+	l := ComponentLabels(LabelCompactorComponent, opt.Name)
 	a := commonAnnotations(opt.ConfigSHA1)
 
 	return &appsv1.StatefulSet{
@@ -116,7 +116,7 @@ func NewCompactorStatefulSet(opt Options) *appsv1.StatefulSet {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-compactor-%s", opt.Name),
+			Name:   CompactorName(opt.Name),
 			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{

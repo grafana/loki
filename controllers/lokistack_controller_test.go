@@ -65,7 +65,7 @@ func TestLokiStackController_RegistersCustomResourceForCreateOrUpdate(t *testing
 	require.Equal(t, opts[0], createOrUpdateOnlyPred)
 }
 
-func TestLokiStackController_RegisterOwnedResourcesForDeleteOnly(t *testing.T) {
+func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *testing.T) {
 	b := &k8sfakes.FakeBuilder{}
 	k := &k8sfakes.FakeClient{}
 	c := &LokiStackReconciler{Client: k, Scheme: scheme}
@@ -87,19 +87,19 @@ func TestLokiStackController_RegisterOwnedResourcesForDeleteOnly(t *testing.T) {
 	table := []test{
 		{
 			obj:  &corev1.ConfigMap{},
-			pred: deleteOnlyPred,
+			pred: updateOrDeleteOnlyPred,
 		},
 		{
 			obj:  &corev1.Service{},
-			pred: deleteOnlyPred,
+			pred: updateOrDeleteOnlyPred,
 		},
 		{
 			obj:  &appsv1.Deployment{},
-			pred: deleteOnlyPred,
+			pred: updateOrDeleteOnlyPred,
 		},
 		{
 			obj:  &appsv1.StatefulSet{},
-			pred: deleteOnlyPred,
+			pred: updateOrDeleteOnlyPred,
 		},
 	}
 	for i, tst := range table {

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/ViaQ/loki-operator/controllers/internal/management/state"
+	"github.com/ViaQ/loki-operator/controllers/internal/status"
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
 	"github.com/ViaQ/loki-operator/internal/handlers"
 	"github.com/go-logr/logr"
@@ -52,8 +53,15 @@ var (
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
-	deleteOnlyPred = builder.WithPredicates(predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool { return false },
+	updateOrDeleteOnlyPred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			switch e.ObjectOld.(type) {
+			case *appsv1.Deployment:
+			case *appsv1.StatefulSet:
+				return true
+			}
+			return false
+		},
 		CreateFunc: func(e event.CreateEvent) bool { return false },
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			// DeleteStateUnknown evaluates to false only if the object
@@ -109,6 +117,14 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}, err
 	}
 
+	err = status.SetComponentsStatus(ctx, r.Client, req)
+	if err != nil {
+		return ctrl.Result{
+			Requeue:      true,
+			RequeueAfter: time.Second,
+		}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -121,9 +137,9 @@ func (r *LokiStackReconciler) SetupWithManager(mgr manager.Manager) error {
 func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	return bld.
 		For(&lokiv1beta1.LokiStack{}, createOrUpdateOnlyPred).
-		Owns(&corev1.ConfigMap{}, deleteOnlyPred).
-		Owns(&corev1.Service{}, deleteOnlyPred).
-		Owns(&appsv1.Deployment{}, deleteOnlyPred).
-		Owns(&appsv1.StatefulSet{}, deleteOnlyPred).
+		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
+		Owns(&corev1.Service{}, updateOrDeleteOnlyPred).
+		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
+		Owns(&appsv1.StatefulSet{}, updateOrDeleteOnlyPred).
 		Complete(r)
 }

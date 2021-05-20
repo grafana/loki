@@ -531,6 +531,51 @@ spec:
           status:
             description: LokiStackStatus defines the observed state of LokiStack
             properties:
+              components:
+                description: Components provides summary of all Loki pod status grouped
+                  per component.
+                properties:
+                  compactor:
+                    additionalProperties:
+                      items:
+                        type: string
+                      type: array
+                    description: Compactor is a map to the pod status of the compactor
+                      pod.
+                    type: object
+                  distributor:
+                    additionalProperties:
+                      items:
+                        type: string
+                      type: array
+                    description: Distributor is a map to the per pod status of the
+                      distributor deployment
+                    type: object
+                  ingester:
+                    additionalProperties:
+                      items:
+                        type: string
+                      type: array
+                    description: Ingester is a map to the per pod status of the ingester
+                      statefulset
+                    type: object
+                  querier:
+                    additionalProperties:
+                      items:
+                        type: string
+                      type: array
+                    description: Querier is a map to the per pod status of the querier
+                      statefulset
+                    type: object
+                  queryFrontend:
+                    additionalProperties:
+                      items:
+                        type: string
+                      type: array
+                    description: QueryFrontend is a mpa to the per pod status of the
+                      query frontend deployment.
+                    type: object
+                type: object
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:

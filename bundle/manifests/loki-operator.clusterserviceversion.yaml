@@ -260,6 +260,31 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
       statusDescriptors:
+      - description: Distributor is a map to the per pod status of the distributor deployment
+        displayName: Distributor
+        path: components.distributor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Ingester is a map to the per pod status of the ingester statefulset
+        displayName: Ingester
+        path: components.ingester
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Querier is a map to the per pod status of the querier statefulset
+        displayName: Querier
+        path: components.querier
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: QueryFrontend is a mpa to the per pod status of the query frontend deployment.
+        displayName: Query Frontend
+        path: components.queryFrontend
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Compactor is a map to the pod status of the compactor pod.
+        displayName: Compactor
+        path: components.compactor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
       - description: Conditions of the Loki deployment health.
         displayName: Conditions
         path: conditions

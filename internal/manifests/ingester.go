@@ -110,7 +110,7 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opt.Stack.Template.Ingester.NodeSelector
 	}
 
-	l := ComponentLabels("ingester", opt.Name)
+	l := ComponentLabels(LabelIngesterComponent, opt.Name)
 	a := commonAnnotations(opt.ConfigSHA1)
 
 	return &appsv1.StatefulSet{
@@ -119,7 +119,7 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-ingester-%s", opt.Name),
+			Name:   IngesterName(opt.Name),
 			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{
