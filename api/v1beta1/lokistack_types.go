@@ -340,6 +340,12 @@ const (
 	// ConditionReady defines the condition that all components in the Loki deployment are ready.
 	ConditionReady LokiStackConditionType = "Ready"
 
+	// ConditionPending defines the conditioin that some or all components are in pending state.
+	ConditionPending LokiStackConditionType = "Pending"
+
+	// ConditionFailed defines the condition that components in the Loki deployment failed to roll out.
+	ConditionFailed LokiStackConditionType = "Failed"
+
 	// ConditionDegraded defines the condition that some or all components in the Loki deployment
 	// are degraded or the cluster cannot connect to object storage.
 	ConditionDegraded LokiStackConditionType = "Degraded"
@@ -349,13 +355,17 @@ const (
 type LokiStackConditionReason string
 
 const (
+	// ReasonFailedComponents when all/some LokiStack components fail to roll out.
+	ReasonFailedComponents LokiStackConditionReason = "FailedComponents"
+	// ReasonPendingComponents when all/some LokiStack components pending dependencies
+	ReasonPendingComponents LokiStackConditionReason = "PendingComponents"
+	// ReasonReadyComponents when all LokiStack components are ready to serve traffic.
+	ReasonReadyComponents LokiStackConditionReason = "ReadyComponents"
 	// ReasonMissingObjectStorageSecret when the required secret to store logs to object
 	// storage is missing.
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
-
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
-
 	// ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 	// with the select cluster size.
 	ReasonInvalidReplicationConfiguration LokiStackConditionReason = "InvalidReplicationConfiguration"

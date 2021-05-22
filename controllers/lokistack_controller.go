@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/ViaQ/loki-operator/controllers/internal/management/state"
-	"github.com/ViaQ/loki-operator/controllers/internal/status"
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
 	"github.com/ViaQ/loki-operator/internal/handlers"
+	"github.com/ViaQ/loki-operator/internal/status"
 	"github.com/go-logr/logr"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -117,7 +117,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}, err
 	}
 
-	err = status.SetComponentsStatus(ctx, r.Client, req)
+	err = status.Refresh(ctx, r.Client, req)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,

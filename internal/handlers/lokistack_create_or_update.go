@@ -11,8 +11,8 @@ import (
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
 	"github.com/ViaQ/loki-operator/internal/handlers/internal/secrets"
-	"github.com/ViaQ/loki-operator/internal/handlers/internal/status"
 	"github.com/ViaQ/loki-operator/internal/manifests"
+	"github.com/ViaQ/loki-operator/internal/status"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -44,7 +44,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &s3secret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return status.SetDegradedCondition(ctx, k, &stack,
+			return status.SetDegradedCondition(ctx, k, req,
 				"Missing object storage secret",
 				lokiv1beta1.ReasonMissingObjectStorageSecret,
 			)
@@ -54,7 +54,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 
 	storage, err := secrets.Extract(&s3secret)
 	if err != nil {
-		return status.SetDegradedCondition(ctx, k, &stack,
+		return status.SetDegradedCondition(ctx, k, req,
 			"Invalid object storage secret contents",
 			lokiv1beta1.ReasonInvalidObjectStorageSecret,
 		)

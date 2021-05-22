@@ -18,3 +18,16 @@ import (
 func (fake *FakeClient) SetClientObject(out, v client.Object) {
 	reflect.Indirect(reflect.ValueOf(out)).Set(reflect.ValueOf(v).Elem())
 }
+
+// SetClientObjectList sets out list to v.
+// This is primarily used within the GetStub to fake the object returned from the API to the vaule of v
+//
+// Examples:
+//
+//  k.GetStub = func(_ context.Context, _ types.NamespacedName, list client.ObjectList) error {
+//  	k.SetClientObjectList(list, &podList)
+//  	return nil
+//  }
+func (fake *FakeClient) SetClientObjectList(out, v client.ObjectList) {
+	reflect.Indirect(reflect.ValueOf(out)).Set(reflect.ValueOf(v).Elem())
+}
