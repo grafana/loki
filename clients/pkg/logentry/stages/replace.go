@@ -2,6 +2,7 @@ package stages
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"regexp"
 	"text/template"
@@ -159,6 +160,9 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 				extracted[name] = v
 			}
 		}
+	}
+	if Debug {
+		level.Debug(r.logger).Log("msg", "extracted data debug in replace stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }
 

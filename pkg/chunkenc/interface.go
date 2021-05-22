@@ -121,6 +121,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() Encoding
+	Rebound(start, end time.Time) (Chunk, error)
 }
 
 // Block is a chunk block.

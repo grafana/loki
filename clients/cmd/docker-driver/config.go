@@ -184,9 +184,6 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if tlsCertFile, ok := logCtx.Config[cfgTLSCertFileKey]; ok {
 		clientConfig.Client.TLSConfig.CertFile = tlsCertFile
 	}
-	if tlsCertFile, ok := logCtx.Config[cfgTLSCertFileKey]; ok {
-		clientConfig.Client.TLSConfig.CertFile = tlsCertFile
-	}
 	if tlsKeyFile, ok := logCtx.Config[cfgTLSKeyFileKey]; ok {
 		clientConfig.Client.TLSConfig.KeyFile = tlsKeyFile
 	}

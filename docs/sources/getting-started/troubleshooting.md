@@ -66,7 +66,7 @@ $ kubectl port-forward loki-promtail-jrfg7 9080
 Both `loki` and `promtail` support a log level flag on the command-line:
 
 ```bash
-$ loki —log.level=debug
+$ loki -log.level=debug
 $ promtail -log.level=debug
 ```
 

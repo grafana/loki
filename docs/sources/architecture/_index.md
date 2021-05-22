@@ -103,7 +103,7 @@ Since all distributors share access to the same hash ring, write requests can be
 sent to any distributor.
 
 To ensure consistent query results, Loki uses
-[Dynamo-style](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf)
+[Dynamo-style](https://www.cs.princeton.edu/courses/archive/fall15/cos518/studpres/dynamo.pdf)
 quorum consistency on reads and writes. This means that the distributor will wait
 for a positive response of at least one half plus one of the ingesters to send
 the sample to before responding to the client that initiated the send.

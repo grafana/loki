@@ -3,6 +3,8 @@ package chunkenc
 import (
 	"io"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
@@ -81,6 +83,16 @@ func (f Facade) Size() int {
 // LokiChunk returns the chunkenc.Chunk.
 func (f Facade) LokiChunk() Chunk {
 	return f.c
+}
+
+func (f Facade) Rebound(start, end model.Time) (encoding.Chunk, error) {
+	newChunk, err := f.c.Rebound(start.Time(), end.Time())
+	if err != nil {
+		return nil, err
+	}
+	return &Facade{
+		c: newChunk,
+	}, nil
 }
 
 // UncompressedSize is a helper function to hide the type assertion kludge when wanting the uncompressed size of the Cortex interface encoding.Chunk.
