@@ -1,11 +1,16 @@
 package ruler
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/prometheus/config"
 
 	"github.com/stretchr/testify/require"
 )

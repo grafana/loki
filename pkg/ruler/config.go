@@ -6,6 +6,10 @@ import (
 	"github.com/prometheus/prometheus/config"
 )
 
+// DefaultBufferSize defines the default size of the samples buffer which will hold samples
+// while the remote-write endpoint is unavailable
+const DefaultBufferSize = 100
+
 type Config struct {
 	ruler.Config `yaml:",inline"`
 

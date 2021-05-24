@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/prometheus/prometheus/storage/remote"
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/prometheus/prometheus/rules"
 
@@ -15,10 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -28,36 +25,17 @@ type RemoteWriteAppendable struct {
 	cfg           Config
 
 	logger       log.Logger
-	remoteWriter *remote.WriteClient
+	remoteWriter remoteWriter
 }
 
 type RemoteWriteAppender struct {
 	logger       log.Logger
 	ctx          context.Context
-	remoteWriter *remote.WriteClient
+	remoteWriter remoteWriter
+	userID       string
 	groupKey     string
 
-	queue *remoteWriteQueue
-}
-
-func (a *RemoteWriteAppender) encodeRequest(l labels.Labels, s cortexpb.Sample) ([]byte, error) {
-	ts := prompb.TimeSeries{
-		Labels: labelsToLabelsProto(l, nil),
-		Samples: []prompb.Sample{
-			{
-				Value:     s.Value,
-				Timestamp: s.TimestampMs,
-			},
-		},
-	}
-
-	data, err := proto.Marshal(&prompb.WriteRequest{Timeseries: []prompb.TimeSeries{ts}})
-	if err != nil {
-		return nil, err
-	}
-
-	compressed := snappy.Encode(nil, data)
-	return compressed, nil
+	queue *util.EvictingQueue
 }
 
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
@@ -69,6 +47,7 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 
 	groupKey := retrieveGroupKeyFromContext(ctx)
 
+	// create or retrieve an appender associated with this groupKey (unique ID for rule group)
 	appender, found := a.groupAppender[groupKey]
 	if !found {
 		appender = &RemoteWriteAppender{
@@ -76,8 +55,9 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 			logger:       a.logger,
 			remoteWriter: a.remoteWriter,
 			groupKey:     groupKey,
+			userID:       a.userID,
 
-			queue: newRemoteWriteQueue(a.cfg.RemoteWrite.BufferSize, a.userID, groupKey),
+			queue: util.NewEvictingQueue(a.cfg.RemoteWrite.BufferSize, onEvict(a.userID, groupKey)),
 		}
 
 		// only track reference if groupKey was retrieved
@@ -92,11 +72,23 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	return appender
 }
 
+func onEvict(userID, groupKey string) func() {
+	return func() {
+		samplesEvicted.WithLabelValues(userID, groupKey).Inc()
+	}
+}
+
 func (a *RemoteWriteAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
-	a.queue.append(l, cortexpb.Sample{
-		Value:       v,
-		TimestampMs: t,
+	a.queue.Append(queueEntry{
+		labels: l,
+		sample: cortexpb.Sample{
+			Value:       v,
+			TimestampMs: t,
+		},
 	})
+
+	samplesBufferedCurrent.WithLabelValues(a.userID, a.groupKey).Set(float64(a.queue.Length()))
+	samplesBufferedTotal.WithLabelValues(a.userID, a.groupKey).Inc()
 
 	return 0, nil
 }
@@ -106,7 +98,7 @@ func (a *RemoteWriteAppender) AppendExemplar(_ uint64, _ labels.Labels, _ exempl
 }
 
 func (a *RemoteWriteAppender) Commit() error {
-	if a.queue.length() <= 0 {
+	if a.queue.Length() <= 0 {
 		return nil
 	}
 
@@ -115,41 +107,30 @@ func (a *RemoteWriteAppender) Commit() error {
 		return nil
 	}
 
-	writer := *a.remoteWriter
-	level.Debug(a.logger).Log("msg", "writing samples to remote_write target", "target", writer.Endpoint(), "count", a.queue.length())
+	level.Debug(a.logger).Log("msg", "writing samples to remote_write target", "target", a.remoteWriter.Endpoint(), "count", a.queue.Length())
 
-	req, err := a.prepareRequest()
+	req, err := a.remoteWriter.PrepareRequest(a.queue)
 	if err != nil {
 		level.Error(a.logger).Log("msg", "could not prepare remote-write request", "err", err)
 		return err
 	}
 
-	err = writer.Store(a.ctx, req)
+	err = a.remoteWriter.Store(a.ctx, req)
 	if err != nil {
 		level.Error(a.logger).Log("msg", "could not store recording rule samples", "err", err)
 		return err
 	}
 
-	// clear the queue on a successful response
-	a.queue.clear()
+	// Clear the queue on a successful response
+	a.queue.Clear()
+
+	samplesBufferedCurrent.WithLabelValues(a.userID, a.groupKey).Set(0)
 
 	return nil
 }
 
-func (a *RemoteWriteAppender) prepareRequest() ([]byte, error) {
-	req := cortexpb.ToWriteRequest(a.queue.labels, a.queue.samples, nil, cortexpb.RULE)
-	defer cortexpb.ReuseSlice(req.Timeseries)
-
-	reqBytes, err := req.Marshal()
-	if err != nil {
-		return nil, err
-	}
-
-	return snappy.Encode(nil, reqBytes), nil
-}
-
 func (a *RemoteWriteAppender) Rollback() error {
-	a.queue.clear()
+	a.queue.Clear()
 
 	return nil
 }

@@ -146,7 +146,7 @@ func newAppendable(cfg Config, logger log.Logger, userID string) storage.Appenda
 	}
 }
 
-func newRemoteWriter(logger log.Logger, cfg Config) *remote.WriteClient {
+func newRemoteWriter(logger log.Logger, cfg Config) remoteWriter {
 	if !cfg.RemoteWrite.Enabled() {
 		level.Warn(logger).Log("msg", "remote write client not configured")
 		return nil
@@ -163,7 +163,9 @@ func newRemoteWriter(logger log.Logger, cfg Config) *remote.WriteClient {
 		return nil
 	}
 
-	return &writeClient
+	return &remoteWriteClient{
+		writeClient,
+	}
 }
 
 type GroupLoader struct{}

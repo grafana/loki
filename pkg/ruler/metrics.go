@@ -5,10 +5,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-var samplesDiscarded = promauto.NewCounterVec(prometheus.CounterOpts{
+var samplesEvicted = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "loki",
-	Name:      "recording_rules_queue_samples_discarded_total",
-	Help:      "Number of samples discarded from queue; buffer is full!",
+	Name:      "recording_rules_queue_samples_evicted_total",
+	Help:      "Number of samples evicted from queue; buffer is full!",
 }, []string{"user_id", "group_key"})
 
 var samplesBufferedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
