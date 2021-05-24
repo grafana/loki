@@ -24,13 +24,16 @@ func (q *EvictingQueue) Append(entry interface{}) {
 	defer q.Unlock()
 
 	if len(q.entries) >= q.capacity {
-		q.onEvict()
-
-		// capacity exceeded, evict oldest entry
-		q.entries = append(q.entries[:0], q.entries[1:]...)
+		q.evictOldest()
 	}
 
 	q.entries = append(q.entries, entry)
+}
+
+func (q *EvictingQueue) evictOldest() {
+	q.onEvict()
+
+	q.entries = append(q.entries[:0], q.entries[1:]...)
 }
 
 func (q *EvictingQueue) Entries() []interface{} {
