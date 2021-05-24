@@ -8,17 +8,23 @@ import (
 var samplesEvicted = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "loki",
 	Name:      "recording_rules_queue_samples_evicted_total",
-	Help:      "Number of samples evicted from queue; buffer is full!",
+	Help:      "Number of samples evicted from queue; queue is full!",
 }, []string{"user_id", "group_key"})
 
-var samplesBufferedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+var samplesQueuedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "loki",
-	Name:      "recording_rules_queue_samples_buffered_total",
-	Help:      "Number of samples buffered in queue in total.",
+	Name:      "recording_rules_queue_samples_queued_total",
+	Help:      "Number of samples queued in total.",
 }, []string{"user_id", "group_key"})
 
-var samplesBufferedCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
+var samplesQueued = promauto.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: "loki",
-	Name:      "recording_rules_queue_samples_buffered_current",
-	Help:      "Number of samples currently buffered in queue.",
+	Name:      "recording_rules_queue_samples_queued_current",
+	Help:      "Number of samples queued to be remote-written.",
+}, []string{"user_id", "group_key"})
+
+var samplesQueueCapacity = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: "loki",
+	Name:      "recording_rules_queue_samples_queue_capacity",
+	Help:      "Number of samples that can be queued before eviction of oldest samples occurs.",
 }, []string{"user_id", "group_key"})

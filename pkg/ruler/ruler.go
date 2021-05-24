@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
-func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits ruler.RulesLimits) (*ruler.Ruler, error) {
+func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*ruler.Ruler, error) {
 	mgr, err := ruler.NewDefaultMultiTenantManager(
 		cfg.Config,
 		MemstoreTenantManager(

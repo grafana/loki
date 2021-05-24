@@ -23,6 +23,7 @@ type RemoteWriteAppendable struct {
 	groupAppender map[string]*RemoteWriteAppender
 	userID        string
 	cfg           Config
+	overrides     RulesLimits
 
 	logger       log.Logger
 	remoteWriter remoteWriter
@@ -50,6 +51,7 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	// create or retrieve an appender associated with this groupKey (unique ID for rule group)
 	appender, found := a.groupAppender[groupKey]
 	if !found {
+		capacity := a.queueCapacityForTenant()
 		appender = &RemoteWriteAppender{
 			ctx:          ctx,
 			logger:       a.logger,
@@ -57,8 +59,10 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 			groupKey:     groupKey,
 			userID:       a.userID,
 
-			queue: util.NewEvictingQueue(a.cfg.RemoteWrite.BufferSize, onEvict(a.userID, groupKey)),
+			queue: util.NewEvictingQueue(capacity, onEvict(a.userID, groupKey)),
 		}
+
+		samplesQueueCapacity.WithLabelValues(a.userID, groupKey).Set(float64(capacity))
 
 		// only track reference if groupKey was retrieved
 		if groupKey == "" {
@@ -70,6 +74,15 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 
 	return appender
+}
+
+func (a *RemoteWriteAppendable) queueCapacityForTenant() int {
+	capacity := a.cfg.RemoteWrite.QueueCapacity
+	if tenantCapacity := a.overrides.RulerRemoteWriteQueueCapacity(a.userID); tenantCapacity > 0 {
+		capacity = tenantCapacity
+	}
+
+	return capacity
 }
 
 func onEvict(userID, groupKey string) func() {
@@ -87,8 +100,8 @@ func (a *RemoteWriteAppender) Append(_ uint64, l labels.Labels, t int64, v float
 		},
 	})
 
-	samplesBufferedCurrent.WithLabelValues(a.userID, a.groupKey).Set(float64(a.queue.Length()))
-	samplesBufferedTotal.WithLabelValues(a.userID, a.groupKey).Inc()
+	samplesQueued.WithLabelValues(a.userID, a.groupKey).Set(float64(a.queue.Length()))
+	samplesQueuedTotal.WithLabelValues(a.userID, a.groupKey).Inc()
 
 	return 0, nil
 }
@@ -124,7 +137,7 @@ func (a *RemoteWriteAppender) Commit() error {
 	// Clear the queue on a successful response
 	a.queue.Clear()
 
-	samplesBufferedCurrent.WithLabelValues(a.userID, a.groupKey).Set(0)
+	samplesQueued.WithLabelValues(a.userID, a.groupKey).Set(0)
 
 	return nil
 }

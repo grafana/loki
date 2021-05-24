@@ -34,7 +34,9 @@ import (
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
 type RulesLimits interface {
-	EvaluationDelay(usedID string) time.Duration
+	ruler.RulesLimits
+
+	RulerRemoteWriteQueueCapacity(userID string) int
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
@@ -111,7 +113,7 @@ func MemstoreTenantManager(
 		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      newAppendable(cfg, logger, userID),
+			Appendable:      newAppendable(cfg, overrides, logger, userID),
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
@@ -132,7 +134,7 @@ func MemstoreTenantManager(
 	})
 }
 
-func newAppendable(cfg Config, logger log.Logger, userID string) storage.Appendable {
+func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string) storage.Appendable {
 	if !cfg.RemoteWrite.Enabled() {
 		level.Warn(logger).Log("msg", "remote write client not configured")
 		return &NoopAppender{}
@@ -143,6 +145,7 @@ func newAppendable(cfg Config, logger log.Logger, userID string) storage.Appenda
 		logger:       logger,
 		userID:       userID,
 		cfg:          cfg,
+		overrides:    overrides,
 	}
 }
 
