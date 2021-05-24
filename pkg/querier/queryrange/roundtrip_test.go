@@ -109,7 +109,7 @@ func TestMetricsTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -138,7 +138,7 @@ func TestMetricsTripperware(t *testing.T) {
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
-	lokiResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 
 	// testing cache
@@ -148,7 +148,7 @@ func TestMetricsTripperware(t *testing.T) {
 	// 0 queries result are cached.
 	require.Equal(t, 0, *count)
 	require.NoError(t, err)
-	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
+	lokiCacheResponse, err := LokiCodec.DecodeResponse(ctx, cacheResp, lreq)
 	require.NoError(t, err)
 
 	require.Equal(t, lokiResponse.(*LokiPromResponse).Response, lokiCacheResponse.(*LokiPromResponse).Response)
@@ -175,7 +175,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -191,7 +191,7 @@ func TestLogFilterTripperware(t *testing.T) {
 
 	// set the query length back to normal
 	lreq.StartTs = testTime.Add(-6 * time.Hour)
-	req, err = lokiCodec.EncodeRequest(ctx, lreq)
+	req, err = LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	// testing retry
@@ -221,7 +221,7 @@ func TestSeriesTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -234,7 +234,7 @@ func TestSeriesTripperware(t *testing.T) {
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
-	lokiSeriesResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	lokiSeriesResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
 	res, ok := lokiSeriesResponse.(*LokiSeriesResponse)
 	require.Equal(t, true, ok)
 
@@ -262,7 +262,7 @@ func TestLabelsTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -283,7 +283,7 @@ func TestLabelsTripperware(t *testing.T) {
 	// verify 2 calls have been made to downstream.
 	require.Equal(t, 2, handler.count)
 	require.NoError(t, err)
-	lokiLabelsResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	lokiLabelsResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
 	res, ok := lokiLabelsResponse.(*LokiLabelNamesResponse)
 	require.Equal(t, true, ok)
 	require.Equal(t, []string{"foo", "bar", "blop", "blip"}, res.Data)
@@ -311,7 +311,7 @@ func TestLogNoRegex(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -369,7 +369,7 @@ func TestRegexpParamsSupport(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	// fudge a regexp params
@@ -448,7 +448,7 @@ func TestEntriesLimitsTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -479,7 +479,7 @@ func TestEntriesLimitWithZeroTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
