@@ -3,7 +3,16 @@ title: Retention
 ---
 # Loki Storage Retention
 
-Retention in Loki is achieved through the [Table Manager](../table-manager/).
+Retention in Loki is achieved either through the [Table Manager](../table-manager/) or the [Compactor](./#compactor).
+
+Retention through the table manager is achieved by relying on the object store TTL feature and will work for both boltdb-shipper store and chunk store. However retention through the [Compactor](./#compactor)
+
+
+Going forward the compactor retention will become the default and long term supported one.
+
+## Compactor
+## Table Manager
+
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
 [`table_manager_config`](../../../configuration#table_manager_config)
