@@ -136,7 +136,7 @@ func MemstoreTenantManager(
 
 func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string) storage.Appendable {
 	if !cfg.RemoteWrite.Enabled {
-		level.Warn(logger).Log("msg", "remote write client not configured")
+		level.Warn(logger).Log("msg", "remote write is not enabled")
 		return &NoopAppender{}
 	}
 

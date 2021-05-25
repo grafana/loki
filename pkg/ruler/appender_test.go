@@ -55,7 +55,6 @@ func TestAppenderSeparationByRuleGroup(t *testing.T) {
 	ctxB := createOriginContext("/rule/fileB", "rule-groupB")
 	appendable := createBasicAppendable()
 
-	// context passing a valid group key will allow the appender to be memoized
 	appenderA := appendable.Appender(ctxA)
 	appenderB := appendable.Appender(ctxB)
 	require.NotSame(t, appenderA, appenderB)
