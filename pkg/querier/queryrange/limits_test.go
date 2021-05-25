@@ -72,7 +72,7 @@ func Test_seriesLimiter(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -159,7 +159,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
 	require.Nil(t, err)
 
-	_, _ = NewLimitedRoundTripper(f, lokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
 				var wg sync.WaitGroup
@@ -193,7 +193,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
 	require.Nil(t, err)
 
-	_, _ = NewLimitedRoundTripper(f, lokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
 				for i := 0; i < 10; i++ {

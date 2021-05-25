@@ -153,7 +153,7 @@ func Test_astMapper(t *testing.T) {
 	resp, err := mware.Do(context.Background(), defaultReq().WithQuery(`{food="bar"}`))
 	require.Nil(t, err)
 
-	expected, err := lokiCodec.MergeResponse(lokiResps...)
+	expected, err := LokiCodec.MergeResponse(lokiResps...)
 	sort.Sort(logproto.Streams(expected.(*LokiResponse).Data.Result))
 	require.Nil(t, err)
 	require.Equal(t, called, 2)

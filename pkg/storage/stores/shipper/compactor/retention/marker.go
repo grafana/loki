@@ -199,7 +199,6 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
 				continue
 			}
-			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
 			if len(paths) == 0 {
 				level.Info(util_log.Logger).Log("msg", "no marks file found")
 			}
@@ -219,6 +218,29 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				}
 			}
 
+		}
+	}()
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		tick := func() {
+			select {
+			case <-r.ctx.Done():
+			case <-ticker.C:
+			}
+		}
+		for ; true; tick() {
+			if r.ctx.Err() != nil {
+				return
+			}
+			paths, _, err := r.availablePath()
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
+				continue
+			}
+			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
 		}
 	}()
 }
@@ -259,7 +281,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 	if err != nil {
 		return err
 	}
-	dbUpdate.MaxBatchDelay = 1 * time.Second // 1 s is way enough for saving changes, worst case this operation is idempotent.
+	dbUpdate.MaxBatchDelay = 5 * time.Millisecond
 	defer func() {
 		close(queue)
 		wg.Wait()

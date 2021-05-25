@@ -75,6 +75,7 @@ var (
 		"ceil",
 		"floor",
 		"round",
+		"fromJson",
 	}
 )
 
