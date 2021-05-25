@@ -63,7 +63,7 @@ func (p *parserHint) NoLabels() bool {
 
 // newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
 func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
-	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups))+1)
+	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
 	hints = appendLabelHints(hints, metricLabelName)
