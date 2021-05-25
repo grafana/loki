@@ -23,10 +23,6 @@ var (
 	EmptyWriteRequest = []byte{}
 )
 
-// TODO:
-// tests:
-// - non-metric query executed (document this)
-
 func TestGroupKeyRetrieval(t *testing.T) {
 	ruleFile := "/my/file"
 	groupName := "my-group"

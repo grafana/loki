@@ -7,9 +7,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/validation"
 	"github.com/stretchr/testify/require"
 )
@@ -283,4 +286,27 @@ func TestNoopAppender(t *testing.T) {
 	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake")
 	appender := appendable.Appender(context.TODO())
 	require.IsType(t, NoopAppender{}, appender)
+}
+
+// TestNonMetricQuery tests that only metric queries can be executed in the query function,
+// as both alert and recording rules rely on metric queries being run
+func TestNonMetricQuery(t *testing.T) {
+	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.Nil(t, err)
+
+	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides)
+	queryFunc := engineQueryFunc(engine, overrides, "fake")
+
+	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
+	require.Error(t, err, "rule result is not a vector or scalar")
+}
+
+type FakeQuerier struct{}
+
+func (q *FakeQuerier) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
+	return iter.NoopIterator, nil
+}
+
+func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
+	return iter.NoopIterator, nil
 }
