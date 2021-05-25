@@ -13,6 +13,11 @@ type EvictingQueue struct {
 }
 
 func NewEvictingQueue(capacity int, onEvict func()) *EvictingQueue {
+	if capacity <= 0 {
+		// a queue of 0 (or smaller) capacity is invalid
+		return nil
+	}
+
 	return &EvictingQueue{
 		capacity: capacity,
 		onEvict:  onEvict,
@@ -48,6 +53,10 @@ func (q *EvictingQueue) Length() int {
 	defer q.RUnlock()
 
 	return len(q.entries)
+}
+
+func (q *EvictingQueue) Capacity() int {
+	return q.capacity
 }
 
 func (q *EvictingQueue) Clear() {

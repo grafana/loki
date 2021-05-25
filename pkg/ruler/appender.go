@@ -40,6 +40,10 @@ type RemoteWriteAppender struct {
 }
 
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
+	if !a.cfg.RemoteWrite.Enabled {
+		return &NoopAppender{}
+	}
+
 	var appender *RemoteWriteAppender
 
 	if a.groupAppender == nil {

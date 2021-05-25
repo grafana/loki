@@ -22,6 +22,24 @@ func TestQueueAppend(t *testing.T) {
 	require.Equal(t, 5, q.Length())
 }
 
+func TestQueueCapacity(t *testing.T) {
+	q := NewEvictingQueue(9, noopOnEvict)
+	require.Equal(t, 9, q.Capacity())
+
+	q.capacity = 11
+	require.Equal(t, 11, q.Capacity())
+}
+
+func TestZeroCapacityQueue(t *testing.T) {
+	q := NewEvictingQueue(0, noopOnEvict)
+	require.Nil(t, q)
+}
+
+func TestNegativeCapacityQueue(t *testing.T) {
+	q := NewEvictingQueue(-1, noopOnEvict)
+	require.Nil(t, q)
+}
+
 func TestQueueEvict(t *testing.T) {
 	q := NewEvictingQueue(3, noopOnEvict)
 

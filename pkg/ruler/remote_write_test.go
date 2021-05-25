@@ -1,0 +1,47 @@
+package ruler
+
+import (
+	"testing"
+	"time"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/go-kit/kit/log"
+	"github.com/golang/snappy"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
+)
+
+func TestPrepareRequest(t *testing.T) {
+	ctx := createOriginContext("/rule/file", "rule-group")
+	appendable := createBasicAppendable()
+	appendable.remoteWriter = newRemoteWriter(log.NewNopLogger(), appendable.cfg)
+
+	appender := appendable.Appender(ctx).(*RemoteWriteAppender)
+
+	lbs := labels.Labels{
+		labels.Label{
+			Name:  "cluster",
+			Value: "us-central1",
+		},
+	}
+	sample := cortexpb.Sample{
+		Value:       70,
+		TimestampMs: time.Now().Unix(),
+	}
+
+	appender.Append(0, lbs, sample.TimestampMs, sample.Value)
+
+	bytes, err := appender.remoteWriter.PrepareRequest(appender.queue)
+	require.Nil(t, err)
+
+	var req cortexpb.WriteRequest
+
+	reqBytes, err := snappy.Decode(nil, bytes)
+	require.Nil(t, err)
+
+	require.Nil(t, req.Unmarshal(reqBytes))
+
+	require.Equal(t, req.Timeseries[0].Labels[0].Name, lbs[0].Name)
+	require.Equal(t, req.Timeseries[0].Labels[0].Value, lbs[0].Value)
+	require.Equal(t, req.Timeseries[0].Samples[0], sample)
+}

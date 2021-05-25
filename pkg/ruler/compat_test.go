@@ -10,8 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/prometheus/config"
-
+	"github.com/grafana/loki/pkg/validation"
 	"github.com/stretchr/testify/require"
 )
 
@@ -269,4 +268,19 @@ groups:
 		})
 
 	}
+}
+
+// TestNoopAppender tests that a NoopAppender is created when remote-write is disabled
+func TestNoopAppender(t *testing.T) {
+	cfg := Config{
+		Config: ruler.Config{},
+		RemoteWrite: RemoteWriteConfig{
+			Enabled: false,
+		},
+	}
+	require.False(t, cfg.RemoteWrite.Enabled)
+
+	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake")
+	appender := appendable.Appender(context.TODO())
+	require.IsType(t, NoopAppender{}, appender)
 }

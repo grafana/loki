@@ -17,14 +17,10 @@ type Config struct {
 }
 
 type RemoteWriteConfig struct {
-	Client config.RemoteWriteConfig `yaml:"client"`
+	Client  config.RemoteWriteConfig `yaml:"client"`
+	Enabled bool                     `yaml:"enabled"`
 
 	QueueCapacity int `yaml:"queue_capacity,omitempty"`
-}
-
-func (c *RemoteWriteConfig) Enabled() bool {
-	// remote-write is considered disabled if there's no target to write to
-	return c.Client.URL != nil
 }
 
 func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
