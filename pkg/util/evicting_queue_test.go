@@ -1,6 +1,7 @@
 package util
 
 import (
+	"math"
 	"math/rand"
 	"sync"
 	"testing"
@@ -95,4 +96,18 @@ func TestSafeConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	require.Equal(t, 3, q.Length())
+}
+
+func BenchmarkAppendAndEvict(b *testing.B) {
+	capacity := 5000
+	q := NewEvictingQueue(capacity, noopOnEvict)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		q.Append(n)
+	}
+
+	require.EqualValues(b, math.Min(float64(b.N), float64(capacity)), q.Length())
 }
