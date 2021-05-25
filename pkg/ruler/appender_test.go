@@ -8,13 +8,14 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -211,9 +212,9 @@ func TestAppenderRollback(t *testing.T) {
 	appendable := createBasicAppendable()
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 
-	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
-	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
-	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
+	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2) //nolint:errcheck
+	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2) //nolint:errcheck
+	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2) //nolint:errcheck
 
 	require.Equal(t, 3, appender.queue.Length())
 
@@ -229,9 +230,9 @@ func TestAppenderEvictOldest(t *testing.T) {
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 
-	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
-	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.3)
-	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.4)
+	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2) //nolint:errcheck
+	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.3) //nolint:errcheck
+	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.4) //nolint:errcheck
 
 	// capacity is enforced
 	require.Equal(t, queueCapacity, appender.queue.Length())
@@ -255,14 +256,14 @@ func createOriginContext(ruleFile, groupName string) context.Context {
 
 func createBasicAppendable() RemoteWriteAppendable {
 	return RemoteWriteAppendable{
-		userID: "fake",
+		userID: UserID,
 		cfg: Config{
 			RemoteWrite: RemoteWriteConfig{
 				Enabled:       true,
 				QueueCapacity: 10,
 			},
 		},
-		logger:    log.NewNopLogger(),
+		logger:    Logger,
 		overrides: fakeLimits(),
 	}
 }

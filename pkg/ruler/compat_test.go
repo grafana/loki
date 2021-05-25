@@ -11,10 +11,11 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/validation"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_Load(t *testing.T) {

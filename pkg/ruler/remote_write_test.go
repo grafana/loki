@@ -29,7 +29,7 @@ func TestPrepareRequest(t *testing.T) {
 		TimestampMs: time.Now().Unix(),
 	}
 
-	appender.Append(0, lbs, sample.TimestampMs, sample.Value)
+	appender.Append(0, lbs, sample.TimestampMs, sample.Value) //nolint:errcheck
 
 	bytes, err := appender.remoteWriter.PrepareRequest(appender.queue)
 	require.Nil(t, err)

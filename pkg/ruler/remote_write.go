@@ -5,9 +5,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/golang/snappy"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage/remote"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 type queueEntry struct {
