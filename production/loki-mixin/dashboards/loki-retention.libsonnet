@@ -80,7 +80,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.panel('Marks Files to Process') +
-            $.queryPanel(['loki_boltdb_shipper_retention_sweeper_marker_files_current{%s}' % $.namespaceMatcher()], ['count']),
+            $.queryPanel(['sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{%s})' % $.namespaceMatcher()], ['count']),
           )
           .addPanel(
             $.panel('Delete Rate Per Status') +
