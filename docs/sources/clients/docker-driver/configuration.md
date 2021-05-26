@@ -126,7 +126,7 @@ The example [docker-compose](https://github.com/grafana/loki/blob/master/cmd/doc
 ```yaml
 version: "3"
 services:
-  nginx:
+  grafana:
     image: grafana/grafana
     logging:
       driver: loki
@@ -172,7 +172,7 @@ For example the configuration below will rename the label `swarm_stack` and `swa
 ```yaml
 version: "3"
 services:
-  nginx:
+  grafana:
     image: grafana/grafana
     logging:
       driver: loki
