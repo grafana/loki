@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -47,7 +48,9 @@ func NewSyncer(
 	cfg scrapeconfig.Config,
 	clientConfigs ...client.Config,
 ) (*TargetSyncer, error) {
-	// todo config validation and default.
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
+	}
 	version, err := sarama.ParseKafkaVersion(cfg.KafkaConfig.Version)
 	if err != nil {
 		return nil, err
@@ -294,4 +297,27 @@ func (t *Target) Labels() model.LabelSet {
 // Details returns target-specific details.
 func (t *Target) Details() interface{} {
 	return t.details
+}
+
+func validateConfig(cfg *scrapeconfig.Config) error {
+	if cfg.KafkaConfig.WorkerPerPartition == 0 {
+		cfg.KafkaConfig.WorkerPerPartition = 1
+	}
+	if cfg.KafkaConfig == nil {
+		return errors.New("Kafka configuration is empty")
+	}
+	if cfg.KafkaConfig.Version == "" {
+		cfg.KafkaConfig.Version = "2.1.1"
+	}
+	if len(cfg.KafkaConfig.Brokers) == 0 {
+		return errors.New("no Kafka bootstrap brokers defined")
+	}
+
+	if len(cfg.KafkaConfig.Topics) == 0 {
+		return errors.New("no topics given to be consumed")
+	}
+	if len(cfg.KafkaConfig.Group) == 0 {
+		return errors.New("no Kafka consumer group defined")
+	}
+	return nil
 }

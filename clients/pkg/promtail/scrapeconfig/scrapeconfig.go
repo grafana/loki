@@ -223,16 +223,16 @@ type KafkaTargetConfig struct {
 	// The amount of worker to send data per partition
 	WorkerPerPartition int `yaml:"worker_per_partition"`
 
-	// The list of brokers to send to kafka
+	// The list of brokers to connect to kafka (Required).
 	Brokers string `yaml:"brokers"`
 
-	// The consumer group id
+	// The consumer group id (Required).
 	Group string `yaml:"group"`
 
-	// Kafka Topics to consume
+	// Kafka Topics to consume (Required).
 	Topics string `yaml:"topics"`
 
-	// Kafka version.
+	// Kafka version. Default to 2.2.1
 	Version string `yaml:"version"`
 
 	// Rebalancing strategy to use. (e.g sticky,roundrobin or range)
