@@ -16,6 +16,8 @@ const (
 	WorkerLabel = "worker"
 )
 
+var DefaultClientFactory = client.NewMulti
+
 type fanOutHandler struct {
 	handlers []api.EntryHandler
 	curr     int
@@ -37,7 +39,7 @@ func NewFanOutHandler(
 		return nil, errors.New("worker count must be positive")
 	}
 	if workerCount == 1 {
-		c, err := client.NewMulti(reg, logger, clientConfigs...)
+		c, err := DefaultClientFactory(reg, logger, clientConfigs...)
 		if err != nil {
 			return nil, err
 		}
@@ -49,7 +51,7 @@ func NewFanOutHandler(
 	}
 	handlers := make([]api.EntryHandler, workerCount)
 	for i := 0; i < workerCount; i++ {
-		c, err := client.NewMulti(reg, logger, clientConfigs...)
+		c, err := DefaultClientFactory(reg, logger, clientConfigs...)
 		if err != nil {
 			return nil, err
 		}
@@ -57,13 +59,15 @@ func NewFanOutHandler(
 		if err != nil {
 			return nil, err
 		}
-		handlers = append(handlers,
-			api.AddLabelsMiddleware(model.LabelSet{WorkerLabel: model.LabelValue(fmt.Sprintf("%d", i))}).Wrap(m.Wrap(c)))
+		handlers[i] =
+			api.AddLabelsMiddleware(model.LabelSet{WorkerLabel: model.LabelValue(fmt.Sprintf("%d", i))}).Wrap(m.Wrap(c))
 	}
-	return &fanOutHandler{
+	f := &fanOutHandler{
 		handlers: handlers,
 		entries:  make(chan api.Entry),
-	}, nil
+	}
+	f.start()
+	return f, nil
 }
 
 func (m *fanOutHandler) start() {

@@ -3,12 +3,13 @@ package config
 import (
 	"flag"
 
+	"github.com/grafana/loki/pkg/util/flagext"
+
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
-	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 // Config for promtail, describing what files to watch.

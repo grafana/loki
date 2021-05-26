@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -96,9 +97,12 @@ func (ts *TargetSyncer) consume() {
 			// Calling Consume in an infinite loop in case rebalancing is kicking in.
 			// In which case all claims will be renewed.
 			if err := ts.group.Consume(ts.ctx, strings.Split(ts.cfg.KafkaConfig.Topics, ","), ts); err != nil {
-				level.Error(ts.logger).Log("msg", "error from the consumer", "err", err)
+				level.Error(ts.logger).Log("msg", "error from the consumer, retrying in 5s", "err", err)
 				// backoff before re-trying.
-				<-time.After(5 * time.Second)
+				select {
+				case <-time.After(5 * time.Second):
+				case <-ts.ctx.Done():
+				}
 			}
 			if ts.ctx.Err() != nil {
 				return
@@ -177,6 +181,7 @@ func (ts *TargetSyncer) ConsumeClaim(session sarama.ConsumerGroupSession, claim 
 		return err
 	}
 	defer c.Stop()
+
 	t := NewTarget(session, claim, discoveredLabels, model.LabelSet(util.LabelsToMetric(lbs)), c)
 	ts.addTarget(t)
 	level.Info(ts.logger).Log("msg", "consuming topic", "details", details)
@@ -219,16 +224,6 @@ func newDetails(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupC
 		Partition:     claim.Partition(),
 		InitialOffset: claim.InitialOffset(),
 	}
-}
-
-func cloneClaims(orig map[string][]int32) map[string][]int32 {
-	res := make(map[string][]int32, len(orig))
-	for t, p := range orig {
-		n := make([]int32, len(p))
-		copy(n, p)
-		res[t] = n
-	}
-	return res
 }
 
 type Target struct {
