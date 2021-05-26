@@ -28,8 +28,10 @@ Add extra headers field to Connection (for via etc)
 
 Make errors use an error heirachy then can catch them with a type assertion
 
+````
  Error(...)
  ObjectCorrupted{ Error }
+````
 
 Make a Debug flag in connection for logging stuff
 
@@ -48,8 +50,10 @@ Swift client retries and backs off for all types of errors
 
 Implement net error interface?
 
+````
 type Error interface {
     error
     Timeout() bool   // Is the error a timeout?
     Temporary() bool // Is the error temporary?
 }
+````
