@@ -67,7 +67,7 @@ func (tm *TargetManager) Stop() {
 	}
 }
 
-// ActiveTargets returns the list of actuve Windows targets.
+// ActiveTargets returns the list of active Windows targets.
 func (tm *TargetManager) ActiveTargets() map[string][]target.Target {
 	result := make(map[string][]target.Target, len(tm.targets))
 	for k, v := range tm.targets {

@@ -32,7 +32,7 @@ func (tm *TargetManager) Ready() bool { return false }
 // Stop stops the Windows target manager and all of its targets.
 func (tm *TargetManager) Stop() {}
 
-// ActiveTargets returns the list of actuve Windows targets.
+// ActiveTargets returns the list of active Windows targets.
 func (tm *TargetManager) ActiveTargets() map[string][]target.Target { return nil }
 
 // AllTargets returns the list of all targets.

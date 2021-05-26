@@ -29,6 +29,9 @@ const (
 
 	// WindowsTargetType is a Windows event target
 	WindowsTargetType = TargetType("WindowsEvent")
+
+	// KafkaTargetType is a Kafka target
+	KafkaTargetType = TargetType("Kafka")
 )
 
 // Target is a promtail scrape target

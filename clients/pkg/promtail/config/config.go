@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 // Config for promtail, describing what files to watch.
@@ -33,4 +34,32 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c *Config) Setup() {
+	if c.ClientConfig.URL.URL != nil {
+		// if a single client config is used we add it to the multiple client config for backward compatibility
+		c.ClientConfigs = append(c.ClientConfigs, c.ClientConfig)
+	}
+
+	// This is a bit crude but if the Loki Push API target is specified,
+	// force the log level to match the promtail log level
+	for i := range c.ScrapeConfig {
+		if c.ScrapeConfig[i].PushConfig != nil {
+			c.ScrapeConfig[i].PushConfig.Server.LogLevel = c.ServerConfig.LogLevel
+			c.ScrapeConfig[i].PushConfig.Server.LogFormat = c.ServerConfig.LogFormat
+		}
+	}
+
+	// Merge the provided external labels from the single client config/command line with each client config from
+	// `clients`. This is done to allow --client.external-labels=key=value passed at command line to apply to all clients
+	// The order here is specified to allow the yaml to override the command line flag if there are any labels
+	// which exist in both the command line arguments as well as the yaml, and while this is
+	// not typically the order of precedence, the assumption here is someone providing a specific config in
+	// yaml is doing so explicitly to make a key specific to a client.
+	if len(c.ClientConfig.ExternalLabels.LabelSet) > 0 {
+		for i := range c.ClientConfigs {
+			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
+		}
+	}
 }

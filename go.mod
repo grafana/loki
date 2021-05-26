@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/pubsub v1.3.1
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/NYTimes/gziphandler v1.1.1
+	github.com/Shopify/sarama v1.29.0
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
@@ -41,7 +42,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.10
-	github.com/klauspost/compress v1.11.3
+	github.com/klauspost/compress v1.12.2
 	github.com/klauspost/pgzip v1.2.5
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/modern-go/reflect2 v1.0.1
@@ -65,9 +66,9 @@ require (
 	github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
 	go.etcd.io/bbolt v1.3.5
 	go.uber.org/atomic v1.7.0
-	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
-	golang.org/x/net v0.0.0-20210324051636-2c4c8ecb7826
-	golang.org/x/sys v0.0.0-20210324051608-47abb6519492
+	golang.org/x/crypto v0.0.0-20210421170649-83a5a9bb288b
+	golang.org/x/net v0.0.0-20210427231257-85d9c07bbe3a
+	golang.org/x/sys v0.0.0-20210423082822-04245dca01da
 	google.golang.org/api v0.42.0
 	google.golang.org/grpc v1.36.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6

@@ -13,8 +13,6 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 var (
@@ -38,9 +36,9 @@ type logger struct {
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
-func NewLogger(reg prometheus.Registerer, log log.Logger, externalLabels lokiflag.LabelSet, cfgs ...Config) (Client, error) {
+func NewLogger(reg prometheus.Registerer, log log.Logger, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
-	c, err := NewMulti(reg, log, externalLabels, cfgs...)
+	c, err := NewMulti(reg, log, cfgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +80,5 @@ func (l *logger) run() {
 		fmt.Fprint(l.Writer, "\n")
 		l.Flush()
 	}
-
 }
 func (l *logger) StopNow() { l.Stop() }

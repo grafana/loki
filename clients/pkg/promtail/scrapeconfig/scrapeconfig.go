@@ -35,6 +35,7 @@ type Config struct {
 	GcplogConfig           *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
 	PushConfig             *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
 	WindowsConfig          *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
+	KafkaConfig            *KafkaTargetConfig         `yaml:"kafka,omitempty"`
 	RelabelConfigs         []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig     `yaml:",inline"`
 }
@@ -212,6 +213,32 @@ type WindowsEventsTargetConfig struct {
 	Labels model.LabelSet `yaml:"labels"`
 }
 
+type KafkaTargetConfig struct {
+	// Labels optionally holds labels to associate with each log line.
+	Labels model.LabelSet `yaml:"labels"`
+	// UseIncomingTimestamp sets the timestamp to the incoming windows messages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// The amount of worker to send data per partition
+	WorkerPerPartition int `yaml:"worker_per_partition"`
+
+	// The list of brokers to send to kafka
+	Brokers string `yaml:"brokers"`
+
+	// The consumer group id
+	Group string `yaml:"group"`
+
+	// Kafka Topics to consume
+	Topics string `yaml:"topics"`
+
+	// Kafka version.
+	Version string `yaml:"version"`
+
+	// Rebalancing strategy to use. (e.g sticky,roundrobin or range)
+	Assignor string `yaml:"assignor"`
+}
+
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
 type GcplogTargetConfig struct {
 	// ProjectID is the Cloud project id
@@ -254,7 +281,6 @@ func (c *Config) HasServiceDiscoveryConfig() bool {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
-
 	*c = DefaultScrapeConfig
 
 	type plain Config
