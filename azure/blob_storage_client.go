@@ -250,6 +250,9 @@ func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
 	}
 
 	_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
+	if err != nil && isObjNotFoundErr(err) {
+		return chunk.ErrStorageObjectNotFound
+	}
 	return err
 }
 
@@ -269,7 +272,7 @@ func (b *BlobStorage) selectContainerURLFmt() string {
 	return endpoints[b.cfg.Environment].containerURLFmt
 }
 
-// isObjNotFoundErr returns true if error means that object is not found. Relevant to GetObject operations.
+// isObjNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func isObjNotFoundErr(err error) bool {
 	var e azblob.StorageError
 	if errors.As(err, &e) && e.ServiceCode() == azblob.ServiceCodeBlobNotFound {
