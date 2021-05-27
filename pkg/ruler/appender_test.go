@@ -270,7 +270,7 @@ func createBasicAppendable() RemoteWriteAppendable {
 				Enabled:       true,
 				QueueCapacity: 10,
 				Client: config.RemoteWriteConfig{
-					URL: &promConfig.URL{target},
+					URL: &promConfig.URL{URL: target},
 				},
 			},
 		},
