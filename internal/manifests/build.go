@@ -13,11 +13,6 @@ import (
 func BuildAll(opt Options) ([]client.Object, error) {
 	res := make([]client.Object, 0)
 
-	opt, err := applyUserOptions(opt)
-	if err != nil {
-		return nil, err
-	}
-
 	cm, sha1C, err := LokiConfigMap(opt)
 	if err != nil {
 		return nil, err
@@ -35,11 +30,20 @@ func BuildAll(opt Options) ([]client.Object, error) {
 	return res, nil
 }
 
-func applyUserOptions(opt Options) (Options, error) {
-	defs := internal.StackSizeTable[opt.Stack.Size]
-	spec := (&defs).DeepCopy()
+// DefaultLokiStackSpec returns the default configuration for a LokiStack of
+// the specified size
+func DefaultLokiStackSpec(size lokiv1beta1.LokiStackSizeType) *lokiv1beta1.LokiStackSpec {
+	defaults := internal.StackSizeTable[size]
+	return (&defaults).DeepCopy()
+}
+
+// ApplyDefaultSettings manipulates the options to conform to
+// build specifications
+func ApplyDefaultSettings(opt *Options) error {
+	spec := DefaultLokiStackSpec(opt.Stack.Size)
+
 	if err := mergo.Merge(spec, opt.Stack, mergo.WithOverride); err != nil {
-		return Options{}, kverrors.Wrap(err, "failed merging stack user options", "name", opt.Name)
+		return kverrors.Wrap(err, "failed merging stack user options", "name", opt.Name)
 	}
 
 	strictOverrides := lokiv1beta1.LokiStackSpec{
@@ -51,11 +55,13 @@ func applyUserOptions(opt Options) (Options, error) {
 			},
 		},
 	}
+
 	if err := mergo.Merge(spec, strictOverrides, mergo.WithOverride); err != nil {
-		return Options{}, kverrors.Wrap(err, "failed to merge strict defaults")
+		return kverrors.Wrap(err, "failed to merge strict defaults")
 	}
 
 	opt.ResourceRequirements = internal.ResourceRequirementsTable[opt.Stack.Size]
 	opt.Stack = *spec
-	return opt, nil
+
+	return nil
 }

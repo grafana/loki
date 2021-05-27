@@ -12,6 +12,7 @@ import (
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
 	"github.com/ViaQ/loki-operator/internal/handlers/internal/secrets"
 	"github.com/ViaQ/loki-operator/internal/manifests"
+	"github.com/ViaQ/loki-operator/internal/metrics"
 	"github.com/ViaQ/loki-operator/internal/status"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -71,6 +72,11 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 
 	ll.Info("begin building manifests")
 
+	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
+		ll.Error(optErr, "failed to conform options to build settings")
+		return optErr
+	}
+
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
@@ -79,6 +85,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	ll.Info("manifests built", "count", len(objects))
 
 	var errCount int32
+
 	for _, obj := range objects {
 		l := ll.WithValues(
 			"object_name", obj.GetName(),
@@ -102,11 +109,18 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 			errCount++
 			continue
 		}
+
 		l.Info(fmt.Sprintf("Resource has been %s", op))
 	}
 
 	if errCount > 0 {
 		return kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
+	}
+
+	// 1x.extra-small is used only for development, so the metrics will not
+	// be collected.
+	if opts.Stack.Size != lokiv1beta1.SizeOneXExtraSmall {
+		metrics.Collect(&opts.Stack, opts.Name)
 	}
 
 	return nil

@@ -27,6 +27,7 @@ import (
 
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/controllers"
+	"github.com/ViaQ/loki-operator/internal/metrics"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -89,6 +90,9 @@ func main() {
 		log.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+
+	log.Info("registering metrics")
+	metrics.RegisterMetricCollectors()
 
 	log.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

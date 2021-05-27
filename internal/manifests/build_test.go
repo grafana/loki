@@ -15,7 +15,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 		lokiv1beta1.SizeOneXMedium,
 	}
 	for _, size := range allSizes {
-		in := Options{
+		opt := Options{
 			Name:      "abcd",
 			Namespace: "efgh",
 			Stack: lokiv1beta1.LokiStackSpec{
@@ -27,24 +27,24 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 				},
 			},
 		}
-		out, err := applyUserOptions(in)
+		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
 
 		require.NoError(t, err)
-		require.Equal(t, defs.Size, out.Stack.Size)
-		require.Equal(t, defs.Limits, out.Stack.Limits)
-		require.Equal(t, defs.ReplicationFactor, out.Stack.ReplicationFactor)
-		require.Equal(t, defs.ManagementState, out.Stack.ManagementState)
-		require.Equal(t, defs.Template.Ingester, out.Stack.Template.Ingester)
-		require.Equal(t, defs.Template.Querier, out.Stack.Template.Querier)
-		require.Equal(t, defs.Template.QueryFrontend, out.Stack.Template.QueryFrontend)
+		require.Equal(t, defs.Size, opt.Stack.Size)
+		require.Equal(t, defs.Limits, opt.Stack.Limits)
+		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor)
+		require.Equal(t, defs.ManagementState, opt.Stack.ManagementState)
+		require.Equal(t, defs.Template.Ingester, opt.Stack.Template.Ingester)
+		require.Equal(t, defs.Template.Querier, opt.Stack.Template.Querier)
+		require.Equal(t, defs.Template.QueryFrontend, opt.Stack.Template.QueryFrontend)
 
 		// Require distributor replicas to be set by user overwrite
-		require.NotEqual(t, defs.Template.Distributor.Replicas, out.Stack.Template.Distributor.Replicas)
+		require.NotEqual(t, defs.Template.Distributor.Replicas, opt.Stack.Template.Distributor.Replicas)
 
 		// Require distributor tolerations and nodeselectors to use defaults
-		require.Equal(t, defs.Template.Distributor.Tolerations, out.Stack.Template.Distributor.Tolerations)
-		require.Equal(t, defs.Template.Distributor.NodeSelector, out.Stack.Template.Distributor.NodeSelector)
+		require.Equal(t, defs.Template.Distributor.Tolerations, opt.Stack.Template.Distributor.Tolerations)
+		require.Equal(t, defs.Template.Distributor.NodeSelector, opt.Stack.Template.Distributor.NodeSelector)
 	}
 }
 
@@ -55,7 +55,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 		lokiv1beta1.SizeOneXMedium,
 	}
 	for _, size := range allSizes {
-		in := Options{
+		opt := Options{
 			Name:      "abcd",
 			Namespace: "efgh",
 			Stack: lokiv1beta1.LokiStackSpec{
@@ -67,12 +67,12 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 				},
 			},
 		}
-		out, err := applyUserOptions(in)
+		err := ApplyDefaultSettings(&opt)
 		defs := internal.StackSizeTable[size]
 
 		require.NoError(t, err)
 
 		// Require compactor to be reverted to 1 replica
-		require.Equal(t, defs.Template.Compactor, out.Stack.Template.Compactor)
+		require.Equal(t, defs.Template.Compactor, opt.Stack.Template.Compactor)
 	}
 }

@@ -4,10 +4,12 @@ go 1.16
 
 require (
 	github.com/ViaQ/logerr v1.0.9
-	github.com/creasty/defaults v1.5.1
+	github.com/creasty/defaults v1.5.1 // indirect
 	github.com/go-logr/logr v0.4.0
+	github.com/google/uuid v1.1.2
 	github.com/imdario/mergo v0.3.10
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.3.0
+	github.com/prometheus/client_golang v1.7.1
 	github.com/stretchr/testify v1.6.1
 	k8s.io/api v0.20.4
 	k8s.io/apimachinery v0.20.4
