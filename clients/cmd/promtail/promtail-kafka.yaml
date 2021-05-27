@@ -9,9 +9,18 @@ scrape_configs:
 - job_name: kafka
   kafka:
     use_incoming_timestamp: false
-    brokers: localhost:3101,localhost:3102
+    brokers: localhost:61426
     group: 1
-    topics: foo.*
+    topics: promtail-kafka
     worker_per_partition: 2
     labels:
       job: kafka
+  relabel_configs:
+      - action: replace
+        source_labels:
+          - __topic
+        target_label: topic
+      - action: replace
+        source_labels:
+          - __partition
+        target_label: partition

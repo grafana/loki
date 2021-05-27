@@ -105,7 +105,7 @@ func (ts *TargetSyncer) consume() {
 			// Calling Consume in an infinite loop in case rebalancing is kicking in.
 			// In which case all claims will be renewed.
 			if err := ts.group.Consume(ts.ctx, strings.Split(ts.cfg.KafkaConfig.Topics, ","), ts); err != nil {
-				level.Error(ts.logger).Log("msg", "error from the consumer, retrying in 5s", "err", err)
+				level.Error(ts.logger).Log("msg", "error from the consumer, retrying...", "err", err)
 				// backoff before re-trying.
 				backoff.Wait()
 				if backoff.Ongoing() {
@@ -239,6 +239,10 @@ type ConsumerDetails struct {
 	Topic         string
 	Partition     int32
 	InitialOffset int64
+}
+
+func (c ConsumerDetails) String() string {
+	return fmt.Sprintf("member_id=%s generation_id=%d topic=%s partition=%d initial_offset=%d", c.MemberID, c.GenerationID, c.Topic, c.Partition, c.InitialOffset)
 }
 
 func newDetails(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) ConsumerDetails {
