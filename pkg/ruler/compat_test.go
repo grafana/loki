@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -272,6 +273,30 @@ groups:
 		})
 
 	}
+}
+
+// TestNoopAppender tests that a NoopAppender is created when remote-write is disabled
+func TestInvalidRemoteWriteConfig(t *testing.T) {
+	// if remote-write is not enabled, validation fails
+	cfg := Config{
+		Config: ruler.Config{},
+		RemoteWrite: RemoteWriteConfig{
+			Enabled: false,
+		},
+	}
+	require.Error(t, cfg.RemoteWrite.Validate())
+
+	// if no remote-write URL is configured, validation fails
+	cfg = Config{
+		Config: ruler.Config{},
+		RemoteWrite: RemoteWriteConfig{
+			Enabled: true,
+			Client: config.RemoteWriteConfig{
+				URL: nil,
+			},
+		},
+	}
+	require.Error(t, cfg.RemoteWrite.Validate())
 }
 
 // TestNoopAppender tests that a NoopAppender is created when remote-write is disabled

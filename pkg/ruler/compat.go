@@ -135,8 +135,8 @@ func MemstoreTenantManager(
 }
 
 func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string) storage.Appendable {
-	if !cfg.RemoteWrite.Enabled {
-		level.Warn(logger).Log("msg", "remote write is not enabled")
+	if err := cfg.RemoteWrite.Validate(); err != nil {
+		level.Warn(logger).Log("msg", err)
 		return &NoopAppender{}
 	}
 
@@ -150,8 +150,8 @@ func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID 
 }
 
 func newRemoteWriter(logger log.Logger, cfg Config) remoteWriter {
-	if !cfg.RemoteWrite.Enabled {
-		level.Warn(logger).Log("msg", "remote write is not enabled")
+	if err := cfg.RemoteWrite.Validate(); err != nil {
+		level.Warn(logger).Log("msg", err)
 		return nil
 	}
 

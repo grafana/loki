@@ -23,6 +23,18 @@ type RemoteWriteConfig struct {
 	QueueCapacity int `yaml:"queue_capacity,omitempty"`
 }
 
+func (c *RemoteWriteConfig) Validate() error {
+	if !c.Enabled {
+		return errors.New("remote-write is not enabled")
+	}
+
+	if c.Client.URL == nil {
+		return errors.New("remote-write URL is not configured")
+	}
+
+	return nil
+}
+
 func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type raw RemoteWriteConfig
 	var cfg raw

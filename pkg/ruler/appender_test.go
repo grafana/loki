@@ -3,11 +3,14 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log"
+	promConfig "github.com/prometheus/common/config"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -255,12 +258,20 @@ func createOriginContext(ruleFile, groupName string) context.Context {
 }
 
 func createBasicAppendable() RemoteWriteAppendable {
+	target, err := url.Parse("http://some/target")
+	if err != nil {
+		panic(err)
+	}
+
 	return RemoteWriteAppendable{
 		userID: UserID,
 		cfg: Config{
 			RemoteWrite: RemoteWriteConfig{
 				Enabled:       true,
 				QueueCapacity: 10,
+				Client: config.RemoteWriteConfig{
+					URL: &promConfig.URL{target},
+				},
 			},
 		},
 		logger:    Logger,

@@ -40,7 +40,8 @@ type RemoteWriteAppender struct {
 }
 
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
-	if !a.cfg.RemoteWrite.Enabled {
+	if err := a.cfg.RemoteWrite.Validate(); err != nil {
+		level.Warn(a.logger).Log("msg", err)
 		return &NoopAppender{}
 	}
 
