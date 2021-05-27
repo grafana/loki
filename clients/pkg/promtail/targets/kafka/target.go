@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	cortexutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,6 +26,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
+
+var defaultBackOff = cortexutil.BackoffConfig{
+	MinBackoff: 1 * time.Second,
+	MaxBackoff: 60 * time.Second,
+	MaxRetries: 20,
+}
 
 type TargetSyncer struct {
 	logger        log.Logger
@@ -93,20 +100,25 @@ func (ts *TargetSyncer) consume() {
 	ts.wg.Add(1)
 	go func() {
 		defer ts.wg.Done()
+		backoff := cortexutil.NewBackoff(ts.ctx, defaultBackOff)
 		for {
 			// Calling Consume in an infinite loop in case rebalancing is kicking in.
 			// In which case all claims will be renewed.
 			if err := ts.group.Consume(ts.ctx, strings.Split(ts.cfg.KafkaConfig.Topics, ","), ts); err != nil {
 				level.Error(ts.logger).Log("msg", "error from the consumer, retrying in 5s", "err", err)
 				// backoff before re-trying.
-				select {
-				case <-time.After(5 * time.Second):
-				case <-ts.ctx.Done():
+				backoff.Wait()
+				if backoff.Ongoing() {
+					continue
 				}
+				level.Error(ts.logger).Log("msg", "maximun error from the consumer reached", "last_err", err)
+				ts.resetTargets()
+				return
 			}
 			if ts.ctx.Err() != nil {
 				return
 			}
+			backoff.Reset()
 		}
 	}()
 }
@@ -161,11 +173,17 @@ func (ts *TargetSyncer) ConsumeClaim(session sarama.ConsumerGroupSession, claim 
 	}
 	lbs := relabel.Process(labels.FromMap(labelMap), ts.cfg.RelabelConfigs...)
 	details := newDetails(session, claim)
-
-	if len(lbs) == 0 {
+	labelOut := model.LabelSet(util.LabelsToMetric(lbs))
+	for k := range labelOut {
+		if strings.HasPrefix(string(k), "__") {
+			delete(labelOut, k)
+		}
+	}
+	if len(labelOut) == 0 {
 		level.Warn(ts.logger).Log("msg", "dropping target", "reason", "no labels", "details", details, "discovered_labels", discoveredLabels.String())
 		ts.addDroppedTarget(target.NewDroppedTarget("dropping target, no labels", discoveredLabels))
-		<-session.Context().Done()
+		for range claim.Messages() {
+		}
 		return nil
 	}
 
@@ -182,7 +200,14 @@ func (ts *TargetSyncer) ConsumeClaim(session sarama.ConsumerGroupSession, claim 
 	}
 	defer c.Stop()
 
-	t := NewTarget(session, claim, discoveredLabels, model.LabelSet(util.LabelsToMetric(lbs)), c)
+	t := NewTarget(
+		session,
+		claim,
+		discoveredLabels,
+		labelOut,
+		c,
+		ts.cfg.KafkaConfig.UseIncomingTimestamp,
+	)
 	ts.addTarget(t)
 	level.Info(ts.logger).Log("msg", "consuming topic", "details", details)
 
@@ -227,13 +252,13 @@ func newDetails(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupC
 }
 
 type Target struct {
-	discoveredLabels model.LabelSet
-	lbs              model.LabelSet
-	details          ConsumerDetails
-	claim            sarama.ConsumerGroupClaim
-	session          sarama.ConsumerGroupSession
-	client           api.EntryHandler
-	cfg              scrapeconfig.Config
+	discoveredLabels     model.LabelSet
+	lbs                  model.LabelSet
+	details              ConsumerDetails
+	claim                sarama.ConsumerGroupClaim
+	session              sarama.ConsumerGroupSession
+	client               api.EntryHandler
+	useIncomingTimestamp bool
 }
 
 func NewTarget(
@@ -241,15 +266,16 @@ func NewTarget(
 	claim sarama.ConsumerGroupClaim,
 	discoveredLabels, lbs model.LabelSet,
 	client api.EntryHandler,
-
+	useIncomingTimestamp bool,
 ) *Target {
 	return &Target{
-		discoveredLabels: discoveredLabels,
-		lbs:              lbs,
-		details:          newDetails(session, claim),
-		claim:            claim,
-		session:          session,
-		client:           client,
+		discoveredLabels:     discoveredLabels,
+		lbs:                  lbs,
+		details:              newDetails(session, claim),
+		claim:                claim,
+		session:              session,
+		client:               client,
+		useIncomingTimestamp: useIncomingTimestamp,
 	}
 }
 
@@ -258,7 +284,7 @@ func (t *Target) run() {
 		t.client.Chan() <- api.Entry{
 			Entry: logproto.Entry{
 				Line:      string(message.Value),
-				Timestamp: timestamp(t.cfg.KafkaConfig.UseIncomingTimestamp, message.Timestamp),
+				Timestamp: timestamp(t.useIncomingTimestamp, message.Timestamp),
 			},
 			Labels: t.lbs.Clone(),
 		}
@@ -295,11 +321,11 @@ func (t *Target) Details() interface{} {
 }
 
 func validateConfig(cfg *scrapeconfig.Config) error {
-	if cfg.KafkaConfig.WorkerPerPartition == 0 {
-		cfg.KafkaConfig.WorkerPerPartition = 1
-	}
 	if cfg.KafkaConfig == nil {
 		return errors.New("Kafka configuration is empty")
+	}
+	if cfg.KafkaConfig.WorkerPerPartition == 0 {
+		cfg.KafkaConfig.WorkerPerPartition = 1
 	}
 	if cfg.KafkaConfig.Version == "" {
 		cfg.KafkaConfig.Version = "2.1.1"
