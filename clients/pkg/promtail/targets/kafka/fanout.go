@@ -47,7 +47,11 @@ func NewFanOutHandler(
 		if err != nil {
 			return nil, err
 		}
-		return m.Wrap(c), nil
+		h := m.Wrap(c)
+		return api.NewEntryHandler(h.Chan(), func() {
+			h.Stop()
+			c.Stop()
+		}), nil
 	}
 	handlers := make([]api.EntryHandler, workerCount)
 	for i := 0; i < workerCount; i++ {
@@ -59,8 +63,13 @@ func NewFanOutHandler(
 		if err != nil {
 			return nil, err
 		}
-		handlers[i] =
-			api.AddLabelsMiddleware(model.LabelSet{WorkerLabel: model.LabelValue(fmt.Sprintf("%d", i))}).Wrap(m.Wrap(c))
+		pipeline := m.Wrap(c)
+		handler := api.AddLabelsMiddleware(model.LabelSet{WorkerLabel: model.LabelValue(fmt.Sprintf("%d", i))}).Wrap(pipeline)
+		handlers[i] = api.NewEntryHandler(handler.Chan(), func() {
+			handler.Stop()
+			pipeline.Stop()
+			c.Stop()
+		})
 	}
 	f := &fanOutHandler{
 		handlers: handlers,

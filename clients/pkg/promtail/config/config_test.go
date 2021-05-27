@@ -1,10 +1,18 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"testing"
 
+	cortexflag "github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const testFile = `
@@ -28,8 +36,91 @@ scrape_configs:
 `
 
 func Test_Load(t *testing.T) {
-
 	var dst Config
 	err := yaml.Unmarshal([]byte(testFile), &dst)
 	require.Nil(t, err)
+}
+
+func TestConfig_Setup(t *testing.T) {
+	for i, tt := range []struct {
+		in       Config
+		expected Config
+	}{
+		{
+			Config{
+				ClientConfig: client.Config{
+					ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"foo": "bar"}},
+				},
+				ClientConfigs: []client.Config{
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client1": "1"}},
+					},
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
+					},
+				},
+			},
+			Config{
+				ClientConfig: client.Config{
+					ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"foo": "bar"}},
+				},
+				ClientConfigs: []client.Config{
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client1": "1", "foo": "bar"}},
+					},
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2", "foo": "bar"}},
+					},
+				},
+			},
+		},
+		{
+			Config{
+				ClientConfig: client.Config{
+					ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"foo": "bar"}},
+					URL:            cortexflag.URLValue{URL: mustURL("http://foo")},
+				},
+				ClientConfigs: []client.Config{
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client1": "1"}},
+					},
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
+					},
+				},
+			},
+			Config{
+				ClientConfig: client.Config{
+					ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"foo": "bar"}},
+					URL:            cortexflag.URLValue{URL: mustURL("http://foo")},
+				},
+				ClientConfigs: []client.Config{
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client1": "1", "foo": "bar"}},
+					},
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2", "foo": "bar"}},
+					},
+					{
+						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"foo": "bar"}},
+						URL:            cortexflag.URLValue{URL: mustURL("http://foo")},
+					},
+				},
+			},
+		},
+	} {
+		tt := tt
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			tt.in.Setup()
+			require.Equal(t, tt.expected, tt.in)
+		})
+	}
+}
+
+func mustURL(u string) *url.URL {
+	res, err := url.Parse(u)
+	if err != nil {
+		panic(err)
+	}
+	return res
 }

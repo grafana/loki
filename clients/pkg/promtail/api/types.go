@@ -77,7 +77,6 @@ func NewEntryMutatorHandler(next EntryHandler, f EntryMutatorFunc) EntryHandler 
 	return NewEntryHandler(in, func() {
 		once.Do(func() { close(in) })
 		wg.Wait()
-		next.Stop()
 	})
 }
 
