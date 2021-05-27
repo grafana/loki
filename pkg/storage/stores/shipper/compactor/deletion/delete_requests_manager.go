@@ -24,7 +24,10 @@ type DeleteRequestsManager struct {
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration
 
-	deleteRequestsToProcess    []DeleteRequest
+	deleteRequestsToProcess []DeleteRequest
+	chunkIntervalsToRetain  []model.Interval
+	// WARN: If by any chance we change deleteRequestsToProcessMtx to sync.RWMutex to be able to check multiple chunks at a time,
+	// please take care of chunkIntervalsToRetain which should be unique per chunk.
 	deleteRequestsToProcessMtx sync.Mutex
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
@@ -125,16 +128,19 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	intervalsToRetain := []model.Interval{
-		{
-			Start: ref.From,
-			End:   ref.Through,
-		},
+	if len(d.deleteRequestsToProcess) == 0 {
+		return false, nil
 	}
 
+	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
+	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, model.Interval{
+		Start: ref.From,
+		End:   ref.Through,
+	})
+
 	for _, deleteRequest := range d.deleteRequestsToProcess {
-		rebuiltIntervals := make([]model.Interval, 0, len(intervalsToRetain))
-		for _, interval := range intervalsToRetain {
+		rebuiltIntervals := make([]model.Interval, 0, len(d.chunkIntervalsToRetain))
+		for _, interval := range d.chunkIntervalsToRetain {
 			entry := ref
 			entry.From = interval.Start
 			entry.Through = interval.End
@@ -146,19 +152,19 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			}
 		}
 
-		intervalsToRetain = rebuiltIntervals
-		if len(intervalsToRetain) == 0 {
+		d.chunkIntervalsToRetain = rebuiltIntervals
+		if len(d.chunkIntervalsToRetain) == 0 {
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
 		}
 	}
 
-	if len(intervalsToRetain) == 1 && intervalsToRetain[0].Start == ref.From && intervalsToRetain[0].End == ref.Through {
+	if len(d.chunkIntervalsToRetain) == 1 && d.chunkIntervalsToRetain[0].Start == ref.From && d.chunkIntervalsToRetain[0].End == ref.Through {
 		return false, nil
 	}
 
 	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
-	return true, intervalsToRetain
+	return true, d.chunkIntervalsToRetain
 }
 
 func (d *DeleteRequestsManager) MarkPhaseStarted() {
