@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/go-kit/kit/log"
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -14,9 +13,12 @@ import (
 func TestPrepareRequest(t *testing.T) {
 	ctx := createOriginContext("/rule/file", "rule-group")
 	appendable := createBasicAppendable()
-	appendable.remoteWriter = newRemoteWriter(log.NewNopLogger(), appendable.cfg)
 
 	appender := appendable.Appender(ctx).(*RemoteWriteAppender)
+	client, err := newRemoteWriter(appendable.cfg, FakeUserID)
+	require.Nil(t, err)
+
+	appender.remoteWriter = client
 
 	lbs := labels.Labels{
 		labels.Label{

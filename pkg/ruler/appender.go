@@ -21,12 +21,11 @@ import (
 
 type RemoteWriteAppendable struct {
 	groupAppender map[string]*RemoteWriteAppender
-	userID        string
-	cfg           Config
-	overrides     RulesLimits
 
-	logger       log.Logger
-	remoteWriter remoteWriter
+	userID    string
+	cfg       Config
+	overrides RulesLimits
+	logger    log.Logger
 }
 
 type RemoteWriteAppender struct {
@@ -56,11 +55,17 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	// create or retrieve an appender associated with this groupKey (unique ID for rule group)
 	appender, found := a.groupAppender[groupKey]
 	if !found {
+		client, err := newRemoteWriter(a.cfg, a.userID)
+		if err != nil {
+			level.Error(a.logger).Log("msg", "error creating remote-write client; setting appender as noop", "err", err, "tenant", a.userID)
+			return &NoopAppender{}
+		}
+
 		capacity := a.queueCapacityForTenant()
 		appender = &RemoteWriteAppender{
 			ctx:          ctx,
 			logger:       a.logger,
-			remoteWriter: a.remoteWriter,
+			remoteWriter: client,
 			groupKey:     groupKey,
 			userID:       a.userID,
 

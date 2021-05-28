@@ -5,11 +5,15 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/golang/snappy"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/build"
 )
+
+var UserAgent = fmt.Sprintf("loki-remote-write/%s", build.Version)
 
 type queueEntry struct {
 	labels labels.Labels
@@ -18,11 +22,35 @@ type queueEntry struct {
 
 type remoteWriter interface {
 	remote.WriteClient
+
 	PrepareRequest(queue *util.EvictingQueue) ([]byte, error)
 }
 
 type remoteWriteClient struct {
 	remote.WriteClient
+}
+
+func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
+	if err := cfg.RemoteWrite.Validate(); err != nil {
+		return nil, errors.Wrap(err, "validation error")
+	}
+
+	writeClient, err := remote.NewWriteClient("recording_rules", &remote.ClientConfig{
+		URL:              cfg.RemoteWrite.Client.URL,
+		Timeout:          cfg.RemoteWrite.Client.RemoteTimeout,
+		HTTPClientConfig: cfg.RemoteWrite.Client.HTTPClientConfig,
+		Headers: util.MergeMaps(cfg.RemoteWrite.Client.Headers, map[string]string{
+			"X-Scope-OrgID": userID,
+			"User-Agent":    UserAgent,
+		}),
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not create remote-write client for tenant: %v", userID)
+	}
+
+	return &remoteWriteClient{
+		writeClient,
+	}, nil
 }
 
 // PrepareRequest takes the given queue and serialized it into a compressed

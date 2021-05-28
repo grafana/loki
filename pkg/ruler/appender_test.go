@@ -23,7 +23,7 @@ import (
 
 var (
 	Logger            = log.NewNopLogger()
-	UserID            = "fake"
+	FakeUserID        = "fake"
 	EmptyWriteRequest = []byte{}
 )
 
@@ -127,9 +127,9 @@ func TestSuccessfulRemoteWriteSample(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
 	appendable := createBasicAppendable()
-	appendable.remoteWriter = client
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
+	appender.remoteWriter = client
 
 	client.On("PrepareRequest", mock.Anything).Return(EmptyWriteRequest, nil).Once()
 	client.On("Store", mock.Anything, mock.Anything).Return(nil).Once()
@@ -151,9 +151,9 @@ func TestUnsuccessfulRemoteWritePrepare(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
 	appendable := createBasicAppendable()
-	appendable.remoteWriter = client
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
+	appender.remoteWriter = client
 
 	client.On("PrepareRequest", mock.Anything).Return(EmptyWriteRequest, fmt.Errorf("some error")).Once()
 	_, err := appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
@@ -173,9 +173,9 @@ func TestUnsuccessfulRemoteWriteStore(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
 	appendable := createBasicAppendable()
-	appendable.remoteWriter = client
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
+	appender.remoteWriter = client
 
 	client.On("PrepareRequest", mock.Anything).Return(EmptyWriteRequest, nil).Once()
 	client.On("Store", mock.Anything, mock.Anything).Return(fmt.Errorf("some error")).Once()
@@ -196,9 +196,8 @@ func TestEmptyRemoteWrite(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
 	appendable := createBasicAppendable()
-	appendable.remoteWriter = client
-
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
+	appender.remoteWriter = client
 
 	// queue should be empty
 	require.Zero(t, appender.queue.Length())
@@ -264,7 +263,7 @@ func createBasicAppendable() RemoteWriteAppendable {
 	}
 
 	return RemoteWriteAppendable{
-		userID: UserID,
+		userID: FakeUserID,
 		cfg: Config{
 			RemoteWrite: RemoteWriteConfig{
 				Enabled:       true,

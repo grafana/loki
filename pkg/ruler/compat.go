@@ -22,7 +22,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
 	yaml "gopkg.in/yaml.v3"
@@ -141,33 +140,10 @@ func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID 
 	}
 
 	return &RemoteWriteAppendable{
-		remoteWriter: newRemoteWriter(logger, cfg),
-		logger:       logger,
-		userID:       userID,
-		cfg:          cfg,
-		overrides:    overrides,
-	}
-}
-
-func newRemoteWriter(logger log.Logger, cfg Config) remoteWriter {
-	if err := cfg.RemoteWrite.Validate(); err != nil {
-		level.Warn(logger).Log("msg", err)
-		return nil
-	}
-
-	writeClient, err := remote.NewWriteClient("recording_rules", &remote.ClientConfig{
-		URL:              cfg.RemoteWrite.Client.URL,
-		Timeout:          cfg.RemoteWrite.Client.RemoteTimeout,
-		HTTPClientConfig: cfg.RemoteWrite.Client.HTTPClientConfig,
-		Headers:          cfg.RemoteWrite.Client.Headers,
-	})
-	if err != nil {
-		level.Warn(logger).Log("remote_write_url", cfg.RemoteWrite.Client.URL.String(), "msg", "cannot create remote_write client", "err", err)
-		return nil
-	}
-
-	return &remoteWriteClient{
-		writeClient,
+		logger:    logger,
+		userID:    userID,
+		cfg:       cfg,
+		overrides: overrides,
 	}
 }
 
