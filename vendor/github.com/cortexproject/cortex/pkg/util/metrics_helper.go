@@ -16,6 +16,14 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
+var (
+	bytesBufferPool = sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(nil)
+		},
+	}
+)
+
 // Data for single value (counter/gauge) with labels.
 type singleValueWithLabels struct {
 	Value       float64
@@ -346,25 +354,40 @@ func getMetricsWithLabelNames(mf *dto.MetricFamily, labelNames []string) map[str
 }
 
 func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
-	all := map[string]string{}
-	for _, lp := range m.GetLabel() {
-		all[lp.GetName()] = lp.GetValue()
-	}
-
 	result := make([]string, 0, len(labelNames))
+
 	for _, ln := range labelNames {
-		lv, ok := all[ln]
-		if !ok {
+		found := false
+
+		// Look for the label among the metric ones. We re-iterate on each metric label
+		// which is algorithmically bad, but the main assumption is that the labelNames
+		// in input are typically very few units.
+		for _, lp := range m.GetLabel() {
+			if ln != lp.GetName() {
+				continue
+			}
+
+			result = append(result, lp.GetValue())
+			found = true
+			break
+		}
+
+		if !found {
 			// required labels not found
 			return nil, false
 		}
-		result = append(result, lv)
 	}
+
 	return result, true
 }
 
 func getLabelsString(labelValues []string) string {
-	buf := bytes.Buffer{}
+	// Get a buffer from the pool, reset it and release it at the
+	// end of the function.
+	buf := bytesBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bytesBufferPool.Put(buf)
+
 	for _, v := range labelValues {
 		buf.WriteString(v)
 		buf.WriteByte(0) // separator, not used in prometheus labels

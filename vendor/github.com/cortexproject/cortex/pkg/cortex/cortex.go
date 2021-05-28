@@ -142,7 +142,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
 	c.API.RegisterFlags(f)
-	c.Server.RegisterFlags(f)
+	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -236,11 +236,11 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Compactor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.Alertmanager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid alertmanager config")
-	}
 	if err := c.AlertmanagerStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid alertmanager storage config")
+	}
+	if err := c.Alertmanager.Validate(c.AlertmanagerStorage); err != nil {
+		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
@@ -279,6 +279,27 @@ func (c *Config) validateYAMLEmptyNodes() error {
 	}
 
 	return nil
+}
+
+func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+
+	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
+	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
+	c.Server.RegisterFlags(throwaway)
+
+	throwaway.VisitAll(func(f *flag.Flag) {
+		// Ignore errors when setting new values. We have a test to verify that it works.
+		switch f.Name {
+		case "server.grpc.keepalive.min-time-between-pings":
+			_ = f.Value.Set("10s")
+
+		case "server.grpc.keepalive.ping-without-stream-allowed":
+			_ = f.Value.Set("true")
+		}
+
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
 }
 
 // Cortex is the root datastructure for Cortex.

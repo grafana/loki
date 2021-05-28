@@ -73,7 +73,9 @@ type appRoot struct {
 }
 
 type appsRoot struct {
-	Apps []*App `json:"apps"`
+	Apps  []*App `json:"apps"`
+	Links *Links `json:"links"`
+	Meta  *Meta  `json:"meta"`
 }
 
 type deploymentRoot struct {
@@ -82,6 +84,8 @@ type deploymentRoot struct {
 
 type deploymentsRoot struct {
 	Deployments []*Deployment `json:"deployments"`
+	Links       *Links        `json:"links"`
+	Meta        *Meta         `json:"meta"`
 }
 
 type appTierRoot struct {
@@ -143,6 +147,11 @@ func (s *AppsServiceOp) Get(ctx context.Context, appID string) (*App, *Response,
 // List apps.
 func (s *AppsServiceOp) List(ctx context.Context, opts *ListOptions) ([]*App, *Response, error) {
 	path := appsBasePath
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, nil, err
@@ -152,6 +161,15 @@ func (s *AppsServiceOp) List(ctx context.Context, opts *ListOptions) ([]*App, *R
 	if err != nil {
 		return nil, resp, err
 	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+
 	return root.Apps, resp, nil
 }
 
@@ -219,6 +237,11 @@ func (s *AppsServiceOp) GetDeployment(ctx context.Context, appID, deploymentID s
 // ListDeployments lists an app deployments.
 func (s *AppsServiceOp) ListDeployments(ctx context.Context, appID string, opts *ListOptions) ([]*Deployment, *Response, error) {
 	path := fmt.Sprintf("%s/%s/deployments", appsBasePath, appID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, nil, err
@@ -228,6 +251,15 @@ func (s *AppsServiceOp) ListDeployments(ctx context.Context, appID string, opts 
 	if err != nil {
 		return nil, resp, err
 	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+
 	return root.Deployments, resp, nil
 }
 
