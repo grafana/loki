@@ -86,3 +86,14 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 
 	return lc
 }
+
+func (cfg *RingConfig) ToRingConfig() ring.Config {
+	rc := ring.Config{}
+	flagext.DefaultValues(&rc)
+
+	rc.KVStore = cfg.KVStore
+	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
+	rc.ReplicationFactor = 1
+
+	return rc
+}

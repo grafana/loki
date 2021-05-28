@@ -202,6 +202,11 @@ type KubernetesCluster struct {
 	UpdatedAt time.Time                `json:"updated_at,omitempty"`
 }
 
+// URN returns the Kubernetes cluster's ID in the format of DigitalOcean URN.
+func (kc KubernetesCluster) URN() string {
+	return ToURN("Kubernetes", kc.ID)
+}
+
 // KubernetesClusterUser represents a Kubernetes cluster user.
 type KubernetesClusterUser struct {
 	Username string   `json:"username,omitempty"`
