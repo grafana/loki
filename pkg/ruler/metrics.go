@@ -28,3 +28,9 @@ var samplesQueueCapacity = promauto.NewGaugeVec(prometheus.GaugeOpts{
 	Name:      "recording_rules_samples_queue_capacity",
 	Help:      "Number of samples that can be queued before eviction of oldest samples occurs.",
 }, []string{"user_id", "group_key"})
+
+var remoteWriteErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "loki",
+	Name:      "recording_rules_remote_write_errors",
+	Help:      "Number of samples that failed to be remote-written due to error.",
+}, []string{"user_id", "group_key"})

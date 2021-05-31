@@ -127,12 +127,14 @@ func (a *RemoteWriteAppender) Commit() error {
 	req, err := a.remoteWriter.PrepareRequest(a.queue)
 	if err != nil {
 		level.Error(a.logger).Log("msg", "could not prepare remote-write request", "err", err)
+		remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
 		return err
 	}
 
 	err = a.remoteWriter.Store(a.ctx, req)
 	if err != nil {
 		level.Error(a.logger).Log("msg", "could not store recording rule samples", "err", err)
+		remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
 		return err
 	}
 
