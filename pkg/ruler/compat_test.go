@@ -284,7 +284,7 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 			Enabled: false,
 		},
 	}
-	require.Error(t, cfg.RemoteWrite.Validate())
+	require.Nil(t, cfg.RemoteWrite.Validate())
 
 	// if no remote-write URL is configured, validation fails
 	cfg = Config{

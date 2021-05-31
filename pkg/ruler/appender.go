@@ -4,19 +4,16 @@ import (
 	"context"
 	"errors"
 
-	"github.com/grafana/loki/pkg/util"
-
-	"github.com/prometheus/prometheus/rules"
-
-	"github.com/prometheus/prometheus/promql"
-
-	"github.com/prometheus/prometheus/pkg/exemplar"
-
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 type RemoteWriteAppendable struct {
@@ -39,11 +36,6 @@ type RemoteWriteAppender struct {
 }
 
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
-	if err := a.cfg.RemoteWrite.Validate(); err != nil {
-		level.Warn(a.logger).Log("msg", err)
-		return &NoopAppender{}
-	}
-
 	var appender *RemoteWriteAppender
 
 	if a.groupAppender == nil {

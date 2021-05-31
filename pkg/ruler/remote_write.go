@@ -31,10 +31,6 @@ type remoteWriteClient struct {
 }
 
 func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
-	if err := cfg.RemoteWrite.Validate(); err != nil {
-		return nil, errors.Wrap(err, "validation error")
-	}
-
 	writeClient, err := remote.NewWriteClient("recording_rules", &remote.ClientConfig{
 		URL:              cfg.RemoteWrite.Client.URL,
 		Timeout:          cfg.RemoteWrite.Client.RemoteTimeout,
