@@ -98,6 +98,11 @@ func TestSafeConcurrentAccess(t *testing.T) {
 	require.Equal(t, 3, q.Length())
 }
 
+type queueEntry struct {
+	key   string
+	value interface{}
+}
+
 func BenchmarkAppendAndEvict(b *testing.B) {
 	capacity := 5000
 	q := NewEvictingQueue(capacity, noopOnEvict)
@@ -106,7 +111,10 @@ func BenchmarkAppendAndEvict(b *testing.B) {
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-		q.Append(n)
+		q.Append(&queueEntry{
+			key:   "hello",
+			value: "world",
+		})
 	}
 
 	require.EqualValues(b, math.Min(float64(b.N), float64(capacity)), q.Length())
