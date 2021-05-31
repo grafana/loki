@@ -2,7 +2,7 @@ package util
 
 // CopyMap makes a copy of the given map
 func CopyMap(m map[string]string) map[string]string {
-	var newMap = make(map[string]string)
+	var newMap = make(map[string]string, len(m))
 
 	if m == nil {
 		return nil

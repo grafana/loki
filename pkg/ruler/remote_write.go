@@ -28,6 +28,9 @@ type remoteWriter interface {
 
 type remoteWriteClient struct {
 	remote.WriteClient
+
+	labels  []labels.Labels
+	samples []cortexpb.Sample
 }
 
 func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
@@ -45,15 +48,15 @@ func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
 	}
 
 	return &remoteWriteClient{
-		writeClient,
+		WriteClient: writeClient,
 	}, nil
 }
 
 // PrepareRequest takes the given queue and serialized it into a compressed
 // proto write request that will be sent to Cortex
 func (r *remoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
-	var labels []labels.Labels
-	var samples []cortexpb.Sample
+	r.labels = make([]labels.Labels, 0, queue.Length())
+	r.samples = make([]cortexpb.Sample, 0, queue.Length())
 
 	for _, entry := range queue.Entries() {
 		entry, ok := entry.(queueEntry)
@@ -61,11 +64,11 @@ func (r *remoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, e
 			return nil, fmt.Errorf("queue contains invalid entry of type: %T", entry)
 		}
 
-		labels = append(labels, entry.labels)
-		samples = append(samples, entry.sample)
+		r.labels = append(r.labels, entry.labels)
+		r.samples = append(r.samples, entry.sample)
 	}
 
-	req := cortexpb.ToWriteRequest(labels, samples, nil, cortexpb.RULE)
+	req := cortexpb.ToWriteRequest(r.labels, r.samples, nil, cortexpb.RULE)
 	defer cortexpb.ReuseSlice(req.Timeseries)
 
 	reqBytes, err := req.Marshal()

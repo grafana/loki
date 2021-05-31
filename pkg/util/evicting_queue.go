@@ -21,6 +21,7 @@ func NewEvictingQueue(capacity int, onEvict func()) *EvictingQueue {
 	return &EvictingQueue{
 		capacity: capacity,
 		onEvict:  onEvict,
+		entries:  make([]interface{}, 0, capacity),
 	}
 }
 
@@ -63,5 +64,5 @@ func (q *EvictingQueue) Clear() {
 	q.Lock()
 	defer q.Unlock()
 
-	q.entries = nil
+	q.entries = q.entries[:0]
 }
