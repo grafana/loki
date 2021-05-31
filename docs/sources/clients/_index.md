@@ -70,3 +70,4 @@ when using or writing a third-party client.
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
+- [LokiLogger.jl](https://github.com/fredrikekre/LokiLogger.jl) (Julia)
