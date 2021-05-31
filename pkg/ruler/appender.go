@@ -25,6 +25,16 @@ type RemoteWriteAppendable struct {
 	logger    log.Logger
 }
 
+func newRemoteWriteAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string) *RemoteWriteAppendable {
+	return &RemoteWriteAppendable{
+		logger:        logger,
+		userID:        userID,
+		cfg:           cfg,
+		overrides:     overrides,
+		groupAppender: make(map[string]*RemoteWriteAppender),
+	}
+}
+
 type RemoteWriteAppender struct {
 	logger       log.Logger
 	ctx          context.Context
@@ -36,45 +46,40 @@ type RemoteWriteAppender struct {
 }
 
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
-	var appender *RemoteWriteAppender
-
-	if a.groupAppender == nil {
-		a.groupAppender = make(map[string]*RemoteWriteAppender)
-	}
-
 	groupKey := retrieveGroupKeyFromContext(ctx)
 
 	// create or retrieve an appender associated with this groupKey (unique ID for rule group)
 	appender, found := a.groupAppender[groupKey]
-	if !found {
-		client, err := newRemoteWriter(a.cfg, a.userID)
-		if err != nil {
-			level.Error(a.logger).Log("msg", "error creating remote-write client; setting appender as noop", "err", err, "tenant", a.userID)
-			return &NoopAppender{}
-		}
-
-		capacity := a.queueCapacityForTenant()
-		appender = &RemoteWriteAppender{
-			ctx:          ctx,
-			logger:       a.logger,
-			remoteWriter: client,
-			groupKey:     groupKey,
-			userID:       a.userID,
-
-			queue: util.NewEvictingQueue(capacity, onEvict(a.userID, groupKey)),
-		}
-
-		samplesQueueCapacity.WithLabelValues(a.userID, groupKey).Set(float64(capacity))
-
-		// only track reference if groupKey was retrieved
-		if groupKey == "" {
-			level.Warn(a.logger).Log("msg", "blank group key passed via context; creating new appender")
-			return appender
-		}
-
-		a.groupAppender[groupKey] = appender
+	if found {
+		return appender
 	}
 
+	client, err := newRemoteWriter(a.cfg, a.userID)
+	if err != nil {
+		level.Error(a.logger).Log("msg", "error creating remote-write client; setting appender as noop", "err", err, "tenant", a.userID)
+		return &NoopAppender{}
+	}
+
+	capacity := a.queueCapacityForTenant()
+	appender = &RemoteWriteAppender{
+		ctx:          ctx,
+		logger:       a.logger,
+		remoteWriter: client,
+		groupKey:     groupKey,
+		userID:       a.userID,
+
+		queue: util.NewEvictingQueue(capacity, onEvict(a.userID, groupKey)),
+	}
+
+	samplesQueueCapacity.WithLabelValues(a.userID, groupKey).Set(float64(capacity))
+
+	// only track reference if groupKey was retrieved
+	if groupKey == "" {
+		level.Warn(a.logger).Log("msg", "blank group key passed via context; creating new appender")
+		return appender
+	}
+
+	a.groupAppender[groupKey] = appender
 	return appender
 }
 

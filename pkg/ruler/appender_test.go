@@ -256,15 +256,14 @@ func createOriginContext(ruleFile, groupName string) context.Context {
 	})
 }
 
-func createBasicAppendable() RemoteWriteAppendable {
+func createBasicAppendable() *RemoteWriteAppendable {
 	target, err := url.Parse("http://some/target")
 	if err != nil {
 		panic(err)
 	}
 
-	return RemoteWriteAppendable{
-		userID: FakeUserID,
-		cfg: Config{
+	return newRemoteWriteAppendable(
+		Config{
 			RemoteWrite: RemoteWriteConfig{
 				Enabled:       true,
 				QueueCapacity: 10,
@@ -273,9 +272,10 @@ func createBasicAppendable() RemoteWriteAppendable {
 				},
 			},
 		},
-		logger:    Logger,
-		overrides: fakeLimits(),
-	}
+		fakeLimits(),
+		Logger,
+		FakeUserID,
+	)
 }
 
 func fakeLimits() RulesLimits {

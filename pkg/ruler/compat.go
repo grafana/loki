@@ -139,12 +139,7 @@ func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID 
 		return &NoopAppender{}
 	}
 
-	return &RemoteWriteAppendable{
-		logger:    logger,
-		userID:    userID,
-		cfg:       cfg,
-		overrides: overrides,
-	}
+	return newRemoteWriteAppendable(cfg, overrides, logger, userID)
 }
 
 type GroupLoader struct{}
