@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"sync"
 )
 
@@ -12,17 +13,17 @@ type EvictingQueue struct {
 	onEvict  func()
 }
 
-func NewEvictingQueue(capacity int, onEvict func()) *EvictingQueue {
+func NewEvictingQueue(capacity int, onEvict func()) (*EvictingQueue, error) {
 	if capacity <= 0 {
 		// a queue of 0 (or smaller) capacity is invalid
-		return nil
+		return nil, errors.New("queue cannot have a zero or negative capacity")
 	}
 
 	return &EvictingQueue{
 		capacity: capacity,
 		onEvict:  onEvict,
 		entries:  make([]interface{}, 0, capacity),
-	}
+	}, nil
 }
 
 func (q *EvictingQueue) Append(entry interface{}) {
