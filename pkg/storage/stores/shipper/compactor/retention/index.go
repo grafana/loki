@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 )
 
 const (
