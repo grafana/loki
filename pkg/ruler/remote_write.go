@@ -52,20 +52,38 @@ func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
 	}, nil
 }
 
-// PrepareRequest takes the given queue and serialized it into a compressed
-// proto write request that will be sent to Cortex
-func (r *remoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
-	r.labels = make([]labels.Labels, 0, queue.Length())
-	r.samples = make([]cortexpb.Sample, 0, queue.Length())
+func (r *remoteWriteClient) prepare(queue *util.EvictingQueue) error {
+	// reuse slices, resize if they are not big enough
+	if cap(r.labels) < queue.Length() {
+		r.labels = make([]labels.Labels, 0, queue.Length())
+	}
+	if cap(r.samples) < queue.Length() {
+		r.samples = make([]cortexpb.Sample, 0, queue.Length())
+	}
+
+	r.labels = r.labels[:0]
+	r.samples = r.samples[:0]
 
 	for _, entry := range queue.Entries() {
 		entry, ok := entry.(queueEntry)
 		if !ok {
-			return nil, fmt.Errorf("queue contains invalid entry of type: %T", entry)
+			return fmt.Errorf("queue contains invalid entry of type: %T", entry)
 		}
 
 		r.labels = append(r.labels, entry.labels)
 		r.samples = append(r.samples, entry.sample)
+	}
+
+	return nil
+}
+
+// PrepareRequest takes the given queue and serialized it into a compressed
+// proto write request that will be sent to Cortex
+func (r *remoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
+	// prepare labels and samples from queue
+	err := r.prepare(queue)
+	if err != nil {
+		return nil, err
 	}
 
 	req := cortexpb.ToWriteRequest(r.labels, r.samples, nil, cortexpb.RULE)
