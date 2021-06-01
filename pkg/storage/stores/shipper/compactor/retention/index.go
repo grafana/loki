@@ -7,6 +7,10 @@ import (
 	"strings"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
 
@@ -203,6 +207,10 @@ func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (LabelSeriesRangeKey, bo
 
 func validatePeriods(config storage.SchemaConfig) error {
 	for _, schema := range config.Configs {
+		if schema.IndexType != shipper.BoltDBShipperType {
+			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("custom retention is not supported for store %s", schema.IndexType))
+			continue
+		}
 		if schema.IndexTables.Period != 24*time.Hour {
 			return fmt.Errorf("schema period must be daily, was: %s", schema.IndexTables.Period)
 		}
