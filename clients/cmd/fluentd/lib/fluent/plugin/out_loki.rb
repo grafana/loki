@@ -67,6 +67,9 @@ module Fluent
       desc 'extract kubernetes labels as loki labels'
       config_param :extract_kubernetes_labels, :bool, default: false
 
+      desc 'extract kubernetes namespace labels as loki labels'
+      config_param :extract_kubernetes_namespace_labels, :bool, default: false      
+      
       desc 'comma separated list of needless record keys to remove'
       config_param :remove_keys, :array, default: %w[], value_type: :string
 
@@ -313,6 +316,20 @@ module Fluent
               end
             end
           end
+          
+          # In combination with the fluentd kubernetes_metadata plugin, 
+          # you can get namespace labels as well.
+          if @extract_kubernetes_namespace_labels && record.key?('kubernetes')
+            kubernetes_ns_labels = record['kubernetes']['namespace_labels']
+            if !kubernetes_ns_labels.nil?
+              kubernetes_ns_labels.each_key do |l|
+                new_key = l.gsub(%r{[.\-\/]}, '_')
+                # I'm not sure that a label that long is a good idea. 
+                # But I can't find a better idea for now.
+                chunk_labels["namespace_label_" + new_key] = kubernetes_ns_labels[l]
+              end
+            end                
+          end          
 
           # remove needless keys.
           @remove_keys_accessors&.each do |deleter|
