@@ -40,8 +40,6 @@ func (c *Config) Validate() error {
 type RemoteWriteConfig struct {
 	Client  config.RemoteWriteConfig `yaml:"client"`
 	Enabled bool                     `yaml:"enabled"`
-
-	QueueCapacity int `yaml:"queue_capacity,omitempty"`
 }
 
 func (c *RemoteWriteConfig) Validate() error {
@@ -55,5 +53,4 @@ func (c *RemoteWriteConfig) Validate() error {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Remote-write recording rule samples to Prometheus-compatible remote-write receiver.")
-	f.IntVar(&c.QueueCapacity, "ruler.remote-write.queue-capacity", DefaultQueueCapacity, "Capacity of remote-write queues; if a queue exceeds its capacity it will evict oldest samples.")
 }

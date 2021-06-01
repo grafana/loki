@@ -12,10 +12,10 @@ import (
 
 func TestPrepareRequest(t *testing.T) {
 	ctx := createOriginContext("/rule/file", "rule-group")
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(10)
 
 	appender := appendable.Appender(ctx).(*RemoteWriteAppender)
-	client, err := newRemoteWriter(appendable.cfg, FakeUserID)
+	client, err := newRemoteWriter(appendable.cfg, "fake")
 	require.Nil(t, err)
 
 	appender.remoteWriter = client

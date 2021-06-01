@@ -60,7 +60,7 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 		return &NoopAppender{}
 	}
 
-	capacity := a.queueCapacityForTenant()
+	capacity := a.overrides.RulerRemoteWriteQueueCapacity(a.userID)
 	queue, err := util.NewEvictingQueue(capacity, onEvict(a.userID, groupKey))
 	if err != nil {
 		level.Error(a.logger).Log("msg", "queue creation error; setting appender as noop", "err", err, "tenant", a.userID)
@@ -87,15 +87,6 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 
 	a.groupAppender[groupKey] = appender
 	return appender
-}
-
-func (a *RemoteWriteAppendable) queueCapacityForTenant() int {
-	capacity := a.cfg.RemoteWrite.QueueCapacity
-	if tenantCapacity := a.overrides.RulerRemoteWriteQueueCapacity(a.userID); tenantCapacity > 0 {
-		capacity = tenantCapacity
-	}
-
-	return capacity
 }
 
 func onEvict(userID, groupKey string) func() {

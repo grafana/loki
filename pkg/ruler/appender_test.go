@@ -22,9 +22,10 @@ import (
 )
 
 var (
-	Logger            = log.NewNopLogger()
-	FakeUserID        = "fake"
-	EmptyWriteRequest = []byte{}
+	logger            = log.NewNopLogger()
+	fakeUserID        = "fake"
+	emptyWriteRequest = []byte{}
+	queueCapacity     = 10
 )
 
 func TestGroupKeyRetrieval(t *testing.T) {
@@ -42,7 +43,7 @@ func TestGroupKeyRetrieval(t *testing.T) {
 // TestMemoizedAppenders tests that appenders are memoized by their associated group key
 func TestMemoizedAppenders(t *testing.T) {
 	ctx := createOriginContext("/rule/file", "rule-group")
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 
 	// context passing a valid group key will allow the appender to be memoized
 	appender := appendable.Appender(ctx)
@@ -57,7 +58,7 @@ func TestMemoizedAppenders(t *testing.T) {
 func TestAppenderSeparationByRuleGroup(t *testing.T) {
 	ctxA := createOriginContext("/rule/fileA", "rule-groupA")
 	ctxB := createOriginContext("/rule/fileB", "rule-groupB")
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 
 	appenderA := appendable.Appender(ctxA)
 	appenderB := appendable.Appender(ctxB)
@@ -66,23 +67,17 @@ func TestAppenderSeparationByRuleGroup(t *testing.T) {
 
 func TestQueueCapacity(t *testing.T) {
 	ctx := createOriginContext("/rule/file", "rule-group")
-	appendable := createBasicAppendable()
-
-	defaultCapacity := 100
-	appendable.cfg.RemoteWrite.QueueCapacity = defaultCapacity
+	appendable := createBasicAppendable(queueCapacity)
 
 	appender := appendable.Appender(ctx).(*RemoteWriteAppender)
-	require.Equal(t, appender.queue.Capacity(), defaultCapacity)
+	require.Equal(t, appender.queue.Capacity(), queueCapacity)
 }
 
 func TestQueueCapacityTenantOverride(t *testing.T) {
 	ctx := createOriginContext("/rule/file", "rule-group")
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 
-	defaultCapacity := 100
 	overriddenCapacity := 999
-	appendable.cfg.RemoteWrite.QueueCapacity = defaultCapacity
-
 	overrides, err := validation.NewOverrides(validation.Limits{}, func(userID string) *validation.Limits {
 		return &validation.Limits{
 			RulerRemoteWriteQueueCapacity: overriddenCapacity,
@@ -97,7 +92,7 @@ func TestQueueCapacityTenantOverride(t *testing.T) {
 
 func TestAppendSample(t *testing.T) {
 	ctx := createOriginContext("/rule/file", "rule-group")
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 	appender := appendable.Appender(ctx).(*RemoteWriteAppender)
 
 	labels := labels.Labels{
@@ -126,12 +121,12 @@ func TestAppendSample(t *testing.T) {
 func TestSuccessfulRemoteWriteSample(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 	appender.remoteWriter = client
 
-	client.On("PrepareRequest", mock.Anything).Return(EmptyWriteRequest, nil).Once()
+	client.On("PrepareRequest", mock.Anything).Return(emptyWriteRequest, nil).Once()
 	client.On("Store", mock.Anything, mock.Anything).Return(nil).Once()
 
 	_, err := appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
@@ -150,12 +145,12 @@ func TestSuccessfulRemoteWriteSample(t *testing.T) {
 func TestUnsuccessfulRemoteWritePrepare(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 	appender.remoteWriter = client
 
-	client.On("PrepareRequest", mock.Anything).Return(EmptyWriteRequest, fmt.Errorf("some error")).Once()
+	client.On("PrepareRequest", mock.Anything).Return(emptyWriteRequest, fmt.Errorf("some error")).Once()
 	_, err := appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
 	require.Nil(t, err)
 
@@ -172,12 +167,12 @@ func TestUnsuccessfulRemoteWritePrepare(t *testing.T) {
 func TestUnsuccessfulRemoteWriteStore(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 	appender.remoteWriter = client
 
-	client.On("PrepareRequest", mock.Anything).Return(EmptyWriteRequest, nil).Once()
+	client.On("PrepareRequest", mock.Anything).Return(emptyWriteRequest, nil).Once()
 	client.On("Store", mock.Anything, mock.Anything).Return(fmt.Errorf("some error")).Once()
 	_, err := appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2)
 	require.Nil(t, err)
@@ -195,7 +190,7 @@ func TestUnsuccessfulRemoteWriteStore(t *testing.T) {
 func TestEmptyRemoteWrite(t *testing.T) {
 	client := &MockRemoteWriteClient{}
 
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 	appender.remoteWriter = client
 
@@ -211,7 +206,7 @@ func TestEmptyRemoteWrite(t *testing.T) {
 }
 
 func TestAppenderRollback(t *testing.T) {
-	appendable := createBasicAppendable()
+	appendable := createBasicAppendable(queueCapacity)
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 
 	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.2) //nolint:errcheck
@@ -225,10 +220,8 @@ func TestAppenderRollback(t *testing.T) {
 }
 
 func TestAppenderEvictOldest(t *testing.T) {
-	queueCapacity := 2
-
-	appendable := createBasicAppendable()
-	appendable.cfg.RemoteWrite.QueueCapacity = queueCapacity
+	capacity := 2
+	appendable := createBasicAppendable(capacity)
 
 	appender := appendable.Appender(context.TODO()).(*RemoteWriteAppender)
 
@@ -237,7 +230,7 @@ func TestAppenderEvictOldest(t *testing.T) {
 	appender.Append(0, labels.Labels{}, time.Now().UnixNano(), 11.4) //nolint:errcheck
 
 	// capacity is enforced
-	require.Equal(t, queueCapacity, appender.queue.Length())
+	require.Equal(t, capacity, appender.queue.Length())
 
 	// only two newest samples are kept
 	require.Equal(t, appender.queue.Entries()[0].(queueEntry).sample.Value, 11.3)
@@ -256,7 +249,7 @@ func createOriginContext(ruleFile, groupName string) context.Context {
 	})
 }
 
-func createBasicAppendable() *RemoteWriteAppendable {
+func createBasicAppendable(queueCapacity int) *RemoteWriteAppendable {
 	target, err := url.Parse("http://some/target")
 	if err != nil {
 		panic(err)
@@ -265,21 +258,22 @@ func createBasicAppendable() *RemoteWriteAppendable {
 	return newRemoteWriteAppendable(
 		Config{
 			RemoteWrite: RemoteWriteConfig{
-				Enabled:       true,
-				QueueCapacity: 10,
+				Enabled: true,
 				Client: config.RemoteWriteConfig{
 					URL: &promConfig.URL{URL: target},
 				},
 			},
 		},
-		fakeLimits(),
-		Logger,
-		FakeUserID,
+		fakeLimits(queueCapacity),
+		logger,
+		fakeUserID,
 	)
 }
 
-func fakeLimits() RulesLimits {
-	o, err := validation.NewOverrides(validation.Limits{}, nil)
+func fakeLimits(queueCapacity int) RulesLimits {
+	o, err := validation.NewOverrides(validation.Limits{
+		RulerRemoteWriteQueueCapacity: queueCapacity,
+	}, nil)
 	if err != nil {
 		panic(err)
 	}
