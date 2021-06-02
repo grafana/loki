@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -26,6 +27,7 @@ var (
 	fakeUserID        = "fake"
 	emptyWriteRequest = []byte{}
 	queueCapacity     = 10
+	metrics           = newRemoteWriteMetrics(prometheus.DefaultRegisterer)
 )
 
 func TestGroupKeyRetrieval(t *testing.T) {
@@ -267,6 +269,7 @@ func createBasicAppendable(queueCapacity int) *RemoteWriteAppendable {
 		fakeLimits(queueCapacity),
 		logger,
 		fakeUserID,
+		metrics,
 	)
 }
 

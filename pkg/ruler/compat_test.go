@@ -309,7 +309,7 @@ func TestNoopAppender(t *testing.T) {
 	}
 	require.False(t, cfg.RemoteWrite.Enabled)
 
-	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake")
+	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake", metrics)
 	appender := appendable.Appender(context.TODO())
 	require.IsType(t, NoopAppender{}, appender)
 }

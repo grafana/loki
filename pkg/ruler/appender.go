@@ -23,15 +23,18 @@ type RemoteWriteAppendable struct {
 	cfg       Config
 	overrides RulesLimits
 	logger    log.Logger
+
+	metrics *remoteWriteMetrics
 }
 
-func newRemoteWriteAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string) *RemoteWriteAppendable {
+func newRemoteWriteAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string, metrics *remoteWriteMetrics) *RemoteWriteAppendable {
 	return &RemoteWriteAppendable{
 		logger:        logger,
 		userID:        userID,
 		cfg:           cfg,
 		overrides:     overrides,
 		groupAppender: make(map[string]*RemoteWriteAppender),
+		metrics:       metrics,
 	}
 }
 
@@ -42,7 +45,8 @@ type RemoteWriteAppender struct {
 	userID       string
 	groupKey     string
 
-	queue *util.EvictingQueue
+	queue   *util.EvictingQueue
+	metrics *remoteWriteMetrics
 }
 
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
@@ -61,7 +65,7 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 
 	capacity := a.overrides.RulerRemoteWriteQueueCapacity(a.userID)
-	queue, err := util.NewEvictingQueue(capacity, onEvict(a.userID, groupKey))
+	queue, err := util.NewEvictingQueue(capacity, a.onEvict(a.userID, groupKey))
 	if err != nil {
 		level.Error(a.logger).Log("msg", "queue creation error; setting appender as noop", "err", err, "tenant", a.userID)
 		return &NoopAppender{}
@@ -74,10 +78,11 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 		groupKey:     groupKey,
 		userID:       a.userID,
 
-		queue: queue,
+		queue:   queue,
+		metrics: a.metrics,
 	}
 
-	samplesQueueCapacity.WithLabelValues(a.userID, groupKey).Set(float64(capacity))
+	a.metrics.samplesQueueCapacity.WithLabelValues(a.userID).Set(float64(capacity))
 
 	// only track reference if groupKey was retrieved
 	if groupKey == "" {
@@ -89,9 +94,9 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	return appender
 }
 
-func onEvict(userID, groupKey string) func() {
+func (a *RemoteWriteAppendable) onEvict(userID, groupKey string) func() {
 	return func() {
-		samplesEvicted.WithLabelValues(userID, groupKey).Inc()
+		a.metrics.samplesEvicted.WithLabelValues(userID, groupKey).Inc()
 	}
 }
 
@@ -104,8 +109,8 @@ func (a *RemoteWriteAppender) Append(_ uint64, l labels.Labels, t int64, v float
 		},
 	})
 
-	samplesQueued.WithLabelValues(a.userID, a.groupKey).Set(float64(a.queue.Length()))
-	samplesQueuedTotal.WithLabelValues(a.userID, a.groupKey).Inc()
+	a.metrics.samplesQueued.WithLabelValues(a.userID, a.groupKey).Set(float64(a.queue.Length()))
+	a.metrics.samplesQueuedTotal.WithLabelValues(a.userID, a.groupKey).Inc()
 
 	return 0, nil
 }
@@ -129,21 +134,21 @@ func (a *RemoteWriteAppender) Commit() error {
 	req, err := a.remoteWriter.PrepareRequest(a.queue)
 	if err != nil {
 		level.Error(a.logger).Log("msg", "could not prepare remote-write request", "err", err)
-		remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
+		a.metrics.remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
 		return err
 	}
 
 	err = a.remoteWriter.Store(a.ctx, req)
 	if err != nil {
 		level.Error(a.logger).Log("msg", "could not store recording rule samples", "err", err)
-		remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
+		a.metrics.remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
 		return err
 	}
 
 	// Clear the queue on a successful response
 	a.queue.Clear()
 
-	samplesQueued.WithLabelValues(a.userID, a.groupKey).Set(0)
+	a.metrics.samplesQueued.WithLabelValues(a.userID, a.groupKey).Set(0)
 
 	return nil
 }

@@ -93,7 +93,8 @@ func MemstoreTenantManager(
 	engine *logql.Engine,
 	overrides RulesLimits,
 ) ruler.ManagerFactory {
-	var metrics *Metrics
+	var msMetrics *memstoreMetrics
+	var rwMetrics *remoteWriteMetrics
 
 	return ruler.ManagerFactory(func(
 		ctx context.Context,
@@ -104,15 +105,22 @@ func MemstoreTenantManager(
 	) ruler.RulesManager {
 		// We'll ignore the passed registerer and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
-		if metrics == nil {
-			metrics = NewMetrics(prometheus.DefaultRegisterer)
+		registerer := prometheus.DefaultRegisterer
+
+		if msMetrics == nil {
+			msMetrics = NewMetrics(registerer)
 		}
+
+		if rwMetrics == nil {
+			rwMetrics = newRemoteWriteMetrics(registerer)
+		}
+
 		logger = log.With(logger, "user", userID)
 		queryFunc := engineQueryFunc(engine, overrides, userID)
-		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      newAppendable(cfg, overrides, logger, userID),
+			Appendable:      newAppendable(cfg, overrides, logger, userID, rwMetrics),
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
@@ -133,13 +141,13 @@ func MemstoreTenantManager(
 	})
 }
 
-func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string) storage.Appendable {
+func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string, metrics *remoteWriteMetrics) storage.Appendable {
 	if !cfg.RemoteWrite.Enabled {
 		level.Info(logger).Log("msg", "remote-write is disabled")
 		return &NoopAppender{}
 	}
 
-	return newRemoteWriteAppendable(cfg, overrides, logger, userID)
+	return newRemoteWriteAppendable(cfg, overrides, logger, userID, metrics)
 }
 
 type GroupLoader struct{}

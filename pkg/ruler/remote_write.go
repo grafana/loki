@@ -6,6 +6,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 
@@ -31,6 +33,14 @@ type remoteWriteClient struct {
 
 	labels  []labels.Labels
 	samples []cortexpb.Sample
+}
+
+type remoteWriteMetrics struct {
+	samplesEvicted       *prometheus.CounterVec
+	samplesQueuedTotal   *prometheus.CounterVec
+	samplesQueued        *prometheus.GaugeVec
+	samplesQueueCapacity *prometheus.GaugeVec
+	remoteWriteErrors    *prometheus.CounterVec
 }
 
 func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
@@ -95,4 +105,34 @@ func (r *remoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, e
 	}
 
 	return snappy.Encode(nil, reqBytes), nil
+}
+
+func newRemoteWriteMetrics(r prometheus.Registerer) *remoteWriteMetrics {
+	return &remoteWriteMetrics{
+		samplesEvicted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "recording_rules_samples_evicted_total",
+			Help:      "Number of samples evicted from queue; queue is full!",
+		}, []string{"tenant", "group_key"}),
+		samplesQueuedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "recording_rules_samples_queued_total",
+			Help:      "Number of samples queued in total.",
+		}, []string{"tenant", "group_key"}),
+		samplesQueued: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Name:      "recording_rules_samples_queued_current",
+			Help:      "Number of samples queued to be remote-written.",
+		}, []string{"tenant", "group_key"}),
+		samplesQueueCapacity: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "loki",
+			Name:      "recording_rules_samples_queue_capacity",
+			Help:      "Number of samples that can be queued before eviction of oldest samples occurs.",
+		}, []string{"tenant"}),
+		remoteWriteErrors: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "recording_rules_remote_write_errors",
+			Help:      "Number of samples that failed to be remote-written due to error.",
+		}, []string{"tenant", "group_key"}),
+	}
 }
