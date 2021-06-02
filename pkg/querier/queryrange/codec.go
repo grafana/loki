@@ -30,9 +30,9 @@ import (
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
-var lokiCodec = &codec{}
+var LokiCodec = &Codec{}
 
-type codec struct{}
+type Codec struct{}
 
 func (r *LokiRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
@@ -150,7 +150,7 @@ func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
 
-func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
+func (Codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -199,7 +199,7 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 
 }
 
-func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Request, error) {
+func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Request, error) {
 	switch request := r.(type) {
 	case *LokiRequest:
 		params := url.Values{
@@ -271,7 +271,7 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 	}
 }
 
-func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrange.Request) (queryrange.Response, error) {
+func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrange.Request) (queryrange.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
@@ -358,7 +358,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 
 }
 
-func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http.Response, error) {
+func (Codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
@@ -424,7 +424,7 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 
 // NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 // MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Response, error) {
+func (Codec) MergeResponse(responses ...queryrange.Response) (queryrange.Response, error) {
 	if len(responses) == 0 {
 		return nil, errors.New("merging responses requires at least one response")
 	}

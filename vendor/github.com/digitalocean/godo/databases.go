@@ -193,16 +193,23 @@ type DatabaseBackup struct {
 	SizeGigabytes float64   `json:"size_gigabytes,omitempty"`
 }
 
+// DatabaseBackupRestore contains information needed to restore a backup.
+type DatabaseBackupRestore struct {
+	DatabaseName    string `json:"database_name,omitempty"`
+	BackupCreatedAt string `json:"backup_created_at,omitempty"`
+}
+
 // DatabaseCreateRequest represents a request to create a database cluster
 type DatabaseCreateRequest struct {
-	Name               string   `json:"name,omitempty"`
-	EngineSlug         string   `json:"engine,omitempty"`
-	Version            string   `json:"version,omitempty"`
-	SizeSlug           string   `json:"size,omitempty"`
-	Region             string   `json:"region,omitempty"`
-	NumNodes           int      `json:"num_nodes,omitempty"`
-	PrivateNetworkUUID string   `json:"private_network_uuid"`
-	Tags               []string `json:"tags,omitempty"`
+	Name               string                 `json:"name,omitempty"`
+	EngineSlug         string                 `json:"engine,omitempty"`
+	Version            string                 `json:"version,omitempty"`
+	SizeSlug           string                 `json:"size,omitempty"`
+	Region             string                 `json:"region,omitempty"`
+	NumNodes           int                    `json:"num_nodes,omitempty"`
+	PrivateNetworkUUID string                 `json:"private_network_uuid"`
+	Tags               []string               `json:"tags,omitempty"`
+	BackupRestore      *DatabaseBackupRestore `json:"backup_restore,omitempty"`
 }
 
 // DatabaseResizeRequest can be used to initiate a database resize operation.

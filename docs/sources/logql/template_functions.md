@@ -595,3 +595,19 @@ Signature: `toFloat64(v interface{}) float64`
 ```template
 {{ "3.5" | float64 }} //output 3.5
 ```
+
+## fromJson
+
+> **Note:** Added in Loki 2.3.
+
+fromJson decodes a JSON document into a structure. If the input cannot be decoded as JSON the function will return an empty string.
+
+```template
+fromJson "{\"foo\": 55}"
+```
+
+Example of a query to print a newline per queries stored as a json array in the log line:
+
+```logql
+{job="cortex/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
+```

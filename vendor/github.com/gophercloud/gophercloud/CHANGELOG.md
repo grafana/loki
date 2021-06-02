@@ -1,4 +1,27 @@
-## 0.17.0 (Unreleased)
+## 0.18.0 (Unreleased)
+
+## 0.17.0 (April 9, 2021)
+
+IMPROVEMENTS
+
+* `networking/v2/extensions/quotas.QuotaDetail.Reserved` can handle both `int` and `string` values [GH-2126](https://github.com/gophercloud/gophercloud/pull/2126)
+* Added `blockstorage/v3/volumetypes.ListExtraSpecs` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.GetExtraSpec` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.CreateExtraSpecs` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.UpdateExtraSpec` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.DeleteExtraSpec` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `identity/v3/roles.ListAssignmentOpts.IncludeNames` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.AssignedRoles.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.Domain.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.Project.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.User.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.Group.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `blockstorage/extensions/availabilityzones.List` [GH-2135](https://github.com/gophercloud/gophercloud/pull/2135)
+* Added `blockstorage/v3/volumetypes.ListAccesses` [GH-2138](https://github.com/gophercloud/gophercloud/pull/2138)
+* Added `blockstorage/v3/volumetypes.AddAccess` [GH-2138](https://github.com/gophercloud/gophercloud/pull/2138)
+* Added `blockstorage/v3/volumetypes.RemoveAccess` [GH-2138](https://github.com/gophercloud/gophercloud/pull/2138)
+* Added `blockstorage/v3/qos.Create` [GH-2140](https://github.com/gophercloud/gophercloud/pull/2140)
+* Added `blockstorage/v3/qos.Delete` [GH-2140](https://github.com/gophercloud/gophercloud/pull/2140)
 
 ## 0.16.0 (February 23, 2021)
 

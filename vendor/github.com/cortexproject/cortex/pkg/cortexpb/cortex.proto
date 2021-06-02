@@ -26,7 +26,8 @@ message WriteResponse {}
 message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
   // Sorted by time, oldest sample first.
-  repeated Sample samples   = 2 [(gogoproto.nullable) = false];
+  repeated Sample samples = 2 [(gogoproto.nullable) = false];
+  repeated Exemplar exemplars = 3 [(gogoproto.nullable) = false];
 }
 
 message LabelPair {
@@ -59,4 +60,11 @@ message MetricMetadata {
 
 message Metric {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+}
+
+message Exemplar {
+  // Exemplar labels, different than series labels
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+  double value = 2;
+  int64 timestamp_ms = 3;
 }

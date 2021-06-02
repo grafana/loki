@@ -217,9 +217,11 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 
 	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
 
+	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ring", "Distributor Ring Status")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/all_user_stats", "Usage Statistics")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ha_tracker", "HA Tracking Status")
 
+	a.RegisterRoute("/distributor/ring", d, false, "GET", "POST")
 	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false, "GET")
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false, "GET")
 

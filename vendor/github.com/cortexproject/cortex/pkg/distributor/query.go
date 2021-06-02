@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	grpc_util "github.com/cortexproject/cortex/pkg/util/grpc"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -187,8 +188,9 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 // queryIngesterStream queries the ingesters using the new streaming API.
 func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	var (
-		chunksLimit = d.limits.MaxChunksPerQueryFromIngesters(userID)
-		chunksCount = atomic.Int32{}
+		chunksLimit  = d.limits.MaxChunksPerQueryFromIngesters(userID)
+		chunksCount  = atomic.Int32{}
+		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Fetch samples from multiple ingesters
@@ -228,6 +230,16 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 					// logic doesn't break.
 					matchers, _ := ingester_client.FromLabelMatchers(req.Matchers)
 					return nil, validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), chunksLimit))
+				}
+			}
+			for _, series := range resp.Chunkseries {
+				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
+					return nil, limitErr
+				}
+			}
+			for _, series := range resp.Timeseries {
+				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
+					return nil, limitErr
 				}
 			}
 

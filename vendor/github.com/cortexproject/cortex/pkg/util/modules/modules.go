@@ -149,6 +149,13 @@ func (m *Manager) IsUserVisibleModule(mod string) bool {
 	return false
 }
 
+// IsModuleRegistered checks if the given module has been registered or not. Returns true
+// if the module has previously been registered via a call to RegisterModule, false otherwise.
+func (m *Manager) IsModuleRegistered(mod string) bool {
+	_, ok := m.modules[mod]
+	return ok
+}
+
 // listDeps recursively gets a list of dependencies for a passed moduleName
 func (m *Manager) listDeps(mod string) []string {
 	deps := m.modules[mod].deps

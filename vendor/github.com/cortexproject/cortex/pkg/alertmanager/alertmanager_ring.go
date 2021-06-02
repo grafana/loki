@@ -42,16 +42,18 @@ var SyncRingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.JOINING}, fun
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore           kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances."`
-	HeartbeatPeriod   time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
-	ReplicationFactor int           `yaml:"replication_factor"`
+	KVStore              kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances."`
+	HeartbeatPeriod      time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor    int           `yaml:"replication_factor"`
+	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
+	InstanceZone           string   `yaml:"instance_availability_zone"`
 
 	// Injected internally
 	ListenPort      int           `yaml:"-"`
@@ -77,6 +79,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeartbeatPeriod, rfprefix+"heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring.")
 	f.DurationVar(&cfg.HeartbeatTimeout, rfprefix+"heartbeat-timeout", time.Minute, "The heartbeat timeout after which alertmanagers are considered unhealthy within the ring.")
 	f.IntVar(&cfg.ReplicationFactor, rfprefix+"replication-factor", 3, "The replication factor to use when sharding the alertmanager.")
+	f.BoolVar(&cfg.ZoneAwarenessEnabled, rfprefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate alerts across different availability zones.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -84,6 +87,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceAddr, rfprefix+"instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, rfprefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, rfprefix+"instance-id", hostname, "Instance ID to register in the ring.")
+	f.StringVar(&cfg.InstanceZone, rfprefix+"instance-availability-zone", "", "The availability zone where this instance is running. Required if zone-awareness is enabled.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -103,6 +107,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) 
 		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
 		HeartbeatPeriod:     cfg.HeartbeatPeriod,
 		TokensObservePeriod: 0,
+		Zone:                cfg.InstanceZone,
 		NumTokens:           RingNumTokens,
 	}, nil
 }
@@ -114,6 +119,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ReplicationFactor = cfg.ReplicationFactor
+	rc.ZoneAwarenessEnabled = cfg.ZoneAwarenessEnabled
 
 	return rc
 }

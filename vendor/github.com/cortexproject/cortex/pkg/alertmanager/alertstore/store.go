@@ -40,6 +40,9 @@ type AlertStore interface {
 	// If configuration for the user doesn't exist, no error is reported.
 	DeleteAlertConfig(ctx context.Context, user string) error
 
+	// ListUsersWithFullState returns the list of users which have had state written.
+	ListUsersWithFullState(ctx context.Context) ([]string, error)
+
 	// GetFullState loads and returns the alertmanager state for the given user.
 	GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error)
 

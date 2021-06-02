@@ -657,6 +657,83 @@ func (s *Constraint) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
 
+// CreateFolderMetadata: Metadata pertaining to the Folder creation
+// process.
+type CreateFolderMetadata struct {
+	// DisplayName: The display name of the folder.
+	DisplayName string `json:"displayName,omitempty"`
+
+	// Parent: The resource name of the folder or organization we are
+	// creating the folder under.
+	Parent string `json:"parent,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g. "DisplayName") to
+	// unconditionally include in API requests. By default, fields with
+	// empty values are omitted from API requests. However, any non-pointer,
+	// non-interface field appearing in ForceSendFields will be sent to the
+	// server regardless of whether the field is empty or not. This may be
+	// used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "DisplayName") to include
+	// in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. However, any field with
+	// an empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *CreateFolderMetadata) MarshalJSON() ([]byte, error) {
+	type NoMethod CreateFolderMetadata
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
+// CreateProjectMetadata: A status object which is used as the
+// `metadata` field for the Operation returned by CreateProject. It
+// provides insight for when significant phases of Project creation have
+// completed.
+type CreateProjectMetadata struct {
+	// CreateTime: Creation time of the project creation workflow.
+	CreateTime string `json:"createTime,omitempty"`
+
+	// Gettable: True if the project can be retrieved using `GetProject`. No
+	// other operations on the project are guaranteed to work until the
+	// project creation is complete.
+	Gettable bool `json:"gettable,omitempty"`
+
+	// Ready: True if the project creation process is complete.
+	Ready bool `json:"ready,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with
+	// empty values are omitted from API requests. However, any non-pointer,
+	// non-interface field appearing in ForceSendFields will be sent to the
+	// server regardless of whether the field is empty or not. This may be
+	// used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "CreateTime") to include in
+	// API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. However, any field with an
+	// empty value appearing in NullFields will be sent to the server as
+	// null. It is an error if a field in this list has a non-empty value.
+	// This may be used to include null fields in Patch requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *CreateProjectMetadata) MarshalJSON() ([]byte, error) {
+	type NoMethod CreateProjectMetadata
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
+// CreateTagBindingMetadata: Runtime operation information for creating
+// a TagValue.
+type CreateTagBindingMetadata struct {
+}
+
 // CreateTagKeyMetadata: Runtime operation information for creating a
 // TagKey.
 type CreateTagKeyMetadata struct {
@@ -665,6 +742,26 @@ type CreateTagKeyMetadata struct {
 // CreateTagValueMetadata: Runtime operation information for creating a
 // TagValue.
 type CreateTagValueMetadata struct {
+}
+
+// DeleteFolderMetadata: A status object which is used as the `metadata`
+// field for the `Operation` returned by `DeleteFolder`.
+type DeleteFolderMetadata struct {
+}
+
+// DeleteOrganizationMetadata: A status object which is used as the
+// `metadata` field for the operation returned by DeleteOrganization.
+type DeleteOrganizationMetadata struct {
+}
+
+// DeleteProjectMetadata: A status object which is used as the
+// `metadata` field for the Operation returned by `DeleteProject`.
+type DeleteProjectMetadata struct {
+}
+
+// DeleteTagBindingMetadata: Runtime operation information for deleting
+// a TagBinding.
+type DeleteTagBindingMetadata struct {
 }
 
 // DeleteTagKeyMetadata: Runtime operation information for deleting a
@@ -1473,6 +1570,47 @@ func (s *ListProjectsResponse) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
 
+// MoveFolderMetadata: Metadata pertaining to the folder move process.
+type MoveFolderMetadata struct {
+	// DestinationParent: The resource name of the folder or organization to
+	// move the folder to.
+	DestinationParent string `json:"destinationParent,omitempty"`
+
+	// DisplayName: The display name of the folder.
+	DisplayName string `json:"displayName,omitempty"`
+
+	// SourceParent: The resource name of the folder's parent.
+	SourceParent string `json:"sourceParent,omitempty"`
+
+	// ForceSendFields is a list of field names (e.g. "DestinationParent")
+	// to unconditionally include in API requests. By default, fields with
+	// empty values are omitted from API requests. However, any non-pointer,
+	// non-interface field appearing in ForceSendFields will be sent to the
+	// server regardless of whether the field is empty or not. This may be
+	// used to include empty fields in Patch requests.
+	ForceSendFields []string `json:"-"`
+
+	// NullFields is a list of field names (e.g. "DestinationParent") to
+	// include in API requests with the JSON null value. By default, fields
+	// with empty values are omitted from API requests. However, any field
+	// with an empty value appearing in NullFields will be sent to the
+	// server as null. It is an error if a field in this list has a
+	// non-empty value. This may be used to include null fields in Patch
+	// requests.
+	NullFields []string `json:"-"`
+}
+
+func (s *MoveFolderMetadata) MarshalJSON() ([]byte, error) {
+	type NoMethod MoveFolderMetadata
+	raw := NoMethod(*s)
+	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+}
+
+// MoveProjectMetadata: A status object which is used as the `metadata`
+// field for the Operation returned by MoveProject.
+type MoveProjectMetadata struct {
+}
+
 // Operation: This resource represents a long-running operation that is
 // the result of a network API call.
 type Operation struct {
@@ -2238,9 +2376,34 @@ func (s *TestIamPermissionsResponse) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
 }
 
+// UndeleteFolderMetadata: A status object which is used as the
+// `metadata` field for the `Operation` returned by `UndeleteFolder`.
+type UndeleteFolderMetadata struct {
+}
+
+// UndeleteOrganizationMetadata: A status object which is used as the
+// `metadata` field for the Operation returned by UndeleteOrganization.
+type UndeleteOrganizationMetadata struct {
+}
+
+// UndeleteProjectMetadata: A status object which is used as the
+// `metadata` field for the Operation returned by `UndeleteProject`.
+type UndeleteProjectMetadata struct {
+}
+
 // UndeleteProjectRequest: The request sent to the UndeleteProject
 // method.
 type UndeleteProjectRequest struct {
+}
+
+// UpdateFolderMetadata: A status object which is used as the `metadata`
+// field for the Operation returned by UpdateFolder.
+type UpdateFolderMetadata struct {
+}
+
+// UpdateProjectMetadata: A status object which is used as the
+// `metadata` field for the Operation returned by UpdateProject.
+type UpdateProjectMetadata struct {
 }
 
 // UpdateTagKeyMetadata: Runtime operation information for updating a
@@ -2265,6 +2428,8 @@ type FoldersClearOrgPolicyCall struct {
 }
 
 // ClearOrgPolicy: Clears a `Policy` from a resource.
+//
+// - resource: Name of the resource for the `Policy` to clear.
 func (r *FoldersService) ClearOrgPolicy(resource string, clearorgpolicyrequest *ClearOrgPolicyRequest) *FoldersClearOrgPolicyCall {
 	c := &FoldersClearOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -2299,7 +2464,7 @@ func (c *FoldersClearOrgPolicyCall) Header() http.Header {
 
 func (c *FoldersClearOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -2409,6 +2574,9 @@ type FoldersGetEffectiveOrgPolicyCall struct {
 // The returned `Policy` will not have an `etag`set because it is a
 // computed `Policy` across multiple resources. Subtrees of Resource
 // Manager resource hierarchy with 'under:' prefix will not be expanded.
+//
+// - resource: The name of the resource to start computing the effective
+//   `Policy`.
 func (r *FoldersService) GetEffectiveOrgPolicy(resource string, geteffectiveorgpolicyrequest *GetEffectiveOrgPolicyRequest) *FoldersGetEffectiveOrgPolicyCall {
 	c := &FoldersGetEffectiveOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -2443,7 +2611,7 @@ func (c *FoldersGetEffectiveOrgPolicyCall) Header() http.Header {
 
 func (c *FoldersGetEffectiveOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -2554,6 +2722,8 @@ type FoldersGetOrgPolicyCall struct {
 // `POLICY_TYPE_NOT_SET` for the `policy_type oneof`. The `etag` value
 // can be used with `SetOrgPolicy()` to create or update a `Policy`
 // during read-modify-write.
+//
+// - resource: Name of the resource the `Policy` is set on.
 func (r *FoldersService) GetOrgPolicy(resource string, getorgpolicyrequest *GetOrgPolicyRequest) *FoldersGetOrgPolicyCall {
 	c := &FoldersGetOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -2588,7 +2758,7 @@ func (c *FoldersGetOrgPolicyCall) Header() http.Header {
 
 func (c *FoldersGetOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -2696,6 +2866,8 @@ type FoldersListAvailableOrgPolicyConstraintsCall struct {
 
 // ListAvailableOrgPolicyConstraints: Lists `Constraints` that could be
 // applied on the specified resource.
+//
+// - resource: Name of the resource to list `Constraints` for.
 func (r *FoldersService) ListAvailableOrgPolicyConstraints(resource string, listavailableorgpolicyconstraintsrequest *ListAvailableOrgPolicyConstraintsRequest) *FoldersListAvailableOrgPolicyConstraintsCall {
 	c := &FoldersListAvailableOrgPolicyConstraintsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -2730,7 +2902,7 @@ func (c *FoldersListAvailableOrgPolicyConstraintsCall) Header() http.Header {
 
 func (c *FoldersListAvailableOrgPolicyConstraintsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -2861,6 +3033,8 @@ type FoldersListOrgPoliciesCall struct {
 
 // ListOrgPolicies: Lists all the `Policies` set for a particular
 // resource.
+//
+// - resource: Name of the resource to list Policies for.
 func (r *FoldersService) ListOrgPolicies(resource string, listorgpoliciesrequest *ListOrgPoliciesRequest) *FoldersListOrgPoliciesCall {
 	c := &FoldersListOrgPoliciesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -2895,7 +3069,7 @@ func (c *FoldersListOrgPoliciesCall) Header() http.Header {
 
 func (c *FoldersListOrgPoliciesCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -3026,6 +3200,8 @@ type FoldersSetOrgPolicyCall struct {
 // a new `Policy` for that `Constraint` on the resource if one does not
 // exist. Not supplying an `etag` on the request `Policy` results in an
 // unconditional write of the `Policy`.
+//
+// - resource: Resource name of the resource to attach the `Policy`.
 func (r *FoldersService) SetOrgPolicy(resource string, setorgpolicyrequest *SetOrgPolicyRequest) *FoldersSetOrgPolicyCall {
 	c := &FoldersSetOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -3060,7 +3236,7 @@ func (c *FoldersSetOrgPolicyCall) Header() http.Header {
 
 func (c *FoldersSetOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -3202,7 +3378,7 @@ func (c *LiensCreateCall) Header() http.Header {
 
 func (c *LiensCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -3298,6 +3474,8 @@ type LiensDeleteCall struct {
 // permission on the `parent` resource. For example, a Lien with a
 // `parent` of `projects/1234` requires permission
 // `resourcemanager.projects.updateLiens`.
+//
+// - name: The name/identifier of the Lien to delete.
 func (r *LiensService) Delete(nameid string) *LiensDeleteCall {
 	c := &LiensDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.nameid = nameid
@@ -3331,7 +3509,7 @@ func (c *LiensDeleteCall) Header() http.Header {
 
 func (c *LiensDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -3433,6 +3611,8 @@ type LiensGetCall struct {
 // permission on the `parent` resource. For example, a Lien with a
 // `parent` of `projects/1234` requires permission
 // `resourcemanager.projects.get`
+//
+// - name: The name/identifier of the Lien.
 func (r *LiensService) Get(nameid string) *LiensGetCall {
 	c := &LiensGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.nameid = nameid
@@ -3476,7 +3656,7 @@ func (c *LiensGetCall) Header() http.Header {
 
 func (c *LiensGetCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -3647,7 +3827,7 @@ func (c *LiensListCall) Header() http.Header {
 
 func (c *LiensListCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -3776,6 +3956,8 @@ type OperationsGetCall struct {
 // Get: Gets the latest state of a long-running operation. Clients can
 // use this method to poll the operation result at intervals as
 // recommended by the API service.
+//
+// - name: The name of the operation resource.
 func (r *OperationsService) Get(name string) *OperationsGetCall {
 	c := &OperationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -3819,7 +4001,7 @@ func (c *OperationsGetCall) Header() http.Header {
 
 func (c *OperationsGetCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -3921,6 +4103,8 @@ type OrganizationsClearOrgPolicyCall struct {
 }
 
 // ClearOrgPolicy: Clears a `Policy` from a resource.
+//
+// - resource: Name of the resource for the `Policy` to clear.
 func (r *OrganizationsService) ClearOrgPolicy(resource string, clearorgpolicyrequest *ClearOrgPolicyRequest) *OrganizationsClearOrgPolicyCall {
 	c := &OrganizationsClearOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -3955,7 +4139,7 @@ func (c *OrganizationsClearOrgPolicyCall) Header() http.Header {
 
 func (c *OrganizationsClearOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -4062,6 +4246,11 @@ type OrganizationsGetCall struct {
 
 // Get: Fetches an Organization resource identified by the specified
 // resource name.
+//
+// - name: The resource name of the Organization to fetch. This is the
+//   organization's relative path in the API, formatted as
+//   "organizations/[organizationId]". For example,
+//   "organizations/1234".
 func (r *OrganizationsService) Get(name string) *OrganizationsGetCall {
 	c := &OrganizationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -4105,7 +4294,7 @@ func (c *OrganizationsGetCall) Header() http.Header {
 
 func (c *OrganizationsGetCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -4211,6 +4400,9 @@ type OrganizationsGetEffectiveOrgPolicyCall struct {
 // The returned `Policy` will not have an `etag`set because it is a
 // computed `Policy` across multiple resources. Subtrees of Resource
 // Manager resource hierarchy with 'under:' prefix will not be expanded.
+//
+// - resource: The name of the resource to start computing the effective
+//   `Policy`.
 func (r *OrganizationsService) GetEffectiveOrgPolicy(resource string, geteffectiveorgpolicyrequest *GetEffectiveOrgPolicyRequest) *OrganizationsGetEffectiveOrgPolicyCall {
 	c := &OrganizationsGetEffectiveOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -4245,7 +4437,7 @@ func (c *OrganizationsGetEffectiveOrgPolicyCall) Header() http.Header {
 
 func (c *OrganizationsGetEffectiveOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -4357,6 +4549,10 @@ type OrganizationsGetIamPolicyCall struct {
 // "organizations/123". Authorization requires the Google IAM permission
 // `resourcemanager.organizations.getIamPolicy` on the specified
 // organization
+//
+// - resource: REQUIRED: The resource for which the policy is being
+//   requested. See the operation documentation for the appropriate
+//   value for this field.
 func (r *OrganizationsService) GetIamPolicy(resource string, getiampolicyrequest *GetIamPolicyRequest) *OrganizationsGetIamPolicyCall {
 	c := &OrganizationsGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -4391,7 +4587,7 @@ func (c *OrganizationsGetIamPolicyCall) Header() http.Header {
 
 func (c *OrganizationsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -4502,6 +4698,8 @@ type OrganizationsGetOrgPolicyCall struct {
 // `POLICY_TYPE_NOT_SET` for the `policy_type oneof`. The `etag` value
 // can be used with `SetOrgPolicy()` to create or update a `Policy`
 // during read-modify-write.
+//
+// - resource: Name of the resource the `Policy` is set on.
 func (r *OrganizationsService) GetOrgPolicy(resource string, getorgpolicyrequest *GetOrgPolicyRequest) *OrganizationsGetOrgPolicyCall {
 	c := &OrganizationsGetOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -4536,7 +4734,7 @@ func (c *OrganizationsGetOrgPolicyCall) Header() http.Header {
 
 func (c *OrganizationsGetOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -4644,6 +4842,8 @@ type OrganizationsListAvailableOrgPolicyConstraintsCall struct {
 
 // ListAvailableOrgPolicyConstraints: Lists `Constraints` that could be
 // applied on the specified resource.
+//
+// - resource: Name of the resource to list `Constraints` for.
 func (r *OrganizationsService) ListAvailableOrgPolicyConstraints(resource string, listavailableorgpolicyconstraintsrequest *ListAvailableOrgPolicyConstraintsRequest) *OrganizationsListAvailableOrgPolicyConstraintsCall {
 	c := &OrganizationsListAvailableOrgPolicyConstraintsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -4678,7 +4878,7 @@ func (c *OrganizationsListAvailableOrgPolicyConstraintsCall) Header() http.Heade
 
 func (c *OrganizationsListAvailableOrgPolicyConstraintsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -4809,6 +5009,8 @@ type OrganizationsListOrgPoliciesCall struct {
 
 // ListOrgPolicies: Lists all the `Policies` set for a particular
 // resource.
+//
+// - resource: Name of the resource to list Policies for.
 func (r *OrganizationsService) ListOrgPolicies(resource string, listorgpoliciesrequest *ListOrgPoliciesRequest) *OrganizationsListOrgPoliciesCall {
 	c := &OrganizationsListOrgPoliciesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -4843,7 +5045,7 @@ func (c *OrganizationsListOrgPoliciesCall) Header() http.Header {
 
 func (c *OrganizationsListOrgPoliciesCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5007,7 +5209,7 @@ func (c *OrganizationsSearchCall) Header() http.Header {
 
 func (c *OrganizationsSearchCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5127,6 +5329,10 @@ type OrganizationsSetIamPolicyCall struct {
 // Authorization requires the Google IAM permission
 // `resourcemanager.organizations.setIamPolicy` on the specified
 // organization
+//
+// - resource: REQUIRED: The resource for which the policy is being
+//   specified. See the operation documentation for the appropriate
+//   value for this field.
 func (r *OrganizationsService) SetIamPolicy(resource string, setiampolicyrequest *SetIamPolicyRequest) *OrganizationsSetIamPolicyCall {
 	c := &OrganizationsSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -5161,7 +5367,7 @@ func (c *OrganizationsSetIamPolicyCall) Header() http.Header {
 
 func (c *OrganizationsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5270,6 +5476,8 @@ type OrganizationsSetOrgPolicyCall struct {
 // a new `Policy` for that `Constraint` on the resource if one does not
 // exist. Not supplying an `etag` on the request `Policy` results in an
 // unconditional write of the `Policy`.
+//
+// - resource: Resource name of the resource to attach the `Policy`.
 func (r *OrganizationsService) SetOrgPolicy(resource string, setorgpolicyrequest *SetOrgPolicyRequest) *OrganizationsSetOrgPolicyCall {
 	c := &OrganizationsSetOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -5304,7 +5512,7 @@ func (c *OrganizationsSetOrgPolicyCall) Header() http.Header {
 
 func (c *OrganizationsSetOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5413,6 +5621,10 @@ type OrganizationsTestIamPermissionsCall struct {
 // specified Organization. The `resource` field should be the
 // organization's resource name, e.g. "organizations/123". There are no
 // permissions required for making this API call.
+//
+// - resource: REQUIRED: The resource for which the policy detail is
+//   being requested. See the operation documentation for the
+//   appropriate value for this field.
 func (r *OrganizationsService) TestIamPermissions(resource string, testiampermissionsrequest *TestIamPermissionsRequest) *OrganizationsTestIamPermissionsCall {
 	c := &OrganizationsTestIamPermissionsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -5447,7 +5659,7 @@ func (c *OrganizationsTestIamPermissionsCall) Header() http.Header {
 
 func (c *OrganizationsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5554,6 +5766,8 @@ type ProjectsClearOrgPolicyCall struct {
 }
 
 // ClearOrgPolicy: Clears a `Policy` from a resource.
+//
+// - resource: Name of the resource for the `Policy` to clear.
 func (r *ProjectsService) ClearOrgPolicy(resource string, clearorgpolicyrequest *ClearOrgPolicyRequest) *ProjectsClearOrgPolicyCall {
 	c := &ProjectsClearOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -5588,7 +5802,7 @@ func (c *ProjectsClearOrgPolicyCall) Header() http.Header {
 
 func (c *ProjectsClearOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5737,7 +5951,7 @@ func (c *ProjectsCreateCall) Header() http.Header {
 
 func (c *ProjectsCreateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5840,6 +6054,8 @@ type ProjectsDeleteCall struct {
 // deletion completes, the Project is not retrievable by the GetProject
 // and ListProjects methods. The caller must have delete permissions for
 // this Project.
+//
+// - projectId: The Project ID (for example, `foo-bar-123`).
 func (r *ProjectsService) Delete(projectId string) *ProjectsDeleteCall {
 	c := &ProjectsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -5873,7 +6089,7 @@ func (c *ProjectsDeleteCall) Header() http.Header {
 
 func (c *ProjectsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -5972,6 +6188,8 @@ type ProjectsGetCall struct {
 // Get: Retrieves the Project identified by the specified `project_id`
 // (for example, `my-project-123`). The caller must have read
 // permissions for this Project.
+//
+// - projectId: The Project ID (for example, `my-project-123`).
 func (r *ProjectsService) Get(projectId string) *ProjectsGetCall {
 	c := &ProjectsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -6015,7 +6233,7 @@ func (c *ProjectsGetCall) Header() http.Header {
 
 func (c *ProjectsGetCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -6119,6 +6337,8 @@ type ProjectsGetAncestryCall struct {
 // the Project identified by the specified `project_id` (for example,
 // `my-project-123`). The caller must have read permissions for this
 // Project.
+//
+// - projectId: The Project ID (for example, `my-project-123`).
 func (r *ProjectsService) GetAncestry(projectId string, getancestryrequest *GetAncestryRequest) *ProjectsGetAncestryCall {
 	c := &ProjectsGetAncestryCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -6153,7 +6373,7 @@ func (c *ProjectsGetAncestryCall) Header() http.Header {
 
 func (c *ProjectsGetAncestryCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -6263,6 +6483,9 @@ type ProjectsGetEffectiveOrgPolicyCall struct {
 // The returned `Policy` will not have an `etag`set because it is a
 // computed `Policy` across multiple resources. Subtrees of Resource
 // Manager resource hierarchy with 'under:' prefix will not be expanded.
+//
+// - resource: The name of the resource to start computing the effective
+//   `Policy`.
 func (r *ProjectsService) GetEffectiveOrgPolicy(resource string, geteffectiveorgpolicyrequest *GetEffectiveOrgPolicyRequest) *ProjectsGetEffectiveOrgPolicyCall {
 	c := &ProjectsGetEffectiveOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -6297,7 +6520,7 @@ func (c *ProjectsGetEffectiveOrgPolicyCall) Header() http.Header {
 
 func (c *ProjectsGetEffectiveOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -6410,6 +6633,10 @@ type ProjectsGetIamPolicyCall struct {
 // additional information about `resource` (e.g. my-project-id)
 // structure and identification, see Resource Names
 // (https://cloud.google.com/apis/design/resource_names).
+//
+// - resource: REQUIRED: The resource for which the policy is being
+//   requested. See the operation documentation for the appropriate
+//   value for this field.
 func (r *ProjectsService) GetIamPolicy(resource string, getiampolicyrequest *GetIamPolicyRequest) *ProjectsGetIamPolicyCall {
 	c := &ProjectsGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -6444,7 +6671,7 @@ func (c *ProjectsGetIamPolicyCall) Header() http.Header {
 
 func (c *ProjectsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -6554,6 +6781,8 @@ type ProjectsGetOrgPolicyCall struct {
 // `POLICY_TYPE_NOT_SET` for the `policy_type oneof`. The `etag` value
 // can be used with `SetOrgPolicy()` to create or update a `Policy`
 // during read-modify-write.
+//
+// - resource: Name of the resource the `Policy` is set on.
 func (r *ProjectsService) GetOrgPolicy(resource string, getorgpolicyrequest *GetOrgPolicyRequest) *ProjectsGetOrgPolicyCall {
 	c := &ProjectsGetOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -6588,7 +6817,7 @@ func (c *ProjectsGetOrgPolicyCall) Header() http.Header {
 
 func (c *ProjectsGetOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -6796,7 +7025,7 @@ func (c *ProjectsListCall) Header() http.Header {
 
 func (c *ProjectsListCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -6924,6 +7153,8 @@ type ProjectsListAvailableOrgPolicyConstraintsCall struct {
 
 // ListAvailableOrgPolicyConstraints: Lists `Constraints` that could be
 // applied on the specified resource.
+//
+// - resource: Name of the resource to list `Constraints` for.
 func (r *ProjectsService) ListAvailableOrgPolicyConstraints(resource string, listavailableorgpolicyconstraintsrequest *ListAvailableOrgPolicyConstraintsRequest) *ProjectsListAvailableOrgPolicyConstraintsCall {
 	c := &ProjectsListAvailableOrgPolicyConstraintsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -6958,7 +7189,7 @@ func (c *ProjectsListAvailableOrgPolicyConstraintsCall) Header() http.Header {
 
 func (c *ProjectsListAvailableOrgPolicyConstraintsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -7089,6 +7320,8 @@ type ProjectsListOrgPoliciesCall struct {
 
 // ListOrgPolicies: Lists all the `Policies` set for a particular
 // resource.
+//
+// - resource: Name of the resource to list Policies for.
 func (r *ProjectsService) ListOrgPolicies(resource string, listorgpoliciesrequest *ListOrgPoliciesRequest) *ProjectsListOrgPoliciesCall {
 	c := &ProjectsListOrgPoliciesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -7123,7 +7356,7 @@ func (c *ProjectsListOrgPoliciesCall) Header() http.Header {
 
 func (c *ProjectsListOrgPoliciesCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -7287,6 +7520,10 @@ type ProjectsSetIamPolicyCall struct {
 // lack of a ToS-accepting owner is rectified. Authorization requires
 // the Google IAM permission `resourcemanager.projects.setIamPolicy` on
 // the project
+//
+// - resource: REQUIRED: The resource for which the policy is being
+//   specified. See the operation documentation for the appropriate
+//   value for this field.
 func (r *ProjectsService) SetIamPolicy(resource string, setiampolicyrequest *SetIamPolicyRequest) *ProjectsSetIamPolicyCall {
 	c := &ProjectsSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -7321,7 +7558,7 @@ func (c *ProjectsSetIamPolicyCall) Header() http.Header {
 
 func (c *ProjectsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -7429,6 +7666,8 @@ type ProjectsSetOrgPolicyCall struct {
 // a new `Policy` for that `Constraint` on the resource if one does not
 // exist. Not supplying an `etag` on the request `Policy` results in an
 // unconditional write of the `Policy`.
+//
+// - resource: Resource name of the resource to attach the `Policy`.
 func (r *ProjectsService) SetOrgPolicy(resource string, setorgpolicyrequest *SetOrgPolicyRequest) *ProjectsSetOrgPolicyCall {
 	c := &ProjectsSetOrgPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -7463,7 +7702,7 @@ func (c *ProjectsSetOrgPolicyCall) Header() http.Header {
 
 func (c *ProjectsSetOrgPolicyCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -7573,6 +7812,10 @@ type ProjectsTestIamPermissionsCall struct {
 // my-project-id) structure and identification, see Resource Names
 // (https://cloud.google.com/apis/design/resource_names). There are no
 // permissions required for making this API call.
+//
+// - resource: REQUIRED: The resource for which the policy detail is
+//   being requested. See the operation documentation for the
+//   appropriate value for this field.
 func (r *ProjectsService) TestIamPermissions(resource string, testiampermissionsrequest *TestIamPermissionsRequest) *ProjectsTestIamPermissionsCall {
 	c := &ProjectsTestIamPermissionsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.resource = resource
@@ -7607,7 +7850,7 @@ func (c *ProjectsTestIamPermissionsCall) Header() http.Header {
 
 func (c *ProjectsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -7717,6 +7960,8 @@ type ProjectsUndeleteCall struct {
 // method for a Project that has a lifecycle state of DELETE_REQUESTED.
 // After deletion starts, the Project cannot be restored. The caller
 // must have undelete permissions for this Project.
+//
+// - projectId: The project ID (for example, `foo-bar-123`).
 func (r *ProjectsService) Undelete(projectId string, undeleteprojectrequest *UndeleteProjectRequest) *ProjectsUndeleteCall {
 	c := &ProjectsUndeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -7751,7 +7996,7 @@ func (c *ProjectsUndeleteCall) Header() http.Header {
 
 func (c *ProjectsUndeleteCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}
@@ -7858,6 +8103,8 @@ type ProjectsUpdateCall struct {
 // Update: Updates the attributes of the Project identified by the
 // specified `project_id` (for example, `my-project-123`). The caller
 // must have modify permissions for this Project.
+//
+// - projectId: The project ID (for example, `my-project-123`).
 func (r *ProjectsService) Update(projectId string, project *Project) *ProjectsUpdateCall {
 	c := &ProjectsUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -7892,7 +8139,7 @@ func (c *ProjectsUpdateCall) Header() http.Header {
 
 func (c *ProjectsUpdateCall) doRequest(alt string) (*http.Response, error) {
 	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210314")
+	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/20210502")
 	for k, v := range c.header_ {
 		reqHeaders[k] = v
 	}

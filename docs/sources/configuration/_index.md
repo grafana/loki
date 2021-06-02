@@ -289,6 +289,11 @@ The `querier_config` block configures the Loki Querier.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 
+# Only query the store, do not attempt to query any ingesters,
+# useful for running a standalone querier pool opearting only against stored data.
+# CLI flag: -querier.query-store-only
+[query_store_only: <boolean> | default = false]
+
 # Configuration options for the LogQL engine.
 engine:
   # Timeout for query execution
@@ -1774,9 +1779,9 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # CLI flag: -<prefix>.grpc-max-send-msg-size
 [max_send_msg_size: <int> | default = 16777216]
 
-# Whether or not messages should be compressed.
-# CLI flag: -<prefix>.grpc-use-gzip-compression
-[use_gzip_compression: <bool> | default = false]
+# Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)
+# CLI flag: -<prefix>.grpc-compression
+[grpc_compression: <string> | default = '']
 
 # Rate limit for gRPC client. 0 is disabled.
 # CLI flag: -<prefix>.grpc-client-rate-limit

@@ -1,8 +1,8 @@
 package retention
 
 import (
-	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io/fs"
 	"io/ioutil"
@@ -21,7 +21,10 @@ import (
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
-var minListMarkDelay = time.Minute
+var (
+	minListMarkDelay = time.Minute
+	maxMarkPerFile   = int64(100000)
+)
 
 type MarkerStorageWriter interface {
 	Put(chunkID []byte) error
@@ -34,42 +37,94 @@ type markerStorageWriter struct {
 	tx     *bbolt.Tx
 	bucket *bbolt.Bucket
 
-	count    int64
-	fileName string
+	count            int64
+	currentFileCount int64
+	curFileName      string
+	workDir          string
+
+	buf []byte
 }
 
 func NewMarkerStorageWriter(workingDir string) (MarkerStorageWriter, error) {
-	err := chunk_util.EnsureDirectory(filepath.Join(workingDir, markersFolder))
+	dir := filepath.Join(workingDir, markersFolder)
+	err := chunk_util.EnsureDirectory(dir)
 	if err != nil {
 		return nil, err
 	}
-	fileName := filepath.Join(workingDir, markersFolder, fmt.Sprint(time.Now().UnixNano()))
+
+	msw := &markerStorageWriter{
+		workDir:          dir,
+		currentFileCount: 0,
+		buf:              make([]byte, 8),
+	}
+
+	return msw, msw.createFile()
+}
+
+func (m *markerStorageWriter) createFile() error {
+	fileName := filepath.Join(m.workDir, fmt.Sprint(time.Now().UnixNano()))
 	db, err := shipper_util.SafeOpenBoltdbFile(fileName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	tx, err := db.Begin(true)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	bucket, err := tx.CreateBucketIfNotExists(chunkBucket)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &markerStorageWriter{
-		db:       db,
-		tx:       tx,
-		bucket:   bucket,
-		count:    0,
-		fileName: fileName,
-	}, err
+	level.Info(util_log.Logger).Log("msg", "mark file created", "file", fileName)
+	bucket.FillPercent = 1
+	m.db = db
+	m.tx = tx
+	m.bucket = bucket
+	m.curFileName = fileName
+	m.currentFileCount = 0
+	return nil
+}
+
+func (m *markerStorageWriter) closeFile() error {
+	err := m.tx.Commit()
+	if err != nil {
+		return err
+	}
+	if err := m.db.Close(); err != nil {
+		return err
+	}
+	// The marker file is empty we can remove.
+	if m.currentFileCount == 0 {
+		return os.Remove(m.curFileName)
+	}
+	return nil
 }
 
 func (m *markerStorageWriter) Put(chunkID []byte) error {
-	if err := m.bucket.Put(chunkID, empty); err != nil {
+	if m.currentFileCount > maxMarkPerFile { // roll files when max marks is reached.
+		if err := m.closeFile(); err != nil {
+			return err
+		}
+		if err := m.createFile(); err != nil {
+			return err
+		}
+
+	}
+	// insert in order and fillpercent = 1
+	id, err := m.bucket.NextSequence()
+	if err != nil {
+		return err
+	}
+	binary.BigEndian.PutUint64(m.buf, id) // insert in order using sequence id.
+	// boltdb requires the value to be valid for the whole tx.
+	// so we make a copy.
+	value := make([]byte, len(chunkID))
+	copy(value, chunkID)
+	if err := m.bucket.Put(m.buf, value); err != nil {
 		return err
 	}
 	m.count++
+	m.currentFileCount++
 	return nil
 }
 
@@ -78,17 +133,7 @@ func (m *markerStorageWriter) Count() int64 {
 }
 
 func (m *markerStorageWriter) Close() error {
-	if err := m.tx.Commit(); err != nil {
-		return err
-	}
-	if err := m.db.Close(); err != nil {
-		return err
-	}
-	// The marker file is empty we can remove.
-	if m.count == 0 {
-		return os.Remove(m.fileName)
-	}
-	return nil
+	return m.closeFile()
 }
 
 type MarkerProcessor interface {
@@ -154,7 +199,6 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
 				continue
 			}
-			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
 			if len(paths) == 0 {
 				level.Info(util_log.Logger).Log("msg", "no marks file found")
 			}
@@ -176,12 +220,35 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 
 		}
 	}()
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		tick := func() {
+			select {
+			case <-r.ctx.Done():
+			case <-ticker.C:
+			}
+		}
+		for ; true; tick() {
+			if r.ctx.Err() != nil {
+				return
+			}
+			paths, _, err := r.availablePath()
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
+				continue
+			}
+			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
+		}
+	}()
 }
 
 func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.Context, chunkId []byte) error) error {
 	var (
 		wg    sync.WaitGroup
-		queue = make(chan *bytes.Buffer)
+		queue = make(chan *keyPair)
 	)
 	// we use a copy to view the file so that we can read and update at the same time.
 	viewFile, err := ioutil.TempFile("/tmp/", "marker-view-")
@@ -214,7 +281,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 	if err != nil {
 		return err
 	}
-	dbUpdate.MaxBatchDelay = 1 * time.Second // 1 s is way enough for saving changes, worst case this operation is idempotent.
+	dbUpdate.MaxBatchDelay = 5 * time.Millisecond
 	defer func() {
 		close(queue)
 		wg.Wait()
@@ -228,7 +295,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 			defer wg.Done()
 			for key := range queue {
 				if err := processKey(r.ctx, key, dbUpdate, deleteFunc); err != nil {
-					level.Warn(util_log.Logger).Log("msg", "failed to delete key", "key", key.String(), "err", err)
+					level.Warn(util_log.Logger).Log("msg", "failed to delete key", "key", key.key.String(), "value", key.value.String(), "err", err)
 				}
 				putKeyBuffer(key)
 			}
@@ -241,8 +308,8 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 		}
 
 		c := b.Cursor()
-		for k, _ := c.First(); k != nil; k, _ = c.Next() {
-			key, err := getKeyBuffer(k)
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			key, err := getKeyPairBuffer(k, v)
 			if err != nil {
 				return err
 			}
@@ -260,9 +327,9 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 	return nil
 }
 
-func processKey(ctx context.Context, key *bytes.Buffer, db *bbolt.DB, deleteFunc func(ctx context.Context, chunkId []byte) error) error {
-	keyData := key.Bytes()
-	if err := deleteFunc(ctx, keyData); err != nil {
+func processKey(ctx context.Context, key *keyPair, db *bbolt.DB, deleteFunc func(ctx context.Context, chunkId []byte) error) error {
+	chunkID := key.value.Bytes()
+	if err := deleteFunc(ctx, chunkID); err != nil {
 		return err
 	}
 	return db.Batch(func(tx *bbolt.Tx) error {
@@ -270,7 +337,7 @@ func processKey(ctx context.Context, key *bytes.Buffer, db *bbolt.DB, deleteFunc
 		if b == nil {
 			return nil
 		}
-		return b.Delete(keyData)
+		return b.Delete(key.key.Bytes())
 	})
 }
 
