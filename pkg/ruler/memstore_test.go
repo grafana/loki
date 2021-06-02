@@ -1,4 +1,4 @@
-package manager
+package ruler
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	NilMetrics = NewMetrics(nil)
+	NilMetrics = newMemstoreMetrics(nil)
 	NilLogger  = log.NewNopLogger()
 )
 

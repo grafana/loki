@@ -1,4 +1,4 @@
-package manager
+package ruler
 
 import (
 	"context"
@@ -46,23 +46,23 @@ func ForStateMetric(base labels.Labels, alertName string) labels.Labels {
 	return b.Labels()
 }
 
-type Metrics struct {
-	Evaluations *prometheus.CounterVec
-	Samples     prometheus.Gauge       // in memory samples
-	CacheHits   *prometheus.CounterVec // cache hits on in memory samples
+type memstoreMetrics struct {
+	evaluations *prometheus.CounterVec
+	samples     prometheus.Gauge       // in memory samples
+	cacheHits   *prometheus.CounterVec // cache hits on in memory samples
 }
 
-func NewMetrics(r prometheus.Registerer) *Metrics {
-	return &Metrics{
-		Evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+func newMemstoreMetrics(r prometheus.Registerer) *memstoreMetrics {
+	return &memstoreMetrics{
+		evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "ruler_memory_for_state_evaluations_total",
 		}, []string{"status", "tenant"}),
-		Samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Name:      "ruler_memory_samples",
 		}),
-		CacheHits: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		cacheHits: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "ruler_memory_for_state_cache_hits_total",
 		}, []string{"tenant"}),
@@ -77,7 +77,7 @@ type MemStore struct {
 	mtx       sync.Mutex
 	userID    string
 	queryFunc rules.QueryFunc
-	metrics   *Metrics
+	metrics   *memstoreMetrics
 	mgr       RuleIter
 	logger    log.Logger
 	rules     map[string]*RuleCache
@@ -87,7 +87,7 @@ type MemStore struct {
 	cleanupInterval time.Duration
 }
 
-func NewMemStore(userID string, queryFunc rules.QueryFunc, metrics *Metrics, cleanupInterval time.Duration, logger log.Logger) *MemStore {
+func NewMemStore(userID string, queryFunc rules.QueryFunc, metrics *memstoreMetrics, cleanupInterval time.Duration, logger log.Logger) *MemStore {
 	s := &MemStore{
 		userID:          userID,
 		metrics:         metrics,
@@ -243,7 +243,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 
 	smpl, cached := cache.Get(m.ts, ls)
 	if cached {
-		m.metrics.CacheHits.WithLabelValues(m.userID).Inc()
+		m.metrics.cacheHits.WithLabelValues(m.userID).Inc()
 		level.Debug(m.logger).Log("msg", "result cached", "rule", ruleKey)
 		// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
 		if smpl == nil {
@@ -265,10 +265,10 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	vec, err := m.queryFunc(m.ctx, rule.Query().String(), m.ts.Add(-rule.HoldDuration()))
 	if err != nil {
 		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "err", err.Error())
-		m.metrics.Evaluations.WithLabelValues(statusFailure, m.userID).Inc()
+		m.metrics.evaluations.WithLabelValues(statusFailure, m.userID).Inc()
 		return storage.NoopSeriesSet()
 	}
-	m.metrics.Evaluations.WithLabelValues(statusSuccess, m.userID).Inc()
+	m.metrics.evaluations.WithLabelValues(statusSuccess, m.userID).Inc()
 	level.Debug(m.logger).Log("msg", "rule state successfully restored", "rule", ruleKey, "len", len(vec))
 
 	// translate the result into the ALERTS_FOR_STATE series for caching,
@@ -322,11 +322,11 @@ func (*memStoreQuerier) Close() error { return nil }
 
 type RuleCache struct {
 	mtx     sync.Mutex
-	metrics *Metrics
+	metrics *memstoreMetrics
 	data    map[int64]map[uint64]promql.Sample
 }
 
-func NewRuleCache(metrics *Metrics) *RuleCache {
+func NewRuleCache(metrics *memstoreMetrics) *RuleCache {
 	return &RuleCache{
 		data:    make(map[int64]map[uint64]promql.Sample),
 		metrics: metrics,
@@ -345,7 +345,7 @@ func (c *RuleCache) Set(ts time.Time, vec promql.Vector) {
 	for _, sample := range vec {
 		tsMap[sample.Metric.Hash()] = sample
 	}
-	c.metrics.Samples.Add(float64(len(vec)))
+	c.metrics.samples.Add(float64(len(vec)))
 }
 
 // Get returns ok if that timestamp's result is cached.
@@ -377,7 +377,7 @@ func (c *RuleCache) CleanupOldSamples(olderThan time.Time) (empty bool) {
 	for ts, tsMap := range c.data {
 		if ts < ns {
 			delete(c.data, ts)
-			c.metrics.Samples.Add(-float64(len(tsMap)))
+			c.metrics.samples.Add(-float64(len(tsMap)))
 		}
 
 	}

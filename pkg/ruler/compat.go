@@ -1,4 +1,4 @@
-package manager
+package ruler
 
 import (
 	"bytes"
@@ -7,8 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/prometheus/storage"
+
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -30,7 +33,9 @@ import (
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
 type RulesLimits interface {
-	EvaluationDelay(usedID string) time.Duration
+	ruler.RulesLimits
+
+	RulerRemoteWriteQueueCapacity(userID string) int
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
@@ -84,11 +89,12 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 }
 
 func MemstoreTenantManager(
-	cfg ruler.Config,
+	cfg Config,
 	engine *logql.Engine,
 	overrides RulesLimits,
 ) ruler.ManagerFactory {
-	var metrics *Metrics
+	var msMetrics *memstoreMetrics
+	var rwMetrics *remoteWriteMetrics
 
 	return ruler.ManagerFactory(func(
 		ctx context.Context,
@@ -97,17 +103,24 @@ func MemstoreTenantManager(
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-		// We'll ignore the passed registere and use the default registerer to avoid prefix issues and other weirdness.
+		// We'll ignore the passed registerer and use the default registerer to avoid prefix issues and other weirdness.
 		// This closure prevents re-registering.
-		if metrics == nil {
-			metrics = NewMetrics(prometheus.DefaultRegisterer)
+		registerer := prometheus.DefaultRegisterer
+
+		if msMetrics == nil {
+			msMetrics = newMemstoreMetrics(registerer)
 		}
+
+		if rwMetrics == nil {
+			rwMetrics = newRemoteWriteMetrics(registerer)
+		}
+
 		logger = log.With(logger, "user", userID)
 		queryFunc := engineQueryFunc(engine, overrides, userID)
-		memStore := NewMemStore(userID, queryFunc, metrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NoopAppender{},
+			Appendable:      newAppendable(cfg, overrides, logger, userID, rwMetrics),
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
@@ -126,6 +139,15 @@ func MemstoreTenantManager(
 
 		return mgr
 	})
+}
+
+func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string, metrics *remoteWriteMetrics) storage.Appendable {
+	if !cfg.RemoteWrite.Enabled {
+		level.Info(logger).Log("msg", "remote-write is disabled")
+		return &NoopAppender{}
+	}
+
+	return newRemoteWriteAppendable(cfg, overrides, logger, userID, metrics)
 }
 
 type GroupLoader struct{}
