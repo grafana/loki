@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -44,12 +45,21 @@ const (
 	labelsNotSorted         = "labels_not_sorted"
 	labelValueTooLong       = "label_value_too_long"
 
+	// Exemplar-specific validation reasons
+	exemplarLabelsMissing    = "exemplar_labels_missing"
+	exemplarLabelsTooLong    = "exemplar_labels_too_long"
+	exemplarTimestampInvalid = "exemplar_timestamp_invalid"
+
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited = "rate_limited"
 
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"
+
+	// The combined length of the label names and values of an Exemplar's LabelSet MUST NOT exceed 128 UTF-8 characters
+	// https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#exemplars
+	ExemplarMaxLabelSetLength = 128
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -57,6 +67,15 @@ var DiscardedSamples = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "cortex_discarded_samples_total",
 		Help: "The total number of samples that were discarded.",
+	},
+	[]string{discardReasonLabel, "user"},
+)
+
+// DiscardedExemplars is a metric of the number of discarded exemplars, by reason.
+var DiscardedExemplars = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cortex_discarded_exemplars_total",
+		Help: "The total number of exemplars that were discarded.",
 	},
 	[]string{discardReasonLabel, "user"},
 )
@@ -72,6 +91,7 @@ var DiscardedMetadata = prometheus.NewCounterVec(
 
 func init() {
 	prometheus.MustRegister(DiscardedSamples)
+	prometheus.MustRegister(DiscardedExemplars)
 	prometheus.MustRegister(DiscardedMetadata)
 }
 
@@ -95,6 +115,43 @@ func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.Lab
 	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
 		return newSampleTimestampTooNewError(unsafeMetricName, s.TimestampMs)
+	}
+
+	return nil
+}
+
+// ValidateExemplar returns an error if the exemplar is invalid.
+// The returned error may retain the provided series labels.
+func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
+	if len(e.Labels) <= 0 {
+		DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
+		return newExemplarEmtpyLabelsError(ls, []cortexpb.LabelAdapter{}, e.TimestampMs)
+	}
+
+	if e.TimestampMs == 0 {
+		DiscardedExemplars.WithLabelValues(exemplarTimestampInvalid, userID).Inc()
+		return newExemplarMissingTimestampError(
+			ls,
+			e.Labels,
+			e.TimestampMs,
+		)
+	}
+
+	// Exemplar label length does not include chars involved in text
+	// rendering such as quotes, commas, etc.  See spec and const definition.
+	labelSetLen := 0
+	for _, l := range e.Labels {
+		labelSetLen += utf8.RuneCountInString(l.Name)
+		labelSetLen += utf8.RuneCountInString(l.Value)
+	}
+
+	if labelSetLen > ExemplarMaxLabelSetLength {
+		DiscardedExemplars.WithLabelValues(exemplarLabelsTooLong, userID).Inc()
+		return newExemplarLabelLengthError(
+			ls,
+			e.Labels,
+			e.TimestampMs,
+		)
 	}
 
 	return nil
@@ -202,6 +259,9 @@ func DeletePerUserValidationMetrics(userID string, log log.Logger) {
 
 	if err := util.DeleteMatchingLabels(DiscardedSamples, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(DiscardedExemplars, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_exemplars_total metric for user", "user", userID, "err", err)
 	}
 	if err := util.DeleteMatchingLabels(DiscardedMetadata, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)

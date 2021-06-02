@@ -85,6 +85,14 @@ func WriteTextResponse(w http.ResponseWriter, message string) {
 	_, _ = w.Write([]byte(message))
 }
 
+// Sends message as text/html response with 200 status code.
+func WriteHTMLResponse(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "text/html")
+
+	// Ignore inactionable errors.
+	_, _ = w.Write([]byte(message))
+}
+
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
 func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {

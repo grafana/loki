@@ -400,6 +400,11 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	return errors.WithStack(scanner.Err())
 }
 
+// Allow other packages to interact with Cassandra directly
+func (s *StorageClient) GetReadSession() *gocql.Session {
+	return s.readSession
+}
+
 // readBatch represents a batch of rows read from Cassandra.
 type readBatch struct {
 	rangeValue []byte

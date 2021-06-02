@@ -32,6 +32,8 @@ import (
 
 	"github.com/mwitkow/go-conntrack"
 	"golang.org/x/net/http2"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	"gopkg.in/yaml.v2"
 )
 
@@ -108,12 +110,32 @@ func (u URL) MarshalYAML() (interface{}, error) {
 	return nil, nil
 }
 
+// OAuth2 is the oauth2 client configuration.
+type OAuth2 struct {
+	ClientID         string            `yaml:"client_id"`
+	ClientSecret     Secret            `yaml:"client_secret"`
+	ClientSecretFile string            `yaml:"client_secret_file"`
+	Scopes           []string          `yaml:"scopes,omitempty"`
+	TokenURL         string            `yaml:"token_url"`
+	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty"`
+}
+
+// SetDirectory joins any relative file paths with dir.
+func (a *OAuth2) SetDirectory(dir string) {
+	if a == nil {
+		return
+	}
+	a.ClientSecretFile = JoinDir(dir, a.ClientSecretFile)
+}
+
 // HTTPClientConfig configures an HTTP client.
 type HTTPClientConfig struct {
 	// The HTTP basic authentication credentials for the targets.
 	BasicAuth *BasicAuth `yaml:"basic_auth,omitempty"`
 	// The HTTP authorization credentials for the targets.
 	Authorization *Authorization `yaml:"authorization,omitempty"`
+	// The OAuth2 client credentials used to fetch a token for the targets.
+	OAuth2 *OAuth2 `yaml:"oauth2,omitempty"`
 	// The bearer token for the targets. Deprecated in favour of
 	// Authorization.Credentials.
 	BearerToken Secret `yaml:"bearer_token,omitempty"`
@@ -138,6 +160,7 @@ func (c *HTTPClientConfig) SetDirectory(dir string) {
 	c.TLSConfig.SetDirectory(dir)
 	c.BasicAuth.SetDirectory(dir)
 	c.Authorization.SetDirectory(dir)
+	c.OAuth2.SetDirectory(dir)
 	c.BearerTokenFile = JoinDir(dir, c.BearerTokenFile)
 }
 
@@ -148,8 +171,8 @@ func (c *HTTPClientConfig) Validate() error {
 	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
 		return fmt.Errorf("at most one of bearer_token & bearer_token_file must be configured")
 	}
-	if c.BasicAuth != nil && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
-		return fmt.Errorf("at most one of basic_auth, bearer_token & bearer_token_file must be configured")
+	if (c.BasicAuth != nil || c.OAuth2 != nil) && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
+		return fmt.Errorf("at most one of basic_auth, oauth2, bearer_token & bearer_token_file must be configured")
 	}
 	if c.BasicAuth != nil && (string(c.BasicAuth.Password) != "" && c.BasicAuth.PasswordFile != "") {
 		return fmt.Errorf("at most one of basic_auth password & password_file must be configured")
@@ -168,8 +191,8 @@ func (c *HTTPClientConfig) Validate() error {
 		if strings.ToLower(c.Authorization.Type) == "basic" {
 			return fmt.Errorf(`authorization type cannot be set to "basic", use "basic_auth" instead`)
 		}
-		if c.BasicAuth != nil {
-			return fmt.Errorf("at most one of basic_auth & authorization must be configured")
+		if c.BasicAuth != nil || c.OAuth2 != nil {
+			return fmt.Errorf("at most one of basic_auth, oauth2 & authorization must be configured")
 		}
 	} else {
 		if len(c.BearerToken) > 0 {
@@ -181,6 +204,23 @@ func (c *HTTPClientConfig) Validate() error {
 			c.Authorization = &Authorization{CredentialsFile: c.BearerTokenFile}
 			c.Authorization.Type = "Bearer"
 			c.BearerTokenFile = ""
+		}
+	}
+	if c.OAuth2 != nil {
+		if c.BasicAuth != nil {
+			return fmt.Errorf("at most one of basic_auth, oauth2 & authorization must be configured")
+		}
+		if len(c.OAuth2.ClientID) == 0 {
+			return fmt.Errorf("oauth2 client_id must be configured")
+		}
+		if len(c.OAuth2.ClientSecret) == 0 && len(c.OAuth2.ClientSecretFile) == 0 {
+			return fmt.Errorf("either oauth2 client_secret or client_secret_file must be configured")
+		}
+		if len(c.OAuth2.TokenURL) == 0 {
+			return fmt.Errorf("oauth2 token_url must be configured")
+		}
+		if len(c.OAuth2.ClientSecret) > 0 && len(c.OAuth2.ClientSecretFile) > 0 {
+			return fmt.Errorf("at most one of oauth2 client_secret & client_secret_file must be configured")
 		}
 	}
 	return nil
@@ -329,6 +369,10 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		if cfg.BasicAuth != nil {
 			rt = NewBasicAuthRoundTripper(cfg.BasicAuth.Username, cfg.BasicAuth.Password, cfg.BasicAuth.PasswordFile, rt)
 		}
+
+		if cfg.OAuth2 != nil {
+			rt = NewOAuth2RoundTripper(cfg.OAuth2, rt)
+		}
 		// Return a new configured RoundTripper.
 		return rt, nil
 	}
@@ -440,6 +484,84 @@ func (rt *basicAuthRoundTripper) CloseIdleConnections() {
 	if ci, ok := rt.rt.(closeIdler); ok {
 		ci.CloseIdleConnections()
 	}
+}
+
+type oauth2RoundTripper struct {
+	config *OAuth2
+	rt     http.RoundTripper
+	next   http.RoundTripper
+	secret string
+	mtx    sync.RWMutex
+}
+
+func NewOAuth2RoundTripper(config *OAuth2, next http.RoundTripper) http.RoundTripper {
+	return &oauth2RoundTripper{
+		config: config,
+		next:   next,
+	}
+}
+
+func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	var (
+		secret  string
+		changed bool
+	)
+
+	if rt.config.ClientSecretFile != "" {
+		data, err := ioutil.ReadFile(rt.config.ClientSecretFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read oauth2 client secret file %s: %s", rt.config.ClientSecretFile, err)
+		}
+		secret = strings.TrimSpace(string(data))
+		rt.mtx.RLock()
+		changed = secret != rt.secret
+		rt.mtx.RUnlock()
+	}
+
+	if changed || rt.rt == nil {
+		if rt.config.ClientSecret != "" {
+			secret = string(rt.config.ClientSecret)
+		}
+
+		config := &clientcredentials.Config{
+			ClientID:       rt.config.ClientID,
+			ClientSecret:   secret,
+			Scopes:         rt.config.Scopes,
+			TokenURL:       rt.config.TokenURL,
+			EndpointParams: mapToValues(rt.config.EndpointParams),
+		}
+
+		tokenSource := config.TokenSource(context.Background())
+
+		rt.mtx.Lock()
+		rt.secret = secret
+		rt.rt = &oauth2.Transport{
+			Base:   rt.next,
+			Source: tokenSource,
+		}
+		rt.mtx.Unlock()
+	}
+
+	rt.mtx.RLock()
+	currentRT := rt.rt
+	rt.mtx.RUnlock()
+	return currentRT.RoundTrip(req)
+}
+
+func (rt *oauth2RoundTripper) CloseIdleConnections() {
+	// OAuth2 RT does not support CloseIdleConnections() but the next RT might.
+	if ci, ok := rt.next.(closeIdler); ok {
+		ci.CloseIdleConnections()
+	}
+}
+
+func mapToValues(m map[string]string) url.Values {
+	v := url.Values{}
+	for name, value := range m {
+		v.Set(name, value)
+	}
+
+	return v
 }
 
 // cloneRequest returns a clone of the provided *http.Request.

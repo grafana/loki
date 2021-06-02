@@ -1171,7 +1171,7 @@
       }
     }
   },
-  "revision": "20210309",
+  "revision": "20210331",
   "rootUrl": "https://cloudresourcemanager.googleapis.com/",
   "schemas": {
     "Ancestor": {
@@ -1400,6 +1400,47 @@
       },
       "type": "object"
     },
+    "CreateFolderMetadata": {
+      "description": "Metadata pertaining to the Folder creation process.",
+      "id": "CreateFolderMetadata",
+      "properties": {
+        "displayName": {
+          "description": "The display name of the folder.",
+          "type": "string"
+        },
+        "parent": {
+          "description": "The resource name of the folder or organization we are creating the folder under.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CreateProjectMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by CreateProject. It provides insight for when significant phases of Project creation have completed.",
+      "id": "CreateProjectMetadata",
+      "properties": {
+        "createTime": {
+          "description": "Creation time of the project creation workflow.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "gettable": {
+          "description": "True if the project can be retrieved using `GetProject`. No other operations on the project are guaranteed to work until the project creation is complete.",
+          "type": "boolean"
+        },
+        "ready": {
+          "description": "True if the project creation process is complete.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "CreateTagBindingMetadata": {
+      "description": "Runtime operation information for creating a TagValue.",
+      "id": "CreateTagBindingMetadata",
+      "properties": {},
+      "type": "object"
+    },
     "CreateTagKeyMetadata": {
       "description": "Runtime operation information for creating a TagKey.",
       "id": "CreateTagKeyMetadata",
@@ -1409,6 +1450,30 @@
     "CreateTagValueMetadata": {
       "description": "Runtime operation information for creating a TagValue.",
       "id": "CreateTagValueMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "DeleteFolderMetadata": {
+      "description": "A status object which is used as the `metadata` field for the `Operation` returned by `DeleteFolder`.",
+      "id": "DeleteFolderMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "DeleteOrganizationMetadata": {
+      "description": "A status object which is used as the `metadata` field for the operation returned by DeleteOrganization.",
+      "id": "DeleteOrganizationMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "DeleteProjectMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by `DeleteProject`.",
+      "id": "DeleteProjectMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "DeleteTagBindingMetadata": {
+      "description": "Runtime operation information for deleting a TagBinding.",
+      "id": "DeleteTagBindingMetadata",
       "properties": {},
       "type": "object"
     },
@@ -1783,6 +1848,31 @@
       },
       "type": "object"
     },
+    "MoveFolderMetadata": {
+      "description": "Metadata pertaining to the folder move process.",
+      "id": "MoveFolderMetadata",
+      "properties": {
+        "destinationParent": {
+          "description": "The resource name of the folder or organization to move the folder to.",
+          "type": "string"
+        },
+        "displayName": {
+          "description": "The display name of the folder.",
+          "type": "string"
+        },
+        "sourceParent": {
+          "description": "The resource name of the folder's parent.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MoveProjectMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by MoveProject.",
+      "id": "MoveProjectMetadata",
+      "properties": {},
+      "type": "object"
+    },
     "Operation": {
       "description": "This resource represents a long-running operation that is the result of a network API call.",
       "id": "Operation",
@@ -2149,9 +2239,39 @@
       },
       "type": "object"
     },
+    "UndeleteFolderMetadata": {
+      "description": "A status object which is used as the `metadata` field for the `Operation` returned by `UndeleteFolder`.",
+      "id": "UndeleteFolderMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "UndeleteOrganizationMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by UndeleteOrganization.",
+      "id": "UndeleteOrganizationMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "UndeleteProjectMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by `UndeleteProject`.",
+      "id": "UndeleteProjectMetadata",
+      "properties": {},
+      "type": "object"
+    },
     "UndeleteProjectRequest": {
       "description": "The request sent to the UndeleteProject method.",
       "id": "UndeleteProjectRequest",
+      "properties": {},
+      "type": "object"
+    },
+    "UpdateFolderMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by UpdateFolder.",
+      "id": "UpdateFolderMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "UpdateProjectMetadata": {
+      "description": "A status object which is used as the `metadata` field for the Operation returned by UpdateProject.",
+      "id": "UpdateProjectMetadata",
       "properties": {},
       "type": "object"
     },
