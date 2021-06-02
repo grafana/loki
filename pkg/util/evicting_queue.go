@@ -14,16 +14,21 @@ type EvictingQueue struct {
 }
 
 func NewEvictingQueue(capacity int, onEvict func()) (*EvictingQueue, error) {
-	if capacity <= 0 {
-		// a queue of 0 (or smaller) capacity is invalid
-		return nil, errors.New("queue cannot have a zero or negative capacity")
+	if err := validateCapacity(capacity); err != nil {
+		return nil, err
 	}
 
-	return &EvictingQueue{
-		capacity: capacity,
-		onEvict:  onEvict,
-		entries:  make([]interface{}, 0, capacity),
-	}, nil
+	queue := &EvictingQueue{
+		onEvict: onEvict,
+		entries: make([]interface{}, 0, capacity),
+	}
+
+	err := queue.SetCapacity(capacity)
+	if err != nil {
+		return nil, err
+	}
+
+	return queue, nil
 }
 
 func (q *EvictingQueue) Append(entry interface{}) {
@@ -62,9 +67,27 @@ func (q *EvictingQueue) Capacity() int {
 	return q.capacity
 }
 
+func (q *EvictingQueue) SetCapacity(capacity int) error {
+	if err := validateCapacity(capacity); err != nil {
+		return err
+	}
+
+	q.capacity = capacity
+	return nil
+}
+
 func (q *EvictingQueue) Clear() {
 	q.Lock()
 	defer q.Unlock()
 
 	q.entries = q.entries[:0]
+}
+
+func validateCapacity(capacity int) error {
+	if capacity <= 0 {
+		// a queue of 0 (or smaller) capacity is invalid
+		return errors.New("queue cannot have a zero or negative capacity")
+	}
+
+	return nil
 }

@@ -57,6 +57,28 @@ func TestMemoizedAppenders(t *testing.T) {
 	require.NotSame(t, appender, appendable.Appender(ctx))
 }
 
+// TestMemoizedAppendersWithRuntimeCapacityChange tests that memoized appenders can reconfigure their capacity
+func TestMemoizedAppendersWithRuntimeCapacityChange(t *testing.T) {
+	ctx := createOriginContext("/rule/file", "rule-group")
+	appendable := createBasicAppendable(queueCapacity)
+
+	appender := appendable.Appender(ctx)
+
+	// appender is configured with default queue capacity initially
+	capacity := appender.(*RemoteWriteAppender).queue.Capacity()
+	require.Equal(t, queueCapacity, capacity)
+
+	newCapacity := 123
+
+	// reconfigure the overrides to simulate a runtime config change
+	appendable.overrides = fakeLimits(newCapacity)
+
+	// appender is reconfigured with new queue capacity when retrieved again
+	appender = appendable.Appender(ctx)
+	capacity = appender.(*RemoteWriteAppender).queue.Capacity()
+	require.Equal(t, newCapacity, capacity)
+}
+
 func TestAppenderSeparationByRuleGroup(t *testing.T) {
 	ctxA := createOriginContext("/rule/fileA", "rule-groupA")
 	ctxB := createOriginContext("/rule/fileB", "rule-groupB")

@@ -52,9 +52,16 @@ type RemoteWriteAppender struct {
 func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	groupKey := retrieveGroupKeyFromContext(ctx)
 
+	capacity := a.overrides.RulerRemoteWriteQueueCapacity(a.userID)
+
 	// create or retrieve an appender associated with this groupKey (unique ID for rule group)
 	appender, found := a.groupAppender[groupKey]
 	if found {
+		err := appender.WithQueueCapacity(capacity)
+		if err != nil {
+			level.Warn(a.logger).Log("msg", "attempting to set capacity failed", "err", err)
+		}
+
 		return appender
 	}
 
@@ -64,7 +71,6 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 		return &NoopAppender{}
 	}
 
-	capacity := a.overrides.RulerRemoteWriteQueueCapacity(a.userID)
 	queue, err := util.NewEvictingQueue(capacity, a.onEvict(a.userID, groupKey))
 	if err != nil {
 		level.Error(a.logger).Log("msg", "queue creation error; setting appender as noop", "err", err, "tenant", a.userID)
@@ -81,8 +87,6 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 		queue:   queue,
 		metrics: a.metrics,
 	}
-
-	a.metrics.samplesQueueCapacity.WithLabelValues(a.userID).Set(float64(capacity))
 
 	// only track reference if groupKey was retrieved
 	if groupKey == "" {
@@ -156,6 +160,15 @@ func (a *RemoteWriteAppender) Commit() error {
 func (a *RemoteWriteAppender) Rollback() error {
 	a.queue.Clear()
 
+	return nil
+}
+
+func (a *RemoteWriteAppender) WithQueueCapacity(capacity int) error {
+	if err := a.queue.SetCapacity(capacity); err != nil {
+		return err
+	}
+
+	a.metrics.samplesQueueCapacity.WithLabelValues(a.userID).Set(float64(capacity))
 	return nil
 }
 
