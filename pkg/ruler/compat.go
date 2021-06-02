@@ -108,7 +108,7 @@ func MemstoreTenantManager(
 		registerer := prometheus.DefaultRegisterer
 
 		if msMetrics == nil {
-			msMetrics = NewMetrics(registerer)
+			msMetrics = newMemstoreMetrics(registerer)
 		}
 
 		if rwMetrics == nil {

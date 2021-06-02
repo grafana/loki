@@ -52,7 +52,7 @@ type memstoreMetrics struct {
 	cacheHits   *prometheus.CounterVec // cache hits on in memory samples
 }
 
-func NewMetrics(r prometheus.Registerer) *memstoreMetrics {
+func newMemstoreMetrics(r prometheus.Registerer) *memstoreMetrics {
 	return &memstoreMetrics{
 		evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
