@@ -87,7 +87,7 @@ func (r *remoteWriteClient) prepare(queue *util.EvictingQueue) error {
 	return nil
 }
 
-// PrepareRequest takes the given queue and serialized it into a compressed
+// PrepareRequest takes the given queue and serializes it into a compressed
 // proto write request that will be sent to Cortex
 func (r *remoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
 	// prepare labels and samples from queue

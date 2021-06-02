@@ -40,7 +40,8 @@ func (q *EvictingQueue) Append(entry interface{}) {
 func (q *EvictingQueue) evictOldest() {
 	q.onEvict()
 
-	q.entries = append(q.entries[:0], q.entries[1:]...)
+	start := (len(q.entries) - q.Capacity()) + 1
+	q.entries = append(q.entries[:0], q.entries[start:]...)
 }
 
 func (q *EvictingQueue) Entries() []interface{} {

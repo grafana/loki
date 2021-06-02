@@ -9,10 +9,6 @@ import (
 	"github.com/prometheus/prometheus/config"
 )
 
-// DefaultQueueCapacity defines the default size of the samples queue which will hold samples
-// while the remote-write endpoint is unavailable
-const DefaultQueueCapacity = 10000
-
 type Config struct {
 	ruler.Config `yaml:",inline"`
 
