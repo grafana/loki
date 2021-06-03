@@ -366,6 +366,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -375,19 +376,20 @@ func (t *Loki) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		Ring:            {RuntimeConfig, Server, MemberlistKV},
-		Overrides:       {RuntimeConfig},
-		TenantConfigs:   {RuntimeConfig},
-		Distributor:     {Ring, Server, Overrides, TenantConfigs},
-		Store:           {Overrides},
-		Ingester:        {Store, Server, MemberlistKV, TenantConfigs},
-		Querier:         {Store, Ring, Server, IngesterQuerier, TenantConfigs},
-		QueryFrontend:   {Server, Overrides, TenantConfigs},
-		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
-		TableManager:    {Server},
-		Compactor:       {Server, Overrides},
-		IngesterQuerier: {Ring},
-		All:             {Querier, Ingester, Distributor, TableManager, Ruler},
+		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		Overrides:                {RuntimeConfig},
+		TenantConfigs:            {RuntimeConfig},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs},
+		Store:                    {Overrides},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
+		QueryFrontend:            {QueryFrontendTripperware},
+		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
+		TableManager:             {Server},
+		Compactor:                {Server, Overrides},
+		IngesterQuerier:          {Ring},
+		All:                      {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
