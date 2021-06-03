@@ -603,7 +603,7 @@ type: Counter
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -632,7 +632,7 @@ type: Gauge
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -660,7 +660,7 @@ type: Histogram
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
