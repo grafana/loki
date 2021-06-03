@@ -5,33 +5,31 @@ title: Retention
 
 Retention in Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#Compactor).
 
-## Which one should you use ?
+Which one should you use ?
 
-Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is only supported when using [boltdb-shipper](../boltdb-shipper) store.
+Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is supported only with the [boltdb-shipper](../boltdb-shipper) store.
 
-Going forward the [Compactor](#Compactor) retention will become the default and long term supported one. While this retention is still **experimental** it supports more granular retention (per tenant and per stream) use cases.
+The [Compactor](#Compactor) retention will become the default and have long term support. While this retention is still **experimental**, it supports more granular retention policies on per tenant and per stream use cases.
 
 ## Compactor
 
-As explained in the [Compactor](../boltdb-shipper#compactor) section, the compactor can deduplicate index entries but can also apply granular retention when activated.
-When applying retention with the Compactor, you can totally remove the [Table Manager](../table-manager/) from your Loki workload as it become totally unnecessary.
+The [Compactor](../boltdb-shipper#compactor) can deduplicate index entries. It can also apply granular retention. When applying retention with the Compactor, the [Table Manager](../table-manager/) is unnecessary.
 
-> The compactor should always be run as a singleton. (single instance)
+> Run the compactor as a singleton (a single instance).
 
-### How it works ?
+Compaction and retention are idempotent. If the compactor restarts, it will continue from where it left off.
 
-Once activated, the Compactor will run a in loop that will apply compaction and retention at every `compaction_interval`. If it runs behind, the will executed as soon as possible.
+The Compactor loops to apply compaction and retention at every `compaction_interval`, or as soon as possible if running behind.
 
-The execution is as follow:
+The compactor's algorithm to update the index:
 
-- First the compactor will download all available tables (previously uploaded by ingesters) for each day.
-- For each day and table it will:
-  - First compact the table into a single index file.
-  - Then traverse the whole index to mark chunks that need to be removed based on the tenant configuration.
-  - Marked chunks are directly removed from the index and their reference is saved into a file on disk.
-  - Finally re-upload the new modified index files.
+- For each table within each day:
+  - Compact the table into a single index file.
+  - Traverse the entire index. Use the tenant configuration to identify and mark chunks that need to be removed.
+  - Remove marked chunks from the index and save their reference in a file on disk.
+  - Upload the new modified index files.
 
-Retention is applying directly on the index, however chunks are not deleted directly. They actually will be deleted by the compactor asynchronously in another loop (sweeper).
+The retention algorithm is applied to the index. Chunks are not deleted while applying the retention algorithm. The chunks will be deleted by the compactor asynchronously when swept.
 
 Marked chunks will only  be deleted after `retention_delete_delay` configured is expired because:
 
@@ -41,9 +39,9 @@ Marked chunks will only  be deleted after `retention_delete_delay` configured is
 
 Marker files (containing chunks to deletes), should be store on a persistent disk, since this is the sole reference to them anymore.
 
-### Configuration
+### Retention Configuration
 
-The following compactor config shows how to activate retention with the compactor.
+This compactor configuration example activates retention.
 
 ```yaml
 compactor:
@@ -73,24 +71,32 @@ storage_config:
 
 > Note that retention is only available if the index period is 24h.
 
-As you can see the retention needs `schema_config` and `storage_config` to access the storage.
-To activate retention you'll need to set `retention_enabled` to true otherwise the compactor will only compact tables.
+Set `retention_enabled` to true. Without this, the Compactor will only compact tables.
 
-The `working_directory` is the directory where marked chunks and temporary tables will be saved.
-The `compaction_interval` dictates how often retention and/or compaction is applied, if it falls behind it will execute as soon as possible.
-`retention_delete_delay` is the delay after which the compactor will actually delete marked chunks.
+Define `schema_config` and `storage_config` to access the storage.
 
-And finally `retention_delete_worker_count` setup the amount of goroutine to use to delete chunks.
+The index period must be 24h.
 
-> Compaction and retention is idempotent, in case of restart the compactor will restart where he left off.
+`working_directory` is the directory where marked chunks and temporary tables will be saved.
 
-#### Configuring retention period
+`compaction_interval` dictates how often compaction and/or retention is applied. If the Compactor falls behind, compaction and/or retention occur as soon as possible.
 
-So far we've only talked about how to setup the compactor to apply retention, in this section we will explain how to configure the actual retention period to apply.
+`retention_delete_delay` is the delay after which the compactor will delete marked chunks.
 
-Retention period is configure via the [`limits_config`](./../../../configuration/#limits_config) configuration section. It supports two type of retention `retention_stream` which is applied to all chunks matching the selector
+`retention_delete_worker_count` specifies the maximum quantity of goroutine workers instantiated to delete chunks.
 
-The example below can be added to your Loki configuration to configure global retention.
+#### Configuring the retention period
+
+Retention period is configured within the [`limits_config`](./../../../configuration/#limits_config) configuration section.
+
+There are two ways of setting retention policies:
+
+- `retention_period` which is applied globally.
+- `retention_stream` which is only applied to chunks matching the selector
+
+> The minimum retention period is 24h.
+
+This example configures global retention:
 
 ```yaml
 ...
@@ -124,33 +130,32 @@ overrides:
           period: 24h
 ```
 
-The most specific matching rule is selected. The rule selection is as follow:
+A rule to apply is selected by choosing the first in this list that matches:
 
-- If a per-tenant `retention_stream` matches the current stream, the highest priority is picked.
-- Otherwise if a global `retention_stream` matches the current stream, the highest priority is picked.
-- Otherwise if a per-tenant `retention_period` is specified it will be applied.
-- The the global `retention_period` will be selected if nothing else matched.
-- And finally if no global `retention_period` is set, the default `30days (744h)` retention is selected.
+1. If a per-tenant `retention_stream` matches the current stream, the highest priority is picked.
+2. If a global `retention_stream` matches the current stream, the highest priority is picked.
+3. If a per-tenant `retention_period` is specified, it will be applied.
+4. The global `retention_period` will be selected if nothing else matched.
+5. If no global `retention_period` is specified, the default value of `744h` (30days) retention is used.
 
-Stream matching is using the same syntax as Prometheus label matching:
+Stream matching is uses the same syntax as Prometheus label matching:
 
 - `=`: Select labels that are exactly equal to the provided string.
 - `!=`: Select labels that are not equal to the provided string.
 - `=~`: Select labels that regex-match the provided string.
 - `!~`: Select labels that do not regex-match the provided string.
 
-The two configurations will, for example, set those rules:
+The example configurations will, set these rules:
 
-- All tenants except `29` and `30` will have the retention for streams that are in the `dev` namespace to `24h` hours, and other streams will have a retention of `744h`.
-  - For tenant `29`:
-    - All streams except, the container `loki` or the `namespace` prod, will have retention of 1 week (`168h`).
-    - All streams in `prod` will have a retention of `336h` (2 weeks), even the if the container label is also `loki` since the priority of the `prod` rule is higher.
-    - Steams that have the label container `loki` but are not in the namespace `prod` will have 72h retention.
-  - For tenant `30`:
-    - All streams, except those having the label container `nginx` will have a retention of `744h` (the global retention,since it doesn't overrides a new one).
-    - Streams that have the label `nginx` will have a retention of `24h`.
-
-> The minimum retention period is 24h
+- All tenants except `29` and `30` in the `dev` namespace will have a retention period of `24h` hours.
+- All tenants except `29` and `30` that are not in the `dev` namespace will have the retention period of `744h`.
+- For tenant `29`:
+  - All streams except those in the container `loki` or in the namespace `prod` will have retention period of `168h` (1 week).
+  - All streams in the `prod` namespace will have a retention period of `336h` (2 weeks), even if the container label is `loki`, since the priority of the `prod` rule is higher.
+  - Streams that have the container label `loki` but are not in the namespace `prod` will have a `72h` retention period.
+- For tenant `30`:
+  - All streams except those having the container label `nginx` will have the global retention period of `744h`, since there is no override specified.
+  - Streams that have the label `nginx` will have a retention period of `24h`.
 
 ## Table Manager
 
