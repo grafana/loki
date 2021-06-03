@@ -58,23 +58,24 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring            string = "ring"
-	RuntimeConfig   string = "runtime-config"
-	Overrides       string = "overrides"
-	TenantConfigs   string = "tenant-configs"
-	Server          string = "server"
-	Distributor     string = "distributor"
-	Ingester        string = "ingester"
-	Querier         string = "querier"
-	IngesterQuerier string = "ingester-querier"
-	QueryFrontend   string = "query-frontend"
-	RulerStorage    string = "ruler-storage"
-	Ruler           string = "ruler"
-	Store           string = "store"
-	TableManager    string = "table-manager"
-	MemberlistKV    string = "memberlist-kv"
-	Compactor       string = "compactor"
-	All             string = "all"
+	Ring                     string = "ring"
+	RuntimeConfig            string = "runtime-config"
+	Overrides                string = "overrides"
+	TenantConfigs            string = "tenant-configs"
+	Server                   string = "server"
+	Distributor              string = "distributor"
+	Ingester                 string = "ingester"
+	Querier                  string = "querier"
+	IngesterQuerier          string = "ingester-querier"
+	QueryFrontend            string = "query-frontend"
+	QueryFrontendTripperware string = "query-frontend-tripperware"
+	RulerStorage             string = "ruler-storage"
+	Ruler                    string = "ruler"
+	Store                    string = "store"
+	TableManager             string = "table-manager"
+	MemberlistKV             string = "memberlist-kv"
+	Compactor                string = "compactor"
+	All                      string = "all"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -377,6 +378,26 @@ type disabledShuffleShardingLimits struct{}
 
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { return 0 }
 
+func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
+	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
+
+	tripperware, stopper, err := queryrange.NewTripperware(
+		t.Cfg.QueryRange,
+		util_log.Logger,
+		t.overrides,
+		t.Cfg.SchemaConfig.SchemaConfig,
+		t.Cfg.Querier.QueryIngestersWithin,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return
+	}
+	t.stopper = stopper
+	t.QueryFrontEndTripperware = tripperware
+
+	return services.NewIdleService(nil, nil), nil
+}
+
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
 
@@ -394,27 +415,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		frontendv1pb.RegisterFrontendServer(t.Server.GRPC, t.frontend)
 	}
 
-	level.Debug(util_log.Logger).Log("msg", "initializing query range tripperware",
-		"config", fmt.Sprintf("%+v", t.Cfg.QueryRange),
-		"limits", fmt.Sprintf("%+v", t.Cfg.LimitsConfig),
-	)
-	tripperware, stopper, err := queryrange.NewTripperware(
-		t.Cfg.QueryRange,
-		util_log.Logger,
-		t.overrides,
-		t.Cfg.SchemaConfig.SchemaConfig,
-		t.Cfg.Querier.QueryIngestersWithin,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return
-	}
-	t.stopper = stopper
-
-	roundTripper = tripperware(roundTripper)
-	if t.QueryFrontEndTripperware != nil {
-		roundTripper = t.QueryFrontEndTripperware(roundTripper)
-	}
+	roundTripper = t.QueryFrontEndTripperware(roundTripper)
 
 	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	if t.Cfg.Frontend.CompressResponses {
