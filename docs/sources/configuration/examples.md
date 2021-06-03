@@ -3,17 +3,6 @@ title: Examples
 ---
 # Loki Configuration Examples
 
-- [Loki Configuration Examples](#loki-configuration-examples)
-  - [Complete Local config](#complete-local-config)
-  - [Google Cloud Storage](#google-cloud-storage)
-  - [Cassandra Index](#cassandra-index)
-  - [AWS](#aws)
-    - [S3-compatible APIs](#s3-compatible-apis)
-    - [S3 Expanded Config](#s3-expanded-config)
-  - [Almost zero dependencies setup](#almost-zero-dependencies-setup)
-  - [schema_config](#schema_config)
-  - [Query Frontend](#query-frontend)
-
 ## Complete Local config
 
 ```yaml
@@ -274,7 +263,3 @@ configs:
         period: 168h
         prefix: index_
 ```
-
-## Query Frontend
-
-[example configuration](../query-frontend/)
