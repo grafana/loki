@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func TestBinary_Filter(t *testing.T) {
@@ -205,7 +207,7 @@ func TestErrorFiltering(t *testing.T) {
 		wantLbs labels.Labels
 	}{
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, ErrorLabel, errJSON)),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
 			labels.Labels{
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
@@ -213,14 +215,14 @@ func TestErrorFiltering(t *testing.T) {
 			errJSON,
 			false,
 			labels.Labels{
-				{Name: ErrorLabel, Value: errJSON},
+				{Name: logqlmodel.ErrorLabel, Value: errJSON},
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
 			},
 		},
 		{
 
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".+")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.Labels{
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
@@ -228,14 +230,14 @@ func TestErrorFiltering(t *testing.T) {
 			"foo",
 			false,
 			labels.Labels{
-				{Name: ErrorLabel, Value: "foo"},
+				{Name: logqlmodel.ErrorLabel, Value: "foo"},
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
 			},
 		},
 		{
 
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".+")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.Labels{
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},
@@ -249,7 +251,7 @@ func TestErrorFiltering(t *testing.T) {
 		},
 		{
 
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, ErrorLabel, errJSON)),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
 			labels.Labels{
 				{Name: "status", Value: "200"},
 				{Name: "method", Value: "POST"},

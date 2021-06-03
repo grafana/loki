@@ -11,6 +11,7 @@ import (
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
+// Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
 // HandshakerServiceClient is the client API for HandshakerService service.
@@ -35,7 +36,7 @@ func NewHandshakerServiceClient(cc grpc.ClientConnInterface) HandshakerServiceCl
 }
 
 func (c *handshakerServiceClient) DoHandshake(ctx context.Context, opts ...grpc.CallOption) (HandshakerService_DoHandshakeClient, error) {
-	stream, err := c.cc.NewStream(ctx, &_HandshakerService_serviceDesc.Streams[0], "/grpc.gcp.HandshakerService/DoHandshake", opts...)
+	stream, err := c.cc.NewStream(ctx, &HandshakerService_ServiceDesc.Streams[0], "/grpc.gcp.HandshakerService/DoHandshake", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +97,7 @@ type UnsafeHandshakerServiceServer interface {
 }
 
 func RegisterHandshakerServiceServer(s grpc.ServiceRegistrar, srv HandshakerServiceServer) {
-	s.RegisterService(&_HandshakerService_serviceDesc, srv)
+	s.RegisterService(&HandshakerService_ServiceDesc, srv)
 }
 
 func _HandshakerService_DoHandshake_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -125,7 +126,10 @@ func (x *handshakerServiceDoHandshakeServer) Recv() (*HandshakerReq, error) {
 	return m, nil
 }
 
-var _HandshakerService_serviceDesc = grpc.ServiceDesc{
+// HandshakerService_ServiceDesc is the grpc.ServiceDesc for HandshakerService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var HandshakerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "grpc.gcp.HandshakerService",
 	HandlerType: (*HandshakerServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},

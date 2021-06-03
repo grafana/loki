@@ -31,12 +31,12 @@ This means that the labels passed to the log stream selector will affect the rel
 The following example shows a full log query in action:
 
 ```logql
-{container="query-frontend",namespace="tempo-dev"} |= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500
+{container="query-frontend",namespace="loki-dev"} |= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500
 ```
 
 The query is composed of:
 
-- a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev`namespace.
+- a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev` namespace.
 - a log pipeline `|= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500` which will filter out log that contains the word `metrics.go`, then parses each log line to extract more labels and filter with them.
 
 > To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
@@ -319,7 +319,7 @@ allows to extract the `container` and `pod` labels and the `original log message
 
 #### Label Filter Expression
 
-Label filter expression allows filtering log line using their original and extracted labels. It can contains multiple predicates.
+Label filter expression allows filtering log line using their original and extracted labels. It can contain multiple predicates.
 
 A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
 
@@ -393,7 +393,7 @@ You can use double quoted string for the template or backticks `` `{{.label_name
 
 `line_format` also supports `math` functions. Example:
 
-If we have following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms). We can divide the duration by `1000` to get the value in seconds.
+If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms), we can divide the duration by `1000` to get the value in seconds.
 
 ```logql
 {container="frontend"} | logfmt | line_format "{{.ip}} {{.status}} {{div .duration 1000}}"
@@ -438,7 +438,7 @@ level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d
 You can use multiple parsers (logfmt and regexp) like this.
 
 ```logql
-{job="cortex-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"`
+{job="cortex-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"
 ```
 
 This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
@@ -516,7 +516,7 @@ It returns the per-second rate of all non-timeout errors within the last minutes
 
 #### Unwrapped Range Aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be use within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
@@ -534,6 +534,8 @@ Supported function for operating over unwrapped ranges are:
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
 - `min_over_time(unwrapped-range)`: the minimum value of all points in the specified interval
+- `first_over_time(unwrapped-range)`: the first value of all points in the specified interval
+- `last_over_time(unwrapped-range)`: the last value of all points in the specified interval
 - `stdvar_over_time(unwrapped-range)`: the population standard variance of the values in the specified interval.
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.

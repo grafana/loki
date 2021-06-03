@@ -226,38 +226,38 @@ func NewQuerierHandler(
 	router.Use(middlewares.Wrap)
 
 	// Define the prefixes for all routes
-	prefix := cfg.ServerPrefix + cfg.PrometheusHTTPPrefix
-	legacyPrefix := cfg.ServerPrefix + cfg.LegacyHTTPPrefix
+	prefix := path.Join(cfg.ServerPrefix, cfg.PrometheusHTTPPrefix)
+	legacyPrefix := path.Join(cfg.ServerPrefix, cfg.LegacyHTTPPrefix)
 
-	promRouter := route.New().WithPrefix(prefix + "/api/v1")
+	promRouter := route.New().WithPrefix(path.Join(prefix, "/api/v1"))
 	api.Register(promRouter)
 
-	legacyPromRouter := route.New().WithPrefix(legacyPrefix + "/api/v1")
+	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
 	api.Register(legacyPromRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
-	router.Path(prefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
-	router.Path(prefix + "/api/v1/read").Methods("POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/labels").Methods("GET", "POST").Handler(promRouter)
-	router.Path(prefix + "/api/v1/label/{name}/values").Methods("GET").Handler(promRouter)
-	router.Path(prefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(promRouter)
-	router.Path(prefix + "/api/v1/metadata").Methods("GET").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
+	router.Path(path.Join(prefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
+	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/labels")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/metadata")).Methods("GET").Handler(promRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
-	router.Path(legacyPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
-	router.Path(legacyPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
-	router.Path(legacyPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
+	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
+	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/labels")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Methods("GET").Handler(legacyPromRouter)
 
 	// Track execution time.
 	return stats.NewWallTimeMiddleware().Wrap(router)

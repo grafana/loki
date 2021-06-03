@@ -30,6 +30,10 @@ const (
 	fetchConcurrency = 16
 )
 
+var (
+	errState = errors.New("legacy object alertmanager storage does not support state persistency")
+)
+
 // AlertStore allows cortex alertmanager configs to be stored using an object store backend.
 type AlertStore struct {
 	client chunk.ObjectClient
@@ -97,13 +101,13 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.A
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, errors.Wrapf(err, "failed to read alertmanager config %s", key)
 	}
 
 	config := alertspb.AlertConfigDesc{}
 	err = config.Unmarshal(buf)
 	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, errors.Wrapf(err, "failed to unmarshal alertmanager config %s", key)
 	}
 
 	return config, nil
@@ -136,4 +140,24 @@ func (a *AlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
 		return nil
 	}
 	return err
+}
+
+// ListUsersWithFullState implements alertstore.AlertStore.
+func (a *AlertStore) ListUsersWithFullState(ctx context.Context) ([]string, error) {
+	return nil, errState
+}
+
+// GetFullState implements alertstore.AlertStore.
+func (a *AlertStore) GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error) {
+	return alertspb.FullStateDesc{}, errState
+}
+
+// SetFullState implements alertstore.AlertStore.
+func (a *AlertStore) SetFullState(ctx context.Context, user string, cfg alertspb.FullStateDesc) error {
+	return errState
+}
+
+// DeleteFullState implements alertstore.AlertStore.
+func (a *AlertStore) DeleteFullState(ctx context.Context, user string) error {
+	return errState
 }

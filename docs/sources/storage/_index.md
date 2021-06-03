@@ -18,32 +18,6 @@ More detailed information can be found on the [operations page]({{< relref "../o
 
 Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
 
-- [Storage](#storage)
-  - [Implementations - Chunks](#implementations---chunks)
-    - [Cassandra](#cassandra)
-    - [GCS](#gcs)
-    - [File System](#file-system)
-    - [S3](#s3)
-    - [Notable Mentions](#notable-mentions)
-  - [Implementations - Index](#implementations---index)
-    - [Single Store (boltdb-shipper) - Recommended for 2.0 and newer](#single-store)
-    - [Cassandra](#cassandra-1)
-    - [BigTable](#bigtable)
-    - [DynamoDB](#dynamodb)
-      - [Rate Limiting](#rate-limiting)
-    - [BoltDB](#boltdb)
-  - [Schema Configs](#schema-configs)
-  - [Table Manager](#table-manager)
-    - [Provisioning](#provisioning)
-  - [Upgrading Schemas](#upgrading-schemas)
-  - [Retention](#retention)
-  - [Examples](#examples)
-    - [Single machine/local development (boltdb+filesystem)](#single-machinelocal-development-boltdbfilesystem)
-    - [GCP deployment (GCS Single Store)](#gcp-deployment-gcs-single-store)
-    - [AWS deployment (S3+DynamoDB)](#aws-deployment-s3dynamodb)
-    - [On prem deployment (Cassandra+Cassandra)](#on-prem-deployment-cassandracassandra)
-    - [On prem deployment (MinIO Single Store)](#on-prem-deployment-minio-single-store)
-
 ## Implementations - Chunks
 
 ### Cassandra

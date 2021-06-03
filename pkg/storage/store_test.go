@@ -31,9 +31,9 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -43,7 +43,7 @@ var (
 	chunkStore = getLocalStore()
 )
 
-//go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
+// go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
 func Benchmark_store_SelectLogsRegexBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
 		Selector:  `{foo="bar"} |~ "fuzz"`,
@@ -122,13 +122,12 @@ func Benchmark_store_SelectSample(b *testing.B) {
 		})
 	}
 	log.Print("sample processed ", len(sampleRes))
-
 }
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 	b.ReportAllocs()
 	// force to run gc 10x more often this can be useful to detect fast allocation vs leak.
-	//debug.SetGCPercent(10)
+	// debug.SetGCPercent(10)
 	stop := make(chan struct{})
 	go func() {
 		_ = http.ListenAndServe(":6060", http.DefaultServeMux)
@@ -185,7 +184,7 @@ func printHeap(b *testing.B, show bool) {
 
 func getLocalStore() Store {
 	limits, err := validation.NewOverrides(validation.Limits{
-		MaxQueryLength: 6000 * time.Hour,
+		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
 	if err != nil {
 		panic(err)
@@ -220,7 +219,6 @@ func getLocalStore() Store {
 		storeConfig.Config,
 		chunk.StoreConfig{},
 		schemaConfig.SchemaConfig, limits, nil, nil, util_log.Logger)
-
 	if err != nil {
 		panic(err)
 	}
@@ -233,7 +231,6 @@ func getLocalStore() Store {
 }
 
 func Test_store_SelectLogs(t *testing.T) {
-
 	tests := []struct {
 		name     string
 		req      *logproto.QueryRequest
@@ -421,7 +418,6 @@ func Test_store_SelectLogs(t *testing.T) {
 }
 
 func Test_store_SelectSample(t *testing.T) {
-
 	tests := []struct {
 		name     string
 		req      *logproto.SampleQueryRequest
@@ -630,8 +626,56 @@ func Test_store_SelectSample(t *testing.T) {
 	}
 }
 
-func Test_store_GetSeries(t *testing.T) {
+type fakeChunkFilterer struct{}
 
+func (f fakeChunkFilterer) ForRequest(ctx context.Context) ChunkFilterer {
+	return f
+}
+
+func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
+	return metric.Get("foo") == "bazz"
+}
+
+func Test_ChunkFilterer(t *testing.T) {
+	s := &store{
+		Store: storeFixture,
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+	s.SetChunkFilterer(&fakeChunkFilterer{})
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour))})
+	if err != nil {
+		t.Errorf("store.SelectSamples() error = %v", err)
+		return
+	}
+	defer it.Close()
+	for it.Next() {
+		v := mustParseLabels(it.Labels())["foo"]
+		require.NotEqual(t, "bazz", v)
+	}
+
+	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
+	if err != nil {
+		t.Errorf("store.SelectLogs() error = %v", err)
+		return
+	}
+	defer logit.Close()
+	for logit.Next() {
+		v := mustParseLabels(it.Labels())["foo"]
+		require.NotEqual(t, "bazz", v)
+	}
+	ids, err := s.GetSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil)})
+	require.NoError(t, err)
+	for _, id := range ids {
+		v := id.Labels["foo"]
+		require.NotEqual(t, "bazz", v)
+	}
+}
+
+func Test_store_GetSeries(t *testing.T) {
 	tests := []struct {
 		name      string
 		req       *logproto.QueryRequest
@@ -879,7 +923,6 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 func mustParseLabels(s string) map[string]string {
 	l, err := marshal.NewLabelSet(s)
-
 	if err != nil {
 		log.Fatalf("Failed to parse %s", s)
 	}

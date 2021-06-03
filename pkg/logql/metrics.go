@@ -12,7 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 const (
@@ -83,8 +84,8 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		latencyType = latencyTypeSlow
 	}
 
-	if result != nil && result.Type() == ValueTypeStreams {
-		returnedLines = int(result.(Streams).lines())
+	if result != nil && result.Type() == logqlmodel.ValueTypeStreams {
+		returnedLines = int(result.(logqlmodel.Streams).Lines())
 	}
 
 	// we also log queries, useful for troubleshooting slow queries.

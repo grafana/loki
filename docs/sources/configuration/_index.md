@@ -10,35 +10,6 @@ depending on which mode Loki is launched in.
 
 Configuration examples can be found in the [Configuration Examples](examples/) document.
 
-- [Configuring Loki](#configuring-loki)
-  - [Printing Loki Config At Runtime](#printing-loki-config-at-runtime)
-  - [Configuration File Reference](#configuration-file-reference)
-  - [server_config](#server_config)
-  - [distributor_config](#distributor_config)
-  - [querier_config](#querier_config)
-  - [query_frontend_config](#query_frontend_config)
-  - [queryrange_config](#queryrange_config)
-  - [ruler_config](#ruler_config)
-  - [frontend_worker_config](#frontend_worker_config)
-  - [ingester_client_config](#ingester_client_config)
-  - [ingester_config](#ingester_config)
-  - [consul_config](#consul_config)
-  - [etcd_config](#etcd_config)
-  - [compactor_config](#compactor_config)
-  - [memberlist_config](#memberlist_config)
-  - [storage_config](#storage_config)
-  - [chunk_store_config](#chunk_store_config)
-  - [cache_config](#cache_config)
-  - [schema_config](#schema_config)
-    - [period_config](#period_config)
-  - [limits_config](#limits_config)
-    - [grpc_client_config](#grpc_client_config)
-  - [table_manager_config](#table_manager_config)
-    - [provision_config](#provision_config)
-      - [auto_scaling_config](#auto_scaling_config)
-  - [tracing_config](#tracing_config)
-  - [Runtime Configuration file](#runtime-configuration-file)
-
 ## Printing Loki Config At Runtime
 
 If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
@@ -92,7 +63,7 @@ Where default_value is the value to use if the environment variable is undefined
 
 Pass the `-config.expand-env` flag at the command line to enable this way of setting configs.
 
-### Generic placeholders:
+### Generic placeholders
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
 - `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
@@ -104,7 +75,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<string>` : a regular string
 - `<secret>` : a regular string that is a secret, such as a password
 
-### Supported contents and default values of `loki.yaml`:
+### Supported contents and default values of `loki.yaml`
 
 ```yaml
 # The module to run Loki with. Supported values
@@ -288,6 +259,11 @@ The `querier_config` block configures the Loki Querier.
 # 0 means all queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
+
+# Only query the store, do not attempt to query any ingesters,
+# useful for running a standalone querier pool opearting only against stored data.
+# CLI flag: -querier.query-store-only
+[query_store_only: <boolean> | default = false]
 
 # Configuration options for the LogQL engine.
 engine:
@@ -1774,9 +1750,9 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # CLI flag: -<prefix>.grpc-max-send-msg-size
 [max_send_msg_size: <int> | default = 16777216]
 
-# Whether or not messages should be compressed.
-# CLI flag: -<prefix>.grpc-use-gzip-compression
-[use_gzip_compression: <bool> | default = false]
+# Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)
+# CLI flag: -<prefix>.grpc-compression
+[grpc_compression: <string> | default = '']
 
 # Rate limit for gRPC client. 0 is disabled.
 # CLI flag: -<prefix>.grpc-client-rate-limit

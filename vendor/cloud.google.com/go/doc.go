@@ -85,6 +85,20 @@ https://godoc.org/google.golang.org/grpc/grpclog for more information.
 For HTTP logging, set the GODEBUG environment variable to "http2debug=1" or "http2debug=2".
 
 
+Inspecting errors
+
+Most of the errors returned by the generated clients can be converted into a
+`grpc.Status`. Converting your errors to this type can be a useful to get
+more information about what went wrong while debugging.
+ if err != {
+    if s, ok := status.FromError(err); ok {
+	   log.Println(s.Message())
+	   for _, d := range s.Proto().Details {
+	      log.Println(d)
+	   }
+	}
+ }
+
 Client Stability
 
 Clients in this repository are considered alpha or beta unless otherwise

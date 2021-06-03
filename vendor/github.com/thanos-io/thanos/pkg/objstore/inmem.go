@@ -197,7 +197,7 @@ func (b *InMemBucket) Delete(_ context.Context, name string) error {
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *InMemBucket) IsObjNotFoundErr(err error) bool {
-	return errors.Cause(err) == errNotFound
+	return errors.Is(err, errNotFound)
 }
 
 func (b *InMemBucket) Close() error { return nil }

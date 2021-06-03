@@ -15,10 +15,10 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
 
-	"github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 const (
@@ -43,13 +43,17 @@ type Client interface {
 	GetOrgID() string
 }
 
+// Tripperware can wrap a roundtripper.
+type Tripperware func(http.RoundTripper) http.RoundTripper
+
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig config.TLSConfig
-	Username  string
-	Password  string
-	Address   string
-	OrgID     string
+	TLSConfig   config.TLSConfig
+	Username    string
+	Password    string
+	Address     string
+	OrgID       string
+	Tripperware Tripperware
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -59,7 +63,7 @@ func (c *DefaultClient) Query(queryStr string, limit int, time time.Time, direct
 	qsb := util.NewQueryStringBuilder()
 	qsb.SetString("query", queryStr)
 	qsb.SetInt("limit", int64(limit))
-	qsb.SetInt("start", time.UnixNano())
+	qsb.SetInt("time", time.UnixNano())
 	qsb.SetString("direction", direction.String())
 
 	return c.doQuery(queryPath, qsb.Encode(), quiet)
@@ -182,11 +186,13 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
-	client, err := config.NewClientFromConfig(clientConfig, "logcli", false, false)
+	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
 	if err != nil {
 		return err
 	}
-
+	if c.Tripperware != nil {
+		client.Transport = c.Tripperware(client.Transport)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

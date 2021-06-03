@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,11 +28,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -123,7 +126,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 	}
 
 	// Init the chunks bytes pool.
-	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
+	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.ChunkPoolMinBucketSizeBytes, cfg.BucketStore.ChunkPoolMaxBucketSizeBytes, cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
 		return nil, errors.Wrap(err, "create chunks bytes pool")
 	}
 
@@ -138,7 +141,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 func (u *BucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
-	if err := u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
 		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
@@ -151,9 +154,33 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
 func (u *BucketStores) SyncBlocks(ctx context.Context) error {
-	return u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
 	})
+}
+
+func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 3,
+	})
+
+	var lastErr error
+	for retries.Ongoing() {
+		lastErr = u.syncUsersBlocks(ctx, f)
+		if lastErr == nil {
+			return nil
+		}
+
+		retries.Wait()
+	}
+
+	if lastErr == nil {
+		return retries.Err()
+	}
+
+	return lastErr
 }
 
 func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
@@ -449,26 +476,31 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	}
 
 	bucketStoreReg := prometheus.NewRegistry()
+	bucketStoreOpts := []store.BucketStoreOption{
+		store.WithLogger(userLogger),
+		store.WithRegistry(bucketStoreReg),
+		store.WithIndexCache(u.indexCache),
+		store.WithQueryGate(u.queryGate),
+		store.WithChunkPool(u.chunksPool),
+	}
+	if u.logLevel.String() == "debug" {
+		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
+	}
+
 	bs, err := store.NewBucketStore(
-		userLogger,
-		bucketStoreReg,
 		userBkt,
 		fetcher,
 		u.syncDirForUser(userID),
-		u.indexCache,
-		u.queryGate,
-		u.chunksPool,
 		newChunksLimiterFactory(u.limits, userID),
 		store.NewSeriesLimiterFactory(0), // No series limiter.
 		u.partitioner,
-		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
-		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
 		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,
 		u.cfg.BucketStore.IndexHeaderLazyLoadingIdleTimeout,
+		bucketStoreOpts...,
 	)
 	if err != nil {
 		return nil, err
@@ -573,10 +605,25 @@ func (s spanSeriesServer) Context() context.Context {
 	return s.ctx
 }
 
+type chunkLimiter struct {
+	limiter *store.Limiter
+}
+
+func (c *chunkLimiter) Reserve(num uint64) error {
+	err := c.limiter.Reserve(num)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
+	}
+
+	return nil
+}
+
 func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.ChunksLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
-		return store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter)
+		return &chunkLimiter{
+			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQueryFromStore(userID)), failedCounter),
+		}
 	}
 }

@@ -115,6 +115,18 @@ func (r ReplicationSet) GetAddresses() []string {
 	return addrs
 }
 
+// GetAddressesWithout returns the addresses of all instances within the replication set while
+// excluding the specified address. Returned slice order is not guaranteed.
+func (r ReplicationSet) GetAddressesWithout(exclude string) []string {
+	addrs := make([]string, 0, len(r.Instances))
+	for _, desc := range r.Instances {
+		if desc.Addr != exclude {
+			addrs = append(addrs, desc.Addr)
+		}
+	}
+	return addrs
+}
+
 // HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
 // false if they differ in any way (number of instances, instance states, tokens, zones, ...).
 func HasReplicationSetChanged(before, after ReplicationSet) bool {

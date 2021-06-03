@@ -1,5 +1,22 @@
 # Change Log
 
+## [v1.60.0] - 2021-04-04
+
+- #443 - @andrewsomething - apps: Support pagination.
+- #442 - @andrewsomething - dbaas: Support restoring from a backup.
+- #441 - @andrewsomething - k8s: Add URN method to KubernetesCluster.
+
+## [v1.59.0] - 2021-03-29
+
+- #439 - @andrewsomething - vpcs: Support listing members of a VPC.
+- #438 - @andrewsomething - Add Go 1.16.x to the testing matrix.
+
+## [v1.58.0] - 2021-02-17
+
+- #436 - @MorrisLaw - kubernetes: add name field to associated resources
+- #434 - @andrewsomething - sizes: Add description field.
+- #433 - @andrewsomething - Deprecate Name field in godo.DropletCreateVolume
+
 ## [v1.57.0] - 2021-01-15
 
 - #429 - @varshavaradarajan - kubernetes: support optional cascading deletes for clusters

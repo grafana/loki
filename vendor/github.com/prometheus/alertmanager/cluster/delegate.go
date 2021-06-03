@@ -157,7 +157,10 @@ func (d *delegate) NotifyMsg(b []byte) {
 		return
 	}
 
+	d.mtx.RLock()
 	s, ok := d.states[p.Key]
+	d.mtx.RUnlock()
+
 	if !ok {
 		return
 	}
@@ -179,6 +182,8 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 
 // LocalState is called when gossip fetches local state.
 func (d *delegate) LocalState(_ bool) []byte {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
 	all := &clusterpb.FullState{
 		Parts: make([]clusterpb.Part, 0, len(d.states)),
 	}
