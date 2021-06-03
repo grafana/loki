@@ -22,13 +22,13 @@ type queueEntry struct {
 	sample cortexpb.Sample
 }
 
-type remoteWriter interface {
+type RemoteWriter interface {
 	remote.WriteClient
 
 	PrepareRequest(queue *util.EvictingQueue) ([]byte, error)
 }
 
-type remoteWriteClient struct {
+type RemoteWriteClient struct {
 	remote.WriteClient
 
 	labels  []labels.Labels
@@ -43,7 +43,7 @@ type remoteWriteMetrics struct {
 	remoteWriteErrors    *prometheus.CounterVec
 }
 
-func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
+func NewRemoteWriter(cfg Config, userID string) (RemoteWriter, error) {
 	writeClient, err := remote.NewWriteClient("recording_rules", &remote.ClientConfig{
 		URL:              cfg.RemoteWrite.Client.URL,
 		Timeout:          cfg.RemoteWrite.Client.RemoteTimeout,
@@ -57,12 +57,12 @@ func newRemoteWriter(cfg Config, userID string) (remoteWriter, error) {
 		return nil, errors.Wrapf(err, "could not create remote-write client for tenant: %v", userID)
 	}
 
-	return &remoteWriteClient{
+	return &RemoteWriteClient{
 		WriteClient: writeClient,
 	}, nil
 }
 
-func (r *remoteWriteClient) prepare(queue *util.EvictingQueue) error {
+func (r *RemoteWriteClient) prepare(queue *util.EvictingQueue) error {
 	// reuse slices, resize if they are not big enough
 	if cap(r.labels) < queue.Length() {
 		r.labels = make([]labels.Labels, 0, queue.Length())
@@ -89,7 +89,7 @@ func (r *remoteWriteClient) prepare(queue *util.EvictingQueue) error {
 
 // PrepareRequest takes the given queue and serializes it into a compressed
 // proto write request that will be sent to Cortex
-func (r *remoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
+func (r *RemoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
 	// prepare labels and samples from queue
 	err := r.prepare(queue)
 	if err != nil {

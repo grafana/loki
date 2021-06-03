@@ -41,7 +41,7 @@ func newRemoteWriteAppendable(cfg Config, overrides RulesLimits, logger log.Logg
 type RemoteWriteAppender struct {
 	logger       log.Logger
 	ctx          context.Context
-	remoteWriter remoteWriter
+	remoteWriter RemoteWriter
 	userID       string
 	groupKey     string
 
@@ -65,7 +65,7 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 		return appender
 	}
 
-	client, err := newRemoteWriter(a.cfg, a.userID)
+	client, err := NewRemoteWriter(a.cfg, a.userID)
 	if err != nil {
 		level.Error(a.logger).Log("msg", "error creating remote-write client; setting appender as noop", "err", err, "tenant", a.userID)
 		return &NoopAppender{}

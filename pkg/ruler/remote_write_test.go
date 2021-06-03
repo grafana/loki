@@ -15,7 +15,7 @@ import (
 )
 
 func TestPrepare(t *testing.T) {
-	client := remoteWriteClient{}
+	client := RemoteWriteClient{}
 	queue, err := util.NewEvictingQueue(1000, func() {})
 	require.Nil(t, err)
 
@@ -105,7 +105,7 @@ func createBasicAppender(t *testing.T) *RemoteWriteAppender {
 	appendable := createBasicAppendable(100)
 
 	appender := appendable.Appender(ctx).(*RemoteWriteAppender)
-	client, err := newRemoteWriter(appendable.cfg, "fake")
+	client, err := NewRemoteWriter(appendable.cfg, "fake")
 	require.Nil(t, err)
 
 	appender.remoteWriter = client
