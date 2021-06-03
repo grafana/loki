@@ -5,8 +5,6 @@
 <a href="https://goreportcard.com/report/github.com/grafana/loki"><img src="https://goreportcard.com/badge/github.com/grafana/loki" alt="Go Report Card" /></a>
 <a href="https://slack.grafana.com/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/loki.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:loki)
-<a href="https://codecov.io/gh/grafana/loki"><img src="https://codecov.io/gh/grafana/loki/branch/master/graph/badge.svg" alt="Codecov" /></a>
-
 
 # Loki: like Prometheus, but for logs.
 
