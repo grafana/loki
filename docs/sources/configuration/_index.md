@@ -1448,6 +1448,11 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
+  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # CLI flag: -<prefix>.memcached.addresses
+  [addresses: <string> | default = ""]
+
   # Maximum time to wait before giving up on memcached requests.
   # CLI flag: -<prefix>.memcached.timeout
   [timeout: <duration> | default = 100ms]
