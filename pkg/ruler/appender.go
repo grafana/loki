@@ -105,9 +105,9 @@ func (a *RemoteWriteAppendable) onEvict(userID, groupKey string) func() {
 }
 
 func (a *RemoteWriteAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
-	a.queue.Append(queueEntry{
-		labels: l,
-		sample: cortexpb.Sample{
+	a.queue.Append(TimeSeriesEntry{
+		Labels: l,
+		Sample: cortexpb.Sample{
 			Value:       v,
 			TimestampMs: t,
 		},

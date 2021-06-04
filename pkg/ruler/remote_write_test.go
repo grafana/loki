@@ -32,7 +32,7 @@ func TestPrepare(t *testing.T) {
 
 	// first start with 10 items
 	for i := 0; i < 10; i++ {
-		queue.Append(queueEntry{labels: lbs, sample: sample})
+		queue.Append(TimeSeriesEntry{Labels: lbs, Sample: sample})
 	}
 	require.Nil(t, client.prepare(queue))
 
@@ -45,7 +45,7 @@ func TestPrepare(t *testing.T) {
 
 	// then resize the internal slices to 100
 	for i := 0; i < 100; i++ {
-		queue.Append(queueEntry{labels: lbs, sample: sample})
+		queue.Append(TimeSeriesEntry{Labels: lbs, Sample: sample})
 	}
 	require.Nil(t, client.prepare(queue))
 
@@ -58,7 +58,7 @@ func TestPrepare(t *testing.T) {
 
 	// then reuse the existing slice (no resize necessary since 5 < 100)
 	for i := 0; i < 5; i++ {
-		queue.Append(queueEntry{labels: lbs, sample: sample})
+		queue.Append(TimeSeriesEntry{Labels: lbs, Sample: sample})
 	}
 	require.Nil(t, client.prepare(queue))
 

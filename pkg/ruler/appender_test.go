@@ -128,9 +128,9 @@ func TestAppendSample(t *testing.T) {
 	ts := time.Now().Unix()
 	val := 91.2
 
-	sample := queueEntry{
-		labels: labels,
-		sample: cortexpb.Sample{
+	sample := TimeSeriesEntry{
+		Labels: labels,
+		Sample: cortexpb.Sample{
 			Value:       val,
 			TimestampMs: ts,
 		},
@@ -257,8 +257,8 @@ func TestAppenderEvictOldest(t *testing.T) {
 	require.Equal(t, capacity, appender.queue.Length())
 
 	// only two newest samples are kept
-	require.Equal(t, appender.queue.Entries()[0].(queueEntry).sample.Value, 11.3)
-	require.Equal(t, appender.queue.Entries()[1].(queueEntry).sample.Value, 11.4)
+	require.Equal(t, appender.queue.Entries()[0].(TimeSeriesEntry).Sample.Value, 11.3)
+	require.Equal(t, appender.queue.Entries()[1].(TimeSeriesEntry).Sample.Value, 11.4)
 }
 
 // context is created by ruler, passing along details of the rule being executed
@@ -321,7 +321,7 @@ func (c *MockRemoteWriteClient) Name() string { return "" }
 // Endpoint is the remote read or write endpoint for the storage client.
 func (c *MockRemoteWriteClient) Endpoint() string { return "" }
 
-func (c *MockRemoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
+func (c *MockRemoteWriteClient) PrepareRequest(queue util.Queue) ([]byte, error) {
 	args := c.Called(queue)
 	return args.Get(0).([]byte), args.Error(1)
 }
