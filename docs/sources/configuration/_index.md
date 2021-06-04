@@ -1495,8 +1495,8 @@ redis:
   [password: <string>]
 
   # Enables connecting to redis with TLS.
-  # CLI flag: -<prefix>.redis.enable-tls
-  [enable_tls: <boolean> | default = false]
+  # CLI flag: -<prefix>.redis.tls-enabled
+  [tls_enabled: <boolean> | default = false]
 
   # Close connections after remaining idle for this duration.
   # If the value is zero, then idle connections are not closed.
