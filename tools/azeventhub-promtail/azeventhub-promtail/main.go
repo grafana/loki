@@ -67,7 +67,7 @@ func init() {
 
 func main() {
 	handler := func(ctx context.Context, event *eventhub.Event) error {
-		text := []byte(event.Data)
+		text := event.Data
 		var result map[string][]interface{}
 		json.Unmarshal(text, &result)
 		for _, m := range result {
