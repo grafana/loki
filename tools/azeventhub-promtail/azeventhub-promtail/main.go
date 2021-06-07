@@ -80,9 +80,9 @@ func main() {
 			}
 
 			for _, data := range m {
-				remarshalledJson, _ := json.Marshal(&data)
+				remarshalledJSON, _ := json.Marshal(&data)
 				stream.Entries = append(stream.Entries, logproto.Entry{
-					Line: string(remarshalledJson),
+					Line: string(remarshalledJSON),
 				})
 			}
 
