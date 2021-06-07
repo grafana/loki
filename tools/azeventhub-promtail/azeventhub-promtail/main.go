@@ -15,10 +15,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-amqp-common-go/v3/conn"
 	eventhub "github.com/Azure/azure-event-hubs-go/v3"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/common/model"
 )
 
 // const (
@@ -33,6 +35,7 @@ const (
 
 var hubAddr *eventhub.Hub
 var promtailAddress *url.URL
+var hubParse *conn.ParsedConn
 
 func init() {
 	var err error
@@ -55,6 +58,11 @@ func init() {
 	if err != nil {
 		fmt.Println("Error: ", err)
 	}
+
+	hubParse, err = conn.ParsedConnectionFromStr(azaddr)
+	if err != nil {
+		fmt.Println("Error: ", err)
+	}
 }
 
 func main() {
@@ -64,6 +72,10 @@ func main() {
 		json.Unmarshal(text, &result)
 		for _, m := range result {
 			stream := logproto.Stream{
+				Labels: model.LabelSet{
+					model.LabelName("__az_eventhub_namespace"): model.LabelValue(hubParse.Namespace),
+					model.LabelName("__az_eventhub_hub"):       model.LabelValue(hubParse.HubName),
+				}.String(),
 				Entries: make([]logproto.Entry, 0, len(m)),
 			}
 
