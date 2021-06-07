@@ -1,3 +1,7 @@
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
 UNAME_S := $(shell uname -s)
 LOCAL_PORT ?= 3500
 ifeq ($(UNAME_S),Linux)
@@ -6,10 +10,9 @@ else
 	LOCAL_ENDPOINT=http://host.docker.internal:$(LOCAL_PORT)/loki/api/v1/push
 endif
 
-.PHONY: build
-
+all: clean build
 build:
-	sam build
-
-dry-run:
-	echo $$(sam local generate-event cloudwatch logs) | sam local invoke LambdaPromtailFunction -e - --parameter-overrides PromtailAddress=$(LOCAL_ENDPOINT)
+		$(GOBUILD) -o ./bin/azeventhub-promtail ./azeventhub-promtail/main.go
+clean:
+		$(GOCLEAN)
+		rm -rf ./bin
