@@ -137,7 +137,7 @@ A rule to apply is selected by choosing the first in this list that matches:
 4. The global `retention_period` will be selected if nothing else matched.
 5. If no global `retention_period` is specified, the default value of `744h` (30days) retention is used.
 
-Stream matching is uses the same syntax as Prometheus label matching:
+Stream matching uses the same syntax as Prometheus label matching:
 
 - `=`: Select labels that are exactly equal to the provided string.
 - `!=`: Select labels that are not equal to the provided string.
