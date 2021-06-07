@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	eventhub "github.com/Azure/azure-event-hubs-go/v3"
@@ -121,6 +122,6 @@ func main() {
 	cancel()
 
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, os.Kill)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 	<-signalChan
 }
