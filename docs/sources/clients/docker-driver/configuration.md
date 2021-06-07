@@ -115,12 +115,12 @@ Custom labels can be added using the `loki-external-labels`, `loki-pipeline-stag
 `loki-pipeline-stage-file`, `labels`, `env`, and `env-regex` options. See the
 next section for all supported options.
 
-If no `loki-external-labels` are provided, the label `container_name` will be added to each log line by default.
+`loki-external-labels` have the default value of `container_name={{.Name}}`. If you have custom value for `loki-external-labels` then that will replace the default value, meaning you won't have `container_name` label unless you explcity add it (e.g: `loki-external-lables: "job=docker,container_name={{.Name}}"`.
 
 ## Pipeline stages
 
 While you can provide `loki-pipeline-stage-file` it can be hard to mount the configuration file to the driver root filesystem.
-This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined.
+This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined. Pipeline stages are run at last on every lines.
 
 The example [docker-compose](https://github.com/grafana/loki/blob/master/cmd/docker-driver/docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
 
@@ -167,6 +167,8 @@ Providing both `loki-pipeline-stage-file` and `loki-pipeline-stages` will cause 
 ## Relabeling
 
 You can use [Prometheus relabeling](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) configuration to modify labels discovered by the driver. The configuration must be passed as a YAML string like the [pipeline stages](#pipeline-stages).
+
+Relabeling phase will happen only once per container and it is applied on the container metadata when it starts. So you can for example rename the labels that are only available during the starting of the container, not the labels available on log lines. Use [pipeline stages](#pipeline-stages) instead.
 
 For example the configuration below will rename the label `swarm_stack` and `swarm_service` to respectively `namespace` and `service`.
 
