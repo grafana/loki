@@ -164,7 +164,7 @@ strict ordering. See the [Loki
 Overview](../overview#timestamp-ordering) for detailed documentation on
 the rules of timestamp order.
 
-#### Handoff - Deprecated in favor the the [WAL](../operations/storage/wal)
+#### Handoff - Deprecated in favor of the [WAL](../operations/storage/wal)
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
 it will wait to see if a new ingester tries to enter before flushing and will
