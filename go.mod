@@ -4,6 +4,11 @@ go 1.15
 
 require (
 	cloud.google.com/go/pubsub v1.3.1
+	github.com/Azure/azure-amqp-common-go v1.1.4
+	github.com/Azure/azure-event-hubs-go v1.3.1
+	github.com/Azure/go-autorest/autorest v0.11.19
+	github.com/Azure/go-autorest/autorest/adal v0.9.14 // indirect
+	github.com/Azure/go-autorest/autorest/azure/auth v0.5.7 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/aws/aws-lambda-go v1.17.0
@@ -22,6 +27,7 @@ require (
 	github.com/fatih/color v1.9.0
 	github.com/felixge/fgprof v0.9.1
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
+	github.com/form3tech-oss/jwt-go v3.2.3+incompatible // indirect
 	github.com/go-kit/kit v0.10.0
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/gofrs/flock v0.7.1 // indirect
@@ -65,7 +71,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
 	go.etcd.io/bbolt v1.3.5
 	go.uber.org/atomic v1.7.0
-	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
 	golang.org/x/net v0.0.0-20210505214959-0714010a04ed
 	golang.org/x/sys v0.0.0-20210503173754-0981d6026fa6
 	google.golang.org/api v0.46.0
