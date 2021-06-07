@@ -5,7 +5,6 @@ title: Retention
 
 Retention in Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#Compactor).
 
-Which one should you use ?
 
 Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is supported only with the [boltdb-shipper](../boltdb-shipper) store.
 
