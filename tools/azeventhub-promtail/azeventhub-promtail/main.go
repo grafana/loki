@@ -112,7 +112,7 @@ func main() {
 				if scanner.Scan() {
 					line = scanner.Text()
 				}
-				err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
+				fmt.Printf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
 			}
 		}
 		return nil
