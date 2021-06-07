@@ -51,9 +51,9 @@ import (
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      string `yaml:"target,omitempty"`
-	AuthEnabled bool   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string `yaml:"http_prefix"`
+	Target      flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix  string                 `yaml:"http_prefix"`
 
 	Server           server.Config               `yaml:"server,omitempty"`
 	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
@@ -80,7 +80,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "loki"
 	c.Server.ExcludeRequestInLog = true
 
-	f.StringVar(&c.Target, "target", All, "target module (default All)")
+	// Set the default module list to 'all'
+	c.Target = []string{All}
+	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
+		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. ")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.Server.RegisterFlags(f)
@@ -146,6 +149,10 @@ func (c *Config) Validate() error {
 		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
 	}
 	return nil
+}
+
+func (c *Config) isModuleEnabled(m string) bool {
+	return util.StringsContain(c.Target, m)
 }
 
 // Loki is the root datastructure for Loki.
@@ -231,7 +238,7 @@ func newDefaultConfig() *Config {
 
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run() error {
-	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
+	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
 		return err
 	}
@@ -393,7 +400,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
-	if t.Cfg.Target == Querier || t.Cfg.Target == Ruler {
+	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 

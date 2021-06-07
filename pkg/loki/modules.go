@@ -158,7 +158,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, err
 	}
 
-	if t.Cfg.Target != All {
+	if !t.Cfg.isModuleEnabled(All) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
@@ -291,8 +291,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
-		switch t.Cfg.Target {
-		case Ingester:
+		switch true {
+		case t.Cfg.isModuleEnabled(Ingester):
 			// We do not want ingester to unnecessarily keep downloading files
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
 			// Use fifo cache for caching index in memory.
@@ -308,7 +308,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 				},
 			}
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
-		case Querier, Ruler:
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
 			// We do not want query to do any updates to index
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
@@ -324,8 +324,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		boltdbShipperMinIngesterQueryStoreDuration := boltdbShipperMinIngesterQueryStoreDuration(t.Cfg)
-		switch t.Cfg.Target {
-		case Querier, Ruler:
+		switch true {
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
 			// Do not use the AsyncStore if the querier is configured with QueryStoreOnly set to true
 			if t.Cfg.Querier.QueryStoreOnly {
 				break
@@ -335,7 +335,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			chunkStore = loki_storage.NewAsyncStore(chunkStore, t.ingesterQuerier,
 				calculateAsyncStoreQueryIngestersWithin(t.Cfg.Querier.QueryIngestersWithin, boltdbShipperMinIngesterQueryStoreDuration),
 			)
-		case All:
+		case t.Cfg.isModuleEnabled(All):
 			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
 			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
 			// ToDo: See if we can avoid doing this when not running loki in clustered mode.
@@ -498,7 +498,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// unfortunately there is no way to generate a "default" config and compare default against actual
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
-	if t.Cfg.Target == All && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
 		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
 		return
 	}
