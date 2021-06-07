@@ -1,0 +1,20 @@
+language: go
+sudo: false
+go:
+ - 1.x
+ - 1.11.x
+
+matrix:
+ fast_finish: true
+
+before_install:
+ - cd ${TRAVIS_HOME}
+ - go get github.com/mattn/goveralls
+ - go get golang.org/x/tools/cmd/cover
+ - go get github.com/fzipp/gocyclo
+ - go get golang.org/x/lint/golint
+ - cd ${TRAVIS_BUILD_DIR}
+
+script:
+ - export GO111MODULE=on
+ - make test

@@ -1,0 +1,60 @@
+pool:
+  vmImage: 'Ubuntu 18.04'
+
+variables:
+  GOROOT: '/usr/local/go1.13'
+  GOPATH: '$(system.defaultWorkingDirectory)/work'
+  sdkPath: '$(GOPATH)/src/github.com/$(build.repository.name)'
+
+steps:
+- script: |
+    set -e
+    mkdir -p '$(GOPATH)/bin'
+    mkdir -p '$(sdkPath)'
+    shopt -s extglob
+    mv !(work) '$(sdkPath)'
+    echo '##vso[task.prependpath]$(GOROOT)/bin'
+    echo '##vso[task.prependpath]$(GOPATH)/bin'
+  displayName: 'Create Go Workspace'
+- script: |
+    set -e
+    go get github.com/jstemmer/go-junit-report
+    go get github.com/axw/gocov/gocov
+    go get github.com/AlekSi/gocov-xml
+    go get -u github.com/matm/gocov-html
+  workingDirectory: '$(sdkPath)'
+  displayName: 'Install Dependencies'
+- script: |
+    go vet ./...
+  workingDirectory: '$(sdkPath)'
+  displayName: 'Vet'
+- script: |
+    go build -v ./...
+  workingDirectory: '$(sdkPath)'
+  displayName: 'Build'
+- script: |
+    set -e
+    go test -race -v -coverprofile=coverage.txt -covermode atomic ./... 2>&1 | go-junit-report > report.xml
+    gocov convert coverage.txt > coverage.json
+    gocov-xml < coverage.json > coverage.xml
+    gocov-html < coverage.json > coverage.html
+  workingDirectory: '$(sdkPath)'
+  displayName: 'Run Tests'
+- script: |
+    gofmt -s -l -w . >&2
+  workingDirectory: '$(sdkPath)'
+  displayName: 'Format Check'
+  failOnStderr: true
+  condition: succeededOrFailed()
+
+- task: PublishTestResults@2
+  inputs:
+    testRunner: JUnit
+    testResultsFiles: $(sdkPath)/report.xml
+    failTaskOnFailedTests: true
+
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: Cobertura 
+    summaryFileLocation: $(sdkPath)/coverage.xml
+    additionalCodeCoverageFiles: $(sdkPath)/coverage.html

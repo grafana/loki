@@ -21,24 +21,48 @@ cloud.google.com/go/pubsub/internal/distribution
 cloud.google.com/go/pubsub/pstest
 # cloud.google.com/go/storage v1.10.0
 cloud.google.com/go/storage
+# github.com/Azure/azure-amqp-common-go/v3 v3.0.0
+github.com/Azure/azure-amqp-common-go/v3
+github.com/Azure/azure-amqp-common-go/v3/aad
+github.com/Azure/azure-amqp-common-go/v3/auth
+github.com/Azure/azure-amqp-common-go/v3/cbs
+github.com/Azure/azure-amqp-common-go/v3/conn
+github.com/Azure/azure-amqp-common-go/v3/internal
+github.com/Azure/azure-amqp-common-go/v3/internal/tracing
+github.com/Azure/azure-amqp-common-go/v3/rpc
+github.com/Azure/azure-amqp-common-go/v3/sas
+github.com/Azure/azure-amqp-common-go/v3/uuid
+# github.com/Azure/azure-event-hubs-go/v3 v3.2.0
+## explicit
+github.com/Azure/azure-event-hubs-go/v3
+github.com/Azure/azure-event-hubs-go/v3/atom
+github.com/Azure/azure-event-hubs-go/v3/persist
 # github.com/Azure/azure-pipeline-go v0.2.2
 github.com/Azure/azure-pipeline-go/pipeline
 # github.com/Azure/azure-sdk-for-go v54.0.0+incompatible => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute
+github.com/Azure/azure-sdk-for-go/services/eventhub/mgmt/2017-04-01/eventhub
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-10-01/network
 github.com/Azure/azure-sdk-for-go/version
 # github.com/Azure/azure-storage-blob-go v0.8.0
 github.com/Azure/azure-storage-blob-go/azblob
+# github.com/Azure/go-amqp v0.12.6
+github.com/Azure/go-amqp
+github.com/Azure/go-amqp/internal/testconn
 # github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
 # github.com/Azure/go-autorest v14.2.0+incompatible
 github.com/Azure/go-autorest
-# github.com/Azure/go-autorest/autorest v0.11.18
+# github.com/Azure/go-autorest/autorest v0.11.19
+## explicit
 github.com/Azure/go-autorest/autorest
 github.com/Azure/go-autorest/autorest/azure
-# github.com/Azure/go-autorest/autorest/adal v0.9.13
+# github.com/Azure/go-autorest/autorest/adal v0.9.14
+## explicit
 github.com/Azure/go-autorest/autorest/adal
+# github.com/Azure/go-autorest/autorest/azure/auth v0.5.7
+## explicit
 # github.com/Azure/go-autorest/autorest/date v0.3.0
 github.com/Azure/go-autorest/autorest/date
 # github.com/Azure/go-autorest/autorest/to v0.4.0
@@ -295,6 +319,8 @@ github.com/cortexproject/cortex/tools/querytee
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
+# github.com/devigned/tab v0.1.1
+github.com/devigned/tab
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 github.com/dgryski/go-rendezvous
 # github.com/digitalocean/godo v1.60.0
@@ -378,7 +404,8 @@ github.com/felixge/httpsnoop
 # github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 ## explicit
 github.com/fluent/fluent-bit-go/output
-# github.com/form3tech-oss/jwt-go v3.2.2+incompatible
+# github.com/form3tech-oss/jwt-go v3.2.3+incompatible
+## explicit
 github.com/form3tech-oss/jwt-go
 # github.com/fsnotify/fsnotify v1.4.9
 github.com/fsnotify/fsnotify
@@ -1132,7 +1159,7 @@ go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
-# golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+# golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
 ## explicit
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -1169,6 +1196,7 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
+golang.org/x/net/websocket
 # golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
