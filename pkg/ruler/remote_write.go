@@ -17,15 +17,15 @@ import (
 
 var UserAgent = fmt.Sprintf("loki-remote-write/%s", build.Version)
 
-type queueEntry struct {
-	labels labels.Labels
-	sample cortexpb.Sample
+type TimeSeriesEntry struct {
+	Labels labels.Labels
+	Sample cortexpb.Sample
 }
 
 type RemoteWriter interface {
 	remote.WriteClient
 
-	PrepareRequest(queue *util.EvictingQueue) ([]byte, error)
+	PrepareRequest(queue util.Queue) ([]byte, error)
 }
 
 type RemoteWriteClient struct {
@@ -62,7 +62,7 @@ func NewRemoteWriter(cfg Config, userID string) (RemoteWriter, error) {
 	}, nil
 }
 
-func (r *RemoteWriteClient) prepare(queue *util.EvictingQueue) error {
+func (r *RemoteWriteClient) prepare(queue util.Queue) error {
 	// reuse slices, resize if they are not big enough
 	if cap(r.labels) < queue.Length() {
 		r.labels = make([]labels.Labels, 0, queue.Length())
@@ -75,13 +75,13 @@ func (r *RemoteWriteClient) prepare(queue *util.EvictingQueue) error {
 	r.samples = r.samples[:0]
 
 	for _, entry := range queue.Entries() {
-		entry, ok := entry.(queueEntry)
+		entry, ok := entry.(TimeSeriesEntry)
 		if !ok {
 			return fmt.Errorf("queue contains invalid entry of type: %T", entry)
 		}
 
-		r.labels = append(r.labels, entry.labels)
-		r.samples = append(r.samples, entry.sample)
+		r.labels = append(r.labels, entry.Labels)
+		r.samples = append(r.samples, entry.Sample)
 	}
 
 	return nil
@@ -89,7 +89,7 @@ func (r *RemoteWriteClient) prepare(queue *util.EvictingQueue) error {
 
 // PrepareRequest takes the given queue and serializes it into a compressed
 // proto write request that will be sent to Cortex
-func (r *RemoteWriteClient) PrepareRequest(queue *util.EvictingQueue) ([]byte, error) {
+func (r *RemoteWriteClient) PrepareRequest(queue util.Queue) ([]byte, error) {
 	// prepare labels and samples from queue
 	err := r.prepare(queue)
 	if err != nil {
