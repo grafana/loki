@@ -124,6 +124,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+
 	for _, partitionID := range runtimeInfo.PartitionIDs {
 		_, err := hubAddr.Receive(ctx, partitionID, handler, eventhub.ReceiveWithLatestOffset())
 		if err != nil {
@@ -132,6 +133,8 @@ func main() {
 		}
 	}
 	cancel()
+
+	fmt.Println("Listening to Event Hub", hubParse.Namespace, hubParse.HubName)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
