@@ -1602,8 +1602,17 @@ compacts index shards to more performant forms.
 # Prefix should never start with a separator but should always end with it.
 [shared_store_key_prefix: <string> | default = "index/"]
 
-# Interval at which to re-run the compaction operation.
-[compaction_interval: <duration> | default = 2h]
+# Interval at which to re-run the compaction operation (or retention if enabled).
+[compaction_interval: <duration> | default = 10m]
+
+# (Experimental) Activate custom (per-stream,per-tenant) retention.
+[retention_enabled: <bool> | default = false]
+
+# Delay after which chunks will be fully deleted during retention.
+[retention_delete_delay: <duration> | default = 2h]
+
+# The total amount of worker to use to delete chunks.
+[retention_delete_worker_count: <int> | default = 150]
 ```
 
 ## limits_config
@@ -1723,6 +1732,24 @@ logs in Loki.
 # Maximum number of rule groups per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
+
+# Retention to apply for the store, if the retention is enable on the compactor side.
+# CLI flag: -store.retention
+[retention_period: <duration> | default = 744h]
+
+# Per-stream retention to apply, if the retention is enable on the compactor side.
+# Example:
+# retention_stream:
+# - selector: '{namespace="dev"}'
+#   priority: 1
+#   period: 24h
+# - selector: '{container="nginx"}'
+#   priority: 1
+#   period: 744h
+# Selector is a Prometheus labels matchers that will apply the `period` retention only if
+# the stream is matching. In case multiple stream are matching, the highest priority will be picked.
+# If no rule is matched the `retention_period` is used.
+[retention_stream: <array> | default = none]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config
