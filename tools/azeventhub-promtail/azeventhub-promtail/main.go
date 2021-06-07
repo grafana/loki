@@ -69,7 +69,10 @@ func main() {
 	handler := func(ctx context.Context, event *eventhub.Event) error {
 		text := event.Data
 		var result map[string][]interface{}
-		json.Unmarshal(text, &result)
+		err := json.Unmarshal(text, &result)
+		if err != nil {
+			return err
+		}
 		for _, m := range result {
 			stream := logproto.Stream{
 				Labels: model.LabelSet{
