@@ -4,9 +4,8 @@ go 1.15
 
 require (
 	cloud.google.com/go/pubsub v1.3.1
-	github.com/Azure/azure-amqp-common-go v1.1.4
-	github.com/Azure/azure-event-hubs-go v1.3.1
-	github.com/Azure/go-autorest/autorest v0.11.19
+	github.com/Azure/azure-event-hubs-go/v3 v3.2.0
+	github.com/Azure/go-autorest/autorest v0.11.19 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.9.14 // indirect
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.7 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.2
