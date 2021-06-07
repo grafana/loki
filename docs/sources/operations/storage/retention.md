@@ -144,7 +144,7 @@ Stream matching is uses the same syntax as Prometheus label matching:
 - `=~`: Select labels that regex-match the provided string.
 - `!~`: Select labels that do not regex-match the provided string.
 
-The example configurations will, set these rules:
+The example configurations will set these rules:
 
 - All tenants except `29` and `30` in the `dev` namespace will have a retention period of `24h` hours.
 - All tenants except `29` and `30` that are not in the `dev` namespace will have the retention period of `744h`.
