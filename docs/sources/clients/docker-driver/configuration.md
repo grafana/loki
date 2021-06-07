@@ -115,7 +115,7 @@ Custom labels can be added using the `loki-external-labels`, `loki-pipeline-stag
 `loki-pipeline-stage-file`, `labels`, `env`, and `env-regex` options. See the
 next section for all supported options.
 
-If no `loki-external-labels` are provided, label `container_name` will be added to each log line by default.
+If no `loki-external-labels` are provided, the label `container_name` will be added to each log line by default.
 
 ## Pipeline stages
 
