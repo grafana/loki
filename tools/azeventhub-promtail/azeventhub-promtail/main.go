@@ -19,8 +19,9 @@ import (
 	eventhub "github.com/Azure/azure-event-hubs-go/v3"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
