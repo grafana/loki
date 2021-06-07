@@ -36,7 +36,13 @@ Marked chunks will only  be deleted after `retention_delete_delay` configured is
 
 2. It gives you a short period to cancel chunks deletion in case of mistakes.
 
-Marker files (containing chunks to deletes), should be store on a persistent disk, since this is the sole reference to them anymore.
+Marked chunks will only  be deleted after `retention_delete_delay` configured is expired because
+
+- boltdb-shipper indexes are refreshed from the shared store on components using them (querier and ruler) at a specific interval. Deleting chunks instantly could lead to components still having a reference to old chunks. This could, in turn, cause query execution failure. Having a delay allows components to refresh their store and gracefully remove their reference to those chunks.
+
+- It provides a short window of time in which to cancel chunk deletion in the case of a configuration mistake.
+
+Marker files (containing chunks to delete) should be stored on a persistent disk, since the disk will be the sole reference to them.
 
 ### Retention Configuration
 
