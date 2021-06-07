@@ -23,10 +23,6 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-// const (
-// 	connStr = "Endpoint=sb://prom-trek-prd.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=U7/+JjDTGfGmi7q/h+wihEAoB279+5PX4EcOyGibB+0=;EntityPath=prd-aag"
-// )
-
 const (
 	// We use snappy-encoded protobufs over http by default.
 	contentType  = "application/x-protobuf"
