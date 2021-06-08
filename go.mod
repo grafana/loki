@@ -4,7 +4,6 @@ go 1.16
 
 require (
 	github.com/ViaQ/logerr v1.0.9
-	github.com/creasty/defaults v1.5.1 // indirect
 	github.com/go-logr/logr v0.4.0
 	github.com/google/uuid v1.1.2
 	github.com/imdario/mergo v0.3.10

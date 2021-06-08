@@ -186,7 +186,7 @@ func NewCompactorGRPCService(opt Options) *corev1.Service {
 	}
 }
 
-// NewCompactorHTTPService creates a k8s service for the ingester HTTP endpoint
+// NewCompactorHTTPService creates a k8s service for the compactor HTTP endpoint
 func NewCompactorHTTPService(opt Options) *corev1.Service {
 	l := ComponentLabels("compactor", opt.Name)
 	return &corev1.Service{

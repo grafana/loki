@@ -156,8 +156,8 @@ func NewDistributorDeployment(opt Options) *appsv1.Deployment {
 	}
 }
 
-// NewDistributorHTTPService creates a k8s service for the distributor HTTP endpoint
-func NewDistributorHTTPService(stackName string) *corev1.Service {
+// NewDistributorGRPCService creates a k8s service for the distributor GRPC endpoint
+func NewDistributorGRPCService(stackName string) *corev1.Service {
 	l := ComponentLabels("distributor", stackName)
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -181,8 +181,8 @@ func NewDistributorHTTPService(stackName string) *corev1.Service {
 	}
 }
 
-// NewDistributorGRPCService creates a k8s service for the distributor GRPC endpoint
-func NewDistributorGRPCService(stackName string) *corev1.Service {
+// NewDistributorHTTPService creates a k8s service for the distributor HTTP endpoint
+func NewDistributorHTTPService(stackName string) *corev1.Service {
 	l := ComponentLabels("distributor", stackName)
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
