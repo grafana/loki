@@ -1,5 +1,6 @@
 ---
 title: Observability
+weight: 20
 ---
 # Observing Loki
 

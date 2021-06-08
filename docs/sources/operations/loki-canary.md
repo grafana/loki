@@ -1,5 +1,6 @@
 ---
 title: Loki Canary
+weight: 60
 ---
 # Loki Canary
 

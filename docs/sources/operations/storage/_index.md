@@ -1,5 +1,6 @@
 ---
 title: Storage
+weight: 40
 ---
 # Loki Storage
 
