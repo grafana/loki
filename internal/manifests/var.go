@@ -3,6 +3,8 @@ package manifests
 import (
 	"fmt"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -13,6 +15,14 @@ const (
 
 	// DefaultContainerImage declares the default fallback for loki image.
 	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
+
+	// PrometheusCAFile declares the path for prometheus CA file for service monitors.
+	PrometheusCAFile string = "/etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt"
+	// BearerTokenFile declares the path for bearer token file for service monitors.
+	BearerTokenFile string = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+	// labelJobComponent is a ServiceMonitor.Spec.JobLabel.
+	labelJobComponent string = "loki.grafana.com/component"
 )
 
 const (
@@ -113,6 +123,38 @@ func serviceNameCompactorHTTP(stackName string) string {
 	return fmt.Sprintf("loki-compactor-http-%s", stackName)
 }
 
+func serviceNameQueryFrontendGRPC(stackName string) string {
+	return fmt.Sprintf("loki-query-frontend-grpc-%s", stackName)
+}
+
+func serviceNameQueryFrontendHTTP(stackName string) string {
+	return fmt.Sprintf("loki-query-frontend-http-%s", stackName)
+}
+
 func fqdn(serviceName, namespace string) string {
 	return fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
+}
+
+// serviceMonitorTLSConfig returns the TLS configuration for service monitors.
+func serviceMonitorTLSConfig(serviceName, namespace string) monitoringv1.TLSConfig {
+	return monitoringv1.TLSConfig{
+		SafeTLSConfig: monitoringv1.SafeTLSConfig{
+			// ServerName can be e.g. loki-distributor-http.openshift-logging.svc.cluster.local
+			ServerName: fqdn(serviceName, namespace),
+		},
+		CAFile: PrometheusCAFile,
+	}
+}
+
+// serviceMonitorLokiEndPoint returns the loki endpoint for service monitors.
+func serviceMonitorLokiEndPoint(stackName, serviceName, namespace string) monitoringv1.Endpoint {
+	tlsConfig := serviceMonitorTLSConfig(serviceName, namespace)
+
+	return monitoringv1.Endpoint{
+		Port:            stackName,
+		Path:            "/metrics",
+		Scheme:          "https",
+		BearerTokenFile: BearerTokenFile,
+		TLSConfig:       &tlsConfig,
+	}
 }

@@ -3,6 +3,8 @@ package manifests
 import (
 	"reflect"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	"github.com/ViaQ/logerr/kverrors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +19,7 @@ import (
 // - Service
 // - Deployment
 // - StatefulSet
+// - ServiceMonitor
 func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 	return func() error {
 		existing.SetAnnotations(desired.GetAnnotations())
@@ -42,6 +45,11 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 			sts := existing.(*appsv1.StatefulSet)
 			wantSts := desired.(*appsv1.StatefulSet)
 			mutateStatefulSet(sts, wantSts)
+
+		case *monitoringv1.ServiceMonitor:
+			svcMonitor := existing.(*monitoringv1.ServiceMonitor)
+			wantSvcMonitor := desired.(*monitoringv1.ServiceMonitor)
+			mutateServiceMonitor(svcMonitor, wantSvcMonitor)
 
 		default:
 			t := reflect.TypeOf(existing).String()
@@ -81,4 +89,9 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
 	existing.Spec.Replicas = desired.Spec.Replicas
 	existing.Spec.Template = desired.Spec.Template
 	existing.Spec.VolumeClaimTemplates = desired.Spec.VolumeClaimTemplates
+}
+
+func mutateServiceMonitor(existing, desired *monitoringv1.ServiceMonitor) {
+	// ServiceMonitor selector is immutable so we set this value only if
+	// a new object is going to be created
 }

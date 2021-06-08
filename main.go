@@ -28,6 +28,7 @@ import (
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/controllers"
 	"github.com/ViaQ/loki-operator/internal/metrics"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -43,6 +44,9 @@ func init() {
 
 	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+
+	// TODO: make this loading optional via a loki-operator CLI flag.
+	utilruntime.Must(monitoringv1.AddToScheme(scheme))
 }
 
 func main() {

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -21,6 +23,7 @@ func BuildQuerier(opt Options) []client.Object {
 		NewQuerierStatefulSet(opt),
 		NewQuerierGRPCService(opt.Name),
 		NewQuerierHTTPService(opt.Name),
+		NewQuerierServiceMonitor(opt.Name, opt.Namespace),
 	}
 }
 
@@ -206,6 +209,37 @@ func NewQuerierHTTPService(stackName string) *corev1.Service {
 				},
 			},
 			Selector: l,
+		},
+	}
+}
+
+// NewQuerierServiceMonitor creates a k8s service monitor for the querier component
+func NewQuerierServiceMonitor(stackName, namespace string) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelQuerierComponent, stackName)
+
+	serviceMonitorName := fmt.Sprintf("monitor-%s", QuerierName(stackName))
+	serviceName := serviceNameQuerierHTTP(stackName)
+	lokiEndpoint := serviceMonitorLokiEndPoint(stackName, serviceName, namespace)
+
+	return &monitoringv1.ServiceMonitor{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       monitoringv1.ServiceMonitorsKind,
+			APIVersion: monitoringv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceMonitorName,
+			Namespace: namespace,
+			Labels:    l,
+		},
+		Spec: monitoringv1.ServiceMonitorSpec{
+			JobLabel:  labelJobComponent,
+			Endpoints: []monitoringv1.Endpoint{lokiEndpoint},
+			Selector: metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			NamespaceSelector: monitoringv1.NamespaceSelector{
+				MatchNames: []string{namespace},
+			},
 		},
 	}
 }

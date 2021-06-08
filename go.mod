@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.1.2
 	github.com/imdario/mergo v0.3.10
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.3.0
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.48.0
 	github.com/prometheus/client_golang v1.7.1
 	github.com/stretchr/testify v1.6.1
 	k8s.io/api v0.20.4

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,6 +22,7 @@ func BuildQueryFrontend(opt Options) []client.Object {
 		NewQueryFrontendDeployment(opt),
 		NewQueryFrontendGRPCService(opt.Name),
 		NewQueryFrontendHTTPService(opt.Name),
+		NewQueryFrontendServiceMonitor(opt.Name, opt.Namespace),
 	}
 }
 
@@ -152,7 +155,7 @@ func NewQueryFrontendGRPCService(stackName string) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-query-frontend-grpc-%s", stackName),
+			Name:   serviceNameQueryFrontendGRPC(stackName),
 			Labels: l,
 		},
 		Spec: corev1.ServiceSpec{
@@ -177,7 +180,7 @@ func NewQueryFrontendHTTPService(stackName string) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   fmt.Sprintf("loki-query-frontend-http-%s", stackName),
+			Name:   serviceNameQueryFrontendHTTP(stackName),
 			Labels: l,
 		},
 		Spec: corev1.ServiceSpec{
@@ -188,6 +191,37 @@ func NewQueryFrontendHTTPService(stackName string) *corev1.Service {
 				},
 			},
 			Selector: l,
+		},
+	}
+}
+
+// NewQueryFrontendServiceMonitor creates a k8s service monitor for the query-frontend component
+func NewQueryFrontendServiceMonitor(stackName, namespace string) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelQueryFrontendComponent, stackName)
+
+	serviceMonitorName := fmt.Sprintf("monitor-%s", QueryFrontendName(stackName))
+	serviceName := serviceNameQueryFrontendHTTP(stackName)
+	lokiEndpoint := serviceMonitorLokiEndPoint(stackName, serviceName, namespace)
+
+	return &monitoringv1.ServiceMonitor{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       monitoringv1.ServiceMonitorsKind,
+			APIVersion: monitoringv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceMonitorName,
+			Namespace: namespace,
+			Labels:    l,
+		},
+		Spec: monitoringv1.ServiceMonitorSpec{
+			JobLabel:  labelJobComponent,
+			Endpoints: []monitoringv1.Endpoint{lokiEndpoint},
+			Selector: metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			NamespaceSelector: monitoringv1.NamespaceSelector{
+				MatchNames: []string{namespace},
+			},
 		},
 	}
 }

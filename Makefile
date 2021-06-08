@@ -96,12 +96,18 @@ uninstall: manifests $(KUSTOMIZE)
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
+#
+# TODO: Remove the manual apply of the ServiceMonitor resource, when CLI flag for optional feature flag is introduced
 deploy: manifests $(KUSTOMIZE)
+	kubectl apply -f hack/kind/prometheus-operator-0servicemonitorCustomResourceDefinition.yaml
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/overlays/development | kubectl apply -f -
 
-# UnDeploy controller from the configured Kubernetes cluster in ~/.kube/config
+# Undeploy controller from the configured Kubernetes cluster in ~/.kube/config
+#
+# TODO: Remove the manual delete of the ServiceMonitor resource, when CLI flag for optional feature flag is introduced
 undeploy:
+	kubectl delete -f hack/kind/prometheus-operator-0servicemonitorCustomResourceDefinition.yaml
 	$(KUSTOMIZE) build config/overlays/development | kubectl delete -f -
 
 # Generate manifests e.g. CRD, RBAC etc.

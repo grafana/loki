@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,6 +24,7 @@ func BuildCompactor(opts Options) []client.Object {
 		NewCompactorStatefulSet(opts),
 		NewCompactorGRPCService(opts),
 		NewCompactorHTTPService(opts),
+		NewCompactorServiceMonitor(opts.Name, opts.Namespace),
 	}
 }
 
@@ -203,6 +206,37 @@ func NewCompactorHTTPService(opt Options) *corev1.Service {
 				},
 			},
 			Selector: l,
+		},
+	}
+}
+
+// NewCompactorServiceMonitor creates a k8s service monitor for the compactor component
+func NewCompactorServiceMonitor(stackName, namespace string) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelCompactorComponent, stackName)
+
+	serviceMonitorName := fmt.Sprintf("monitor-%s", CompactorName(stackName))
+	serviceName := serviceNameCompactorHTTP(stackName)
+	lokiEndpoint := serviceMonitorLokiEndPoint(stackName, serviceName, namespace)
+
+	return &monitoringv1.ServiceMonitor{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       monitoringv1.ServiceMonitorsKind,
+			APIVersion: monitoringv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceMonitorName,
+			Namespace: namespace,
+			Labels:    l,
+		},
+		Spec: monitoringv1.ServiceMonitorSpec{
+			JobLabel:  labelJobComponent,
+			Endpoints: []monitoringv1.Endpoint{lokiEndpoint},
+			Selector: metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			NamespaceSelector: monitoringv1.NamespaceSelector{
+				MatchNames: []string{namespace},
+			},
 		},
 	}
 }

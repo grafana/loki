@@ -3,6 +3,8 @@ package manifests_test
 import (
 	"testing"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 
@@ -406,6 +408,172 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 			require.Equal(t, tst.got.Spec.Replicas, tst.want.Spec.Replicas)
 			require.Equal(t, tst.got.Spec.Template, tst.want.Spec.Template)
 			require.Equal(t, tst.got.Spec.VolumeClaimTemplates, tst.got.Spec.VolumeClaimTemplates)
+		})
+	}
+}
+
+func TestGeMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
+	type test struct {
+		name string
+		got  *monitoringv1.ServiceMonitor
+		want *monitoringv1.ServiceMonitor
+	}
+	table := []test{
+		{
+			name: "initial creation",
+			got: &monitoringv1.ServiceMonitor{
+				Spec: monitoringv1.ServiceMonitorSpec{
+					JobLabel: "some-job",
+					Endpoints: []monitoringv1.Endpoint{
+						{
+							Port:            "loki-test",
+							Path:            "/some-path",
+							Scheme:          "https",
+							BearerTokenFile: manifests.BearerTokenFile,
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									ServerName: "loki-test.some-ns.svc.cluster.local",
+								},
+								CAFile: manifests.PrometheusCAFile,
+							},
+						},
+					},
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"test": "test",
+						},
+					},
+					NamespaceSelector: monitoringv1.NamespaceSelector{
+						MatchNames: []string{"some-ns"},
+					},
+				},
+			},
+			want: &monitoringv1.ServiceMonitor{
+				Spec: monitoringv1.ServiceMonitorSpec{
+					JobLabel: "some-job-new",
+					Endpoints: []monitoringv1.Endpoint{
+						{
+							Port:            "loki-test",
+							Path:            "/some-path",
+							Scheme:          "https",
+							BearerTokenFile: manifests.BearerTokenFile,
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									ServerName: "loki-test.some-ns.svc.cluster.local",
+								},
+								CAFile: manifests.PrometheusCAFile,
+							},
+						},
+						{
+							Port:            "loki-test",
+							Path:            "/some-new-path",
+							Scheme:          "https",
+							BearerTokenFile: manifests.BearerTokenFile,
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									ServerName: "loki-test.some-ns.svc.cluster.local",
+								},
+								CAFile: manifests.PrometheusCAFile,
+							},
+						},
+					},
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"test": "test",
+							"and":  "another",
+						},
+					},
+					NamespaceSelector: monitoringv1.NamespaceSelector{
+						MatchNames: []string{"some-ns-new"},
+					},
+				},
+			},
+		},
+		{
+			name: "update spec without selector",
+			got: &monitoringv1.ServiceMonitor{
+				ObjectMeta: metav1.ObjectMeta{CreationTimestamp: metav1.Now()},
+				Spec: monitoringv1.ServiceMonitorSpec{
+					JobLabel: "some-job",
+					Endpoints: []monitoringv1.Endpoint{
+						{
+							Port:            "loki-test",
+							Path:            "/some-path",
+							Scheme:          "https",
+							BearerTokenFile: manifests.BearerTokenFile,
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									ServerName: "loki-test.some-ns.svc.cluster.local",
+								},
+								CAFile: manifests.PrometheusCAFile,
+							},
+						},
+					},
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"test": "test",
+						},
+					},
+					NamespaceSelector: monitoringv1.NamespaceSelector{
+						MatchNames: []string{"some-ns"},
+					},
+				},
+			},
+			want: &monitoringv1.ServiceMonitor{
+				ObjectMeta: metav1.ObjectMeta{CreationTimestamp: metav1.Now()},
+				Spec: monitoringv1.ServiceMonitorSpec{
+					JobLabel: "some-job-new",
+					Endpoints: []monitoringv1.Endpoint{
+						{
+							Port:            "loki-test",
+							Path:            "/some-path",
+							Scheme:          "https",
+							BearerTokenFile: manifests.BearerTokenFile,
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									ServerName: "loki-test.some-ns.svc.cluster.local",
+								},
+								CAFile: manifests.PrometheusCAFile,
+							},
+						},
+						{
+							Port:            "loki-test",
+							Path:            "/some-new-path",
+							Scheme:          "https",
+							BearerTokenFile: manifests.BearerTokenFile,
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									ServerName: "loki-test.some-ns.svc.cluster.local",
+								},
+								CAFile: manifests.PrometheusCAFile,
+							},
+						},
+					},
+					Selector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"test": "test",
+							"and":  "another",
+						},
+					},
+					NamespaceSelector: monitoringv1.NamespaceSelector{
+						MatchNames: []string{"some-ns-new"},
+					},
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+			f := manifests.MutateFuncFor(tst.got, tst.want)
+			err := f()
+			require.NoError(t, err)
+
+			// Ensure not mutated
+			require.NotEqual(t, tst.got.Spec.JobLabel, tst.want.Spec.JobLabel)
+			require.NotEqual(t, tst.got.Spec.Endpoints, tst.want.Spec.Endpoints)
+			require.NotEqual(t, tst.got.Spec.NamespaceSelector, tst.want.Spec.NamespaceSelector)
 		})
 	}
 }
