@@ -225,13 +225,13 @@ type KafkaTargetConfig struct {
 	WorkerPerPartition int `yaml:"worker_per_partition"`
 
 	// The list of brokers to connect to kafka (Required).
-	Brokers string `yaml:"brokers"`
+	Brokers []string `yaml:"brokers"`
 
 	// The consumer group id (Required).
-	Group string `yaml:"group"`
+	GroupID string `yaml:"group_id"`
 
 	// Kafka Topics to consume (Required).
-	Topics string `yaml:"topics"`
+	Topics []string `yaml:"topics"`
 
 	// Kafka version. Default to 2.2.1
 	Version string `yaml:"version"`

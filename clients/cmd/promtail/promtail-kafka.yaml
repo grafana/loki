@@ -9,9 +9,14 @@ scrape_configs:
 - job_name: kafka
   kafka:
     use_incoming_timestamp: false
-    brokers: localhost:61426
-    group: 1
-    topics: promtail-kafka
+    brokers:
+    - localhost:53897
+    group_id: 5
+    topics:
+    - promtail-kafka-new
+    - promtail-kafka-new-2
+    - promtail-kafka-new-4
+    - ^foo-.*
     worker_per_partition: 2
     labels:
       job: kafka

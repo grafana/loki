@@ -1,0 +1,138 @@
+package kafka
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"github.com/Shopify/sarama"
+	cortexutil "github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+)
+
+type RunnableTarget interface {
+	target.Target
+	run()
+}
+
+type TargetDiscoverer interface {
+	NewTarget(sarama.ConsumerGroupSession, sarama.ConsumerGroupClaim) (RunnableTarget, error)
+}
+
+type consumer struct {
+	sarama.ConsumerGroup
+	discoverer TargetDiscoverer
+	logger     log.Logger
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+
+	mutex          sync.Mutex // used during rebalancing setup and tear down
+	activeTargets  []target.Target
+	droppedTargets []target.Target
+}
+
+func (c *consumer) start(ctx context.Context, topics []string) {
+	c.wg.Wait()
+	c.wg.Add(1)
+
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	level.Info(c.logger).Log("msg", "starting consumer", "topics", fmt.Sprintf("%+v", topics))
+
+	go func() {
+		defer c.wg.Done()
+		backoff := cortexutil.NewBackoff(c.ctx, defaultBackOff)
+		for {
+			// Calling Consume in an infinite loop in case rebalancing is kicking in.
+			// In which case all claims will be renewed.
+			if err := c.ConsumerGroup.Consume(c.ctx, topics, c); err != nil {
+				level.Error(c.logger).Log("msg", "error from the consumer, retrying...", "err", err)
+				// backoff before re-trying.
+				backoff.Wait()
+				if backoff.Ongoing() {
+					continue
+				}
+				level.Error(c.logger).Log("msg", "maximun error from the consumer reached", "last_err", err)
+				return
+			}
+			if c.ctx.Err() != nil {
+				level.Info(c.logger).Log("msg", "stopping consumer", "topics", fmt.Sprintf("%+v", topics))
+				return
+			}
+			backoff.Reset()
+		}
+	}()
+}
+
+// ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
+func (c *consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	c.wg.Add(1)
+	defer c.wg.Done()
+
+	t, err := c.discoverer.NewTarget(session, claim)
+	if err != nil {
+		return err
+	}
+	if len(t.Labels()) == 0 {
+		c.addDroppedTarget(t)
+		t.run()
+		return nil
+	}
+	c.addTarget(t)
+	level.Info(c.logger).Log("msg", "consuming topic", "details", t.Details())
+	t.run()
+
+	return nil
+}
+
+// Setup is run at the beginning of a new session, before ConsumeClaim
+func (c *consumer) Setup(session sarama.ConsumerGroupSession) error {
+	c.resetTargets()
+	return nil
+}
+
+// Cleanup is run at the end of a session, once all ConsumeClaim goroutines have exited
+func (c *consumer) Cleanup(sarama.ConsumerGroupSession) error {
+	c.resetTargets()
+	return nil
+}
+
+func (c *consumer) stop() {
+	c.cancel()
+	c.wg.Wait()
+	c.resetTargets()
+}
+
+func (ts *consumer) resetTargets() {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	ts.activeTargets = nil
+	ts.droppedTargets = nil
+}
+
+func (ts *consumer) getActiveTargets() []target.Target {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	return ts.activeTargets
+}
+
+func (ts *consumer) getDroppedTargets() []target.Target {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	return ts.droppedTargets
+}
+
+func (ts *consumer) addTarget(t target.Target) {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	ts.activeTargets = append(ts.activeTargets, t)
+}
+
+func (ts *consumer) addDroppedTarget(t target.Target) {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	ts.droppedTargets = append(ts.droppedTargets, t)
+}
