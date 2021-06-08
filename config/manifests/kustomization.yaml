@@ -1,4 +1,4 @@
 resources:
-- ../overlays/production
+- ../overlays/openshift
 - ../samples
 - ../scorecard

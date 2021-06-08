@@ -11,7 +11,7 @@ resources:
 - ../../prometheus
 
 # Adds namespace to all resources.
-namespace: loki-operator
+namespace: openshift-logging
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
@@ -27,7 +27,7 @@ commonLabels:
   app.kubernetes.io/name: loki-operator
   app.kubernetes.io/instance: loki-operator-v0.0.1
   app.kubernetes.io/version: "0.0.1"
-  app.kubernetes.io/part-of: loki-operator
+  app.kubernetes.io/part-of: cluster-logging
   app.kubernetes.io/managed-by: operator-lifecycle-manager
 
 patchesStrategicMerge:
@@ -38,9 +38,11 @@ patchesStrategicMerge:
 - manager_related_image_patch.yaml
 - prometheus_service_monitor_patch.yaml
 
+# apiVersion: kustomize.config.k8s.io/v1beta1
+# kind: Kustomization
 images:
 - name: controller
-  newName: quay.io/viaq/loki-operator
+  newName: quay.io/openshift-logging/loki-operator
   newTag: v0.0.1
 
 # Mount the controller config file for loading manager configurations

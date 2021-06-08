@@ -11,4 +11,4 @@ spec:
         - name: manager
           env:
           - name: RELATED_IMAGE_LOKI
-            value: docker.io/grafana/loki:2.2.0
+            value: quay.io/openshift-logging/loki:v2.2.0-10
