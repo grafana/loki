@@ -12,8 +12,7 @@ distributor:
     kvstore:
       store: memberlist
 frontend:
-  downstream_url: {{ .Querier.FQDN }}:{{ .Querier.Port }}
-  tail_proxy_url: {{ .Querier.FQDN }}:{{ .Querier.Port }}
+  tail_proxy_url: http://{{ .Querier.FQDN }}:{{ .Querier.Port }}
   compress_responses: true
   max_outstanding_per_tenant: 256
   log_queries_longer_than: 5s

@@ -48,15 +48,15 @@ func ConfigOptions(opt Options) config.Options {
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
 		FrontendWorker: config.Address{
-			FQDN: fqdn(NewQueryFrontendHTTPService(opt.Name).GetName(), opt.Namespace),
-			Port: httpPort,
+			FQDN: fqdn(NewQueryFrontendGRPCService(opt.Name).GetName(), opt.Namespace),
+			Port: grpcPort,
 		},
 		GossipRing: config.Address{
 			FQDN: fqdn(BuildLokiGossipRingService(opt.Name).GetName(), opt.Namespace),
 			Port: gossipPort,
 		},
 		Querier: config.Address{
-			FQDN: serviceNameQuerierHTTP(opt.Name),
+			FQDN: fqdn(NewQuerierHTTPService(opt.Name).GetName(), opt.Namespace),
 			Port: httpPort,
 		},
 		StorageDirectory: strings.TrimRight(dataDirectory, "/"),
