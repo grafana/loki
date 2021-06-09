@@ -1,5 +1,6 @@
 ---
 title: Promtail Push API
+weight: 20
 ---
 # Promtail Push API
 
