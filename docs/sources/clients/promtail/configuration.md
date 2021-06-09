@@ -191,6 +191,28 @@ basic_auth:
   # The file containing the password for basic auth
   [password_file: <filename>]
 
+# Optional OAuth 2.0 configuration
+# Cannot be used at the same time as basic_auth or authorization
+oauth2:
+  # Client id and secret for oauth2
+  [client_id: <string>]
+  [client_secret: <secret>]
+
+  # Read the client secret from a file
+  # It is mutually exclusive with `client_secret`
+  [client_secret_file: <filename>]
+
+  # Optional scopes for the token request
+  scopes:
+    [ - <string> ... ]
+
+  # The URL to fetch the token from
+  token_url: <string>
+
+  # Optional parameters to append to the token URL
+  endpoint_params:
+    [ <string>: <string> ... ]
+
 # Bearer token to send to the server.
 [bearer_token: <secret>]
 
