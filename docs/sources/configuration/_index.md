@@ -1613,6 +1613,9 @@ compacts index shards to more performant forms.
 
 # The total amount of worker to use to delete chunks.
 [retention_delete_worker_count: <int> | default = 150]
+
+# Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.
+[delete_request_cancel_period: <duration> | default = 24h]
 ```
 
 ## limits_config
