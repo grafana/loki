@@ -97,7 +97,7 @@ func Test_Topics(t *testing.T) {
 	}
 }
 
-func mustNewTopicsManager(client KafkaClient, topics []string) *topicManager {
+func mustNewTopicsManager(client topicClient, topics []string) *topicManager {
 	t, err := newTopicManager(client, topics)
 	if err != nil {
 		panic(err)

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	cortexutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,14 +25,17 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-var defaultBackOff = cortexutil.BackoffConfig{
-	MinBackoff: 1 * time.Second,
-	MaxBackoff: 60 * time.Second,
-	MaxRetries: 20,
-}
+var TopicPollInterval = 30 * time.Second
 
 type TopicManager interface {
 	Topics() ([]string, error)
+}
+
+type Consumer interface {
+	getActiveTargets() []target.Target
+	getDroppedTargets() []target.Target
+	start(ctx context.Context, topics []string)
+	stop()
 }
 
 type TargetSyncer struct {
@@ -44,7 +46,7 @@ type TargetSyncer struct {
 
 	topicManager TopicManager
 	consumer
-	client sarama.Client
+	close func() error
 
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -100,7 +102,12 @@ func NewSyncer(
 		topicManager: topicManager,
 		cfg:          cfg,
 		reg:          reg,
-		client:       client,
+		close: func() error {
+			if err := group.Close(); err != nil {
+				level.Warn(logger).Log("msg", "error while closing consumer group", "err", err)
+			}
+			return client.Close()
+		},
 		consumer: consumer{
 			ctx:           context.Background(),
 			cancel:        func() {},
@@ -134,7 +141,7 @@ func (ts *TargetSyncer) loop() {
 	}()
 	go func() {
 		defer ts.wg.Done()
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(TopicPollInterval)
 		defer ticker.Stop()
 
 		tick := func() {
@@ -185,10 +192,7 @@ func (ts *TargetSyncer) fetchTopics() ([]string, bool, error) {
 func (ts *TargetSyncer) Stop() error {
 	ts.cancel()
 	ts.wg.Wait()
-	if err := ts.ConsumerGroup.Close(); err != nil {
-		level.Warn(ts.logger).Log("msg", "error while closing consumer group", "err", err)
-	}
-	return ts.client.Close()
+	return ts.close()
 }
 
 // NewTarget creates a new targets based on the current kafka claim and group session.

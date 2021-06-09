@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Shopify/sarama"
 	cortexutil "github.com/cortexproject/cortex/pkg/util"
@@ -11,6 +12,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
+
+var defaultBackOff = cortexutil.BackoffConfig{
+	MinBackoff: 1 * time.Second,
+	MaxBackoff: 60 * time.Second,
+	MaxRetries: 20,
+}
 
 type RunnableTarget interface {
 	target.Target
@@ -106,33 +113,33 @@ func (c *consumer) stop() {
 	c.resetTargets()
 }
 
-func (ts *consumer) resetTargets() {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
-	ts.activeTargets = nil
-	ts.droppedTargets = nil
+func (c *consumer) resetTargets() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.activeTargets = nil
+	c.droppedTargets = nil
 }
 
-func (ts *consumer) getActiveTargets() []target.Target {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
-	return ts.activeTargets
+func (c *consumer) getActiveTargets() []target.Target {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.activeTargets
 }
 
-func (ts *consumer) getDroppedTargets() []target.Target {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
-	return ts.droppedTargets
+func (c *consumer) getDroppedTargets() []target.Target {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.droppedTargets
 }
 
-func (ts *consumer) addTarget(t target.Target) {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
-	ts.activeTargets = append(ts.activeTargets, t)
+func (c *consumer) addTarget(t target.Target) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.activeTargets = append(c.activeTargets, t)
 }
 
-func (ts *consumer) addDroppedTarget(t target.Target) {
-	ts.mutex.Lock()
-	defer ts.mutex.Unlock()
-	ts.droppedTargets = append(ts.droppedTargets, t)
+func (c *consumer) addDroppedTarget(t target.Target) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.droppedTargets = append(c.droppedTargets, t)
 }

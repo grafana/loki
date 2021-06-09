@@ -7,19 +7,19 @@ import (
 	"sort"
 )
 
-type KafkaClient interface {
+type topicClient interface {
 	RefreshMetadata(topics ...string) error
 	Topics() ([]string, error)
 }
 
 type topicManager struct {
-	client KafkaClient
+	client topicClient
 
 	patterns []*regexp.Regexp
 	matches  []string
 }
 
-func newTopicManager(client KafkaClient, topics []string) (*topicManager, error) {
+func newTopicManager(client topicClient, topics []string) (*topicManager, error) {
 	var (
 		patterns []*regexp.Regexp
 		matches  []string
