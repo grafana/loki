@@ -24,6 +24,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
 )
 
 // Config describes a job to scrape.
@@ -48,6 +49,8 @@ type ServiceDiscoveryConfig struct {
 	FileSDConfigs []*file.SDConfig `yaml:"file_sd_configs,omitempty"`
 	// List of Consul service discovery configurations.
 	ConsulSDConfigs []*consul.SDConfig `yaml:"consul_sd_configs,omitempty"`
+	// List of Consul agent service discovery configurations.
+	ConsulAgentSDConfigs []*consulagent.SDConfig `yaml:"consulagent_sd_configs,omitempty"`
 	// List of DigitalOcean service discovery configurations.
 	DigitalOceanSDConfigs []*digitalocean.SDConfig `yaml:"digitalocean_sd_configs,omitempty"`
 	// List of Docker Swarm service discovery configurations.
@@ -83,6 +86,9 @@ func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
 		res = append(res, x)
 	}
 	for _, x := range cfg.ConsulSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.ConsulAgentSDConfigs {
 		res = append(res, x)
 	}
 	for _, x := range cfg.DigitalOceanSDConfigs {
