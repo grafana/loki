@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -156,10 +157,13 @@ func Test_Retention(t *testing.T) {
 					expectDeleted = append(expectDeleted, tt.chunks[i].ExternalKey())
 				}
 			}
+			sort.Strings(expectDeleted)
 			store.Stop()
 			if len(expectDeleted) != 0 {
 				require.Eventually(t, func() bool {
-					return assert.ObjectsAreEqual(expectDeleted, chunkClient.getDeletedChunkIds())
+					actual := chunkClient.getDeletedChunkIds()
+					sort.Strings(actual)
+					return assert.ObjectsAreEqual(expectDeleted, actual)
 				}, 10*time.Second, 1*time.Second)
 			}
 		})
