@@ -56,7 +56,7 @@ func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectCl
 }
 
 func (t *deleteRequestsTable) init() error {
-	tempFilePath := fmt.Sprintf("%s.%s", t.dbPath, tempFileSuffix)
+	tempFilePath := fmt.Sprintf("%s%s", t.dbPath, tempFileSuffix)
 
 	if err := os.Remove(tempFilePath); err != nil {
 		level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", tempFilePath), "err", err)
