@@ -29,6 +29,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 )
 
+//nolint:interfacer // this follows the pattern in prometheus service discovery
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
@@ -324,7 +325,8 @@ func newServer(t *testing.T) (*httptest.Server, *SDConfig) {
 			t.Errorf("Unhandled consul call: %s", r.URL)
 		}
 		w.Header().Add("X-Consul-Index", "1")
-		w.Write([]byte(response))
+		_, err := w.Write([]byte(response))
+		require.NoError(t, err)
 	}))
 	stuburl, err := url.Parse(stub.URL)
 	require.NoError(t, err)
@@ -445,7 +447,8 @@ func TestGetDatacenterShouldReturnError(t *testing.T) {
 		{
 			// Define a handler that will return incorrect response.
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte(`{"Config": {"Not-Datacenter": "test-dc"}}`))
+				_, err := w.Write([]byte(`{"Config": {"Not-Datacenter": "test-dc"}}`))
+				require.NoError(t, err)
 			},
 			errMessage: "invalid value '<nil>' for Config.Datacenter",
 		},

@@ -191,7 +191,7 @@ func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
 		return nil, err
 	}
 	transport := &http.Transport{
-		IdleConnTimeout: 2 * time.Duration(watchTimeout),
+		IdleConnTimeout: 2 * watchTimeout,
 		TLSClientConfig: tls,
 		DialContext: conntrack.NewDialContextFunc(
 			conntrack.DialWithTracing(),
@@ -200,7 +200,7 @@ func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
 	}
 	wrapper := &http.Client{
 		Transport: transport,
-		Timeout:   time.Duration(watchTimeout) + 15*time.Second,
+		Timeout:   watchTimeout + 15*time.Second,
 	}
 
 	clientConf := &consul.Config{
@@ -335,7 +335,6 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 
 		// Watched services and their cancellation functions.
 		services := make(map[string]func())
-		var lastIndex uint64
 
 		for {
 			select {
@@ -343,7 +342,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 				ticker.Stop()
 				return
 			default:
-				d.watchServices(ctx, ch, &lastIndex, services)
+				d.watchServices(ctx, ch, services)
 				<-ticker.C
 			}
 		}
@@ -359,7 +358,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 // Watch the catalog for new services we would like to watch. This is called only
 // when we don't know yet the names of the services and need to ask Consul the
 // entire list of services.
-func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, lastIndex *uint64, services map[string]func()) {
+func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func()) {
 	agent := d.client.Agent()
 	level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
 
@@ -460,14 +459,13 @@ func (d *Discovery) watchService(ctx context.Context, ch chan<- []*targetgroup.G
 	go func() {
 		ticker := time.NewTicker(d.refreshInterval)
 		defer ticker.Stop()
-		var lastIndex uint64
 		agent := srv.client.Agent()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				srv.watch(ctx, ch, agent, &lastIndex)
+				srv.watch(ctx, ch, agent)
 				select {
 				case <-ticker.C:
 				case <-ctx.Done():
@@ -479,7 +477,7 @@ func (d *Discovery) watchService(ctx context.Context, ch chan<- []*targetgroup.G
 }
 
 // Get updates for a service.
-func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Group, agent *consul.Agent, lastIndex *uint64) {
+func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Group, agent *consul.Agent) {
 	level.Debug(srv.logger).Log("msg", "Watching service", "service", srv.name, "tags", strings.Join(srv.tags, ","))
 
 	t0 := time.Now()
@@ -503,13 +501,21 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 	}
 
 	self, err := agent.Self()
+	if err != nil {
+		level.Error(srv.logger).Log("msg", "failed to get agent info from agent api", "err", err)
+		return
+	}
 	var member = consul.AgentMember{}
 	memberBytes, err := json.Marshal(self["Member"])
 	if err != nil {
-		level.Error(srv.logger).Log("msg", "failed to get member information for agent", "err", err)
+		level.Error(srv.logger).Log("msg", "failed to get member information from agent", "err", err)
 		return
 	}
-	json.Unmarshal(memberBytes, &member)
+	err = json.Unmarshal(memberBytes, &member)
+	if err != nil {
+		level.Error(srv.logger).Log("msg", "failed to unmarshal member information from agent", "err", err)
+		return
+	}
 
 	nodeName := self["Config"]["NodeName"].(string)
 	meta := self["Meta"]
