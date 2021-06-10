@@ -19,6 +19,7 @@ func (e expr) validate() error {
 	if !e.hasCapture() {
 		return ErrNoCapture
 	}
+	// if there is at least 2 node, verify that none are consecutive.
 	if len(e) >= 2 {
 		for i := 0; i < len(e); i = i + 2 {
 			if i+1 >= len(e) {

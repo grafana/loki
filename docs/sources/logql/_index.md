@@ -156,7 +156,7 @@ If an extracted label key name already exists in the original log stream, the ex
 
 We support currently support [json](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regexp) and [unpack](#unpack) parsers.
 
-It's easier to use the predefined parsers like `json` and `logfmt` when you can, otherwise `pattern` and `regexp` parser can be used when the log lines have unusual structure. However the `pattern` parser is easier and faster than the `regexp` one.
+It's easier to use the predefined parsers like `json` and `logfmt` when you can, otherwise `pattern` and `regexp` parser can be used when the log lines have unusual structure. However the `pattern` parser is easier and faster to writer, but also perform better than the `regexp` one.
 Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
 
 ##### Json
@@ -310,6 +310,8 @@ Captures can be unnamed using `<_>`, in which case the capture skips matched con
 
 Captures are matched from the beginning or the previous set of literals, to the end or the next set of literals.
 If a capture is not matched, the pattern parser will stop.
+
+Literals can be any sequence of UTF-8 characters, including whitespace.
 
 By default a pattern expression is anchored at the start, this means if the expression start with literals, the log line must also start with the same set of literals. You can use `<_>` at the beginning if you do not want to anchor your expression at the start.
 
