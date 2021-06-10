@@ -5,9 +5,6 @@ type lexer struct {
 	p, pe, cs   int
 	ts, te, act int
 
-	stack []int
-	top   int
-
 	lastnewline int
 	curline     int
 
@@ -51,12 +48,14 @@ func (lex *lexer) token() string {
 	return string(lex.data[lex.ts:lex.te])
 }
 
+// nolint
 func (lex *lexer) identifier(out *exprSymType) (int, error) {
 	t := lex.token()
 	out.str = t[1 : len(t)-1]
 	return IDENTIFIER, nil
 }
 
+// nolint
 func (lex *lexer) literal(out *exprSymType) (int, error) {
 	out.literal = rune(lex.data[lex.ts])
 	return LITERAL, nil
