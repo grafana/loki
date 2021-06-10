@@ -328,7 +328,7 @@ If you want to match from `msg="`, you can use the following expression:
 A pattern expression is invalid if:
 
 - it does not contain any named capture.
-- it contains two consecutive captures.
+- it contains two consecutive captures not separated by whitespace.
 
 ##### regexp
 
