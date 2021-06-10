@@ -1,0 +1,36 @@
+language: go
+sudo: false
+go:
+- 1.x
+- 1.11.x
+before_install:
+- cd ${TRAVIS_HOME}
+- export GO111MODULE=auto
+- go get -u github.com/mattn/goveralls
+- go get -u golang.org/x/tools/cmd/cover
+- go get -u github.com/fzipp/gocyclo
+- go get -u golang.org/x/lint/golint
+- cd ${TRAVIS_BUILD_DIR}
+jobs:
+  include:
+  - stage: integration tests
+    if: type IN (push, cron)
+    env:
+    - TF_VAR_resource_group_name=eh-travis
+    - secure: Gytv/BG8PzkBU845teKJdci1RbYzuHn4slhYIQEEZ8r0hvb57YtPD1NUBLWzndj3qrmhJceRkDyKd3gfAIrvLFEp0rD+4E5S2lTjOST4OZRaN8HKKA8dtc1PYlcF1Hr4wA4rx69oKVBncdQYZXE2Sdnx3QwuWnT1G2B3PYvnb1Ess16/4Z4PDZL4Jp2KTubV5nZd70zBJzEkaem4FE/x8pAqKsaNLNuabYRjywzNwcrKqUAYuiy1BaYD/XxKDQ/dNfGEK3gXitNqWqNURghGBlE3e0x++mwIWvW3b8wP+JyvUv3vM6FS7+Rw8qz8XhaG820Sqs8eM4GUxX9BttOOR5KpzbBYH0KgygE3Axo5saktpqImBB0gKi2fNqT7YvdU+peMLIVipsxPHdO0CEgvgFPLIkMdpaXYyjQJWNDDukcRpu+/LVCQRb5Fh8jTS1z8U59sdgW3Ld5YVw6Jt0vO4mNfA799o7yzWlO3a5ZLJotQtXm6WCwOq7IE5m3ObQYbi1YWAlBXuTuHPk4fCSTQJDUkFi4jDSnN4xqlItk+URilyAt+Vs5OuRAztfM/o4/TEjdkXx0T/veZ3eibksdSnYAgHQPCQ6MqeWAk4AKrIJysPQuyPhNo2ye5jh/aozL6VYE9dcft3+RAwp6jQAtP/pv8SpsTkWuC7LnSeJvMa6c=
+    - secure: eVK61SdkKa+KeIs7iJ0tCWnVlj/BSdc6Yepk42chtRdmikzaXSSvyoRplKJoFutpkSLd0TPIR6GleaXf76RAIarxtSfOuZ5cKtCXQ84W8e+nAdeeOyByYHm75SfJzbbDR5L0pTfeiBfjYndeV176fRRZJprDwRSLQ2NfTYhqaliI1sjVQV2if5fe/oR99UL5Ocvr2ubmXAt3KOk+RZ0WyPQAjRIpIc1VziYZ1uwHVyIqkD7g76yfHy+ENvTVT48jv+3HpC120h7aufeirsbo1zBYrIdIE/Y02ISdUWWc+uXn1qbQnpwOtyjksUNVvzQyBicI8FGKhQSxMzkLZyvBXon7Pbkr6BVmSXX916QyvigqAeDDHIBkbHO/oNaKgtxBHiM2yymfYG9HkUzM/bKIA7+g2eVGHiPPn7tk5Ytgf10Q7ZPH1epvhaHnQduw2sDVWybOfw9h+hwgkUYWBsyo7xlvwM5eyCX7Nntg6K2vu8fCiSNAPlZLhex89H8DBb2BlhXQDEGX7QTRo+SYuY/JKhW9HeWiDcRLPxGEeTkh4ZrLdjZeKpFF9Bcuxqk3iaD3+CsCnqI/542Y2HT5zw7qCMbXZYwaXW90VYFysuOh1pgRoZ5kwSyH1mD/o+xLXfuV0AJlzyraZZes/83TsKF611AlynPbEQD5BGv/Noo9JAE=
+    - secure: ja4Qu9OkHPzpGTSbsMf7WyBT5b1uYtdfLH7ehCzsPXUBbOqsJw1f4Nzgmzh0xvNMbL2AlOGqWwU6HJXb3Cn3ehTTsaiQz6BrBW6A1OmNOuup6m2nQ8BeuFD8lPTj6DcHTEldIn6aOP5ZcIp5OnUxIluxj4Nh3BR495L+YF3X07VCgH4G+RwcSiRMorrDinkwHjDozHZcMaQJ7HD/TYW6uaqcWzmJTaFFlUK2pMPvh9jgQ5L+xQwpi09t2J5mPcSL2HptlSkSnNISzYp3qT33dNGJcj+4zM7NGsYSCBDII6G/wOIdNhNKFb4lKSXUdg/5uWDESAkKK9vveDGwdPVGZXXx16fcQ2QTsQbTSLBfGT4nTYadiNvSJgUSLykZitg4RppdYHHBiQu7UYUk03KpbSJjQct4Lqbnhw9uLEk68rXzis/MayOuGpL1bimB3+13h3/QoXEaHOGiOVsE9/UUYmpYQZYbdnkzBiEF7oPkoxTNjuzdYt2SQLvQeOah4qkHy3oH83c8EcU+aPMEWCc3yTkqY75VATyIa/TP3rySAFcogq/Kd4aDUWwcxO4u1B2TD8UNE5YqftWo97Heo6lE+kAr1FfhxS6cwuWMTfQ5KwgFv+Qlgb71zlP3T/Yn5kPdGY0kwoqiEmq5hjcjOHLLYYvBsYPfAmtQMKSe2fFZ53Q=
+    - secure: SPYzI+Fyzbf0blXoX7vSCWcgPfTQnkNy1jSNps68a0dy1yE3WAc/AEgV4wcwgFjV7WkMIX9ik0q5ggbiVgMw1nQA4U6K8n7yJsqI+s0GGEdE1Y1HBCWIMJw1JazTHI2qRg69UiVj2xI1LPvTFGgxClGnZoPCh9dxlMPO6M2f90mJUKVNxkjuLe1BWnLyzyGZnhB/EEam39ijOVnkfXdwcN4nGUjMsEwi5rOQLeZsymgKqN2aMeXtZltTeertO4ob8K2hGinNHjkYzjyFSCZvGaubnVr22F777YDCvh0cq7CTRQiMm1KiHT9QZ/0JbvsfC+0TPl0lXnLx6NnMvlKL5sA6xpFcarO4nGB4jON5SnVPF+3VW0BSyfypFHAn/fSSmftqg8TI7uSGuOJauG2ld/1e1v9WPkY56frC2ULVWt7eZFOpIm9JoosCjKgwQjx320VwJgKW8xJ4ynAPqFVVlZCdQEs+NJGOOJi1NkDpd++QolgKFkPdkBNFmVYRPdVe/iRzaipZ2WOX94sg+5CfA5TcZTz2fvDJHyNgqEkVUS9VHWDB75nkJ8vq1b8G9+wM/ulAsdepjaPlatd0pGeVJzt1IwJFDUgddCEXHub0HXuJk2kE7V/i1h0E4kcfQq8HFEJaG1tsWe2kA+OBX58pCZWXmDB2KshGWW9tlWzwRlo=
+    script:
+    - curl -sLo /tmp/terraform.zip https://releases.hashicorp.com/terraform/0.12.8/terraform_0.12.8_linux_amd64.zip
+    - unzip /tmp/terraform.zip -d /tmp
+    - mkdir -p ~/bin
+    - mv /tmp/terraform ~/bin
+    - export PATH="~/bin:$PATH"
+    - export GO111MODULE=on
+    - make test-cover
+    - goveralls -coverprofile=cover.out -service=travis-ci
+    - make destroy
+script:
+- export GO111MODULE=on
+- make

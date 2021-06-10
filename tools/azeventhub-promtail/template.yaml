@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  lambda-promtail:
+  
+  propagate Cloudwatch Logs to Loki via Promtail.
+
+Parameters:
+  LogGroup:
+    Description: 'Required. The Log Group to forward to Promtail.'
+    Type: String
+  PromtailAddress:
+    Description: 'address for promtail in the form of: http<s>://<location><:port>/loki/api/v1/push'
+    Type: String
+    Default: 'http://localhost:8080/loki/api/v1/push'
+  ReservedConcurrency:
+    Description: The maximum of concurrent executions you want to reserve for the function.
+    Type: Number
+    Default: 2
+
+Resources:
+  LambdaPromtailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda-promtail/
+      Handler: handler
+      MemorySize: 128
+      Timeout: 60
+      EventInvokeConfig:
+        MaximumRetryAttempts: 2
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - 'logs:DescribeLogGroups'
+              - 'logs:DescribeLogStreams'
+              - 'logs:FilterLogEvents'
+              - 'logs:GetLogEvents'
+            Resource: '*'
+      ReservedConcurrentExecutions: !Ref ReservedConcurrency
+      # # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-lambda-function-vpcconfig.html
+      # VpcConfig:
+      Runtime: go1.x
+      Events:
+        CatchAll:
+          Type: CloudWatchLogs
+          Properties:
+            LogGroupName: !Ref LogGroup
+            FilterPattern: ''
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          PROMTAIL_ADDRESS: !Ref PromtailAddress
+
+Outputs:
+  LambdaPromtailFunction:
+    Description: "Lambda Promtail Function ARN"
+    Value: !GetAtt LambdaPromtailFunction.Arn
+  LambdaPromtailFunctionIamRole:
+    Description: "Implicit IAM Role created for LambdaPromtail function"
+    Value: !GetAtt LambdaPromtailFunctionRole.Arn
+
