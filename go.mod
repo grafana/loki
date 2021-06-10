@@ -33,6 +33,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20191002090509-6af20e3a5340 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
+	github.com/hashicorp/consul/api v1.8.1
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hpcloud/tail v1.0.0
 	github.com/imdario/mergo v0.3.11
@@ -65,6 +66,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
 	go.etcd.io/bbolt v1.3.5
 	go.uber.org/atomic v1.7.0
+	go.uber.org/goleak v1.1.10
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/net v0.0.0-20210505214959-0714010a04ed
 	golang.org/x/sys v0.0.0-20210503173754-0981d6026fa6
