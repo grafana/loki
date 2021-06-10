@@ -717,7 +717,7 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/pierrec/lz4/v4 v4.1.1
+# github.com/pierrec/lz4/v4 v4.1.7
 ## explicit
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
