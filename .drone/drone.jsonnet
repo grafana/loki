@@ -95,13 +95,22 @@ local promtail_win() = pipeline('promtail-windows') {
     arch: 'amd64',
     version: '1809',
   },
-  steps: [{
-    name: 'test',
-    image: 'golang:windowsservercore-1809',
-    commands: [
-      'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
-    ],
-  }],
+  steps: [
+    {
+      name: 'identify-runner',
+      image: 'golang:windowsservercore-1809',
+      commands: [
+        'Write-Output $env:DRONE_RUNNER_NAME',
+      ],
+    },
+    {
+      name: 'test',
+      image: 'golang:windowsservercore-1809',
+      commands: [
+        'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
+      ],
+    },
+  ],
 };
 
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,main') {

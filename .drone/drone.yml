@@ -916,6 +916,11 @@ platform:
   version: 1809
 
 steps:
+- name: identify-runner
+  image: golang:windowsservercore-1809
+  commands:
+  - Write-Output $env:DRONE_RUNNER_NAME
+
 - name: test
   image: golang:windowsservercore-1809
   commands:
