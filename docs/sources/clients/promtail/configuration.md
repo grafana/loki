@@ -308,6 +308,16 @@ file_sd_configs:
 # same host.
 kubernetes_sd_configs:
   - [<kubernetes_sd_config>]
+  
+# Describes how to use the Consul Catalog API to discover services registered with the 
+# consul cluster.
+consul_sd_configs:
+  [ - <consul_sd_config> ... ]
+  
+# Describes how to use the Consul Agent API to discover services registered with the consul agent
+# running on the same host as promtail.
+consulagent_sd_configs:
+  [ - <consulagent_sd_config> ... ]
 ```
 
 ### pipeline_stages
@@ -1151,6 +1161,148 @@ for a detailed example of configuring Prometheus for Kubernetes.
 You may wish to check out the 3rd party
 [Prometheus Operator](https://github.com/coreos/prometheus-operator),
 which automates the Prometheus setup on top of Kubernetes.
+
+### consul_sd_config
+
+Consul SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)
+Catalog API. When using the Catalog API, each running promtail will get
+a list of all services known to the whole consul cluster when discovering
+new targets.
+
+The following meta labels are available on targets during [relabeling](#relabel_config):
+
+* `__meta_consul_address`: the address of the target
+* `__meta_consul_dc`: the datacenter name for the target
+* `__meta_consul_health`: the health status of the service
+* `__meta_consul_metadata_<key>`: each node metadata key value of the target
+* `__meta_consul_node`: the node name defined for the target
+* `__meta_consul_service_address`: the service address of the target
+* `__meta_consul_service_id`: the service ID of the target
+* `__meta_consul_service_metadata_<key>`: each service metadata key value of the target
+* `__meta_consul_service_port`: the service port of the target
+* `__meta_consul_service`: the name of the service the target belongs to
+* `__meta_consul_tagged_address_<key>`: each node tagged address key value of the target
+* `__meta_consul_tags`: the list of tags of the target joined by the tag separator
+
+```yaml
+# The information to access the Consul Catalog API. It is to be defined
+# as the Consul documentation requires.
+[ server: <host> | default = "localhost:8500" ]
+[ token: <secret> ]
+[ datacenter: <string> ]
+[ scheme: <string> | default = "http" ]
+[ username: <string> ]
+[ password: <secret> ]
+
+tls_config:
+  [ <tls_config> ]
+
+# A list of services for which targets are retrieved. If omitted, all services
+# are scraped.
+services:
+  [ - <string> ]
+
+# See https://www.consul.io/api/catalog.html#list-nodes-for-service to know more
+# about the possible filters that can be used.
+
+# An optional list of tags used to filter nodes for a given service. Services must contain all tags in the list.
+tags:
+  [ - <string> ]
+
+# Node metadata key/value pairs to filter nodes for a given service.
+[ node_meta:
+  [ <string>: <string> ... ] ]
+
+# The string by which Consul tags are joined into the tag label.
+[ tag_separator: <string> | default = , ]
+
+# Allow stale Consul results (see https://www.consul.io/api/features/consistency.html). Will reduce load on Consul.
+[ allow_stale: <boolean> | default = true ]
+
+# The time after which the provided names are refreshed.
+# On large setup it might be a good idea to increase this value because the catalog will change all the time.
+[ refresh_interval: <duration> | default = 30s ]
+```
+
+Note that the IP number and port used to scrape the targets is assembled as
+`<__meta_consul_address>:<__meta_consul_service_port>`. However, in some
+Consul setups, the relevant address is in `__meta_consul_service_address`.
+In those cases, you can use the [relabel](#relabel_config)
+feature to replace the special `__address__` label.
+
+The [relabeling phase](#relabel_config) is the preferred and more powerful
+way to filter services or nodes for a service based on arbitrary labels. For
+users with thousands of services it can be more efficient to use the Consul API
+directly which has basic support for filtering nodes (currently by node
+metadata and a single tag).
+  
+### consulagent_sd_config
+
+Consul Agent SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)
+Agent API. When using the Agent API, each running promtail will only get
+services registered with the local agent running on the same host when discovering
+new targets. This is suitable for very large Consul clusters for which using the
+Catalog API would be too slow or resource intensive.
+
+The following meta labels are available on targets during [relabeling](#relabel_config):
+
+* `__meta_consulagent_address`: the address of the target
+* `__meta_consulagent_dc`: the datacenter name for the target
+* `__meta_consulagent_health`: the health status of the service
+* `__meta_consulagent_metadata_<key>`: each node metadata key value of the target
+* `__meta_consulagent_node`: the node name defined for the target
+* `__meta_consulagent_service_address`: the service address of the target
+* `__meta_consulagent_service_id`: the service ID of the target
+* `__meta_consulagent_service_metadata_<key>`: each service metadata key value of the target
+* `__meta_consulagent_service_port`: the service port of the target
+* `__meta_consulagent_service`: the name of the service the target belongs to
+* `__meta_consulagent_tagged_address_<key>`: each node tagged address key value of the target
+* `__meta_consulagent_tags`: the list of tags of the target joined by the tag separator
+
+```yaml
+# The information to access the Consul Agent API. It is to be defined
+# as the Consul documentation requires.
+[ server: <host> | default = "localhost:8500" ]
+[ token: <secret> ]
+[ datacenter: <string> ]
+[ scheme: <string> | default = "http" ]
+[ username: <string> ]
+[ password: <secret> ]
+
+tls_config:
+  [ <tls_config> ]
+
+# A list of services for which targets are retrieved. If omitted, all services
+# are scraped.
+services:
+  [ - <string> ]
+
+# See https://www.consul.io/api-docs/agent/service#filtering to know more
+# about the possible filters that can be used.
+
+# An optional list of tags used to filter nodes for a given service. Services must contain all tags in the list.
+tags:
+  [ - <string> ]
+
+# Node metadata key/value pairs to filter nodes for a given service.
+[ node_meta:
+  [ <string>: <string> ... ] ]
+
+# The string by which Consul tags are joined into the tag label.
+[ tag_separator: <string> | default = , ]
+```
+
+Note that the IP number and port used to scrape the targets is assembled as
+`<__meta_consul_address>:<__meta_consul_service_port>`. However, in some
+Consul setups, the relevant address is in `__meta_consul_service_address`.
+In those cases, you can use the [relabel](#relabel_config)
+feature to replace the special `__address__` label.
+
+The [relabeling phase](#relabel_config) is the preferred and more powerful
+way to filter services or nodes for a service based on arbitrary labels. For
+users with thousands of services it can be more efficient to use the Consul API
+directly which has basic support for filtering nodes (currently by node
+metadata and a single tag).
 
 ## target_config
 
