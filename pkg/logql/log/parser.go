@@ -260,6 +260,7 @@ func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
 	matcher pattern.Matcher
+	names   []string
 }
 
 func NewPatternParser(pn string) (*PatternParser, error) {
@@ -274,6 +275,7 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 	}
 	return &PatternParser{
 		matcher: m,
+		names:   m.Names(),
 	}, nil
 }
 
@@ -282,8 +284,9 @@ func (l *PatternParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		return line, true
 	}
 	matches := l.matcher.Matches(line)
+	names := l.names[:len(matches)]
 	for i, m := range matches {
-		name := l.matcher.Names()[i]
+		name := names[i]
 		if !lbs.parserKeyHints.ShouldExtract(name) {
 			continue
 		}
