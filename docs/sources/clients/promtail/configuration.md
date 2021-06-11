@@ -1239,7 +1239,7 @@ metadata and a single tag).
 ### consulagent_sd_config
 
 Consul Agent SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)
-Agent API. When using the Agent API, each running promtail will only get
+Agent API. When using the Agent API, each running Promtail will only get
 services registered with the local agent running on the same host when discovering
 new targets. This is suitable for very large Consul clusters for which using the
 Catalog API would be too slow or resource intensive.
