@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -13,7 +14,7 @@ type ExpirationChecker interface {
 }
 
 type expirationChecker struct {
-	limits Limits
+	tenantsRetention *TenantsRetention
 }
 
 type Limits interface {
@@ -23,15 +24,30 @@ type Limits interface {
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
 	return &expirationChecker{
-		limits: limits,
+		tenantsRetention: NewTenantsRetention(limits),
 	}
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
 func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
 	userID := unsafeGetString(ref.UserID)
-	streamRetentions := e.limits.StreamRetention(userID)
-	globalRetention := e.limits.RetentionPeriod(userID)
+	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+	return now.Sub(ref.Through) > period, nil
+}
+
+type TenantsRetention struct {
+	limits Limits
+}
+
+func NewTenantsRetention(l Limits) *TenantsRetention {
+	return &TenantsRetention{
+		limits: l,
+	}
+}
+
+func (tr *TenantsRetention) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {
+	streamRetentions := tr.limits.StreamRetention(userID)
+	globalRetention := tr.limits.RetentionPeriod(userID)
 	var (
 		matchedRule validation.StreamRetention
 		found       bool
@@ -39,7 +55,7 @@ func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []mod
 Outer:
 	for _, streamRetention := range streamRetentions {
 		for _, m := range streamRetention.Matchers {
-			if !m.Matches(ref.Labels.Get(m.Name)) {
+			if !m.Matches(lbs.Get(m.Name)) {
 				continue Outer
 			}
 		}
@@ -58,7 +74,7 @@ Outer:
 		matchedRule = streamRetention
 	}
 	if found {
-		return now.Sub(ref.Through) > time.Duration(matchedRule.Period), nil
+		return time.Duration(matchedRule.Period)
 	}
-	return now.Sub(ref.Through) > globalRetention, nil
+	return globalRetention
 }

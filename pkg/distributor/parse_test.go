@@ -1,4 +1,4 @@
-package util
+package distributor
 
 import (
 	"bytes"
@@ -26,7 +26,7 @@ func gzipString(source string) string {
 }
 
 func TestParseRequest(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		path            string
 		body            string
 		contentType     string
@@ -37,35 +37,42 @@ func TestParseRequest(t *testing.T) {
 			path:        `/loki/api/v1/push`,
 			body:        ``,
 			contentType: `application/json`,
-			valid:       false},
+			valid:       false,
+		},
 		{
 			path:        `/loki/api/v1/push`,
 			body:        `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
 			contentType: ``,
-			valid:       false},
+			valid:       false,
+		},
 		{
 			path:        `/loki/api/v1/push`,
 			body:        `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
 			contentType: `application/json`,
-			valid:       true},
+			valid:       true,
+		},
 		{
 			path:            `/loki/api/v1/push`,
 			body:            `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
 			contentType:     `application/json`,
 			contentEncoding: ``,
-			valid:           true},
+			valid:           true,
+		},
 		{
 			path:            `/loki/api/v1/push`,
 			body:            gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
 			contentType:     `application/json`,
 			contentEncoding: `gzip`,
-			valid:           true},
+			valid:           true,
+		},
 		{
 			path:            `/loki/api/v1/push`,
 			body:            gzipString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`),
 			contentType:     `application/json`,
 			contentEncoding: `snappy`,
-			valid:           false}}
+			valid:           false,
+		},
+	}
 
 	// Testing input array
 	for index, test := range tests {
@@ -76,7 +83,7 @@ func TestParseRequest(t *testing.T) {
 		if len(test.contentEncoding) > 0 {
 			request.Header.Add("Content-Encoding", test.contentEncoding)
 		}
-		data, err := ParseRequest(util_log.Logger, "", request)
+		data, err := ParseRequest(util_log.Logger, "", request, nil)
 		if test.valid {
 			assert.Nil(t, err, "Should not give error for %d", index)
 			assert.NotNil(t, data, "Should give data for %d", index)

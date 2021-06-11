@@ -8,15 +8,13 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-
-	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	userID, _ := user.ExtractOrgID(r.Context())
-	req, err := lokiutil.ParseRequest(logger, userID, r)
+	req, err := ParseRequest(logger, userID, r, d.tenantsRetention)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(userID) {
 			level.Debug(logger).Log(
