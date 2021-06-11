@@ -1169,7 +1169,7 @@ When using the Catalog API, each running Promtail will get
 a list of all services known to the whole consul cluster when discovering
 new targets.
 
-The following meta labels are available on targets during [relabeling](#relabel_config):
+The following meta labels are available on targets during [relabeling](#relabel_configs):
 
 * `__meta_consul_address`: the address of the target
 * `__meta_consul_dc`: the datacenter name for the target
