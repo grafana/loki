@@ -315,7 +315,7 @@ consul_sd_configs:
   [ - <consul_sd_config> ... ]
   
 # Describes how to use the Consul Agent API to discover services registered with the consul agent
-# running on the same host as promtail.
+# running on the same host as Promtail.
 consulagent_sd_configs:
   [ - <consulagent_sd_config> ... ]
 ```
