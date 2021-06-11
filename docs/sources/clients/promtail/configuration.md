@@ -1164,8 +1164,8 @@ which automates the Prometheus setup on top of Kubernetes.
 
 ### consul_sd_config
 
-Consul SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)
-Catalog API. When using the Catalog API, each running promtail will get
+Consul SD configurations allow retrieving scrape targets from the [Consul Catalog API](https://www.consul.io).
+When using the Catalog API, each running Promtail will get
 a list of all services known to the whole consul cluster when discovering
 new targets.
 
