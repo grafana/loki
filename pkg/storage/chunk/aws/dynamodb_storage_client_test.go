@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk/testutils"
+	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
 
 const (

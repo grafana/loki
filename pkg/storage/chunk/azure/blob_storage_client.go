@@ -13,11 +13,12 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 const (
@@ -88,7 +89,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 // BlobStorage is used to interact with azure blob storage for setting or getting time series chunks.
 // Implements ObjectStorage
 type BlobStorage struct {
-	//blobService storage.Serv
+	// blobService storage.Serv
 	cfg          *BlobStorageConfig
 	containerURL azblob.ContainerURL
 }
@@ -161,10 +162,9 @@ func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io
 }
 
 func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
-
 	blobID = strings.Replace(blobID, ":", "-", -1)
 
-	//generate url for new chunk blob
+	// generate url for new chunk blob
 	u, err := url.Parse(fmt.Sprintf(b.selectBlobURLFmt(), b.cfg.AccountName, b.cfg.ContainerName, blobID))
 	if err != nil {
 		return azblob.BlockBlobURL{}, err

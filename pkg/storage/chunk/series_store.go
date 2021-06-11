@@ -13,10 +13,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
 // CardinalityExceededError is returned when the user reads a row that
@@ -33,34 +34,34 @@ func (e CardinalityExceededError) Error() string {
 
 var (
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "chunk_store_index_lookups_per_query",
 		Help:      "Distribution of #index lookups per query.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
 	preIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "chunk_store_series_pre_intersection_per_query",
 		Help:      "Distribution of #series (pre intersection) per query.",
 		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	postIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "chunk_store_series_post_intersection_per_query",
 		Help:      "Distribution of #series (post intersection) per query.",
 		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	chunksPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "chunk_store_chunks_per_query",
 		Help:      "Distribution of #chunks per query.",
 		// For 100k series for 7 week, could be 1.2m - 10*(8^(7-1)) = 2.6m.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
 	dedupedChunksTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "chunk_store_deduped_chunks_total",
 		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
 	})
@@ -258,6 +259,7 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 	}
 	return labelNamesFromChunks(allChunks), nil
 }
+
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
 	defer log.Span.Finish()
@@ -540,7 +542,7 @@ func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time,
 		return ErrMetricNameLabelMissing
 	}
 
-	chunkWriteEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, string(metricName), metric, chunkID)
+	chunkWriteEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, metricName, metric, chunkID)
 	if err != nil {
 		return errors.Wrapf(err, "when getting chunk index entries to delete for chunkID=%s", chunkID)
 	}
@@ -551,7 +553,6 @@ func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time,
 }
 
 func (c *seriesStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
-
 	entries, err := c.schema.GetSeriesDeleteEntries(from, through, userID, metric, func(userID, seriesID string, from, through model.Time) (b bool, e error) {
 		return c.hasChunksForInterval(ctx, userID, seriesID, from, through)
 	})

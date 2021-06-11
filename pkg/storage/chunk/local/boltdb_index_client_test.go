@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 var (
@@ -168,7 +168,6 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 	require.Equal(t, []chunk.IndexEntry{
 		{RangeValue: []byte(fmt.Sprintf("range%s", "value"))},
 	}, have)
-
 }
 
 func TestBoltDB_Writes(t *testing.T) {

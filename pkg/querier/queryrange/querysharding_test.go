@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 var (
@@ -139,7 +139,7 @@ func Test_astMapper(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		queryrange.ShardingConfigs{
+		ShardingConfigs{
 			chunk.PeriodConfig{
 				RowShards: 2,
 			},
@@ -158,7 +158,6 @@ func Test_astMapper(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, called, 2)
 	require.Equal(t, expected.(*LokiResponse).Data, resp.(*LokiResponse).Data)
-
 }
 
 func Test_ShardingByPass(t *testing.T) {
@@ -169,7 +168,7 @@ func Test_ShardingByPass(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		queryrange.ShardingConfigs{
+		ShardingConfigs{
 			chunk.PeriodConfig{
 				RowShards: 2,
 			},
@@ -187,23 +186,23 @@ func Test_ShardingByPass(t *testing.T) {
 
 func Test_hasShards(t *testing.T) {
 	for i, tc := range []struct {
-		input    queryrange.ShardingConfigs
+		input    ShardingConfigs
 		expected bool
 	}{
 		{
-			input: queryrange.ShardingConfigs{
+			input: ShardingConfigs{
 				{},
 			},
 			expected: false,
 		},
 		{
-			input: queryrange.ShardingConfigs{
+			input: ShardingConfigs{
 				{RowShards: 16},
 			},
 			expected: true,
 		},
 		{
-			input: queryrange.ShardingConfigs{
+			input: ShardingConfigs{
 				{},
 				{RowShards: 16},
 				{},

@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
-
 	"io"
+	"os"
 
 	ot "github.com/opentracing/opentracing-go"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/math"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // Callback from an IndexQuery.
@@ -64,7 +64,6 @@ func DoParallelQueries(
 	for i := 0; i < len(queries); i++ {
 		err := <-incomingErrors
 		if err != nil {
-
 			lastErr = err
 		}
 	}

@@ -54,7 +54,7 @@ func (s *schemaCaching) GetLabelNamesForSeries(from, through model.Time, userID 
 	return s.setImmutability(from, through, queries), nil
 }
 
-func (s *schemaCaching) setImmutability(from, through model.Time, queries []IndexQuery) []IndexQuery {
+func (s *schemaCaching) setImmutability(_, through model.Time, queries []IndexQuery) []IndexQuery {
 	cacheBefore := model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix())
 
 	// If the entire query is cacheable then cache it.

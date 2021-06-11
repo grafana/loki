@@ -140,7 +140,7 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 
 		b.chunks = append(b.chunks, smallChunk{
 			XORChunk: *chunk.(*chunkenc.XORChunk),
-			start:    int64(start),
+			start:    start,
 		})
 	}
 	return nil

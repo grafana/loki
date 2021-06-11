@@ -11,33 +11,39 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 var (
 	cacheCorruptErrs = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "querier_index_cache_corruptions_total",
-		Help: "The number of cache corruptions for the index cache.",
+		Namespace: "loki",
+		Name:      "querier_index_cache_corruptions_total",
+		Help:      "The number of cache corruptions for the index cache.",
 	})
 	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "querier_index_cache_hits_total",
-		Help: "The number of cache hits for the index cache.",
+		Namespace: "loki",
+		Name:      "querier_index_cache_hits_total",
+		Help:      "The number of cache hits for the index cache.",
 	})
 	cacheGets = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "querier_index_cache_gets_total",
-		Help: "The number of gets for the index cache.",
+		Namespace: "loki",
+		Name:      "querier_index_cache_gets_total",
+		Help:      "The number of gets for the index cache.",
 	})
 	cachePuts = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "querier_index_cache_puts_total",
-		Help: "The number of puts for the index cache.",
+		Namespace: "loki",
+		Name:      "querier_index_cache_puts_total",
+		Help:      "The number of puts for the index cache.",
 	})
 	cacheEncodeErrs = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "querier_index_cache_encode_errors_total",
-		Help: "The number of errors for the index cache while encoding the body.",
+		Namespace: "loki",
+		Name:      "querier_index_cache_encode_errors_total",
+		Help:      "The number of errors for the index cache while encoding the body.",
 	})
 )
 

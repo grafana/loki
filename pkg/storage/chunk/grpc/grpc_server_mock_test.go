@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type server struct {
@@ -50,7 +50,7 @@ func (s server) DeleteIndex(ctx context.Context, deletes *DeleteIndexRequest) (*
 
 // storageClient RPCs
 func (s server) PutChunks(ctx context.Context, request *PutChunksRequest) (*empty.Empty, error) {
-	//encoded :=
+	// encoded :=
 	if request.Chunks[0].TableName == "" && request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:fc8fd207" {
 		return &empty.Empty{}, nil
 	}
@@ -90,6 +90,7 @@ func (s server) CreateTable(ctx context.Context, createTableRequest *CreateTable
 	return &empty.Empty{}, err
 }
 
+// nolint
 func (s server) DeleteTable(ctx context.Context, name *DeleteTableRequest) (*empty.Empty, error) {
 	if name.TableName == "chunk_2591" {
 		return &empty.Empty{}, nil
@@ -154,11 +155,11 @@ func NewTestTableClient(cfg Config) (*TableClient, error) {
 }
 
 // NewStorageClient returns a new StorageClient.
-func newTestStorageServer(cfg Config) (*server, error) {
+func newTestStorageServer(cfg Config) *server {
 	client := &server{
 		Cfg: cfg,
 	}
-	return client, nil
+	return client
 }
 
 func createTestGrpcServer(t *testing.T) (func(), string) {
@@ -167,10 +168,8 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	require.NoError(t, err)
 	s := grpc.NewServer()
 
-	s1, err := newTestStorageServer(cfg.Cfg)
-	if err != nil {
-		log.Fatalf("Failed to created new storage client")
-	}
+	s1 := newTestStorageServer(cfg.Cfg)
+
 	RegisterGrpcStoreServer(s, s1)
 	go func() {
 		if err := s.Serve(lis); err != nil {

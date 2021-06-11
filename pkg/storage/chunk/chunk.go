@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -16,8 +17,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	errs "github.com/weaveworks/common/errors"
 
-	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 const (

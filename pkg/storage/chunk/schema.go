@@ -197,7 +197,6 @@ func (s seriesStoreSchema) GetChunkWriteEntries(from, through model.Time, userID
 		result = append(result, entries...)
 	}
 	return result, nil
-
 }
 
 func (s baseSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
@@ -384,7 +383,7 @@ func (originalEntries) GetWriteEntries(bucket Bucket, metricName string, labels 
 		if v.Name == model.MetricNameLabel {
 			continue
 		}
-		if strings.ContainsRune(string(v.Value), '\x00') {
+		if strings.ContainsRune(v.Value, '\x00') {
 			return nil, fmt.Errorf("label values cannot contain null byte")
 		}
 		result = append(result, IndexEntry{
@@ -417,7 +416,7 @@ func (originalEntries) GetReadMetricLabelQueries(bucket Bucket, metricName strin
 }
 
 func (originalEntries) GetReadMetricLabelValueQueries(bucket Bucket, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
-	if strings.ContainsRune(string(labelValue), '\x00') {
+	if strings.ContainsRune(labelValue, '\x00') {
 		return nil, fmt.Errorf("label values cannot contain null byte")
 	}
 	return []IndexQuery{

@@ -35,9 +35,7 @@ const (
 	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
 )
 
-var (
-	errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
-)
+var errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
 
 // Chunk is the interface for all chunks. Chunks are generally not
 // goroutine-safe.
@@ -145,8 +143,6 @@ func addToOverflowChunk(s model.SamplePair) (Chunk, error) {
 // provided sample. It returns the new chunks (transcoded plus overflow) with
 // the new sample at the end.
 func transcodeAndAdd(dst Chunk, src Chunk, s model.SamplePair) ([]Chunk, error) {
-	Ops.WithLabelValues(Transcode).Inc()
-
 	var (
 		head     = dst
 		newChunk Chunk

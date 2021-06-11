@@ -19,7 +19,7 @@ import (
 
 var (
 	bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "bigtable_request_duration_seconds",
 		Help:      "Time spent doing Bigtable requests.",
 
@@ -29,7 +29,7 @@ var (
 	}, []string{"operation", "status_code"})
 
 	gcsRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "gcs_request_duration_seconds",
 		Help:      "Time spent doing GCS requests.",
 

@@ -15,11 +15,12 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 const (
@@ -114,13 +115,11 @@ func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.
 }
 
 func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) *storageClientColumnKey {
-
 	return &storageClientColumnKey{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
 		client:    client,
 		keysFn: func(hashValue string, rangeValue []byte) (string, string) {
-
 			// We hash the row key and prepend it back to the key for better distribution.
 			// We preserve the existing key to make migrations and o11y easier.
 			if cfg.DistributeKeys {

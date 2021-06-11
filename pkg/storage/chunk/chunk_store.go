@@ -16,13 +16,14 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 var (
@@ -31,13 +32,13 @@ var (
 	ErrParialDeleteChunkNoOverlap = errors.New("interval for partial deletion has not overlap with chunk interval")
 
 	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "chunk_store_index_entries_per_chunk",
 		Help:      "Number of entries written to storage per chunk.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
 	cacheCorrupt = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "cache_corrupt_chunks_total",
 		Help:      "Total count of corrupt chunks found in cache.",
 	})
@@ -573,7 +574,7 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 	return result, nil
 }
 
-func (c *baseStore) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
+func (c *baseStore) convertChunkIDsToChunks(_ context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
 	chunkSet := make([]Chunk, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
 		chunk, err := ParseExternalKey(userID, chunkID)
@@ -592,7 +593,7 @@ func (c *store) DeleteChunk(ctx context.Context, from, through model.Time, userI
 		return ErrMetricNameLabelMissing
 	}
 
-	chunkWriteEntries, err := c.schema.GetWriteEntries(from, through, userID, string(metricName), metric, chunkID)
+	chunkWriteEntries, err := c.schema.GetWriteEntries(from, through, userID, metricName, metric, chunkID)
 	if err != nil {
 		return errors.Wrapf(err, "when getting index entries to delete for chunkID=%s", chunkID)
 	}

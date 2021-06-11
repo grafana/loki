@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // ByKey allow you to sort chunks by ID

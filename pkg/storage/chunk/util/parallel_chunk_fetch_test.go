@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 func BenchmarkGetParallelChunks(b *testing.B) {

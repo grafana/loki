@@ -13,8 +13,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/mtime"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 const (
@@ -100,7 +101,6 @@ func (m *metricsData) DescribeTable(ctx context.Context, desc *chunk.TableDesc) 
 }
 
 func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, expected *chunk.TableDesc) error {
-
 	if err := m.update(ctx); err != nil {
 		return err
 	}

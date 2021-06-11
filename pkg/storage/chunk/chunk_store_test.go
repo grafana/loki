@@ -18,10 +18,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 type configFactory func() StoreConfig
@@ -350,7 +351,6 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
@@ -452,7 +452,6 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 // TestChunkStore_getMetricNameChunks tests if chunks are fetched correctly when we have the metric name
@@ -546,6 +545,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	}
 }
 
+// nolint
 func mustNewLabelMatcher(matchType labels.MatchType, name string, value string) *labels.Matcher {
 	return labels.MustNewMatcher(matchType, name, value)
 }
@@ -812,19 +812,22 @@ func BenchmarkParseIndexEntries50000(b *testing.B) { benchmarkParseIndexEntries(
 func BenchmarkParseIndexEntriesRegexSet500(b *testing.B) {
 	benchmarkParseIndexEntries(500, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
 }
+
 func BenchmarkParseIndexEntriesRegexSet2500(b *testing.B) {
 	benchmarkParseIndexEntries(2500, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
 }
+
 func BenchmarkParseIndexEntriesRegexSet10000(b *testing.B) {
 	benchmarkParseIndexEntries(10000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
 }
+
 func BenchmarkParseIndexEntriesRegexSet50000(b *testing.B) {
 	benchmarkParseIndexEntries(50000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
 }
 
 func generateIndexEntries(n int64) []IndexEntry {
 	res := make([]IndexEntry, 0, n)
-	for i := int64(n - 1); i >= 0; i-- {
+	for i := n - 1; i >= 0; i-- {
 		labelValue := fmt.Sprintf("labelvalue%d", i%(n/2))
 		chunkID := fmt.Sprintf("chunkid%d", i%(n/2))
 		rangeValue := []byte{}
@@ -1144,7 +1147,5 @@ func TestDisableIndexDeduplication(t *testing.T) {
 			// see if we deduped the chunk and the number of chunks we wrote is still 1
 			require.Equal(t, 1, storage.numChunkWrites)
 		})
-
 	}
-
 }

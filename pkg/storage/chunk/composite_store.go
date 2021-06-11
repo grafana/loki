@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
 // StoreLimits helps get Limits specific to Queries for Stores

@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type dynamodbIndexReader struct {
@@ -95,7 +95,7 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 			err := r.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, lastPage bool) bool {
 				if cc := page.ConsumedCapacity; cc != nil {
 					r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
-						Add(float64(*cc.CapacityUnits))
+						Add(*cc.CapacityUnits)
 				}
 				r.processPage(ctx, sm, processor, tableName, page)
 				return true
@@ -198,14 +198,15 @@ func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, pr
 	err := r.DynamoDB.QueryPagesWithContext(ctx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
 		if cc := output.ConsumedCapacity; cc != nil {
 			r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
-				Add(float64(*cc.CapacityUnits))
+				Add(*cc.CapacityUnits)
 		}
 
 		for _, item := range output.Items {
 			err := processor.ProcessIndexEntry(chunk.IndexEntry{
 				TableName:  tableName,
 				HashValue:  aws.StringValue(item[hashKey].S),
-				RangeValue: item[rangeKey].B})
+				RangeValue: item[rangeKey].B,
+			})
 			if err != nil {
 				result = errors.Wrap(err, "processor error")
 				return false

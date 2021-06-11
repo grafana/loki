@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -95,7 +95,6 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 	}
 
 	return reader, recs
-
 }
 
 type MemRecoverer struct {
@@ -194,7 +193,6 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func TestSeriesRecoveryNoDuplicates(t *testing.T) {

@@ -29,7 +29,7 @@ import (
 
 func TestLen(t *testing.T) {
 	chunks := []Chunk{}
-	for _, encoding := range []Encoding{DoubleDelta, Varbit, Bigchunk, PrometheusXorChunk} {
+	for _, encoding := range []Encoding{Bigchunk, PrometheusXorChunk} {
 		c, err := NewForEncoding(encoding)
 		if err != nil {
 			t.Fatal(err)
@@ -60,17 +60,11 @@ func TestChunk(t *testing.T) {
 		encoding   Encoding
 		maxSamples int
 	}{
-		{DoubleDelta, 989},
-		{Varbit, 2048},
+
 		{Bigchunk, 4096},
 		{PrometheusXorChunk, 2048},
 	} {
 		for samples := tc.maxSamples / 10; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
-
-			// DoubleDelta doesn't support zero length chunks.
-			if tc.encoding == DoubleDelta && samples == 0 {
-				continue
-			}
 
 			t.Run(fmt.Sprintf("testChunkEncoding/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
 				testChunkEncoding(t, tc.encoding, samples)
@@ -291,7 +285,6 @@ func testChunkRebound(t *testing.T, encoding Encoding, samples int) {
 
 				require.True(t, newChunkHasMoreSamples)
 			}
-
 		})
 	}
 }

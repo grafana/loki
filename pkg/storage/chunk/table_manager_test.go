@@ -94,6 +94,7 @@ func (m *mockTableClient) UpdateTable(_ context.Context, current, expected Table
 
 func (*mockTableClient) Stop() {}
 
+// nolint
 func tmTest(t *testing.T, client *mockTableClient, tableManager *TableManager, name string, tm time.Time, expected []TableDesc) {
 	t.Run(name, func(t *testing.T) {
 		ctx := context.Background()
@@ -113,6 +114,7 @@ var activeScalingConfig = AutoScalingConfig{
 	MaxCapacity: autoScaleMax * 2,
 	TargetValue: autoScaleTarget,
 }
+
 var inactiveScalingConfig = AutoScalingConfig{
 	Enabled:     true,
 	MinCapacity: autoScaleMin,
@@ -323,7 +325,6 @@ func TestTableManager(t *testing.T) {
 			{Name: chunkTable2Prefix + "5", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
-
 }
 
 func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {

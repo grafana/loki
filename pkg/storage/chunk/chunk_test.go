@@ -12,9 +12,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 const userID = "userID"
@@ -374,7 +375,6 @@ func TestChunk_Slice(t *testing.T) {
 
 				require.Equal(t, true, newChunkHasMoreSamples)
 			}
-
 		})
 	}
 }

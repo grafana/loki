@@ -9,8 +9,9 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/math"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type bigtableObjectClient struct {
@@ -117,7 +118,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 				decodeContext := chunk.NewDecodeContext()
 
 				var processingErr error
-				var receivedChunks = 0
+				receivedChunks := 0
 
 				// rows are returned in key order, not order in row list
 				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {

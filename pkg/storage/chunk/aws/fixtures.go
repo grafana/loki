@@ -7,10 +7,11 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
-	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
 
 type fixture struct {
@@ -58,6 +59,7 @@ var Fixtures = []testutils.Fixture{
 	dynamoDBFixture(2, 10, 20),
 }
 
+// nolint
 func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fixture {
 	return fixture{
 		name: fmt.Sprintf("DynamoDB chunks provisionedErr=%d, ChunkGangSize=%d, ChunkGetMaxParallelism=%d",

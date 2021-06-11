@@ -29,12 +29,12 @@ func newtombstonesLoaderMetrics(r prometheus.Registerer) *tombstonesLoaderMetric
 	m := tombstonesLoaderMetrics{}
 
 	m.cacheGenLoadFailures = promauto.With(r).NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "tombstones_loader_cache_gen_load_failures_total",
 		Help:      "Total number of failures while loading cache generation number using tombstones loader",
 	})
 	m.deleteRequestsLoadFailures = promauto.With(r).NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "tombstones_loader_cache_delete_requests_load_failures_total",
 		Help:      "Total number of failures while loading delete requests using tombstones loader",
 	})

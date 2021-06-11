@@ -41,6 +41,7 @@ type mockDynamoDBTable struct {
 
 type mockDynamoDBItem map[string]*dynamodb.AttributeValue
 
+// nolint
 func newMockDynamoDB(unprocessed int, provisionedErr int) *mockDynamoDBClient {
 	return &mockDynamoDBClient{
 		tables:         map[string]*mockDynamoDBTable{},
@@ -253,12 +254,15 @@ type dynamoDBMockRequest struct {
 func (m *dynamoDBMockRequest) Send() error {
 	return m.err
 }
+
 func (m *dynamoDBMockRequest) Data() interface{} {
 	return m.result
 }
+
 func (m *dynamoDBMockRequest) Error() error {
 	return m.err
 }
+
 func (m *dynamoDBMockRequest) Retryable() bool {
 	return false
 }

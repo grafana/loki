@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
 func TestTieredSimple(t *testing.T) {

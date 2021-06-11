@@ -21,6 +21,7 @@ func TestConfig_setClusterConfig_noAuth(t *testing.T) {
 	assert.Nil(t, cqlCfg.Authenticator)
 }
 
+// nolint
 func TestConfig_setClusterConfig_authWithPassword(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Auth = true
@@ -75,6 +76,7 @@ func TestConfig_setClusterConfig_authWithPasswordAndPasswordFile(t *testing.T) {
 	assert.Error(t, cfg.Validate())
 }
 
+// nolint
 func TestConfig_setClusterConfig_clientSSL(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.SSL = true

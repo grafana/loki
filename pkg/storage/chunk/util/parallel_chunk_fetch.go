@@ -6,8 +6,9 @@ import (
 
 	otlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 const maxParallel = 1000
@@ -51,7 +52,7 @@ func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context
 		}()
 	}
 
-	var result = make([]chunk.Chunk, 0, len(chunks))
+	result := make([]chunk.Chunk, 0, len(chunks))
 	var lastErr error
 	for i := 0; i < len(chunks); i++ {
 		select {

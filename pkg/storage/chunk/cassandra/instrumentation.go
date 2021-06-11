@@ -9,7 +9,7 @@ import (
 )
 
 var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "cortex",
+	Namespace: "loki",
 	Name:      "cassandra_request_duration_seconds",
 	Help:      "Time spent doing Cassandra requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 9),

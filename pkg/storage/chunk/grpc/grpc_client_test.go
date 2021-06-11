@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
+	prom_chunk "github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 // This includes test for all RPCs in
@@ -137,7 +137,7 @@ func TestGrpcStore(t *testing.T) {
 	err = storageClient.DeleteChunk(context.Background(), "", "")
 	require.NoError(t, err)
 
-	//rpc calls specific to indexClient
+	// rpc calls specific to indexClient
 	writeBatchTestData := writeBatchTestData()
 	err = storageClient.BatchWrite(context.Background(), writeBatchTestData)
 	require.NoError(t, err)
@@ -154,7 +154,6 @@ func TestGrpcStore(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-
 }
 
 func writeBatchTestData() chunk.WriteBatch {

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 const (
@@ -87,6 +87,7 @@ func fixtureReadProvisionConfig(readScale, inactReadScale chunk.AutoScalingConfi
 	}
 }
 
+// nolint
 func baseTable(name string, provisionedRead, provisionedWrite int64) []chunk.TableDesc {
 	return []chunk.TableDesc{
 		{
@@ -392,7 +393,6 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, 1, write, 1, write)...), // - scale down to minimum... no usage at all
 	)
-
 }
 
 // Helper to return pre-canned results to Prometheus queries
@@ -432,7 +432,6 @@ func (m *mockPrometheus) SetResponseForWrites(q0, q1, q2 model.SampleValue, thro
 	for _, rates := range throttleRates {
 		readUsageMatrix := model.Matrix{}
 		for i := 0; i < len(rates)/2; i++ {
-
 			readUsageMatrix = append(readUsageMatrix,
 				&model.SampleStream{
 					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("%s%d", tablePrefix, i))},
@@ -449,7 +448,6 @@ func (m *mockPrometheus) SetResponseForWrites(q0, q1, q2 model.SampleValue, thro
 	for _, rates := range throttleRates {
 		readErrorMatrix := model.Matrix{}
 		for i := 0; i < len(rates)/2; i++ {
-
 			readErrorMatrix = append(readErrorMatrix,
 				&model.SampleStream{
 					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("%s%d", tablePrefix, i))},
@@ -470,9 +468,11 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	m.rangeValues = []model.Value{
 		// Queue lengths ( not used)
 		model.Matrix{
-			&model.SampleStream{Values: []model.SamplePair{{Timestamp: 0, Value: 0},
+			&model.SampleStream{Values: []model.SamplePair{
+				{Timestamp: 0, Value: 0},
 				{Timestamp: 15000, Value: 0},
-				{Timestamp: 30000, Value: 0}}},
+				{Timestamp: 30000, Value: 0},
+			}},
 		},
 	}
 	// Error rates, for writes so not used in a read test. Here as a filler for the expected number of prom responses
@@ -511,7 +511,6 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	for _, rates := range usageRates {
 		readUsageMatrix := model.Matrix{}
 		for i := 0; i < len(rates)/2; i++ {
-
 			readUsageMatrix = append(readUsageMatrix,
 				&model.SampleStream{
 					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("%s%d", tablePrefix, i))},
@@ -528,7 +527,6 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	for _, rates := range errorRates {
 		readErrorMatrix := model.Matrix{}
 		for i := 0; i < len(rates)/2; i++ {
-
 			readErrorMatrix = append(readErrorMatrix,
 				&model.SampleStream{
 					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("%s%d", tablePrefix, i))},

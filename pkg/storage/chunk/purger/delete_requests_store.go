@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -98,7 +98,6 @@ func NewDeleteStore(cfg DeleteStoreConfig, indexClient chunk.IndexClient) (*Dele
 // Add creates entries for a new delete request.
 func (ds *DeleteStore) AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error {
 	return ds.addDeleteRequest(ctx, userID, model.Now(), startTime, endTime, selectors)
-
 }
 
 // addDeleteRequest is also used for tests to create delete requests with different createdAt time.
@@ -193,7 +192,6 @@ func (ds *DeleteStore) GetDeleteRequest(ctx context.Context, userID, requestID s
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userIDAndRequestID),
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +262,6 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery chun
 
 			return true
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -304,7 +301,6 @@ func (ds *DeleteStore) queryCacheGenerationNumber(ctx context.Context, userID st
 		}
 		return false
 	})
-
 	if err != nil {
 		return "", err
 	}
@@ -345,12 +341,10 @@ func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest
 	from, err := strconv.ParseInt(hexParts[1], 16, 64)
 	if err != nil {
 		return deleteRequest, err
-
 	}
 	through, err := strconv.ParseInt(hexParts[2], 16, 64)
 	if err != nil {
 		return deleteRequest, err
-
 	}
 
 	deleteRequest.CreatedAt = model.Time(createdAt)

@@ -20,10 +20,11 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 const (
@@ -47,32 +48,32 @@ func newPurgerMetrics(r prometheus.Registerer) *purgerMetrics {
 	m := purgerMetrics{}
 
 	m.deleteRequestsProcessedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "purger_delete_requests_processed_total",
 		Help:      "Number of delete requests processed per user",
 	}, []string{"user"})
 	m.deleteRequestsChunksSelectedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "purger_delete_requests_chunks_selected_total",
 		Help:      "Number of chunks selected while building delete plans per user",
 	}, []string{"user"})
 	m.deleteRequestsProcessingFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "purger_delete_requests_processing_failures_total",
 		Help:      "Number of delete requests processing failures per user",
 	}, []string{"user"})
 	m.loadPendingRequestsAttempsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "purger_load_pending_requests_attempts_total",
 		Help:      "Number of attempts that were made to load pending requests with status",
 	}, []string{"status"})
 	m.oldestPendingDeleteRequestAgeSeconds = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "purger_oldest_pending_delete_request_age_seconds",
 		Help:      "Age of oldest pending delete request in seconds, since they are over their cancellation period",
 	})
 	m.pendingDeleteRequestsCount = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "purger_pending_delete_requests_count",
 		Help:      "Count of delete requests which are over their cancellation period and have not finished processing yet",
 	})
@@ -297,8 +298,10 @@ func (p *Purger) jobScheduler(ctx context.Context) {
 			p.pendingPlansCountMtx.Unlock()
 
 			for i := 0; i < numPlans; i++ {
-				p.workerJobChan <- workerJob{planNo: i, userID: req.UserID,
-					deleteRequestID: req.RequestID, logger: req.logger}
+				p.workerJobChan <- workerJob{
+					planNo: i, userID: req.UserID,
+					deleteRequestID: req.RequestID, logger: req.logger,
+				}
 			}
 		case <-ctx.Done():
 			close(p.workerJobChan)

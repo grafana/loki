@@ -8,7 +8,7 @@ import (
 	"github.com/facette/natsort"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
 func TestNatSort(t *testing.T) {

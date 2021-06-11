@@ -12,18 +12,19 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/chunk/azure"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
-	"github.com/cortexproject/cortex/pkg/chunk/gcp"
-	"github.com/cortexproject/cortex/pkg/chunk/grpc"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
-	"github.com/cortexproject/cortex/pkg/chunk/openstack"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/azure"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cassandra"
+	"github.com/grafana/loki/pkg/storage/chunk/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/grpc"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/pkg/storage/chunk/purger"
 )
 
 // Supported storage engines

@@ -14,9 +14,10 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // Pluggable auto-scaler implementation
@@ -306,7 +307,8 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 		if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 			return instrument.CollectedRequest(ctx, "DynamoDB.UpdateTable", d.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 				var dynamoBillingMode string
-				updateTableInput := &dynamodb.UpdateTableInput{TableName: aws.String(expected.Name),
+				updateTableInput := &dynamodb.UpdateTableInput{
+					TableName: aws.String(expected.Name),
 					ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
 						ReadCapacityUnits:  aws.Int64(expected.ProvisionedRead),
 						WriteCapacityUnits: aws.Int64(expected.ProvisionedWrite),

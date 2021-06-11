@@ -27,13 +27,14 @@ import (
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 const (
@@ -196,7 +197,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 
 		for _, cc := range resp.ConsumedCapacity {
 			a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
-				Add(float64(*cc.CapacityUnits))
+				Add(*cc.CapacityUnits)
 		}
 
 		if err != nil {
@@ -310,7 +311,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 
 			if cc := output.ConsumedCapacity; cc != nil {
 				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
-					Add(float64(*cc.CapacityUnits))
+					Add(*cc.CapacityUnits)
 			}
 
 			return callback(query, &dynamoDBReadResponse{items: output.Items})
@@ -452,7 +453,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 		for _, cc := range response.ConsumedCapacity {
 			a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages", *cc.TableName).
-				Add(float64(*cc.CapacityUnits))
+				Add(*cc.CapacityUnits)
 		}
 
 		if err != nil {
@@ -570,9 +571,7 @@ func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID 
 }
 
 func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWriteBatch, error) {
-	var (
-		dynamoDBWrites = dynamoDBWriteBatch{}
-	)
+	dynamoDBWrites := dynamoDBWriteBatch{}
 
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()

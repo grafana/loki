@@ -8,9 +8,9 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
-	"github.com/cortexproject/cortex/pkg/chunk/testutils"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
 
 type fixture struct {

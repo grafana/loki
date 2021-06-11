@@ -26,10 +26,11 @@ import (
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 const (
@@ -42,14 +43,12 @@ var (
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 )
 
-var (
-	s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "s3_request_duration_seconds",
-		Help:      "Time spent doing S3 requests.",
-		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
-	}, []string{"operation", "status_code"}))
-)
+var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace: "loki",
+	Name:      "s3_request_duration_seconds",
+	Help:      "Time spent doing S3 requests.",
+	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
+}, []string{"operation", "status_code"}))
 
 // InjectRequestMiddleware gives users of this client the ability to make arbitrary
 // changes to outgoing requests.
@@ -252,7 +251,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		MaxIdleConnsPerHost:   100,
 		TLSHandshakeTimeout:   3 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: time.Duration(cfg.HTTPConfig.ResponseHeaderTimeout),
+		ResponseHeaderTimeout: cfg.HTTPConfig.ResponseHeaderTimeout,
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
 	})
 
@@ -290,7 +289,6 @@ func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 		Bucket: aws.String(a.bucketFromKey(objectKey)),
 		Key:    aws.String(objectKey),
 	})
-
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == s3.ErrCodeNoSuchKey {
@@ -332,7 +330,6 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 		})
 		return err
 	})
-
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == s3.ErrCodeNoSuchKey {
@@ -408,7 +405,6 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 
 			return nil
 		})
-
 		if err != nil {
 			return nil, nil, err
 		}

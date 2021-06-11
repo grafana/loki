@@ -26,7 +26,7 @@ func newDeleteRequestHandlerMetrics(r prometheus.Registerer) *deleteRequestHandl
 	m := deleteRequestHandlerMetrics{}
 
 	m.deleteRequestsReceivedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "purger_delete_requests_received_total",
 		Help:      "Number of delete requests received per user",
 	}, []string{"user"})

@@ -15,12 +15,13 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
 
 const (
@@ -116,8 +117,10 @@ var purgePlanTestCases = []struct {
 		deleteRequestInterval:  model.Interval{End: model.Time(millisecondPerDay / 2)},
 		expectedNumberOfPlans:  1,
 		numChunksToDelete:      12 + 1, // one chunk for each hour + end time touches chunk at boundary
-		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(millisecondPerDay / 2),
-			EndTimestampMs: int64(millisecondPerDay / 2)},
+		lastChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: millisecondPerDay / 2,
+			EndTimestampMs:   millisecondPerDay / 2,
+		},
 	},
 	{
 		name:                   "deleting a full day from 2 days data",
@@ -125,32 +128,46 @@ var purgePlanTestCases = []struct {
 		deleteRequestInterval:  model.Interval{End: modelTimeDay},
 		expectedNumberOfPlans:  1,
 		numChunksToDelete:      24 + 1, // one chunk for each hour + end time touches chunk at boundary
-		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: millisecondPerDay,
-			EndTimestampMs: millisecondPerDay},
+		lastChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: millisecondPerDay,
+			EndTimestampMs:   millisecondPerDay,
+		},
 	},
 	{
 		name:                   "deleting 2 days partially from 2 days data",
 		chunkStoreDataInterval: model.Interval{End: modelTimeDay * 2},
-		deleteRequestInterval: model.Interval{Start: model.Time(millisecondPerDay / 2),
-			End: model.Time(millisecondPerDay + millisecondPerDay/2)},
+		deleteRequestInterval: model.Interval{
+			Start: model.Time(millisecondPerDay / 2),
+			End:   model.Time(millisecondPerDay + millisecondPerDay/2),
+		},
 		expectedNumberOfPlans: 2,
 		numChunksToDelete:     24 + 2, // one chunk for each hour + start and end time touches chunk at boundary
-		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(millisecondPerDay / 2),
-			EndTimestampMs: int64(millisecondPerDay / 2)},
-		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: millisecondPerDay + millisecondPerDay/2,
-			EndTimestampMs: millisecondPerDay + millisecondPerDay/2},
+		firstChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: millisecondPerDay / 2,
+			EndTimestampMs:   millisecondPerDay / 2,
+		},
+		lastChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: millisecondPerDay + millisecondPerDay/2,
+			EndTimestampMs:   millisecondPerDay + millisecondPerDay/2,
+		},
 	},
 	{
 		name:                   "deleting 2 days partially, not aligned with hour, from 2 days data",
 		chunkStoreDataInterval: model.Interval{End: modelTimeDay * 2},
-		deleteRequestInterval: model.Interval{Start: model.Time(millisecondPerDay / 2).Add(time.Minute),
-			End: model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Minute)},
+		deleteRequestInterval: model.Interval{
+			Start: model.Time(millisecondPerDay / 2).Add(time.Minute),
+			End:   model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Minute),
+		},
 		expectedNumberOfPlans: 2,
 		numChunksToDelete:     24, // one chunk for each hour, no chunks touched at boundary
-		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(model.Time(millisecondPerDay / 2).Add(time.Minute)),
-			EndTimestampMs: int64(model.Time(millisecondPerDay / 2).Add(time.Hour))},
-		lastChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Hour)),
-			EndTimestampMs: int64(model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Minute))},
+		firstChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: int64(model.Time(millisecondPerDay / 2).Add(time.Minute)),
+			EndTimestampMs:   int64(model.Time(millisecondPerDay / 2).Add(time.Hour)),
+		},
+		lastChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: int64(model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Hour)),
+			EndTimestampMs:   int64(model.Time(millisecondPerDay + millisecondPerDay/2).Add(-time.Minute)),
+		},
 	},
 	{
 		name:                   "deleting data outside of period of existing data",
@@ -165,8 +182,10 @@ var purgePlanTestCases = []struct {
 		deleteRequestInterval:  model.Interval{Start: modelTimeDay.Add(-30 * time.Minute), End: modelTimeDay.Add(-15 * time.Minute)},
 		expectedNumberOfPlans:  1,
 		numChunksToDelete:      1,
-		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(modelTimeDay.Add(-30 * time.Minute)),
-			EndTimestampMs: int64(modelTimeDay.Add(-15 * time.Minute))},
+		firstChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: int64(modelTimeDay.Add(-30 * time.Minute)),
+			EndTimestampMs:   int64(modelTimeDay.Add(-15 * time.Minute)),
+		},
 	},
 	{
 		name:                   "building multi-day chunk and deleting part of it for each day",
@@ -174,8 +193,10 @@ var purgePlanTestCases = []struct {
 		deleteRequestInterval:  model.Interval{Start: modelTimeDay.Add(-15 * time.Minute), End: modelTimeDay.Add(15 * time.Minute)},
 		expectedNumberOfPlans:  2,
 		numChunksToDelete:      1,
-		firstChunkPartialDeletionInterval: &Interval{StartTimestampMs: int64(modelTimeDay.Add(-15 * time.Minute)),
-			EndTimestampMs: int64(modelTimeDay.Add(15 * time.Minute))},
+		firstChunkPartialDeletionInterval: &Interval{
+			StartTimestampMs: int64(modelTimeDay.Add(-15 * time.Minute)),
+			EndTimestampMs:   int64(modelTimeDay.Add(15 * time.Minute)),
+		},
 	},
 }
 
@@ -382,6 +403,7 @@ func TestPurger_Restarts(t *testing.T) {
 	})
 }
 
+// nolint
 func TestPurger_Metrics(t *testing.T) {
 	deleteStore, chunkStore, storageClient, purger, registry := setupStoresAndPurger(t)
 	defer func() {
@@ -425,7 +447,7 @@ func TestPurger_Metrics(t *testing.T) {
 
 	// wait until purger_delete_requests_processed_total starts to show up.
 	test.Poll(t, 2*time.Second, 1, func() interface{} {
-		count, err := testutil.GatherAndCount(registry, "cortex_purger_delete_requests_processed_total")
+		count, err := testutil.GatherAndCount(registry, "loki_purger_delete_requests_processed_total")
 		require.NoError(t, err)
 		return count
 	})

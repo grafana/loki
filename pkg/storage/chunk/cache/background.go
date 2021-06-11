@@ -48,14 +48,14 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache, reg prometheu
 		bgWrites: make(chan backgroundWrite, cfg.WriteBackBuffer),
 		name:     name,
 		droppedWriteBack: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "cortex",
+			Namespace:   "loki",
 			Name:        "cache_dropped_background_writes_total",
 			Help:        "Total count of dropped write backs to cache.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		queueLength: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "cortex",
+			Namespace:   "loki",
 			Name:        "cache_background_queue_length",
 			Help:        "Length of the cache background write queue.",
 			ConstLabels: prometheus.Labels{"name": name},

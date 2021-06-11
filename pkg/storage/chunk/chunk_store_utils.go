@@ -9,9 +9,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
 const chunkDecodeParallelism = 16
@@ -93,6 +94,7 @@ type decodeRequest struct {
 	buf       []byte
 	responses chan decodeResponse
 }
+
 type decodeResponse struct {
 	chunk Chunk
 	err   error

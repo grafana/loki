@@ -60,7 +60,7 @@ func parseKMSEncryptionContext(kmsEncryptionContext string) (*string, error) {
 		return nil, errors.Wrap(err, "failed to marshal KMS encryption context")
 	}
 
-	parsedKMSEncryptionContext := base64.StdEncoding.EncodeToString([]byte(jsonKMSEncryptionContext))
+	parsedKMSEncryptionContext := base64.StdEncoding.EncodeToString(jsonKMSEncryptionContext)
 
 	return &parsedKMSEncryptionContext, nil
 }

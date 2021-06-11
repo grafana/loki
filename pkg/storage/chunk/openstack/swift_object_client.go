@@ -10,9 +10,10 @@ import (
 
 	"github.com/ncw/swift"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type SwiftObjectClient struct {

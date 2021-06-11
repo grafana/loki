@@ -374,7 +374,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		endGraceSecs   = int64(endGrace / time.Second)
 		firstTable     = from.Unix() / periodSecs
 		lastTable      = through.Unix() / periodSecs
-		tablesToKeep   = int64(int64(retention/time.Second) / periodSecs)
+		tablesToKeep   = int64(retention/time.Second) / periodSecs
 		now            = mtime.Now().Unix()
 		nowWeek        = now / periodSecs
 		result         = []TableDesc{}

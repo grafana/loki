@@ -40,31 +40,31 @@ type tableManagerMetrics struct {
 func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m := tableManagerMetrics{}
 	m.syncTableDuration = promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "table_manager_sync_duration_seconds",
 		Help:      "Time spent synching tables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 
 	m.tableCapacity = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "table_capacity_units",
 		Help:      "Per-table capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
 
 	m.createFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "table_manager_create_failures",
 		Help:      "Number of table creation failures during the last table-manager reconciliation",
 	})
 	m.deleteFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "table_manager_delete_failures",
 		Help:      "Number of table deletion failures during the last table-manager reconciliation",
 	})
 
 	m.lastSuccessfulSync = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
+		Namespace: "loki",
 		Name:      "table_manager_sync_success_timestamp_seconds",
 		Help:      "Timestamp of the last successful table manager sync.",
 	})
@@ -104,7 +104,6 @@ type TableManagerConfig struct {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. To support RetentionPeriod.
 func (cfg *TableManagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-
 	// If we call unmarshal on TableManagerConfig, it will call UnmarshalYAML leading to infinite recursion.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.
@@ -303,7 +302,6 @@ func (m *TableManager) checkAndCreateExtraTables() error {
 // single iteration of bucket retention loop
 func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
-
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 	}
@@ -374,7 +372,6 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 				)
 				if now >= endTime+gracePeriodSecs+maxChunkAgeSecs {
 					isActive = false
-
 				}
 			}
 			if isActive {

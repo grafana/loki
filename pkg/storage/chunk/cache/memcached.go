@@ -68,7 +68,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 		logger:   logger,
 		requestDuration: observableVecCollector{
 			v: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace: "cortex",
+				Namespace: "loki",
 				Name:      "memcache_request_duration_seconds",
 				Help:      "Total time spent in seconds doing memcache requests.",
 				// Memcached requests are very quick: smallest bucket is 16us, biggest is 1s
@@ -163,7 +163,6 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		}
 		return err
 	})
-
 	if err != nil {
 		return found, bufs, keys
 	}

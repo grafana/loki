@@ -16,11 +16,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	loki_util "github.com/grafana/loki/pkg/util"
 )
 
@@ -134,7 +134,6 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 
 	i.flushQueuesDone.Wait()
 	level.Debug(util_log.Logger).Log("msg", "flush queues have drained")
-
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
