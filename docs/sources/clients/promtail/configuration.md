@@ -1298,7 +1298,7 @@ Consul setups, the relevant address is in `__meta_consul_service_address`.
 In those cases, you can use the [relabel](#relabel_config)
 feature to replace the special `__address__` label.
 
-The [relabeling phase](#relabel_config) is the preferred and more powerful
+The [relabeling phase](#relabel_configs) is the preferred and more powerful
 way to filter services or nodes for a service based on arbitrary labels. For
 users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
