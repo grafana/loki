@@ -1244,7 +1244,7 @@ services registered with the local agent running on the same host when discoveri
 new targets. This is suitable for very large Consul clusters for which using the
 Catalog API would be too slow or resource intensive.
 
-The following meta labels are available on targets during [relabeling](#relabel_config):
+The following meta labels are available on targets during [relabeling](#relabel_configs):
 
 * `__meta_consulagent_address`: the address of the target
 * `__meta_consulagent_dc`: the datacenter name for the target
