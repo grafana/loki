@@ -107,7 +107,9 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "querying ingester",
+			"params", newParams)
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
@@ -119,7 +121,9 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	if storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "querying store",
+			"params", params)
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
