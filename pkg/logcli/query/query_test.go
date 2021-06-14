@@ -235,16 +235,14 @@ func Test_batch(t *testing.T) {
 			labelMatcher: "{test=\"simple\"}",
 			forward:      true,
 			// Our batchsize is 2 but each query will also return the overlapping last element from the
-			// previous batch, as such we only get one item per call so we make a lot of calls
+			// previous batch, as such we expand the batch size to cover the overlap so we always get the
+			// expected number of elements
 			// Call one:   line1 line2
-			// Call two:   line2 line3
-			// Call three: line3 line4
-			// Call four:  line4 line5
-			// Call five:  line5 line6
-			// Call six:   line6 line7
-			// Call seven: line7 line8
-			// Call eight: line8 line9
-			expectedCalls: 8,
+			// Call two:   line2 line3 line4
+			// Call three: line4 line5 line6
+			// Call four:  line6 line7 line8
+			// Call five:  line8 line9
+			expectedCalls: 5,
 			expected: []string{
 				"line1", "line2", "line3", "line4", "line5", "line6", "line7", "line8", "line9",
 			},
@@ -274,7 +272,7 @@ func Test_batch(t *testing.T) {
 			batch:         2,
 			labelMatcher:  "{test=\"simple\"}",
 			forward:       false,
-			expectedCalls: 8,
+			expectedCalls: 5,
 			expected: []string{
 				"line10", "line9", "line8", "line7", "line6", "line5", "line4", "line3", "line2",
 			},
@@ -326,7 +324,7 @@ func Test_batch(t *testing.T) {
 			// 4 line4, s2line4, line5
 			// 5 line5, s2line5, line6
 			// 6 line6, s2line6
-			expectedCalls: 6,
+			expectedCalls: 4,
 			expected: []string{
 				"line1", "s2line1", "line2", "s2line2", "line3", "s2line3", "line4", "s2line4", "line5", "s2line5", "line6", "s2line6",
 			},
@@ -371,7 +369,7 @@ func Test_batch(t *testing.T) {
 			batch:         3,
 			labelMatcher:  "{test=~\"one|two\"}",
 			forward:       false,
-			expectedCalls: 6,
+			expectedCalls: 4,
 			expected: []string{
 				"s2line10", "line10", "s2line9", "line9", "s2line8", "line8", "s2line7", "line7", "s2line6", "line6", "s2line5", "line5",
 			},
@@ -440,12 +438,12 @@ func Test_batch(t *testing.T) {
 			labelMatcher: "{test=\"simple\"}",
 			forward:      false,
 			// Our batchsize is 2 but each query will also return the overlapping last element from the
-			// previous batch, as such we only get one item per call so we make a lot of calls
+			// previous batch, as such we expand the batch size to cover the overlap so we always get the
+			// expected number of elements
 			// Call one:   line10 line9 line8 line7
-			// Call two:   line7 line6b line6a line6
-			// Call three: line6b line6a line6 line5
-			// Call four:  line5 line5 line3 line2
-			expectedCalls: 4,
+			// Call two:   line7 line6b line6a line6 line5
+			// Call three: line5 line4 line3 line2
+			expectedCalls: 3,
 			expected: []string{
 				"line10", "line9", "line8", "line7", "line6b", "line6a", "line6", "line5", "line4", "line3", "line2",
 			},
