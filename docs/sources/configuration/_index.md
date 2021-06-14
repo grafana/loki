@@ -566,6 +566,61 @@ storage:
     # CLI flag: -ruler.storage.local.directory
     [directory: <filename> | default = ""]
 
+# Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
+remote_write:
+  # Enable remote-write functionality.
+  # CLI flag: -ruler.remote-write.enabled
+  [enabled: <boolean> | default = false]
+
+  client:
+    # The URL of the endpoint to send samples to.
+    url: <string>
+
+    # Timeout for requests to the remote write endpoint.
+    [remote_timeout: <duration> | default = 30s]
+
+    # Custom HTTP headers to be sent along with each remote write request.
+    # Be aware that headers that are set by Prometheus itself can't be overwritten.
+    headers:
+      [<string>: <string> ...]
+
+    # HTTP proxy server to use to connect to the targets.
+    [proxy_url: <string>]
+
+    # Sets the `Authorization` header on every remote write request with the
+    # configured username and password.
+    # password and password_file are mutually exclusive.
+    basic_auth:
+      [username: <string>]
+      [password: <secret>]
+      [password_file: <string>]
+
+    # Optional the `Authorization` header configuration.
+    authorization:
+      # Sets the authentication type.
+      [type: <string> | default: Bearer]
+      # Sets the credentials. It is mutually exclusive with
+      # `credentials_file`.
+      [credentials: <secret>]
+      # Sets the credentials with the credentials read from the configured file.
+      # It is mutually exclusive with `credentials`.
+      [credentials_file: <filename>]
+
+    tls_config:
+      # CA certificate to validate API server certificate with.
+      [ca_file: <filename>]
+
+      # Certificate and key files for client cert authentication to the server.
+      [cert_file: <filename>]
+      [key_file: <filename>]
+
+      # ServerName extension to indicate the name of the server.
+      # https://tools.ietf.org/html/rfc4366#section-3.1
+      [server_name: <string>]
+
+      # Disable validation of the server certificate.
+      [insecure_skip_verify: <boolean>]
+
 # File path to store temporary rule files
 # CLI flag: -ruler.rule-path
 [rule_path: <filename> | default = "/rules"]
@@ -1750,6 +1805,10 @@ logs in Loki.
 # the stream is matching. In case multiple stream are matching, the highest priority will be picked.
 # If no rule is matched the `retention_period` is used.
 [retention_stream: <array> | default = none]
+
+# Capacity of remote-write queues; if a queue exceeds its capacity it will evict oldest samples.
+# CLI flag: -ruler.remote-write.queue-capacity
+[ruler_remote_write_queue_capacity: <int> | default = 10000]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config

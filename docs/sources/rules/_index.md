@@ -1,13 +1,17 @@
 ---
-title: Alerting
+aliases:
+  - /alerting/
+title: Alerting and Recording Rules
 weight: 700
 ---
 
-# Alerting
+# Rules and the Ruler
 
-Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and then alerting when certain conditions happen, e.g. a high percentage of error logs.
+Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
-First, ensure the Ruler component is enabled. The following is a basic configuration which loads rules from configuration files:
+Here is an example configuration you could use if you want to source your rules from local disk.
+
+See the [Ruler storage](#ruler-storage) section below for further details.
 
 ```yaml
 ruler:
@@ -24,72 +28,19 @@ ruler:
 
 ```
 
-## Prometheus Compatible
+We support two kinds of rules: [_alerting_](#alerting-rules) rules and [_recording_](#recording-rules) rules.
 
-When running the Ruler (which runs by default in the single binary), Loki accepts rules files and then schedules them for continual evaluation. These are _Prometheus compatible_! This means the rules file has the same structure as in [Prometheus' Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), except that the rules specified are in LogQL.
+## Alerting Rules
 
-Let's see what that looks like:
+We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) alerting rules. From Prometheus' documentation:
 
-The syntax of a rule file is:
+> Alerting rules allow you to define alert conditions based on Prometheus expression language expressions and to send notifications about firing alerts to an external service.
 
-```yaml
-groups:
-  [ - <rule_group> ]
-```
-
-A simple example file could be:
-
-```yaml
-groups:
-  - name: example
-    rules:
-    - alert: HighThroughputLogStreams
-      expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
-      for: 2m
-```
-
-### `<rule_group>`
-
-```yaml
-# The name of the group. Must be unique within a file.
-name: <string>
-
-# How often rules in the group are evaluated.
-[ interval: <duration> | default = Ruler.evaluation_interval || 1m ]
-
-rules:
-  [ - <rule> ... ]
-```
-
-### `<rule>`
-
-The syntax for alerting rules is (see the LogQL [Metric Queries](https://grafana.com/docs/loki/latest/logql/#metric-queries) for more details):
-
-```yaml
-# The name of the alert. Must be a valid label value.
-alert: <string>
-
-# The LogQL expression to evaluate (must be an instant vector). Every evaluation cycle this is
-# evaluated at the current time, and all resultant time series become
-# pending/firing alerts.
-expr: <string>
-
-# Alerts are considered firing once they have been returned for this long.
-# Alerts which have not yet fired for long enough are considered pending.
-[ for: <duration> | default = 0s ]
-
-# Labels to add or overwrite for each alert.
-labels:
-  [ <labelname>: <tmpl_string> ]
-
-# Annotations to add to each alert.
-annotations:
-  [ <labelname>: <tmpl_string> ]
-```
+Loki alerting rules are exactly the same, except they use LogQL for their expressions.
 
 ### Example
 
-A full-fledged example of a rules file might look like:
+A fully-fledged example of a rules file might look like:
 
 ```yaml
 groups:
@@ -117,25 +68,97 @@ groups:
           severity: critical
 ```
 
+## Recording Rules
+
+We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules) recording rules. From Prometheus' documentation:
+
+> Recording rules allow you to precompute frequently needed or computationally expensive expressions and save their result as a new set of time series.
+
+> Querying the precomputed result will then often be much faster than executing the original expression every time it is needed. This is especially useful for dashboards, which need to query the same expression repeatedly every time they refresh.
+
+Loki allows you to run [_metric queries_](https://grafana.com/docs/loki/latest/logql/#metric-queries) over your logs, which means
+that you can derive a numeric aggregation from your logs, like calculating the number of requests over time from your nginx access log.
+
+### Example
+
+```yaml
+name: NginxRules
+interval: 1m
+rules:
+  - record: nginx:requests:rate1m
+    expr: |
+      sum(
+        rate({container="nginx"}[1m])
+      )
+    labels:
+      cluster: "us-central1"
+```
+
+This query (`expr`) will be executed every 1 minute (`interval`), the result of which will be stored in the metric
+name we have defined (`record`). This metric named `nginx:requests:rate1m` can now be sent to Prometheus, where it will be stored
+just like any other metric.
+
+### Remote-Write
+
+With recording rules, you can run these metric queries continually on an interval, and have the resulting metrics written
+to a Prometheus-compatible remote-write endpoint! In other words: producing real Prometheus metrics just from logs.
+
+At the time of writing, these are the compatible backends that support this:
+
+- [Prometheus](https://prometheus.io/docs/prometheus/latest/disabled_features/#remote-write-receiver) (`>=v2.25.0`):
+  Prometheus is generally a pull-based system, but since `v2.25.0` has allowed for metrics to be written directly to it as well.
+- [Cortex](https://cortexmetrics.io/docs/api/#remote-write)
+- [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
+
+Here is an example remote-write configuration for sending to a local Prometheus instance:
+
+```yaml
+ruler:
+  ... other settings ...
+  
+  remote_write:
+    enabled: true
+    client:
+      url: http://localhost:9090/api/v1/write
+```
+
+### Resilience & Durability
+
+Given the above remote-write configuration, one needs to take into account what would happen if the remote-write receiver
+becomes unavailable.
+
+The Ruler component ensures some durability guarantees by buffering all outgoing writes in an in-memory queue. This queue
+holds all metric samples that are due to be written to the remote-write received, and while that receiver is down, the buffer
+will grow in size.
+
+Once the queue is full, the oldest samples will be evicted from the queue. The size of this queue is controllable globally,
+or on a per-tenant basis, with the [`ruler_remote_write_queue_capacity`](/configuration#limits_config) limit setting. By default, this value is set to 10000 samples.
+
+**NOTE**: this queue only exists in-memory at this time; there is no Write-Ahead Log (WAL) functionality available yet.
+This means that if your Ruler instance crashes, all pending metric samples in the queue that have not yet been written will be lost.
+
+### Operational Considerations
+
+A number of metrics are available to monitor recording rule evaluations and writes.
+
+| Metric  | Description  |
+|---|---|
+| `recording_rules_samples_queued_current`  | Number of samples queued to be remote-written.                                 |
+| `recording_rules_samples_queued_total`    | Number of samples queued in total.                                             |
+| `recording_rules_samples_queue_capacity`  | Number of samples that can be queued before eviction of oldest samples occurs. |
+| `recording_rules_samples_evicted_total`   | Number of samples evicted from queue; queue is full!                           | 
+| `recording_rules_remote_write_errors`     | Number of samples that failed to be remote-written due to error.               |
+
 ## Use cases
 
-The Ruler's Prometheus compatibility further accentuates the marriage between metrics and logs. For those looking to get started alerting based on logs, or wondering why this might be useful, here are a few use cases we think fit very well.
-
-### We aren't using metrics yet
-
-Many nascent projects, apps, or even companies may not have a metrics backend yet. We tend to add logging support before metric support, so if you're in this stage, alerting based on logs can help bridge the gap. It's easy to start building Loki alerts for things like _the percentage of error logs_ such as the example from earlier:
-```yaml
-- alert: HighPercentageError
-  expr: |
-  sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
-    /
-  sum(rate({app="foo", env="production"}[5m])) by (job)
-    > 0.05
-```
+The Ruler's Prometheus compatibility further accentuates the marriage between metrics and logs. For those looking to get started with metrics and alerts based on logs, or wondering why this might be useful, here are a few use cases we think fit very well.
 
 ### Black box monitoring
 
-We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively? Alerting based on logs is a great answer for these problems.
+We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively?
+
+With Loki's alerting and recording rules, you can produce metrics and alert on the state of the system, just from logs!
+This is an incredibly powerful way to introduce advanced observability into legacy architectures.
 
 ### Event alerting
 
@@ -162,7 +185,7 @@ Creating these alerts in LogQL is attractive because these metrics can be extrac
 
 ## Interacting with the Ruler
 
-Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortex-tool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but works alongside both Loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with Loki.
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but works alongside both Loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with Loki.
 
 > **Note:** Not all commands in cortextool currently support Loki.
 
@@ -275,8 +298,8 @@ Yaml files are expected to be [Prometheus compatible](#Prometheus_Compatible) bu
 
 There are a few things coming to increase the robustness of this service. In no particular order:
 
-- Recording rules.
-- Backend metric stores adapters for generated alert and recording rule data. The first will likely be Cortex, as Loki is built atop it.
+- WAL for recording rule.
+- Backend metric stores adapters for generated alert rule data.
 
 ## Misc Details: Metrics backends vs in-memory
 
