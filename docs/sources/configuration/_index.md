@@ -595,7 +595,7 @@ remote_write:
       [password: <secret>]
       [password_file: <string>]
 
-    # Optional the `Authorization` header configuration.
+    # `Authorization` header configuration.
     authorization:
       # Sets the authentication type.
       [type: <string> | default: Bearer]

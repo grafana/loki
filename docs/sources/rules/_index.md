@@ -7,7 +7,7 @@ weight: 700
 
 # Rules and the Ruler
 
-Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
+Loki includes a component called the _Ruler_: adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
 Here is an example configuration you could use if you want to source your rules from local disk.
 
@@ -122,13 +122,15 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
+Further configuration options can be found [here](/configuration#ruler_config).
+
 ### Resilience & Durability
 
 Given the above remote-write configuration, one needs to take into account what would happen if the remote-write receiver
 becomes unavailable.
 
 The Ruler component ensures some durability guarantees by buffering all outgoing writes in an in-memory queue. This queue
-holds all metric samples that are due to be written to the remote-write received, and while that receiver is down, the buffer
+holds all metric samples that are due to be written to the remote-write receiver, and while that receiver is down the buffer
 will grow in size.
 
 Once the queue is full, the oldest samples will be evicted from the queue. The size of this queue is controllable globally,
