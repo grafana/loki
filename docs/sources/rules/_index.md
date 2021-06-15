@@ -184,7 +184,7 @@ Creating these alerts in LogQL is attractive because these metrics can be extrac
 
 ## Interacting with the Ruler
 
-Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but works alongside both Loki and cortex. Make sure to pass the `--backend=loki` argument to commands when using it with Loki.
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but it works with both Loki and Cortex. Pass the `--backend=loki` option when using it with Loki.
 
 > **Note:** Not all commands in cortextool currently support Loki.
 
