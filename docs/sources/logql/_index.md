@@ -308,20 +308,20 @@ A pattern expression is composed of captures and literals.
 A capture is a field name delimited by the `<` and `>` characters. `<example>` defines the field name `example`.
 An unnamed capture appears as `<_>`. The unnamed capture skips matched content.
 
-Captures are matched from the beginning or the previous set of literals, to the end or the next set of literals.
+Captures are matched from the line beginning or the previous set of literals, to the line end or the next set of literals.
 If a capture is not matched, the pattern parser will stop.
 
 Literals can be any sequence of UTF-8 characters, including whitespace characters.
 
 By default, a pattern expression is anchored at the start of the log line. If the expression start with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression to anchor the expression at the start.
 
-For example, given the following log line:
+Consider the log line
 
 ```log
 level=debug ts=2021-06-10T09:24:13.472094048Z caller=logging.go:66 traceID=0568b66ad2d9294c msg="POST /loki/api/v1/push (204) 16.652862ms"
 ```
 
-If you want to match from `msg="`, you can use the following expression:
+To match `msg="`, use the expression:
 
 ```pattern
 <_> msg="<method> <path> (<status>) <latency>"
