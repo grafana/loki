@@ -156,7 +156,7 @@ If an extracted label key name already exists in the original log stream, the ex
 
 Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regexp) and [unpack](#unpack) parsers.
 
-It's easier to use the predefined parsers like `json` and `logfmt` when you can, otherwise `pattern` and `regexp` parser can be used when the log lines have unusual structure. However the `pattern` parser is easier and faster to write, but also perform better than the `regexp` one.
+It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
 Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
 
 ##### Json
