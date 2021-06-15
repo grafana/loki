@@ -278,7 +278,7 @@ will get those labels extracted:
 "status" => "200"
 ```
 
-##### pattern
+##### Pattern
 
 The pattern parser allow to explicitly extract fields from your log lines by defining a pattern expression which matches how the log line is structured.
 
