@@ -313,7 +313,7 @@ If a capture is not matched, the pattern parser will stop.
 
 Literals can be any sequence of UTF-8 characters, including whitespace characters.
 
-By default a pattern expression is anchored at the start, this means if the expression start with literals, the log line must also start with the same set of literals. You can use `<_>` at the beginning if you do not want to anchor your expression at the start.
+By default, a pattern expression is anchored at the start of the log line. If the expression start with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression to anchor the expression at the start.
 
 For example, given the following log line:
 
