@@ -327,10 +327,10 @@ If you want to match from `msg="`, you can use the following expression:
 <_> msg="<method> <path> (<status>) <latency>"
 ```
 
-A pattern expression is invalid if:
+A pattern expression is invalid if
 
-- it does not contain any named capture.
-- it contains two consecutive captures not separated by whitespace.
+- It does not contain any named capture.
+- It contains two consecutive captures not separated by whitespace characters.
 
 ##### regexp
 
