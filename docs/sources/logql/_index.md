@@ -154,7 +154,7 @@ In case of errors, for instance if the line is not in the expected format, the l
 
 If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However if an extracted key appears twice, only the latest label value will be kept.
 
-We support currently support [json](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regexp) and [unpack](#unpack) parsers.
+Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regexp) and [unpack](#unpack) parsers.
 
 It's easier to use the predefined parsers like `json` and `logfmt` when you can, otherwise `pattern` and `regexp` parser can be used when the log lines have unusual structure. However the `pattern` parser is easier and faster to write, but also perform better than the `regexp` one.
 Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
