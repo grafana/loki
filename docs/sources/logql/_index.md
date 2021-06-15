@@ -280,9 +280,9 @@ will get those labels extracted:
 
 ##### Pattern
 
-The pattern parser allow to explicitly extract fields from your log lines by defining a pattern expression which matches how the log line is structured.
+The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression. The expression matches the structure of a log line.
 
-For example the following nginx log line:
+Consider this NGINX log line.
 
 ```log
 0.191.12.2 - - [10/Jun/2021:09:14:29 +0000] "GET /api/plugins/versioncheck HTTP/1.1" 200 2 "-" "Go-http-client/2.0" "13.76.247.102, 34.120.177.193" "TLSv1.2" "US" ""
