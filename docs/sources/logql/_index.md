@@ -288,11 +288,11 @@ Consider this NGINX log line.
 0.191.12.2 - - [10/Jun/2021:09:14:29 +0000] "GET /api/plugins/versioncheck HTTP/1.1" 200 2 "-" "Go-http-client/2.0" "13.76.247.102, 34.120.177.193" "TLSv1.2" "US" ""
 ```
 
-Can be parsed with the expression:
+This log line can be parsed with the expression
 
 `<ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>`
 
-and will extract the following fields
+to extract these fields:
 
 ```kv
 "ip" => "0.191.12.2"
