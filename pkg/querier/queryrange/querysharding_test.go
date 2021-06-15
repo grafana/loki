@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -158,7 +160,6 @@ func Test_astMapper(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, called, 2)
 	require.Equal(t, expected.(*LokiResponse).Data, resp.(*LokiResponse).Data)
-
 }
 
 func Test_ShardingByPass(t *testing.T) {
@@ -231,4 +232,76 @@ func mockHandler(resp queryrange.Response, err error) queryrange.Handler {
 
 		return resp, err
 	})
+}
+
+func Test_SeriesShardingHandler(t *testing.T) {
+	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), queryrange.ShardingConfigs{
+		chunk.PeriodConfig{
+			RowShards: 3,
+		},
+	},
+		queryrange.NewInstrumentMiddlewareMetrics(nil),
+		nilShardingMetrics,
+		fakeLimits{
+			maxQueryParallelism: 10,
+		},
+		LokiCodec,
+	)
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	response, err := sharding.Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		req, ok := r.(*LokiSeriesRequest)
+		if !ok {
+			return nil, errors.New("not a series call")
+		}
+		return &LokiSeriesResponse{
+			Status:  "success",
+			Version: 1,
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{
+						"foo": "bar",
+					},
+				},
+				{
+					Labels: map[string]string{
+						"shard": req.Shards[0],
+					},
+				},
+			},
+		}, nil
+	})).Do(ctx, &LokiSeriesRequest{
+		Match:   []string{"foo", "bar"},
+		StartTs: time.Unix(0, 1),
+		EndTs:   time.Unix(0, 10),
+		Path:    "foo",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, &LokiSeriesResponse{
+		Status:  "success",
+		Version: 1,
+		Data: []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{
+					"foo": "bar",
+				},
+			},
+			{
+				Labels: map[string]string{
+					"shard": "0_of_3",
+				},
+			},
+			{
+				Labels: map[string]string{
+					"shard": "1_of_3",
+				},
+			},
+			{
+				Labels: map[string]string{
+					"shard": "2_of_3",
+				},
+			},
+		},
+	}, response)
 }
