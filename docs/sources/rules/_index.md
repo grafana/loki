@@ -7,11 +7,11 @@ weight: 700
 
 # Rules and the Ruler
 
-Loki includes a component called the _Ruler_: adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
+Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
-Here is an example configuration you could use if you want to source your rules from local disk.
+This example configuration sources rules from a local disk.
 
-See the [Ruler storage](#ruler-storage) section below for further details.
+[Ruler storage](#ruler-storage) provides further details.
 
 ```yaml
 ruler:
@@ -28,7 +28,7 @@ ruler:
 
 ```
 
-We support two kinds of rules: [_alerting_](#alerting-rules) rules and [_recording_](#recording-rules) rules.
+We support two kinds of rules: [alerting](#alerting-rules) rules and [recording](#recording-rules) rules.
 
 ## Alerting Rules
 
@@ -40,7 +40,7 @@ Loki alerting rules are exactly the same, except they use LogQL for their expres
 
 ### Example
 
-A fully-fledged example of a rules file might look like:
+A complete example of a rules file:
 
 ```yaml
 groups:
@@ -101,7 +101,7 @@ just like any other metric.
 ### Remote-Write
 
 With recording rules, you can run these metric queries continually on an interval, and have the resulting metrics written
-to a Prometheus-compatible remote-write endpoint! In other words: producing real Prometheus metrics just from logs.
+to a Prometheus-compatible remote-write endpoint. They produce Prometheus metrics from log entries.
 
 At the time of writing, these are the compatible backends that support this:
 
@@ -122,15 +122,15 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found [here](/configuration#ruler_config).
+Further configuration options can be found under [ruler_config](/configuration#ruler_config).
 
-### Resilience & Durability
+### Resilience and Durability
 
 Given the above remote-write configuration, one needs to take into account what would happen if the remote-write receiver
 becomes unavailable.
 
 The Ruler component ensures some durability guarantees by buffering all outgoing writes in an in-memory queue. This queue
-holds all metric samples that are due to be written to the remote-write receiver, and while that receiver is down the buffer
+holds all metric samples that are due to be written to the remote-write receiver, and while that receiver is down, the buffer
 will grow in size.
 
 Once the queue is full, the oldest samples will be evicted from the queue. The size of this queue is controllable globally,
@@ -141,14 +141,14 @@ This means that if your Ruler instance crashes, all pending metric samples in th
 
 ### Operational Considerations
 
-A number of metrics are available to monitor recording rule evaluations and writes.
+Metrics are available to monitor recording rule evaluations and writes.
 
 | Metric  | Description  |
 |---|---|
 | `recording_rules_samples_queued_current`  | Number of samples queued to be remote-written.                                 |
-| `recording_rules_samples_queued_total`    | Number of samples queued in total.                                             |
-| `recording_rules_samples_queue_capacity`  | Number of samples that can be queued before eviction of oldest samples occurs. |
-| `recording_rules_samples_evicted_total`   | Number of samples evicted from queue; queue is full!                           | 
+| `recording_rules_samples_queued_total`    | Total number of samples queued.                                             |
+| `recording_rules_samples_queue_capacity`  | Number of samples that can be queued before eviction of the oldest samples occurs. |
+| `recording_rules_samples_evicted_total`   | Number of samples evicted from queue because the queue is full.                           | 
 | `recording_rules_remote_write_errors`     | Number of samples that failed to be remote-written due to error.               |
 
 ## Use cases
@@ -157,10 +157,7 @@ The Ruler's Prometheus compatibility further accentuates the marriage between me
 
 ### Black box monitoring
 
-We don't always control the source code of applications we run. Think load balancers and the myriad components (both open source and closed third-party) that support our applications; it's a common problem that these don't expose a metric you want (or any metrics at all). How then, can we bring them into our observability stack in order to monitor them effectively?
-
-With Loki's alerting and recording rules, you can produce metrics and alert on the state of the system, just from logs!
-This is an incredibly powerful way to introduce advanced observability into legacy architectures.
+We don't always control the source code of applications we run. Load balancers and a myriad of other components, both open source and closed third-party, support our applications while they don't expose the metrics we want. Some don't expose any metrics at all. Loki's alerting and recording rules can produce metrics and alert on the state of the system, bringing the components into our observability stack by using the logs. This is an incredibly powerful way to introduce advanced observability into legacy architectures.
 
 ### Event alerting
 
