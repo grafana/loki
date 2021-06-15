@@ -311,7 +311,7 @@ Captures can be unnamed using `<_>`, in which case the capture skips matched con
 Captures are matched from the beginning or the previous set of literals, to the end or the next set of literals.
 If a capture is not matched, the pattern parser will stop.
 
-Literals can be any sequence of UTF-8 characters, including whitespace.
+Literals can be any sequence of UTF-8 characters, including whitespace characters.
 
 By default a pattern expression is anchored at the start, this means if the expression start with literals, the log line must also start with the same set of literals. You can use `<_>` at the beginning if you do not want to anchor your expression at the start.
 
