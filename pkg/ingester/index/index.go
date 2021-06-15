@@ -1,3 +1,5 @@
+// originally from https://github.com/cortexproject/cortex/blob/868898a2921c662dcd4f90683e8b95c927a8edd8/pkg/ingester/index/index.go
+// but modified to support sharding queries.
 package index
 
 import (
