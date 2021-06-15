@@ -305,8 +305,8 @@ to extract these fields:
 
 A pattern expression is composed of captures and literals.
 
-A capture is noted `<example>` where `example` is the name of the field that will be extracted.
-Captures can be unnamed using `<_>`, in which case the capture skips matched content.
+A capture is a field name delimited by the `<` and `>` characters. `<example>` defines the field name `example`.
+An unnamed capture appears as `<_>`. The unnamed capture skips matched content.
 
 Captures are matched from the beginning or the previous set of literals, to the end or the next set of literals.
 If a capture is not matched, the pattern parser will stop.
