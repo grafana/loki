@@ -123,7 +123,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         g.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
-          dashboards['loki-reads.json'].matchers.querier + [utils.selector.re('route', grpc_routes)],
+          dashboards['loki-reads.json'].matchers.ingester + [utils.selector.re('route', grpc_routes)],
           extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
           sum_by=['route']
         )

@@ -568,6 +568,7 @@ github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.8.1
+## explicit
 github.com/hashicorp/consul/api
 # github.com/hashicorp/errwrap v1.0.0
 github.com/hashicorp/errwrap
@@ -1152,6 +1153,7 @@ go.opentelemetry.io/otel/label
 ## explicit
 go.uber.org/atomic
 # go.uber.org/goleak v1.1.10
+## explicit
 go.uber.org/goleak
 go.uber.org/goleak/internal/stack
 # go.uber.org/multierr v1.5.0

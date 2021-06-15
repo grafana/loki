@@ -40,7 +40,7 @@ RUN GO111MODULE=on go get github.com/fatih/faillint@v1.5.0
 FROM golang:1.16.3-buster
 RUN apt-get update && \
     apt-get install -qy \
-    musl gnupg \
+    musl gnupg ragel \
     file zip unzip jq gettext\
     protobuf-compiler libprotobuf-dev \
     libsystemd-dev && \

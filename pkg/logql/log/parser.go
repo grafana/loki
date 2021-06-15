@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/pkg/logql/log/pattern"
 	"github.com/grafana/loki/pkg/logqlmodel"
 
 	jsoniter "github.com/json-iterator/go"
@@ -212,14 +213,6 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	}, nil
 }
 
-func mustNewRegexParser(re string) *RegexpParser {
-	r, err := NewRegexpParser(re)
-	if err != nil {
-		panic(err)
-	}
-	return r
-}
-
 func (r *RegexpParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
@@ -264,6 +257,49 @@ func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
+
+type PatternParser struct {
+	matcher pattern.Matcher
+	names   []string
+}
+
+func NewPatternParser(pn string) (*PatternParser, error) {
+	m, err := pattern.New(pn)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range m.Names() {
+		if !model.LabelName(name).IsValid() {
+			return nil, fmt.Errorf("invalid capture label name '%s'", name)
+		}
+	}
+	return &PatternParser{
+		matcher: m,
+		names:   m.Names(),
+	}, nil
+}
+
+func (l *PatternParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
+	matches := l.matcher.Matches(line)
+	names := l.names[:len(matches)]
+	for i, m := range matches {
+		name := names[i]
+		if !lbs.parserKeyHints.ShouldExtract(name) {
+			continue
+		}
+		if lbs.BaseHas(name) {
+			name = name + duplicateSuffix
+		}
+
+		lbs.Set(name, string(m))
+	}
+	return line, true
+}
+
+func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
 	expressions map[string][]interface{}
