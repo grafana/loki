@@ -277,8 +277,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Path:    "foo",
 	})
 
-	require.NoError(t, err)
-	require.Equal(t, &LokiSeriesResponse{
+	expected := &LokiSeriesResponse{
 		Status:  "success",
 		Version: 1,
 		Data: []logproto.SeriesIdentifier{
@@ -303,5 +302,14 @@ func Test_SeriesShardingHandler(t *testing.T) {
 				},
 			},
 		},
-	}, response)
+	}
+	sort.Slice(expected.Data, func(i, j int) bool {
+		return expected.Data[i].Labels["shard"] > expected.Data[j].Labels["shard"]
+	})
+	actual := response.(*LokiSeriesResponse)
+	sort.Slice(actual.Data, func(i, j int) bool {
+		return actual.Data[i].Labels["shard"] > actual.Data[j].Labels["shard"]
+	})
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
 }
