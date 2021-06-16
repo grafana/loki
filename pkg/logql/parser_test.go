@@ -1062,6 +1062,25 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{app="foo"} |= "bar" | pattern "<foo> bar <buzz>" | (duration > 1s or status!= 200) and method!="POST"`,
+			exp: &pipelineExpr{
+				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				pipeline: MultiStageExpr{
+					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLabelParserExpr(OpParserTypePattern, "<foo> bar <buzz>"),
+					&labelFilterExpr{
+						LabelFilterer: log.NewAndLabelFilter(
+							log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "duration", 1*time.Second),
+								log.NewNumericLabelFilter(log.LabelFilterNotEqual, "status", 200.0),
+							),
+							log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "method", "POST")),
+						),
+					},
+				},
+			},
+		},
+		{
 			in: `{app="foo"} |= "bar" | json | ( status_code < 500 and status_code > 200) or latency >= 250ms `,
 			exp: &pipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
@@ -2508,7 +2527,6 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 }
 
 func Test_match(t *testing.T) {
-
 	tests := []struct {
 		name    string
 		input   []string
@@ -2554,7 +2572,6 @@ func Test_match(t *testing.T) {
 			} else {
 				require.Equal(t, tt.want, got)
 			}
-
 		})
 	}
 }

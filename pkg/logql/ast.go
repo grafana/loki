@@ -42,6 +42,14 @@ type SelectLogParams struct {
 	*logproto.QueryRequest
 }
 
+func (s SelectLogParams) String() string {
+	if s.QueryRequest != nil {
+		return fmt.Sprintf("selector=%s, direction=%s, start=%s, end=%s, limit=%d, shards=%s",
+			s.Selector, logproto.Direction_name[int32(s.Direction)], s.Start, s.End, s.Limit, strings.Join(s.Shards, ","))
+	}
+	return ""
+}
+
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (LogSelectorExpr, error) {
@@ -330,6 +338,8 @@ func (e *labelParserExpr) Stage() (log.Stage, error) {
 		return log.NewRegexpParser(e.param)
 	case OpParserTypeUnpack:
 		return log.NewUnpackParser(), nil
+	case OpParserTypePattern:
+		return log.NewPatternParser(e.param)
 	default:
 		return nil, fmt.Errorf("unknown parser operator: %s", e.op)
 	}
@@ -601,10 +611,11 @@ const (
 	OpTypeLTE   = "<="
 
 	// parsers
-	OpParserTypeJSON   = "json"
-	OpParserTypeLogfmt = "logfmt"
-	OpParserTypeRegexp = "regexp"
-	OpParserTypeUnpack = "unpack"
+	OpParserTypeJSON    = "json"
+	OpParserTypeLogfmt  = "logfmt"
+	OpParserTypeRegexp  = "regexp"
+	OpParserTypeUnpack  = "unpack"
+	OpParserTypePattern = "pattern"
 
 	OpFmtLine  = "line_format"
 	OpFmtLabel = "label_format"

@@ -6,7 +6,7 @@
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
-.PHONY: migrate migrate-image lint-markdown
+.PHONY: migrate migrate-image lint-markdown ragel
 
 SHELL = /usr/bin/env bash
 
@@ -38,7 +38,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.14.0
+BUILD_IMAGE_VERSION := 0.15.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -87,6 +87,10 @@ PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 
+# Ragel Files
+RAGEL_DEFS := $(shell find . $(DONT_FIND) -type f -name *.rl -print)
+RAGEL_GOS := $(patsubst %.rl,%.rl.go,$(RAGEL_DEFS))
+
 # Promtail UI files
 PROMTAIL_GENERATED_FILE := clients/pkg/promtail/server/ui/assets_vfsdata.go
 PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
@@ -126,8 +130,8 @@ binfmt:
 all: promtail logcli loki loki-canary check-generated-files
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: touch-protobuf-sources yacc protos clients/pkg/promtail/server/ui/assets_vfsdata.go
-	@if ! (git diff --exit-code $(YACC_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
+check-generated-files: touch-protobuf-sources yacc ragel protos clients/pkg/promtail/server/ui/assets_vfsdata.go
+	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
@@ -147,7 +151,7 @@ touch-protobuf-sources:
 # Logcli #
 ##########
 
-logcli: yacc cmd/logcli/logcli
+logcli: yacc ragel cmd/logcli/logcli
 
 logcli-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
@@ -160,8 +164,8 @@ cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
 # Loki #
 ########
 
-loki: protos yacc cmd/loki/loki
-loki-debug: protos yacc cmd/loki/loki-debug
+loki: protos yacc ragel cmd/loki/loki
+loki-debug: protos yacc ragel cmd/loki/loki-debug
 
 cmd/loki/loki: $(APP_GO_FILES) cmd/loki/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -175,7 +179,7 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 # Loki-Canary #
 ###############
 
-loki-canary: protos yacc cmd/loki-canary/loki-canary
+loki-canary: protos yacc ragel cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -206,8 +210,8 @@ PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
 
-promtail: yacc clients/cmd/promtail/promtail
-promtail-debug: yacc clients/cmd/promtail/promtail-debug
+promtail: yacc ragel clients/cmd/promtail/promtail
+promtail-debug: yacc ragel clients/cmd/promtail/promtail-debug
 
 promtail-clean-assets:
 	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
@@ -306,6 +310,25 @@ else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 	sed -i.back '/^\/\/line/ d' $@
 	rm ${@}.back
+endif
+
+#########
+# Ragels #
+#########
+
+ragel: $(RAGEL_GOS)
+
+%.rl.go: %.rl
+ifeq ($(BUILD_IN_CONTAINER),true)
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	ragel -Z $< -o $@
 endif
 
 #############
