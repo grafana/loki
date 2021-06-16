@@ -96,7 +96,7 @@ unzip "promtail-linux-amd64.zip"
 chmod a+x "promtail-linux-amd64"
 ```
 
-Now we're going to download the [promtail configuration](../../promtail/) file below and edit it, don't worry we will explain what those means.
+Now we're going to download the [Promtail configuration](../../promtail/) file below and edit it, don't worry we will explain what those means.
 The file is also available as a gist at [cyriltovena/promtail-ec2.yaml][config gist].
 
 ```bash
@@ -139,7 +139,7 @@ scrape_configs:
         target_label: __host__
 ```
 
-The **server** section indicates promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting](../../promtail/troubleshooting) service discovery and targets.
+The **server** section indicates Promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting](../../promtail/troubleshooting) service discovery and targets.
 
 The **clients** section allow you to target your loki instance, if you're using GrafanaCloud simply replace `<user id>` and `<api secret>` with your credentials. Otherwise just replace the whole URL with your custom Loki instance.(e.g `http://my-loki-instance.my-org.com/loki/api/v1/push`)
 
@@ -153,11 +153,11 @@ Finally the [`relabeling_configs`][relabel] section has three purposes:
 
 1. Selecting the labels discovered you want to attach to your targets. In our case here, we're keeping `instance_id` as instance, the tag `Name` as name and the `zone` of the instance. Make sure to check out the Prometheus [`ec2_sd_config`][ec2_sd_config] documentation for the full list of available labels.
 
-2. Choosing where promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
+2. Choosing where Promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
 
 3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieve by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environnement variable, the target will be dropped.
 
-Alright we should be ready to fire up promtail, we're going to run it using the flag `--dry-run`. This is perfect to ensure everything is correctly, specially when you're still playing around with the configuration. Don't worry when using this mode, Promtail won't send any logs and won't remember any file positions.
+Alright we should be ready to fire up Promtail, we're going to run it using the flag `--dry-run`. This is perfect to ensure everything is correctly, specially when you're still playing around with the configuration. Don't worry when using this mode, Promtail won't send any logs and won't remember any file positions.
 
 ```bash
  ./promtail-linux-amd64 -config.file=./ec2-promtail.yaml --dry-run
@@ -171,7 +171,7 @@ If everything is going well Promtail should print out log lines with their label
 
 Don't hesitate to edit the your config file and start Promtail again to try your config out.
 
-If you want to see existing targets and available labels you can reach promtail server using the public dns assigned to your instance:
+If you want to see existing targets and available labels you can reach Promtail server using the public dns assigned to your instance:
 
 ```bash
 open http://ec2-13-59-62-37.us-east-2.compute.amazonaws.com:3100/
@@ -207,7 +207,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Let's reload the systemd, enable then start the promtail service:
+Let's reload the systemd, enable then start the Promtail service:
 
 ```bash
 systemctl daemon-reload

@@ -125,13 +125,13 @@ spec:
     - {{ .Values.ingress.host }}
 ```
 
-## Run promtail with syslog support
+## Run Promtail with syslog support
 
-In order to receive and process syslog message into promtail, the following changes will be necessary:
+In order to receive and process syslog message into Promtail, the following changes will be necessary:
 
-* Review the [promtail syslog-receiver configuration documentation](/docs/clients/promtail/scraping.md#syslog-receiver)
+* Review the [Promtail syslog-receiver configuration documentation](/docs/clients/promtail/scraping.md#syslog-receiver)
 
-* Configure the promtail helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
+* Configure the Promtail helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
 
 ```yaml
 extraScrapeConfigs:
@@ -149,13 +149,13 @@ syslogService:
   port: 1514
 ```
 
-## Run promtail with systemd-journal support
+## Run Promtail with systemd-journal support
 
-In order to receive and process syslog message into promtail, the following changes will be necessary:
+In order to receive and process syslog message into Promtail, the following changes will be necessary:
 
-* Review the [promtail systemd-journal configuration documentation](/docs/clients/promtail/scraping.md#journal-scraping-linux-only)
+* Review the [Promtail systemd-journal configuration documentation](/docs/clients/promtail/scraping.md#journal-scraping-linux-only)
 
-* Configure the promtail helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the promtail pods to access the log files. For example:
+* Configure the Promtail helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
 
 ```yaml
 # Add additional scrape config
@@ -172,7 +172,7 @@ extraScrapeConfigs:
       - source_labels: ['__journal__hostname']
         target_label: 'hostname'
 
-# Mount journal directory into promtail pods
+# Mount journal directory into Promtail pods
 extraVolumes:
   - name: journal
     hostPath:

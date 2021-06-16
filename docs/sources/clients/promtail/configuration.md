@@ -84,7 +84,7 @@ Where default_value is the value to use if the environment variable is undefined
 # WARNING: If one of the remote Loki servers fails to respond or responds
 # with any error which is retryable, this will impact sending logs to any
 # other configured remote Loki servers.  Sending is done on a single thread!
-# It is generally recommended to run multiple promtail clients in parallel
+# It is generally recommended to run multiple Promtail clients in parallel
 # if you want to send to multiple remote Loki instances.
 clients:
   - [<client_config>]
@@ -150,7 +150,7 @@ The `server` block configures Promtail's behavior as an HTTP server:
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
 
-# Target managers check flag for promtail readiness, if set to false the check is ignored
+# Target managers check flag for Promtail readiness, if set to false the check is ignored
 [health_check_target: <bool> | default = true]
 ```
 
@@ -324,7 +324,7 @@ consulagent_sd_configs:
 
 [Pipeline](../pipelines/) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
-In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
+In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by Promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
 ```yaml
 - [
@@ -696,17 +696,17 @@ labels:
 ### syslog
 
 The `syslog` block configures a syslog listener allowing users to push
-logs to promtail with the syslog protocol.
+logs to Promtail with the syslog protocol.
 Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
 with and without octet counting.
 
 The recommended deployment is to have a dedicated syslog forwarder like **syslog-ng** or **rsyslog**
-in front of promtail. The forwarder can take care of the various specifications
+in front of Promtail. The forwarder can take care of the various specifications
 and transports that exist (UDP, BSD syslog, ...).
 
 [Octet counting](https://tools.ietf.org/html/rfc6587#section-3.4.1) is recommended as the
 message framing method. In a stream with [non-transparent framing](https://tools.ietf.org/html/rfc6587#section-3.4.2),
-promtail needs to wait for the next message to catch multi-line messages,
+Promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
@@ -714,7 +714,7 @@ See recommended output configurations for
 [rsyslog](../scraping#rsyslog-output-configuration). Both configurations enable
 IETF Syslog with octet-counting.
 
-You may need to increase the open files limit for the promtail process
+You may need to increase the open files limit for the Promtail process
 if many clients are connected. (`ulimit -Sn`)
 
 ```yaml
@@ -733,7 +733,7 @@ label_structured_data: <bool>
 labels:
   [ <labelname>: <labelvalue> ... ]
 
-# Whether promtail should pass on the timestamp from the incoming syslog message.
+# Whether Promtail should pass on the timestamp from the incoming syslog message.
 # When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
 # Default is false
 use_incoming_timestamp: <bool>
@@ -772,8 +772,8 @@ Note the `server` configuration is the same as [server](#server)
 labels:
   [ <labelname>: <labelvalue> ... ]
 
-# If promtail should pass on the timestamp from the incoming log or not.
-# When false promtail will assign the current timestamp to the log when it was processed
+# If Promtail should pass on the timestamp from the incoming log or not.
+# When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
@@ -789,7 +789,7 @@ To subcribe to a specific events stream you need to provide either an `eventlog_
 Events are scraped periodically every 3 seconds by default but can be changed using `poll_interval`.
 
 A bookmark path `bookmark_path` is mandatory and will be used as a position file where Promtail will
-keep record of the last event processed. This file persists across promtail restarts.
+keep record of the last event processed. This file persists across Promtail restarts.
 
 You can set `use_incoming_timestamp` if you want to keep incomming event timestamps. By default Promtail will use the timestamp when
 the event was read from the event log.
@@ -818,7 +818,7 @@ You can add additional labels with the `labels` property.
 
 # Sets the bookmark location on the filesystem.
 # The bookmark contains the current position of the target in XML.
-# When restarting or rolling out promtail, the target will continue to scrape events where it left off based on the bookmark position.
+# When restarting or rolling out Promtail, the target will continue to scrape events where it left off based on the bookmark position.
 # The position is updated after each entry processed.
 [bookmark_path: <string> | default = ""]
 
@@ -835,8 +835,8 @@ You can add additional labels with the `labels` property.
 labels:
   [ <labelname>: <labelvalue> ... ]
 
-# If promtail should pass on the timestamp from the incoming log or not.
-# When false promtail will assign the current timestamp to the log when it was processed
+# If Promtail should pass on the timestamp from the incoming log or not.
+# When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
@@ -1319,12 +1319,12 @@ sync_period: "10s"
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../docker-driver/) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config
 
-While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
+While Promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
 
 ```yaml
 server:
@@ -1332,7 +1332,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
+  filename: /var/log/positions.yaml # This location needs to be writeable by Promtail.
 
 client:
   url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
@@ -1353,7 +1353,7 @@ If you are rotating logs, be careful when using a wildcard pattern like `*.log`,
 
 ## Example Static Config without targets
 
-While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
+While Promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
 
 ```yaml
 server:
@@ -1361,7 +1361,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
+  filename: /var/log/positions.yaml # This location needs to be writeable by Promtail.
 
 client:
   url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
@@ -1455,6 +1455,6 @@ scrape_configs:
 
 Please note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
 
-A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the promtail `server` config section (unless it's disabled)
+A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the Promtail `server` config section (unless it's disabled)
 
 You can set `grpc_listen_port` to `0` to have a random port assigned if not using httpgrpc.
