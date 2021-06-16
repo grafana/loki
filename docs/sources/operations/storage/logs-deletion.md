@@ -1,81 +1,89 @@
 ---
-title: Retention
+title: Log Entry Deletion
+weight: 60
 ---
-# Loki Logs Deletion
+# Log Entry Deletion
 
-_This feature is currently experimental and is only supported with the BoltDB Shipper index store._
+_This feature is experimental. It is only supported for the BoltDB Shipper index store._
 
-Loki supports the deletion of log streams in a time range. Logs deletion requires running Compactor, which handles the delete request APIs(outlined below) and processing the delete requests.
-Loki allows users to cancel the delete requests within the permitted cancellation period, which defaults to 24h and can be configured using `delete_request_cancel_period` YAML config or its equivalent CLI flag.
+Loki supports the deletion of log entries from specified streams.
+Log entries that fall within a specified time window are those that will be deleted.
 
-### How it works
+The Compactor component exposes REST endpoints that process delete requests.
+Hitting the endpoint specifies the streams and the time window.
+The deletion of the log entries takes place after a configurable cancellation time period expires.
 
-Logs deletion relies on custom logs retention workflow define under [Compactor section in retention doc](../retention#compactor).
-The only change to note is that Compactor would also look at un-processed requests which are past their cancellation period to decide whether it must delete the chunk or not.
+Log entry deletion relies on configuration of the custom logs retention workflow as defined in [Compactor](../retention#compactor). The Compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
 
-### Configuration
+## Configuration
 
-Logs deletion can be enabled using the same config as retention i.e. `retention_enabled` as show in [sample retention config](../retention#retention-configuration).
-The only relevant addition to config would be `delete_request_cancel_period`.
+Enable log entry deletion by setting `retention_enabled` to true in the Compactor's configuration. See the example in [Retention Configuration](../retention#retention-configuration).
 
-#### Requesting Deletion
+A delete request may be canceled within a configurable cancellation period. Set the `delete_request_cancel_period` in the Compactor's YAML configuration or on the command line when invoking Loki. Its default value is 24h.
 
-Users can request the deletion of log streams using the following API:
+## Compactor endpoints
+
+The Compactor exposes endpoints to allow for the deletion of log entries from specified streams.
+
+### Request log entry deletion
 
 ```
 POST /loki/api/admin/delete
 PUT /loki/api/admin/delete
 ```
 
-URL query parameters:
+Query parameters:
 
-* match[]=<series_selector>: Repeated label matcher argument that selects the streams to delete. At least one match[] argument must be provided.
-* start=<rfc3339 | unix_timestamp>: Start timestamp. Optional and defaults to minimum possible time.
-* end=<rfc3339 | unix_timestamp>: End timestamp. Optional and defaults to now.
+* `match[]=<series_selector>`: Repeated label matcher argument that identifies the streams from which to delete. At least one `match[]` argument must be provided.
+* `start=<rfc3339 | unix_timestamp>`: A timestamp that identifies the start of the time window within which entries will be deleted. If not specified, defaults to 0, the Unix Epoch time.
+* `end=<rfc3339 | unix_timestamp>`: A timestamp that identifies the end of the time window within which entries will be deleted. If not specified, defaults to the current time.
 
-If the API call succeeds, a 204 is returned.
+A 204 response indicates success.
 
-_Sample cURL command:_
+Sample form of a cURL command:
 ```
 curl -X POST \
-  '<compactor_addr>/loki/api/admin/delete?match%5B%5D=%7Bfoo%3D%22bar%22%7D&start=1591616227&end=1591619692' \
+  '<compactor_addr>/loki/api/admin/delete?match[]={foo="bar"}&start=1591616227&end=1591619692' \
   -H 'x-scope-orgid: <tenant-id>'
 ```
 
-#### Listing Delete Requests
+### List delete requests
 
-Users can list the created delete requests using the following API:
+List the existing delete requests using the following API:
 
 ```
 GET /loki/api/admin/delete
 ```
 
-_Sample cURL command:_
+Sample form of a cURL command:
+
 ```
 curl -X GET \
   <compactor_addr>/loki/api/admin/delete \
   -H 'x-scope-orgid: <orgid>'
 ```
 
-**NOTE:** List API returns processed and un-processed requests except the cancelled ones since they are removed from the store.
+This endpoint returns both processed and unprocessed requests. It does not list canceled requests, as those requests will have been removed from storage.
 
-#### Cancellation of Delete Request
+### Request cancellation of a delete request
 
-Loki allows cancellation of delete requests until they are not picked up for processing, controlled by the `delete_request_cancel_period` YAML config or its equivalent CLI flag.
-Users can cancel a delete request using the following API:
+Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki.
+
+Cancel a delete request using this Compactor endpoint:
 
 ```
 POST /loki/api/admin/cancel_delete_request
 PUT /loki/api/admin/cancel_delete_request
 ```
 
-URL query parameters:
+Query parameters:
 
-* request_id=<request_id>: Id of the request found using `delete_series` API.
+* `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
 
-If the API call succeeds, a 204 is returned.
+A 204 response indicates success.
 
-_Sample cURL command:_
+Sample form of a cURL command:
+
 ```
 curl -X POST \
   '<compactor_addr>/loki/api/admin/cancel_delete_request?request_id=<request_id>' \
