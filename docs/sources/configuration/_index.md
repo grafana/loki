@@ -1613,6 +1613,9 @@ compacts index shards to more performant forms.
 
 # The total amount of worker to use to delete chunks.
 [retention_delete_worker_count: <int> | default = 150]
+
+# Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.
+[delete_request_cancel_period: <duration> | default = 24h]
 ```
 
 ## limits_config
@@ -1873,7 +1876,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 
 # DynamoDB table read throughput for inactive tables.
 # CLI flag: -<prefix>.inactive-read-throughput
-[inactive_read_throughput: <int> | Default = 300]
+[inactive_read_throughput: <int> | default = 300]
 
 # Active table write autoscale config.
 # The CLI flags prefix for this block config is: -<prefix>.write-throughput
@@ -1957,7 +1960,7 @@ Options for runtime configuration reload can also be configured via YAML:
 [file: <string>: default = empty]
 
 # How often to check the file.
-[period: <duration>: default 10 seconds]
+[period: <duration>: default 10s]
 ```
 
 Example runtime configuration file:
