@@ -829,7 +829,7 @@ You can add additional labels with the `labels` property.
 [exclude_event_data: <bool> | default = false]
 
 # Allows to exclude the user data of each windows event.
-[exclude_event_data: <bool> | default = false]
+[exclude_user_data: <bool> | default = false]
 
 # Label map to add to every log line sent to the push API
 labels:
