@@ -68,6 +68,9 @@ spec:
       - kind: Service
         name: ""
         version: v1
+      - kind: ServiceMonitor
+        name: ""
+        version: v1
       - kind: StatefulSet
         name: ""
         version: v1
@@ -372,6 +375,16 @@ spec:
           - patch
           - update
         - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - servicemonitors
+          verbs:
+          - create
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
           - rbac.authorization.k8s.io
           resources:
           - clusterrolebindings
@@ -421,7 +434,11 @@ spec:
                 name: loki-operator-controller-manager
             spec:
               containers:
-              - command:
+              - args:
+                - --with-cert-signing-service
+                - --with-service-monitors
+                - --with-tls-service-monitors
+                command:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI

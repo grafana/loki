@@ -27,6 +27,7 @@ import (
 
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/controllers"
+	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/ViaQ/loki-operator/internal/metrics"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -44,24 +45,36 @@ func init() {
 
 	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
-
-	// TODO: make this loading optional via a loki-operator CLI flag.
-	utilruntime.Must(monitoringv1.AddToScheme(scheme))
 }
 
 func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
+	var (
+		metricsAddr              string
+		enableLeaderElection     bool
+		probeAddr                string
+		enableCertSigning        bool
+		enableServiceMonitors    bool
+		enableTLSServiceMonitors bool
+	)
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&enableCertSigning, "with-cert-signing-service", false,
+		"Enables features in an Openshift cluster.")
+	flag.BoolVar(&enableServiceMonitors, "with-service-monitors", false, "Enables service monitoring")
+	flag.BoolVar(&enableTLSServiceMonitors, "with-tls-service-monitors", false,
+		"Enables loading of a prometheus service monitor.")
 	flag.Parse()
 
 	log.Init("loki-operator")
 	ctrl.SetLogger(log.GetLogger())
+
+	if enableServiceMonitors || enableTLSServiceMonitors {
+		utilruntime.Must(monitoringv1.AddToScheme(scheme))
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -76,10 +89,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	featureFlags := manifests.FeatureFlags{
+		EnableCertificateSigningService: enableCertSigning,
+		EnableServiceMonitors:           enableServiceMonitors,
+		EnableTLSServiceMonitorConfig:   enableTLSServiceMonitors,
+	}
+
 	if err = (&controllers.LokiStackReconciler{
 		Client: mgr.GetClient(),
 		Log:    log.WithName("controllers").WithName("LokiStack"),
 		Scheme: mgr.GetScheme(),
+		Flags:  featureFlags,
 	}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to create controller", "controller", "LokiStack")
 		os.Exit(1)

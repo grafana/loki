@@ -36,6 +36,7 @@ patchesStrategicMerge:
 # endpoint w/o any authn/z, please comment the following line.
 - manager_auth_proxy_patch.yaml
 - manager_related_image_patch.yaml
+- manager_run_flags_patch.yaml
 - prometheus_service_monitor_patch.yaml
 
 # apiVersion: kustomize.config.k8s.io/v1beta1

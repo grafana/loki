@@ -19,10 +19,17 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 		ServiceMonitor *monitoringv1.ServiceMonitor
 	}
 
+	flags := FeatureFlags{
+		EnableCertificateSigningService: true,
+		EnableServiceMonitors:           true,
+		EnableTLSServiceMonitorConfig:   true,
+	}
+
 	opt := Options{
 		Name:      "test",
 		Namespace: "test",
 		Image:     "test",
+		Flags:     flags,
 		Stack: lokiv1beta1.LokiStackSpec{
 			Size: lokiv1beta1.SizeOneXExtraSmall,
 			Template: &lokiv1beta1.LokiTemplateSpec{
@@ -47,24 +54,24 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 
 	table := []test{
 		{
-			Service:        NewDistributorHTTPService(opt.Name),
-			ServiceMonitor: NewDistributorServiceMonitor(opt.Name, opt.Namespace),
+			Service:        NewDistributorHTTPService(opt),
+			ServiceMonitor: NewDistributorServiceMonitor(opt),
 		},
 		{
 			Service:        NewIngesterHTTPService(opt),
-			ServiceMonitor: NewIngesterServiceMonitor(opt.Name, opt.Namespace),
+			ServiceMonitor: NewIngesterServiceMonitor(opt),
 		},
 		{
-			Service:        NewQuerierHTTPService(opt.Name),
-			ServiceMonitor: NewQuerierServiceMonitor(opt.Name, opt.Namespace),
+			Service:        NewQuerierHTTPService(opt),
+			ServiceMonitor: NewQuerierServiceMonitor(opt),
 		},
 		{
-			Service:        NewQueryFrontendHTTPService(opt.Name),
-			ServiceMonitor: NewQueryFrontendServiceMonitor(opt.Name, opt.Namespace),
+			Service:        NewQueryFrontendHTTPService(opt),
+			ServiceMonitor: NewQueryFrontendServiceMonitor(opt),
 		},
 		{
 			Service:        NewCompactorHTTPService(opt),
-			ServiceMonitor: NewCompactorServiceMonitor(opt.Name, opt.Namespace),
+			ServiceMonitor: NewCompactorServiceMonitor(opt),
 		},
 	}
 

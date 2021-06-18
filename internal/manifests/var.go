@@ -52,6 +52,14 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
+func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
+	annotations := map[string]string{}
+	if enableSigningService {
+		annotations["service.beta.openshift.io/serving-cert-secret-name"] = signingServiceSecretName(serviceName)
+	}
+	return annotations
+}
+
 // ComponentLabels is a list of all commonLabels including the loki.grafana.com/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
@@ -131,6 +139,14 @@ func serviceNameQueryFrontendHTTP(stackName string) string {
 	return fmt.Sprintf("loki-query-frontend-http-%s", stackName)
 }
 
+func serviceMonitorName(componentName string) string {
+	return fmt.Sprintf("monitor-%s", componentName)
+}
+
+func signingServiceSecretName(serviceName string) string {
+	return fmt.Sprintf("%s-metrics", serviceName)
+}
+
 func fqdn(serviceName, namespace string) string {
 	return fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
 }
@@ -147,14 +163,21 @@ func serviceMonitorTLSConfig(serviceName, namespace string) monitoringv1.TLSConf
 }
 
 // serviceMonitorLokiEndPoint returns the loki endpoint for service monitors.
-func serviceMonitorLokiEndPoint(stackName, serviceName, namespace string) monitoringv1.Endpoint {
-	tlsConfig := serviceMonitorTLSConfig(serviceName, namespace)
+func serviceMonitorLokiEndPoint(stackName, serviceName, namespace string, enableTLS bool) monitoringv1.Endpoint {
+	if enableTLS {
+		tlsConfig := serviceMonitorTLSConfig(serviceName, namespace)
+		return monitoringv1.Endpoint{
+			Port:            stackName,
+			Path:            "/metrics",
+			Scheme:          "https",
+			BearerTokenFile: BearerTokenFile,
+			TLSConfig:       &tlsConfig,
+		}
+	}
 
 	return monitoringv1.Endpoint{
-		Port:            stackName,
-		Path:            "/metrics",
-		Scheme:          "https",
-		BearerTokenFile: BearerTokenFile,
-		TLSConfig:       &tlsConfig,
+		Port:   stackName,
+		Path:   "/metrics",
+		Scheme: "http",
 	}
 }

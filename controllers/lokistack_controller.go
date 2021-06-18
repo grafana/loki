@@ -23,6 +23,7 @@ import (
 	"github.com/ViaQ/loki-operator/controllers/internal/management/state"
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
 	"github.com/ViaQ/loki-operator/internal/handlers"
+	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/ViaQ/loki-operator/internal/status"
 	"github.com/go-logr/logr"
 
@@ -77,6 +78,7 @@ type LokiStackReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
+	Flags  manifests.FeatureFlags
 }
 
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
@@ -110,7 +112,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme)
+	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Flags)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,

@@ -10,22 +10,51 @@ import (
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
-func BuildAll(opt Options) ([]client.Object, error) {
+func BuildAll(opts Options) ([]client.Object, error) {
 	res := make([]client.Object, 0)
 
-	cm, sha1C, err := LokiConfigMap(opt)
+	cm, sha1C, mapErr := LokiConfigMap(opts)
+	if mapErr != nil {
+		return nil, mapErr
+	}
+	opts.ConfigSHA1 = sha1C
+
+	distributorObjs, err := BuildDistributor(opts)
 	if err != nil {
 		return nil, err
 	}
-	opt.ConfigSHA1 = sha1C
+
+	ingesterObjs, err := BuildIngester(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	querierObjs, err := BuildQuerier(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	compactorObjs, err := BuildCompactor(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	queryFrontendObjs, err := BuildQueryFrontend(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	res = append(res, cm)
-	res = append(res, BuildDistributor(opt)...)
-	res = append(res, BuildIngester(opt)...)
-	res = append(res, BuildQuerier(opt)...)
-	res = append(res, BuildCompactor(opt)...)
-	res = append(res, BuildQueryFrontend(opt)...)
-	res = append(res, BuildLokiGossipRingService(opt.Name))
+	res = append(res, distributorObjs...)
+	res = append(res, ingesterObjs...)
+	res = append(res, querierObjs...)
+	res = append(res, compactorObjs...)
+	res = append(res, queryFrontendObjs...)
+	res = append(res, BuildLokiGossipRingService(opts.Name))
+
+	if opts.Flags.EnableServiceMonitors {
+		res = append(res, BuildServiceMonitors(opts)...)
+	}
 
 	return res, nil
 }
@@ -39,11 +68,11 @@ func DefaultLokiStackSpec(size lokiv1beta1.LokiStackSizeType) *lokiv1beta1.LokiS
 
 // ApplyDefaultSettings manipulates the options to conform to
 // build specifications
-func ApplyDefaultSettings(opt *Options) error {
-	spec := DefaultLokiStackSpec(opt.Stack.Size)
+func ApplyDefaultSettings(opts *Options) error {
+	spec := DefaultLokiStackSpec(opts.Stack.Size)
 
-	if err := mergo.Merge(spec, opt.Stack, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed merging stack user options", "name", opt.Name)
+	if err := mergo.Merge(spec, opts.Stack, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed merging stack user options", "name", opts.Name)
 	}
 
 	strictOverrides := lokiv1beta1.LokiStackSpec{
@@ -60,8 +89,8 @@ func ApplyDefaultSettings(opt *Options) error {
 		return kverrors.Wrap(err, "failed to merge strict defaults")
 	}
 
-	opt.ResourceRequirements = internal.ResourceRequirementsTable[opt.Stack.Size]
-	opt.Stack = *spec
+	opts.ResourceRequirements = internal.ResourceRequirementsTable[opts.Stack.Size]
+	opts.Stack = *spec
 
 	return nil
 }

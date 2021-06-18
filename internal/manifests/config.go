@@ -48,7 +48,7 @@ func ConfigOptions(opt Options) config.Options {
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
 		FrontendWorker: config.Address{
-			FQDN: fqdn(NewQueryFrontendGRPCService(opt.Name).GetName(), opt.Namespace),
+			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
 		GossipRing: config.Address{
@@ -56,7 +56,7 @@ func ConfigOptions(opt Options) config.Options {
 			Port: gossipPort,
 		},
 		Querier: config.Address{
-			FQDN: fqdn(NewQuerierHTTPService(opt.Name).GetName(), opt.Namespace),
+			FQDN: fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
 			Port: httpPort,
 		},
 		StorageDirectory: strings.TrimRight(dataDirectory, "/"),

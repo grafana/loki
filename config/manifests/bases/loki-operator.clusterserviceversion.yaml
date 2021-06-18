@@ -47,6 +47,9 @@ spec:
       - kind: Service
         name: ""
         version: v1
+      - kind: ServiceMonitor
+        name: ""
+        version: v1
       - kind: StatefulSet
         name: ""
         version: v1

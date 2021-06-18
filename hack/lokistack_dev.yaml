@@ -1,0 +1,11 @@
+apiVersion: loki.openshift.io/v1beta1
+kind: LokiStack
+metadata:
+  name: lokistack-dev
+spec:
+  size: 1x.extra-small
+  replicationFactor: 1
+  storage:
+    secret:
+      name: test
+  storageClassName: standard

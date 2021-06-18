@@ -46,8 +46,8 @@ func TestServicesMatchPorts(t *testing.T) {
 		{
 			Containers: NewDistributorDeployment(opt).Spec.Template.Spec.Containers,
 			Services: []*corev1.Service{
-				NewDistributorGRPCService(opt.Name),
-				NewDistributorHTTPService(opt.Name),
+				NewDistributorGRPCService(opt),
+				NewDistributorHTTPService(opt),
 			},
 		},
 		{
@@ -60,15 +60,15 @@ func TestServicesMatchPorts(t *testing.T) {
 		{
 			Containers: NewQuerierStatefulSet(opt).Spec.Template.Spec.Containers,
 			Services: []*corev1.Service{
-				NewQuerierGRPCService(opt.Name),
-				NewQuerierHTTPService(opt.Name),
+				NewQuerierGRPCService(opt),
+				NewQuerierHTTPService(opt),
 			},
 		},
 		{
 			Containers: NewQueryFrontendDeployment(opt).Spec.Template.Spec.Containers,
 			Services: []*corev1.Service{
-				NewQueryFrontendGRPCService(opt.Name),
-				NewQueryFrontendHTTPService(opt.Name),
+				NewQueryFrontendGRPCService(opt),
+				NewQueryFrontendHTTPService(opt),
 			},
 		},
 		{
@@ -145,8 +145,8 @@ func TestServicesMatchLabels(t *testing.T) {
 		{
 			Object: NewDistributorDeployment(opt),
 			Services: []*corev1.Service{
-				NewDistributorGRPCService(opt.Name),
-				NewDistributorHTTPService(opt.Name),
+				NewDistributorGRPCService(opt),
+				NewDistributorHTTPService(opt),
 			},
 		},
 		{
@@ -159,15 +159,15 @@ func TestServicesMatchLabels(t *testing.T) {
 		{
 			Object: NewQuerierStatefulSet(opt),
 			Services: []*corev1.Service{
-				NewQuerierGRPCService(opt.Name),
-				NewQuerierHTTPService(opt.Name),
+				NewQuerierGRPCService(opt),
+				NewQuerierHTTPService(opt),
 			},
 		},
 		{
 			Object: NewQueryFrontendDeployment(opt),
 			Services: []*corev1.Service{
-				NewQueryFrontendGRPCService(opt.Name),
-				NewQueryFrontendHTTPService(opt.Name),
+				NewQueryFrontendGRPCService(opt),
+				NewQueryFrontendHTTPService(opt),
 			},
 		},
 		{

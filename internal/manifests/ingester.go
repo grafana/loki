@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,17 +16,23 @@ import (
 )
 
 // BuildIngester builds the k8s objects required to run Loki Ingester
-func BuildIngester(opts Options) []client.Object {
+func BuildIngester(opts Options) ([]client.Object, error) {
+	statefulSet := NewIngesterStatefulSet(opts)
+	if opts.Flags.EnableTLSServiceMonitorConfig {
+		if err := configureIngesterServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+			return nil, err
+		}
+	}
+
 	return []client.Object{
-		NewIngesterStatefulSet(opts),
+		statefulSet,
 		NewIngesterGRPCService(opts),
 		NewIngesterHTTPService(opts),
-		NewIngesterServiceMonitor(opts.Name, opts.Namespace),
-	}
+	}, nil
 }
 
 // NewIngesterStatefulSet creates a deployment object for an ingester
-func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
+func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -36,7 +40,7 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lokiConfigMapName(opt.Name),
+							Name: lokiConfigMapName(opts.Name),
 						},
 					},
 				},
@@ -44,11 +48,11 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: opt.Image,
+				Image: opts.Image,
 				Name:  "loki-ingester",
 				Resources: corev1.ResourceRequirements{
-					Limits:   opt.ResourceRequirements.Ingester.Limits,
-					Requests: opt.ResourceRequirements.Ingester.Requests,
+					Limits:   opts.ResourceRequirements.Ingester.Limits,
+					Requests: opts.ResourceRequirements.Ingester.Requests,
 				},
 				Args: []string{
 					"-target=ingester",
@@ -108,13 +112,13 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 	}
 
-	if opt.Stack.Template != nil && opt.Stack.Template.Ingester != nil {
-		podSpec.Tolerations = opt.Stack.Template.Ingester.Tolerations
-		podSpec.NodeSelector = opt.Stack.Template.Ingester.NodeSelector
+	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
+		podSpec.Tolerations = opts.Stack.Template.Ingester.Tolerations
+		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
 	}
 
-	l := ComponentLabels(LabelIngesterComponent, opt.Name)
-	a := commonAnnotations(opt.ConfigSHA1)
+	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -122,19 +126,19 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   IngesterName(opt.Name),
+			Name:   IngesterName(opts.Name),
 			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
 			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opt.Stack.Template.Ingester.Replicas),
+			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Ingester.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-ingester-%s", opt.Name),
+					Name:        fmt.Sprintf("loki-ingester-%s", opts.Name),
 					Labels:      labels.Merge(l, GossipLabels()),
 					Annotations: a,
 				},
@@ -153,10 +157,10 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: opt.ResourceRequirements.Ingester.PVCSize,
+								corev1.ResourceStorage: opts.ResourceRequirements.Ingester.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opt.Stack.StorageClassName),
+						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
 					},
 				},
 			},
@@ -165,15 +169,16 @@ func NewIngesterStatefulSet(opt Options) *appsv1.StatefulSet {
 }
 
 // NewIngesterGRPCService creates a k8s service for the ingester GRPC endpoint
-func NewIngesterGRPCService(opt Options) *corev1.Service {
-	l := ComponentLabels("ingester", opt.Name)
+func NewIngesterGRPCService(opts Options) *corev1.Service {
+	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterGRPC(opt.Name),
+			Name:   serviceNameIngesterGRPC(opts.Name),
 			Labels: l,
 		},
 		Spec: corev1.ServiceSpec{
@@ -190,16 +195,20 @@ func NewIngesterGRPCService(opt Options) *corev1.Service {
 }
 
 // NewIngesterHTTPService creates a k8s service for the ingester HTTP endpoint
-func NewIngesterHTTPService(opt Options) *corev1.Service {
-	l := ComponentLabels("ingester", opt.Name)
+func NewIngesterHTTPService(opts Options) *corev1.Service {
+	serviceName := serviceNameIngesterHTTP(opts.Name)
+	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterHTTP(opt.Name),
-			Labels: l,
+			Name:        serviceName,
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -213,33 +222,7 @@ func NewIngesterHTTPService(opt Options) *corev1.Service {
 	}
 }
 
-// NewIngesterServiceMonitor creates a k8s service monitor for the ingester component
-func NewIngesterServiceMonitor(stackName, namespace string) *monitoringv1.ServiceMonitor {
-	l := ComponentLabels(LabelIngesterComponent, stackName)
-
-	serviceMonitorName := fmt.Sprintf("monitor-%s", IngesterName(stackName))
+func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameIngesterHTTP(stackName)
-	lokiEndpoint := serviceMonitorLokiEndPoint(stackName, serviceName, namespace)
-
-	return &monitoringv1.ServiceMonitor{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       monitoringv1.ServiceMonitorsKind,
-			APIVersion: monitoringv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceMonitorName,
-			Namespace: namespace,
-			Labels:    l,
-		},
-		Spec: monitoringv1.ServiceMonitorSpec{
-			JobLabel:  labelJobComponent,
-			Endpoints: []monitoringv1.Endpoint{lokiEndpoint},
-			Selector: metav1.LabelSelector{
-				MatchLabels: l,
-			},
-			NamespaceSelector: monitoringv1.NamespaceSelector{
-				MatchNames: []string{namespace},
-			},
-		},
-	}
+	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
 }

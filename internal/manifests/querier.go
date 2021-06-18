@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,17 +16,23 @@ import (
 )
 
 // BuildQuerier returns a list of k8s objects for Loki Querier
-func BuildQuerier(opt Options) []client.Object {
-	return []client.Object{
-		NewQuerierStatefulSet(opt),
-		NewQuerierGRPCService(opt.Name),
-		NewQuerierHTTPService(opt.Name),
-		NewQuerierServiceMonitor(opt.Name, opt.Namespace),
+func BuildQuerier(opts Options) ([]client.Object, error) {
+	statefulSet := NewQuerierStatefulSet(opts)
+	if opts.Flags.EnableTLSServiceMonitorConfig {
+		if err := configureQuerierServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+			return nil, err
+		}
 	}
+
+	return []client.Object{
+		statefulSet,
+		NewQuerierGRPCService(opts),
+		NewQuerierHTTPService(opts),
+	}, nil
 }
 
 // NewQuerierStatefulSet creates a deployment object for a querier
-func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
+func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -36,7 +40,7 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lokiConfigMapName(opt.Name),
+							Name: lokiConfigMapName(opts.Name),
 						},
 					},
 				},
@@ -44,11 +48,11 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 		Containers: []corev1.Container{
 			{
-				Image: opt.Image,
+				Image: opts.Image,
 				Name:  "loki-querier",
 				Resources: corev1.ResourceRequirements{
-					Limits:   opt.ResourceRequirements.Querier.Limits,
-					Requests: opt.ResourceRequirements.Querier.Requests,
+					Limits:   opts.ResourceRequirements.Querier.Limits,
+					Requests: opts.ResourceRequirements.Querier.Requests,
 				},
 				Args: []string{
 					"-target=querier",
@@ -108,13 +112,13 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 		},
 	}
 
-	if opt.Stack.Template != nil && opt.Stack.Template.Querier != nil {
-		podSpec.Tolerations = opt.Stack.Template.Querier.Tolerations
-		podSpec.NodeSelector = opt.Stack.Template.Querier.NodeSelector
+	if opts.Stack.Template != nil && opts.Stack.Template.Querier != nil {
+		podSpec.Tolerations = opts.Stack.Template.Querier.Tolerations
+		podSpec.NodeSelector = opts.Stack.Template.Querier.NodeSelector
 	}
 
-	l := ComponentLabels(LabelQuerierComponent, opt.Name)
-	a := commonAnnotations(opt.ConfigSHA1)
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -122,19 +126,19 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   QuerierName(opt.Name),
+			Name:   QuerierName(opts.Name),
 			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
 			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opt.Stack.Template.Querier.Replicas),
+			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Querier.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-querier-%s", opt.Name),
+					Name:        fmt.Sprintf("loki-querier-%s", opts.Name),
 					Labels:      labels.Merge(l, GossipLabels()),
 					Annotations: a,
 				},
@@ -153,10 +157,10 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: opt.ResourceRequirements.Querier.PVCSize,
+								corev1.ResourceStorage: opts.ResourceRequirements.Querier.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opt.Stack.StorageClassName),
+						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
 					},
 				},
 			},
@@ -165,15 +169,16 @@ func NewQuerierStatefulSet(opt Options) *appsv1.StatefulSet {
 }
 
 // NewQuerierGRPCService creates a k8s service for the querier GRPC endpoint
-func NewQuerierGRPCService(stackName string) *corev1.Service {
-	l := ComponentLabels("querier", stackName)
+func NewQuerierGRPCService(opts Options) *corev1.Service {
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameQuerierGRPC(stackName),
+			Name:   serviceNameQuerierGRPC(opts.Name),
 			Labels: l,
 		},
 		Spec: corev1.ServiceSpec{
@@ -190,16 +195,20 @@ func NewQuerierGRPCService(stackName string) *corev1.Service {
 }
 
 // NewQuerierHTTPService creates a k8s service for the querier HTTP endpoint
-func NewQuerierHTTPService(stackName string) *corev1.Service {
-	l := ComponentLabels("querier", stackName)
+func NewQuerierHTTPService(opts Options) *corev1.Service {
+	serviceName := serviceNameQuerierHTTP(opts.Name)
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
+
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameQuerierHTTP(stackName),
-			Labels: l,
+			Name:        serviceName,
+			Labels:      l,
+			Annotations: a,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -213,33 +222,7 @@ func NewQuerierHTTPService(stackName string) *corev1.Service {
 	}
 }
 
-// NewQuerierServiceMonitor creates a k8s service monitor for the querier component
-func NewQuerierServiceMonitor(stackName, namespace string) *monitoringv1.ServiceMonitor {
-	l := ComponentLabels(LabelQuerierComponent, stackName)
-
-	serviceMonitorName := fmt.Sprintf("monitor-%s", QuerierName(stackName))
+func configureQuerierServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
 	serviceName := serviceNameQuerierHTTP(stackName)
-	lokiEndpoint := serviceMonitorLokiEndPoint(stackName, serviceName, namespace)
-
-	return &monitoringv1.ServiceMonitor{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       monitoringv1.ServiceMonitorsKind,
-			APIVersion: monitoringv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceMonitorName,
-			Namespace: namespace,
-			Labels:    l,
-		},
-		Spec: monitoringv1.ServiceMonitorSpec{
-			JobLabel:  labelJobComponent,
-			Endpoints: []monitoringv1.Endpoint{lokiEndpoint},
-			Selector: metav1.LabelSelector{
-				MatchLabels: l,
-			},
-			NamespaceSelector: monitoringv1.NamespaceSelector{
-				MatchNames: []string{namespace},
-			},
-		},
-	}
+	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
 }
