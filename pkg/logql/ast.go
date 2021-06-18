@@ -628,6 +628,7 @@ const (
 	OpConvBytes           = "bytes"
 	OpConvDuration        = "duration"
 	OpConvDurationSeconds = "duration_seconds"
+	OpConvDateTime        = "datetime"
 
 	OpLabelReplace = "label_replace"
 )

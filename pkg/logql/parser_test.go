@@ -1637,6 +1637,22 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `last_over_time({namespace="tns"} |= "level=error" | json | unwrap datetime(ts)[5m])`,
+			exp: newRangeAggregationExpr(
+				newLogRange(&pipelineExpr{
+					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
+					pipeline: MultiStageExpr{
+						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLabelParserExpr(OpParserTypeJSON, ""),
+					},
+				},
+					5*time.Minute,
+					newUnwrapExpr("ts", OpConvDateTime),
+					nil),
+				OpRangeTypeLast, nil, nil,
+			),
+		},
+		{
 			in: `sum without (foo) (
 				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]

@@ -109,6 +109,49 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			},
 			true,
 		},
+
+		// this set of tests is not exhaustive; the library we are using (https://github.com/araddon/dateparse) is handling
+		// all the date parsing, and has extensive tests; these tests are merely illustrative
+		{
+			"convert basic date",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertDateTime, nil, false, false, nil, NoopStage,
+			)),
+			labels.Labels{labels.Label{Name: "foo", Value: "May 8, 2009 5:57:51 PM"}},
+			1241805471,
+			labels.Labels{},
+			true,
+		},
+		{
+			"convert unix timestamp",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertDateTime, nil, false, false, nil, NoopStage,
+			)),
+			labels.Labels{labels.Label{Name: "foo", Value: "1624013054"}},
+			1624013054,
+			labels.Labels{},
+			true,
+		},
+		{
+			"convert unix milliseconds",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertDateTime, nil, false, false, nil, NoopStage,
+			)),
+			labels.Labels{labels.Label{Name: "foo", Value: "1624013054000"}},
+			1624013054,
+			labels.Labels{},
+			true,
+		},
+		{
+			"convert date with timezone",
+			mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertDateTime, nil, false, false, nil, NoopStage,
+			)),
+			labels.Labels{labels.Label{Name: "foo", Value: "Tue, 11 Jul 2017 16:28:13 +0200 (CEST)"}},
+			1499783293,
+			labels.Labels{},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -8,6 +8,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/araddon/dateparse"
+
 	"github.com/dustin/go-humanize"
 )
 
@@ -15,6 +17,7 @@ const (
 	ConvertBytes    = "bytes"
 	ConvertDuration = "duration"
 	ConvertFloat    = "float"
+	ConvertDateTime = "datetime"
 )
 
 // LineExtractor extracts a float64 from a log line.
@@ -126,6 +129,8 @@ func LabelExtractorWithStages(
 		convFn = convertDuration
 	case ConvertFloat:
 		convFn = convertFloat
+	case ConvertDateTime:
+		convFn = convertDateTime
 	default:
 		return nil, errors.Errorf("unsupported conversion operation %s", conversion)
 	}
@@ -214,4 +219,13 @@ func convertBytes(v string) (float64, error) {
 		return 0, err
 	}
 	return float64(b), nil
+}
+
+func convertDateTime(v string) (float64, error) {
+	t, err := dateparse.ParseAny(v)
+	if err != nil {
+		return 0, err
+	}
+
+	return float64(t.Unix()), nil
 }

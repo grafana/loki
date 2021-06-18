@@ -59,6 +59,8 @@ func Test_Extractor(t *testing.T) {
 			)`,
 		`sum_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
 		`absent_over_time({namespace="tns"} |= "level=error" | json |foo>=5,bar<25ms | unwrap latency | __error__!~".*" | foo >5[5m])`,
+		`last_over_time({namespace="tns"} | json | unwrap datetime(ts)[5m])`,
+		`last_over_time({namespace="tns"} | json | unwrap datetime(ts) | __error__!~".*" [5m])`,
 		`absent_over_time({namespace="tns"} |= "level=error" | json [5m])`,
 		`sum by (job) (
 				sum_over_time(
