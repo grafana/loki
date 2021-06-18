@@ -44,4 +44,3 @@ func (c Config) String() string {
 	}
 	return string(b)
 }
-
