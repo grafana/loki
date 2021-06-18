@@ -25,6 +25,8 @@ import (
 	logutil "github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/cfg"
+
+	_ "github.com/grafana/loki/clients/pkg/promtail/svc"
 )
 
 func init() {
