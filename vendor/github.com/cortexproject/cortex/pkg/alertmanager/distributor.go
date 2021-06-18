@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/merger"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -64,10 +66,52 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 // IsPathSupported returns true if the given route is currently supported by the Distributor.
-func (d *Distributor) IsPathSupported(path string) bool {
+func (d *Distributor) IsPathSupported(p string) bool {
 	// API can be found at https://petstore.swagger.io/?url=https://raw.githubusercontent.com/prometheus/alertmanager/master/api/v2/openapi.yaml.
-	return strings.HasSuffix(path, "/alerts") ||
-		strings.HasSuffix(path, "/alerts/groups")
+	isQuorumReadPath, _ := d.isQuorumReadPath(p)
+	return d.isQuorumWritePath(p) || d.isUnaryWritePath(p) || d.isUnaryDeletePath(p) || d.isUnaryReadPath(p) || isQuorumReadPath
+}
+
+func (d *Distributor) isQuorumWritePath(p string) bool {
+	return strings.HasSuffix(p, "/alerts")
+}
+
+func (d *Distributor) isUnaryWritePath(p string) bool {
+	return strings.HasSuffix(p, "/silences")
+}
+
+func (d *Distributor) isUnaryDeletePath(p string) bool {
+	return strings.HasSuffix(path.Dir(p), "/silence")
+}
+
+func (d *Distributor) isQuorumReadPath(p string) (bool, merger.Merger) {
+	if strings.HasSuffix(p, "/v1/alerts") {
+		return true, merger.V1Alerts{}
+	}
+	if strings.HasSuffix(p, "/v2/alerts") {
+		return true, merger.V2Alerts{}
+	}
+	if strings.HasSuffix(p, "/v2/alerts/groups") {
+		return true, merger.V2AlertGroups{}
+	}
+	if strings.HasSuffix(p, "/v1/silences") {
+		return true, merger.V1Silences{}
+	}
+	if strings.HasSuffix(path.Dir(p), "/v1/silence") {
+		return true, merger.V1SilenceID{}
+	}
+	if strings.HasSuffix(p, "/v2/silences") {
+		return true, merger.V2Silences{}
+	}
+	if strings.HasSuffix(path.Dir(p), "/v2/silence") {
+		return true, merger.V2SilenceID{}
+	}
+	return false, nil
+}
+
+func (d *Distributor) isUnaryReadPath(p string) bool {
+	return strings.HasSuffix(p, "/status") ||
+		strings.HasSuffix(p, "/receivers")
 }
 
 // DistributeRequest shards the writes and returns as soon as the quorum is satisfied.
@@ -86,14 +130,37 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 
 	logger := util_log.WithContext(r.Context(), d.logger)
 
-	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		d.doRead(userID, w, r, logger)
-	} else {
-		d.doWrite(userID, w, r, logger)
+	if r.Method == http.MethodPost {
+		if d.isQuorumWritePath(r.URL.Path) {
+			d.doQuorum(userID, w, r, logger, merger.Noop{})
+			return
+		}
+		if d.isUnaryWritePath(r.URL.Path) {
+			d.doUnary(userID, w, r, logger)
+			return
+		}
 	}
+	if r.Method == http.MethodDelete {
+		if d.isUnaryDeletePath(r.URL.Path) {
+			d.doUnary(userID, w, r, logger)
+			return
+		}
+	}
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		if ok, m := d.isQuorumReadPath(r.URL.Path); ok {
+			d.doQuorum(userID, w, r, logger, m)
+			return
+		}
+		if d.isUnaryReadPath(r.URL.Path) {
+			d.doUnary(userID, w, r, logger)
+			return
+		}
+	}
+
+	http.Error(w, "route not supported by distributor", http.StatusNotFound)
 }
 
-func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
+func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger, m merger.Merger) {
 	var body []byte
 	var err error
 	if r.Body != nil {
@@ -109,13 +176,13 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	var firstSuccessfulResponse *httpgrpc.HTTPResponse
-	var firstSuccessfulResponseMtx sync.Mutex
+	var responses []*httpgrpc.HTTPResponse
+	var responsesMtx sync.Mutex
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx := user.InjectOrgID(context.Background(), userID)
-		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doWrite")
+		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doQuorum")
 		defer sp.Finish()
 
 		resp, err := d.doRequest(localCtx, am, &httpgrpc.HTTPRequest{
@@ -132,11 +199,9 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 			return httpgrpc.ErrorFromHTTPResponse(resp)
 		}
 
-		firstSuccessfulResponseMtx.Lock()
-		if firstSuccessfulResponse == nil {
-			firstSuccessfulResponse = resp
-		}
-		firstSuccessfulResponseMtx.Unlock()
+		responsesMtx.Lock()
+		responses = append(responses, resp)
+		responsesMtx.Unlock()
 
 		return nil
 	}, func() {})
@@ -146,12 +211,12 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	firstSuccessfulResponseMtx.Lock() // Another request might be ongoing after quorum.
-	resp := firstSuccessfulResponse
-	firstSuccessfulResponseMtx.Unlock()
+	responsesMtx.Lock() // Another request might be ongoing after quorum.
+	resps := responses
+	responsesMtx.Unlock()
 
-	if resp != nil {
-		respondFromHTTPGRPCResponse(w, resp)
+	if len(resps) > 0 {
+		respondFromMultipleHTTPGRPCResponses(w, logger, resps, m)
 	} else {
 		// This should not happen.
 		level.Error(logger).Log("msg", "distributor did not receive any response from alertmanagers, but there were no errors")
@@ -159,7 +224,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
+func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	key := shardByUser(userID)
 	replicationSet, err := d.alertmanagerRing.Get(key, RingOp, nil, nil, nil)
 	if err != nil {
@@ -185,7 +250,7 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 		Headers: httpToHttpgrpcHeaders(r.Header),
 	}
 
-	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distributor.doRead")
+	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distributor.doUnary")
 	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
@@ -246,4 +311,30 @@ func httpToHttpgrpcHeaders(hs http.Header) []*httpgrpc.Header {
 		})
 	}
 	return result
+}
+
+func respondFromMultipleHTTPGRPCResponses(w http.ResponseWriter, logger log.Logger, responses []*httpgrpc.HTTPResponse, merger merger.Merger) {
+	bodies := make([][]byte, len(responses))
+	for i, r := range responses {
+		bodies[i] = r.Body
+	}
+
+	body, err := merger.MergeResponses(bodies)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to merge responses for request", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// It is assumed by using this function, the caller knows that the responses it receives
+	// have already been checked for success or failure, and that the headers will always
+	// match due to the nature of the request. If this is not the case, a different merge
+	// function should be implemented to cope with the differing responses.
+	response := &httpgrpc.HTTPResponse{
+		Code:    responses[0].Code,
+		Headers: responses[0].Headers,
+		Body:    body,
+	}
+
+	respondFromHTTPGRPCResponse(w, response)
 }

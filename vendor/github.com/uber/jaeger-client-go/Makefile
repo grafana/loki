@@ -1,5 +1,6 @@
 PROJECT_ROOT=github.com/uber/jaeger-client-go
-PACKAGES := . $(shell go list ./... | awk -F/ 'NR>1 {print "./"$$4"/..."}' | grep -v -e ./thrift-gen/... -e ./thrift/... | sort -u)
+export GO111MODULE=off
+PACKAGES := . $(shell GO111MODULE=off go list ./... | awk -F/ 'NR>1 {print "./"$$4"/..."}' | grep -v -e ./thrift-gen/... -e ./thrift/... | sort -u)
 # all .go files that don't exist in hidden directories
 ALL_SRC := $(shell find . -name "*.go" | grep -v -e vendor -e thrift-gen -e ./thrift/ \
         -e ".*/\..*" \
@@ -61,7 +62,7 @@ install:
 	@echo install: USE_DEP=$(USE_DEP) USE_GLIDE=$(USE_GLIDE)
 ifeq ($(USE_DEP),true)
 	dep version || make install-dep
-	dep ensure
+	dep ensure -vendor-only -v
 endif
 ifeq ($(USE_GLIDE),true)
 	glide --version || go get github.com/Masterminds/glide
@@ -131,4 +132,3 @@ ifeq ($(CI_SKIP_LINT),true)
 else
 	make lint
 endif
-

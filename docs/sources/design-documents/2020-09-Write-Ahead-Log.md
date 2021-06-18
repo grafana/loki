@@ -1,4 +1,8 @@
-## Metadata
+---
+title: Write-Ahead Logs
+weight: 30
+---
+## Write-Ahead Logs
 
 Author: Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
 

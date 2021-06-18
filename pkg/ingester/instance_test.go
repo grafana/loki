@@ -17,9 +17,9 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
-	loki_runtime "github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func defaultConfig() *Config {

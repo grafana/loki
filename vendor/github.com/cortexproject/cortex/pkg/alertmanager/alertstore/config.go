@@ -15,6 +15,7 @@ import (
 )
 
 // LegacyConfig configures the alertmanager storage backend using the legacy storage clients.
+// TODO remove this legacy config in Cortex 1.11.
 type LegacyConfig struct {
 	Type     string        `yaml:"type"`
 	ConfigDB client.Config `yaml:"configdb"`
@@ -68,4 +69,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
 	cfg.RegisterFlagsWithPrefix(prefix, f)
+}
+
+// IsFullStateSupported returns if the given configuration supports access to FullState objects.
+func (cfg *Config) IsFullStateSupported() bool {
+	for _, backend := range bucket.SupportedBackends {
+		if cfg.Backend == backend {
+			return true
+		}
+	}
+	return false
 }

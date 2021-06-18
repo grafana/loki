@@ -19,7 +19,8 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -52,7 +53,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
 			},
-			Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
 			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(30, 0), logproto.BACKWARD, 30,
@@ -62,7 +63,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
-			Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
@@ -650,7 +651,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
 			},
-			Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
 			`{app="food"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.FORWARD, 10,
@@ -660,7 +661,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
 			},
-			Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
 		},
 		{
 			`{app="fed"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.BACKWARD, 10,
@@ -670,7 +671,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
 			},
-			Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
 		},
 		{
 			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.BACKWARD, 30,
@@ -680,7 +681,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
-			Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
 		{
 			`{app="barf"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), 0, 3 * time.Second, logproto.BACKWARD, 30,
@@ -690,7 +691,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
 			},
-			Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
 		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
@@ -1950,7 +1951,7 @@ func TestEngine_MaxSeries(t *testing.T) {
 		_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 		if test.expectLimitErr {
 			require.NotNil(t, err)
-			require.True(t, errors.Is(err, ErrLimit))
+			require.True(t, errors.Is(err, logqlmodel.ErrLimit))
 			return
 		}
 		require.Nil(t, err)

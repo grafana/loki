@@ -13,6 +13,8 @@ Loki supports the following official clients for sending logs:
 - [Logstash](logstash/)
 - [Lambda Promtail](lambda-promtail/)
 
+There are also a number of third-party clients, see [Unofficial clients](#unofficial-clients).
+
 ## Picking a client
 
 While all clients can be used simultaneously to cover multiple use cases, which
@@ -58,7 +60,7 @@ This is a workflow combining the promtail push-api [scrape config](promtail/conf
 
 This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki.
 
-# Unofficial clients
+## Unofficial clients
 
 Please note that the Loki API is not stable yet, so breaking changes might occur
 when using or writing a third-party client.
@@ -68,3 +70,4 @@ when using or writing a third-party client.
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
+- [LokiLogger.jl](https://github.com/fredrikekre/LokiLogger.jl) (Julia)

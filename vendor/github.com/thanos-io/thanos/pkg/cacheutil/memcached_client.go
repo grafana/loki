@@ -5,6 +5,7 @@ package cacheutil
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -149,6 +150,9 @@ type memcachedClient struct {
 	client   memcachedClientBackend
 	selector *MemcachedJumpHashSelector
 
+	// Name provides an identifier for the instantiated Client
+	name string
+
 	// DNS provider used to keep the memcached servers list updated.
 	dnsProvider *dns.Provider
 
@@ -205,7 +209,7 @@ func NewMemcachedClientWithConfig(logger log.Logger, name string, config Memcach
 	if reg != nil {
 		reg = prometheus.WrapRegistererWith(prometheus.Labels{"name": name}, reg)
 	}
-	return newMemcachedClient(logger, client, selector, config, reg)
+	return newMemcachedClient(logger, client, selector, config, reg, name)
 }
 
 func newMemcachedClient(
@@ -214,6 +218,7 @@ func newMemcachedClient(
 	selector *MemcachedJumpHashSelector,
 	config MemcachedClientConfig,
 	reg prometheus.Registerer,
+	name string,
 ) (*memcachedClient, error) {
 	dnsProvider := dns.NewProvider(
 		logger,
@@ -222,7 +227,7 @@ func newMemcachedClient(
 	)
 
 	c := &memcachedClient{
-		logger:      logger,
+		logger:      log.With(logger, "name", name),
 		config:      config,
 		client:      client,
 		selector:    selector,
@@ -465,7 +470,7 @@ func (c *memcachedClient) getMultiSingle(ctx context.Context, keys []string) (it
 	// concurrency should be enforced.
 	if c.config.MaxGetMultiConcurrency > 0 {
 		if err := c.getMultiGate.Start(ctx); err != nil {
-			return nil, errors.Wrapf(err, "failed to wait for turn")
+			return nil, errors.Wrapf(err, "failed to wait for turn. Instance: %s", c.name)
 		}
 		defer c.getMultiGate.Done()
 	}
@@ -562,7 +567,7 @@ func (c *memcachedClient) resolveAddrs() error {
 	// Fail in case no server address is resolved.
 	servers := c.dnsProvider.Addresses()
 	if len(servers) == 0 {
-		return errors.New("no server address resolved")
+		return fmt.Errorf("no server address resolved for %s", c.name)
 	}
 
 	return c.selector.SetServers(servers...)

@@ -15,6 +15,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -36,6 +38,8 @@ type table struct {
 	name             string
 	workingDirectory string
 	storageClient    chunk.ObjectClient
+	applyRetention   bool
+	tableMarker      retention.TableMarker
 
 	compactedDB *bbolt.DB
 
@@ -43,7 +47,7 @@ type table struct {
 	quit chan struct{}
 }
 
-func newTable(ctx context.Context, workingDirectory string, objectClient chunk.ObjectClient) (*table, error) {
+func newTable(ctx context.Context, workingDirectory string, objectClient chunk.ObjectClient, applyRetention bool, tableMarker retention.TableMarker) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
 		return nil, err
@@ -55,25 +59,20 @@ func newTable(ctx context.Context, workingDirectory string, objectClient chunk.O
 		workingDirectory: workingDirectory,
 		storageClient:    objectClient,
 		quit:             make(chan struct{}),
+		applyRetention:   applyRetention,
+		tableMarker:      tableMarker,
 	}
 
 	return &table, nil
 }
 
 func (t *table) compact() error {
-	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
-	// This is due to the object stores not having a concept of directories.
-	objects, _, err := t.storageClient.List(t.ctx, t.name+delimiter, delimiter)
+	objects, err := util.ListDirectory(t.ctx, t.name, t.storageClient)
 	if err != nil {
 		return err
 	}
 
 	level.Info(util_log.Logger).Log("msg", "listed files", "count", len(objects))
-
-	if len(objects) < compactMinDBs {
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
-		return nil
-	}
 
 	defer func() {
 		err := t.cleanup()
@@ -82,18 +81,95 @@ func (t *table) compact() error {
 		}
 	}()
 
-	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
+	if !t.applyRetention {
+		if len(objects) < compactMinDBs {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
+			return nil
+		}
+		if err := t.compactFiles(objects); err != nil {
+			return err
+		}
+		// upload the compacted db
+		err = t.upload()
+		if err != nil {
+			return err
+		}
+
+		// remove source files from storage which were compacted
+		err = t.removeObjectsFromStorage(objects)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	var compacted bool
+	if len(objects) > 1 {
+		if err := t.compactFiles(objects); err != nil {
+			return err
+		}
+		compacted = true
+	}
+
+	if len(objects) == 1 {
+		// download the db
+		downloadAt := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
+		err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[0].Key, downloadAt, false)
+		if err != nil {
+			return err
+		}
+		t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(downloadAt)
+		if err != nil {
+			return err
+		}
+		// no need to enforce write to disk, we'll upload and delete the file anyway.
+		t.compactedDB.NoSync = true
+	}
+
+	if t.compactedDB == nil {
+		level.Info(util_log.Logger).Log("msg", "skipping compaction no files found.")
+		return nil
+	}
+
+	empty, markCount, err := t.tableMarker.MarkForDelete(t.ctx, t.name, t.compactedDB)
 	if err != nil {
 		return err
 	}
 
+	if empty {
+		return t.removeObjectsFromStorage(objects)
+	}
+
+	if markCount == 0 && !compacted {
+		// we didn't make a modification so let's just return
+		return nil
+	}
+
+	err = t.upload()
+	if err != nil {
+		return err
+	}
+
+	return t.removeObjectsFromStorage(objects)
+}
+
+func (t *table) compactFiles(objects []chunk.StorageObject) error {
+	var err error
+	// create a new compacted db
+	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
+	if err != nil {
+		return err
+	}
+	// no need to enforce write to disk, we'll upload and delete the file anyway.
+	// in case of failure we'll restart the whole process anyway.
+	t.compactedDB.NoSync = true
 	level.Info(util_log.Logger).Log("msg", "starting compaction of dbs")
 
 	errChan := make(chan error)
 	readObjectChan := make(chan string)
 	n := util_math.Min(len(objects), readDBsParallelism)
 
-	// read files parallelly
+	// read files in parallel
 	for i := 0; i < n; i++ {
 		go func() {
 			var err error
@@ -121,7 +197,7 @@ func (t *table) compact() error {
 
 					downloadAt := filepath.Join(t.workingDirectory, dbName)
 
-					err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objectKey, downloadAt)
+					err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objectKey, downloadAt, false)
 					if err != nil {
 						return
 					}
@@ -137,7 +213,6 @@ func (t *table) compact() error {
 					return
 				}
 			}
-
 		}()
 	}
 
@@ -181,15 +256,7 @@ func (t *table) compact() error {
 	}
 
 	level.Info(util_log.Logger).Log("msg", "finished compacting the dbs")
-
-	// upload the compacted db
-	err = t.upload()
-	if err != nil {
-		return err
-	}
-
-	// remove source files from storage which were compacted
-	return t.removeObjectsFromStorage(objects)
+	return nil
 }
 
 func (t *table) cleanup() error {
@@ -230,7 +297,7 @@ func (t *table) readFile(path string) error {
 	if err != nil {
 		return err
 	}
-
+	db.NoSync = true
 	defer func() {
 		if err := db.Close(); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to close db", "path", path, "err", err)
@@ -268,7 +335,7 @@ func (t *table) readFile(path string) error {
 				if err != nil {
 					return err
 				}
-
+				// todo(cyriltovena) we should just re-slice to avoid allocations
 				writeBatch = make([]indexEntry, 0, batchSize)
 			}
 
@@ -297,7 +364,7 @@ func (t *table) upload() error {
 
 	// compress the compactedDB.
 	compressedDBPath := fmt.Sprintf("%s.gz", compactedDBPath)
-	err = shipper_util.CompressFile(compactedDBPath, compressedDBPath)
+	err = shipper_util.CompressFile(compactedDBPath, compressedDBPath, false)
 	if err != nil {
 		return err
 	}

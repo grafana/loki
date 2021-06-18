@@ -224,7 +224,7 @@ func (cb *CachingBucket) Get(ctx context.Context, name string) (io.ReadCloser, e
 	hits := cfg.cache.Fetch(ctx, []string{contentKey, existsKey})
 	if hits[contentKey] != nil {
 		cb.operationHits.WithLabelValues(objstore.OpGet, cfgName).Inc()
-		return ioutil.NopCloser(bytes.NewReader(hits[contentKey])), nil
+		return objstore.NopCloserWithSize(bytes.NewBuffer(hits[contentKey])), nil
 	}
 
 	// If we know that file doesn't exist, we can return that. Useful for deletion marks.

@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/test"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -30,9 +31,9 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -142,8 +143,8 @@ func Benchmark_Push(b *testing.B) {
 	limits.EnforceMetricName = false
 	limits.MaxLineSize = math.MaxInt32
 	limits.RejectOldSamples = true
-	limits.RejectOldSamplesMaxAge = 24 * time.Hour
-	limits.CreationGracePeriod = 24 * time.Hour
+	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
+	limits.CreationGracePeriod = model.Duration(24 * time.Hour)
 	ingester := &mockIngester{}
 	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck

@@ -24,18 +24,17 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
 	listutil "github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -452,7 +451,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
 
-	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(ctx, heapItr, queryServer, req.Limit)
 }
@@ -491,7 +490,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
 
-	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendSampleBatches(ctx, heapItr, queryServer)
 }

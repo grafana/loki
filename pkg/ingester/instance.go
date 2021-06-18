@@ -22,15 +22,14 @@ import (
 	cutil "github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/runtime"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -372,7 +371,7 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logpro
 }
 
 func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	groups, err := loghttp.Match(req.GetGroups())
+	groups, err := logql.Match(req.GetGroups())
 	if err != nil {
 		return nil, err
 	}
@@ -606,7 +605,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	// send until the limit is reached.
 	sent := uint32(0)
 	for sent < limit && !isDone(queryServer.Context()) {
-		batch, batchSize, err := iter.ReadBatch(i, helpers.MinUint32(queryBatchSize, limit-sent))
+		batch, batchSize, err := iter.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
 		}

@@ -17,8 +17,8 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
+	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -218,7 +218,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 		return err
 	}
 	if c, ok := c.(io.Closer); ok {
-		defer helpers.LogErrorWithContext(ctx, "closing client", c.Close)
+		defer lokiutil.LogErrorWithContext(ctx, "closing client", c.Close)
 	}
 	ic := c.(logproto.IngesterClient)
 

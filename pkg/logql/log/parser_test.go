@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
@@ -57,7 +59,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{n}`),
 			labels.Labels{},
 			labels.Labels{
-				{Name: ErrorLabel, Value: errJSON},
+				{Name: logqlmodel.ErrorLabel, Value: errJSON},
 			},
 		},
 		{
@@ -318,7 +320,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-				{Name: ErrorLabel, Value: errJSON},
+				{Name: logqlmodel.ErrorLabel, Value: errJSON},
 			},
 		},
 	}
@@ -406,8 +408,9 @@ func Benchmark_Parser(b *testing.B) {
 		{"json", jsonLine, NewJSONParser(), []string{"response_latency_seconds"}},
 		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}},
 		{"logfmt", logfmtLine, NewLogfmtParser(), []string{"info", "throughput", "org_id"}},
-		{"regex greedy", nginxline, mustNewRegexParser(`GET (?P<path>.*?)/\?`), []string{"path"}},
-		{"regex status digits", nginxline, mustNewRegexParser(`HTTP/1.1" (?P<statuscode>\d{3}) `), []string{"statuscode"}},
+		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), []string{"path"}},
+		{"regex status digits", nginxline, mustStage(NewRegexpParser(`HTTP/1.1" (?P<statuscode>\d{3}) `)), []string{"statuscode"}},
+		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), []string{"path"}},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)
@@ -429,6 +432,13 @@ func Benchmark_Parser(b *testing.B) {
 			})
 		})
 	}
+}
+
+func mustStage(s Stage, err error) Stage {
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
 func TestNewRegexpParser(t *testing.T) {
@@ -458,14 +468,14 @@ func TestNewRegexpParser(t *testing.T) {
 func Test_regexpParser_Parse(t *testing.T) {
 	tests := []struct {
 		name   string
-		parser *RegexpParser
+		parser Stage
 		line   []byte
 		lbs    labels.Labels
 		want   labels.Labels
 	}{
 		{
 			"no matches",
-			mustNewRegexParser("(?P<foo>foo|bar)buzz"),
+			mustStage(NewRegexpParser("(?P<foo>foo|bar)buzz")),
 			[]byte("blah"),
 			labels.Labels{
 				{Name: "app", Value: "foo"},
@@ -476,7 +486,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 		},
 		{
 			"double matches",
-			mustNewRegexParser("(?P<foo>.*)buzz"),
+			mustStage(NewRegexpParser("(?P<foo>.*)buzz")),
 			[]byte("matchebuzz barbuzz"),
 			labels.Labels{
 				{Name: "app", Value: "bar"},
@@ -488,7 +498,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 		},
 		{
 			"duplicate labels",
-			mustNewRegexParser("(?P<bar>bar)buzz"),
+			mustStage(NewRegexpParser("(?P<bar>bar)buzz")),
 			[]byte("barbuzz"),
 			labels.Labels{
 				{Name: "bar", Value: "foo"},
@@ -500,7 +510,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 		},
 		{
 			"multiple labels extracted",
-			mustNewRegexParser("status=(?P<status>\\w+),latency=(?P<latency>\\w+)(ms|ns)"),
+			mustStage(NewRegexpParser("status=(?P<status>\\w+),latency=(?P<latency>\\w+)(ms|ns)")),
 			[]byte("status=200,latency=500ms"),
 			labels.Labels{
 				{Name: "app", Value: "foo"},
@@ -538,7 +548,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
-				{Name: ErrorLabel, Value: errLogfmt},
+				{Name: logqlmodel.ErrorLabel, Value: errLogfmt},
 			},
 		},
 		{
@@ -728,6 +738,71 @@ func Test_unpackParser_Parse(t *testing.T) {
 			require.Equal(t, tt.wantLine, l)
 			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
+		})
+	}
+}
+
+func Test_PatternParser(t *testing.T) {
+	tests := []struct {
+		pattern string
+		line    []byte
+		lbs     labels.Labels
+		want    labels.Labels
+	}{
+		{
+			`<ip> <userid> <user> [<_>] "<method> <path> <_>" <status> <size>`,
+			[]byte(`127.0.0.1 user-identifier frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`),
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: "ip", Value: "127.0.0.1"},
+				{Name: "userid", Value: "user-identifier"},
+				{Name: "user", Value: "frank"},
+				{Name: "method", Value: "GET"},
+				{Name: "path", Value: "/apache_pb.gif"},
+				{Name: "status", Value: "200"},
+				{Name: "size", Value: "2326"},
+			},
+		},
+		{
+			`<_> msg="<method> <path> (<status>) <duration>"`,
+			[]byte(`level=debug ts=2021-05-19T07:54:26.864644382Z caller=logging.go:66 traceID=7fbb92fd0eb9c65d msg="POST /loki/api/v1/push (204) 1.238734ms"`),
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+				{Name: "method_extracted", Value: "POST"},
+				{Name: "path", Value: "/loki/api/v1/push"},
+				{Name: "status", Value: "204"},
+				{Name: "duration", Value: "1.238734ms"},
+			},
+		},
+		{
+			`foo <f>"`,
+			[]byte(`bar`),
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.pattern, func(t *testing.T) {
+			t.Parallel()
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
+			pp, err := NewPatternParser(tt.pattern)
+			require.NoError(t, err)
+			_, _ = pp.Process(tt.line, b)
+			sort.Sort(tt.want)
+			require.Equal(t, tt.want, b.Labels())
 		})
 	}
 }

@@ -2,7 +2,8 @@ syntax = "proto3";
 
 package alerts;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
+import "github.com/prometheus/alertmanager/cluster/clusterpb/cluster.proto";
 
 option go_package = "alertspb";
 option (gogoproto.marshaler_all) = true;
@@ -18,4 +19,11 @@ message AlertConfigDesc {
 message TemplateDesc {
     string filename = 1;
     string body = 2;
+}
+
+message FullStateDesc {
+  // Alertmanager (clusterpb) types do not have Equal methods.
+  option (gogoproto.equal) = false;
+
+  clusterpb.FullState state = 1;
 }

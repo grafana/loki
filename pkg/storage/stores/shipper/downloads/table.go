@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -141,10 +142,17 @@ func LoadTable(ctx context.Context, name, cacheLocation string, storageClient St
 			continue
 		}
 
+		fullPath := filepath.Join(folderPath, fileInfo.Name())
 		// if we fail to open a boltdb file, lets skip it and let sync operation re-download the file from storage.
-		boltdb, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(folderPath, fileInfo.Name()))
+		boltdb, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open existing boltdb file %s, continuing without it to let the sync operation catch up", filepath.Join(folderPath, fileInfo.Name())), "err", err)
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open existing boltdb file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
+			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which causes boltdb client to panic.
+			// We already recover the panic but the lock on the file is not released by boltdb client which causes the reopening of the file to fail when the sync operation tries it.
+			// We want to remove the file failing to open to get rid of the lock.
+			if err := os.Remove(fullPath); err != nil {
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove boltdb file %s which failed to open", fullPath))
+			}
 			continue
 		}
 
@@ -214,13 +222,16 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 
 	// open all the downloaded dbs
 	for _, object := range objects {
-
 		dbName, err := getDBNameFromObjectKey(object.Key)
 		if err != nil {
 			return err
 		}
 
 		filePath := path.Join(folderPath, dbName)
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping opening of non-existent file %s, possibly not downloaded due to it being removed during compaction.", filePath))
+			continue
+		}
 		boltdb, err := shipper_util.SafeOpenBoltdbFile(filePath)
 		if err != nil {
 			return err
@@ -300,7 +311,6 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 			return nil
 		})
-
 		if err != nil {
 			return err
 		}
@@ -446,8 +456,12 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	folderPath, _ := t.folderPathForTable(false)
 	filePath := path.Join(folderPath, dbName)
 
-	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, filePath)
+	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, filePath, true)
 	if err != nil {
+		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", storageObject.Key))
+			return nil
+		}
 		return err
 	}
 
@@ -521,9 +535,14 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 				}
 
 				filePath := path.Join(folderPathForTable, dbName)
-				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath)
+				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath, true)
 				if err != nil {
-					break
+					if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", object.Key))
+						err = nil
+					} else {
+						break
+					}
 				}
 			}
 
@@ -539,7 +558,6 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 			case <-ctx.Done():
 				break
 			}
-
 		}
 		close(queue)
 	}()

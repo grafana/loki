@@ -27,6 +27,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -37,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -53,7 +55,7 @@ const (
 
 var (
 	errNoStoreGatewayAddress  = errors.New("no store-gateway address configured")
-	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks for %s (limit: %d)"
+	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from store-gateways for %s (limit: %d)"
 )
 
 // BlocksStoreSet is the interface used to get the clients to query series on a set of blocks.
@@ -89,7 +91,7 @@ type BlocksStoreClient interface {
 type BlocksStoreLimits interface {
 	bucket.TenantConfigProvider
 
-	MaxChunksPerQuery(userID string) int
+	MaxChunksPerQueryFromStore(userID string) int
 	StoreGatewayTenantShardSize(userID string) int
 }
 
@@ -401,7 +403,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		resSeriesSets     = []storage.SeriesSet(nil)
 		resWarnings       = storage.Warnings(nil)
 
-		maxChunksLimit  = q.limits.MaxChunksPerQuery(q.userID)
+		maxChunksLimit  = q.limits.MaxChunksPerQueryFromStore(q.userID)
 		leftChunksLimit = maxChunksLimit
 
 		resultMtx sync.Mutex
@@ -423,7 +425,6 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		if maxChunksLimit > 0 {
 			leftChunksLimit -= numChunks
 		}
-
 		resultMtx.Unlock()
 
 		return queriedBlocks, nil
@@ -563,6 +564,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		queriedBlocks = []ulid.ULID(nil)
 		numChunks     = atomic.NewInt32(0)
 		spanLog       = spanlogger.FromContext(ctx)
+		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -611,11 +613,17 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if s := resp.GetSeries(); s != nil {
 					mySeries = append(mySeries, s)
 
+					// Add series fingerprint to query limiter; will return error if we are over the limit
+					limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))
+					if limitErr != nil {
+						return limitErr
+					}
+
 					// Ensure the max number of chunks limit hasn't been reached (max == 0 means disabled).
 					if maxChunksLimit > 0 {
 						actual := numChunks.Add(int32(len(s.Chunks)))
 						if actual > int32(leftChunksLimit) {
-							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, convertMatchersToString(matchers), maxChunksLimit))
+							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
 						}
 					}
 				}
@@ -875,11 +883,11 @@ func createLabelNamesRequest(minT, maxT int64, blockIDs []ulid.ULID) (*storepb.L
 }
 
 func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.ULID, matchers ...*labels.Matcher) (*storepb.LabelValuesRequest, error) {
-	// TODO(replay): add matchers to LabelValuesRequest once it has that property
 	req := &storepb.LabelValuesRequest{
-		Start: minT,
-		End:   maxT,
-		Label: label,
+		Start:    minT,
+		End:      maxT,
+		Label:    label,
+		Matchers: convertMatchersToLabelMatcher(matchers),
 	}
 
 	// Selectively query only specific blocks.
@@ -936,20 +944,4 @@ func countSeriesBytes(series []*storepb.Series) (count uint64) {
 	}
 
 	return count
-}
-
-func convertMatchersToString(matchers []*labels.Matcher) string {
-	out := strings.Builder{}
-	out.WriteRune('{')
-
-	for idx, m := range matchers {
-		if idx > 0 {
-			out.WriteRune(',')
-		}
-
-		out.WriteString(m.String())
-	}
-
-	out.WriteRune('}')
-	return out.String()
 }

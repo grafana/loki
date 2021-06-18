@@ -7,50 +7,6 @@ Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
 and how to scrape logs from files.
 
-- [Configuring Promtail](#configuring-promtail)
-  - [Printing Promtail Config At Runtime](#printing-promtail-config-at-runtime)
-  - [Configuration File Reference](#configuration-file-reference)
-  - [server](#server)
-  - [clients](#clients)
-  - [positions](#positions)
-  - [scrape_configs](#scrape_configs)
-    - [pipeline_stages](#pipeline_stages)
-      - [docker](#docker)
-      - [cri](#cri)
-      - [regex](#regex)
-      - [json](#json)
-      - [template](#template)
-      - [match](#match)
-      - [timestamp](#timestamp)
-        - [output](#output)
-      - [labels](#labels)
-      - [metrics](#metrics)
-        - [counter](#counter)
-        - [gauge](#gauge)
-        - [histogram](#histogram)
-      - [tenant](#tenant)
-    - [journal](#journal)
-    - [syslog](#syslog)
-      - [Available Labels](#available-labels)
-    - [loki_push_api](#loki_push_api)
-    - [windows_events](#windows_events)
-    - [relabel_configs](#relabel_configs)
-    - [static_configs](#static_configs)
-    - [file_sd_config](#file_sd_config)
-    - [kubernetes_sd_config](#kubernetes_sd_config)
-      - [`node`](#node)
-      - [`service`](#service)
-      - [`pod`](#pod)
-      - [`endpoints`](#endpoints)
-      - [`ingress`](#ingress)
-  - [target_config](#target_config)
-  - [Example Docker Config](#example-docker-config)
-  - [Example Static Config](#example-static-config)
-  - [Example Static Config without targets](#example-static-config-without-targets)
-  - [Example Journal Config](#example-journal-config)
-  - [Example Syslog Config](#example-syslog-config)
-  - [Example Push Config](#example-push-config)
-
 ## Printing Promtail Config At Runtime
 
 If you pass Promtail the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
@@ -352,6 +308,16 @@ file_sd_configs:
 # same host.
 kubernetes_sd_configs:
   - [<kubernetes_sd_config>]
+  
+# Describes how to use the Consul Catalog API to discover services registered with the 
+# consul cluster.
+consul_sd_configs:
+  [ - <consul_sd_config> ... ]
+  
+# Describes how to use the Consul Agent API to discover services registered with the consul agent
+# running on the same host as Promtail.
+consulagent_sd_configs:
+  [ - <consulagent_sd_config> ... ]
 ```
 
 ### pipeline_stages
@@ -603,7 +569,7 @@ type: Counter
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -632,7 +598,7 @@ type: Gauge
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -660,7 +626,7 @@ type: Histogram
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -1196,6 +1162,148 @@ You may wish to check out the 3rd party
 [Prometheus Operator](https://github.com/coreos/prometheus-operator),
 which automates the Prometheus setup on top of Kubernetes.
 
+### consul_sd_config
+
+Consul SD configurations allow retrieving scrape targets from the [Consul Catalog API](https://www.consul.io).
+When using the Catalog API, each running Promtail will get
+a list of all services known to the whole consul cluster when discovering
+new targets.
+
+The following meta labels are available on targets during [relabeling](#relabel_configs):
+
+* `__meta_consul_address`: the address of the target
+* `__meta_consul_dc`: the datacenter name for the target
+* `__meta_consul_health`: the health status of the service
+* `__meta_consul_metadata_<key>`: each node metadata key value of the target
+* `__meta_consul_node`: the node name defined for the target
+* `__meta_consul_service_address`: the service address of the target
+* `__meta_consul_service_id`: the service ID of the target
+* `__meta_consul_service_metadata_<key>`: each service metadata key value of the target
+* `__meta_consul_service_port`: the service port of the target
+* `__meta_consul_service`: the name of the service the target belongs to
+* `__meta_consul_tagged_address_<key>`: each node tagged address key value of the target
+* `__meta_consul_tags`: the list of tags of the target joined by the tag separator
+
+```yaml
+# The information to access the Consul Catalog API. It is to be defined
+# as the Consul documentation requires.
+[ server: <host> | default = "localhost:8500" ]
+[ token: <secret> ]
+[ datacenter: <string> ]
+[ scheme: <string> | default = "http" ]
+[ username: <string> ]
+[ password: <secret> ]
+
+tls_config:
+  [ <tls_config> ]
+
+# A list of services for which targets are retrieved. If omitted, all services
+# are scraped.
+services:
+  [ - <string> ]
+
+# See https://www.consul.io/api/catalog.html#list-nodes-for-service to know more
+# about the possible filters that can be used.
+
+# An optional list of tags used to filter nodes for a given service. Services must contain all tags in the list.
+tags:
+  [ - <string> ]
+
+# Node metadata key/value pairs to filter nodes for a given service.
+[ node_meta:
+  [ <string>: <string> ... ] ]
+
+# The string by which Consul tags are joined into the tag label.
+[ tag_separator: <string> | default = , ]
+
+# Allow stale Consul results (see https://www.consul.io/api/features/consistency.html). Will reduce load on Consul.
+[ allow_stale: <boolean> | default = true ]
+
+# The time after which the provided names are refreshed.
+# On large setup it might be a good idea to increase this value because the catalog will change all the time.
+[ refresh_interval: <duration> | default = 30s ]
+```
+
+Note that the IP number and port used to scrape the targets is assembled as
+`<__meta_consul_address>:<__meta_consul_service_port>`. However, in some
+Consul setups, the relevant address is in `__meta_consul_service_address`.
+In those cases, you can use the [relabel](#relabel_configs)
+feature to replace the special `__address__` label.
+
+The [relabeling phase](#relabel_configs) is the preferred and more powerful
+way to filter services or nodes for a service based on arbitrary labels. For
+users with thousands of services it can be more efficient to use the Consul API
+directly which has basic support for filtering nodes (currently by node
+metadata and a single tag).
+  
+### consulagent_sd_config
+
+Consul Agent SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)
+Agent API. When using the Agent API, each running Promtail will only get
+services registered with the local agent running on the same host when discovering
+new targets. This is suitable for very large Consul clusters for which using the
+Catalog API would be too slow or resource intensive.
+
+The following meta labels are available on targets during [relabeling](#relabel_configs):
+
+* `__meta_consulagent_address`: the address of the target
+* `__meta_consulagent_dc`: the datacenter name for the target
+* `__meta_consulagent_health`: the health status of the service
+* `__meta_consulagent_metadata_<key>`: each node metadata key value of the target
+* `__meta_consulagent_node`: the node name defined for the target
+* `__meta_consulagent_service_address`: the service address of the target
+* `__meta_consulagent_service_id`: the service ID of the target
+* `__meta_consulagent_service_metadata_<key>`: each service metadata key value of the target
+* `__meta_consulagent_service_port`: the service port of the target
+* `__meta_consulagent_service`: the name of the service the target belongs to
+* `__meta_consulagent_tagged_address_<key>`: each node tagged address key value of the target
+* `__meta_consulagent_tags`: the list of tags of the target joined by the tag separator
+
+```yaml
+# The information to access the Consul Agent API. It is to be defined
+# as the Consul documentation requires.
+[ server: <host> | default = "localhost:8500" ]
+[ token: <secret> ]
+[ datacenter: <string> ]
+[ scheme: <string> | default = "http" ]
+[ username: <string> ]
+[ password: <secret> ]
+
+tls_config:
+  [ <tls_config> ]
+
+# A list of services for which targets are retrieved. If omitted, all services
+# are scraped.
+services:
+  [ - <string> ]
+
+# See https://www.consul.io/api-docs/agent/service#filtering to know more
+# about the possible filters that can be used.
+
+# An optional list of tags used to filter nodes for a given service. Services must contain all tags in the list.
+tags:
+  [ - <string> ]
+
+# Node metadata key/value pairs to filter nodes for a given service.
+[ node_meta:
+  [ <string>: <string> ... ] ]
+
+# The string by which Consul tags are joined into the tag label.
+[ tag_separator: <string> | default = , ]
+```
+
+Note that the IP address and port number used to scrape the targets is assembled as
+`<__meta_consul_address>:<__meta_consul_service_port>`. However, in some
+Consul setups, the relevant address is in `__meta_consul_service_address`.
+In those cases, you can use the [relabel](#relabel_configs)
+feature to replace the special `__address__` label.
+
+The [relabeling phase](#relabel_configs) is the preferred and more powerful
+way to filter services or nodes for a service based on arbitrary labels. For
+users with thousands of services it can be more efficient to use the Consul API
+directly which has basic support for filtering nodes (currently by node
+metadata and a single tag).
+
 ## target_config
 
 The `target_config` block controls the behavior of reading files from discovered
@@ -1241,6 +1349,8 @@ scrape_configs:
       __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
 ```
 
+If you are rotating logs, be careful when using a wildcard pattern like `*.log`, and make sure it doesn't match the rotated log file. For example, if you move your logs from `server.log` to `server.01-01-1970.log` in the same directory every night, a static config with a wildcard search pattern like `*.log` will pick up that new file and read it, effectively causing the entire days logs to be re-ingested.
+
 ## Example Static Config without targets
 
 While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
@@ -1279,7 +1389,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://ip_or_hostname_where_loki_runns:3100/loki/api/v1/push
+  - url: http://ip_or_hostname_where_loki_runs:3100/loki/api/v1/push
 
 scrape_configs:
   - job_name: journal

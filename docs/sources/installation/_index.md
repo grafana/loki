@@ -2,7 +2,7 @@
 title: Installation
 weight: 200
 ---
-# Install Loki
+# Installation
 
 ## Installation methods
 

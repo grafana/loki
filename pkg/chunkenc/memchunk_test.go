@@ -17,12 +17,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 var testEncoding = []Encoding{
@@ -1054,4 +1056,97 @@ func Test_HeadIteratorReverse(t *testing.T) {
 	// let's try again without the headblock.
 	require.NoError(t, c.cut())
 	assertOrder(t, i)
+}
+
+func TestMemChunk_Rebound(t *testing.T) {
+	chkFrom := time.Unix(0, 0)
+	chkThrough := chkFrom.Add(time.Hour)
+	originalChunk := buildTestMemChunk(t, chkFrom, chkThrough)
+
+	for _, tc := range []struct {
+		name               string
+		sliceFrom, sliceTo time.Time
+		err                error
+	}{
+		{
+			name:      "slice whole chunk",
+			sliceFrom: chkFrom,
+			sliceTo:   chkThrough,
+		},
+		{
+			name:      "slice first half",
+			sliceFrom: chkFrom,
+			sliceTo:   chkFrom.Add(30 * time.Minute),
+		},
+		{
+			name:      "slice second half",
+			sliceFrom: chkFrom.Add(30 * time.Minute),
+			sliceTo:   chkThrough,
+		},
+		{
+			name:      "slice in the middle",
+			sliceFrom: chkFrom.Add(15 * time.Minute),
+			sliceTo:   chkFrom.Add(45 * time.Minute),
+		},
+		{
+			name:      "slice interval not aligned with sample intervals",
+			sliceFrom: chkFrom.Add(time.Second),
+			sliceTo:   chkThrough.Add(-time.Second),
+		},
+		{
+			name:      "slice out of bounds without overlap",
+			err:       encoding.ErrSliceNoDataInRange,
+			sliceFrom: chkThrough.Add(time.Minute),
+			sliceTo:   chkThrough.Add(time.Hour),
+		},
+		{
+			name:      "slice out of bounds with overlap",
+			sliceFrom: chkFrom.Add(10 * time.Minute),
+			sliceTo:   chkThrough.Add(10 * time.Minute),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			newChunk, err := originalChunk.Rebound(tc.sliceFrom, tc.sliceTo)
+			if tc.err != nil {
+				require.Equal(t, tc.err, err)
+				return
+			}
+			require.NoError(t, err)
+
+			// iterate originalChunk from slice start to slice end + nanosecond. Adding a nanosecond here to be inclusive of sample at end time.
+			originalChunkItr, err := originalChunk.Iterator(context.Background(), tc.sliceFrom, tc.sliceTo.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			require.NoError(t, err)
+
+			// iterate newChunk for whole chunk interval which should include all the samples in the chunk and hence align it with expected values.
+			newChunkItr, err := newChunk.Iterator(context.Background(), chkFrom, chkThrough, logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			require.NoError(t, err)
+
+			for {
+				originalChunksHasMoreSamples := originalChunkItr.Next()
+				newChunkHasMoreSamples := newChunkItr.Next()
+
+				// either both should have samples or none of them
+				require.Equal(t, originalChunksHasMoreSamples, newChunkHasMoreSamples)
+				if !originalChunksHasMoreSamples {
+					break
+				}
+
+				require.Equal(t, originalChunkItr.Entry(), newChunkItr.Entry())
+			}
+
+		})
+	}
+}
+
+func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
+	chk := NewMemChunk(EncGZIP, defaultBlockSize, 0)
+	for ; from.Before(through); from = from.Add(time.Second) {
+		err := chk.Append(&logproto.Entry{
+			Line:      from.String(),
+			Timestamp: from,
+		})
+		require.NoError(t, err)
+	}
+
+	return chk
 }

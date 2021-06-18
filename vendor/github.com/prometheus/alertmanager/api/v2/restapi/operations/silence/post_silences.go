@@ -22,9 +22,9 @@ package silence
 import (
 	"net/http"
 
-	middleware "github.com/go-openapi/runtime/middleware"
-	strfmt "github.com/go-openapi/strfmt"
-	swag "github.com/go-openapi/swag"
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/strfmt"
+	"github.com/go-openapi/swag"
 )
 
 // PostSilencesHandlerFunc turns a function with the right signature into a post silences handler
@@ -74,6 +74,7 @@ func (o *PostSilences) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 }
 
 // PostSilencesOKBody post silences o k body
+//
 // swagger:model PostSilencesOKBody
 type PostSilencesOKBody struct {
 

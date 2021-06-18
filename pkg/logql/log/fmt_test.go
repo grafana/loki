@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 func Test_lineFormatter_Format(t *testing.T) {
@@ -132,7 +134,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 			newMustLineFormatter(`{{.foo Replace "foo"}}`),
 			labels.Labels{{Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 			nil,
-			labels.Labels{{Name: ErrorLabel, Value: errTemplateFormat}, {Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
+			labels.Labels{{Name: logqlmodel.ErrorLabel, Value: errTemplateFormat}, {Name: "foo", Value: "blip"}, {Name: "bar", Value: "blop"}},
 		},
 		{
 			"missing",
@@ -293,7 +295,7 @@ func Test_validate(t *testing.T) {
 	}{
 		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
 		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
-		{"no error", []LabelFmt{NewRenameLabelFmt(ErrorLabel, "bar")}, true},
+		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

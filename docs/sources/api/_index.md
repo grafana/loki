@@ -3,62 +3,12 @@ title: HTTP API
 weight: 900
 ---
 
-# Loki's HTTP API
+# Loki HTTP API
 
 Loki exposes an HTTP API for pushing, querying, and tailing log data.
 Note that [authenticating](../operations/authentication/) against the API is
 out of scope for Loki.
 
-The HTTP API includes the following endpoints:
-
-- [Loki's HTTP API](#lokis-http-api)
-  - [Microservices Mode](#microservices-mode)
-  - [Matrix, Vector, And Streams](#matrix-vector-and-streams)
-  - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
-    - [Examples](#examples)
-  - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-        - [Step vs Interval](#step-vs-interval)
-    - [Examples](#examples-1)
-  - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
-    - [Examples](#examples-2)
-  - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
-    - [Examples](#examples-3)
-  - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
-  - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
-    - [Examples](#examples-4)
-  - [`GET /api/prom/tail`](#get-apipromtail)
-  - [`GET /api/prom/query`](#get-apipromquery)
-    - [Examples](#examples-5)
-  - [`GET /api/prom/label`](#get-apipromlabel)
-    - [Examples](#examples-6)
-  - [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
-    - [Examples](#examples-7)
-  - [`POST /api/prom/push`](#post-apiprompush)
-    - [Examples](#examples-8)
-  - [`GET /ready`](#get-ready)
-  - [`POST /flush`](#post-flush)
-  - [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
-  - [`GET /metrics`](#get-metrics)
-  - [`GET /config`](#get-config)
-  - [Series](#series)
-    - [Examples](#examples-9)
-  - [Statistics](#statistics)
-  - [`GET /ruler/ring`](#ruler-ring-status)
-  - [`GET /loki/api/v1/rules`](#list-rule-groups)
-  - [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
-  - [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
-  - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
-  - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
-  - [`DELETE /loki/api/v1/rules/{namespace}`](#delete-namespace)
-  - [`GET /api/prom/rules`](#list-rule-groups)
-  - [`GET /api/prom/rules/{namespace}`](#get-rule-groups-by-namespace)
-  - [`GET /api/prom/rules/{namespace}/{groupName}`](#get-rule-group)
-  - [`POST /api/prom/rules/{namespace}`](#set-rule-group)
-  - [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
-  - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
-  - [`GET /prometheus/api/v1/rules`](#list-rules)
-  - [`GET /prometheus/api/v1/alerts`](#list-alerts)
-  
 ## Microservices mode
 
 When deploying Loki in microservices mode, the set of endpoints exposed by each
@@ -559,8 +509,8 @@ Response (streamed):
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf message:
 
-- [Protobuf definition](https://github.com/grafana/loki/tree/master/pkg/logproto/logproto.proto)
-- [Go client library](https://github.com/grafana/loki/tree/master/pkg/promtail/client/client.go)
+- [Protobuf definition](https://github.com/grafana/loki/blob/main/pkg/logproto/logproto.proto)
+- [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/promtail/client/client.go)
 
 Alternatively, if the `Content-Type` header is set to `application/json`, a
 JSON post body can be sent in the following format:

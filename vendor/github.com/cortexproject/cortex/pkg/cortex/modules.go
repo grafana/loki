@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -150,11 +149,6 @@ func (t *Cortex) initRing() (serv services.Service, err error) {
 
 func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 	if t.Cfg.RuntimeConfig.LoadPath == "" {
-		t.Cfg.RuntimeConfig.LoadPath = t.Cfg.LimitsConfig.PerTenantOverrideConfig
-		t.Cfg.RuntimeConfig.ReloadPeriod = t.Cfg.LimitsConfig.PerTenantOverridePeriod
-	}
-
-	if t.Cfg.RuntimeConfig.LoadPath == "" {
 		// no need to initialize module if load path is empty
 		return nil, nil
 	}
@@ -239,7 +233,11 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 // Enable merge querier if multi tenant query federation is enabled
 func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 	if t.Cfg.TenantFederation.Enabled {
-		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable))
+		// Make sure the mergeQuerier is only used for request with more than a
+		// single tenant. This allows for a less impactful enabling of tenant
+		// federation.
+		byPassForSingleQuerier := true
+		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, byPassForSingleQuerier))
 	}
 	return nil, nil
 }
@@ -424,6 +422,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.DistributorShardingStrategy = t.Cfg.Distributor.ShardingStrategy
 	t.Cfg.Ingester.DistributorShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
 	t.Cfg.Ingester.StreamTypeFn = ingesterChunkStreaming(t.RuntimeConfig)
+	t.Cfg.Ingester.InstanceLimitsFn = ingesterInstanceLimits(t.RuntimeConfig)
 	t.tsdbIngesterConfig()
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Overrides, t.Store, prometheus.DefaultRegisterer, util_log.Logger)
@@ -562,10 +561,6 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
 	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
-	if t.Cfg.Frontend.CompressResponses {
-		handler = gziphandler.GzipHandler(handler)
-	}
-
 	t.API.RegisterQueryFrontendHandler(handler)
 
 	if frontendV1 != nil {
@@ -723,7 +718,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 		return
 	}
 
-	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, store, util_log.Logger, prometheus.DefaultRegisterer)
+	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, store, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}

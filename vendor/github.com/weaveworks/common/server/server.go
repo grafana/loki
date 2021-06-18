@@ -151,11 +151,20 @@ type Server struct {
 
 // New makes a new Server
 func New(cfg Config) (*Server, error) {
+	tcpConnections := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: cfg.MetricsNamespace,
+		Name:      "tcp_connections",
+		Help:      "Current number of accepted TCP connections.",
+	}, []string{"protocol"})
+	prometheus.MustRegister(tcpConnections)
+
 	// Setup listeners first, so we can fail early if the port is in use.
 	httpListener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.HTTPListenAddress, cfg.HTTPListenPort))
 	if err != nil {
 		return nil, err
 	}
+	httpListener = middleware.CountingListener(httpListener, tcpConnections.WithLabelValues("http"))
+
 	if cfg.HTTPConnLimit > 0 {
 		httpListener = netutil.LimitListener(httpListener, cfg.HTTPConnLimit)
 	}
@@ -164,6 +173,7 @@ func New(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	grpcListener = middleware.CountingListener(grpcListener, tcpConnections.WithLabelValues("grpc"))
 
 	if cfg.GRPCConnLimit > 0 {
 		grpcListener = netutil.LimitListener(grpcListener, cfg.GRPCConnLimit)

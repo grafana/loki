@@ -6,8 +6,8 @@ package tracing
 import (
 	"context"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2"
+	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/tracing"
 	opentracing "github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 )
