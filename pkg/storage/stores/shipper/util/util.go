@@ -18,7 +18,10 @@ import (
 	"go.etcd.io/bbolt"
 )
 
-const delimiter = "/"
+const (
+	delimiter = "/"
+	sep       = "\xff"
+)
 
 var (
 	gzipReader = sync.Pool{}
@@ -251,4 +254,22 @@ func ListDirectory(ctx context.Context, dirName string, objectClient chunk.Objec
 		return nil, err
 	}
 	return objects, nil
+}
+
+func QueryKey(q chunk.IndexQuery) string {
+	ret := q.TableName + sep + q.HashValue
+
+	if len(q.RangeValuePrefix) != 0 {
+		ret += sep + yoloString(q.RangeValuePrefix)
+	}
+
+	if len(q.RangeValueStart) != 0 {
+		ret += sep + yoloString(q.RangeValueStart)
+	}
+
+	if len(q.ValueEqual) != 0 {
+		ret += sep + yoloString(q.ValueEqual)
+	}
+
+	return ret
 }

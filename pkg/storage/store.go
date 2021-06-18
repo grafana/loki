@@ -405,6 +405,16 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 			return boltDBIndexClientWithShipper, nil
 		}
 
+		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
+			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer)
+			if err != nil {
+				return nil, err
+			}
+
+			boltDBIndexClientWithShipper = gateway
+			return gateway, nil
+		}
+
 		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
 		if err != nil {
 			return nil, err
