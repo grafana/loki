@@ -203,7 +203,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 
 # Base path to serve all API routes from (e.g., /v1/).
 # CLI flag: -server.path-prefix
-[http_prefix: <string> | default = "/api/prom"]
+[http_path_prefix: <string> | default = ""]
 ```
 
 ## distributor_config
