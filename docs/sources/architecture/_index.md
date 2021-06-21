@@ -174,8 +174,7 @@ Logs from each unique set of labels are built up into "chunks" in memory and
 then flushed to the backing storage backend.
 
 If an ingester process crashes or exits abruptly, all the data that has not yet
-been flushed will be lost. Loki is usually configured to replicate multiple
-replicas (usually 3) of each log to mitigate this risk.
+been flushed could be lost. Loki is usually configured with a [Write Ahead Log](../operations/storage/wal) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
 
 In general, all lines pushed to Loki for a given stream (unique combination of
 labels) must have a newer timestamp than the line received before it. There are,
