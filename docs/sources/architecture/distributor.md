@@ -6,8 +6,7 @@ weight: 1000
 
 This document builds upon the information in the [Loki Architecture](./) page.
 
-Distributors communicate with ingesters via [gRPC](https://grpc.io). They are
-stateless and the quantity of ingesters can be increased or decreased as needed.
+Distributors are stateless and communicate with ingesters via [gRPC](https://grpc.io). The quantity of distributors can be increased or decreased as needed.
 
 ## Where does it live?
 
