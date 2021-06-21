@@ -6,6 +6,8 @@ weight: 1000
 
 This document builds upon the information in the [Loki Architecture](./) page.
 
+Distributors are stateless and communicate with ingesters via [gRPC](https://grpc.io). The quantity of distributors can be increased or decreased as needed.
+
 ## Where does it live?
 
 The distributor is the first component on Loki's write path downstream from any gateways providing auth or load balancing. It's responsible for validating, preprocessing, and applying a subset of rate limiting to incoming data before sending it to the ingester component. It is important that a load balancer sits in front of the distributor in order to properly balance traffic to them.
