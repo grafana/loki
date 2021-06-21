@@ -146,7 +146,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 
 	table := []test{
 		{
-			desc:         "disabled certificate signing service",
+			desc: "disabled certificate signing service",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -161,7 +161,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 			},
 		},
 		{
-			desc:         "enabled certificate signing service for every http service",
+			desc: "enabled certificate signing service for every http service",
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
