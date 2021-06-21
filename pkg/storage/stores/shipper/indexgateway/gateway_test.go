@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/stretchr/testify/require"
 )
 
 const (

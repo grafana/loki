@@ -135,7 +135,7 @@ func TestGatewayClient(t *testing.T) {
 		}
 
 		require.False(t, itr.Next())
-		numCallbacks += 1
+		numCallbacks++
 		return true
 	})
 	require.NoError(t, err)
