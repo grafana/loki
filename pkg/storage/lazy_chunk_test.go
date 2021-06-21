@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -67,7 +67,6 @@ func TestLazyChunksPop(t *testing.T) {
 		{2, 1, 1, 1},
 		{3, 4, 3, 0},
 	} {
-
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			lc := &lazyChunks{}
 			for i := 0; i < tc.initial; i++ {
@@ -177,6 +176,7 @@ func (f fakeBlock) MaxTime() int64 { return f.maxt }
 func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterator {
 	return nil
 }
+
 func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }

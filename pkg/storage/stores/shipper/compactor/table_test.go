@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )

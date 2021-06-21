@@ -6,9 +6,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 type mockTableQuerier struct {
@@ -72,7 +73,6 @@ func TestDoParallelQueries(t *testing.T) {
 			tableQuerier.hasQueries(t, tc.queryCount)
 		})
 	}
-
 }
 
 func buildQueries(n int) []chunk.IndexQuery {

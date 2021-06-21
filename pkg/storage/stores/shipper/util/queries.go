@@ -5,9 +5,10 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 const maxQueriesPerGoroutine = 100

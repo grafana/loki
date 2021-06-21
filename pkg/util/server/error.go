@@ -5,12 +5,12 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request

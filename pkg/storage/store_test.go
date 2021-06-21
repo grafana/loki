@@ -22,15 +22,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -192,8 +192,8 @@ func getLocalStore() Store {
 
 	storeConfig := Config{
 		Config: storage.Config{
-			BoltDBConfig: cortex_local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-			FSConfig:     cortex_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+			BoltDBConfig: chunk_local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+			FSConfig:     chunk_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
 		MaxChunkBatchSize: 10,
 	}
@@ -810,7 +810,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 	config := Config{
 		Config: storage.Config{
-			FSConfig: cortex_local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+			FSConfig: chunk_local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
