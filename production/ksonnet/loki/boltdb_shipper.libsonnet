@@ -20,7 +20,7 @@
         write_dedupe_cache_config:: {},
       },
       storage_config+: {
-        boltdb_shipper: {
+        boltdb_shipper+: {
           shared_store: $._config.boltdb_shipper_shared_store,
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
