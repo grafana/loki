@@ -311,7 +311,7 @@ This will only affect reads(queries) and not writes and only for the duration of
 
 ### IMPORTANT: Scrape config changes to both Helm and Ksonnet will affect labels created by Promtail
 
-PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the promtail scrape config:
+PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the Promtail scrape config:
 
 ````
 This is triggered by https://github.com/grafana/jsonnet-libs/pull/261
@@ -545,7 +545,7 @@ table_manager:
 
 ### Promtail Config Changes
 
-The underlying backoff library used in promtail had a config change which wasn't originally noted in the release notes:
+The underlying backoff library used in Promtail had a config change which wasn't originally noted in the release notes:
 
 If you get this error:
 
