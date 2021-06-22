@@ -61,11 +61,13 @@ Exception: Sorry, this route always breaks
 We would like to collapse all lines of the traceback into one multiline block. In this example, all blocks start with a timestamp in brackets. Thus we configure a `multiline` stage with the `firstline` regular expression `^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]`. This will match the start of the traceback but not the following lines until `Exception: Sorry, this route always breaks`. These will be part of a multiline block and one log entry in Loki.
 
 ```yaml
-multiline:
-  # Identify timestamps as first line of a multiline block. Note the string should be in single quotes.
-  firstline: '^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]'
-
-  max_wait_time: 3s
+- multiline:
+    # Identify timestamps as first line of a multiline block. Enclose the string in single quotes.
+    firstline: '^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]'
+    max_wait_time: 3s
+- regex:
+    # Flag (?s:.*) needs to be set for regex stage to capture full traceback log in the extracted map.
+    expression: '^(?P<time>\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]) (?P<message>(?s:.*))$'
 ```
 
 ### Custom Log Format
