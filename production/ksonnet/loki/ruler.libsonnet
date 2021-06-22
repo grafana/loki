@@ -14,7 +14,7 @@
 
   _config+:: {
     // run rulers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
-    stateful_rulers: if self.using_boltdb_shipper then true else super.stateful_rulers,
+    stateful_rulers: if self.using_boltdb_shipper && !self.use_index_gateway then true else super.stateful_rulers,
   },
 
   ruler_container::

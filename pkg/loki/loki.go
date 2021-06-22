@@ -379,6 +379,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -395,6 +396,7 @@ func (t *Loki) setupModuleManager() error {
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:             {Server},
 		Compactor:                {Server, Overrides},
+		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
 		All:                      {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
