@@ -3,27 +3,28 @@ title: Build from source
 ---
 # Build from source
 
-In order to build Loki manually, you need to clone the GitHub repo and then `make Loki`.
+Clone the Loki repository and use the provided `Makefile`
+to build Loki from source.
 
 ## Prerequisites
 
-- Go 1.14 or later
-- Make
-- Docker (for updating protobuf files and yacc files)
+- [Go](https://golang.org/), version 1.14 or later;
+set your `$GOPATH` environment variable
+- `make`
+- Docker (for updating protobuf and yacc files)
 
-## Build manually on your local system
+## Build locally
 
-Clone Loki to `$GOPATH/src/github.com/grafana/loki`:
+1. Clone Loki to `$GOPATH/src/github.com/grafana/loki`:
 
-```bash
-git clone https://github.com/grafana/loki $GOPATH/src/github.com/grafana/loki
-```
+    ```bash
+    git clone https://github.com/grafana/loki $GOPATH/src/github.com/grafana/loki
+    ```
 
-Then change into that directory and run `make loki`:
+2. With a current working directory of `$GOPATH/src/github.com/grafana/loki`:
 
-```bash
-cd $GOPATH/src/github.com/grafana/loki
-make loki
-```
+    ```bash
+    make loki
+    ```
 
-A file at ./cmd/loki/loki will be created and is the final built binary.
+The built executable will be in `$GOPATH/src/github.com/grafana/loki/cmd/loki/loki`.
