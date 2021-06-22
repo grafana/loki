@@ -1,7 +1,7 @@
 {
   _config+:: {
       use_index_gateway: false,
-      index_gateway_pvc_size: '10Gi',
+      index_gateway_pvc_size: '50Gi',
       index_gateway_pvc_class: 'fast',
 
     loki+: {

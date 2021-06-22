@@ -260,15 +260,15 @@ func QueryKey(q chunk.IndexQuery) string {
 	ret := q.TableName + sep + q.HashValue
 
 	if len(q.RangeValuePrefix) != 0 {
-		ret += sep + yoloString(q.RangeValuePrefix)
+		ret += sep + string(q.RangeValuePrefix)
 	}
 
 	if len(q.RangeValueStart) != 0 {
-		ret += sep + yoloString(q.RangeValueStart)
+		ret += sep + string(q.RangeValueStart)
 	}
 
 	if len(q.ValueEqual) != 0 {
-		ret += sep + yoloString(q.ValueEqual)
+		ret += sep + string(q.ValueEqual)
 	}
 
 	return ret

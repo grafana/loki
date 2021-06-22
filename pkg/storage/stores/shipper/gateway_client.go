@@ -101,11 +101,11 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 }
 
 func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback util.Callback) error {
-	queryKepQueryMap := make(map[string]chunk.IndexQuery, len(queries))
+	queryKeyQueryMap := make(map[string]chunk.IndexQuery, len(queries))
 	gatewayQueries := make([]*indexgatewaypb.IndexQuery, 0, len(queries))
 
 	for _, query := range queries {
-		queryKepQueryMap[shipper_util.QueryKey(query)] = query
+		queryKeyQueryMap[shipper_util.QueryKey(query)] = query
 		gatewayQueries = append(gatewayQueries, &indexgatewaypb.IndexQuery{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,
@@ -128,9 +128,9 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuer
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		query, ok := queryKepQueryMap[resp.QueryKey]
+		query, ok := queryKeyQueryMap[resp.QueryKey]
 		if !ok {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKepQueryMap)))
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKeyQueryMap)))
 			return fmt.Errorf("unexpected %s QueryKey received", resp.QueryKey)
 		}
 		if !callback(query, &readBatch{resp}) {
