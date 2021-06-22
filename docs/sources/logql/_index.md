@@ -280,7 +280,7 @@ will get those labels extracted:
 
 ##### Pattern
 
-The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression. The expression matches the structure of a log line.
+The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression (`| pattern "<pattern-expression>"`). The expression matches the structure of a log line.
 
 Consider this NGINX log line.
 
