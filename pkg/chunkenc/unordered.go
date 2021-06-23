@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/binary"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
+	"github.com/cespare/xxhash/v2"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -94,13 +96,15 @@ func (i interval) LowAtDimension(_ uint64) int64 { return i.mint }
 // rangetree library treats this as inclusive, but we want exclusivity
 func (i interval) HighAtDimension(_ uint64) int64 { return i.maxt - 1 }
 
-func (hb *unorderedHeadBlock) iterator(
+// helper for base logic across {Entry,Sample}Iterator
+func (hb *unorderedHeadBlock) buildIter(
 	ctx context.Context,
 	direction logproto.Direction,
 	mint,
 	maxt int64,
-	pipeline log.StreamPipeline,
-) iter.EntryIterator {
+	entryFn func(int64, string),
+	finalizer func() interface{},
+) interface{} {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
@@ -111,13 +115,6 @@ func (hb *unorderedHeadBlock) iterator(
 	})
 
 	chunkStats := stats.GetChunkData(ctx)
-
-	// We are doing a copy everytime, this is because b.entries could change completely,
-	// the alternate would be that we allocate a new b.entries everytime we cut a block,
-	// but the tradeoff is that queries to near-realtime data would be much lower than
-	// cutting of blocks.
-	streams := map[uint64]*logproto.Stream{}
-
 	process := func(es *nsEntries) {
 		chunkStats.HeadChunkLines += int64(len(es.entries))
 
@@ -137,25 +134,9 @@ func (hb *unorderedHeadBlock) iterator(
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i]
 			chunkStats.HeadChunkBytes += int64(len(line))
-			newLine, parsedLbs, ok := pipeline.ProcessString(line)
-			if !ok {
-				return
-			}
-			var stream *logproto.Stream
-			lhash := parsedLbs.Hash()
-			if stream, ok = streams[lhash]; !ok {
-				stream = &logproto.Stream{
-					Labels: parsedLbs.String(),
-				}
-				streams[lhash] = stream
-			}
+			entryFn(es.ts, line)
 
-			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp: time.Unix(0, es.ts),
-				Line:      newLine,
-			})
 		}
-
 	}
 
 	if direction == logproto.FORWARD {
@@ -168,14 +149,113 @@ func (hb *unorderedHeadBlock) iterator(
 		}
 	}
 
-	if len(streams) == 0 {
-		return iter.NoopIterator
-	}
-	streamsResult := make([]logproto.Stream, 0, len(streams))
-	for _, stream := range streams {
-		streamsResult = append(streamsResult, *stream)
-	}
-	return iter.NewStreamsIterator(ctx, streamsResult, direction)
+	return finalizer()
+}
+
+func (hb *unorderedHeadBlock) iterator(
+	ctx context.Context,
+	direction logproto.Direction,
+	mint,
+	maxt int64,
+	pipeline log.StreamPipeline,
+) iter.EntryIterator {
+
+	// We are doing a copy everytime, this is because b.entries could change completely,
+	// the alternate would be that we allocate a new b.entries everytime we cut a block,
+	// but the tradeoff is that queries to near-realtime data would be much lower than
+	// cutting of blocks.
+	streams := map[uint64]*logproto.Stream{}
+
+	return hb.buildIter(
+		ctx,
+		direction,
+		mint,
+		maxt,
+		func(ts int64, line string) {
+			newLine, parsedLbs, ok := pipeline.ProcessString(line)
+			if !ok {
+				return
+			}
+
+			var stream *logproto.Stream
+			lhash := parsedLbs.Hash()
+			if stream, ok = streams[lhash]; !ok {
+				stream = &logproto.Stream{
+					Labels: parsedLbs.String(),
+				}
+				streams[lhash] = stream
+			}
+
+			stream.Entries = append(stream.Entries, logproto.Entry{
+				Timestamp: time.Unix(0, ts),
+				Line:      newLine,
+			})
+		},
+		func() interface{} {
+			if len(streams) == 0 {
+				return iter.NoopIterator
+			}
+			streamsResult := make([]logproto.Stream, 0, len(streams))
+			for _, stream := range streams {
+				streamsResult = append(streamsResult, *stream)
+			}
+			return iter.NewStreamsIterator(ctx, streamsResult, direction)
+		},
+	).(iter.EntryIterator)
+}
+
+func (hb *unorderedHeadBlock) sampleIterator(
+	ctx context.Context,
+	mint,
+	maxt int64,
+	extractor log.StreamSampleExtractor,
+) iter.SampleIterator {
+
+	series := map[uint64]*logproto.Series{}
+
+	return hb.buildIter(
+		ctx,
+		logproto.FORWARD,
+		mint,
+		maxt,
+		func(ts int64, line string) {
+			value, parsedLabels, ok := extractor.ProcessString(line)
+			if !ok {
+				return
+			}
+			var found bool
+			var s *logproto.Series
+			lhash := parsedLabels.Hash()
+			if s, found = series[lhash]; !found {
+				s = &logproto.Series{
+					Labels: parsedLabels.String(),
+				}
+				series[lhash] = s
+			}
+
+			// []byte here doesn't create allocation because Sum64 has go:noescape directive
+			// It specifies that the function does not allow any of the pointers passed as arguments
+			// to escape into the heap or into the values returned from the function.
+			h := xxhash.Sum64([]byte(line))
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: ts,
+				Value:     value,
+				Hash:      h,
+			})
+		},
+		func() interface{} {
+			if len(series) == 0 {
+				return iter.NoopIterator
+			}
+			seriesRes := make([]logproto.Series, 0, len(series))
+			for _, s := range series {
+				// todo(ctovena) not sure we need this sort.
+				sort.Sort(s)
+				seriesRes = append(seriesRes, *s)
+			}
+			return iter.NewMultiSeriesIterator(ctx, seriesRes)
+		},
+	).(iter.SampleIterator)
 }
 
 func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
