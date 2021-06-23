@@ -1,7 +1,10 @@
 package chunkenc
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"math"
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
@@ -9,6 +12,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/pkg/labels"
+)
+
+var (
+	noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
 )
 
 type unorderedHeadBlock struct {
@@ -17,6 +26,7 @@ type unorderedHeadBlock struct {
 	// Scans: (O(k+log(n))) where k=num_scanned_entries & n=total_entries
 	rt rangetree.RangeTree
 
+	lines      int   // number of entries
 	size       int   // size of uncompressed bytes.
 	mint, maxt int64 // upper and lower bounds
 }
@@ -55,7 +65,7 @@ func (hb *unorderedHeadBlock) append(ts int64, line string) {
 		ts: ts,
 	}
 	displaced := hb.rt.Add(e)
-	if len(displaced) > 0 {
+	if displaced[0] != nil {
 		e.entries = append(displaced[0].(*nsEntries).entries, line)
 	} else {
 		e.entries = []string{line}
@@ -71,6 +81,7 @@ func (hb *unorderedHeadBlock) append(ts int64, line string) {
 	}
 
 	hb.size += len(line)
+	hb.lines++
 
 }
 
@@ -165,4 +176,47 @@ func (hb *unorderedHeadBlock) iterator(
 		streamsResult = append(streamsResult, *stream)
 	}
 	return iter.NewStreamsIterator(ctx, streamsResult, direction)
+}
+
+func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
+	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		inBuf.Reset()
+		serializeBytesBufferPool.Put(inBuf)
+	}()
+	outBuf := &bytes.Buffer{}
+
+	encBuf := make([]byte, binary.MaxVarintLen64)
+	compressedWriter := pool.GetWriter(outBuf)
+	defer pool.PutWriter(compressedWriter)
+
+	itr := hb.iterator(
+		context.Background(),
+		logproto.FORWARD,
+		0,
+		math.MaxInt64,
+		noopStreamPipeline,
+	)
+
+	// TODO(owen-d): we don't have to reuse the iterator implementation here
+	// and could avoid allocations due to re-casting the underlying types.
+	for itr.Next() {
+		e := itr.Entry()
+		n := binary.PutVarint(encBuf, e.Timestamp.UnixNano())
+		inBuf.Write(encBuf[:n])
+
+		n = binary.PutUvarint(encBuf, uint64(len(e.Line)))
+		inBuf.Write(encBuf[:n])
+
+		inBuf.WriteString(e.Line)
+	}
+
+	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
+		return nil, errors.Wrap(err, "appending entry")
+	}
+	if err := compressedWriter.Close(); err != nil {
+		return nil, errors.Wrap(err, "flushing pending compress buffer")
+	}
+
+	return outBuf.Bytes(), nil
 }
