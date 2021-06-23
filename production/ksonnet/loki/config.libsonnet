@@ -30,6 +30,12 @@
     compactor_pvc_size: '10Gi',
     compactor_pvc_class: 'fast',
 
+    // This is the configmap created with `$._config.overrides` data
+    overrides_configmap_name: 'overrides',
+
+    // This is the configmap which will be used by workloads.
+    overrides_configmap_mount_name: 'overrides',
+    overrides_configmap_mount_path: '/etc/loki/overrides',
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.

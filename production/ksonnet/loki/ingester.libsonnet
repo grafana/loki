@@ -37,7 +37,10 @@
     deployment.new(name, 3, [$.ingester_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
-    $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
+    $.util.configVolumeMount(
+      $._config.overrides_configmap_mount_name,
+      $._config.overrides_configmap_mount_path,
+    ) +
     $.util.antiAffinity +
     deployment.mixin.spec.withMinReadySeconds(60) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +
@@ -58,7 +61,10 @@
     statefulSet.mixin.spec.withPodManagementPolicy('Parallel') +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
-    $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
+    $.util.configVolumeMount(
+      $._config.overrides_configmap_mount_name,
+      $._config.overrides_configmap_mount_path,
+    ) +
     $.util.antiAffinity +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001) +  // 10001 is the group ID assigned to Loki in the Dockerfile

@@ -8,9 +8,9 @@
   ruler_args:: $._config.commonArgs {
     target: 'ruler',
   } + if $._config.using_boltdb_shipper then {
-       // Use PVC for caching
-       'boltdb.shipper.cache-location': '/data/boltdb-cache',
-     } else {},
+    // Use PVC for caching
+    'boltdb.shipper.cache-location': '/data/boltdb-cache',
+  } else {},
 
   _config+:: {
     // run rulers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
@@ -38,7 +38,10 @@
       deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(600) +
       $.config_hash_mixin +
       $.util.configVolumeMount('loki', '/etc/loki/config') +
-      $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
+      $.util.configVolumeMount(
+        $._config.overrides_configmap_mount_name,
+        $._config.overrides_configmap_mount_path,
+      ) +
       $.util.antiAffinity
     else {},
 
@@ -64,7 +67,10 @@
     statefulSet.mixin.spec.withPodManagementPolicy('Parallel') +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
-    $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
+    $.util.configVolumeMount(
+      $._config.overrides_configmap_mount_name,
+      $._config.overrides_configmap_mount_path,
+    ) +
     $.util.antiAffinity +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
