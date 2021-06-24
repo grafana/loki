@@ -97,16 +97,21 @@ func (i interval) LowAtDimension(_ uint64) int64 { return i.mint }
 func (i interval) HighAtDimension(_ uint64) int64 { return i.maxt - 1 }
 
 // helper for base logic across {Entry,Sample}Iterator
-func (hb *unorderedHeadBlock) buildIter(
+func (hb *unorderedHeadBlock) forEntries(
 	ctx context.Context,
 	direction logproto.Direction,
 	mint,
 	maxt int64,
+	initializer func(numEntries int),
 	entryFn func(int64, string),
-	finalizer func() interface{},
-) interface{} {
+) {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopIterator
+
+		if initializer != nil {
+			initializer(0)
+		}
+
+		return
 	}
 
 	entries := hb.rt.Query(interval{
@@ -149,7 +154,6 @@ func (hb *unorderedHeadBlock) buildIter(
 		}
 	}
 
-	return finalizer()
 }
 
 func (hb *unorderedHeadBlock) iterator(
@@ -166,11 +170,12 @@ func (hb *unorderedHeadBlock) iterator(
 	// cutting of blocks.
 	streams := map[uint64]*logproto.Stream{}
 
-	return hb.buildIter(
+	hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
+		nil,
 		func(ts int64, line string) {
 			newLine, parsedLbs, ok := pipeline.ProcessString(line)
 			if !ok {
@@ -191,17 +196,16 @@ func (hb *unorderedHeadBlock) iterator(
 				Line:      newLine,
 			})
 		},
-		func() interface{} {
-			if len(streams) == 0 {
-				return iter.NoopIterator
-			}
-			streamsResult := make([]logproto.Stream, 0, len(streams))
-			for _, stream := range streams {
-				streamsResult = append(streamsResult, *stream)
-			}
-			return iter.NewStreamsIterator(ctx, streamsResult, direction)
-		},
-	).(iter.EntryIterator)
+	)
+
+	if len(streams) == 0 {
+		return iter.NoopIterator
+	}
+	streamsResult := make([]logproto.Stream, 0, len(streams))
+	for _, stream := range streams {
+		streamsResult = append(streamsResult, *stream)
+	}
+	return iter.NewStreamsIterator(ctx, streamsResult, direction)
 }
 
 func (hb *unorderedHeadBlock) sampleIterator(
@@ -213,11 +217,12 @@ func (hb *unorderedHeadBlock) sampleIterator(
 
 	series := map[uint64]*logproto.Series{}
 
-	return hb.buildIter(
+	hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
+		nil,
 		func(ts int64, line string) {
 			value, parsedLabels, ok := extractor.ProcessString(line)
 			if !ok {
@@ -243,19 +248,18 @@ func (hb *unorderedHeadBlock) sampleIterator(
 				Hash:      h,
 			})
 		},
-		func() interface{} {
-			if len(series) == 0 {
-				return iter.NoopIterator
-			}
-			seriesRes := make([]logproto.Series, 0, len(series))
-			for _, s := range series {
-				// todo(ctovena) not sure we need this sort.
-				sort.Sort(s)
-				seriesRes = append(seriesRes, *s)
-			}
-			return iter.NewMultiSeriesIterator(ctx, seriesRes)
-		},
-	).(iter.SampleIterator)
+	)
+
+	if len(series) == 0 {
+		return iter.NoopIterator
+	}
+	seriesRes := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		// todo(ctovena) not sure we need this sort.
+		sort.Sort(s)
+		seriesRes = append(seriesRes, *s)
+	}
+	return iter.NewMultiSeriesIterator(ctx, seriesRes)
 }
 
 func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
