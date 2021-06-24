@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"io"
 	"math"
 	"sort"
 	"time"
@@ -87,13 +88,15 @@ func (hb *unorderedHeadBlock) append(ts int64, line string) {
 
 }
 
+// Implements rangetree.Interval
 type interval struct {
 	mint, maxt int64
 }
 
 func (i interval) LowAtDimension(_ uint64) int64 { return i.mint }
 
-// rangetree library treats this as inclusive, but we want exclusivity
+// rangetree library treats this as inclusive, but we want exclusivity,
+// or [from, through) in nanoseconds
 func (i interval) HighAtDimension(_ uint64) int64 { return i.maxt - 1 }
 
 // helper for base logic across {Entry,Sample}Iterator
@@ -103,8 +106,8 @@ func (hb *unorderedHeadBlock) forEntries(
 	mint,
 	maxt int64,
 	initializer func(numEntries int),
-	entryFn func(int64, string),
-) {
+	entryFn func(int64, string) error, // returning an error exits early
+) (err error) {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 
 		if initializer != nil {
@@ -139,7 +142,7 @@ func (hb *unorderedHeadBlock) forEntries(
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i]
 			chunkStats.HeadChunkBytes += int64(len(line))
-			entryFn(es.ts, line)
+			err = entryFn(es.ts, line)
 
 		}
 	}
@@ -147,13 +150,20 @@ func (hb *unorderedHeadBlock) forEntries(
 	if direction == logproto.FORWARD {
 		for _, e := range entries {
 			process(e.(*nsEntries))
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		for i := len(entries) - 1; i >= 0; i-- {
 			process(entries[i].(*nsEntries))
+			if err != nil {
+				return err
+			}
 		}
 	}
 
+	return nil
 }
 
 func (hb *unorderedHeadBlock) iterator(
@@ -170,16 +180,16 @@ func (hb *unorderedHeadBlock) iterator(
 	// cutting of blocks.
 	streams := map[uint64]*logproto.Stream{}
 
-	hb.forEntries(
+	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
 		nil,
-		func(ts int64, line string) {
+		func(ts int64, line string) error {
 			newLine, parsedLbs, ok := pipeline.ProcessString(line)
 			if !ok {
-				return
+				return nil
 			}
 
 			var stream *logproto.Stream
@@ -195,6 +205,7 @@ func (hb *unorderedHeadBlock) iterator(
 				Timestamp: time.Unix(0, ts),
 				Line:      newLine,
 			})
+			return nil
 		},
 	)
 
@@ -217,16 +228,16 @@ func (hb *unorderedHeadBlock) sampleIterator(
 
 	series := map[uint64]*logproto.Series{}
 
-	hb.forEntries(
+	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
 		nil,
-		func(ts int64, line string) {
+		func(ts int64, line string) error {
 			value, parsedLabels, ok := extractor.ProcessString(line)
 			if !ok {
-				return
+				return nil
 			}
 			var found bool
 			var s *logproto.Series
@@ -247,6 +258,7 @@ func (hb *unorderedHeadBlock) sampleIterator(
 				Value:     value,
 				Hash:      h,
 			})
+			return nil
 		},
 	)
 
@@ -262,6 +274,7 @@ func (hb *unorderedHeadBlock) sampleIterator(
 	return iter.NewMultiSeriesIterator(ctx, seriesRes)
 }
 
+// serialise is used in creating an ordered, compressed block from an unorderedHeadBlock
 func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
@@ -274,13 +287,13 @@ func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 	compressedWriter := pool.GetWriter(outBuf)
 	defer pool.PutWriter(compressedWriter)
 
-	hb.forEntries(
+	_ = hb.forEntries(
 		context.Background(),
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
 		nil,
-		func(ts int64, line string) {
+		func(ts int64, line string) error {
 			n := binary.PutVarint(encBuf, ts)
 			inBuf.Write(encBuf[:n])
 
@@ -288,6 +301,7 @@ func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 			inBuf.Write(encBuf[:n])
 
 			inBuf.WriteString(line)
+			return nil
 		},
 	)
 
@@ -299,4 +313,111 @@ func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 	}
 
 	return outBuf.Bytes(), nil
+}
+
+// CheckpointSize returns the estimated size of the headblock checkpoint.
+func (hb *unorderedHeadBlock) CheckpointSize(version byte) int {
+	size := 1                                                          // version
+	size += binary.MaxVarintLen32 * 2                                  // total entries + total size
+	size += binary.MaxVarintLen64 * 2                                  // mint,maxt
+	size += (binary.MaxVarintLen64 + binary.MaxVarintLen32) * hb.lines // ts + len of log line.
+	size += hb.size                                                    // uncompressed bytes of lines
+	return size
+}
+
+// CheckpointBytes serializes a headblock to []byte. This is used by the WAL checkpointing,
+// which does not want to mutate a chunk by cutting it (otherwise risking content address changes), but
+// needs to serialize/deserialize the data to disk to ensure data durability.
+func (hb *unorderedHeadBlock) CheckpointBytes(version byte, b []byte) ([]byte, error) {
+	buf := bytes.NewBuffer(b[:0])
+	err := hb.CheckpointTo(version, buf)
+	return buf.Bytes(), err
+}
+
+// CheckpointTo serializes a headblock to a `io.Writer`. see `CheckpointBytes`.
+func (hb *unorderedHeadBlock) CheckpointTo(version byte, w io.Writer) error {
+	eb := EncodeBufferPool.Get().(*encbuf)
+	defer EncodeBufferPool.Put(eb)
+
+	eb.reset()
+
+	eb.putByte(version)
+	_, err := w.Write(eb.get())
+	if err != nil {
+		return errors.Wrap(err, "write headBlock version")
+	}
+	eb.reset()
+
+	eb.putUvarint(hb.lines)
+
+	_, err = w.Write(eb.get())
+	if err != nil {
+		return errors.Wrap(err, "write headBlock metas")
+	}
+	eb.reset()
+
+	err = hb.forEntries(
+		context.Background(),
+		logproto.FORWARD,
+		0,
+		math.MaxInt64,
+		nil,
+		func(ts int64, line string) error {
+			eb.putVarint64(ts)
+			eb.putUvarint(len(line))
+			_, err = w.Write(eb.get())
+			if err != nil {
+				return errors.Wrap(err, "write headBlock entry ts")
+			}
+			eb.reset()
+
+			_, err := io.WriteString(w, line)
+			if err != nil {
+				return errors.Wrap(err, "write headblock entry line")
+			}
+			return nil
+		},
+	)
+
+	return nil
+}
+
+func (hb *unorderedHeadBlock) FromCheckpoint(b []byte) error {
+	// ensure it's empty
+	*hb = *newUnorderedHeadBlock()
+
+	if len(b) < 1 {
+		return nil
+	}
+
+	db := decbuf{b: b}
+
+	version := db.byte()
+	if db.err() != nil {
+		return errors.Wrap(db.err(), "verifying headblock header")
+	}
+	switch version {
+	case chunkFormatV1, chunkFormatV2, chunkFormatV3:
+	default:
+		return errors.Errorf("incompatible headBlock version (%v), only V1,V2,V3 is currently supported", version)
+	}
+
+	n := db.uvarint()
+
+	if err := db.err(); err != nil {
+		return errors.Wrap(err, "verifying headblock metadata")
+	}
+
+	for i := 0; i < n && db.err() == nil; i++ {
+		ts := db.varint64()
+		lineLn := db.uvarint()
+		line := string(db.bytes(lineLn))
+		hb.append(ts, line)
+	}
+
+	if err := db.err(); err != nil {
+		return errors.Wrap(err, "decoding entries")
+	}
+
+	return nil
 }

@@ -2,6 +2,8 @@ package chunkenc
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -21,6 +23,57 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator, dir logproto.Dire
 		i++
 	}
 	require.Equal(t, i, len(exp))
+}
+
+func Test_forEntriesEarlyReturn(t *testing.T) {
+	hb := newUnorderedHeadBlock()
+	for i := 0; i < 10; i++ {
+		hb.append(int64(i), fmt.Sprint(i))
+	}
+
+	// forward
+	var forwardCt int
+	var forwardStop int64
+	err := hb.forEntries(
+		context.Background(),
+		logproto.FORWARD,
+		0,
+		math.MaxInt64,
+		nil,
+		func(ts int64, line string) error {
+			forwardCt++
+			forwardStop = ts
+			if ts == 5 {
+				return errors.New("err")
+			}
+			return nil
+		},
+	)
+	require.Error(t, err)
+	require.Equal(t, int64(5), forwardStop)
+	require.Equal(t, 6, forwardCt)
+
+	// backward
+	var backwardCt int
+	var backwardStop int64
+	err = hb.forEntries(
+		context.Background(),
+		logproto.BACKWARD,
+		0,
+		math.MaxInt64,
+		nil,
+		func(ts int64, line string) error {
+			backwardCt++
+			backwardStop = ts
+			if ts == 5 {
+				return errors.New("err")
+			}
+			return nil
+		},
+	)
+	require.Error(t, err)
+	require.Equal(t, int64(5), backwardStop)
+	require.Equal(t, 5, backwardCt)
 }
 
 func Test_Unordered_InsertRetrieval(t *testing.T) {
@@ -166,4 +219,26 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			iterEq(t, tc.exp, itr, tc.dir)
 		})
 	}
+}
+
+func Test_UnorderedHeadBlockCheckpointRoundtrip(t *testing.T) {
+	hb := newUnorderedHeadBlock()
+
+	for i := 0; i < 100; i++ {
+		hb.append(int64(i), fmt.Sprint(i))
+	}
+
+	// turn to bytes
+	b, err := hb.CheckpointBytes(DefaultChunkFormat, nil)
+	require.Nil(t, err)
+
+	// restore a copy from bytes
+	cpy := newUnorderedHeadBlock()
+	require.Nil(t, cpy.FromCheckpoint(b))
+
+	// ensure copy's bytes match original
+	cpyBytes, err := cpy.CheckpointBytes(DefaultChunkFormat, nil)
+	require.Nil(t, err)
+	require.Equal(t, b, cpyBytes)
+
 }

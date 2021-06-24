@@ -32,6 +32,8 @@ const (
 	chunkFormatV2
 	chunkFormatV3
 
+	DefaultChunkFormat = chunkFormatV3 // the currently used chunk format
+
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
 
@@ -277,7 +279,7 @@ func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 		blocks:     []block{},
 
 		head:   &headBlock{},
-		format: chunkFormatV3,
+		format: DefaultChunkFormat,
 
 		encoding: enc,
 	}
