@@ -3,8 +3,8 @@
 
   _config+:: {
     stateful_ingesters: if $._config.wal_enabled then true else super.stateful_ingesters,
-    loki+:with({
-      ingester+:{
+    loki+: with({
+      ingester+: {
         // disables transfers when running as statefulsets.
         // pod rolling stragety will always fail transfers
         // and the WAL supersedes this.
@@ -12,7 +12,7 @@
         wal+: {
           enabled: true,
           dir: '/loki/wal',
-          replay_memory_ceiling: '7GB', // should be set upto ~50% of available memory
+          replay_memory_ceiling: '7GB',  // should be set upto ~50% of available memory
         },
       },
     }),
