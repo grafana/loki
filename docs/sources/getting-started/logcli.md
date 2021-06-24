@@ -1,36 +1,37 @@
 ---
 title: LogCLI
 ---
-# Querying Loki with LogCLI
+# LogCLI, Loki's command-line interface
 
-If you prefer a command line interface, LogCLI also allows users to run [LogQL]({{< relref "../logql/_index.md" >}})
-queries against a Loki server.
+LogCLI is the command-line interface to Loki.
+It facilitates running [LogQL]({{< relref "../logql/_index.md" >}})
+queries against a Loki instance.
 
 ## Installation
 
 ### Binary (Recommended)
 
-Every release includes binaries for `logcli` which can be found on the
-[Releases page](https://github.com/grafana/loki/releases).
+Download the `logcli` binary from the
+[Loki releases page](https://github.com/grafana/loki/releases).
 
 ### From source
 
-Use `go get` to install `logcli` to `$GOPATH/bin`:
+Install `logcli` to your `$GOPATH/bin`:
 
 ```
-$ go get github.com/grafana/loki/cmd/logcli
+go get github.com/grafana/loki/cmd/logcli
 ```
 
-## Usage
+## LogCLI usage
 
-### Example
+### Grafana Cloud example
 
 If you are running on Grafana Cloud, use:
 
 ```bash
-$ export LOKI_ADDR=https://logs-us-west1.grafana.net
-$ export LOKI_USERNAME=<username>
-$ export LOKI_PASSWORD=<password>
+export LOKI_ADDR=https://logs-us-west1.grafana.net
+export LOKI_USERNAME=<username>
+export LOKI_PASSWORD=<password>
 ```
 
 Otherwise you can point LogCLI to a local instance directly
@@ -62,54 +63,77 @@ $ logcli series -q --match='{namespace="loki",container_name="loki"}'
 {app="loki", container_name="loki", controller_revision_hash="loki-57c9df47f4", filename="/var/log/pods/loki_loki-0_8ed03ded-bacb-4b13-a6fe-53a445a15887/loki/0.log", instance="loki-0", job="loki/loki", name="loki", namespace="loki", release="loki", statefulset_kubernetes_io_pod_name="loki-0", stream="stderr"}
 ```
 
-#### Batched Queries
+### Batched queries
 
-Starting with Loki 1.6.0, `logcli` batches log queries to Loki.
+LogCLI sends queries to Loki such that query results arrive in batches.
 
-If you set a `--limit` on a query (default is 30) to a large number, say `--limit=10000`, then logcli automatically
-sends this request to Loki in batches.
+The `--limit` option for a `logcli query` command caps the quantity of
+log lines for a single query.
+When not set, `--limit` defaults to 30.
+This low default value protects the user from overwhelming the system
+for cases in which the specified query would have returned a large quantity
+of log lines.
 
-The default batch size is `1000`.
+The quantity of log line results that arrive in each batch
+is set by the `--batch` option in a `logcli query` command.
+When not set, `--batch` defaults to 1000.
 
-Loki has a server-side limit for the maximum lines returned in a query (default is 5000).
+Setting a `--limit` value larger than the `--batch` value causes the 
+requests from LogCLI to Loki to be batched.
+Loki has a server-side limit that defaults to 5000 for the maximum quantity
+of lines returned for a single query.
+The batching of requests allows you to query for a results set that
+is larger than the server-side limit,
+as long as the `--batch` value is less than the server limit.
 
-Batching allows you to make larger requests than the server-side limit as long as the `--batch` size is less than the server limit.
-
-Please note that the query metadata is printed for each batch on `stderr`. Set the `--quiet` flag to stop this behavior.
+Query metadata is output to `stderr` for each batch.
+Set the `--quiet` option on the `logcli query` command line to suppress
+the output of the query metadata.
 
 ### Configuration
 
 Configuration values are considered in the following order (lowest to highest):
 
 - Environment variables
-- Command line flags
+- Command-line options
 
-### Details
+### LogCLI command reference
+
+The output of `logcli help`:
 
 ```nohighlight
-$ logcli help
 usage: logcli [<flags>] <command> [<args> ...]
 
 A command-line for loki.
 
 Flags:
-      --help             Show context-sensitive help (also try --help-long and --help-man).
+      --help             Show context-sensitive help (also try --help-long and
+                         --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata.
-      --stats            Show query statistics.
-  -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
+  -q, --quiet            Suppress query metadata
+      --stats            Show query statistics
+  -o, --output=default   Specify output mode [default, raw, jsonl]. raw
+                         suppresses log labels and timestamp.
+  -z, --timezone=Local   Specify the timezone to use when formatting output
+                         timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env var.
-      --username=""      Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --addr="http://localhost:3100"  
+                         Server address. Can also be set using LOKI_ADDR env
+                         var.
+      --username=""      Username for HTTP basic auth. Can also be set using
+                         LOKI_USERNAME env var.
+      --password=""      Password for HTTP basic auth. Can also be set using
+                         LOKI_PASSWORD env var.
+      --ca-cert=""       Path to the server Certificate Authority. Can also be
+                         set using LOKI_CA_CERT_PATH env var.
       --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
+      --cert=""          Path to the client certificate. Can also be set using
+                         LOKI_CLIENT_CERT_PATH env var.
+      --key=""           Path to the client certificate key. Can also be set
+                         using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""        adds X-Scope-OrgID to API requests for representing
+                         tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
 
 Commands:
@@ -119,33 +143,58 @@ Commands:
   query [<flags>] <query>
     Run a LogQL query.
 
-    The "query" command is useful for querying for logs. Logs can be returned in a few output modes:
+    The "query" command is useful for querying for logs. Logs can be returned in
+    a few output modes:
 
       raw: log line
       default: log timestamp + log labels + log line
       jsonl: JSON response from Loki API of log line
 
-    The output of the log can be specified with the "-o" flag, for example, "-o raw" for the raw output format.
+    The output of the log can be specified with the "-o" flag, for example, "-o
+    raw" for the raw output format.
 
-    The "query" command will output extra information about the query and its results, such as the API URL, set of common labels,
-    and set of excluded labels. This extra information can be suppressed with the --quiet flag.
+    The "query" command will output extra information about the query and its
+    results, such as the API URL, set of common labels, and set of excluded
+    labels. This extra information can be suppressed with the --quiet flag.
 
-    While "query" does support metrics queries, its output contains multiple data points between the start and end query time.
-    This output is used to build graphs, like what is seen in the Grafana Explore graph view. If you are querying metrics and just
-    want the most recent data point (like what is seen in the Grafana Explore table view), then you should use the "instant-query"
-    command instead.
+    By default we look over the last hour of data; use --since to modify or
+    provide specific start and end times with --from and --to respectively.
+
+    Notice that when using --from and --to then ensure to use RFC3339Nano time
+    format, but without timezone at the end. The local timezone will be added
+    automatically or if using --timezone flag.
+
+    Example:
+
+      logcli query
+         --timezone=UTC
+         --from="2021-01-19T10:00:00Z"
+         --to="2021-01-19T20:00:00Z"
+         --output=jsonl
+         'my-query'
+
+    The output is limited to 30 entries by default; use --limit to increase.
+
+    While "query" does support metrics queries, its output contains multiple
+    data points between the start and end query time. This output is used to
+    build graphs, similar to what is seen in the Grafana Explore graph view. If
+    you are querying metrics and just want the most recent data point (like what
+    is seen in the Grafana Explore table view), then you should use the
+    "instant-query" command instead.
 
   instant-query [<flags>] <query>
     Run an instant LogQL query.
 
-    The "instant-query" command is useful for evaluating a metric query for a single point in time. This is equivalent to the
-    Grafana Explore table view; if you want a metrics query that is used to build a Grafana graph, you should use the "query"
-    command instead.
+    The "instant-query" command is useful for evaluating a metric query for a
+    single point in time. This is equivalent to the Grafana Explore table view;
+    if you want a metrics query that is used to build a Grafana graph, you
+    should use the "query" command instead.
 
-    This command does not produce useful output when querying for log lines; you should always use the "query" command when you
-    are running log queries.
+    This command does not produce useful output when querying for log lines; you
+    should always use the "query" command when you are running log queries.
 
-    For more information about log queries and metric queries, refer to the LogQL documentation:
+    For more information about log queries and metric queries, refer to the
+    LogQL documentation:
 
     https://grafana.com/docs/loki/latest/logql/
 
@@ -155,128 +204,226 @@ Commands:
   series [<flags>] <matcher>
     Run series query.
 
-$ logcli help query
+    The "series" command will take the provided label matcher and return all the
+    log streams found in the time window.
+
+    It is possible to send an empty label matcher '{}' to return all streams.
+
+    Use the --analyze-labels flag to get a summary of the labels found in all
+    streams. This is helpful to find high cardinality labels.
+```
+
+### LogCLI query command reference
+
+The output of `logcli help query`:
+
+```
 usage: logcli query [<flags>] <query>
 
 Run a LogQL query.
 
-The "query" command is useful for querying for logs. Logs can be returned in a few output modes:
+The "query" command is useful for querying for logs. Logs can be returned in a
+few output modes:
 
   raw: log line
   default: log timestamp + log labels + log line
   jsonl: JSON response from Loki API of log line
 
-The output of the log can be specified with the "-o" flag, for example, "-o raw" for the raw output format.
+The output of the log can be specified with the "-o" flag, for example, "-o raw"
+for the raw output format.
 
-The "query" command will output extra information about the query and its results, such as the API URL, set of common labels, and
-set of excluded labels. This extra information can be suppressed with the --quiet flag.
+The "query" command will output extra information about the query and its
+results, such as the API URL, set of common labels, and set of excluded labels.
+This extra information can be suppressed with the --quiet flag.
 
-While "query" does support metrics queries, its output contains multiple data points between the start and end query time. This
-output is used to build graphs, like what is seen in the Grafana Explore graph view. If you are querying metrics and just want the
-most recent data point (like what is seen in the Grafana Explore table view), then you should use the "instant-query" command
+By default we look over the last hour of data; use --since to modify or provide
+specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano time
+format, but without timezone at the end. The local timezone will be added
+automatically or if using --timezone flag.
+
+Example:
+
+  logcli query
+     --timezone=UTC
+     --from="2021-01-19T10:00:00Z"
+     --to="2021-01-19T20:00:00Z"
+     --output=jsonl
+     'my-query'
+
+The output is limited to 30 entries by default; use --limit to increase.
+
+While "query" does support metrics queries, its output contains multiple data
+points between the start and end query time. This output is used to build
+graphs, similar to what is seen in the Grafana Explore graph view. If you are
+querying metrics and just want the most recent data point (like what is seen in
+the Grafana Explore table view), then you should use the "instant-query" command
 instead.
 
 Flags:
-      --help               Show context-sensitive help (also try --help-long and --help-man).
+      --help               Show context-sensitive help (also try --help-long and
+                           --help-man).
       --version            Show application version.
-  -q, --quiet              Suppress query metadata.
-      --stats              Show query statistics.
-  -o, --output=default     Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local     Specify the timezone to use when formatting output timestamps [Local, UTC].
+  -q, --quiet              Suppress query metadata
+      --stats              Show query statistics
+  -o, --output=default     Specify output mode [default, raw, jsonl]. raw
+                           suppresses log labels and timestamp.
+  -z, --timezone=Local     Specify the timezone to use when formatting output
+                           timestamps [Local, UTC]
       --cpuprofile=""      Specify the location for writing a CPU profile.
       --memprofile=""      Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"
-                           Server address. Can also be set using LOKI_ADDR env var.
-      --username=""        Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
-      --password=""        Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
-      --ca-cert=""         Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --addr="http://localhost:3100"  
+                           Server address. Can also be set using LOKI_ADDR env
+                           var.
+      --username=""        Username for HTTP basic auth. Can also be set using
+                           LOKI_USERNAME env var.
+      --password=""        Password for HTTP basic auth. Can also be set using
+                           LOKI_PASSWORD env var.
+      --ca-cert=""         Path to the server Certificate Authority. Can also be
+                           set using LOKI_CA_CERT_PATH env var.
       --tls-skip-verify    Server certificate TLS skip verify.
-      --cert=""            Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
-      --key=""             Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""          adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
+      --cert=""            Path to the client certificate. Can also be set using
+                           LOKI_CLIENT_CERT_PATH env var.
+      --key=""             Path to the client certificate key. Can also be set
+                           using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""          adds X-Scope-OrgID to API requests for representing
+                           tenant ID. Useful for requesting tenant data when
                            bypassing an auth gateway.
       --limit=30           Limit on number of entries to print.
       --since=1h           Lookback window.
-      --from=FROM          Start looking for logs at this absolute time (inclusive).
-      --to=TO              Stop looking for logs at this absolute time (exclusive).
-      --step=STEP          Query resolution step width, for metric queries. Evaluate the query at the specified step over the time
-                           range.
-      --interval=INTERVAL  Query interval, for log queries. Return entries at the specified interval, ignoring those between.
-                           **This parameter is experimental, please see Issue 1779**.
-      --batch=1000         Query batch size to use until 'limit' is reached.
+      --from=FROM          Start looking for logs at this absolute time
+                           (inclusive)
+      --to=TO              Stop looking for logs at this absolute time
+                           (exclusive)
+      --step=STEP          Query resolution step width, for metric queries.
+                           Evaluate the query at the specified step over the
+                           time range.
+      --interval=INTERVAL  Query interval, for log queries. Return entries at
+                           the specified interval, ignoring those between.
+                           **This parameter is experimental, please see Issue
+                           1779**
+      --batch=1000         Query batch size to use until 'limit' is reached
       --forward            Scan forwards through logs.
-      --no-labels          Do not print any labels.
-      --exclude-label=EXCLUDE-LABEL ...
+      --no-labels          Do not print any labels
+      --exclude-label=EXCLUDE-LABEL ...  
                            Exclude labels given the provided key during output.
-      --include-label=INCLUDE-LABEL ...
+      --include-label=INCLUDE-LABEL ...  
                            Include labels given the provided key during output.
-      --labels-length=0    Set a fixed padding to labels.
-      --store-config=""    Execute the current query using a configured storage from a given Loki configuration file.
-  -t, --tail               Tail the logs.
-      --delay-for=0        Delay in tailing by number of seconds to accumulate logs for re-ordering.
-      --colored-output     Show ouput with colored labels.
+      --labels-length=0    Set a fixed padding to labels
+      --store-config=""    Execute the current query using a configured storage
+                           from a given Loki configuration file.
+      --colored-output     Show output with colored labels
+  -t, --tail               Tail the logs
+      --delay-for=0        Delay in tailing by number of seconds to accumulate
+                           logs for re-ordering
 
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
+```
 
-$ logcli help labels
+### LogCLI labels command reference
+
+The output of `logcli help labels`:
+
+```
 usage: logcli labels [<flags>] [<label>]
 
 Find values for a given label.
 
 Flags:
-      --help             Show context-sensitive help (also try --help-long and --help-man).
+      --help             Show context-sensitive help (also try --help-long and
+                         --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata.
-      --stats            Show query statistics.
-  -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
+  -q, --quiet            Suppress query metadata
+      --stats            Show query statistics
+  -o, --output=default   Specify output mode [default, raw, jsonl]. raw
+                         suppresses log labels and timestamp.
+  -z, --timezone=Local   Specify the timezone to use when formatting output
+                         timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env var.
-      --username=""      Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --addr="http://localhost:3100"  
+                         Server address. Can also be set using LOKI_ADDR env
+                         var.
+      --username=""      Username for HTTP basic auth. Can also be set using
+                         LOKI_USERNAME env var.
+      --password=""      Password for HTTP basic auth. Can also be set using
+                         LOKI_PASSWORD env var.
+      --ca-cert=""       Path to the server Certificate Authority. Can also be
+                         set using LOKI_CA_CERT_PATH env var.
       --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
+      --cert=""          Path to the client certificate. Can also be set using
+                         LOKI_CLIENT_CERT_PATH env var.
+      --key=""           Path to the client certificate key. Can also be set
+                         using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""        adds X-Scope-OrgID to API requests for representing
+                         tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
       --since=1h         Lookback window.
-      --from=FROM        Start looking for labels at this absolute time (inclusive).
-      --to=TO            Stop looking for labels at this absolute time (exclusive).
+      --from=FROM        Start looking for labels at this absolute time
+                         (inclusive)
+      --to=TO            Stop looking for labels at this absolute time
+                         (exclusive)
 
 Args:
   [<label>]  The name of the label.
+```
 
-$ logcli help series
-usage: logcli series --match=MATCH [<flags>]
+### LogCLI series command reference
+
+The output of `logcli help series`:
+
+```
+usage: logcli series [<flags>] <matcher>
 
 Run series query.
 
+The "series" command will take the provided label matcher and return all the log
+streams found in the time window.
+
+It is possible to send an empty label matcher '{}' to return all streams.
+
+Use the --analyze-labels flag to get a summary of the labels found in all
+streams. This is helpful to find high cardinality labels.
+
 Flags:
-      --help             Show context-sensitive help (also try --help-long and --help-man).
+      --help             Show context-sensitive help (also try --help-long and
+                         --help-man).
       --version          Show application version.
-  -q, --quiet            Suppress query metadata.
-      --stats            Show query statistics.
-  -o, --output=default   Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC].
+  -q, --quiet            Suppress query metadata
+      --stats            Show query statistics
+  -o, --output=default   Specify output mode [default, raw, jsonl]. raw
+                         suppresses log labels and timestamp.
+  -z, --timezone=Local   Specify the timezone to use when formatting output
+                         timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env var.
-      --username=""      Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --addr="http://localhost:3100"  
+                         Server address. Can also be set using LOKI_ADDR env
+                         var.
+      --username=""      Username for HTTP basic auth. Can also be set using
+                         LOKI_USERNAME env var.
+      --password=""      Password for HTTP basic auth. Can also be set using
+                         LOKI_PASSWORD env var.
+      --ca-cert=""       Path to the server Certificate Authority. Can also be
+                         set using LOKI_CA_CERT_PATH env var.
       --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""        adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
+      --cert=""          Path to the client certificate. Can also be set using
+                         LOKI_CLIENT_CERT_PATH env var.
+      --key=""           Path to the client certificate key. Can also be set
+                         using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""        adds X-Scope-OrgID to API requests for representing
+                         tenant ID. Useful for requesting tenant data when
                          bypassing an auth gateway.
       --since=1h         Lookback window.
-      --from=FROM        Start looking for logs at this absolute time (inclusive).
-      --to=TO            Stop looking for logs at this absolute time (exclusive).
-      --match=MATCH ...  eg '{foo="bar",baz=~".*blip"}'
+      --from=FROM        Start looking for logs at this absolute time
+                         (inclusive)
+      --to=TO            Stop looking for logs at this absolute time (exclusive)
+      --analyze-labels   Printout a summary of labels including count of label
+                         value combinations, useful for debugging high
+                         cardinality series
 
+Args:
+  <matcher>  eg '{foo="bar",baz=~".*blip"}'
 ```
