@@ -219,11 +219,11 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 
 	var resp *http.Response
-	retries := c.Retries
+	attempts := c.Retries + 1
 	success := false
 
-	for retries > 0 {
-		retries--
+	for attempts > 0 {
+		attempts--
 
 		resp, err = client.Do(req)
 		if err != nil {
@@ -232,7 +232,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		}
 		if resp.StatusCode/100 != 2 {
 			buf, _ := ioutil.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) retries remaining: %d", string(buf), err, retries)
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, attempts)
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
@@ -242,7 +242,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		break
 	}
 	if !success {
-		return fmt.Errorf("Run out of retries while querying the server")
+		return fmt.Errorf("Run out of attempts while querying the server")
 	}
 
 	defer func() {
