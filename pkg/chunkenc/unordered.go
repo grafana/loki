@@ -274,26 +274,22 @@ func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 	compressedWriter := pool.GetWriter(outBuf)
 	defer pool.PutWriter(compressedWriter)
 
-	itr := hb.iterator(
+	hb.forEntries(
 		context.Background(),
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		noopStreamPipeline,
+		nil,
+		func(ts int64, line string) {
+			n := binary.PutVarint(encBuf, ts)
+			inBuf.Write(encBuf[:n])
+
+			n = binary.PutUvarint(encBuf, uint64(len(line)))
+			inBuf.Write(encBuf[:n])
+
+			inBuf.WriteString(line)
+		},
 	)
-
-	// TODO(owen-d): we don't have to reuse the iterator implementation here
-	// and could avoid allocations due to re-casting the underlying types.
-	for itr.Next() {
-		e := itr.Entry()
-		n := binary.PutVarint(encBuf, e.Timestamp.UnixNano())
-		inBuf.Write(encBuf[:n])
-
-		n = binary.PutUvarint(encBuf, uint64(len(e.Line)))
-		inBuf.Write(encBuf[:n])
-
-		inBuf.WriteString(e.Line)
-	}
 
 	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
 		return nil, errors.Wrap(err, "appending entry")
