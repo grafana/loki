@@ -268,20 +268,20 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 
 	for _, tc := range []struct {
 		desc            string
-		fn              func(int64, string)
+		fn              func() func(int64, string)
 		unorderedWrites bool
 	}{
 		{
 			desc: "ordered headblock ordered writes",
-			fn:   headBlockFn(),
+			fn:   headBlockFn,
 		},
 		{
 			desc: "unordered headblock ordered writes",
-			fn:   unorderedHeadBlockFn(),
+			fn:   unorderedHeadBlockFn,
 		},
 		{
 			desc:            "unordered headblock unordered writes",
-			fn:              unorderedHeadBlockFn(),
+			fn:              unorderedHeadBlockFn,
 			unorderedWrites: true,
 		},
 	} {
@@ -306,8 +306,9 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 
 		b.Run(tc.desc, func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
+				writeFn := tc.fn()
 				for _, w := range writes {
-					tc.fn(w.t, w.s)
+					writeFn(w.t, w.s)
 				}
 			}
 		})
