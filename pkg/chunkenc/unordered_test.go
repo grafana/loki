@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -241,4 +242,74 @@ func Test_UnorderedHeadBlockCheckpointRoundtrip(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, b, cpyBytes)
 
+}
+
+func BenchmarkHeadBlockWrites(b *testing.B) {
+	// ordered, ordered
+	// unordered, ordered
+	// unordered, unordered
+
+	// current default block size of 256kb with 75b avg log lines =~ 5.2k lines/block
+	var nWrites = (256 << 10) / 50
+
+	headBlockFn := func() func(int64, string) {
+		hb := &headBlock{}
+		return func(ts int64, line string) {
+			_ = hb.append(ts, line)
+		}
+	}
+
+	unorderedHeadBlockFn := func() func(int64, string) {
+		hb := newUnorderedHeadBlock()
+		return func(ts int64, line string) {
+			hb.append(ts, line)
+		}
+	}
+
+	for _, tc := range []struct {
+		desc            string
+		fn              func(int64, string)
+		unorderedWrites bool
+	}{
+		{
+			desc: "ordered headblock ordered writes",
+			fn:   headBlockFn(),
+		},
+		{
+			desc: "unordered headblock ordered writes",
+			fn:   unorderedHeadBlockFn(),
+		},
+		{
+			desc:            "unordered headblock unordered writes",
+			fn:              unorderedHeadBlockFn(),
+			unorderedWrites: true,
+		},
+	} {
+		// build writes before we start benchmarking so random number generation, etc,
+		// isn't included in our timing info
+		writes := make([]entry, 0, nWrites)
+		rnd := rand.NewSource(0)
+		for i := 0; i < nWrites; i++ {
+			if tc.unorderedWrites {
+				ts := rnd.Int63()
+				writes = append(writes, entry{
+					t: ts,
+					s: fmt.Sprint("line:", ts),
+				})
+			} else {
+				writes = append(writes, entry{
+					t: int64(i),
+					s: fmt.Sprint("line:", i),
+				})
+			}
+		}
+
+		b.Run(tc.desc, func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				for _, w := range writes {
+					tc.fn(w.t, w.s)
+				}
+			}
+		})
+	}
 }
