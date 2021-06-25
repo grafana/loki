@@ -365,6 +365,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
 		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},
 		{"awk", OpParserTypeAwk, "{ print $1 + $3 }", mustNewAwkParser("{ print $1 + $3 }"), false},
+		{"awk err", OpParserTypeAwk, "{ print", nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

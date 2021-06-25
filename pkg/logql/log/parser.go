@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log/pattern"
 	"github.com/grafana/loki/pkg/logqlmodel"
 
+	"github.com/benhoyt/goawk/parser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
@@ -429,13 +430,19 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 
 type AwkParser struct {
 	awkScript string
+
+	program *parser.Program
 }
 
 func NewAwkParser(script string) (*AwkParser, error) {
-	// TODO: check the script is valid
+	prog, err := parser.ParseProgram([]byte(script), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return &AwkParser{
 		awkScript: script,
+		program:   prog,
 	}, nil
 }
 
