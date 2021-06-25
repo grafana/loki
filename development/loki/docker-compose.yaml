@@ -1,0 +1,43 @@
+version: "3.3"
+services:
+  myloki:
+    image: myloki:latest
+    ports:
+      - 3100
+    build:
+      context: ../..
+      dockerfile: cmd/loki/Dockerfile
+
+  promtail:
+    image: grafana/promtail:2.1.0
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        /usr/bin/promtail -config.file=/etc/promtail/docker-config.yaml
+    volumes:
+      - /var/log:/var/log
+      - ../fixtures/promtail-docker-config.yaml:/etc/promtail/docker-config.yaml:z
+
+  grafana:
+    image: grafana/grafana:8.0.0
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    ports:
+      - 3000:3000
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        cat > /etc/grafana/provisioning/datasources/enterprise-logs.yaml <<EOF
+        apiVersion: 1
+        datasources:
+          - name: Loki
+            type: loki
+            access: proxy
+            orgID: 1
+            url: http://myloki:3100
+        EOF
+
+        exec /run.sh
