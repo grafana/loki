@@ -478,7 +478,8 @@ func (a *AwkParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 
 	_, err := interp.ExecProgram(a.program, cfg)
 	if err != nil {
-		// TODO what to do with the error here?
+		lbs.SetErr(err.Error())
+
 		return nil, false
 	}
 
