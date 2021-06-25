@@ -247,7 +247,7 @@ labelParser:
   | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
   | UNPACK         { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
   | PATTERN STRING { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
-  | AWK STRING     { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
+  | AWK STRING     { $$ = newLabelParserExpr(OpParserTypeAwk, $2) }
   ;
 
 jsonExpressionParser:

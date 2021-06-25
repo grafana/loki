@@ -1205,7 +1205,7 @@ exprdefault:
 	case 84:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeRegexp, exprDollar[2].str)
+			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeAwk, exprDollar[2].str)
 		}
 	case 85:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
