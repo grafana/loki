@@ -426,3 +426,23 @@ func (u *UnpackParser) unpack(it *jsoniter.Iterator, entry []byte, lbs *LabelsBu
 	}
 	return entry, nil
 }
+
+type AwkParser struct {
+	awkScript string
+}
+
+func NewAwkParser(script string) (*AwkParser, error) {
+	// TODO: check the script is valid
+
+	return &AwkParser{
+		awkScript: script,
+	}, nil
+}
+
+func (a *AwkParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	// TODO: run goawk here
+
+	return line, true
+}
+
+func (a *AwkParser) RequiredLabelNames() []string { return []string{} }

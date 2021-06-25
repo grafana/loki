@@ -364,6 +364,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		{"pattern err", OpParserTypePattern, "bar", nil, true},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false},
 		{"regexp err ", OpParserTypeRegexp, "foo", nil, true},
+		{"awk", OpParserTypeAwk, "{ print $1 + $3 }", mustNewAwkParser("{ print $1 + $3 }"), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -399,6 +400,14 @@ func mustNewPatternParser(p string) log.Stage {
 		panic(err)
 	}
 	return r
+}
+
+func mustNewAwkParser(s string) log.Stage {
+	a, err := log.NewAwkParser(s)
+	if err != nil {
+		panic(err)
+	}
+	return a
 }
 
 func Test_canInjectVectorGrouping(t *testing.T) {
