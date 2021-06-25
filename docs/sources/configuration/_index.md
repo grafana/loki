@@ -260,7 +260,10 @@ The `querier_config` block configures the Loki Querier.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 
-# The maximum number of concurrent queries allowed.
+# The maximum number of top-level LogQL queries that will execute at the same time, per querier process.
+# If using the query frontend, this should be set to at least (`-querier.worker-parallelism` * `number of query frontend replicas`).
+# Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
+# Alternatively, consider using `-querier.worker-match-max-concurrent` to force worker parallelism to match `-querier.max-concurrent`.
 # CLI flag: -querier.max-concurrent
 [max_concurrent: <int> | default = 20]
 
