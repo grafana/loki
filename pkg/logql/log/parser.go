@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log/pattern"
 	"github.com/grafana/loki/pkg/logqlmodel"
 
+	"github.com/benhoyt/goawk/interp"
 	"github.com/benhoyt/goawk/parser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -447,9 +449,20 @@ func NewAwkParser(script string) (*AwkParser, error) {
 }
 
 func (a *AwkParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	// TODO: run goawk here
+	buf := &bytes.Buffer{}
 
-	return line, true
+	cfg := &interp.Config{
+		Stdin:  bytes.NewReader(line),
+		Output: buf,
+	}
+
+	_, err := interp.ExecProgram(a.program, cfg)
+	if err != nil {
+		// TODO what to do with the error here?
+		return nil, false
+	}
+
+	return buf.Bytes(), true
 }
 
 func (a *AwkParser) RequiredLabelNames() []string { return []string{} }

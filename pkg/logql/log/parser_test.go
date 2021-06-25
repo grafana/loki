@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"testing"
@@ -803,6 +804,69 @@ func Test_PatternParser(t *testing.T) {
 			_, _ = pp.Process(tt.line, b)
 			sort.Sort(tt.want)
 			require.Equal(t, tt.want, b.Labels())
+		})
+	}
+}
+
+func TestAwkParser(t *testing.T) {
+	tests := map[string]struct {
+		line   []byte
+		script string
+		exp    []byte
+	}{
+		"print last column": {
+			[]byte(`100 200 foo 300`),
+			"{ print $4 }",
+			[]byte("300\n"),
+		},
+		"empty script": {
+			[]byte(`100 200 foo 300`),
+			"",
+			[]byte(""),
+		},
+		"sum columns explicitly": {
+			[]byte(`100 200 300`),
+			"{ print $1 + $2 + $3 }",
+			[]byte("600\n"),
+		},
+		"sum columns with loop": {
+			[]byte(`100 200 300`),
+			"{ t=0; for(i=1;i<=NF;i++) t+=$i; print t }",
+			[]byte("600\n"),
+		},
+		"match by column equality": {
+			[]byte(`100 lorem 200`),
+			`$2 == "lorem"`,
+			[]byte("100 lorem 200\n"),
+		},
+		"match by regexp": {
+			[]byte(`100 lorem 200`),
+			"/lorem/",
+			[]byte("100 lorem 200\n"),
+		},
+		"no match by column equality": {
+			[]byte(`100 lorem 200`),
+			`$2 != "lorem"`,
+			[]byte(""),
+		},
+		"no match by regexp": {
+			[]byte(`100 lorem 200`),
+			`!/lorem/`,
+			[]byte(""),
+		},
+	}
+
+	for n, tt := range tests {
+		t.Run(n, func(t *testing.T) {
+			p, err := NewAwkParser(tt.script)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got, _ := p.Process(tt.line, nil)
+			if !bytes.Equal(tt.exp, got) {
+				t.Errorf("expecting %q, got %q", tt.exp, got)
+			}
 		})
 	}
 }
