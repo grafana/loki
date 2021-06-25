@@ -471,6 +471,10 @@ func (a *AwkParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return nil, false
 	}
 
+	if buf.Len() == 0 {
+		return nil, false
+	}
+
 	return buf.Bytes(), true
 }
 

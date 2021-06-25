@@ -813,46 +813,55 @@ func TestAwkParser(t *testing.T) {
 		line   []byte
 		script string
 		exp    []byte
+		ok     bool
 	}{
 		"print last column": {
 			[]byte(`100 200 foo 300`),
 			"{ print $4 }",
 			[]byte("300\n"),
+			true,
 		},
 		"empty script": {
 			[]byte(`100 200 foo 300`),
 			"",
-			[]byte(""),
+			nil,
+			false,
 		},
 		"sum columns explicitly": {
 			[]byte(`100 200 300`),
 			"{ print $1 + $2 + $3 }",
 			[]byte("600\n"),
+			true,
 		},
 		"sum columns with loop": {
 			[]byte(`100 200 300`),
 			"{ t=0; for(i=1;i<=NF;i++) t+=$i; print t }",
 			[]byte("600\n"),
+			true,
 		},
 		"match by column equality": {
 			[]byte(`100 lorem 200`),
 			`$2 == "lorem"`,
 			[]byte("100 lorem 200\n"),
+			true,
 		},
 		"match by regexp": {
 			[]byte(`100 lorem 200`),
 			"/lorem/",
 			[]byte("100 lorem 200\n"),
+			true,
 		},
 		"no match by column equality": {
 			[]byte(`100 lorem 200`),
 			`$2 != "lorem"`,
-			[]byte(""),
+			nil,
+			false,
 		},
 		"no match by regexp": {
 			[]byte(`100 lorem 200`),
 			`!/lorem/`,
-			[]byte(""),
+			nil,
+			false,
 		},
 	}
 
@@ -863,7 +872,10 @@ func TestAwkParser(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			got, _ := p.Process(tt.line, nil)
+			got, ok := p.Process(tt.line, nil)
+			if ok != tt.ok {
+				t.Fatalf("expecting Process to return %t, got %t", tt.ok, ok)
+			}
 			if !bytes.Equal(tt.exp, got) {
 				t.Errorf("expecting %q, got %q", tt.exp, got)
 			}
