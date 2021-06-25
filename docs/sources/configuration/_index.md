@@ -261,8 +261,8 @@ The `querier_config` block configures the Loki Querier.
 [query_ingesters_within: <duration> | default = 0s]
 
 # The maximum number of top-level LogQL queries that will execute at the same time, per querier process.
-# It should be set to match the number of CPU cores available on the querier (or slightly less than the number of cores if you are in a shared environment.
-# If using the query frontend, Then you should run enought queriers to match (`-querier.worker-parallelism` * `number of query frontend replicas`)/`-querier.max-concurrent`.
+# It should be set to match the number of CPU cores available on the querier (or slightly less than the number of cores if you are in a shared environment).
+# If using the query frontend, Then you should run enough queriers to match (`-querier.worker-parallelism` * `number of query frontend replicas`)/`-querier.max-concurrent`.
 # Otherwise queries may queue in the query frontend, which will affect QoS.
 # Alternatively, consider using `-querier.worker-match-max-concurrent` to force worker parallelism to match `-querier.max-concurrent`.
 # CLI flag: -querier.max-concurrent
