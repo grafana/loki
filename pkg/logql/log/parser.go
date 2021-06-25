@@ -437,7 +437,13 @@ type AwkParser struct {
 }
 
 func NewAwkParser(script string) (*AwkParser, error) {
-	prog, err := parser.ParseProgram([]byte(script), nil)
+	cfg := &parser.ParserConfig{
+		Funcs: map[string]interface{}{
+			"setLabel":  func(n, v string) {},
+			"delLabels": func(ns ...string) {},
+		},
+	}
+	prog, err := parser.ParseProgram([]byte(script), cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -454,6 +460,11 @@ func (a *AwkParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	cfg := &interp.Config{
 		Stdin:  bytes.NewReader(line),
 		Output: buf,
+
+		Funcs: map[string]interface{}{
+			"setLabel":  func(n, v string) { lbs.Set(n, v) },
+			"delLabels": func(ns ...string) { lbs.Del(ns...) },
+		},
 
 		// Disable unsafe operations:
 		// * NoExec prevents system calls via system() or pipe operator

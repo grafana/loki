@@ -814,54 +814,95 @@ func TestAwkParser(t *testing.T) {
 		script string
 		exp    []byte
 		ok     bool
+		lbs    labels.Labels
+		expLbs labels.Labels
 	}{
 		"print last column": {
 			[]byte(`100 200 foo 300`),
 			"{ print $4 }",
 			[]byte("300\n"),
 			true,
+			labels.Labels{},
+			labels.Labels{},
 		},
 		"empty script": {
 			[]byte(`100 200 foo 300`),
 			"",
 			nil,
 			false,
+			labels.Labels{},
+			labels.Labels{},
 		},
 		"sum columns explicitly": {
 			[]byte(`100 200 300`),
 			"{ print $1 + $2 + $3 }",
 			[]byte("600\n"),
 			true,
+			labels.Labels{},
+			labels.Labels{},
 		},
 		"sum columns with loop": {
 			[]byte(`100 200 300`),
 			"{ t=0; for(i=1;i<=NF;i++) t+=$i; print t }",
 			[]byte("600\n"),
 			true,
+			labels.Labels{},
+			labels.Labels{},
 		},
 		"match by column equality": {
 			[]byte(`100 lorem 200`),
 			`$2 == "lorem"`,
 			[]byte("100 lorem 200\n"),
 			true,
+			labels.Labels{},
+			labels.Labels{},
 		},
 		"match by regexp": {
 			[]byte(`100 lorem 200`),
 			"/lorem/",
 			[]byte("100 lorem 200\n"),
 			true,
+			labels.Labels{},
+			labels.Labels{},
 		},
 		"no match by column equality": {
 			[]byte(`100 lorem 200`),
 			`$2 != "lorem"`,
 			nil,
 			false,
+			labels.Labels{},
+			labels.Labels{},
 		},
 		"no match by regexp": {
 			[]byte(`100 lorem 200`),
 			`!/lorem/`,
 			nil,
 			false,
+			labels.Labels{},
+			labels.Labels{},
+		},
+		"add labels": {
+			[]byte(`100 200 300`),
+			`{ setLabel("foo", $1); setLabel("quux", $1+$2+$3); print $0 }`,
+			[]byte("100 200 300\n"),
+			true,
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "100"},
+				{Name: "quux", Value: "600"},
+			},
+		},
+		"delete labels": {
+			[]byte(`100 200 300`),
+			`{ delLabels("foo"); print $0 }`,
+			[]byte("100 200 300\n"),
+			true,
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{},
 		},
 	}
 
@@ -872,13 +913,18 @@ func TestAwkParser(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			got, ok := p.Process(tt.line, nil)
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
+
+			got, ok := p.Process(tt.line, b)
 			if ok != tt.ok {
 				t.Fatalf("expecting Process to return %t, got %t", tt.ok, ok)
 			}
 			if !bytes.Equal(tt.exp, got) {
 				t.Errorf("expecting %q, got %q", tt.exp, got)
 			}
+			sort.Sort(tt.expLbs)
+			require.Equal(t, tt.expLbs, b.Labels())
 		})
 	}
 }
