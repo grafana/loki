@@ -396,6 +396,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 	instance := i.getOrCreateInstance(instanceID)
 	err = instance.Push(ctx, req)
+
+	if err != nil {
+		level.Warn(util_log.Logger).Log("msg", "push error", "err", err, "org_id", instanceID)
+	}
+
 	return &logproto.PushResponse{}, err
 }
 
