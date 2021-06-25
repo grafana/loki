@@ -454,6 +454,15 @@ func (a *AwkParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	cfg := &interp.Config{
 		Stdin:  bytes.NewReader(line),
 		Output: buf,
+
+		// Disable unsafe operations:
+		// * NoExec prevents system calls via system() or pipe operator
+		// * NoFileWrites prevents writing to files via '>' or '>>'
+		// * NoFileReads prevents reading from files via getline or the
+		//   filenames in Args
+		NoExec:       true,
+		NoFileWrites: true,
+		NoFileReads:  true,
 	}
 
 	_, err := interp.ExecProgram(a.program, cfg)
