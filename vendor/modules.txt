@@ -142,6 +142,11 @@ github.com/aws/aws-sdk-go/service/sso
 github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
+# github.com/benhoyt/goawk v1.7.0
+## explicit
+github.com/benhoyt/goawk/internal/ast
+github.com/benhoyt/goawk/lexer
+github.com/benhoyt/goawk/parser
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
 # github.com/bmatcuk/doublestar v1.2.2
