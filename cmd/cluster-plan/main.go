@@ -19,7 +19,7 @@ func (xs Inputs) IngestionRate() (rate float64) {
 
 // Write Path: distributor, ingester
 // Read Path: Query frontend, querier, memcached, memcached-index-queries, memcached-frontend,
-// Cluster svcs: ruler, Compactor, (table manager - ignore and assume we're using the new retention)
+// Cluster svcs: ruler, Compactor, (table manager - ignore and assume we're using the new retention), index-gw
 func Sizes(limits validation.Limits) {
 	// size
 }
@@ -48,8 +48,13 @@ func Sizes(limits validation.Limits) {
 */
 
 func distributorSizing(ingestionRateMB float64) {
-	MBSecondPerDistributor := 5.e6
-	n := replicas(MBSecondPerDistributor, ingestionRateMB)
+	MBSecondPerInstance := 5.e6
+	n := replicas(MBSecondPerInstance, ingestionRateMB)
+
+	// maintain minimum two for HA
+	if n < 2 {
+		n = 2
+	}
 
 	memoryGBReq := 0.5
 	memoryGBLimits := 1
@@ -60,8 +65,13 @@ func distributorSizing(ingestionRateMB float64) {
 }
 
 func ingesterSizing(ingestionRateMB float64) {
-	MBSecondPerIngester := 2.8
-	n := replicas(ingestionRateMB, MBSecondPerIngester)
+	MBSecondPerInstance := 2.8
+	n := replicas(ingestionRateMB, MBSecondPerInstance)
+
+	// maintain minimum 3 for replication
+	if n < 3 {
+		n = 3
+	}
 
 	memoryGBReq := 7
 	memoryGBLimits := 14
@@ -70,6 +80,61 @@ func ingesterSizing(ingestionRateMB float64) {
 	cpuCoresLim := 2
 
 }
+
+func queryFrontendSizing(ingestionRateMB float64) {
+	// run two for HA
+	n := 2
+
+	memoryGBReq := 5
+	memoryGBLimits := 10
+
+	cpuCoresReq := 2
+	cpuCoresLim := 3
+
+}
+
+func querierSizing(ingestionRateMB float64) {
+	MBSecondPerInstance := 2.5
+	n := replicas(ingestionRateMB, MBSecondPerInstance)
+
+	// require a minimum number of queriers to be able to reasonably parallelize workloads
+	if n < 8 {
+		n = 8
+	}
+
+	memoryGBReq := 6
+	memoryGBLimits := 16
+
+	cpuCoresReq := 4
+	cpuCoresLim := 7
+}
+
+func memcachedChunksSizing(ingestionRateMB float64) {
+	MBSecondPerInstance := 2.
+	n := replicas(ingestionRateMB, MBSecondPerInstance)
+
+	memoryGBReq := 5
+	memoryGBLimits := 6
+
+	cpuCoresReq := 0.5
+	cpuCoresLim := 3
+}
+
+func memcachedFrontendSizing(ingestionRateMB float64) {
+	MBSecondPerInstance := 23.
+	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	if n < 1 {
+		n = 1
+	}
+
+	memoryGBReq := 1
+	memoryGBLimits := 1.5
+
+	cpuCoresReq := 0.5
+	cpuCoresLim := 3
+}
+
+func memcachedIndexQueriesSizing(ingestionRateMB float64) {}
 
 func replicas(perInstance, ingestionRate float64) int {
 	return int(math.Ceil(ingestionRate / perInstance))
