@@ -1,6 +1,6 @@
 ---
 title: Overview
-weight: 100
+weight: 150
 ---
 # Overview of Loki
 
