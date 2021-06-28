@@ -41,3 +41,14 @@ scrape_configs:
       job: logs
       env: dev
       __path__: /logtmp/dev.log
+- job_name: multiline
+  pipeline_stages:
+  - multiline:
+      firstline: '\d* - line1'
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: logs
+      env: dev
+      __path__: /logtmp/multiline.log

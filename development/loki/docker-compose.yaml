@@ -9,7 +9,7 @@ services:
       dockerfile: cmd/loki/Dockerfile
 
   promtail:
-    image: grafana/promtail:2.1.0
+    image: grafana/promtail:2.2.1
     entrypoint:
       - sh
       - -euc
@@ -18,6 +18,19 @@ services:
     volumes:
       - /var/log:/var/log
       - ../fixtures/promtail-docker-config.yaml:/etc/promtail/docker-config.yaml:z
+      - logs:/logtmp
+
+  log-generator:
+    image: golang:1.16.5-stretch
+    environment:
+      - LOG_DIR=/logtmp
+    entrypoint:
+      - go
+      - run
+      - /dev/main.go
+    volumes:
+      - ../tools/log-generator/main.go:/dev/main.go:z
+      - logs:/logtmp
 
   grafana:
     image: grafana/grafana:8.0.0
@@ -41,3 +54,6 @@ services:
         EOF
 
         exec /run.sh
+
+volumes:
+  logs: {}
