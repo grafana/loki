@@ -352,6 +352,8 @@ results_cache:
 
 The `ruler_config` configures the Loki ruler.
 
+<span style="background-color:#f3f973;">The Ruler API is experimental.</span>
+
 ```yaml
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
@@ -1462,6 +1464,8 @@ to wait before saving them to the backing store.
 The `cache_config` block configures how Loki will cache requests, chunks, and
 the index to a backing cache store.
 
+<span style="background-color:#f3f973;">The memcached configuration variable addresses is experimental.</span>
+
 ```yaml
 # Enable in-memory cache.
 # CLI flag: -<prefix>.cache.enable-fifocache
@@ -1507,7 +1511,7 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
-  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+  # (Experimental) Comma-separated addresses list in DNS Service Discovery format:
   # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
@@ -1652,6 +1656,8 @@ chunks:
 
 The `compactor_config` block configures the compactor component. This component periodically
 compacts index shards to more performant forms.
+
+<span style="background-color:#f3f973;">Retention through the Compactor is experimental.</span>
 
 ```yaml
 # Directory where files can be downloaded for compaction.

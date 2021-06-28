@@ -4,7 +4,7 @@ weight: 60
 ---
 # Log Entry Deletion
 
-_This feature is experimental. It is only supported for the BoltDB Shipper index store._
+<span style="background-color:#f3f973;">Log entry deletion is experimental. It is only supported for the BoltDB Shipper index store.</span>
 
 Loki supports the deletion of log entries from specified streams.
 Log entries that fall within a specified time window are those that will be deleted.
