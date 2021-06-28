@@ -5,7 +5,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   grafanaDashboards+::
     {
       'loki-deletion.json':
-        ($.dashboard('Loki / Deletion', uid='retention'))
+        ($.dashboard('Loki / Deletion', uid='deletion'))
         .addClusterSelectorTemplates(false)
         .addRow(
           ($.row('Headlines') +
