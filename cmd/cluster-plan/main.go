@@ -1,21 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"math"
 
+	"github.com/grafana/loki/pkg/sizing"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 func main() {}
-
-type Inputs []validation.Limits
-
-func (xs Inputs) IngestionRate() (rate float64) {
-	for _, x := range xs {
-		rate += x.IngestionRateMB
-	}
-	return rate
-}
 
 // Write Path: distributor, ingester
 // Read Path: Query frontend, querier, memcached, memcached-index-queries, memcached-frontend,
@@ -47,7 +40,7 @@ func Sizes(limits validation.Limits) {
    avg by (cluster, namespace) (kube_pod_container_resource_requests{container="distributor", namespace=~"$namespace", resource="cpu"})
 */
 
-func distributorSizing(ingestionRateMB float64) {
+func distributorSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	MBSecondPerInstance := 5.e6
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
@@ -56,15 +49,16 @@ func distributorSizing(ingestionRateMB float64) {
 		n = 2
 	}
 
-	memoryGBReq := 0.5
-	memoryGBLimits := 1
-
-	cpuCoresReq := 0.5
-	cpuCoresLim := 0.5
-
+	component.Name = sizing.Distributor
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("500KB")
+	_ = component.Resources.MemoryLimits.Set("1GB")
+	component.Resources.CPURequests.SetCores(0.5)
+	component.Resources.CPULimits.SetCores(0.5)
+	return
 }
 
-func ingesterSizing(ingestionRateMB float64) {
+func ingesterSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	MBSecondPerInstance := 2.8
 	n := replicas(ingestionRateMB, MBSecondPerInstance)
 
@@ -73,28 +67,30 @@ func ingesterSizing(ingestionRateMB float64) {
 		n = 3
 	}
 
-	memoryGBReq := 7
-	memoryGBLimits := 14
-
-	cpuCoresReq := 1
-	cpuCoresLim := 2
-
-	diskGB := 150
+	component.Name = sizing.Ingester
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("7GB")
+	_ = component.Resources.MemoryLimits.Set("14GB")
+	component.Resources.CPURequests.SetCores(1)
+	component.Resources.CPULimits.SetCores(2)
+	component.Resources.DiskGB = 150
+	return
 }
 
-func queryFrontendSizing(ingestionRateMB float64) {
+func queryFrontendSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	// run two for HA
 	n := 2
 
-	memoryGBReq := 5
-	memoryGBLimits := 10
-
-	cpuCoresReq := 2
-	cpuCoresLim := 3
-
+	component.Name = sizing.QueryFrontend
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("5GB")
+	_ = component.Resources.MemoryLimits.Set("10GB")
+	component.Resources.CPURequests.SetCores(2)
+	component.Resources.CPULimits.SetCores(3)
+	return
 }
 
-func querierSizing(ingestionRateMB float64) {
+func querierSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	MBSecondPerInstance := 2.5
 	n := replicas(ingestionRateMB, MBSecondPerInstance)
 
@@ -103,94 +99,103 @@ func querierSizing(ingestionRateMB float64) {
 		n = 8
 	}
 
-	memoryGBReq := 6
-	memoryGBLimits := 16
-
-	cpuCoresReq := 4
-	cpuCoresLim := 7
+	component.Name = sizing.Querier
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("6GB")
+	_ = component.Resources.MemoryLimits.Set("16GB")
+	component.Resources.CPURequests.SetCores(4)
+	component.Resources.CPULimits.SetCores(7)
+	return
 }
 
-func memcachedChunksSizing(ingestionRateMB float64) {
+func memcachedChunksSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	MBSecondPerInstance := 2.
 	n := replicas(ingestionRateMB, MBSecondPerInstance)
 
-	memoryGBReq := 5
-	memoryGBLimits := 6
-
-	cpuCoresReq := 0.5
-	cpuCoresLim := 3
+	component.Name = sizing.ChunksCache
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("5GB")
+	_ = component.Resources.MemoryLimits.Set("6GB")
+	component.Resources.CPURequests.SetCores(0.5)
+	component.Resources.CPULimits.SetCores(3)
+	return
 }
 
-func memcachedFrontendSizing(ingestionRateMB float64) {
+func memcachedFrontendSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	MBSecondPerInstance := 23.
 	n := replicas(ingestionRateMB, MBSecondPerInstance)
 	if n < 1 {
 		n = 1
 	}
 
-	memoryGBReq := 1
-	memoryGBLimits := 1.5
-
-	cpuCoresReq := 0.5
-	cpuCoresLim := 3
+	component.Name = sizing.QueryResultsCache
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("1GB")
+	_ = component.Resources.MemoryLimits.Set(fmt.Sprintf("%dMB", int(1024*1.5)))
+	component.Resources.CPURequests.SetCores(0.5)
+	component.Resources.CPULimits.SetCores(3)
+	return
 }
 
-func memcachedIndexQueriesSizing(ingestionRateMB float64) {
+func memcachedIndexQueriesSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	MBSecondPerInstance := 14.
 	n := replicas(ingestionRateMB, MBSecondPerInstance)
 	if n < 1 {
 		n = 1
 	}
 
-	memoryGBReq := 1
-	memoryGBLimits := 1.5
-
-	cpuCoresReq := 0.5
-	cpuCoresLim := 3
+	component.Name = sizing.IndexCache
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("1GB")
+	_ = component.Resources.MemoryLimits.Set(fmt.Sprintf("%dMB", int(1024*1.5)))
+	component.Resources.CPURequests.SetCores(0.5)
+	component.Resources.CPULimits.SetCores(3)
+	return
 }
 
-func rulerIndexQueriesSizing(ingestionRateMB float64) {
+func rulerIndexQueriesSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	// use a constant two rulers for now
 	n := 2
 
-	memoryGBReq := 6
-	memoryGBLimits := 16
-
-	cpuCoresReq := 2
-	cpuCoresLim := 7
+	component.Name = sizing.Ruler
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("6GB")
+	_ = component.Resources.MemoryLimits.Set("16GB")
+	component.Resources.CPURequests.SetCores(2)
+	component.Resources.CPULimits.SetCores(7)
+	return
 }
 
-func compactorSizing(ingestionRateMB float64) {
+func compactorSizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	n := 1
 
-	memoryGBReq := 1
-	memoryGBLimits := 2
-
-	cpuCoresReq := 2
-	cpuCoresLim := 4
-
-	diskGB := 100
+	component.Name = sizing.Compactor
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("1GB")
+	_ = component.Resources.MemoryLimits.Set("2GB")
+	component.Resources.CPURequests.SetCores(2)
+	component.Resources.CPULimits.SetCores(4)
+	component.Resources.DiskGB = 100
+	return
 }
 
-func indexGatewaySizing(ingestionRateMB float64) {
+func indexGatewaySizing(ingestionRateMB float64) (component sizing.ComponentDescription) {
 	MBSecondPerInstance := 45.
 	n := replicas(ingestionRateMB, MBSecondPerInstance)
 	if n < 1 {
 		n = 1
 	}
 
-	memoryGBReq := 1
-	memoryGBLimits := 3
-
-	cpuCoresReq := 2
-	cpuCoresLim := 2
-
-	diskGB := 400
+	component.Name = sizing.IndexGateway
+	component.Replicas = n
+	_ = component.Resources.MemoryRequests.Set("1GB")
+	_ = component.Resources.MemoryLimits.Set("3GB")
+	component.Resources.CPURequests.SetCores(2)
+	component.Resources.CPULimits.SetCores(2)
+	component.Resources.DiskGB = 400
+	return
 }
 
 func replicas(perInstance, ingestionRate float64) int {
 	return int(math.Ceil(ingestionRate / perInstance))
 }
-
-// func nodeCount()
-// func clusterNodeCount()

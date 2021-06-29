@@ -93,9 +93,9 @@ func (r *ClusterResources) NumNodes() (n int) {
 }
 
 type ComponentDescription struct {
-	ComponentComputeResources ComputeResources // cpu, mem, and disk requirements for a single instance of this component
-	Replicas                  int              // how many copies of this component I'll be running
-	Name                      ComponentName    // identifies the component for which I'm storing the resources
+	Resources ComputeResources // cpu, mem, and disk requirements for a single instance of this component
+	Replicas  int              // how many copies of this component I'll be running
+	Name      ComponentName    // identifies the component for which I'm storing the resources
 }
 
 type ComputeResources struct {
@@ -123,13 +123,13 @@ func (r *ClusterResources) Totals() ComputeResources {
 			continue
 		}
 
-		compute.CPURequests += component.ComponentComputeResources.CPURequests * CPUSize(component.Replicas)
-		compute.CPULimits += component.ComponentComputeResources.CPULimits * CPUSize(component.Replicas)
+		compute.CPURequests += component.Resources.CPURequests * CPUSize(component.Replicas)
+		compute.CPULimits += component.Resources.CPULimits * CPUSize(component.Replicas)
 
-		compute.MemoryRequests += component.ComponentComputeResources.MemoryRequests * flagext.ByteSize(component.Replicas)
-		compute.MemoryLimits += component.ComponentComputeResources.MemoryLimits * flagext.ByteSize(component.Replicas)
+		compute.MemoryRequests += component.Resources.MemoryRequests * flagext.ByteSize(component.Replicas)
+		compute.MemoryLimits += component.Resources.MemoryLimits * flagext.ByteSize(component.Replicas)
 
-		compute.DiskGB += (component.ComponentComputeResources.DiskGB * component.Replicas)
+		compute.DiskGB += (component.Resources.DiskGB * component.Replicas)
 	}
 	return compute
 
@@ -178,9 +178,9 @@ func printClusterArchitecture(c *ClusterResources) {
 	for _, component := range c.Components() {
 		if component != nil {
 			fmt.Printf("%s: %d replicas, each of which requires\n", ComponentNameString(component.Name), component.Replicas)
-			fmt.Printf("\t%v MB of memory\n", component.ComponentComputeResources.MemoryLimits)
-			fmt.Printf("\t%v CPUs\n", component.ComponentComputeResources.CPULimits)
-			fmt.Printf("\t%d GB of disk\n", component.ComponentComputeResources.DiskGB)
+			fmt.Printf("\t%v MB of memory\n", component.Resources.MemoryLimits)
+			fmt.Printf("\t%v CPUs\n", component.Resources.CPULimits)
+			fmt.Printf("\t%d GB of disk\n", component.Resources.DiskGB)
 		}
 	}
 

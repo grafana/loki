@@ -40,8 +40,3 @@ func CPUCores(n float64) (s CPUSize) {
 	s.SetCores(n)
 	return s
 }
-
-func CPUThousandths(n int) (s CPUSize) {
-	s.SetMillis(n)
-	return s
-}
