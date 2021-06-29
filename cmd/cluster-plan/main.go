@@ -79,6 +79,7 @@ func ingesterSizing(ingestionRateMB float64) {
 	cpuCoresReq := 1
 	cpuCoresLim := 2
 
+	diskGB := 150
 }
 
 func queryFrontendSizing(ingestionRateMB float64) {
@@ -134,7 +135,58 @@ func memcachedFrontendSizing(ingestionRateMB float64) {
 	cpuCoresLim := 3
 }
 
-func memcachedIndexQueriesSizing(ingestionRateMB float64) {}
+func memcachedIndexQueriesSizing(ingestionRateMB float64) {
+	MBSecondPerInstance := 14.
+	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	if n < 1 {
+		n = 1
+	}
+
+	memoryGBReq := 1
+	memoryGBLimits := 1.5
+
+	cpuCoresReq := 0.5
+	cpuCoresLim := 3
+}
+
+func rulerIndexQueriesSizing(ingestionRateMB float64) {
+	// use a constant two rulers for now
+	n := 2
+
+	memoryGBReq := 6
+	memoryGBLimits := 16
+
+	cpuCoresReq := 2
+	cpuCoresLim := 7
+}
+
+func compactorSizing(ingestionRateMB float64) {
+	n := 1
+
+	memoryGBReq := 1
+	memoryGBLimits := 2
+
+	cpuCoresReq := 2
+	cpuCoresLim := 4
+
+	diskGB := 100
+}
+
+func indexGatewaySizing(ingestionRateMB float64) {
+	MBSecondPerInstance := 45.
+	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	if n < 1 {
+		n = 1
+	}
+
+	memoryGBReq := 1
+	memoryGBLimits := 3
+
+	cpuCoresReq := 2
+	cpuCoresLim := 2
+
+	diskGB := 400
+}
 
 func replicas(perInstance, ingestionRate float64) int {
 	return int(math.Ceil(ingestionRate / perInstance))
