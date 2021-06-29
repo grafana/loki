@@ -8,8 +8,8 @@ import (
 // CPUSize measures thousandths of cpu cores
 type CPUSize uint64
 
-func (c *CPUSize) String() string {
-	if *c%1000 == 0 {
+func (c CPUSize) String() string {
+	if c%1000 == 0 {
 		return fmt.Sprint(c.Cores())
 	}
 	return fmt.Sprintf("%vm", c.Millis())
