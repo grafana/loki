@@ -6,7 +6,7 @@ import (
 )
 
 func SizeCluster(bytesThroughput int) (cluster ClusterResources) {
-	ingestionRateMB := float64(bytesThroughput) / 1e6
+	ingestionRateMB := float64(bytesThroughput) / (1 << 20)
 
 	cluster.Distributor = distributorSizing(ingestionRateMB)
 	cluster.Ingester = ingesterSizing(ingestionRateMB)
@@ -46,7 +46,7 @@ func SizeCluster(bytesThroughput int) (cluster ClusterResources) {
 
 func distributorSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
-	MBSecondPerInstance := 5.e6
+	MBSecondPerInstance := 5.
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
 	// maintain minimum two for HA
@@ -66,7 +66,7 @@ func distributorSizing(ingestionRateMB float64) *ComponentDescription {
 func ingesterSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	MBSecondPerInstance := 2.8
-	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
 	// maintain minimum 3 for replication
 	if n < 3 {
@@ -100,7 +100,7 @@ func queryFrontendSizing(ingestionRateMB float64) *ComponentDescription {
 func querierSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	MBSecondPerInstance := 2.5
-	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
 	// require a minimum number of queriers to be able to reasonably parallelize workloads
 	if n < 8 {
@@ -119,7 +119,7 @@ func querierSizing(ingestionRateMB float64) *ComponentDescription {
 func chunksCacheSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	MBSecondPerInstance := 2.
-	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
 	component.Name = ChunksCache
 	component.Replicas = n
@@ -133,7 +133,7 @@ func chunksCacheSizing(ingestionRateMB float64) *ComponentDescription {
 func queryResultsCacheSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	MBSecondPerInstance := 23.
-	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	n := replicas(MBSecondPerInstance, ingestionRateMB)
 	if n < 1 {
 		n = 1
 	}
@@ -150,7 +150,7 @@ func queryResultsCacheSizing(ingestionRateMB float64) *ComponentDescription {
 func indexCacheSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	MBSecondPerInstance := 14.
-	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	n := replicas(MBSecondPerInstance, ingestionRateMB)
 	if n < 1 {
 		n = 1
 	}
@@ -195,7 +195,7 @@ func compactorSizing(ingestionRateMB float64) *ComponentDescription {
 func indexGatewaySizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	MBSecondPerInstance := 45.
-	n := replicas(ingestionRateMB, MBSecondPerInstance)
+	n := replicas(MBSecondPerInstance, ingestionRateMB)
 	if n < 1 {
 		n = 1
 	}
