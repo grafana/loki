@@ -65,7 +65,7 @@ func distributorSizing(ingestionRateMB float64) *ComponentDescription {
 
 func ingesterSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
-	MBSecondPerInstance := 2.8
+	MBSecondPerInstance := 2.9
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
 	// maintain minimum 3 for replication
@@ -99,7 +99,7 @@ func queryFrontendSizing(ingestionRateMB float64) *ComponentDescription {
 
 func querierSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
-	MBSecondPerInstance := 2.5
+	MBSecondPerInstance := 3.5
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
 	// require a minimum number of queriers to be able to reasonably parallelize workloads
@@ -118,7 +118,7 @@ func querierSizing(ingestionRateMB float64) *ComponentDescription {
 
 func chunksCacheSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
-	MBSecondPerInstance := 2.
+	MBSecondPerInstance := 6.
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 
 	component.Name = ChunksCache
@@ -132,7 +132,7 @@ func chunksCacheSizing(ingestionRateMB float64) *ComponentDescription {
 
 func queryResultsCacheSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
-	MBSecondPerInstance := 23.
+	MBSecondPerInstance := 80.
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 	if n < 1 {
 		n = 1
@@ -149,7 +149,7 @@ func queryResultsCacheSizing(ingestionRateMB float64) *ComponentDescription {
 
 func indexCacheSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
-	MBSecondPerInstance := 14.
+	MBSecondPerInstance := 17.
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 	if n < 1 {
 		n = 1
@@ -194,7 +194,7 @@ func compactorSizing(ingestionRateMB float64) *ComponentDescription {
 
 func indexGatewaySizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
-	MBSecondPerInstance := 45.
+	MBSecondPerInstance := 60.
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
 	if n < 1 {
 		n = 1
