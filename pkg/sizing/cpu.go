@@ -3,6 +3,8 @@ package sizing
 import (
 	"fmt"
 	"math"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 // CPUSize measures thousandths of cpu cores
@@ -39,4 +41,24 @@ func (c *CPUSize) SetCores(n float64) {
 func CPUCores(n float64) (s CPUSize) {
 	s.SetCores(n)
 	return s
+}
+
+type ReadableBytes flagext.ByteSize
+
+func (b ReadableBytes) String() string {
+	order := map[int]string{
+		0: "B",
+		1: "KB",
+		2: "MB",
+		3: "GB",
+		4: "TB",
+	}
+
+	degree := 0
+	x := float64(b)
+	for x/1024 >= 1 {
+		x = x / 1024
+		degree++
+	}
+	return fmt.Sprintf("%.2f%s", x, order[degree])
 }
