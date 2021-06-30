@@ -14,6 +14,7 @@ type Config struct {
 	BytesPerSecond  flagext.ByteSize
 	DaysRetention   int
 	MonthlyUnitCost sizing.UnitCostInfo
+	Simple          bool
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -23,6 +24,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&c.MonthlyUnitCost.CostPerCPU, "monthly-cost-per-cpu", 18.19, "Monthly dollar cost for a CPU")
 	f.Float64Var(&c.MonthlyUnitCost.CostPerGBDisk, "monthly-cost-per-gb-disk", 0.187, "Monthly dollar cost for a GB of persistent disk")
 	f.Float64Var(&c.MonthlyUnitCost.CostPerGBObjStorage, "monthly-cost-per-gb-obj-storage", 0.023, "Monthly dollar cost for a GB of object storage")
+	f.BoolVar(&c.Simple, "simple", false, "Show a simpler compromise between resource minimums and ceilings.")
 }
 
 func (c *Config) Validate() error {
@@ -67,33 +69,7 @@ func main() {
 	printClusterArchitecture(&cluster, &cfg, true)
 }
 
-// TODO: Add verbose flag to include the "request" (min resources) in addition to "limit" (max resources)
 func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config, useResourceRequests bool) {
-
-	// loop through all components, and print out how many replicas of each component we're recommending.
-	/*
-		Format will look like
-		"""
-		Overall Requirements for a Loki cluster than can handle X volume of ingest
-		Number of Nodes: 2
-		Memory Required: 1000 MB
-		CPUs Required: 34
-		Disk Required: 100 GB
-
-		List of all components in the Loki cluster, the number of replicas of each, and the resources required per replica
-
-		Ingester: 5 replicas, each with:
-			2000 MB RAM
-			10 GB Disk
-			5 CPU
-
-		Distributor: 2 replicas, each with:
-			1000 MB RAM
-			1 GB Disk
-			2 CPU
-		"""
-	*/
-
 	totals := c.Totals()
 	ingestRate := cfg.BytesPerSecond
 
@@ -102,25 +78,37 @@ func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config, useResour
 
 	fmt.Printf("Requirements for a Loki cluster than can ingest %v per second with %d days retention\n", sizing.ReadableBytes(ingestRate), cfg.DaysRetention)
 	fmt.Printf("\tNodes\n")
-	fmt.Printf("\t\tMinimum count: %d\n", c.NumNodes())
+	fmt.Printf("\t\tRequired count: %d\n", c.NumNodes())
 
 	fmt.Println("\tMemory")
-	fmt.Printf("\t\tMinimum: %v\n", sizing.ReadableBytes(totals.MemoryRequests))
-	fmt.Printf("\t\tWith peak expected usage of: %v\n", sizing.ReadableBytes(totals.MemoryLimits))
+	if cfg.Simple {
+		fmt.Printf("\t\t: %v\n", sizing.ReadableBytes(compromise(totals.MemoryRequests.Val(), totals.MemoryLimits.Val())))
+	} else {
+		fmt.Printf("\t\tMinimum: %v\n", sizing.ReadableBytes(totals.MemoryRequests))
+		fmt.Printf("\t\tWith peak expected usage of: %v\n", sizing.ReadableBytes(totals.MemoryLimits))
+	}
 
 	fmt.Println("\tCPU")
-	fmt.Printf("\t\tMinimum count: %d CPUs\n", totals.CPURequests.Cores())
-	fmt.Printf("\t\tWith peak expected usage of: %d CPUs\n", totals.CPULimits.Cores())
+	if cfg.Simple {
+		fmt.Printf("\t\t: %v\n", sizing.CPUSize(compromise(totals.CPURequests.Millis(), totals.CPULimits.Millis())))
+	} else {
+		fmt.Printf("\t\tMinimum count: %v CPUs\n", totals.CPURequests)
+		fmt.Printf("\t\tWith peak expected usage of: %v CPUs\n", totals.CPULimits)
+	}
 
 	fmt.Println("\tStorage")
-	fmt.Printf("\t\t%d GB Disk\n", totals.DiskGB)
-	fmt.Printf("\t\t%d TB Object Storage\n", objectStorageRequired)
+	fmt.Printf("\t\t%v Disk\n", sizing.ReadableBytes(totals.DiskGB<<30))
+	fmt.Printf("\t\t%v Object Storage\n", sizing.ReadableBytes(objectStorageRequired))
 
 	fmt.Printf("\n")
 
 	fmt.Printf("Your expected monthly hardware costs would be approximately\n")
-	fmt.Printf("\tIf you used the minimum required hardware: $%.2f\n", MonthlyCosts.BaseLoadCost)
-	fmt.Printf("\tIf you used the peak required hardware: $%.2f\n\n", MonthlyCosts.PeakCost)
+	if cfg.Simple {
+		fmt.Printf("\t$%d\n", compromise(int(MonthlyCosts.BaseLoadCost), int(MonthlyCosts.PeakCost)))
+	} else {
+		fmt.Printf("\tIf you used the minimum required hardware: $%.2f\n", MonthlyCosts.BaseLoadCost)
+		fmt.Printf("\tIf you used the peak required hardware: $%.2f\n\n", MonthlyCosts.PeakCost)
+	}
 	fmt.Printf("This assumes a monthly cost of:\n")
 	fmt.Printf("\t$%.2f per CPU\n", cfg.MonthlyUnitCost.CostPerCPU)
 	fmt.Printf("\t$%.2f per GB of memory\n", cfg.MonthlyUnitCost.CostPerGBMem)
@@ -135,16 +123,38 @@ func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config, useResour
 			fmt.Printf("%v: %d replicas, each of which requires\n", component.Name, component.Replicas)
 
 			fmt.Println("\tMemory")
-			fmt.Printf("\t\tMinimum: %v\n", component.Resources.MemoryRequests)
-			fmt.Printf("\t\tWith peak expected usage of: %v\n", component.Resources.MemoryLimits)
+			if cfg.Simple {
+				fmt.Printf("\t\t: %v\n", sizing.ReadableBytes(
+					compromise(
+						component.Resources.MemoryRequests.Val(),
+						component.Resources.MemoryLimits.Val(),
+					)))
+			} else {
+				fmt.Printf("\t\tMinimum: %v\n", component.Resources.MemoryRequests)
+				fmt.Printf("\t\tWith peak expected usage of: %v\n", component.Resources.MemoryLimits)
+			}
 
 			fmt.Println("\tCPU")
-			fmt.Printf("\t\tMinimum count: %d CPUs\n", component.Resources.CPURequests.Cores())
-			fmt.Printf("\t\tWith peak expected usage of: %d CPUs\n", component.Resources.CPULimits.Cores())
+			if cfg.Simple {
+				fmt.Printf("\t\t: %v\n", sizing.CPUSize(compromise(
+					component.Resources.CPURequests.Millis(),
+					component.Resources.CPULimits.Millis(),
+				)))
+			} else {
+				fmt.Printf("\t\tMinimum count: %v CPUs\n", component.Resources.CPURequests)
+				fmt.Printf("\t\tWith peak expected usage of: %v CPUs\n", component.Resources.CPULimits)
+			}
 
-			fmt.Println("\tDisk")
-			fmt.Printf("\t\t%d GB\n", component.Resources.DiskGB)
+			if component.Resources.DiskGB != 0 {
+				fmt.Println("\tDisk")
+				fmt.Printf("\t\t%d GB\n", component.Resources.DiskGB)
+			}
 		}
 	}
 
+}
+
+func compromise(floor, ceil int) int {
+	// return floor + 30% of the difference between floor & ceil. Used for simplified estimations
+	return floor + (ceil-floor)*3/10
 }
