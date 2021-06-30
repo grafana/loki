@@ -11,13 +11,18 @@ import (
 )
 
 type Config struct {
-	BytesPerSecond flagext.ByteSize
-	DaysRetention  int
+	BytesPerSecond  flagext.ByteSize
+	DaysRetention   int
+	MonthlyUnitCost sizing.UnitCostInfo
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&c.BytesPerSecond, "bytes-per-second", "[human readable] How many bytes per second the cluster should receive, i.e. (50MB)")
 	f.IntVar(&c.DaysRetention, "days-retention", 30, "Number of days you'd like to retain logs for before deleting. For example, \"--days-retention 30\" means retain logs for 30 days before deleting.")
+	f.Float64Var(&c.MonthlyUnitCost.CostPerGBMem, "monthly-cost-per-gb-mem", 2.44, "Monthly dollar cost for a megabyte of RAM")
+	f.Float64Var(&c.MonthlyUnitCost.CostPerCPU, "monthly-cost-per-cpu", 18.19, "Monthly dollar cost for a CPU")
+	f.Float64Var(&c.MonthlyUnitCost.CostPerGBDisk, "monthly-cost-per-gb-disk", 0.187, "Monthly dollar cost for a GB of persistent disk")
+	f.Float64Var(&c.MonthlyUnitCost.CostPerGBObjStorage, "monthly-cost-per-gb-obj-storage", 0.023, "Monthly dollar cost for a GB of object storage")
 }
 
 func (c *Config) Validate() error {
@@ -25,8 +30,25 @@ func (c *Config) Validate() error {
 		return errors.New("must specify bytes-per-second")
 	}
 
+	//Is there a better way to iterate through all fields in a struct?
 	if c.DaysRetention < 0 {
 		return errors.New("Cannot specify negative days retention")
+	}
+
+	if c.MonthlyUnitCost.CostPerGBMem < 0 {
+		return errors.New("Cannot specify negative cost per GB Mem")
+	}
+
+	if c.MonthlyUnitCost.CostPerCPU < 0 {
+		return errors.New("Cannot specify negative cost per CPU")
+	}
+
+	if c.MonthlyUnitCost.CostPerGBDisk < 0 {
+		return errors.New("Cannot specify negative cost per GB Disk")
+	}
+
+	if c.MonthlyUnitCost.CostPerGBObjStorage < 0 {
+		return errors.New("Cannot specify negative cost per GB Object Storage")
 	}
 
 	return nil
@@ -76,8 +98,7 @@ func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config, useResour
 	ingestRate := cfg.BytesPerSecond
 
 	objectStorageRequired := sizing.ComputeObjectStorage(ingestRate, cfg.DaysRetention)
-
-	// TODO: Actually populate the value of X volume of ingest
+	MonthlyCosts := sizing.ComputeMonthlyCost(&cfg.MonthlyUnitCost, objectStorageRequired, totals)
 
 	fmt.Printf("Requirements for a Loki cluster than can ingest %v per second with %d days retention\n", sizing.ReadableBytes(ingestRate), cfg.DaysRetention)
 	fmt.Printf("\tNodes\n")
@@ -97,6 +118,16 @@ func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config, useResour
 
 	fmt.Printf("\n")
 
+	fmt.Printf("Your expected monthly hardware costs would be approximately\n")
+	fmt.Printf("\tIf you used the minimum required hardware: $%.2f\n", MonthlyCosts.BaseLoadCost)
+	fmt.Printf("\tIf you used the peak required hardware: $%.2f\n\n", MonthlyCosts.PeakCost)
+	fmt.Printf("This assumes a monthly cost of:\n")
+	fmt.Printf("\t$%.2f per CPU\n", cfg.MonthlyUnitCost.CostPerCPU)
+	fmt.Printf("\t$%.2f per GB of memory\n", cfg.MonthlyUnitCost.CostPerGBMem)
+	fmt.Printf("\t$%.2f per GB of disk\n", cfg.MonthlyUnitCost.CostPerGBDisk)
+	fmt.Printf("\t$%.2f per GB of object storage\n", cfg.MonthlyUnitCost.CostPerGBObjStorage)
+
+	fmt.Printf("\n")
 	fmt.Printf("List of all components in the Loki cluster, the number of replicas of each, and the resources required per replica\n")
 
 	for _, component := range c.Components() {
