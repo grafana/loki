@@ -147,21 +147,29 @@ func (r *ClusterResources) Totals() ComputeResources {
 }
 
 func ComputeObjectStorage(IngestRate flagext.ByteSize, DaysRetention int) int {
-	PerSecIngestionRateMB := float64(IngestRate.Val()) / (1 << 20)
-
-	compressionRate := 0.15 //This means we assume logs are compressed to 15% of their original size
 	secondsInDay := 86400
 
-	TBstoragerequired := (PerSecIngestionRateMB * float64(secondsInDay) * float64(DaysRetention) * compressionRate) / (1024.0 * 1024.0)
+	// logs compress to 5x
+	compressionFactor := 5
 
-	return int(math.Ceil(TBstoragerequired))
+	replicationFactor := 3
 
+	// likelihood chunks are deduplicated in storage (content addressed)
+	chunkDedupeRatio := 0.5
+	// likelihood chunks are not deduplicated by storage
+	writeRatio := 1 - chunkDedupeRatio
+
+	storage := float64(IngestRate.Val()*secondsInDay*DaysRetention/compressionFactor*replicationFactor) * writeRatio
+
+	return int(math.Round(storage))
 }
 
-func ComputeMonthlyCost(MonthlyUnitCost *UnitCostInfo, TBObjectStorage int, cr ComputeResources) MonthlyCosts {
+func ComputeMonthlyCost(MonthlyUnitCost *UnitCostInfo, storageBytes int, cr ComputeResources) MonthlyCosts {
 	var mc MonthlyCosts
 
-	objStorageCost := (float64(TBObjectStorage) * 1024.0) * MonthlyUnitCost.CostPerGBObjStorage
+	GBStored := storageBytes / (1 << 30)
+
+	objStorageCost := float64(GBStored) * MonthlyUnitCost.CostPerGBObjStorage
 
 	cpuCost_base := float64(cr.CPURequests.Cores()) * MonthlyUnitCost.CostPerCPU
 	cpuCost_peak := float64(cr.CPULimits.Cores()) * MonthlyUnitCost.CostPerCPU
