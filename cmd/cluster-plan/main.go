@@ -70,11 +70,17 @@ func printClusterArchitecture(c *sizing.ClusterResources, ingestRate *flagext.By
 	// TODO: Actually populate the value of X volume of ingest
 	fmt.Printf("Requirements for a Loki cluster than can ingest %v per second\n", sizing.ReadableBytes(*ingestRate))
 	fmt.Printf("\tMinimum Number of Nodes: %d\n", c.NumNodes())
-	fmt.Printf("\tMemory Requests: %v\n", sizing.ReadableBytes(totals.MemoryRequests))
-	fmt.Printf("\tMemory Limits: %v\n", sizing.ReadableBytes(totals.MemoryLimits))
-	fmt.Printf("\tCPU Requests: %d\n", totals.CPURequests.Cores())
-	fmt.Printf("\tCPU Limits: %d\n", totals.CPULimits.Cores())
-	fmt.Printf("\tDisk Required: %d GB\n", totals.DiskGB)
+
+	fmt.Println("\tMemory")
+	fmt.Printf("\t\tMinimum: %v\n", sizing.ReadableBytes(totals.MemoryRequests))
+	fmt.Printf("\t\tWith peak expected usage of: %v\n", sizing.ReadableBytes(totals.MemoryLimits))
+
+	fmt.Println("\tCPU")
+	fmt.Printf("\t\tMinimum CPU count: %d\n", totals.CPURequests.Cores())
+	fmt.Printf("\t\tWith peak expected usage of: %d\n", totals.CPULimits.Cores())
+
+	fmt.Println("\tDisk")
+	fmt.Printf("\t\t%d GB\n", totals.DiskGB)
 
 	fmt.Printf("\n")
 
@@ -83,11 +89,17 @@ func printClusterArchitecture(c *sizing.ClusterResources, ingestRate *flagext.By
 	for _, component := range c.Components() {
 		if component != nil {
 			fmt.Printf("%v: %d replicas, each of which requires\n", component.Name, component.Replicas)
-			fmt.Printf("\tMemory Requests: %v\n", component.Resources.MemoryRequests)
-			fmt.Printf("\tMemory Limits: %v\n", component.Resources.MemoryLimits)
-			fmt.Printf("\tCPU Requests: %d\n", component.Resources.CPURequests.Cores())
-			fmt.Printf("\tCPU Limits: %d\n", component.Resources.CPULimits.Cores())
-			fmt.Printf("\t%d GB of disk\n", component.Resources.DiskGB)
+
+			fmt.Println("\tMemory")
+			fmt.Printf("\t\tMinimum: %v\n", component.Resources.MemoryRequests)
+			fmt.Printf("\t\tWith peak expected usage of: %v\n", component.Resources.MemoryLimits)
+
+			fmt.Println("\tCPU")
+			fmt.Printf("\t\tMinimum CPU count: %d\n", component.Resources.CPURequests.Cores())
+			fmt.Printf("\t\tWith peak expected usage of: %d\n", component.Resources.CPULimits.Cores())
+
+			fmt.Println("\tDisk")
+			fmt.Printf("\t\t%d GB\n", component.Resources.DiskGB)
 		}
 	}
 
