@@ -10,11 +10,16 @@ import (
 // CPUSize measures thousandths of cpu cores
 type CPUSize uint64
 
-func (c CPUSize) String() string {
+// k8s representations
+func (c CPUSize) Kubernetes() string {
 	if c%1000 == 0 {
 		return fmt.Sprint(c.Cores())
 	}
 	return fmt.Sprintf("%vm", c.Millis())
+}
+
+func (c CPUSize) String() string {
+	return fmt.Sprintf("%.1f", float64(c)/1000)
 }
 
 // Show fractional core count
@@ -52,6 +57,9 @@ func (b ReadableBytes) String() string {
 		2: "MB",
 		3: "GB",
 		4: "TB",
+		5: "PB",
+		6: "EB",
+		7: "ZB",
 	}
 
 	degree := 0
