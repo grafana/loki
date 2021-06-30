@@ -50,6 +50,18 @@ func (cn ComponentName) String() string {
 	}
 }
 
+type UnitCostInfo struct {
+	CostPerGBMem        float64
+	CostPerCPU          float64
+	CostPerGBDisk       float64
+	CostPerGBObjStorage float64
+}
+
+type MonthlyCosts struct {
+	BaseLoadCost float64
+	PeakCost     float64
+}
+
 type ClusterResources struct {
 	Distributor,
 	Ingester,
@@ -144,4 +156,23 @@ func ComputeObjectStorage(IngestRate flagext.ByteSize, DaysRetention int) int {
 
 	return int(math.Ceil(TBstoragerequired))
 
+}
+
+func ComputeMonthlyCost(MonthlyUnitCost *UnitCostInfo, TBObjectStorage int, cr ComputeResources) MonthlyCosts {
+	var mc MonthlyCosts
+
+	objStorageCost := (float64(TBObjectStorage) * 1024.0) * MonthlyUnitCost.CostPerGBObjStorage
+
+	cpuCost_base := float64(cr.CPURequests.Cores()) * MonthlyUnitCost.CostPerCPU
+	cpuCost_peak := float64(cr.CPULimits.Cores()) * MonthlyUnitCost.CostPerCPU
+
+	memCost_base := float64(cr.MemoryRequests.Val()/(1<<30)) * MonthlyUnitCost.CostPerGBMem
+	memCost_peak := float64(cr.MemoryLimits.Val()/(1<<30)) * MonthlyUnitCost.CostPerGBMem
+
+	diskCost := float64(cr.DiskGB) * MonthlyUnitCost.CostPerGBDisk
+
+	mc.BaseLoadCost = objStorageCost + diskCost + cpuCost_base + memCost_base
+	mc.PeakCost = objStorageCost + diskCost + cpuCost_peak + memCost_peak
+
+	return mc
 }
