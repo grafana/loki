@@ -1,3 +1,5 @@
+local k = import 'ksonnet-util/kausal.libsonnet';
+
 {
   _config+: {
     overrides: {
@@ -14,12 +16,12 @@
       //   },
     },
   },
-  local configMap = $.core.v1.configMap,
+  local configMap = k.core.v1.configMap,
 
   overrides_config:
     configMap.new($._config.overrides_configmap_name) +
     configMap.withData({
-      'overrides.yaml': $.util.manifestYaml(
+      'overrides.yaml': k.util.manifestYaml(
         {
           overrides: $._config.overrides,
         }

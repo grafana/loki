@@ -1,8 +1,8 @@
 {
   _config+:: {
-      use_index_gateway: false,
-      index_gateway_pvc_size: '50Gi',
-      index_gateway_pvc_class: 'fast',
+    use_index_gateway: false,
+    index_gateway_pvc_size: '50Gi',
+    index_gateway_pvc_class: 'fast',
 
     loki+: {
       storage_config+: if $._config.use_index_gateway then {
@@ -15,11 +15,12 @@
     },
   },
 
-  local containerPort = $.core.v1.containerPort,
-  local pvc = $.core.v1.persistentVolumeClaim,
-  local container = $.core.v1.container,
-  local volumeMount = $.core.v1.volumeMount,
-  local statefulSet = $.apps.v1.statefulSet,
+  local k = import 'ksonnet-util/kausal.libsonnet',
+  local containerPort = k.core.v1.containerPort,
+  local pvc = k.core.v1.persistentVolumeClaim,
+  local container = k.core.v1.container,
+  local volumeMount = k.core.v1.volumeMount,
+  local statefulSet = k.apps.v1.statefulSet,
 
   // Use PVC for index_gateway instead of node disk.
   index_gateway_data_pvc:: if $._config.use_index_gateway then
@@ -43,24 +44,24 @@
   index_gateway_container:: if $._config.use_index_gateway then
     container.new('index-gateway', $._images.index_gateway) +
     container.withPorts(index_gateway_ports) +
-    container.withArgsMixin($.util.mapToFlags($.index_gateway_args)) +
+    container.withArgsMixin(k.util.mapToFlags($.index_gateway_args)) +
     container.withVolumeMountsMixin([volumeMount.new('index-gateway-data', '/data')]) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests('500m', '2Gi')
+    k.util.resourcesRequests('500m', '2Gi')
   else {},
 
   index_gateway_statefulset: if $._config.use_index_gateway then
     statefulSet.new('index-gateway', 1, [$.index_gateway_container], $.index_gateway_data_pvc) +
     statefulSet.mixin.spec.withServiceName('index-gateway') +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki/config') +
+    k.util.configVolumeMount('loki', '/etc/loki/config') +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},
 
   index_gateway_service: if $._config.use_index_gateway then
-    $.util.serviceFor($.index_gateway_statefulset)
+    k.util.serviceFor($.index_gateway_statefulset)
   else {},
 }
