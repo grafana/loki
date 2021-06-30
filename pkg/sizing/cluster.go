@@ -1,6 +1,8 @@
 package sizing // insert some name
 
 import (
+	"math"
+
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -129,5 +131,17 @@ func (r *ClusterResources) Totals() ComputeResources {
 		compute.DiskGB += (component.Resources.DiskGB * component.Replicas)
 	}
 	return compute
+
+}
+
+func ComputeObjectStorage(IngestRate flagext.ByteSize, DaysRetention int) int {
+	PerSecIngestionRateMB := float64(IngestRate.Val()) / (1 << 20)
+
+	compressionRate := 0.15 //This means we assume logs are compressed to 15% of their original size
+	secondsInDay := 86400
+
+	TBstoragerequired := (PerSecIngestionRateMB * float64(secondsInDay) * float64(DaysRetention) * compressionRate) / (1024.0 * 1024.0)
+
+	return int(math.Ceil(TBstoragerequired))
 
 }

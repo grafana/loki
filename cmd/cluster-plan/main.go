@@ -12,16 +12,23 @@ import (
 
 type Config struct {
 	BytesPerSecond flagext.ByteSize
+	DaysRetention  int
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&c.BytesPerSecond, "bytes-per-second", "[human readable] How many bytes per second the cluster should receive, i.e. (50MB)")
+	f.IntVar(&c.DaysRetention, "days-retention", 30, "Number of days you'd like to retain logs for before deleting. For example, \"--days-retention 30\" means retain logs for 30 days before deleting.")
 }
 
 func (c *Config) Validate() error {
 	if c.BytesPerSecond <= 0 {
 		return errors.New("must specify bytes-per-second")
 	}
+
+	if c.DaysRetention < 0 {
+		return errors.New("Cannot specify negative days retention")
+	}
+
 	return nil
 }
 
@@ -35,11 +42,11 @@ func main() {
 
 	cluster := sizing.SizeCluster(cfg.BytesPerSecond.Val())
 
-	printClusterArchitecture(&cluster, &cfg.BytesPerSecond, true)
+	printClusterArchitecture(&cluster, &cfg, true)
 }
 
 // TODO: Add verbose flag to include the "request" (min resources) in addition to "limit" (max resources)
-func printClusterArchitecture(c *sizing.ClusterResources, ingestRate *flagext.ByteSize, useResourceRequests bool) {
+func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config, useResourceRequests bool) {
 
 	// loop through all components, and print out how many replicas of each component we're recommending.
 	/*
@@ -66,21 +73,27 @@ func printClusterArchitecture(c *sizing.ClusterResources, ingestRate *flagext.By
 	*/
 
 	totals := c.Totals()
+	ingestRate := cfg.BytesPerSecond
+
+	objectStorageRequired := sizing.ComputeObjectStorage(ingestRate, cfg.DaysRetention)
 
 	// TODO: Actually populate the value of X volume of ingest
-	fmt.Printf("Requirements for a Loki cluster than can ingest %v per second\n", sizing.ReadableBytes(*ingestRate))
-	fmt.Printf("\tMinimum Number of Nodes: %d\n", c.NumNodes())
+
+	fmt.Printf("Requirements for a Loki cluster than can ingest %v per second with %d days retention\n", sizing.ReadableBytes(ingestRate), cfg.DaysRetention)
+	fmt.Printf("\tNodes\n")
+	fmt.Printf("\t\tMinimum count: %d\n", c.NumNodes())
 
 	fmt.Println("\tMemory")
 	fmt.Printf("\t\tMinimum: %v\n", sizing.ReadableBytes(totals.MemoryRequests))
 	fmt.Printf("\t\tWith peak expected usage of: %v\n", sizing.ReadableBytes(totals.MemoryLimits))
 
 	fmt.Println("\tCPU")
-	fmt.Printf("\t\tMinimum CPU count: %d\n", totals.CPURequests.Cores())
-	fmt.Printf("\t\tWith peak expected usage of: %d\n", totals.CPULimits.Cores())
+	fmt.Printf("\t\tMinimum count: %d CPUs\n", totals.CPURequests.Cores())
+	fmt.Printf("\t\tWith peak expected usage of: %d CPUs\n", totals.CPULimits.Cores())
 
-	fmt.Println("\tDisk")
-	fmt.Printf("\t\t%d GB\n", totals.DiskGB)
+	fmt.Println("\tStorage")
+	fmt.Printf("\t\t%d GB Disk\n", totals.DiskGB)
+	fmt.Printf("\t\t%d TB Object Storage\n", objectStorageRequired)
 
 	fmt.Printf("\n")
 
@@ -95,8 +108,8 @@ func printClusterArchitecture(c *sizing.ClusterResources, ingestRate *flagext.By
 			fmt.Printf("\t\tWith peak expected usage of: %v\n", component.Resources.MemoryLimits)
 
 			fmt.Println("\tCPU")
-			fmt.Printf("\t\tMinimum CPU count: %d\n", component.Resources.CPURequests.Cores())
-			fmt.Printf("\t\tWith peak expected usage of: %d\n", component.Resources.CPULimits.Cores())
+			fmt.Printf("\t\tMinimum count: %d CPUs\n", component.Resources.CPURequests.Cores())
+			fmt.Printf("\t\tWith peak expected usage of: %d CPUs\n", component.Resources.CPULimits.Cores())
 
 			fmt.Println("\tDisk")
 			fmt.Printf("\t\t%d GB\n", component.Resources.DiskGB)
