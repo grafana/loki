@@ -35,11 +35,11 @@ func main() {
 
 	cluster := sizing.SizeCluster(cfg.BytesPerSecond.Val())
 
-	printClusterArchitecture(&cluster, true)
+	printClusterArchitecture(&cluster, &cfg.BytesPerSecond, true)
 }
 
 // TODO: Add verbose flag to include the "request" (min resources) in addition to "limit" (max resources)
-func printClusterArchitecture(c *sizing.ClusterResources, useResourceRequests bool) {
+func printClusterArchitecture(c *sizing.ClusterResources, ingestRate *flagext.ByteSize, useResourceRequests bool) {
 
 	// loop through all components, and print out how many replicas of each component we're recommending.
 	/*
@@ -68,12 +68,12 @@ func printClusterArchitecture(c *sizing.ClusterResources, useResourceRequests bo
 	totals := c.Totals()
 
 	// TODO: Actually populate the value of X volume of ingest
-	fmt.Println("Overall Requirements for a Loki cluster than can handle X volume of ingest")
+	fmt.Printf("Requirements for a Loki cluster than can ingest %v per second\n", sizing.ReadableBytes(*ingestRate))
 	fmt.Printf("\tMinimum Number of Nodes: %d\n", c.NumNodes())
 	fmt.Printf("\tMemory Requests: %v\n", sizing.ReadableBytes(totals.MemoryRequests))
 	fmt.Printf("\tMemory Limits: %v\n", sizing.ReadableBytes(totals.MemoryLimits))
-	fmt.Printf("\tCPU Requests: %v\n", totals.CPURequests)
-	fmt.Printf("\tCPU Limits: %v\n", totals.CPULimits)
+	fmt.Printf("\tCPU Requests: %d\n", totals.CPURequests.Cores())
+	fmt.Printf("\tCPU Limits: %d\n", totals.CPULimits.Cores())
 	fmt.Printf("\tDisk Required: %d GB\n", totals.DiskGB)
 
 	fmt.Printf("\n")
@@ -85,8 +85,8 @@ func printClusterArchitecture(c *sizing.ClusterResources, useResourceRequests bo
 			fmt.Printf("%v: %d replicas, each of which requires\n", component.Name, component.Replicas)
 			fmt.Printf("\tMemory Requests: %v\n", component.Resources.MemoryRequests)
 			fmt.Printf("\tMemory Limits: %v\n", component.Resources.MemoryLimits)
-			fmt.Printf("\tCPU Requests: %v\n", component.Resources.CPURequests)
-			fmt.Printf("\tCPU Limits: %v\n", component.Resources.CPULimits)
+			fmt.Printf("\tCPU Requests: %d\n", component.Resources.CPURequests.Cores())
+			fmt.Printf("\tCPU Limits: %d\n", component.Resources.CPULimits.Cores())
 			fmt.Printf("\t%d GB of disk\n", component.Resources.DiskGB)
 		}
 	}
