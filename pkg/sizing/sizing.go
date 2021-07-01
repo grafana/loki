@@ -87,7 +87,6 @@ func queryFrontendSizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	// run two for HA
 	n := 2
-
 	component.Name = QueryFrontend
 	component.Replicas = n
 	_ = component.Resources.MemoryRequests.Set("5GB")
@@ -196,8 +195,10 @@ func indexGatewaySizing(ingestionRateMB float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	MBSecondPerInstance := 60.
 	n := replicas(MBSecondPerInstance, ingestionRateMB)
-	if n < 1 {
-		n = 1
+
+	// min 2 for HA
+	if n < 2 {
+		n = 2
 	}
 
 	component.Name = IndexGateway
