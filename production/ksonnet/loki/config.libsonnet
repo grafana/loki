@@ -351,15 +351,16 @@
     },
   },
 
-  local configMap = $.core.v1.configMap,
+  local k = import 'ksonnet-util/kausal.libsonnet',
+  local configMap = k.core.v1.configMap,
 
   config_file:
     configMap.new('loki') +
     configMap.withData({
-      'config.yaml': $.util.manifestYaml($._config.loki),
+      'config.yaml': k.util.manifestYaml($._config.loki),
     }),
 
-  local deployment = $.apps.v1.deployment,
+  local deployment = k.apps.v1.deployment,
 
   config_hash_mixin::
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({
