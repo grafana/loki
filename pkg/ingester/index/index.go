@@ -20,7 +20,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const indexShards = 32
@@ -201,7 +200,7 @@ func (ii *InvertedIndex) LabelValues(name string, shard *astmapper.ShardAnnotati
 
 // Delete a fingerprint with the given label pairs.
 func (ii *InvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
-	shard := ii.shards[util.HashFP(fp)%ii.totalShards]
+	shard := ii.shards[labelsSeriesIDHash(labels)%ii.totalShards]
 	shard.delete(labels, fp)
 }
 
