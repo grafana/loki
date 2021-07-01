@@ -228,3 +228,44 @@ func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
 
 	invalidJSONBenchmark(b, parser)
 }
+
+func awkBenchmark(b *testing.B, parser Stage) {
+	b.ReportAllocs()
+
+	p := NewPipeline([]Stage{
+		parser,
+	})
+	line := []byte(`2021-07-01 13:13:08 level=info target=https://www.website.com msg="Resolving target address" ip_protocol=ip4`)
+	lbs := labels.Labels{
+		{Name: "check_name", Value: "http"},
+		{Name: "instance", Value: "https://www.website.com"},
+		{Name: "job", Value: "Website"},
+		{Name: "probe", Value: "London"},
+		{Name: "probe_success", Value: "1"},
+		{Name: "region", Value: "EMEA"},
+		{Name: "source", Value: "synthetic-monitoring-agent"},
+	}
+
+	b.ResetTimer()
+	sp := p.ForStream(lbs)
+	for n := 0; n < b.N; n++ {
+		resLine, resLbs, resOK = sp.Process(line)
+
+		if !resOK {
+			b.Fatalf("resulting line not ok: %s\n", line)
+		}
+
+		if resLbs.Labels().Get("target_filtered") != "true" {
+			b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+		}
+	}
+}
+
+func BenchmarkAwkParser(b *testing.B) {
+	parser, err := NewAwkParser(` { setLabel("target_filtered", "true"); print $4}`)
+	if err != nil {
+		b.Fatal("cannot create new awk parser")
+	}
+
+	awkBenchmark(b, parser)
+}
