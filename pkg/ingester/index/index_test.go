@@ -33,17 +33,32 @@ func Test_GetShards(t *testing.T) {
 		shard    *astmapper.ShardAnnotation
 		expected []uint32
 	}{
+		// equal factors
 		{16, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0}},
 		{16, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{4}},
 		{16, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15}},
 
-		{32, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0, 16}},
-		{32, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{4, 20}},
-		{32, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31}},
+		// idx factor a larger multiple of schema factor
+		{32, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0, 1}},
+		{32, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{8, 9}},
+		{32, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{30, 31}},
+		{64, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{60, 61, 62, 63}},
 
-		{64, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0, 16, 32, 48}},
-		{64, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{4, 20, 36, 52}},
-		{64, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31, 47, 63}},
+		// schema factor is a larger multiple of idx factor
+		{16, &astmapper.ShardAnnotation{Shard: 0, Of: 32}, []uint32{0}},
+		{16, &astmapper.ShardAnnotation{Shard: 4, Of: 32}, []uint32{2}},
+		{16, &astmapper.ShardAnnotation{Shard: 15, Of: 32}, []uint32{7}},
+
+		// idx factor smaller but not a multiple of schema factor
+		{4, &astmapper.ShardAnnotation{Shard: 0, Of: 5}, []uint32{0}},
+		{4, &astmapper.ShardAnnotation{Shard: 1, Of: 5}, []uint32{0, 1}},
+		{4, &astmapper.ShardAnnotation{Shard: 4, Of: 5}, []uint32{3}},
+
+		// schema factor smaller but not a multiple of idx factor
+		{8, &astmapper.ShardAnnotation{Shard: 0, Of: 5}, []uint32{0, 1}},
+		{8, &astmapper.ShardAnnotation{Shard: 2, Of: 5}, []uint32{3, 4}},
+		{8, &astmapper.ShardAnnotation{Shard: 3, Of: 5}, []uint32{4, 5, 6}},
+		{8, &astmapper.ShardAnnotation{Shard: 4, Of: 5}, []uint32{6, 7}},
 	} {
 		tt := tt
 		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
