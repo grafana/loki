@@ -204,7 +204,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 
 					err = t.readFile(downloadAt)
 					if err != nil {
-						level.Error(util_log.Logger).Log("msg", "error reading file", "err", err)
+						level.Error(util_log.Logger).Log("msg", fmt.Sprintf("error reading file %s", objectKey), "err", err)
 						return
 					}
 				case <-t.quit:
