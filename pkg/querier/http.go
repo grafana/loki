@@ -1,7 +1,9 @@
 package querier
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -33,6 +35,7 @@ type QueryResponse struct {
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
 func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Am i in range query?")
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
@@ -58,13 +61,19 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
+	fmt.Printf("requrest: %+v\n", request)
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
+	buf := bytes.Buffer{}
+	if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
+		panic(err)
+	}
 
+	fmt.Printf("response: %+v\n", buf.String())
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -73,6 +82,8 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Am i in instant query?")
+
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()

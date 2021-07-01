@@ -27,6 +27,7 @@ var (
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
 	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
+	stdin      = app.Flag("stdin", "Take input logs from stdin").Bool()
 
 	queryClient = newQueryClient(app)
 
@@ -136,6 +137,10 @@ func main() {
 				log.Fatal("could not write memory profile: ", err)
 			}
 		}()
+	}
+
+	if *stdin {
+		queryClient = client.NewFileClient(os.Stdin)
 	}
 
 	switch cmd {

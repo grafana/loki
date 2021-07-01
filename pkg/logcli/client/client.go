@@ -1,8 +1,11 @@
 package client
 
 import (
+	"bufio"
+	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,10 +18,13 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
 
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 const (
@@ -41,6 +47,146 @@ type Client interface {
 	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
 	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
+}
+
+type limiter struct {
+	n int
+}
+
+func (l *limiter) MaxQuerySeries(userID string) int {
+	return l.n
+}
+
+type querier struct {
+	r io.Reader
+}
+
+func (q *querier) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
+	it := NewFileIterator(q.r, "source:logcli")
+
+	return it, nil
+}
+
+func (q *querier) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
+	return nil, nil
+}
+
+type FileIterator struct {
+	s      *bufio.Scanner
+	labels string
+	err    error
+}
+
+func NewFileIterator(r io.Reader, labels string) *FileIterator {
+	s := bufio.NewScanner(r)
+	s.Split(bufio.ScanLines)
+	return &FileIterator{
+		s:      s,
+		labels: labels,
+	}
+}
+
+func (f *FileIterator) Next() bool {
+	return f.s.Scan()
+}
+
+func (f *FileIterator) Entry() logproto.Entry {
+	return logproto.Entry{
+		Timestamp: time.Now(),
+		Line:      f.s.Text(),
+	}
+}
+
+func (f *FileIterator) Labels() string {
+	return f.labels
+}
+
+func (f *FileIterator) Error() error {
+	return f.err
+}
+
+func (f *FileIterator) Close() error {
+	return nil
+}
+
+type FileClient struct {
+	r           io.Reader
+	labels      []string
+	labelValues []string
+	orgID       string
+	engine      *logql.Engine
+}
+
+func NewFileClient(r io.Reader) *FileClient {
+	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r}, &limiter{})
+	return &FileClient{
+		r:           r,
+		orgID:       "fake",
+		engine:      eng,
+		labels:      []string{"foo"},
+		labelValues: []string{"bar"},
+	}
+
+}
+
+func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+	return nil, nil
+}
+
+func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+
+	ctx := context.Background()
+
+	params := logql.NewLiteralParams(
+		queryStr,
+		start,
+		end,
+		step,
+		interval,
+		direction,
+		uint32(limit),
+		nil,
+	)
+
+	query := f.engine.Query(params)
+
+	result, err := query.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	value, err := marshal.NewResultValue(result.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &loghttp.QueryResponse{
+		Status: "success",
+		Data: loghttp.QueryResponseData{
+			ResultType: value.Type(),
+			Result:     value,
+			Statistics: result.Statistics,
+		},
+	}, nil
+}
+
+func (f *FileClient) ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+	return &loghttp.LabelResponse{}, nil
+}
+
+func (f *FileClient) ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+	return &loghttp.LabelResponse{}, nil
+}
+
+func (f *FileClient) Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+	return &loghttp.SeriesResponse{}, nil
+}
+func (f *FileClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+	return nil, nil
+}
+
+func (f *FileClient) GetOrgID() string {
+	return f.orgID
 }
 
 // Tripperware can wrap a roundtripper.

@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -89,6 +90,7 @@ func (q *Querier) SetQueryable(queryable logql.Querier) {
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	fmt.Println("I'm here", "params", params)
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
