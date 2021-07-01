@@ -1,4 +1,4 @@
-package distributor
+package push
 
 import (
 	"compress/gzip"

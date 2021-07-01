@@ -55,7 +55,7 @@ type Distributor struct {
 	cfg              Config
 	clientCfg        client.Config
 	tenantConfigs    *runtime.TenantConfigs
-	tenantsRetention TenantsRetention
+	tenantsRetention *retention.TenantsRetention
 	ingestersRing    ring.ReadRing
 	validator        *Validator
 	pool             *ring_client.Pool
