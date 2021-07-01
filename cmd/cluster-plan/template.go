@@ -30,7 +30,7 @@ local statefulSet = k.apps.v1.statefulSet;
 		sb.WriteString(t.overrides(c))
 	}
 
-	sb.WriteString("}")
+	sb.WriteString("}\n")
 
 	return sb.String()
 }
