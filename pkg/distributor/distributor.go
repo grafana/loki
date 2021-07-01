@@ -55,11 +55,7 @@ type Distributor struct {
 	cfg              Config
 	clientCfg        client.Config
 	tenantConfigs    *runtime.TenantConfigs
-<<<<<<< HEAD
 	tenantsRetention *retention.TenantsRetention
-=======
-	tenantsRetention TenantsRetention
->>>>>>> 55e6d7dd19 (Add retention label on the loki_distributor_bytes_received_total metrics.)
 	ingestersRing    ring.ReadRing
 	validator        *Validator
 	pool             *ring_client.Pool
