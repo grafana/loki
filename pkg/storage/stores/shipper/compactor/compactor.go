@@ -6,6 +6,7 @@ import (
 	"flag"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,7 @@ type Compactor struct {
 	deleteRequestsStore   deletion.DeleteRequestsStore
 	DeleteRequestsHandler *deletion.DeleteRequestHandler
 	deleteRequestsManager *deletion.DeleteRequestsManager
+	expirationChecker     retention.ExpirationChecker
 	metrics               *metrics
 }
 
@@ -130,9 +132,9 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 		c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
 		c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
 
-		expirationChecker := newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 
-		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, expirationChecker, chunkClient, r)
+		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
 		if err != nil {
 			return err
 		}
@@ -195,7 +197,8 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 		return err
 	}
 
-	err = table.compact()
+	interval := extractIntervalFromTableName(tableName)
+	err = table.compact(c.expirationChecker.IntervalHasExpiredChunks(interval))
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
@@ -208,14 +211,14 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 	start := time.Now()
 
 	if c.cfg.RetentionEnabled {
-		c.deleteRequestsManager.MarkPhaseStarted()
+		c.expirationChecker.MarkPhaseStarted()
 	}
 
 	defer func() {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
-		dmCallback := c.deleteRequestsManager.MarkPhaseFailed
+		dmCallback := c.expirationChecker.MarkPhaseFailed
 		if status == statusSuccess {
-			dmCallback = c.deleteRequestsManager.MarkPhaseFinished
+			dmCallback = c.expirationChecker.MarkPhaseFinished
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
 			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
@@ -270,4 +273,38 @@ func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (b
 	}
 
 	return e.deletionExpiryChecker.Expired(ref, now)
+}
+
+func (e *expirationChecker) MarkPhaseStarted() {
+	e.retentionExpiryChecker.MarkPhaseStarted()
+	e.deletionExpiryChecker.MarkPhaseStarted()
+}
+
+func (e *expirationChecker) MarkPhaseFailed() {
+	e.retentionExpiryChecker.MarkPhaseFailed()
+	e.deletionExpiryChecker.MarkPhaseFailed()
+}
+
+func (e *expirationChecker) MarkPhaseFinished() {
+	e.retentionExpiryChecker.MarkPhaseFinished()
+	e.deletionExpiryChecker.MarkPhaseFinished()
+}
+
+func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
+	return e.retentionExpiryChecker.IntervalHasExpiredChunks(interval) || e.deletionExpiryChecker.IntervalHasExpiredChunks(interval)
+}
+
+func extractIntervalFromTableName(tableName string) model.Interval {
+	interval := model.Interval{
+		Start: 0,
+		End:   model.Now(),
+	}
+	tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
+	if err != nil {
+		return interval
+	}
+
+	interval.Start = model.TimeFromUnix(tableNumber * 86400)
+	interval.End = interval.Start.Add(24 * time.Hour)
+	return interval
 }

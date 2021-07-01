@@ -59,7 +59,7 @@ func TestTable_Compaction(t *testing.T) {
 	table, err := newTable(context.Background(), tableWorkingDirectory, objectClient, false, nil)
 	require.NoError(t, err)
 
-	require.NoError(t, table.compact())
+	require.NoError(t, table.compact(false))
 
 	// verify that we have only 1 file left in storage after compaction.
 	files, err := ioutil.ReadDir(tablePathInStorage)
@@ -164,7 +164,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 			table, err := newTable(context.Background(), tableWorkingDirectory, objectClient, true, tt.tableMarker)
 			require.NoError(t, err)
 
-			require.NoError(t, table.compact())
+			require.NoError(t, table.compact(true))
 			tt.assert(t, objectStoragePath, tableName)
 		})
 	}
@@ -208,7 +208,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
-	require.Error(t, table.compact())
+	require.Error(t, table.compact(true))
 
 	// ensure that files in storage are intact.
 	files, err := ioutil.ReadDir(tablePathInStorage)
@@ -223,7 +223,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 
 	table, err = newTable(context.Background(), tableWorkingDirectory, objectClient, false, nil)
 	require.NoError(t, err)
-	require.NoError(t, table.compact())
+	require.NoError(t, table.compact(true))
 
 	// ensure that we have cleanup the local working directory after successful compaction.
 	require.NoFileExists(t, tableWorkingDirectory)
