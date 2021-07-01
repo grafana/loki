@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,4 +78,29 @@ func Test_GetShards(t *testing.T) {
 
 func Test_ValidateShards(t *testing.T) {
 	require.NoError(t, validateShard(32, &astmapper.ShardAnnotation{Shard: 1, Of: 16}))
+}
+
+var (
+	result uint32
+	lbs    = []cortexpb.LabelAdapter{
+		{Name: "foo", Value: "bar"},
+	}
+	buf = make([]byte, 0, 1024)
+)
+
+func BenchmarkHash(b *testing.B) {
+	b.Run("sha256", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			result = labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs)) % 16
+		}
+	})
+	b.Run("xxash", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			var fp uint64
+			fp, buf = cortexpb.FromLabelAdaptersToLabels(lbs).HashWithoutLabels(buf, []string(nil)...)
+			result = util.HashFP(model.Fingerprint(fp)) % 16
+		}
+	})
+	// // ii.totalShards3
+	// util.HashFP(fp)%ii.totalShards]
 }

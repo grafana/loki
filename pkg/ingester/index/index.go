@@ -3,9 +3,14 @@
 package index
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -84,8 +89,63 @@ func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
 func (ii *InvertedIndex) Add(labels []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
-	shard := ii.shards[util.HashFP(fp)%ii.totalShards]
+	shard := ii.shards[labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(labels))%ii.totalShards]
 	return shard.add(labels, fp) // add() returns 'interned' values so the original labels are not retained
+}
+
+var (
+	bufferPool = sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(make([]byte, 1000))
+		},
+	}
+	base64Pool = sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(make([]byte, base64.RawStdEncoding.EncodedLen(sha256.Size)))
+		},
+	}
+)
+
+func labelsSeriesIDHash(ls labels.Labels) uint32 {
+	b64 := base64Pool.Get().(*bytes.Buffer)
+	defer func() {
+		base64Pool.Put(b64)
+	}()
+	buf := b64.Bytes()[:b64.Cap()]
+	labelsSeriesID(ls, buf)
+	return binary.BigEndian.Uint32(buf)
+}
+
+func labelsSeriesID(ls labels.Labels, dest []byte) {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		bufferPool.Put(buf)
+	}()
+	labelsString(buf, ls)
+	h := sha256.Sum256(buf.Bytes())
+	base64.RawStdEncoding.Encode(dest, h[:])
+}
+
+// Backwards-compatible with model.Metric.String()
+func labelsString(b *bytes.Buffer, ls labels.Labels) {
+	b.WriteByte('{')
+	i := 0
+	for _, l := range ls {
+		if l.Name == labels.MetricName {
+			continue
+		}
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+		b.WriteString(l.Name)
+		b.WriteByte('=')
+		var buf [1000]byte
+		b.Write(strconv.AppendQuote(buf[:0], l.Value))
+		i++
+	}
+	b.WriteByte('}')
 }
 
 // Lookup all fingerprints for the provided matchers.
