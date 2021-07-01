@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const indexShards = 32
@@ -88,7 +89,7 @@ func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
 func (ii *InvertedIndex) Add(labels []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
-	shard := ii.shards[labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(labels))%ii.totalShards]
+	shard := ii.shards[util.HashFP(fp)%ii.totalShards]
 	return shard.add(labels, fp) // add() returns 'interned' values so the original labels are not retained
 }
 
@@ -200,7 +201,7 @@ func (ii *InvertedIndex) LabelValues(name string, shard *astmapper.ShardAnnotati
 
 // Delete a fingerprint with the given label pairs.
 func (ii *InvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
-	shard := ii.shards[labelsSeriesIDHash(labels)%ii.totalShards]
+	shard := ii.shards[util.HashFP(fp)%ii.totalShards]
 	shard.delete(labels, fp)
 }
 
