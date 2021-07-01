@@ -70,3 +70,34 @@ func (b ReadableBytes) String() string {
 	}
 	return fmt.Sprintf("%.2f%s", x, order[degree])
 }
+
+const (
+	B  ReadableBytes = 1
+	KB               = B << 10
+	MB               = KB << 10
+	GB               = MB << 10
+	TB               = GB << 10
+	PB               = TB << 10
+	EB               = PB << 10
+)
+
+func (b ReadableBytes) Kubernetes() string {
+	switch {
+	case b == 0:
+		return "0B"
+	case b%EB == 0:
+		return fmt.Sprintf("%dEi", b/EB)
+	case b%PB == 0:
+		return fmt.Sprintf("%dPi", b/PB)
+	case b%TB == 0:
+		return fmt.Sprintf("%dTi", b/TB)
+	case b%GB == 0:
+		return fmt.Sprintf("%dGi", b/GB)
+	case b%MB == 0:
+		return fmt.Sprintf("%dMi", b/MB)
+	case b%KB == 0:
+		return fmt.Sprintf("%dKi", b/KB)
+	default:
+		return fmt.Sprintf("%dB", b)
+	}
+}

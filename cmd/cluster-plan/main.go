@@ -15,6 +15,9 @@ type Config struct {
 	DaysRetention   int
 	MonthlyUnitCost sizing.UnitCostInfo
 	Simple          bool
+
+	// Templating
+	Template string
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -25,6 +28,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&c.MonthlyUnitCost.CostPerGBDisk, "monthly-cost-per-gb-disk", 0.187, "Monthly dollar cost for a GB of persistent disk")
 	f.Float64Var(&c.MonthlyUnitCost.CostPerGBObjStorage, "monthly-cost-per-gb-obj-storage", 0.023, "Monthly dollar cost for a GB of object storage")
 	f.BoolVar(&c.Simple, "simple", false, "Show a simpler compromise between resource minimums and ceilings.")
+
+	// Templating
+	f.StringVar(&c.Template, "template", "", "choses a template style to write cluster information to stdout instead of the text cluster plan")
 }
 
 func (c *Config) Validate() error {
@@ -53,6 +59,10 @@ func (c *Config) Validate() error {
 		return errors.New("Cannot specify negative cost per GB Object Storage")
 	}
 
+	if c.Template != "" && Templaters[c.Template] == nil {
+		return fmt.Errorf("unexpected template: %s", c.Template)
+	}
+
 	return nil
 }
 
@@ -65,6 +75,12 @@ func main() {
 	}
 
 	cluster := sizing.SizeCluster(cfg.BytesPerSecond.Val())
+
+	if cfg.Template != "" {
+		out := Templaters[cfg.Template].Template(cluster)
+		fmt.Print(out)
+		return
+	}
 
 	printClusterArchitecture(&cluster, &cfg, true)
 }
