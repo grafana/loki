@@ -49,6 +49,7 @@ The current team members are:
 
 - Aditya C S - [adityacs](https://github.com/adityacs)
 - Cyril Tovena - [cyriltovena](https://github.com/cyriltovena) ([Grafana Labs](https://grafana.com/))
+- Danny Kopping - [dannykopping](https://github.com/dannykopping) ([Grafana Labs](https://grafana.com/))
 - David Kaltschmidt - [davkal](https://github.com/davkal) ([Grafana Labs](https://grafana.com/))
 - Edward Welch - [slim-bean](https://github.com/slim-bean) ([Grafana Labs](https://grafana.com/))
 - Goutham Veeramachaneni - [gouthamve](https://github.com/gouthamve) ([Grafana Labs](https://grafana.com/))
