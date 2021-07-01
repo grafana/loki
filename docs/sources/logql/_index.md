@@ -137,7 +137,7 @@ For example, while the result will be the same, the following query `{job="mysql
 
 #### Parser Expression
 
-Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](#metric-queries).
+Parser expressions can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](#metric-queries).
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
@@ -371,6 +371,48 @@ For example, using `| unpack` with the following log line:
 allows to extract the `container` and `pod` labels and the `original log message` as the new log line.
 
 > You can combine `unpack` with `json` parser (or any other parsers) if the original embedded log line is specific format.
+
+##### awk
+
+The **awk** parser takes a single parameter `| awk "<script>"` which is the awk script to execute on each line. The output from the script will replace the log line.
+
+The following unsafe operations from awk have been disabled:
+- system calls via system() or pipe operator.
+- writing to files via '>' or '>>'.
+- reading from files via getline or the filenames in Args.
+
+The following functions have been added to awk:
+- setLabel: this function takes a label name and value as parameter and adds a new label to the current log line or replaces the value if the label exists.
+- delLabels: this function takes one or more label names as parameters and removes them from the log line.
+
+The BEGIN and END patterns only work per individual log line. If a [multiline block](https://grafana.com/docs/loki/latest/clients/promtail/stages/multiline/) is used then BEGIN and END will work for the block.
+
+
+For example the parser ``| awk ` /production/ { print "prod" ; setLabel("environment", "prod") } /dev/ { print "dev" ; setLabel("environment", "dev") }` `` will transform the following lines:
+
+```log
+production content
+dev content
+```
+
+into
+
+```log
+prod
+dev
+```
+
+with the first line having this label:
+
+```kv
+"environment" => "prod"
+```
+
+and the second:
+
+```kv
+"environment" => "dev"
+```
 
 #### Label Filter Expression
 
