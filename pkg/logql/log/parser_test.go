@@ -575,6 +575,39 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 		},
 		{
+			"newline logfmt",
+			[]byte("foobar=\"foo\nbar baz\""),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo\nbar baz"},
+			},
+		},
+		{
+			"escaped logfmt",
+			[]byte(`foobar="foo ba\\r baz"`),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: `foo ba\r baz`},
+			},
+		},
+		{
+			"newline and escaped logfmt",
+			[]byte("foobar=\"foo bar\nb\\\\az\""),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo bar\nb\\az"},
+			},
+		},
+		{
 			"double property logfmt",
 			[]byte(`foobar="foo bar" latency=10ms`),
 			labels.Labels{
