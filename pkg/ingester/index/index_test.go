@@ -101,6 +101,4 @@ func BenchmarkHash(b *testing.B) {
 			result = util.HashFP(model.Fingerprint(fp)) % 16
 		}
 	})
-	// // ii.totalShards3
-	// util.HashFP(fp)%ii.totalShards]
 }
