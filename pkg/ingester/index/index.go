@@ -52,15 +52,22 @@ func (ii *InvertedIndex) getShards(shard *astmapper.ShardAnnotation) []*indexSha
 	if shard == nil {
 		return ii.shards
 	}
-	totalRequested := int(ii.totalShards) / shard.Of
-	result := make([]*indexShard, totalRequested)
-	var j int
-	for i := 0; i < totalRequested; i++ {
-		subShard := ((shard.Shard) + (i * shard.Of))
-		result[j] = ii.shards[subShard]
-		j++
+
+	indexFactor := int(ii.totalShards)
+	// calculate the start of the hash ring desired
+	lowerBound := shard.Shard * indexFactor / shard.Of
+	// calculate the end of the hash ring desired
+	upperBound := (shard.Shard + 1) * indexFactor / shard.Of
+	// see if the upper bound is cleanly doesn't align cleanly with the next shard
+	// which can happen when the schema sharding factor and inverted index
+	// sharding factor are not multiples of each other.
+	rem := (shard.Shard + 1) * indexFactor % shard.Of
+	if rem > 0 {
+		// there's overlap on the upper shard
+		upperBound = upperBound + 1
 	}
-	return result
+
+	return ii.shards[lowerBound:upperBound]
 }
 
 func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
