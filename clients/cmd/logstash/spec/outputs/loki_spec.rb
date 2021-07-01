@@ -31,6 +31,16 @@ describe LogStash::Outputs::Loki do
     let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
     let (:lbs) { {"buzz"=>"bar","cluster"=>"us-central1"}.sort.to_h}
 
+    it 'should add tenant batch' do
+      plugin = LogStash::Plugin.lookup("output", "loki").new(simple_loki_config)
+      expect(plugin.batch).to eql nil
+      expect(plugin.add_entry_to_batch(entry, "a")).to eql true
+      expect(plugin.add_entry_to_batch(entry, "b")).to eql true
+      expect(plugin.add_entry_to_batch(entry, nil)).to eql true
+      expect(plugin.add_entry_to_batch(entry, "")).to eql true
+      expect(plugin.batches.keys.length).to eq 3
+    end
+
     it 'should not add empty line' do
       plugin = LogStash::Plugin.lookup("output", "loki").new(simple_loki_config)
       emptyEntry = Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"foo")
@@ -96,7 +106,7 @@ describe LogStash::Outputs::Loki do
       loki = LogStash::Outputs::Loki.new(simple_loki_config.merge!({'batch_wait'=>0.5,'batch_size'=>10}))
       loki.register
       sent = Queue.new
-      allow(loki).to receive(:send) do |batch|
+      allow(loki).to receive(:send) do | batch|
         Thread.new do
           sent << batch
         end
@@ -112,7 +122,7 @@ describe LogStash::Outputs::Loki do
       loki.register
       sent = Queue.new
       allow(loki).to receive(:send) do | batch|
-        Thread.new  do
+        Thread.new do
           sent << batch
         end
       end
@@ -132,7 +142,7 @@ describe LogStash::Outputs::Loki do
       loki.receive(event)
       sent.deq
       sleep(0.01) # Adding a minimal sleep. In few cases @batch=nil might happen after evaluating for nil
-      expect(loki.batch).to be_nil 
+      expect(loki.batch).to be_nil
       loki.close
     end
   end
@@ -140,6 +150,30 @@ describe LogStash::Outputs::Loki do
   context 'http requests' do
     let (:entry) {Entry.new(LogStash::Event.new({"message"=>"foobuzz","buzz"=>"bar","cluster"=>"us-central1","@timestamp"=>Time.at(1)}),"message")}
 
+    it 'should send message tenant' do
+      conf = {
+        'url'=>'http://localhost:3100/loki/api/v1/push',
+        'username' => 'foo',
+        'password' => 'bar',
+        'tenant_id' => 't'
+      }
+      loki = LogStash::Outputs::Loki.new(conf)
+      loki.register
+      b = Batch.new(entry)
+      post = stub_request(:post, "http://localhost:3100/loki/api/v1/push").with(
+        basic_auth: ['foo', 'bar'],
+        body: b.to_json,
+        headers:{
+          'Content-Type' => 'application/json' ,
+          'User-Agent' => 'loki-logstash',
+          'X-Scope-OrgID'=>'custom',
+          'Accept'=>'*/*',
+          'Accept-Encoding'=>'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
+        }
+      )
+      loki.send(b, "custom")
+      expect(post).to have_been_requested.times(1)
+    end
     it 'should send credentials' do
       conf = {
           'url'=>'http://localhost:3100/loki/api/v1/push',
@@ -164,7 +198,6 @@ describe LogStash::Outputs::Loki do
       loki.send(b)
       expect(post).to have_been_requested.times(1)
     end
-
     it 'should not send credentials' do
       conf = {
           'url'=>'http://foo.com/loki/api/v1/push',
