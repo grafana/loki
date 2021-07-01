@@ -27,13 +27,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
-var (
-	maxLabelCacheSize = 100000
-)
+var maxLabelCacheSize = 100000
 
 // Config for a Distributor.
 type Config struct {
@@ -53,12 +52,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Distributor struct {
 	services.Service
 
-	cfg           Config
-	clientCfg     client.Config
-	tenantConfigs *runtime.TenantConfigs
-	ingestersRing ring.ReadRing
-	validator     *Validator
-	pool          *ring_client.Pool
+	cfg              Config
+	clientCfg        client.Config
+	tenantConfigs    *runtime.TenantConfigs
+	tenantsRetention *retention.TenantsRetention
+	ingestersRing    ring.ReadRing
+	validator        *Validator
+	pool             *ring_client.Pool
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -118,6 +118,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		cfg:                  cfg,
 		clientCfg:            clientCfg,
 		tenantConfigs:        configs,
+		tenantsRetention:     retention.NewTenantsRetention(overrides),
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
 		validator:            validator,
