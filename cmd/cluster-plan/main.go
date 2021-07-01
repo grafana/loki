@@ -59,6 +59,10 @@ func (c *Config) Validate() error {
 		return errors.New("Cannot specify negative cost per GB Object Storage")
 	}
 
+	if c.Template != "" && Templaters[c.Template] == nil {
+		return fmt.Errorf("unexpected template: %s", c.Template)
+	}
+
 	return nil
 }
 
@@ -71,6 +75,12 @@ func main() {
 	}
 
 	cluster := sizing.SizeCluster(cfg.BytesPerSecond.Val())
+
+	if cfg.Template != "" {
+		out := Templaters[cfg.Template].Template(cluster)
+		fmt.Print(out)
+		return
+	}
 
 	printClusterArchitecture(&cluster, &cfg, true)
 }

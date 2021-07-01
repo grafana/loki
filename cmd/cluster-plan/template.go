@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/pkg/sizing"
 )
@@ -16,11 +17,25 @@ type Templater interface {
 
 type JsonnetTemplater struct{}
 
-func (_ JsonnetTemplater) Template(cluster sizing.ClusterResources) string {
-	return ""
+func (t JsonnetTemplater) Template(cluster sizing.ClusterResources) string {
+	var sb strings.Builder
+	sb.WriteString(
+		`local k = import 'ksonnet-util/kausal.libsonnet';
+local deployment = k.apps.v1.deployment;
+local statefulSet = k.apps.v1.statefulSet;
+{
+`)
+
+	for _, c := range cluster.Components() {
+		sb.WriteString(t.overrides(c))
+	}
+
+	sb.WriteString("}")
+
+	return sb.String()
 }
 
-func (_ JsonnetTemplater) overrides(component *sizing.ComponentDescription) string {
+func (t JsonnetTemplater) overrides(component *sizing.ComponentDescription) string {
 	switch component.Name {
 	case sizing.Distributor:
 		return deploymentOverrides(component, "distributor")
@@ -35,11 +50,11 @@ func (_ JsonnetTemplater) overrides(component *sizing.ComponentDescription) stri
 	case sizing.Compactor:
 		return statefulsetOverrides(component, "compactor")
 	case sizing.ChunksCache:
-		return memcachedOverrides(component, "memcached_chunks")
+		return memcachedOverrides(component, "chunks")
 	case sizing.QueryResultsCache:
-		return memcachedOverrides(component, "memcached_frontend")
+		return memcachedOverrides(component, "frontend")
 	case sizing.IndexCache:
-		return memcachedOverrides(component, "memcached_index_queries")
+		return memcachedOverrides(component, "index_queries")
 	case sizing.IndexGateway:
 		return statefulsetOverrides(component, "index_gateway")
 	default:
@@ -54,7 +69,7 @@ func deploymentOverrides(component *sizing.ComponentDescription, id string) stri
 
   %s_container+::
     k.util.resourcesRequests('%s', '%s') +
-    k.util.resourcesLimits('%s', '16Gi'),
+    k.util.resourcesLimits('%s', '%s'),
 `,
 		id,
 		component.Replicas,
@@ -66,10 +81,35 @@ func deploymentOverrides(component *sizing.ComponentDescription, id string) stri
 	)
 }
 
-func statefulsetOverrides(component *sizing.ComponentDescription) string {}
+func statefulsetOverrides(component *sizing.ComponentDescription, id string) string {
+	return fmt.Sprintf(`
+  %s_statefulset+:
+    statefulSet.mixin.spec.withReplicas(%d),
 
-func memcachedOverrides(component *sizing.ComponentDescription) string {}
+  %s_container+::
+    $.util.resourcesRequests('%s', '%s') +
+    $.util.resourcesLimits('%s', '%s'),
+`,
+		id,
+		component.Replicas,
+		id,
+		component.Resources.CPURequests.Kubernetes(),
+		sizing.ReadableBytes(component.Resources.MemoryRequests).Kubernetes(),
+		component.Resources.CPULimits.Kubernetes(),
+		sizing.ReadableBytes(component.Resources.MemoryLimits).Kubernetes(),
+	)
+}
 
-// local k = import 'ksonnet-util/kausal.libsonnet',
-// local deployment = k.apps.v1.deployment,
-// local statefulSet = k.apps.v1.statefulSet,
+func memcachedOverrides(component *sizing.ComponentDescription, id string) string {
+	// Everything but replicas are actually managed by the memcached jsonnet library
+	// and our memcached limits are derived from these, so avoid the complexity of trying to override it.
+	return fmt.Sprintf(`
+  memcached_%s+: {
+    statefulSet+:
+      statefulSet.mixin.spec.withReplicas(%d),
+  },
+`,
+		id,
+		component.Replicas,
+	)
+}
