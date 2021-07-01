@@ -163,7 +163,11 @@ func Test_Retention(t *testing.T) {
 				require.Eventually(t, func() bool {
 					actual := chunkClient.getDeletedChunkIds()
 					sort.Strings(actual)
-					return assert.ObjectsAreEqual(expectDeleted, actual)
+					if !assert.ObjectsAreEqual(expectDeleted, actual) {
+						t.Logf("expected:%+v actual:%+v", expectDeleted, actual)
+						return false
+					}
+					return true
 				}, 10*time.Second, 1*time.Second)
 			}
 		})
