@@ -1,0 +1,200 @@
+version: '3.4'
+services:
+  consul:
+    logging: &logging
+      driver: loki-compose
+      options:
+        loki-url: "http://localhost:8001/loki/api/v1/push"
+    image: consul
+    command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
+    ports:
+      - 8500:8500
+
+  minio:
+    logging:
+      <<: *logging
+    image: minio/minio
+    entrypoint: sh
+    command: -c 'mkdir -p /data/loki && /usr/bin/minio server /data'
+    environment:
+      - MINIO_ACCESS_KEY=loki
+      - MINIO_SECRET_KEY=supersecret
+    ports:
+      - 9000:9000
+    volumes:
+      - .data-minio:/data:delegated
+
+  memcached:
+    logging:
+      <<: *logging
+    image: memcached:1.6
+
+  jaeger:
+    logging:
+      <<: *logging
+    image: jaegertracing/all-in-one
+    ports:
+      - 16686:16686
+      - "14268"
+
+  distributor:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18001 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=distributor
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8001:8001
+      - 18001:18001
+    volumes:
+      - ./config:/loki/config
+
+  ingester-1:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18002 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=ingester-1
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8002:8002
+      - 18002:18002
+    volumes:
+      - ./config:/loki/config
+      - .data-ingester-1:/data:delegated
+
+  ingester-2:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18003 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=ingester-2
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8003:8003
+      - 18003:18003
+    volumes:
+      - ./config:/loki/config
+      - .data-ingester-2:/data:delegated
+
+  querier:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004"]
+    depends_on:
+      - consul
+      - minio
+      - query-frontend
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=querier
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8004:8004
+      - 18004:18004
+    volumes:
+      - ./config:/loki/config
+
+  # store-gateway-1:
+  #   build:
+  #     context:    .
+  #     dockerfile: dev.dockerfile
+  #   image: cortex
+  #   command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008"]
+  #   depends_on:
+  #     - consul
+  #     - minio
+  #   environment:
+  #     - JAEGER_AGENT_HOST=jaeger
+  #     - JAEGER_AGENT_PORT=6831
+  #     - JAEGER_TAGS=app=store-gateway-1
+  #     - JAEGER_SAMPLER_TYPE=const
+  #     - JAEGER_SAMPLER_PARAM=1
+  #   ports:
+  #     - 8008:8008
+  #     - 18008:18008
+  #   volumes:
+  #     - ./config:/cortex/config
+
+  compactor:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18006 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=compactor -server.http-listen-port=8006 -server.grpc-listen-port=9006"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=compactor
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8006:8006
+      - 18006:18006
+    volumes:
+      - ./config:/loki/config
+
+  query-frontend:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18007 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-frontend -server.http-listen-port=8007 -server.grpc-listen-port=9007 -log.level=debug"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=query-frontend
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8007:8007
+      - 18007:18007
+    volumes:
+      - ./config:/loki/config
