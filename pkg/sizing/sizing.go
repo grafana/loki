@@ -56,10 +56,10 @@ func distributorSizing(ingestionRateMB float64) *ComponentDescription {
 
 	component.Name = Distributor
 	component.Replicas = n
-	_ = component.Resources.MemoryRequests.Set("500KB")
+	_ = component.Resources.MemoryRequests.Set("500MB")
 	_ = component.Resources.MemoryLimits.Set("1GB")
 	component.Resources.CPURequests.SetCores(0.5)
-	component.Resources.CPULimits.SetCores(0.5)
+	component.Resources.CPULimits.SetCores(1)
 	return component
 }
 
