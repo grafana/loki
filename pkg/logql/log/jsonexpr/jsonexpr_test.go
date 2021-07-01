@@ -113,6 +113,12 @@ func TestJSONExpressionParser(t *testing.T) {
 			nil,
 			fmt.Errorf("syntax error: unexpected DOT, expecting FIELD"),
 		},
+		{
+			"syntax error on key access",
+			`["key`,
+			nil,
+			fmt.Errorf("syntax error: unexpected $end, expecting RSB"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
