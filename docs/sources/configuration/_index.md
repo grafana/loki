@@ -203,7 +203,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 
 # Base path to serve all API routes from (e.g., /v1/).
 # CLI flag: -server.path-prefix
-[http_prefix: <string> | default = "/api/prom"]
+[http_path_prefix: <string> | default = ""]
 ```
 
 ## distributor_config
@@ -259,6 +259,10 @@ The `querier_config` block configures the Loki Querier.
 # 0 means all queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
+
+# The maximum number of concurrent queries allowed.
+# CLI flag: -querier.max-concurrent
+[max_concurrent: <int> | default = 20]
 
 # Only query the store, do not attempt to query any ingesters,
 # useful for running a standalone querier pool opearting only against stored data.
@@ -565,6 +569,61 @@ storage:
     # Directory to scan for rules
     # CLI flag: -ruler.storage.local.directory
     [directory: <filename> | default = ""]
+
+# Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
+remote_write:
+  # Enable remote-write functionality.
+  # CLI flag: -ruler.remote-write.enabled
+  [enabled: <boolean> | default = false]
+
+  client:
+    # The URL of the endpoint to send samples to.
+    url: <string>
+
+    # Timeout for requests to the remote write endpoint.
+    [remote_timeout: <duration> | default = 30s]
+
+    # Custom HTTP headers to be sent along with each remote write request.
+    # Be aware that headers that are set by Prometheus itself can't be overwritten.
+    headers:
+      [<string>: <string> ...]
+
+    # HTTP proxy server to use to connect to the targets.
+    [proxy_url: <string>]
+
+    # Sets the `Authorization` header on every remote write request with the
+    # configured username and password.
+    # password and password_file are mutually exclusive.
+    basic_auth:
+      [username: <string>]
+      [password: <secret>]
+      [password_file: <string>]
+
+    # `Authorization` header configuration.
+    authorization:
+      # Sets the authentication type.
+      [type: <string> | default: Bearer]
+      # Sets the credentials. It is mutually exclusive with
+      # `credentials_file`.
+      [credentials: <secret>]
+      # Sets the credentials with the credentials read from the configured file.
+      # It is mutually exclusive with `credentials`.
+      [credentials_file: <filename>]
+
+    tls_config:
+      # CA certificate to validate API server certificate with.
+      [ca_file: <filename>]
+
+      # Certificate and key files for client cert authentication to the server.
+      [cert_file: <filename>]
+      [key_file: <filename>]
+
+      # ServerName extension to indicate the name of the server.
+      # https://tools.ietf.org/html/rfc4366#section-3.1
+      [server_name: <string>]
+
+      # Disable validation of the server certificate.
+      [insecure_skip_verify: <boolean>]
 
 # File path to store temporary rule files
 # CLI flag: -ruler.rule-path
@@ -1448,6 +1507,11 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
+  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # CLI flag: -<prefix>.memcached.addresses
+  [addresses: <string> | default = ""]
+
   # Maximum time to wait before giving up on memcached requests.
   # CLI flag: -<prefix>.memcached.timeout
   [timeout: <duration> | default = 100ms]
@@ -1613,6 +1677,9 @@ compacts index shards to more performant forms.
 
 # The total amount of worker to use to delete chunks.
 [retention_delete_worker_count: <int> | default = 150]
+
+# Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.
+[delete_request_cancel_period: <duration> | default = 24h]
 ```
 
 ## limits_config
@@ -1751,6 +1818,10 @@ logs in Loki.
 # If no rule is matched the `retention_period` is used.
 [retention_stream: <array> | default = none]
 
+# Capacity of remote-write queues; if a queue exceeds its capacity it will evict oldest samples.
+# CLI flag: -ruler.remote-write.queue-capacity
+[ruler_remote_write_queue_capacity: <int> | default = 10000]
+
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config
 [per_tenant_override_config: <string>]
@@ -1873,7 +1944,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 
 # DynamoDB table read throughput for inactive tables.
 # CLI flag: -<prefix>.inactive-read-throughput
-[inactive_read_throughput: <int> | Default = 300]
+[inactive_read_throughput: <int> | default = 300]
 
 # Active table write autoscale config.
 # The CLI flags prefix for this block config is: -<prefix>.write-throughput
@@ -1957,7 +2028,7 @@ Options for runtime configuration reload can also be configured via YAML:
 [file: <string>: default = empty]
 
 # How often to check the file.
-[period: <duration>: default 10 seconds]
+[period: <duration>: default 10s]
 ```
 
 Example runtime configuration file:

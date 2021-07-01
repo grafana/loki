@@ -17,6 +17,7 @@ func Test_Extractor(t *testing.T) {
 		`sum(count_over_time({job="mysql"}[5m]))`,
 		`sum(count_over_time({job="mysql"} | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
+		`sum(count_over_time({job="mysql"} | pattern "<foo> bar <buzz>" [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m] offset 1h))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,

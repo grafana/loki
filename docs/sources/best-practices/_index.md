@@ -14,17 +14,17 @@ Things like, host, application, and environment are great labels. They will be f
 
 Too many label value combinations leads to too many streams. The penalties for that in Loki are a large index and small chunks in the store, which in turn can actually reduce performance.
 
-To avoid those issues, don't add a label for something until you know you need it! Use filter expressions ( |= “text”, |~ “regex”, …) and brute force those logs. It works -- and it's fast.
+To avoid those issues, don't add a label for something until you know you need it! Use filter expressions (`|= "text"`, `|~ "regex"`, …) and brute force those logs. It works -- and it's fast.
 
-From early on, we have set a label dynamically using promtail pipelines for `level`. This seemed intuitive for us as we often wanted to only show logs for `level=”error”`; however, we are re-evaluating this now as writing a query. `{app=”loki”} |= “level=error”` is proving to be just as fast for many of our applications as `{app=”loki”,level=”error”}`.
+From early on, we have set a label dynamically using Promtail pipelines for `level`. This seemed intuitive for us as we often wanted to only show logs for `level="error"`; however, we are re-evaluating this now as writing a query. `{app="loki"} |= "level=error"` is proving to be just as fast for many of our applications as `{app="loki",level="error"}`.
 
-This may seem surprising, but if applications have medium to low volume, that label causes one application's logs to be split into up to five streams, which means 5x chunks being stored.  And loading chunks has an overhead associated with it. Imagine now if that query were `{app=”loki”,level!=”debug”}`. That would have to load **way** more chunks than `{app=”loki”} != “level=debug”`.
+This may seem surprising, but if applications have medium to low volume, that label causes one application's logs to be split into up to five streams, which means 5x chunks being stored.  And loading chunks has an overhead associated with it. Imagine now if that query were `{app="loki",level!="debug"}`. That would have to load **way** more chunks than `{app="loki"} != "level=debug"`.
 
 Above, we mentioned not to add labels until you _need_ them, so when would you _need_ labels?? A little farther down is a section on `chunk_target_size`. If you set this to 1MB (which is reasonable), this will try to cut chunks at 1MB compressed size, which is about 5MB-ish of uncompressed logs (might be as much as 10MB depending on compression). If your logs have sufficient volume to write 5MB in less time than `max_chunk_age`, or **many** chunks in that timeframe, you might want to consider splitting it into separate streams with a dynamic label.
 
 What you want to avoid is splitting a log file into streams, which result in chunks getting flushed because the stream is idle or hits the max age before being full. As of [Loki 1.4.0](https://grafana.com/blog/2020/04/01/loki-v1.4.0-released-with-query-statistics-and-up-to-300x-regex-optimization/), there is a metric which can help you understand why chunks are flushed `sum by (reason) (rate(loki_ingester_chunks_flushed_total{cluster="dev"}[1m]))`.
 
-It’s not critical that every chunk be full when flushed, but it will improve many aspects of operation. As such, our current guidance here is to avoid dynamic labels as much as possible and instead favor filter expressions. For example, don’t add a `level` dynamic label, just `|= “level=debug”` instead.
+It’s not critical that every chunk be full when flushed, but it will improve many aspects of operation. As such, our current guidance here is to avoid dynamic labels as much as possible and instead favor filter expressions. For example, don’t add a `level` dynamic label, just `|= "level=debug"` instead.
 
 ## Label values must always be bounded
 
@@ -76,29 +76,29 @@ One issue many people have with Loki is their client receiving errors for out of
 There are a few things to dissect from that statement. The first is this restriction is per stream.  Let’s look at an example:
 
 ```
-{job=”syslog”} 00:00:00 i’m a syslog!
-{job=”syslog”} 00:00:01 i’m a syslog!
+{job="syslog"} 00:00:00 i'm a syslog!
+{job="syslog"} 00:00:01 i'm a syslog!
 ```
 
 If Loki received these two lines which are for the same stream, everything would be fine. But what about this case:
 
 ```
-{job=”syslog”} 00:00:00 i’m a syslog!
-{job=”syslog”} 00:00:02 i’m a syslog!
-{job=”syslog”} 00:00:01 i’m a syslog!  <- Rejected out of order!
+{job="syslog"} 00:00:00 i'm a syslog!
+{job="syslog"} 00:00:02 i'm a syslog!
+{job="syslog"} 00:00:01 i'm a syslog!  <- Rejected out of order!
 ```
 
 What can we do about this? What if this was because the sources of these logs were different systems? We can solve this with an additional label which is unique per system:
 
 ```
-{job=”syslog”, instance=”host1”} 00:00:00 i’m a syslog!
-{job=”syslog”, instance=”host1”} 00:00:02 i’m a syslog!
-{job=”syslog”, instance=”host2”} 00:00:01 i’m a syslog!  <- Accepted, this is a new stream!
-{job=”syslog”, instance=”host1”} 00:00:03 i’m a syslog!  <- Accepted, still in order for stream 1
-{job=”syslog”, instance=”host2”} 00:00:02 i’m a syslog!  <- Accepted, still in order for stream 2
+{job="syslog", instance="host1"} 00:00:00 i'm a syslog!
+{job="syslog", instance="host1"} 00:00:02 i'm a syslog!
+{job="syslog", instance="host2"} 00:00:01 i'm a syslog!  <- Accepted, this is a new stream!
+{job="syslog", instance="host1"} 00:00:03 i'm a syslog!  <- Accepted, still in order for stream 1
+{job="syslog", instance="host2"} 00:00:02 i'm a syslog!  <- Accepted, still in order for stream 2
 ```
 
-But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the promtail pipeline stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
+But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the Promtail pipeline stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
 
 But I want Loki to fix this! Why can’t you buffer streams and re-order them for me?! To be honest, because this would add a lot of memory overhead and complication to Loki, and as has been a common thread in this post, we want Loki to be simple and cost-effective. Ideally we would want to improve our clients to do some basic buffering and sorting as this seems a better place to solve this problem.
 

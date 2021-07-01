@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package indexgatewaypb;
+
+service IndexGateway {
+    /// QueryIndex reads the indexes required for given query & sends back the batch of rows
+    /// in rpc streams
+    rpc QueryIndex(QueryIndexRequest) returns (stream QueryIndexResponse);
+}
+
+message QueryIndexResponse {
+    string QueryKey = 1;
+    repeated Row rows = 2;
+}
+
+message Row {
+    bytes rangeValue = 1;
+    bytes value      = 2;
+}
+
+message QueryIndexRequest {
+    repeated IndexQuery Queries = 1;
+}
+
+message IndexQuery {
+    string tableName          = 1;
+    string hashValue          = 2;
+    bytes rangeValuePrefix    = 3;
+    bytes rangeValueStart     = 4;
+    bytes valueEqual          = 5;
+}
+

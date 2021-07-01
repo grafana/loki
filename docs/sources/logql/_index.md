@@ -39,7 +39,7 @@ The query is composed of:
 - a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev` namespace.
 - a log pipeline `|= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500` which will filter out log that contains the word `metrics.go`, then parses each log line to extract more labels and filter with them.
 
-> To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
+> To avoid escaping special characters you can use the `` ` ``(backtick) instead of `"` when quoting strings.
 For example `` `\w+` `` is the same as `"\\w+"`.
 This is specially useful when writing a regular expression which contains multiple backslashes that require escaping.
 
@@ -154,9 +154,10 @@ In case of errors, for instance if the line is not in the expected format, the l
 
 If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However if an extracted key appears twice, only the latest label value will be kept.
 
-We support currently support [json](#json), [logfmt](#logfmt), [regexp](#regexp) and [unpack](#unpack) parsers.
+Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regexp) and [unpack](#unpack) parsers.
 
-It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
+It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
+Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers](#multiple-parsers).
 
 ##### Json
 
@@ -276,6 +277,60 @@ will get those labels extracted:
 "service" => "8ms"
 "status" => "200"
 ```
+
+##### Pattern
+
+The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression (`| pattern "<pattern-expression>"`). The expression matches the structure of a log line.
+
+Consider this NGINX log line.
+
+```log
+0.191.12.2 - - [10/Jun/2021:09:14:29 +0000] "GET /api/plugins/versioncheck HTTP/1.1" 200 2 "-" "Go-http-client/2.0" "13.76.247.102, 34.120.177.193" "TLSv1.2" "US" ""
+```
+
+This log line can be parsed with the expression
+
+`<ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>`
+
+to extract these fields:
+
+```kv
+"ip" => "0.191.12.2"
+"method" => "GET"
+"uri" => "/api/plugins/versioncheck"
+"status" => "200"
+"size" => "2"
+"agent" => "Go-http-client/2.0"
+```
+
+A pattern expression is composed of captures and literals.
+
+A capture is a field name delimited by the `<` and `>` characters. `<example>` defines the field name `example`.
+An unnamed capture appears as `<_>`. The unnamed capture skips matched content.
+
+Captures are matched from the line beginning or the previous set of literals, to the line end or the next set of literals.
+If a capture is not matched, the pattern parser will stop.
+
+Literals can be any sequence of UTF-8 characters, including whitespace characters.
+
+By default, a pattern expression is anchored at the start of the log line. If the expression start with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression to anchor the expression at the start.
+
+Consider the log line
+
+```log
+level=debug ts=2021-06-10T09:24:13.472094048Z caller=logging.go:66 traceID=0568b66ad2d9294c msg="POST /loki/api/v1/push (204) 16.652862ms"
+```
+
+To match `msg="`, use the expression:
+
+```pattern
+<_> msg="<method> <path> (<status>) <latency>"
+```
+
+A pattern expression is invalid if
+
+- It does not contain any named capture.
+- It contains two consecutive captures not separated by whitespace characters.
 
 ##### regexp
 

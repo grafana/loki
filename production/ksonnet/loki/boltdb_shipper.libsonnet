@@ -9,7 +9,7 @@
   _config+:: {
     // run ingesters and queriers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
     stateful_ingesters: if self.using_boltdb_shipper then true else super.stateful_ingesters,
-    stateful_queriers: if self.using_boltdb_shipper then true else super.stateful_queriers,
+    stateful_queriers: if self.using_boltdb_shipper && !self.use_index_gateway then true else super.stateful_queriers,
 
     boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store when using_boltdb_shipper=true. If this is not intentional, consider disabling it. boltdb_shipper_shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
     compactor_pvc_size: '10Gi',
@@ -20,7 +20,7 @@
         write_dedupe_cache_config:: {},
       },
       storage_config+: {
-        boltdb_shipper: {
+        boltdb_shipper+: {
           shared_store: $._config.boltdb_shipper_shared_store,
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',

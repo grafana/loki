@@ -20,5 +20,8 @@
 // WAL support
 (import 'wal.libsonnet') +
 
+// Index Gateway support
+(import 'index-gateway.libsonnet') +
+
 // BoltDB Shipper support. This should be the last one to get imported.
 (import 'boltdb_shipper.libsonnet')

@@ -31,8 +31,8 @@ Download and install the Loki and Promtail module using `jb`:
 ```bash
 go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
 jb init  # not required if you already ran `tk init`
-jb install github.com/grafana/loki/production/ksonnet/loki
-jb install github.com/grafana/loki/production/ksonnet/promtail
+jb install github.com/grafana/loki/production/ksonnet/loki@main
+jb install github.com/grafana/loki/production/ksonnet/promtail@main
 ```
 
 Then you'll need to install a kubernetes library:

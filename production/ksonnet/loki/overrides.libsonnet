@@ -17,7 +17,7 @@
   local configMap = $.core.v1.configMap,
 
   overrides_config:
-    configMap.new('overrides') +
+    configMap.new($._config.overrides_configmap_name) +
     configMap.withData({
       'overrides.yaml': $.util.manifestYaml(
         {
