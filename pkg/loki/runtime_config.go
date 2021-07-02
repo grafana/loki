@@ -45,18 +45,32 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	return overrides, nil
 }
 
-func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
-	if c == nil {
+type tenantLimitsFromRuntimeConfig struct {
+	c *runtimeconfig.Manager
+}
+
+func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
+	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
+	if !ok || cfg == nil {
 		return nil
 	}
-	return func(userID string) *validation.Limits {
-		cfg, ok := c.GetConfig().(*runtimeConfigValues)
-		if !ok || cfg == nil {
-			return nil
-		}
 
-		return cfg.TenantLimits[userID]
+	return cfg.TenantLimits[userID]
+}
+
+func (t *tenantLimitsFromRuntimeConfig) ForEachTenantLimit(callback validation.ForEachTenantLimitCallback) {
+	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
+	if !ok || cfg == nil {
+		return
 	}
+
+	for userID, tenantLimit := range cfg.TenantLimits {
+		callback(userID, tenantLimit)
+	}
+}
+
+func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
+	return &tenantLimitsFromRuntimeConfig{c: c}
 }
 
 func tenantConfigFromRuntimeConfig(c *runtimeconfig.Manager) runtime.TenantConfig {

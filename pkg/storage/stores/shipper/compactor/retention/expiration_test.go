@@ -11,33 +11,57 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
+type retentionLimit struct {
+	retentionPeriod time.Duration
+	streamRetention []validation.StreamRetention
+}
+
+func (r retentionLimit) convertToValidationLimit() *validation.Limits {
+	return &validation.Limits{
+		RetentionPeriod: model.Duration(r.retentionPeriod),
+		StreamRetention: r.streamRetention,
+	}
+}
+
 type fakeLimits struct {
-	perTenant map[string]time.Duration
-	perStream map[string][]validation.StreamRetention
+	defaultLimit retentionLimit
+	perTenant    map[string]retentionLimit
 }
 
 func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
-	return f.perTenant[userID]
+	return f.perTenant[userID].retentionPeriod
 }
 
 func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
-	return f.perStream[userID]
+	return f.perTenant[userID].streamRetention
+}
+
+func (f fakeLimits) ForEachTenantLimit(callback validation.ForEachTenantLimitCallback) {
+	for userID, limit := range f.perTenant {
+		callback(userID, limit.convertToValidationLimit())
+	}
+}
+
+func (f fakeLimits) DefaultLimits() *validation.Limits {
+	return f.defaultLimit.convertToValidationLimit()
 }
 
 func Test_expirationChecker_Expired(t *testing.T) {
 	e := NewExpirationChecker(&fakeLimits{
-		perTenant: map[string]time.Duration{
-			"1": time.Hour,
-			"2": 24 * time.Hour,
-		},
-		perStream: map[string][]validation.StreamRetention{
+		perTenant: map[string]retentionLimit{
 			"1": {
-				{Period: model.Duration(2 * time.Hour), Priority: 10, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-				{Period: model.Duration(2 * time.Hour), Priority: 1, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.+")}},
+				retentionPeriod: time.Hour,
+				streamRetention: []validation.StreamRetention{
+					{Period: model.Duration(2 * time.Hour), Priority: 10, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					{Period: model.Duration(2 * time.Hour), Priority: 1, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.+")}},
+				},
 			},
 			"2": {
-				{Period: model.Duration(1 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}},
-				{Period: model.Duration(2 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.")}},
+				retentionPeriod: 24 * time.Hour,
+				streamRetention: []validation.StreamRetention{
+					{Period: model.Duration(1 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+					{Period: model.Duration(2 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.")}},
+				},
 			},
 		},
 	})
@@ -58,6 +82,129 @@ func Test_expirationChecker_Expired(t *testing.T) {
 			actual, nonDeletedIntervals := e.Expired(tt.ref, model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervals)
+		})
+	}
+}
+
+func TestFindEarliestRetentionStartTime(t *testing.T) {
+	const dayDuration = 24 * time.Hour
+	for _, tc := range []struct {
+		name                               string
+		limit                              fakeLimits
+		expectedEarliestRetentionStartTime time.Duration
+	}{
+		{
+			name: "only default retention set",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 7 * dayDuration,
+				},
+			},
+			expectedEarliestRetentionStartTime: 7 * dayDuration,
+		},
+		{
+			name: "default retention period highest",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 7 * dayDuration,
+					streamRetention: []validation.StreamRetention{
+						{
+							Period: model.Duration(dayDuration),
+						},
+					},
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {retentionPeriod: 2 * dayDuration},
+					"1": {retentionPeriod: 5 * dayDuration},
+				},
+			},
+			expectedEarliestRetentionStartTime: 7 * dayDuration,
+		},
+		{
+			name: "default stream retention period highest",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 7 * dayDuration,
+					streamRetention: []validation.StreamRetention{
+						{
+							Period: model.Duration(10 * dayDuration),
+						},
+					},
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {retentionPeriod: 2 * dayDuration},
+					"1": {retentionPeriod: 5 * dayDuration},
+				},
+			},
+			expectedEarliestRetentionStartTime: 10 * dayDuration,
+		},
+		{
+			name: "user retention retention period highest",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 7 * dayDuration,
+					streamRetention: []validation.StreamRetention{
+						{
+							Period: model.Duration(10 * dayDuration),
+						},
+					},
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {
+						retentionPeriod: 20 * dayDuration,
+						streamRetention: []validation.StreamRetention{
+							{
+								Period: model.Duration(10 * dayDuration),
+							},
+						},
+					},
+					"1": {
+						retentionPeriod: 5 * dayDuration,
+						streamRetention: []validation.StreamRetention{
+							{
+								Period: model.Duration(15 * dayDuration),
+							},
+						},
+					},
+				},
+			},
+			expectedEarliestRetentionStartTime: 20 * dayDuration,
+		},
+		{
+			name: "user stream retention period highest",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 7 * dayDuration,
+					streamRetention: []validation.StreamRetention{
+						{
+							Period: model.Duration(10 * dayDuration),
+						},
+					},
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {
+						retentionPeriod: 20 * dayDuration,
+						streamRetention: []validation.StreamRetention{
+							{
+								Period: model.Duration(10 * dayDuration),
+							},
+						},
+					},
+					"1": {
+						retentionPeriod: 5 * dayDuration,
+						streamRetention: []validation.StreamRetention{
+							{
+								Period: model.Duration(25 * dayDuration),
+							},
+						},
+					},
+				},
+			},
+			expectedEarliestRetentionStartTime: 25 * dayDuration,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expectedEarliestRetentionStartTime, findHighestRetentionPeriod(tc.limit))
 		})
 	}
 }

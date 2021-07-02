@@ -11,15 +11,22 @@ import (
 
 type ExpirationChecker interface {
 	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval)
+	IntervalHasExpiredChunks(interval model.Interval) bool
+	MarkPhaseStarted()
+	MarkPhaseFailed()
+	MarkPhaseFinished()
 }
 
 type expirationChecker struct {
-	tenantsRetention *TenantsRetention
+	tenantsRetention           *TenantsRetention
+	earliestRetentionStartTime model.Time
 }
 
 type Limits interface {
 	RetentionPeriod(userID string) time.Duration
 	StreamRetention(userID string) []validation.StreamRetention
+	ForEachTenantLimit(validation.ForEachTenantLimitCallback)
+	DefaultLimits() *validation.Limits
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
@@ -33,6 +40,17 @@ func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []mod
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
 	return now.Sub(ref.Through) > period, nil
+}
+
+func (e *expirationChecker) MarkPhaseStarted() {
+	e.earliestRetentionStartTime = model.Now().Add(-findHighestRetentionPeriod(e.tenantsRetention.limits))
+}
+
+func (e *expirationChecker) MarkPhaseFailed()   {}
+func (e *expirationChecker) MarkPhaseFinished() {}
+
+func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
+	return e.earliestRetentionStartTime.Before(interval.Start) || e.earliestRetentionStartTime.Before(interval.End)
 }
 
 type TenantsRetention struct {
@@ -77,4 +95,28 @@ Outer:
 		return time.Duration(matchedRule.Period)
 	}
 	return globalRetention
+}
+
+func findHighestRetentionPeriod(limits Limits) time.Duration {
+	defaultLimits := limits.DefaultLimits()
+
+	highestRetentionPeriod := defaultLimits.RetentionPeriod
+	for _, streamRetention := range defaultLimits.StreamRetention {
+		if streamRetention.Period > highestRetentionPeriod {
+			highestRetentionPeriod = streamRetention.Period
+		}
+	}
+
+	limits.ForEachTenantLimit(func(userID string, limit *validation.Limits) {
+		if limit.RetentionPeriod > highestRetentionPeriod {
+			highestRetentionPeriod = limit.RetentionPeriod
+		}
+		for _, streamRetention := range limit.StreamRetention {
+			if streamRetention.Period > highestRetentionPeriod {
+				highestRetentionPeriod = streamRetention.Period
+			}
+		}
+	})
+
+	return time.Duration(highestRetentionPeriod)
 }

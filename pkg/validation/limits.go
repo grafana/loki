@@ -184,9 +184,14 @@ func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
 }
 
-// TenantLimits is a function that returns limits for given tenant, or
-// nil, if there are no tenant-specific limits.
-type TenantLimits func(userID string) *Limits
+type ForEachTenantLimitCallback func(userID string, limit *Limits)
+
+type TenantLimits interface {
+	// TenantLimits is a function that returns limits for given tenant, or
+	// nil, if there are no tenant-specific limits.
+	TenantLimits(userID string) *Limits
+	ForEachTenantLimit(ForEachTenantLimitCallback)
+}
 
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
@@ -366,14 +371,22 @@ func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).RetentionPeriod)
 }
 
-// RetentionPeriod returns the retention period for a given user.
+// StreamRetention returns the retention period for a given user.
 func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 	return o.getOverridesForUser(userID).StreamRetention
 }
 
+func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
+	o.tenantLimits.ForEachTenantLimit(callback)
+}
+
+func (o *Overrides) DefaultLimits() *Limits {
+	return o.defaultLimits
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
-		l := o.tenantLimits(userID)
+		l := o.tenantLimits.TenantLimits(userID)
 		if l != nil {
 			return l
 		}

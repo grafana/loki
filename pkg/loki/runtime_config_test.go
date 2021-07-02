@@ -112,7 +112,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 		require.NoError(t, runtimeConfig.AwaitTerminated(context.Background()))
 	}()
 
-	overrides, err := validation.NewOverrides(defaults, tenantLimitsFromRuntimeConfig(runtimeConfig))
+	overrides, err := validation.NewOverrides(defaults, newtenantLimitsFromRuntimeConfig(runtimeConfig))
 	require.NoError(t, err)
 	return overrides
 }
