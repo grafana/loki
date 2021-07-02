@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -61,19 +60,19 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
-	fmt.Printf("requrest: %+v\n", request)
+	// fmt.Printf("requrest: %+v\n", request)
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
-	buf := bytes.Buffer{}
-	if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
-		panic(err)
-	}
+	// buf := bytes.Buffer{}
+	// if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
+	// 	panic(err)
+	// }
 
-	fmt.Printf("response: %+v\n", buf.String())
+	// fmt.Printf("response: %+v\n", buf.String())
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		serverutil.WriteError(err, w)
 		return

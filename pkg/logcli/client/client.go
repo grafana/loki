@@ -17,11 +17,13 @@ import (
 	"github.com/gorilla/websocket"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	logqllog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -61,8 +63,19 @@ type querier struct {
 	r io.Reader
 }
 
-func (q *querier) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
-	it := NewFileIterator(q.r, "source:logcli")
+func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	expr, err := params.LogSelector()
+	if err != nil {
+		panic(err)
+	}
+	pipeline, err := expr.Pipeline()
+	if err != nil {
+		panic(err)
+	}
+	streampipe := pipeline.ForStream(labels.Labels{
+		labels.Label{Name: "foo", Value: "bar"},
+	})
+	it := NewFileIterator(q.r, "source:logcli", streampipe)
 
 	return it, nil
 }
@@ -75,26 +88,36 @@ type FileIterator struct {
 	s      *bufio.Scanner
 	labels string
 	err    error
+	sp     logqllog.StreamPipeline
+	curr   logproto.Entry
 }
 
-func NewFileIterator(r io.Reader, labels string) *FileIterator {
+func NewFileIterator(r io.Reader, labels string, sp logqllog.StreamPipeline) *FileIterator {
 	s := bufio.NewScanner(r)
 	s.Split(bufio.ScanLines)
 	return &FileIterator{
 		s:      s,
 		labels: labels,
+		sp:     sp,
 	}
 }
 
 func (f *FileIterator) Next() bool {
-	return f.s.Scan()
+	for f.s.Scan() {
+		_, _, skip := f.sp.Process([]byte(f.s.Text()))
+		if skip {
+			f.curr = logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      f.s.Text(),
+			}
+			return true
+		}
+	}
+	return false
 }
 
 func (f *FileIterator) Entry() logproto.Entry {
-	return logproto.Entry{
-		Timestamp: time.Now(),
-		Line:      f.s.Text(),
-	}
+	return f.curr
 }
 
 func (f *FileIterator) Labels() string {
