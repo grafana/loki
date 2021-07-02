@@ -2,12 +2,14 @@ package index
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -101,4 +103,25 @@ func BenchmarkHash(b *testing.B) {
 			result = util.HashFP(model.Fingerprint(fp)) % 16
 		}
 	})
+}
+
+func TestDeleteAddLoopkup(t *testing.T) {
+	index := New()
+	lbs := []cortexpb.LabelAdapter{
+		{Name: "foo", Value: "foo"},
+		{Name: "bar", Value: "bar"},
+		{Name: "buzz", Value: "buzz"},
+	}
+	sort.Sort(cortexpb.FromLabelAdaptersToLabels(lbs))
+
+	require.Equal(t, uint32(7), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
+	// make sure we consistent
+	require.Equal(t, uint32(7), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
+	index.Add(lbs, model.Fingerprint((cortexpb.FromLabelAdaptersToLabels(lbs).Hash())))
+	index.Delete(cortexpb.FromLabelAdaptersToLabels(lbs), model.Fingerprint(cortexpb.FromLabelAdaptersToLabels(lbs).Hash()))
+	ids, err := index.Lookup([]*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
+	}, nil)
+	require.NoError(t, err)
+	require.Len(t, ids, 0)
 }

@@ -20,7 +20,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const indexShards = 32
@@ -89,19 +88,20 @@ func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
 func (ii *InvertedIndex) Add(labels []cortexpb.LabelAdapter, fp model.Fingerprint) labels.Labels {
-	shard := ii.shards[util.HashFP(fp)%ii.totalShards]
+	shardIndex := labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(labels))
+	shard := ii.shards[shardIndex%ii.totalShards]
 	return shard.add(labels, fp) // add() returns 'interned' values so the original labels are not retained
 }
 
 var (
 	bufferPool = sync.Pool{
 		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 1000))
+			return bytes.NewBuffer(make([]byte, 0, 1000))
 		},
 	}
 	base64Pool = sync.Pool{
 		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, base64.RawStdEncoding.EncodedLen(sha256.Size)))
+			return bytes.NewBuffer(make([]byte, 0, base64.RawStdEncoding.EncodedLen(sha256.Size)))
 		},
 	}
 )
@@ -124,6 +124,7 @@ func labelsSeriesID(ls labels.Labels, dest []byte) {
 	}()
 	labelsString(buf, ls)
 	h := sha256.Sum256(buf.Bytes())
+	dest = dest[:base64.RawStdEncoding.EncodedLen(len(h[:]))]
 	base64.RawStdEncoding.Encode(dest, h[:])
 }
 
@@ -201,7 +202,7 @@ func (ii *InvertedIndex) LabelValues(name string, shard *astmapper.ShardAnnotati
 
 // Delete a fingerprint with the given label pairs.
 func (ii *InvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
-	shard := ii.shards[util.HashFP(fp)%ii.totalShards]
+	shard := ii.shards[labelsSeriesIDHash(labels)%ii.totalShards]
 	shard.delete(labels, fp)
 }
 
