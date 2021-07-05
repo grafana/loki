@@ -31,10 +31,13 @@
 
 while getopts ":Mmp" Option
 do
-  case $Option in
+  case "${Option}" in
     M ) major=true;;
     m ) minor=true;;
     p ) patch=true;;
+    * )
+        echo "unknown option: ${Option}"
+        exit 1
   esac
 done
 
