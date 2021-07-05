@@ -204,7 +204,9 @@ PROMTAIL_DEBUG_GO_FLAGS := $(DEBUG_GO_FLAGS)
 # Validate GOHOSTOS=linux && GOOS=linux to use CGO.
 ifeq ($(shell go env GOHOSTOS),linux)
 ifeq ($(shell go env GOOS),linux)
+ifneq ($(CGO_ENABLED), 0)
 PROMTAIL_CGO = 1
+endif
 PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
 PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
