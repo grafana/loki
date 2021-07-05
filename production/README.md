@@ -49,7 +49,7 @@ There is a [Helm chart](helm) to deploy Loki and Promtail to Kubernetes.
 
 ## Build and run from source
 
-Frist, see the [build from source](../README.md) section of the root readme.
+First, see the [build from source](../README.md) section of the root readme.
 
 Once Promtail is built, to run Promtail, use the following command:
 
