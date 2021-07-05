@@ -3,7 +3,7 @@
 # sed-wrap runs the appropriate sed command based on the
 # underlying value of $OSTYPE
 sed-wrap() {
-  if [[ "$OSTYPE" == "linux"* ]]; then
+  if [[ "${OSTYPE}" == "linux"* ]]; then
     # Linux
     sed -i "$1" "$2"
   else
