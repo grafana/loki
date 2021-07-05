@@ -5,10 +5,10 @@
 sed-wrap() {
   if [[ "$OSTYPE" == "linux"* ]]; then
     # Linux
-    sed -i "$1" $2
+    sed -i "$1" "$2"
   else
     # macOS, BSD
-    sed -i '' "$1" $2
+    sed -i '' "$1" "$2"
   fi
 }
 
@@ -27,11 +27,11 @@ else
 fi
 
 LOKI_CURRENT=$(sed -n -e 's/^version: //p' production/helm/loki/Chart.yaml)
-LOKI_SUGGESTED=$(tools/increment_version.sh -m ${LOKI_CURRENT})
+LOKI_SUGGESTED=$(tools/increment_version.sh -m "${LOKI_CURRENT}")
 PROMTAIL_CURRENT=$(sed -n -e 's/^version: //p' production/helm/promtail/Chart.yaml)
-PROMTAIL_SUGGESTED=$(tools/increment_version.sh -m ${PROMTAIL_CURRENT})
+PROMTAIL_SUGGESTED=$(tools/increment_version.sh -m "${PROMTAIL_CURRENT}")
 LOKI_STACK_CURRENT=$(sed -n -e 's/^version: //p' production/helm/loki-stack/Chart.yaml)
-LOKI_STACK_SUGGESTED=$(tools/increment_version.sh -m ${LOKI_STACK_CURRENT})
+LOKI_STACK_SUGGESTED=$(tools/increment_version.sh -m "${LOKI_STACK_CURRENT}")
 echo
 echo "Current Loki helm chart version: ${LOKI_CURRENT}"
 read -p "Enter new Loki helm chart version [${LOKI_SUGGESTED}]: " LOKI_VERSION

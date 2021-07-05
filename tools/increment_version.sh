@@ -38,38 +38,38 @@ do
   esac
 done
 
-shift $(($OPTIND - 1))
+shift $((OPTIND - 1))
 
 version=$1
 
 # Build array from version string.
 
-a=( ${version//./ } )
+a=( "${version//./ }" )
 
 # If version string is missing or has the wrong number of members, show usage message.
 
 if [ ${#a[@]} -ne 3 ]
 then
-  echo "usage: $(basename $0) [-Mmp] major.minor.patch"
+  echo "usage: $(basename "$0") [-Mmp] major.minor.patch"
   exit 1
 fi
 
 # Increment version numbers as requested.
 
-if [ ! -z $major ]
+if [ -n "${major}" ]
 then
   ((a[0]++))
   a[1]=0
   a[2]=0
 fi
 
-if [ ! -z $minor ]
+if [ -n "${minor}" ]
 then
   ((a[1]++))
   a[2]=0
 fi
 
-if [ ! -z $patch ]
+if [ -n "${patch}" ]
 then
   ((a[2]++))
 fi

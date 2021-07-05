@@ -41,6 +41,11 @@ steps:
   - test
   - lint
 
+- name: shellcheck
+  image: koalaman/shellcheck-alpine:stable
+  commands:
+  - apk add make && make lint-scripts
+
 ---
 kind: pipeline
 name: docker-amd64
