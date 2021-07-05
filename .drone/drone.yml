@@ -44,7 +44,7 @@ steps:
 - name: shellcheck
   image: koalaman/shellcheck-alpine:stable
   commands:
-  - apk add make && make lint-scripts
+  - apk add make bash && make lint-scripts
 
 ---
 kind: pipeline
