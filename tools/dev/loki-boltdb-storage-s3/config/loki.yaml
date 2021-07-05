@@ -10,7 +10,7 @@ compactor:
     compaction_interval: 1m
     retention_delete_worker_count: 500
     retention_enabled: true
-    shared_store: gcs
+    shared_store: s3
     working_directory: /data/compactor
 distributor:
     ring:
@@ -93,6 +93,7 @@ query_range:
     align_queries_with_step: true
     cache_results: true
     max_retries: 5
+    parallelise_shardable_queries: true
     results_cache:
         cache:
             memcached_client:
@@ -120,8 +121,8 @@ storage_config:
     boltdb_shipper:
         active_index_directory: /data/index
         cache_location: /data/boltdb-cache
-        # todo index_gateway_client:
-        #     server_address: dns:///index-gateway.loki-boltdb-shipper.svc.cluster.local:9095
+        index_gateway_client:
+            server_address: index-gateway:9008
         shared_store: s3
     aws:
       s3: s3://loki:supersecret@minio:9000/loki

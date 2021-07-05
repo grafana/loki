@@ -7,4 +7,5 @@ FROM alpine:3.13
 RUN     mkdir /loki
 WORKDIR /loki
 ADD     ./loki ./
+ADD     ./.src ./src
 COPY --from=0 /go/bin/dlv ./

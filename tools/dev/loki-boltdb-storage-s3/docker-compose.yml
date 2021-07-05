@@ -46,8 +46,9 @@ services:
     image: loki
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18001 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
     depends_on:
+      - ingester-1
+      - ingester-2
       - consul
-      - minio
     environment:
       - JAEGER_AGENT_HOST=jaeger
       - JAEGER_AGENT_PORT=6831
@@ -131,27 +132,30 @@ services:
       - 18004:18004
     volumes:
       - ./config:/loki/config
+      - .data-querier:/data:delegated
 
-  # store-gateway-1:
-  #   build:
-  #     context:    .
-  #     dockerfile: dev.dockerfile
-  #   image: cortex
-  #   command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008"]
-  #   depends_on:
-  #     - consul
-  #     - minio
-  #   environment:
-  #     - JAEGER_AGENT_HOST=jaeger
-  #     - JAEGER_AGENT_PORT=6831
-  #     - JAEGER_TAGS=app=store-gateway-1
-  #     - JAEGER_SAMPLER_TYPE=const
-  #     - JAEGER_SAMPLER_PARAM=1
-  #   ports:
-  #     - 8008:8008
-  #     - 18008:18008
-  #   volumes:
-  #     - ./config:/cortex/config
+  index-gateway:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=index-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008 -boltdb.shipper.query-ready-num-days=30"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=index-gateway
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8008:8008
+      - 18008:18008
+    volumes:
+      - ./config:/loki/config
 
   compactor:
     logging:
@@ -159,7 +163,7 @@ services:
     build:
       context:    .
       dockerfile: dev.dockerfile
-    image: cortex
+    image: loki
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18006 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=compactor -server.http-listen-port=8006 -server.grpc-listen-port=9006"]
     depends_on:
       - consul
@@ -175,6 +179,7 @@ services:
       - 18006:18006
     volumes:
       - ./config:/loki/config
+      - .data-compactor:/data:delegated
 
   query-frontend:
     logging:
@@ -198,3 +203,17 @@ services:
       - 18007:18007
     volumes:
       - ./config:/loki/config
+
+  grafana:
+    logging:
+      <<: *logging
+    image: grafana/grafana
+    depends_on:
+      - query-frontend
+      - querier
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/config/grafana/provisioning
+    ports:
+      - 3000:3000
+    volumes:
+      - ./config/datasource.yaml:/etc/config/grafana/provisioning/datasources/ds.yaml
