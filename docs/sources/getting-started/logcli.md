@@ -73,6 +73,7 @@ When not set, `--limit` defaults to 30.
 The limit protects the user from overwhelming the system
 for cases in which the specified query would have returned a large quantity
 of log lines.
+The limit also protects the user from unexpectedly large responses. 
 
 The quantity of log line results that arrive in each batch
 is set by the `--batch` option in a `logcli query` command.
