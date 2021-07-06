@@ -41,6 +41,11 @@ steps:
   - test
   - lint
 
+- name: shellcheck
+  image: koalaman/shellcheck-alpine:stable
+  commands:
+  - apk add make bash && make lint-scripts
+
 ---
 kind: pipeline
 name: docker-amd64
@@ -968,6 +973,6 @@ get:
 
 ---
 kind: signature
-hmac: b661b1d1ae657c2de56d59430721e1fdd4d80b1f39643acbd39642f28a6a1fb9
+hmac: b9ca51f266b7895bd1ea53ca40721d65915472fde3dc25fb662968282bc8acd5
 
 ...
