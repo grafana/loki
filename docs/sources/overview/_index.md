@@ -2,31 +2,79 @@
 title: Overview
 weight: 150
 ---
-# Overview of Loki
+# Overview
 
-Grafana Loki is a set of components that can be composed into a fully featured
-logging stack.
+Grafana Loki is a log aggregation tool,
+and it is the core of a fully-featured logging stack.
 
-Unlike other logging systems, Loki is built around the idea of only indexing
-labels for logs and leaving the original log message unindexed. This means
-that Loki is cheaper to operate and can be orders of magnitude more efficient.
+Loki is a key-value datastore optimized for efficiently holding log data.
+The efficient indexing of log data
+distinguishes Loki from other logging systems.
+Unlike other logging systems, a Loki index is built from labels,
+leaving the original log message unindexed.
 
-For a more detailed version of this same document, please read
-[Architecture](../architecture/).
+![Loki overview](loki-overview-1.png)
 
-## Multi Tenancy
+An agent (also called a client) acquires logs,
+turns the logs into streams,
+and pushes the streams to Loki through an HTTP API.
+The Promtail agent is designed for Loki installations,
+but many other [Agents](../clients/) seamlessly integrate with Loki.
 
-Loki supports multi-tenancy so that data between tenants is completely
-separated. Multi-tenancy is achieved through a tenant ID (which is represented
-as an alphanumeric string). When multi-tenancy mode is disabled, all requests
-are internally given a tenant ID of "fake".
+![Loki agent interaction](loki-overview-2.png)
 
-## Modes of Operation
+Loki indexes streams.
+Each stream identifies a set of logs associated with a unique set of labels.
+A quality identification and specification of the set of labels
+is key to the creation of an index that is both compact
+and allows for efficient query execution.
 
-Loki is optimized for both running locally (or at small scale) and for scaling
-horizontally: Loki comes with a _single process mode_ that runs all of the required
-microservices in one process. The single process mode is great for testing Loki
-or for running it at a small scale. For horizontal scalability, the
-microservices of Loki can be broken out into separate processes, allowing them
-to scale independently of each other.
+[LogQL](../logql) is the query language for Loki.
+
+## Loki features
+
+-  **Efficient memory usage for indexing the logs**
+
+    By indexing on a set of labels, the index can be significantly smaller
+    than other log aggregation products.
+    Less memory makes it less expensive to operate.
+
+-  **Multi-tenancy**
+
+    Loki allows multiple tenants to utilize a single Loki instance.
+    The data of distinct tenants is completely isolated from other tentants.
+    Multi-tenancy is configured by assigning a tenant ID in the agent.
+
+-  **LogQL, Loki's query language**
+
+    Users of the Prometheus query language, PromQL, will find LogQL familiar
+    and flexible for generating queries against the logs.
+    The language also facilitates the generation of metrics from log data,
+    a powerful feature that goes well beyond log aggregation.
+
+-  **Scalability**
+
+    Loki works well at small scale. 
+    In single process mode, all required microservices run in one process.
+    Single process mode is great for testing Loki,
+    running it locally, or running it at a small scale.
+
+    Loki is also designed to scale out for large scale installations.
+    Each of the Loki's microservice components can be broken out into
+    separate processes, and configuration permits individual scaling 
+    of the components.
+
+-  **Flexibility**
+
+    Many agents (clients) have plugin support.
+    This allows a current observability structure
+    to add Loki as their log aggregation tool without needing
+    to switch existing portions of the observability stack.
+
+-  **Grafana integration**
+
+    Loki seamlessly integrates with Grafana,
+    providing a complete observability stack.
+
+
 
