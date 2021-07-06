@@ -3,12 +3,12 @@
 # sed-wrap runs the appropriate sed command based on the
 # underlying value of $OSTYPE
 sed-wrap() {
-  if [[ "$OSTYPE" == "linux"* ]]; then
+  if [[ "${OSTYPE}" == "linux"* ]]; then
     # Linux
-    sed -i "$1" $2
+    sed -i "$1" "$2"
   else
     # macOS, BSD
-    sed -i '' "$1" $2
+    sed -i '' "$1" "$2"
   fi
 }
 
@@ -17,7 +17,7 @@ echo "Last 5 tags:"
 git tag --sort=-taggerdate | head -n 5
 echo
 
-read -p "Enter release version: " VERSION
+read -rp "Enter release version: " VERSION
 
 if [[ ${VERSION} =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
     echo "New Version: ${VERSION}"
@@ -27,22 +27,22 @@ else
 fi
 
 LOKI_CURRENT=$(sed -n -e 's/^version: //p' production/helm/loki/Chart.yaml)
-LOKI_SUGGESTED=$(tools/increment_version.sh -m ${LOKI_CURRENT})
+LOKI_SUGGESTED=$(tools/increment_version.sh -m "${LOKI_CURRENT}")
 PROMTAIL_CURRENT=$(sed -n -e 's/^version: //p' production/helm/promtail/Chart.yaml)
-PROMTAIL_SUGGESTED=$(tools/increment_version.sh -m ${PROMTAIL_CURRENT})
+PROMTAIL_SUGGESTED=$(tools/increment_version.sh -m "${PROMTAIL_CURRENT}")
 LOKI_STACK_CURRENT=$(sed -n -e 's/^version: //p' production/helm/loki-stack/Chart.yaml)
-LOKI_STACK_SUGGESTED=$(tools/increment_version.sh -m ${LOKI_STACK_CURRENT})
+LOKI_STACK_SUGGESTED=$(tools/increment_version.sh -m "${LOKI_STACK_CURRENT}")
 echo
 echo "Current Loki helm chart version: ${LOKI_CURRENT}"
-read -p "Enter new Loki helm chart version [${LOKI_SUGGESTED}]: " LOKI_VERSION
+read -rp "Enter new Loki helm chart version [${LOKI_SUGGESTED}]: " LOKI_VERSION
 LOKI_VERSION=${LOKI_VERSION:-${LOKI_SUGGESTED}}
 echo
 echo "Current Promtail helm chart version: ${PROMTAIL_CURRENT}"
-read -p "Enter new Promtail helm chart version [${PROMTAIL_SUGGESTED}]: " PROMTAIL_VERSION
+read -rp "Enter new Promtail helm chart version [${PROMTAIL_SUGGESTED}]: " PROMTAIL_VERSION
 PROMTAIL_VERSION=${PROMTAIL_VERSION:-${PROMTAIL_SUGGESTED}}
 echo
 echo "Current Loki-Stack helm chart version: ${LOKI_STACK_CURRENT}"
-read -p "Enter new Loki-Stack helm chart version [${LOKI_STACK_SUGGESTED}]: " LOKI_STACK_VERSION
+read -rp "Enter new Loki-Stack helm chart version [${LOKI_STACK_SUGGESTED}]: " LOKI_STACK_VERSION
 LOKI_STACK_VERSION=${LOKI_STACK_VERSION:-${LOKI_STACK_SUGGESTED}}
 echo
 
@@ -52,7 +52,7 @@ echo "Loki Helm Chart:       ${LOKI_VERSION}"
 echo "Promtail Helm Chart:   ${PROMTAIL_VERSION}"
 echo "Loki-Stack Helm Chart: ${LOKI_STACK_VERSION}"
 echo
-read -p "Is this correct? [y]: " CONTINUE
+read -rp "Is this correct? [y]: " CONTINUE
 CONTINUE=${CONTINUE:-y}
 echo
 

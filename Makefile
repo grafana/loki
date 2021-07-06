@@ -601,6 +601,11 @@ fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
 
+lint-scripts:
+	@find . -name '*.sh' -not -path '*/vendor/*' -print0 | \
+		xargs -0 -n1 shellcheck -x -o all
+	
+
 # search for dead link in our documentation.
 # To avoid being rate limited by Github you can use an env variable GITHUB_TOKEN to pass a github token API.
 # see https://github.com/settings/tokens
