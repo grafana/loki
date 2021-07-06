@@ -70,7 +70,7 @@ LogCLI sends queries to Loki such that query results arrive in batches.
 The `--limit` option for a `logcli query` command caps the quantity of
 log lines for a single query.
 When not set, `--limit` defaults to 30.
-This low default value protects the user from overwhelming the system
+The limit protects the user from overwhelming the system
 for cases in which the specified query would have returned a large quantity
 of log lines.
 
