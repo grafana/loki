@@ -116,3 +116,15 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	require.NoError(t, err)
 	return overrides
 }
+
+func Test_NoOverrides(t *testing.T) {
+	flagset := flag.NewFlagSet("", flag.PanicOnError)
+
+	var defaults validation.Limits
+	defaults.RegisterFlags(flagset)
+	require.NoError(t, flagset.Parse(nil))
+	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	overrides, err := validation.NewOverrides(defaults, newtenantLimitsFromRuntimeConfig(nil))
+	require.NoError(t, err)
+	require.Equal(t, time.Duration(defaults.QuerySplitDuration), overrides.QuerySplitDuration("foo"))
+}
