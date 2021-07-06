@@ -41,11 +41,6 @@ steps:
   - test
   - lint
 
-- name: shellcheck
-  image: koalaman/shellcheck-alpine:stable
-  commands:
-  - apk add make bash && make lint-scripts
-
 ---
 kind: pipeline
 name: docker-amd64
@@ -970,5 +965,9 @@ name: deploy_config
 get:
   path: infra/data/ci/loki/deploy
   name: config.json
+
+---
+kind: signature
+hmac: b661b1d1ae657c2de56d59430721e1fdd4d80b1f39643acbd39642f28a6a1fb9
 
 ...
