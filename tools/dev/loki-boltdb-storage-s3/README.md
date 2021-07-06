@@ -1,6 +1,6 @@
 # Loki Docker-Compose
 
-This  folder contains the necessary to run the Loki distributed setup locally on docker-compose.
+This folder contains the necessary to run the Loki distributed setup locally on docker-compose.
 
 It runs the current code base in the repository this means you can debug new features and iterate very quickly by simply restarting the compose project.
 
