@@ -26,7 +26,7 @@ const indexShards = 32
 
 var ErrInvalidShardQuery = errors.New("incompatible index shard query")
 
-// InvertedIndex implements a in-memory inverter index from label pairs to fingerprints.
+// InvertedIndex implements a in-memory inverted index from label pairs to fingerprints.
 // It is sharded to reduce lock contention on writes.
 type InvertedIndex struct {
 	totalShards uint32
