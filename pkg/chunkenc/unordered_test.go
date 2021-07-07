@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func iterEq(t *testing.T, exp []entry, got iter.EntryIterator, dir logproto.Direction) {
+func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
 		require.Equal(t, logproto.Entry{
@@ -154,7 +154,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 				noopStreamPipeline,
 			)
 
-			iterEq(t, tc.exp, itr, tc.dir)
+			iterEq(t, tc.exp, itr)
 		})
 	}
 }
@@ -216,7 +216,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 				noopStreamPipeline,
 			)
 
-			iterEq(t, tc.exp, itr, tc.dir)
+			iterEq(t, tc.exp, itr)
 		})
 	}
 }

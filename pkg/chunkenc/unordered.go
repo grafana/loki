@@ -213,6 +213,7 @@ func (hb *unorderedHeadBlock) iterator(
 	return iter.NewStreamsIterator(ctx, streamsResult, direction)
 }
 
+// nolint:unused
 func (hb *unorderedHeadBlock) sampleIterator(
 	ctx context.Context,
 	mint,
@@ -267,6 +268,7 @@ func (hb *unorderedHeadBlock) sampleIterator(
 	return iter.NewMultiSeriesIterator(ctx, seriesRes)
 }
 
+// nolint:unused
 // serialise is used in creating an ordered, compressed block from an unorderedHeadBlock
 func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
