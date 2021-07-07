@@ -46,7 +46,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
-			}, recordPool.GetRecord())
+			}, recordPool.GetRecord(), 0)
 			require.NoError(t, err)
 
 			newLines := make([]logproto.Entry, numLogs)
@@ -65,7 +65,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			fmt.Fprintf(&expected, "total ignored: %d out of %d", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
-			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord())
+			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0)
 			require.Error(t, err)
 			require.Equal(t, expectErr.Error(), err.Error())
 		})
@@ -86,7 +86,7 @@ func TestPushDeduplication(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord())
+	}, recordPool.GetRecord(), 0)
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
@@ -164,7 +164,7 @@ func Benchmark_PushStream(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(ctx, e, rec)
+		_, err := s.Push(ctx, e, rec, 0)
 		require.NoError(b, err)
 		recordPool.PutRecord(rec)
 	}

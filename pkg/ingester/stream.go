@@ -10,6 +10,7 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -44,6 +45,10 @@ var (
 
 		Buckets: prometheus.ExponentialBuckets(5, 2, 6),
 	})
+)
+
+var (
+	ErrEntriesExist = errors.New("duplicate push - entries already exist")
 )
 
 func init() {
@@ -146,10 +151,21 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
+	// WAL record to add push contents to.
+	// May be nil to disable this functionality.
 	record *WALRecord,
+	// Counter used in WAL replay to avoid duplicates.
+	// If this is non-zero, the stream will reject entries
+	// with a counter value less than or equal to it's own.
+	counter int64,
 ) (int, error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
+
+	if counter > 0 && counter <= s.entryCt {
+		return 0, ErrEntriesExist
+	}
+
 	var bytesAdded int
 	prevNumChunks := len(s.chunks)
 	var lastChunkTimestamp time.Time
