@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func Test_GetShards(t *testing.T) {
 	for _, tt := range []struct {
 		total    uint32
