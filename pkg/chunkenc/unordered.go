@@ -11,12 +11,13 @@ import (
 
 	"github.com/Workiva/go-datastructures/rangetree"
 	"github.com/cespare/xxhash/v2"
+	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 var (
