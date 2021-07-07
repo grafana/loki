@@ -44,17 +44,11 @@ func NewQueryShardMiddleware(
 	})
 
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return &shardSplitter{
-			MinShardingLookback: minShardingLookback,
-			shardingware: queryrange.MergeMiddlewares(
-				queryrange.InstrumentMiddleware("shardingware", middlewareMetrics),
-				mapperware,
-			).Wrap(next),
-			now:  time.Now,
-			next: queryrange.InstrumentMiddleware("sharding-bypass", middlewareMetrics).Wrap(next),
-		}
+		return queryrange.MergeMiddlewares(
+			queryrange.InstrumentMiddleware("shardingware", middlewareMetrics),
+			mapperware,
+		).Wrap(next)
 	})
-
 }
 
 func newASTMapperware(
