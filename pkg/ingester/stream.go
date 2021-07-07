@@ -72,6 +72,13 @@ type stream struct {
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
+
+	// entryCt is a counter which is incremented on each accepted entry.
+	// This allows us to discard WAL entries during replays which were
+	// already recovered via checkpoints. Historically out of order
+	// errors were used to detect this, but this counter has been
+	// introduced to facilitate removing the ordering constraint.
+	entryCt int64
 }
 
 type chunkDesc struct {
@@ -201,6 +208,7 @@ func (s *stream) Push(
 			lastChunkTimestamp = entries[i].Timestamp
 			s.lastLine.ts = lastChunkTimestamp
 			s.lastLine.content = entries[i].Line
+			s.entryCt++
 
 			// length of string plus
 			bytesAdded += len(entries[i].Line)
@@ -211,7 +219,7 @@ func (s *stream) Push(
 	if len(storedEntries) != 0 {
 		// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 		if record != nil {
-			record.AddEntries(uint64(s.fp), storedEntries...)
+			record.AddEntries(uint64(s.fp), s.entryCt, storedEntries...)
 		} else {
 			// If record is nil, this is a WAL recovery.
 			s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
