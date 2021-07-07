@@ -575,18 +575,29 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 		},
 		{
-			"newline logfmt",
-			[]byte("foobar=\"foo\nbar baz\""),
+			"escaped control chars in logfmt",
+			[]byte(`foobar="foo\nbar\tbaz"`),
 			labels.Labels{
 				{Name: "a", Value: "b"},
 			},
 			labels.Labels{
 				{Name: "a", Value: "b"},
-				{Name: "foobar", Value: "foo\nbar baz"},
+				{Name: "foobar", Value: "foo\nbar\tbaz"},
 			},
 		},
 		{
-			"escaped logfmt",
+			"literal control chars in logfmt",
+			[]byte("foobar=\"foo\nbar\tbaz\""),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo\nbar\tbaz"},
+			},
+		},
+		{
+			"escaped slash logfmt",
 			[]byte(`foobar="foo ba\\r baz"`),
 			labels.Labels{
 				{Name: "a", Value: "b"},
@@ -597,7 +608,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 		},
 		{
-			"newline and escaped logfmt",
+			"literal newline and escaped slash logfmt",
 			[]byte("foobar=\"foo bar\nb\\\\az\""),
 			labels.Labels{
 				{Name: "a", Value: "b"},
