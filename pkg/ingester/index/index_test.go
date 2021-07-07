@@ -13,24 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Example of subsharding where the available (32) is higher and divisible by request (16)
-// We will return those index shards for each request shard.
-// 0 16 = 1
-// 1 17 = 2
-// 2 18 = 3
-// 3 19 = 4
-// 4 20 = 5
-// 5 21 = 6
-// 6 22 = 7
-// 7 23 = 8
-// 8 24 = 9
-// 9 25 = 10
-// 10 26 = 11
-// 11 27 = 12
-// 12 28 = 13
-// 13 29 = 14
-// 14 30 = 15
-// 15 31 = 16
 
 func Test_GetShards(t *testing.T) {
 	for _, tt := range []struct {
