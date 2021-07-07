@@ -40,7 +40,6 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		nil,
 		func(ts int64, line string) error {
 			forwardCt++
 			forwardStop = ts
@@ -62,7 +61,6 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.BACKWARD,
 		0,
 		math.MaxInt64,
-		nil,
 		func(ts int64, line string) error {
 			backwardCt++
 			backwardStop = ts

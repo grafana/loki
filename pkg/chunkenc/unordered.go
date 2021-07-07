@@ -105,15 +105,9 @@ func (hb *unorderedHeadBlock) forEntries(
 	direction logproto.Direction,
 	mint,
 	maxt int64,
-	initializer func(numEntries int),
 	entryFn func(int64, string) error, // returning an error exits early
 ) (err error) {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-
-		if initializer != nil {
-			initializer(0)
-		}
-
 		return
 	}
 
@@ -185,7 +179,6 @@ func (hb *unorderedHeadBlock) iterator(
 		direction,
 		mint,
 		maxt,
-		nil,
 		func(ts int64, line string) error {
 			newLine, parsedLbs, ok := pipeline.ProcessString(line)
 			if !ok {
@@ -233,7 +226,6 @@ func (hb *unorderedHeadBlock) sampleIterator(
 		logproto.FORWARD,
 		mint,
 		maxt,
-		nil,
 		func(ts int64, line string) error {
 			value, parsedLabels, ok := extractor.ProcessString(line)
 			if !ok {
@@ -292,7 +284,6 @@ func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		nil,
 		func(ts int64, line string) error {
 			n := binary.PutVarint(encBuf, ts)
 			inBuf.Write(encBuf[:n])
@@ -361,7 +352,6 @@ func (hb *unorderedHeadBlock) CheckpointTo(version byte, w io.Writer) error {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		nil,
 		func(ts int64, line string) error {
 			eb.putVarint64(ts)
 			eb.putUvarint(len(line))
