@@ -124,7 +124,7 @@ func labelsSeriesID(ls labels.Labels, dest []byte) {
 	}()
 	labelsString(buf, ls)
 	h := sha256.Sum256(buf.Bytes())
-	dest = dest[:base64.RawStdEncoding.EncodedLen(len(h[:]))]
+	dest = dest[:base64.RawStdEncoding.EncodedLen(len(h))]
 	base64.RawStdEncoding.Encode(dest, h[:])
 }
 
