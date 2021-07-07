@@ -125,6 +125,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		bytesAdded, entriesAdded, err := stream.setChunks(series.Chunks)
 		stream.lastLine.ts = series.To
 		stream.lastLine.content = series.LastLine
+		stream.entryCt = series.EntryCt
 
 		if err != nil {
 			return err
@@ -197,6 +198,12 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 }
 
 func (r *ingesterRecoverer) Close() {
+	// reset all the incrementing stream counters after a successful WAL replay.
+	for _, inst := range r.ing.getInstances() {
+		inst.forAllStreams(context.Background(), func(s *stream) error {
+			s.resetCounter()
+		})
+	}
 	close(r.done)
 }
 
