@@ -66,7 +66,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, LokiCodec, instrumentMetrics, retryMetrics, splitByMetrics)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, LokiCodec, instrumentMetrics, retryMetrics, splitByMetrics, shardingMetrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -263,6 +263,8 @@ func NewSeriesTripperware(
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
+	shardingMetrics *logql.ShardingMetrics,
+	schema chunk.SchemaConfig,
 ) (queryrange.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{}
 	if cfg.SplitQueriesByInterval != 0 {
@@ -278,9 +280,22 @@ func NewSeriesTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
 
+	if cfg.ShardedQueries {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewSeriesQueryShardMiddleware(
+				log,
+				schema.Configs,
+				instrumentMetrics,
+				shardingMetrics,
+				limits,
+				codec,
+			),
+		)
+	}
+
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
 		}
 		return next
 	}, nil

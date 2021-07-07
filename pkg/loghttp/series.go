@@ -41,8 +41,8 @@ func ParseSeriesQuery(r *http.Request) (*logproto.SeriesRequest, error) {
 		Start:  start,
 		End:    end,
 		Groups: deduped,
+		Shards: shards(r),
 	}, nil
-
 }
 
 func union(cols ...[]string) []string {

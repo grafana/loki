@@ -236,6 +236,7 @@ func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Re
 				Path:    r.Path,
 				StartTs: start,
 				EndTs:   end,
+				Shards:  r.Shards,
 			})
 		})
 	case *LokiLabelNamesRequest:

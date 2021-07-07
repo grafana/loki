@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -179,4 +180,87 @@ func hasShards(confs queryrange.ShardingConfigs) bool {
 		}
 	}
 	return false
+}
+
+// NewSeriesQueryShardMiddleware creates a middleware which shards series queries.
+func NewSeriesQueryShardMiddleware(
+	logger log.Logger,
+	confs queryrange.ShardingConfigs,
+	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
+	shardingMetrics *logql.ShardingMetrics,
+	limits queryrange.Limits,
+	merger queryrange.Merger,
+) queryrange.Middleware {
+
+	noshards := !hasShards(confs)
+
+	if noshards {
+		level.Warn(logger).Log(
+			"middleware", "QueryShard",
+			"msg", "no configuration with shard found",
+			"confs", fmt.Sprintf("%+v", confs),
+		)
+		return queryrange.PassthroughMiddleware
+	}
+	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+		return queryrange.InstrumentMiddleware("sharding", middlewareMetrics).Wrap(
+			&seriesShardingHandler{
+				confs:   confs,
+				logger:  logger,
+				next:    next,
+				metrics: shardingMetrics,
+				limits:  limits,
+				merger:  merger,
+			},
+		)
+	})
+}
+
+type seriesShardingHandler struct {
+	confs   queryrange.ShardingConfigs
+	logger  log.Logger
+	next    queryrange.Handler
+	metrics *logql.ShardingMetrics
+	limits  queryrange.Limits
+	merger  queryrange.Merger
+}
+
+func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+	conf, err := ss.confs.GetConf(r)
+	// cannot shard with this timerange
+	if err != nil {
+		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
+		return ss.next.Do(ctx, r)
+	}
+
+	if conf.RowShards <= 1 {
+		return ss.next.Do(ctx, r)
+	}
+
+	req, ok := r.(*LokiSeriesRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected *LokiSeriesRequest, got (%T)", r)
+	}
+
+	ss.metrics.Shards.WithLabelValues("series").Inc()
+	ss.metrics.ShardFactor.Observe(float64(conf.RowShards))
+
+	requests := make([]queryrange.Request, 0, conf.RowShards)
+	for i := 0; i < int(conf.RowShards); i++ {
+		shardedRequest := *req
+		shardedRequest.Shards = []string{astmapper.ShardAnnotation{
+			Shard: i,
+			Of:    int(conf.RowShards),
+		}.String()}
+		requests = append(requests, &shardedRequest)
+	}
+	requestResponses, err := queryrange.DoRequests(ctx, ss.next, requests, ss.limits)
+	if err != nil {
+		return nil, err
+	}
+	responses := make([]queryrange.Response, 0, len(requestResponses))
+	for _, res := range requestResponses {
+		responses = append(responses, res.Response)
+	}
+	return ss.merger.MergeResponse(responses...)
 }
