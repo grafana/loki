@@ -1414,6 +1414,15 @@ boltdb_shipper:
   # CLI flag: -boltdb.shipper.query-ready-num-days
   [query_ready_num_days: <int> | default = 0]
 
+  index_gateway_client:
+    # "Hostname or IP of the Index Gateway gRPC server.
+    # CLI flag: -boltdb.shipper.index-gateway-client.server-address
+    [server_address: <string> | default = ""]
+
+    # Configures the gRPC client used to connect to the Index Gateway gRPC server.
+    # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
+    [grpc_client_config: <grpc_client_config>]
+
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
 # CLI flag: -store.index-cache-validity
