@@ -50,51 +50,6 @@ func Test_Encoding_Series(t *testing.T) {
 	require.Equal(t, record, decoded)
 }
 
-// func Test_Encoding_Entries(t *testing.T) {
-// 	record := &WALRecord{
-// 		entryIndexMap: make(map[uint64]int),
-// 		UserID:        "123",
-// 		RefEntries: []RefEntries{
-// 			{
-// 				Ref:     456,
-// 				Counter: 1,
-// 				Entries: []logproto.Entry{
-// 					{
-// 						Timestamp: time.Unix(1000, 0),
-// 						Line:      "first",
-// 					},
-// 					{
-// 						Timestamp: time.Unix(2000, 0),
-// 						Line:      "second",
-// 					},
-// 				},
-// 			},
-// 			{
-// 				Ref:     789,
-// 				Counter: 2,
-// 				Entries: []logproto.Entry{
-// 					{
-// 						Timestamp: time.Unix(3000, 0),
-// 						Line:      "third",
-// 					},
-// 					{
-// 						Timestamp: time.Unix(4000, 0),
-// 						Line:      "fourth",
-// 					},
-// 				},
-// 			},
-// 		},
-// 	}
-
-// 	buf := record.encodeEntries(nil)
-
-// 	decoded := recordPool.GetRecord()
-
-// 	err := decodeWALRecord(buf, decoded)
-// 	require.Nil(t, err)
-// 	require.Equal(t, record, decoded)
-// }
-
 func Test_Encoding_Entries(t *testing.T) {
 	for _, tc := range []struct {
 		desc    string
