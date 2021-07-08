@@ -254,7 +254,7 @@ func NewLogFilterTripperware(
 	}, nil
 }
 
-// NewSeriesripperware creates a new frontend tripperware responsible for handling series requests
+// NewSeriesTripperware creates a new frontend tripperware responsible for handling series requests
 func NewSeriesTripperware(
 	cfg Config,
 	log log.Logger,

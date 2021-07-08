@@ -263,6 +263,9 @@ func (t *Loki) Run() error {
 	// This adds a way to see the config and the changes compared to the defaults
 	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
 
+	// Each component serves its version.
+	t.Server.HTTP.Path("/version").HandlerFunc(versionHandler())
+
 	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 
 	// Let's listen for events from this manager, and log them.
