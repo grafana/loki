@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp/push"
 )
@@ -15,7 +15,7 @@ import (
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
-	userID, _ := user.ExtractOrgID(r.Context())
+	userID, _ := tenant.TenantID(r.Context())
 	req, err := push.ParseRequest(logger, userID, r, d.tenantsRetention)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(userID) {

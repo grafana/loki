@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -16,7 +17,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -106,7 +106,7 @@ func (t *PushTarget) run() error {
 
 func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
-	userID, _ := user.ExtractOrgID(r.Context())
+	userID, _ := tenant.TenantID(r.Context())
 	req, err := push.ParseRequest(logger, userID, r, nil)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())

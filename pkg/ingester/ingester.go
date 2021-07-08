@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -20,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -387,7 +387,7 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	instanceID, err := user.ExtractOrgID(ctx)
+	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	} else if i.readonly {
@@ -421,7 +421,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	ctx := stats.NewContext(queryServer.Context())
 	defer stats.SendAsTrailer(ctx, queryServer)
 
-	instanceID, err := user.ExtractOrgID(ctx)
+	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -462,7 +462,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	ctx := stats.NewContext(queryServer.Context())
 	defer stats.SendAsTrailer(ctx, queryServer)
 
-	instanceID, err := user.ExtractOrgID(ctx)
+	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -516,7 +516,7 @@ func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
-	orgID, err := user.ExtractOrgID(ctx)
+	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -555,12 +555,12 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	instanceID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.getOrCreateInstance(userID)
 	resp, err := instance.Label(ctx, req)
 	if err != nil {
 		return nil, err
@@ -577,11 +577,6 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	var ok bool
 	if cs, ok = i.store.(chunk.Store); !ok {
 		return resp, nil
-	}
-
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
 	}
 
 	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
@@ -615,7 +610,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	instanceID, err := user.ExtractOrgID(ctx)
+	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -671,7 +666,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
-	instanceID, err := user.ExtractOrgID(queryServer.Context())
+	instanceID, err := tenant.TenantID(queryServer.Context())
 	if err != nil {
 		return err
 	}
@@ -691,7 +686,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
-	instanceID, err := user.ExtractOrgID(ctx)
+	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
