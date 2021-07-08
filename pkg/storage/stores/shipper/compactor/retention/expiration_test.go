@@ -208,3 +208,49 @@ func TestFindEarliestRetentionStartTime(t *testing.T) {
 		})
 	}
 }
+
+func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		expirationChecker expirationChecker
+		interval          model.Interval
+		hasExpiredChunks  bool
+	}{
+		{
+			name: "not expired",
+			expirationChecker: expirationChecker{
+				earliestRetentionStartTime: model.Now().Add(-24 * time.Hour),
+			},
+			interval: model.Interval{
+				Start: model.Now().Add(-time.Hour),
+				End:   model.Now(),
+			},
+		},
+		{
+			name: "partially expired",
+			expirationChecker: expirationChecker{
+				earliestRetentionStartTime: model.Now().Add(-24 * time.Hour),
+			},
+			interval: model.Interval{
+				Start: model.Now().Add(-25 * time.Hour),
+				End:   model.Now().Add(-22 * time.Hour),
+			},
+			hasExpiredChunks: true,
+		},
+		{
+			name: "fully expired",
+			expirationChecker: expirationChecker{
+				earliestRetentionStartTime: model.Now().Add(-24 * time.Hour),
+			},
+			interval: model.Interval{
+				Start: model.Now().Add(-26 * time.Hour),
+				End:   model.Now().Add(-25 * time.Hour),
+			},
+			hasExpiredChunks: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalHasExpiredChunks(tc.interval))
+		})
+	}
+}
