@@ -17,16 +17,16 @@ type buildInfo struct {
 
 func versionHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		info := buildInfo {
-			Version: build.Version,
-			Revision: build.Revision, 
-			Branch: build.Branch,
-			BuildUser: build.BuildUser, 
+		info := buildInfo{
+			Version:   build.Version,
+			Revision:  build.Revision,
+			Branch:    build.Branch,
+			BuildUser: build.BuildUser,
 			BuildDate: build.BuildDate,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-    	w.WriteHeader(http.StatusOK)
-    	json.NewEncoder(w).Encode(info)
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(info)
 	}
 }

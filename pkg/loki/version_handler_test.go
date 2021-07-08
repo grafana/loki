@@ -13,7 +13,7 @@ import (
 func TestVersionHandler(t *testing.T) {
 	build.Version = "0.0.1"
 	build.Branch = "main"
-	build.Revision= "foobar"
+	build.Revision = "foobar"
 	build.BuildDate = "yesterday"
 	build.BuildUser = "Turing"
 
