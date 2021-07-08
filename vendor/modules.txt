@@ -68,6 +68,10 @@ github.com/NYTimes/gziphandler
 github.com/PuerkitoBio/purell
 # github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
 github.com/PuerkitoBio/urlesc
+# github.com/Workiva/go-datastructures v1.0.53
+## explicit
+github.com/Workiva/go-datastructures/rangetree
+github.com/Workiva/go-datastructures/slice
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
