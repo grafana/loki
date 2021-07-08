@@ -19,6 +19,7 @@ These endpoints are exposed by all components:
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
 - [`GET /config`](#get-config)
+- [`GET /version`](#get-version)
 
 These endpoints are exposed by the querier and the frontend:
 
@@ -822,6 +823,12 @@ modify the output. If it has the value `diff` only the differences between the d
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
+
+## `GET /version`
+
+`/version` exposes the build information in a JSON object. The fields are `version`, `revision ``build_date`, `build_user`, and `revision`.
+
+In microservices mode, the `/version` endpoint is exposed by all components.
 
 ## Series
 
