@@ -6,8 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/loki/pkg/util/build"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/util/build"
 )
 
 func TestVersionHandler(t *testing.T) {
