@@ -216,15 +216,17 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 
 	defer func() {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
-		dmCallback := c.expirationChecker.MarkPhaseFailed
 		if status == statusSuccess {
-			dmCallback = c.expirationChecker.MarkPhaseFinished
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
 			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
 
 		if c.cfg.RetentionEnabled {
-			dmCallback()
+			if status == statusSuccess {
+				c.expirationChecker.MarkPhaseFinished()
+			} else {
+				c.expirationChecker.MarkPhaseFailed()
+			}
 		}
 	}()
 
