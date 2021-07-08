@@ -132,13 +132,13 @@ func TestNegativeGauge(t *testing.T) {
 	testConfig := `
 pipeline_stages:
 - regex:
-    expression: 'vehicule=(?P<vehicule>\d+) longitude=(?P<longitude>[-]?\d+\.\d+) latitude=(?P<latitude>\d+\.\d+)'
+    expression: 'vehicle=(?P<vehicle>\d+) longitude=(?P<longitude>[-]?\d+\.\d+) latitude=(?P<latitude>\d+\.\d+)'
 - labels:
-    vehicule:
+    vehicle:
 - metrics:
     longitude:
         type: Gauge
-        description: "longitude GPS vehicule"
+        description: "longitude GPS vehicle"
         source: longitude
         config:
           match_all: true
@@ -150,12 +150,12 @@ pipeline_stages:
 		t.Fatal(err)
 	}
 
-	<-pl.Run(withInboundEntries(newEntry(nil, model.LabelSet{"test": "app"}, `#<13>Jan 28 14:25:52 vehicule=1 longitude=-10.1234 latitude=15.1234`, time.Now())))
+	<-pl.Run(withInboundEntries(newEntry(nil, model.LabelSet{"test": "app"}, `#<13>Jan 28 14:25:52 vehicle=1 longitude=-10.1234 latitude=15.1234`, time.Now())))
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(`
-# HELP promtail_custom_longitude longitude GPS vehicule
+# HELP promtail_custom_longitude longitude GPS vehicle
 # TYPE promtail_custom_longitude gauge
-promtail_custom_longitude{test="app",vehicule="1"} -10.1234
+promtail_custom_longitude{test="app",vehicle="1"} -10.1234
 `)); err != nil {
 		t.Fatalf("mismatch metrics: %v", err)
 	}
