@@ -826,7 +826,7 @@ In microservices mode, the `/config` endpoint is exposed by all components.
 
 ## `GET /version`
 
-`/version` exposes the build information in a JSON object. The fields are `version`, `revision ``build_date`, `build_user`, and `revision`.
+`/version` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `build_date`, and `build_user`.
 
 In microservices mode, the `/version` endpoint is exposed by all components.
 
