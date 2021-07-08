@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cespare/xxhash"
 	"github.com/gorilla/websocket"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
@@ -87,7 +88,6 @@ func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		panic(err)
 	}
 
-	fmt.Println("expr", expr.String())
 	sampleExtractor, err := expr.Extractor()
 	if err != nil {
 		panic(err)
@@ -97,40 +97,41 @@ func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 		labels.Label{Name: "foo", Value: "bar"},
 	})
 
-	it := NewFileSampleIterator(q.r, "source:logcli", streamSample)
+	it := NewFileSampleIterator(q.r, params.Start, params.End, "source:logcli", streamSample)
 
 	return it, nil
 }
 
 type FileSampleIterator struct {
-	s      *bufio.Scanner
-	labels string
-	err    error
-	sp     logqllog.StreamSampleExtractor
-	curr   logproto.Sample
+	s          *bufio.Scanner
+	labels     string
+	err        error
+	sp         logqllog.StreamSampleExtractor
+	curr       logproto.Sample
+	start, end time.Time
 }
 
-func NewFileSampleIterator(r io.Reader, labels string, sp logqllog.StreamSampleExtractor) *FileSampleIterator {
+func NewFileSampleIterator(r io.Reader, start, end time.Time, labels string, sp logqllog.StreamSampleExtractor) *FileSampleIterator {
 	s := bufio.NewScanner(r)
 	s.Split(bufio.ScanLines)
 	return &FileSampleIterator{
 		s:      s,
 		labels: labels,
 		sp:     sp,
+		start:  start,
+		end:    end,
 	}
 }
 
 func (f *FileSampleIterator) Next() bool {
 	for f.s.Scan() {
-		fmt.Println("input", f.s.Text())
-		value, labels, ok := f.sp.Process([]byte(f.s.Text()))
-		fmt.Println("output", "value", value, "labels", labels, "skip", ok)
-
+		value, _, ok := f.sp.Process([]byte(f.s.Text()))
+		ts := f.start.Add(2 * time.Minute)
 		if ok {
 			f.curr = logproto.Sample{
-				Timestamp: time.Now().Unix(),
+				Timestamp: ts.UnixNano(),
 				Value:     value,
-				Hash:      labels.Hash(),
+				Hash:      xxhash.Sum64(f.s.Bytes()),
 			}
 			return true
 		}
@@ -139,7 +140,7 @@ func (f *FileSampleIterator) Next() bool {
 }
 
 func (f *FileSampleIterator) Sample() logproto.Sample {
-	return logproto.Sample{}
+	return f.curr
 }
 
 func (f *FileSampleIterator) Labels() string {
@@ -175,11 +176,11 @@ func NewFileIterator(r io.Reader, labels string, sp logqllog.StreamPipeline) *Fi
 
 func (f *FileIterator) Next() bool {
 	for f.s.Scan() {
-		_, _, ok := f.sp.Process([]byte(f.s.Text()))
+		line, _, ok := f.sp.Process([]byte(f.s.Text()))
 		if ok {
 			f.curr = logproto.Entry{
 				Timestamp: time.Now(),
-				Line:      f.s.Text(),
+				Line:      string(line),
 			}
 			return true
 		}
@@ -212,7 +213,7 @@ type FileClient struct {
 }
 
 func NewFileClient(r io.Reader) *FileClient {
-	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r}, &limiter{})
+	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r}, &limiter{n: 1024})
 	return &FileClient{
 		r:           r,
 		orgID:       "fake",

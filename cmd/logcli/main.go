@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"runtime/pprof"
@@ -141,6 +142,13 @@ func main() {
 
 	if *stdin {
 		queryClient = client.NewFileClient(os.Stdin)
+		if rangeQuery.Step.Seconds() == 0 {
+			// Set default value for `step` based on `start` and `end`.
+			// In non-stdin case, this is set on Loki server side.
+			// If this is not set, then `step` will have default value of 1 nanosecond and `STepEvaluator` will go through every nanosecond when applying aggregation during metric queries.
+			rangeQuery.Step = defaultQueryRangeStep(rangeQuery.Start, rangeQuery.End)
+		}
+
 	}
 
 	switch cmd {
@@ -312,6 +320,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
+
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)
@@ -337,4 +346,9 @@ func mustParse(t string, defaultTime time.Time) time.Time {
 	}
 
 	return ret
+}
+
+func defaultQueryRangeStep(start, end time.Time) time.Duration {
+	step := int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
+	return time.Duration(step) * time.Second
 }
