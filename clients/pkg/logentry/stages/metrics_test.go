@@ -69,6 +69,7 @@ var testMetricLogLine1 = `
 	"level" : "WARN"
 }
 `
+
 var testMetricLogLine2 = `
 {
 	"time":"2012-11-01T22:08:41+00:00",
@@ -78,6 +79,7 @@ var testMetricLogLine2 = `
 	"level" : "WARN"
 }
 `
+
 var testMetricLogLineWithMissingKey = `
 {
 	"time":"2012-11-01T22:08:41+00:00",
@@ -121,6 +123,40 @@ func TestMetricsPipeline(t *testing.T) {
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
+		t.Fatalf("mismatch metrics: %v", err)
+	}
+}
+
+func TestNegativeGauge(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	testConfig := `
+pipeline_stages:
+- regex:
+    expression: 'vehicle=(?P<vehicle>\d+) longitude=(?P<longitude>[-]?\d+\.\d+) latitude=(?P<latitude>\d+\.\d+)'
+- labels:
+    vehicle:
+- metrics:
+    longitude:
+        type: Gauge
+        description: "longitude GPS vehicle"
+        source: longitude
+        config:
+          match_all: true
+          action: set
+
+`
+	pl, err := NewPipeline(util_log.Logger, loadConfig(testConfig), nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	<-pl.Run(withInboundEntries(newEntry(nil, model.LabelSet{"test": "app"}, `#<13>Jan 28 14:25:52 vehicle=1 longitude=-10.1234 latitude=15.1234`, time.Now())))
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader(`
+# HELP promtail_custom_longitude longitude GPS vehicle
+# TYPE promtail_custom_longitude gauge
+promtail_custom_longitude{test="app",vehicle="1"} -10.1234
+`)); err != nil {
 		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
@@ -267,8 +303,10 @@ func TestDefaultIdleDuration(t *testing.T) {
 	assert.Equal(t, int64(5*time.Minute.Seconds()), ms.(*stageProcessor).Processor.(*metricStage).cfg["total_keys"].maxIdleSec)
 }
 
-var labelFoo = model.LabelSet(map[model.LabelName]model.LabelValue{"foo": "bar", "bar": "foo"})
-var labelFu = model.LabelSet(map[model.LabelName]model.LabelValue{"fu": "baz", "baz": "fu"})
+var (
+	labelFoo = model.LabelSet(map[model.LabelName]model.LabelValue{"foo": "bar", "bar": "foo"})
+	labelFu  = model.LabelSet(map[model.LabelName]model.LabelValue{"fu": "baz", "baz": "fu"})
+)
 
 func TestMetricStage_Process(t *testing.T) {
 	jsonConfig := JSONConfig{
