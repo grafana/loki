@@ -19,7 +19,7 @@ These endpoints are exposed by all components:
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
 - [`GET /config`](#get-config)
-- [`GET /version`](#get-version)
+- [`GET /loki/api/v1/status/buildinfo`](#get-buildinfo)
 
 These endpoints are exposed by the querier and the frontend:
 
@@ -824,9 +824,9 @@ and the current are returned. A value of `defaults` returns the default configur
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 
-## `GET /version`
+## `GET buildinfo`
 
-`/version` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `build_date`, and `build_user`.
+`/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
 
 In microservices mode, the `/version` endpoint is exposed by all components.
 

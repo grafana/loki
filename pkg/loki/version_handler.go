@@ -4,25 +4,20 @@ import (
 	"encoding/json"
 	"net/http"
 
+	prom "github.com/prometheus/prometheus/web/api/v1"
+
 	"github.com/grafana/loki/pkg/util/build"
 )
 
-type buildInfo struct {
-	Version   string `json:"version"`
-	Revision  string `json:"revision"`
-	Branch    string `json:"branch"`
-	BuildUser string `json:"build_user"`
-	BuildDate string `json:"build_date"`
-}
-
 func versionHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		info := buildInfo{
+		info := prom.PrometheusVersion{
 			Version:   build.Version,
 			Revision:  build.Revision,
 			Branch:    build.Branch,
 			BuildUser: build.BuildUser,
 			BuildDate: build.BuildDate,
+			GoVersion: build.GoVersion,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

@@ -12,6 +12,7 @@ var (
 	Branch    string
 	BuildUser string
 	BuildDate string
+	GoVersion string
 )
 
 func init() {
@@ -20,4 +21,5 @@ func init() {
 	version.Branch = Branch
 	version.BuildUser = BuildUser
 	version.BuildDate = BuildDate
+	version.GoVersion = "???"
 }

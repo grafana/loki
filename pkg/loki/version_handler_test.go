@@ -17,6 +17,7 @@ func TestVersionHandler(t *testing.T) {
 	build.Revision = "foobar"
 	build.BuildDate = "yesterday"
 	build.BuildUser = "Turing"
+	build.GoVersion = "42"
 
 	req := httptest.NewRequest("GET", "http://test.com/config?mode=diff", nil)
 	w := httptest.NewRecorder()
@@ -29,9 +30,10 @@ func TestVersionHandler(t *testing.T) {
 	expected := `{
 		"version":"0.0.1",
 		"branch":"main",
-		"build_date":"yesterday",
-		"build_user":"Turing",
-		"revision":"foobar"
+		"buildDate":"yesterday",
+		"buildUser":"Turing",
+		"revision":"foobar",
+		"goVersion": "42"
 	}`
 	body, err := ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)

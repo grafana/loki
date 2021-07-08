@@ -261,7 +261,7 @@ func (t *Loki) Run() error {
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
 	// This adds a way to see the config and the changes compared to the defaults
-	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
+	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
 
 	// Each component serves its version.
 	t.Server.HTTP.Path("/version").HandlerFunc(versionHandler())
