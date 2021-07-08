@@ -68,6 +68,8 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 			convOp = log.ConvertBytes
 		case OpConvDuration, OpConvDurationSeconds:
 			convOp = log.ConvertDuration
+		case OpConvDateTime:
+			convOp = log.ConvertDateTime
 		default:
 			convOp = log.ConvertFloat
 		}

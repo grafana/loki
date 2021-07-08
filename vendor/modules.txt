@@ -73,6 +73,9 @@ github.com/alecthomas/template
 github.com/alecthomas/template/parse
 # github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15
 github.com/alecthomas/units
+# github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
+## explicit
+github.com/araddon/dateparse
 # github.com/armon/go-metrics v0.3.6
 github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus

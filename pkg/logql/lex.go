@@ -100,6 +100,7 @@ var functionTokens = map[string]int{
 	OpConvBytes:           BYTES_CONV,
 	OpConvDuration:        DURATION_CONV,
 	OpConvDurationSeconds: DURATION_SECONDS_CONV,
+	OpConvDateTime:        DATETIME_CONV,
 }
 
 type lexer struct {
