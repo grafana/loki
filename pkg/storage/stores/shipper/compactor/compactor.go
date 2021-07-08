@@ -198,7 +198,12 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 	}
 
 	interval := extractIntervalFromTableName(tableName)
-	err = table.compact(c.expirationChecker.IntervalHasExpiredChunks(interval))
+	intervalHasExpiredChunks := false
+	if c.cfg.RetentionEnabled {
+		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
+	}
+
+	err = table.compact(intervalHasExpiredChunks)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
