@@ -50,7 +50,7 @@ func (e *expirationChecker) MarkPhaseFailed()   {}
 func (e *expirationChecker) MarkPhaseFinished() {}
 
 func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
-	return interval.Start.Before(e.earliestRetentionStartTime) || interval.End.Before(e.earliestRetentionStartTime)
+	return interval.Start.Before(e.earliestRetentionStartTime)
 }
 
 type TenantsRetention struct {
