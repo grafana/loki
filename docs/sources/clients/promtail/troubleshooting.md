@@ -3,13 +3,13 @@ title: Troubleshooting
 ---
 # Troubleshooting Promtail
 
-This document describes known failure modes of `promtail` on edge cases and the
+This document describes known failure modes of Promtail on edge cases and the
 adopted trade-offs.
 
 ## Dry running
 
 Promtail can be configured to print log stream entries instead of sending them to Loki.
-This can be used in combination with [piping data](#pipe-data-to-promtail) to debug or troubleshoot promtail log parsing.
+This can be used in combination with [piping data](#pipe-data-to-promtail) to debug or troubleshoot Promtail log parsing.
 
 In dry run mode, Promtail still support reading from a [positions](../configuration#position_config) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
 
@@ -22,7 +22,7 @@ cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/
 ## Pipe data to Promtail
 
 Promtail supports piping data for sending logs to Loki (via the flag `--stdin`). This is a very useful way to troubleshooting your configuration.
-Once you have promtail installed you can for instance use the following command to send logs to a local Loki instance:
+Once you have Promtail installed you can for instance use the following command to send logs to a local Loki instance:
 
 ```bash
 cat my.log | promtail --stdin  --client.url http://127.0.0.1:3100/loki/api/v1/push
@@ -66,17 +66,17 @@ cat my.log | promtail --config.file promtail.yaml
 ```
 
 
-## A tailed file is truncated while `promtail` is not running
+## A tailed file is truncated while Promtail is not running
 
 Given the following order of events:
 
-1. `promtail` is tailing `/app.log`
-1. `promtail` current position for `/app.log` is `100` (byte offset)
-1. `promtail` is stopped
+1. Promtail is tailing `/app.log`
+1. Promtail current position for `/app.log` is `100` (byte offset)
+1. Promtail is stopped
 1. `/app.log` is truncated and new logs are appended to it
-1. `promtail` is restarted
+1. Promtail is restarted
 
-When `promtail` is restarted, it reads the previous position (`100`) from the
+When Promtail is restarted, it reads the previous position (`100`) from the
 positions file. Two scenarios are then possible:
 
 - `/app.log` size is less than the position before truncating
@@ -85,32 +85,32 @@ positions file. Two scenarios are then possible:
 If the `/app.log` file size is less than the previous position, then the file is
 detected as truncated and logs will be tailed starting from position `0`.
 Otherwise, if the `/app.log` file size is greater than or equal to the previous
-position, `promtail` can't detect it was truncated while not running and will
+position, Promtail can't detect it was truncated while not running and will
 continue tailing the file from position `100`.
 
-Generally speaking, `promtail` uses only the path to the file as key in the
-positions file. Whenever `promtail` is started, for each file path referenced in
-the positions file, `promtail` will read the file from the beginning if the file
+Generally speaking, Promtail uses only the path to the file as key in the
+positions file. Whenever Promtail is started, for each file path referenced in
+the positions file, Promtail will read the file from the beginning if the file
 size is less than the offset stored in the position file, otherwise it will
 continue from the offset, regardless the file has been truncated or rolled
-multiple times while `promtail` was not running.
+multiple times while Promtail was not running.
 
 ## Loki is unavailable
 
-For each tailing file, `promtail` reads a line, process it through the
+For each tailing file, Promtail reads a line, process it through the
 configured `pipeline_stages` and push the log entry to Loki. Log entries are
 batched together before getting pushed to Loki, based on the max batch duration
 `client.batch-wait` and size `client.batch-size-bytes`, whichever comes first.
 
-In case of any error while sending a log entries batch, `promtail` adopts a
+In case of any error while sending a log entries batch, Promtail adopts a
 "retry then discard" strategy:
 
-- `promtail` retries to send log entry to the ingester up to `max_retries` times
-- If all retries fail, `promtail` discards the batch of log entries (_which will
+- Promtail retries to send log entry to the ingester up to `max_retries` times
+- If all retries fail, Promtail discards the batch of log entries (_which will
   be lost_) and proceeds with the next one
 
 You can configure the `max_retries` and the delay between two retries via the
-`backoff_config` in the promtail config file:
+`backoff_config` in the Promtail config file:
 
 ```yaml
 clients:
@@ -148,22 +148,22 @@ with `min_period: 100ms` and `max_period: 10s`:
 | 20    | 6.4s      | 10s       | 95.9s           | 152.6s          |
 
 
-## Log entries pushed after a `promtail` crash / panic / abruptly termination
+## Log entries pushed after a Promtail crash / panic / abruptly termination
 
-When `promtail` shuts down gracefully, it saves the last read offsets in the
+When Promtail shuts down gracefully, it saves the last read offsets in the
 positions file, so that on a subsequent restart it will continue tailing logs
 without duplicates neither losses.
 
-In the event of a crash or abruptly termination, `promtail` can't save the last
-read offsets in the positions file. When restarted, `promtail` will read the
+In the event of a crash or abruptly termination, Promtail can't save the last
+read offsets in the positions file. When restarted, Promtail will read the
 positions file saved at the last sync period and will continue tailing the files
 from there. This means that if new log entries have been read and pushed to the
 ingester between the last sync period and the crash, these log entries will be
-sent again to the ingester on `promtail` restart.
+sent again to the ingester on Promtail restart.
 
 However, it's important to note that Loki will reject all log lines received in
 what it perceives is [out of
-order](../../../overview#timestamp-ordering). If `promtail` happens to
+order](../../../overview#timestamp-ordering). If Promtail happens to
 crash, it may re-send log lines that were sent prior to the crash. The default
 behavior of Promtail is to assign a timestamp to logs at the time it read the
 entry from the tailed file. This would result in duplicate log lines being sent

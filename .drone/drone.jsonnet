@@ -279,6 +279,11 @@ local manifest(apps) = pipeline('manifest') {
       make('lint', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
+      {
+        name: 'shellcheck',
+        image: 'koalaman/shellcheck-alpine:stable',
+        commands: ['apk add make bash && make lint-scripts'],
+      },
     ],
   },
 ] + [

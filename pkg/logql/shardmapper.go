@@ -22,15 +22,14 @@ const (
 
 // ShardingMetrics is the metrics wrapper used in shard mapping
 type ShardingMetrics struct {
-	shards      *prometheus.CounterVec // sharded queries total, partitioned by (streams/metric)
+	Shards      *prometheus.CounterVec // sharded queries total, partitioned by (streams/metric)
+	ShardFactor prometheus.Histogram   // per request shard factor
 	parsed      *prometheus.CounterVec // parsed ASTs total, partitioned by (success/failure/noop)
-	shardFactor prometheus.Histogram   // per request shard factor
 }
 
 func NewShardingMetrics(registerer prometheus.Registerer) *ShardingMetrics {
-
 	return &ShardingMetrics{
-		shards: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Shards: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "query_frontend_shards_total",
 		}, []string{"type"}),
@@ -38,7 +37,7 @@ func NewShardingMetrics(registerer prometheus.Registerer) *ShardingMetrics {
 			Namespace: "loki",
 			Name:      "query_frontend_sharding_parsed_queries_total",
 		}, []string{"type"}),
-		shardFactor: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		ShardFactor: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
 			Name:      "query_frontend_shard_factor",
 			Help:      "Number of shards per request",
@@ -67,14 +66,14 @@ type shardRecorder struct {
 // Add increments both the shard count and tracks it for the eventual histogram entry.
 func (r *shardRecorder) Add(x int, key string) {
 	r.total += x
-	r.shards.WithLabelValues(key).Add(float64(x))
+	r.Shards.WithLabelValues(key).Add(float64(x))
 }
 
 // Finish idemptotently records a histogram entry with the total shard factor.
 func (r *shardRecorder) Finish() {
 	if !r.done {
 		r.done = true
-		r.shardFactor.Observe(float64(r.total))
+		r.ShardFactor.Observe(float64(r.total))
 	}
 }
 
@@ -203,7 +202,6 @@ func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *shardRecorder) SampleExpr
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
 func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *shardRecorder) (SampleExpr, error) {
-
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
 	if !expr.Shardable() {

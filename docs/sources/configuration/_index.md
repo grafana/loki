@@ -79,7 +79,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 ```yaml
 # The module to run Loki with. Supported values
-# all, distributor, ingester, querier, query-frontend, table-manager.
+# all, compactor, distributor, ingester, querier, query-frontend, table-manager.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -203,7 +203,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 
 # Base path to serve all API routes from (e.g., /v1/).
 # CLI flag: -server.path-prefix
-[http_prefix: <string> | default = "/api/prom"]
+[http_path_prefix: <string> | default = ""]
 ```
 
 ## distributor_config
@@ -259,6 +259,10 @@ The `querier_config` block configures the Loki Querier.
 # 0 means all queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
+
+# The maximum number of concurrent queries allowed.
+# CLI flag: -querier.max-concurrent
+[max_concurrent: <int> | default = 20]
 
 # Only query the store, do not attempt to query any ingesters,
 # useful for running a standalone querier pool opearting only against stored data.
@@ -347,6 +351,8 @@ results_cache:
 ## ruler_config
 
 The `ruler_config` configures the Loki ruler.
+
+<span style="background-color:#f3f973;">The Ruler API is experimental.</span>
 
 ```yaml
 # URL of alerts return path.
@@ -1458,6 +1464,8 @@ to wait before saving them to the backing store.
 The `cache_config` block configures how Loki will cache requests, chunks, and
 the index to a backing cache store.
 
+<span style="background-color:#f3f973;">The memcached configuration variable addresses is experimental.</span>
+
 ```yaml
 # Enable in-memory cache.
 # CLI flag: -<prefix>.cache.enable-fifocache
@@ -1502,6 +1510,11 @@ memcached_client:
   # SRV service used to discover memcached servers.
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
+
+  # (Experimental) Comma-separated addresses list in DNS Service Discovery format:
+  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # CLI flag: -<prefix>.memcached.addresses
+  [addresses: <string> | default = ""]
 
   # Maximum time to wait before giving up on memcached requests.
   # CLI flag: -<prefix>.memcached.timeout
@@ -1643,6 +1656,8 @@ chunks:
 
 The `compactor_config` block configures the compactor component. This component periodically
 compacts index shards to more performant forms.
+
+<span style="background-color:#f3f973;">Retention through the Compactor is experimental.</span>
 
 ```yaml
 # Directory where files can be downloaded for compaction.

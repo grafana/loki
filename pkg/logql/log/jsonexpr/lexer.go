@@ -97,7 +97,7 @@ func (sc *Scanner) scanField() string {
 			break
 		}
 
-		if r == '.' || r == scanner.EOF || r == rune(0) {
+		if r == '.' || isEndOfInput(r) {
 			sc.unread()
 			break
 		}
@@ -118,6 +118,10 @@ func (sc *Scanner) scanStr() string {
 
 	for {
 		r := sc.read()
+		if isEndOfInput(r) {
+			break
+		}
+
 		if r == '"' || r == ']' {
 			break
 		}
@@ -148,6 +152,11 @@ func (sc *Scanner) scanInt() (int, error) {
 	}
 
 	return strconv.Atoi(string(number))
+}
+
+// input is either terminated by EOF or null byte
+func isEndOfInput(r rune) bool {
+	return r == scanner.EOF || r == rune(0)
 }
 
 func (sc *Scanner) read() rune {

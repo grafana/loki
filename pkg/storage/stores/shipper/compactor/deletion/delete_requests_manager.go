@@ -194,3 +194,23 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}
 }
+
+func (d *DeleteRequestsManager) IntervalHasExpiredChunks(interval model.Interval) bool {
+	d.deleteRequestsToProcessMtx.Lock()
+	defer d.deleteRequestsToProcessMtx.Unlock()
+
+	if len(d.deleteRequestsToProcess) == 0 {
+		return false
+	}
+
+	for _, deleteRequest := range d.deleteRequestsToProcess {
+		if intervalsOverlap(interval, model.Interval{
+			Start: deleteRequest.StartTime,
+			End:   deleteRequest.EndTime,
+		}) {
+			return true
+		}
+	}
+
+	return false
+}

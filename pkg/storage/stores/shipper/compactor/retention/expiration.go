@@ -4,34 +4,68 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/validation"
 )
 
 type ExpirationChecker interface {
 	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval)
+	IntervalHasExpiredChunks(interval model.Interval) bool
+	MarkPhaseStarted()
+	MarkPhaseFailed()
+	MarkPhaseFinished()
 }
 
 type expirationChecker struct {
-	limits Limits
+	tenantsRetention           *TenantsRetention
+	earliestRetentionStartTime model.Time
 }
 
 type Limits interface {
 	RetentionPeriod(userID string) time.Duration
 	StreamRetention(userID string) []validation.StreamRetention
+	ForEachTenantLimit(validation.ForEachTenantLimitCallback)
+	DefaultLimits() *validation.Limits
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
 	return &expirationChecker{
-		limits: limits,
+		tenantsRetention: NewTenantsRetention(limits),
 	}
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
 func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval) {
 	userID := unsafeGetString(ref.UserID)
-	streamRetentions := e.limits.StreamRetention(userID)
-	globalRetention := e.limits.RetentionPeriod(userID)
+	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+	return now.Sub(ref.Through) > period, nil
+}
+
+func (e *expirationChecker) MarkPhaseStarted() {
+	e.earliestRetentionStartTime = model.Now().Add(-findHighestRetentionPeriod(e.tenantsRetention.limits))
+}
+
+func (e *expirationChecker) MarkPhaseFailed()   {}
+func (e *expirationChecker) MarkPhaseFinished() {}
+
+func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
+	return interval.Start.Before(e.earliestRetentionStartTime)
+}
+
+type TenantsRetention struct {
+	limits Limits
+}
+
+func NewTenantsRetention(l Limits) *TenantsRetention {
+	return &TenantsRetention{
+		limits: l,
+	}
+}
+
+func (tr *TenantsRetention) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {
+	streamRetentions := tr.limits.StreamRetention(userID)
+	globalRetention := tr.limits.RetentionPeriod(userID)
 	var (
 		matchedRule validation.StreamRetention
 		found       bool
@@ -39,7 +73,7 @@ func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []mod
 Outer:
 	for _, streamRetention := range streamRetentions {
 		for _, m := range streamRetention.Matchers {
-			if !m.Matches(ref.Labels.Get(m.Name)) {
+			if !m.Matches(lbs.Get(m.Name)) {
 				continue Outer
 			}
 		}
@@ -58,7 +92,31 @@ Outer:
 		matchedRule = streamRetention
 	}
 	if found {
-		return now.Sub(ref.Through) > time.Duration(matchedRule.Period), nil
+		return time.Duration(matchedRule.Period)
 	}
-	return now.Sub(ref.Through) > globalRetention, nil
+	return globalRetention
+}
+
+func findHighestRetentionPeriod(limits Limits) time.Duration {
+	defaultLimits := limits.DefaultLimits()
+
+	highestRetentionPeriod := defaultLimits.RetentionPeriod
+	for _, streamRetention := range defaultLimits.StreamRetention {
+		if streamRetention.Period > highestRetentionPeriod {
+			highestRetentionPeriod = streamRetention.Period
+		}
+	}
+
+	limits.ForEachTenantLimit(func(userID string, limit *validation.Limits) {
+		if limit.RetentionPeriod > highestRetentionPeriod {
+			highestRetentionPeriod = limit.RetentionPeriod
+		}
+		for _, streamRetention := range limit.StreamRetention {
+			if streamRetention.Period > highestRetentionPeriod {
+				highestRetentionPeriod = streamRetention.Period
+			}
+		}
+	})
+
+	return time.Duration(highestRetentionPeriod)
 }

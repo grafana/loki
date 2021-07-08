@@ -111,6 +111,7 @@ message SeriesRequest {
   google.protobuf.Timestamp start = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp end = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   repeated string groups = 3;
+  repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
 }
 
 message SeriesResponse {

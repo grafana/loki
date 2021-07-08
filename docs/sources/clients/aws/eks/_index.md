@@ -107,7 +107,7 @@ Verify the application is working by running these commands:
   curl http://127.0.0.1:3101/metrics
 ```
 
-Verify that promtail pods are running. You should see only two since we're running a two nodes cluster.
+Verify that Promtail pods are running. You should see only two since we're running a two nodes cluster.
 
 ```bash
 kubectl get -n monitoring pods
@@ -162,7 +162,7 @@ extraVolumeMounts:
     readOnly: true
 ```
 
-Now that we're ready we can update the promtail deployment:
+Now that we're ready we can update the Promtail deployment:
 
 ```bash
 helm upgrade  promtail loki/promtail -n monitoring -f values.yaml

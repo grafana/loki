@@ -25,7 +25,7 @@ applications emitting log lines to files that need to be monitored.
 Promtail borrows the same
 [service discovery mechanism from Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config),
 although it currently only supports `static` and `kubernetes` service
-discovery. This limitation is due to the fact that `promtail` is deployed as a
+discovery. This limitation is due to the fact that Promtail is deployed as a
 daemon to every local machine and, as such, does not discover label from other
 machines. `kubernetes` service discovery fetches required labels from the
 Kubernetes API server while `static` usually covers all other use cases.

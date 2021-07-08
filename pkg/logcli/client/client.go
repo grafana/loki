@@ -56,6 +56,7 @@ type DefaultClient struct {
 	Tripperware     Tripperware
 	BearerToken     string
 	BearerTokenFile string
+	Retries         int
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -216,21 +217,39 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	if c.Tripperware != nil {
 		client.Transport = c.Tripperware(client.Transport)
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
+
+	var resp *http.Response
+	attempts := c.Retries + 1
+	success := false
+
+	for attempts > 0 {
+		attempts--
+
+		resp, err = client.Do(req)
+		if err != nil {
+			log.Println("error sending request", err)
+			continue
+		}
+		if resp.StatusCode/100 != 2 {
+			buf, _ := ioutil.ReadAll(resp.Body) // nolint
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, attempts)
+			if err := resp.Body.Close(); err != nil {
+				log.Println("error closing body", err)
+			}
+			continue
+		}
+		success = true
+		break
 	}
+	if !success {
+		return fmt.Errorf("Run out of attempts while querying the server")
+	}
+
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			log.Println("error closing body", err)
 		}
 	}()
-
-	if resp.StatusCode/100 != 2 {
-		buf, _ := ioutil.ReadAll(resp.Body) // nolint
-		return fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
-	}
-
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 

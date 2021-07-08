@@ -39,7 +39,7 @@ The query is composed of:
 - a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev` namespace.
 - a log pipeline `|= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500` which will filter out log that contains the word `metrics.go`, then parses each log line to extract more labels and filter with them.
 
-> To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
+> To avoid escaping special characters you can use the `` ` ``(backtick) instead of `"` when quoting strings.
 For example `` `\w+` `` is the same as `"\\w+"`.
 This is specially useful when writing a regular expression which contains multiple backslashes that require escaping.
 
@@ -280,7 +280,9 @@ will get those labels extracted:
 
 ##### Pattern
 
-The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression. The expression matches the structure of a log line.
+<span style="background-color:#f3f973;">The pattern parser is a beta feature.</span>
+
+The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression (`| pattern "<pattern-expression>"`). The expression matches the structure of a log line.
 
 Consider this NGINX log line.
 

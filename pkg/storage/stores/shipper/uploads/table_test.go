@@ -347,6 +347,11 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 		},
 	}, false)
 
+	// create a boltdb file without bucket which should get removed
+	db, err := local.OpenBoltdbFile(filepath.Join(tablePath, "no-bucket"))
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
 	// try loading the dbs
 	dbs, err := loadBoltDBsFromDir(tablePath)
 	require.NoError(t, err)
@@ -360,6 +365,10 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 	for _, boltdb := range dbs {
 		require.NoError(t, boltdb.Close())
 	}
+
+	filesInfo, err := ioutil.ReadDir(tablePath)
+	require.NoError(t, err)
+	require.Len(t, filesInfo, 2)
 }
 
 func TestTable_ImmutableUploads(t *testing.T) {
