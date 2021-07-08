@@ -157,6 +157,7 @@ func (s *stream) Push(
 	// Counter used in WAL replay to avoid duplicates.
 	// If this is non-zero, the stream will reject entries
 	// with a counter value less than or equal to it's own.
+	// It is set to zero and thus bypassed outside of WAL replays.
 	counter int64,
 ) (int, error) {
 	s.chunkMtx.Lock()

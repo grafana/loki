@@ -94,6 +94,41 @@ func TestPushDeduplication(t *testing.T) {
 	require.Equal(t, len("test"+"newer, better test"), written)
 }
 
+func TestPushRejectOldCounter(t *testing.T) {
+	s := newStream(
+		defaultConfig(),
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		NilMetrics,
+	)
+
+	// counter should be 2 now since the first line will be deduped
+	_, err := s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
+	}, recordPool.GetRecord(), 0)
+	require.NoError(t, err)
+	require.Len(t, s.chunks, 1)
+	require.Equal(t, s.chunks[0].chunk.Size(), 2,
+		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+
+	// fail to push with a counter <= the streams internal counter
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 2)
+	require.Equal(t, ErrEntriesExist, err)
+
+	// succeed with a greater counter
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 3)
+	require.Nil(t, err)
+
+}
+
 func TestStreamIterator(t *testing.T) {
 	const chunks = 3
 	const entries = 100
