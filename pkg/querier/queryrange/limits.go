@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -200,7 +201,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		request.LogToSpan(span)
 	}
-	userid, err := user.ExtractOrgID(ctx)
+	userid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

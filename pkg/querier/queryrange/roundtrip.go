@@ -10,11 +10,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
@@ -176,7 +176,7 @@ func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) (logql.L
 
 // validates log entries limits
 func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	userID, err := user.ExtractOrgID(req.Context())
+	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
