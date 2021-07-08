@@ -27,6 +27,10 @@ func versionHandler() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(info)
+
+		// We ignore errors here, because we cannot do anything about them.
+		// Write will trigger sending Status code, so we cannot send a different status code afterwards.
+		// Also this isn't internal error, but error communicating with client.
+		_ = json.NewEncoder(w).Encode(info)
 	}
 }
