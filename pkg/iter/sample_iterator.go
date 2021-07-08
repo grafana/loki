@@ -343,6 +343,32 @@ type seriesIterator struct {
 	labels  string
 }
 
+type withCloseSampleIterator struct {
+	closeFn func() error
+	SampleIterator
+}
+
+func (w *withCloseSampleIterator) Close() error {
+	var errs []error
+	if err := w.SampleIterator.Close(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := w.closeFn(); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return util.MultiError(errs)
+}
+
+func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIterator {
+	return &withCloseSampleIterator{
+		closeFn:        closeFn,
+		SampleIterator: it,
+	}
+}
+
 // NewMultiSeriesIterator returns an iterator over multiple logproto.Series
 func NewMultiSeriesIterator(ctx context.Context, series []logproto.Series) SampleIterator {
 	is := make([]SampleIterator, 0, len(series))
