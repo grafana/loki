@@ -10,6 +10,7 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -46,6 +47,10 @@ var (
 	})
 )
 
+var (
+	ErrEntriesExist = errors.New("duplicate push - entries already exist")
+)
+
 func init() {
 	prometheus.MustRegister(chunksCreatedTotal)
 	prometheus.MustRegister(samplesPerChunk)
@@ -72,6 +77,13 @@ type stream struct {
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
+
+	// entryCt is a counter which is incremented on each accepted entry.
+	// This allows us to discard WAL entries during replays which were
+	// already recovered via checkpoints. Historically out of order
+	// errors were used to detect this, but this counter has been
+	// introduced to facilitate removing the ordering constraint.
+	entryCt int64
 }
 
 type chunkDesc struct {
@@ -139,10 +151,22 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
+	// WAL record to add push contents to.
+	// May be nil to disable this functionality.
 	record *WALRecord,
+	// Counter used in WAL replay to avoid duplicates.
+	// If this is non-zero, the stream will reject entries
+	// with a counter value less than or equal to it's own.
+	// It is set to zero and thus bypassed outside of WAL replays.
+	counter int64,
 ) (int, error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
+
+	if counter > 0 && counter <= s.entryCt {
+		return 0, ErrEntriesExist
+	}
+
 	var bytesAdded int
 	prevNumChunks := len(s.chunks)
 	var lastChunkTimestamp time.Time
@@ -201,6 +225,7 @@ func (s *stream) Push(
 			lastChunkTimestamp = entries[i].Timestamp
 			s.lastLine.ts = lastChunkTimestamp
 			s.lastLine.content = entries[i].Line
+			s.entryCt++
 
 			// length of string plus
 			bytesAdded += len(entries[i].Line)
@@ -211,7 +236,7 @@ func (s *stream) Push(
 	if len(storedEntries) != 0 {
 		// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 		if record != nil {
-			record.AddEntries(uint64(s.fp), storedEntries...)
+			record.AddEntries(uint64(s.fp), s.entryCt, storedEntries...)
 		} else {
 			// If record is nil, this is a WAL recovery.
 			s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
@@ -367,4 +392,8 @@ func (s *stream) addTailer(t *tailer) {
 	defer s.tailerMtx.Unlock()
 
 	s.tailers[t.getID()] = t
+}
+
+func (s *stream) resetCounter() {
+	s.entryCt = 0
 }
