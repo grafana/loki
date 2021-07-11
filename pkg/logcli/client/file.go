@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/cespare/xxhash"
@@ -26,6 +28,7 @@ const (
 	defaultLabelValue        = "logcli"
 	defaultOrgID             = "logcli"
 	defaultMetricSeriesLimit = 1024
+	defaultMaxFileSize       = 20 * (1 << 20) // 20MB
 )
 
 var (
@@ -198,7 +201,11 @@ func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	streampipe := pipeline.ForStream(labels.Labels{
 		labels.Label{Name: "foo", Value: "bar"},
 	})
-	it := NewFileIterator(q.r, "source:logcli", streampipe)
+
+	it, err := NewFileIterator(q.r, params, streampipe)
+	if err != nil {
+		return nil, err
+	}
 
 	return it, nil
 }
@@ -273,26 +280,47 @@ func (f *FileSampleIterator) Error() error {
 }
 
 func (f *FileSampleIterator) Close() error {
-	// TODO: accept io.ReadCloser()?
 	return nil
 }
 
 type FileIterator struct {
 	s      *bufio.Scanner
-	labels string
 	err    error
 	sp     logqllog.StreamPipeline
 	curr   logproto.Entry
+	params logql.SelectLogParams
+	labels string
 }
 
-func NewFileIterator(r io.Reader, labels string, sp logqllog.StreamPipeline) *FileIterator {
+func NewFileIterator(r io.Reader, params logql.SelectLogParams, sp logqllog.StreamPipeline) (*FileIterator, error) {
 	s := bufio.NewScanner(r)
+	if params.Direction == logproto.FORWARD {
+		lr := io.LimitReader(r, defaultMaxFileSize)
+		b, err := ioutil.ReadAll(lr)
+		if err != nil {
+			return nil, err
+		}
+		lines := strings.FieldsFunc(string(b), func(r rune) bool {
+			if r == '\n' {
+				return true
+			}
+			return false
+		})
+		// reverse
+		sort.Slice(lines, func(i, j int) bool {
+			return i > j
+		})
+
+		s = bufio.NewScanner(strings.NewReader(strings.Join(lines, "\n")))
+	}
+
 	s.Split(bufio.ScanLines)
+
 	return &FileIterator{
 		s:      s,
-		labels: labels,
+		params: params,
 		sp:     sp,
-	}
+	}, nil
 }
 
 func (f *FileIterator) Next() bool {
