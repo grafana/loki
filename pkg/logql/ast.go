@@ -630,6 +630,9 @@ const (
 	OpConvDurationSeconds = "duration_seconds"
 
 	OpLabelReplace = "label_replace"
+
+	// function filters
+	OpFilterIP = "ip"
 )
 
 func IsComparisonOperator(op string) bool {

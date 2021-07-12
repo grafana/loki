@@ -13,16 +13,30 @@ var (
 	errInvalidPattern = errors.New("invalid pattern")
 )
 
+type IPMatchType int
+
 const (
 	IPV4_CHARSET = "0123456789."
 	IPV6_CHARSET = "0123456789abcdefABCDEF.:"
+
+	IPMatchLine IPMatchType = iota
+	IPMatchLabel
 )
 
 // Should be one of the netaddr.IP, netaddr.IPRange, netadd.IPPrefix.
 type IPMatcher interface{}
 
 type IPFilter struct {
-	matcher IPMatcher
+	pattern   string
+	matcher   IPMatcher
+	matchType IPMatchType
+
+	// if used as label matcher, this holds the identifier label name.
+	// e.g: (|remote_addr = ip("xxx")). Here labelName is `remote_addr`
+	labelName string
+
+	// patternError represents any invalid pattern provided to match the ip.
+	patternError error
 }
 
 // IPFilter search for IP addresses of given `pattern` in the given `line`.
@@ -32,12 +46,21 @@ type IPFilter struct {
 // 1. SINGLE-IP - "192.168.0.1"
 // 2. IP RANGE  - "192.168.0.1-192.168.0.23"
 // 3. CIDR      - "192.168.0.0/16"
-func NewIPFilter(pattern string) (*IPFilter, error) {
+func NewIPFilter(pattern string) *IPFilter {
+	filter := &IPFilter{pattern: pattern}
+
 	matcher, err := getMatcher(pattern)
-	if err != nil {
-		return nil, err
-	}
-	return &IPFilter{matcher: matcher}, nil
+	filter.matcher = matcher
+	filter.patternError = err
+
+	return filter
+}
+
+func NewIPLabelFilter(pattern string, label string) *IPFilter {
+	filter := NewIPFilter(pattern)
+	filter.labelName = label
+	filter.matchType = IPMatchLabel
+	return filter
 }
 
 func (ipf *IPFilter) Filter(line string) bool {
@@ -77,12 +100,40 @@ func (ipf *IPFilter) Filter(line string) bool {
 	return false
 }
 
-func (ipf *IPFilter) Process(line []byte, _ *LabelsBuilder) ([]byte, bool) {
-	return line, ipf.Filter(string(line))
+// `Process` implements `Stage` interface
+func (ipf *IPFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+
+	// make sure the pattern provided was valid, even before trying to match.
+	if ipf.patternError != nil {
+		lbs.SetErr(fmt.Errorf("%s: %s", errLabelFilter, ipf.patternError.Error()).Error())
+		return line, false
+	}
+
+	input := string(line)
+
+	if ipf.matchType == IPMatchLabel {
+		v, ok := lbs.Get(ipf.labelName)
+		if !ok {
+			// we have not found the corresponding label.
+			return line, false
+		}
+		input = v
+	}
+
+	return line, ipf.Filter(input)
 }
 
+// `RequiredLabelNames` implements `Stage` interface
 func (ipf *IPFilter) RequiredLabelNames() []string {
 	return []string{}
+}
+
+// `String` implements fmt.Stringer inteface, by which also implements `LabelFilterer` inteface.
+func (ipf *IPFilter) String() string {
+	if ipf.matchType == IPMatchLabel {
+		return fmt.Sprintf("%s=ip(%q)", ipf.labelName, ipf.pattern)
+	}
+	return fmt.Sprintf("ip(%q)", ipf.pattern)
 }
 
 func contains(matcher IPMatcher, ip netaddr.IP) bool {

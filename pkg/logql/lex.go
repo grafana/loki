@@ -64,6 +64,9 @@ var tokens = map[string]int{
 	// fmt
 	OpFmtLabel: LABEL_FMT,
 	OpFmtLine:  LINE_FMT,
+
+	// filter functions
+	OpFilterIP: IP,
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
