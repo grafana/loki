@@ -476,19 +476,36 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 		if fileInfo.IsDir() {
 			continue
 		}
+		fullPath := filepath.Join(dir, fileInfo.Name())
 
 		if strings.HasSuffix(fileInfo.Name(), tempFileSuffix) || strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
 			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
 			// Cleaning up those temp files to avoid problems.
-			if err := os.Remove(filepath.Join(dir, fileInfo.Name())); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "name", fileInfo.Name(), "err", err)
+			if err := os.Remove(fullPath); err != nil {
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", fullPath), "err", err)
 			}
 			continue
 		}
 
-		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(dir, fileInfo.Name()))
+		db, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file to let Loki start successfully.", fullPath), "err", err)
 			return nil, err
+		}
+
+		hasBucket := false
+		_ = db.View(func(tx *bbolt.Tx) error {
+			hasBucket = tx.Bucket(bucketName) != nil
+			return nil
+		})
+
+		if !hasBucket {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("file %s has no bucket named %s, so removing it", fullPath, bucketName))
+			_ = db.Close()
+			if err := os.Remove(fullPath); err != nil {
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove file %s without bucket", fullPath), "err", err)
+			}
+			continue
 		}
 
 		dbs[fileInfo.Name()] = db

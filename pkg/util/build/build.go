@@ -1,6 +1,10 @@
 package build
 
-import "github.com/prometheus/common/version"
+import (
+	"runtime"
+
+	"github.com/prometheus/common/version"
+)
 
 // Version information passed to Prometheus version package.
 // Package path as used by linker changes based on vendoring being used or not,
@@ -12,6 +16,7 @@ var (
 	Branch    string
 	BuildUser string
 	BuildDate string
+	GoVersion string
 )
 
 func init() {
@@ -20,4 +25,5 @@ func init() {
 	version.Branch = Branch
 	version.BuildUser = BuildUser
 	version.BuildDate = BuildDate
+	version.GoVersion = runtime.Version()
 }

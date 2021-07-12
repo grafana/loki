@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -254,7 +254,7 @@ func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval
 
 // Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +358,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 
 // Series fetches any matching series for a list of matcher sets
 func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +396,7 @@ func (q *Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) 
 	}
 
 	go func() {
-		storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups())
+		storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
 		if err != nil {
 			errs <- err
 			return
@@ -441,6 +441,7 @@ func (q *Querier) seriesForMatchers(
 	ctx context.Context,
 	from, through time.Time,
 	groups []string,
+	shards []string,
 ) ([]logproto.SeriesIdentifier, error) {
 
 	var results []logproto.SeriesIdentifier
@@ -448,13 +449,13 @@ func (q *Querier) seriesForMatchers(
 	// we send a query with an empty matcher which will match every series.
 	if len(groups) == 0 {
 		var err error
-		results, err = q.seriesForMatcher(ctx, from, through, "")
+		results, err = q.seriesForMatcher(ctx, from, through, "", shards)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		for _, group := range groups {
-			ids, err := q.seriesForMatcher(ctx, from, through, group)
+			ids, err := q.seriesForMatcher(ctx, from, through, group, shards)
 			if err != nil {
 				return nil, err
 			}
@@ -465,7 +466,7 @@ func (q *Querier) seriesForMatchers(
 }
 
 // seriesForMatcher fetches series from the store for a given matcher
-func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string) ([]logproto.SeriesIdentifier, error) {
+func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
 	ids, err := q.store.GetSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
@@ -473,6 +474,7 @@ func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time,
 			Start:     from,
 			End:       through,
 			Direction: logproto.FORWARD,
+			Shards:    shards,
 		},
 	})
 	if err != nil {
@@ -482,7 +484,7 @@ func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time,
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
@@ -530,7 +532,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 }
 
 func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}

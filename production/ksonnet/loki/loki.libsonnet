@@ -1,4 +1,3 @@
-(import 'ksonnet-util/kausal.libsonnet') +
 (import 'jaeger-agent-mixin/jaeger.libsonnet') +
 (import 'images.libsonnet') +
 (import 'common.libsonnet') +

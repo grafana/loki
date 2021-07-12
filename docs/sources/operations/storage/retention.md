@@ -8,7 +8,8 @@ Retention in Loki is achieved either through the [Table Manager](#table-manager)
 
 Retention through the [Table Manager](../table-manager/) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper](../boltdb-shipper) store and chunk/index store. However retention through the [Compactor](../boltdb-shipper#compactor) is supported only with the [boltdb-shipper](../boltdb-shipper) store.
 
-The [Compactor](#Compactor) retention will become the default and have long term support. While this retention is still **experimental**, it supports more granular retention policies on per tenant and per stream use cases.
+<span style="background-color:#f3f973;">Retention through the [Compactor](#Compactor) is experimental.</span>
+The Compactor retention will become the default and have long term support. It supports more granular retention policies on per tenant and per stream use cases.
 
 ## Compactor
 

@@ -39,6 +39,8 @@ message LokiSeriesRequest {
   google.protobuf.Timestamp startTs = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp endTs = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   string path = 4;
+  repeated string shards = 5 [(gogoproto.jsontag) = "shards"];
+
 }
 
 message LokiSeriesResponse {

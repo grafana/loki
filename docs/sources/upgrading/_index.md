@@ -213,7 +213,7 @@ There are 2 significant changes warranting the backup of this data because they 
 * A compactor is included which will take existing index files and compact them to one per day and remove non compacted files
 * All index files are now gzipped before uploading
 
-The second part is important because 1.6.0 does not understand how to read the gzipped files, so any new files uploaded or any files compacted become unreadable to 1.6.0 or ealier.
+The second part is important because 1.6.0 does not understand how to read the gzipped files, so any new files uploaded or any files compacted become unreadable to 1.6.0 or earlier.
 
 _THIS BEING SAID_ we are not expecting problems, our testing so far has not uncovered any problems, but some extra precaution might save data loss in unforeseen circumstances!
 
@@ -362,7 +362,7 @@ schema_config:
         prefix: index_
         period: 24h   <--- This must be 24h
 ```
-If you are not on `schema: v11` this would be a good oportunity to make that change _in the new schema config_ also.
+If you are not on `schema: v11` this would be a good opportunity to make that change _in the new schema config_ also.
 
 **NOTE** If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
 

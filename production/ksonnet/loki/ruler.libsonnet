@@ -1,9 +1,11 @@
+local k = import 'ksonnet-util/kausal.libsonnet';
+
 {
-  local container = $.core.v1.container,
-  local pvc = $.core.v1.persistentVolumeClaim,
-  local statefulSet = $.apps.v1.statefulSet,
-  local deployment = $.apps.v1.deployment,
-  local volumeMount = $.core.v1.volumeMount,
+  local container = k.core.v1.container,
+  local pvc = k.core.v1.persistentVolumeClaim,
+  local statefulSet = k.apps.v1.statefulSet,
+  local deployment = k.apps.v1.deployment,
+  local volumeMount = k.core.v1.volumeMount,
 
   ruler_args:: $._config.commonArgs {
     target: 'ruler',
@@ -21,9 +23,9 @@
     if $._config.ruler_enabled then
       container.new('ruler', $._images.ruler) +
       container.withPorts($.util.defaultPorts) +
-      container.withArgsMixin($.util.mapToFlags($.ruler_args)) +
-      $.util.resourcesRequests('1', '6Gi') +
-      $.util.resourcesLimits('16', '16Gi') +
+      container.withArgsMixin(k.util.mapToFlags($.ruler_args)) +
+      k.util.resourcesRequests('1', '6Gi') +
+      k.util.resourcesLimits('16', '16Gi') +
       $.util.readinessProbe +
       $.jaeger_mixin +
       if $._config.stateful_rulers then
@@ -37,20 +39,20 @@
       deployment.new('ruler', 2, [$.ruler_container]) +
       deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(600) +
       $.config_hash_mixin +
-      $.util.configVolumeMount('loki', '/etc/loki/config') +
-      $.util.configVolumeMount(
+      k.util.configVolumeMount('loki', '/etc/loki/config') +
+      k.util.configVolumeMount(
         $._config.overrides_configmap_mount_name,
         $._config.overrides_configmap_mount_path,
       ) +
-      $.util.antiAffinity
+      k.util.antiAffinity
     else {},
 
   ruler_service: if !$._config.ruler_enabled
   then {}
   else
     if $._config.stateful_rulers
-    then $.util.serviceFor($.ruler_statefulset)
-    else $.util.serviceFor($.ruler_deployment),
+    then k.util.serviceFor($.ruler_statefulset)
+    else k.util.serviceFor($.ruler_deployment),
 
 
   // PVC for rulers when running as statefulsets
@@ -66,12 +68,12 @@
     statefulSet.mixin.spec.withServiceName('ruler') +
     statefulSet.mixin.spec.withPodManagementPolicy('Parallel') +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki/config') +
-    $.util.configVolumeMount(
+    k.util.configVolumeMount('loki', '/etc/loki/config') +
+    k.util.configVolumeMount(
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    $.util.antiAffinity +
+    k.util.antiAffinity +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},

@@ -1,10 +1,11 @@
 {
-  local pvc = $.core.v1.persistentVolumeClaim,
-  local volumeMount = $.core.v1.volumeMount,
-  local container = $.core.v1.container,
-  local statefulSet = $.apps.v1.statefulSet,
-  local service = $.core.v1.service,
-  local containerPort = $.core.v1.containerPort,
+  local k = import 'ksonnet-util/kausal.libsonnet',
+  local pvc = k.core.v1.persistentVolumeClaim,
+  local volumeMount = k.core.v1.volumeMount,
+  local container = k.core.v1.container,
+  local statefulSet = k.apps.v1.statefulSet,
+  local service = k.core.v1.service,
+  local containerPort = k.core.v1.containerPort,
 
   _config+:: {
     // run ingesters and queriers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
@@ -55,19 +56,19 @@
   compactor_container:: if $._config.using_boltdb_shipper then
     container.new('compactor', $._images.compactor) +
     container.withPorts(compactor_ports) +
-    container.withArgsMixin($.util.mapToFlags($.compactor_args)) +
+    container.withArgsMixin(k.util.mapToFlags($.compactor_args)) +
     container.withVolumeMountsMixin([volumeMount.new('compactor-data', '/data')]) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    $.util.resourcesRequests('4', '2Gi')
+    k.util.resourcesRequests('4', '2Gi')
   else {},
 
   compactor_statefulset: if $._config.using_boltdb_shipper then
     statefulSet.new('compactor', 1, [$.compactor_container], $.compactor_data_pvc) +
     statefulSet.mixin.spec.withServiceName('compactor') +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki/config') +
+    k.util.configVolumeMount('loki', '/etc/loki/config') +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},

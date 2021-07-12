@@ -1,4 +1,4 @@
-package util
+package push
 
 import (
 	"compress/gzip"
@@ -14,22 +14,24 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/unmarshal"
 	unmarshal2 "github.com/grafana/loki/pkg/util/unmarshal/legacy"
 )
 
 var (
-	contentType = http.CanonicalHeaderKey("Content-Type")
-	contentEnc  = http.CanonicalHeaderKey("Content-Encoding")
-
+	contentType   = http.CanonicalHeaderKey("Content-Type")
+	contentEnc    = http.CanonicalHeaderKey("Content-Encoding")
 	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant",
-	}, []string{"tenant"})
+	}, []string{"tenant", "retention_hours"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_lines_received_total",
@@ -39,12 +41,15 @@ var (
 
 const applicationJSON = "application/json"
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request) (*logproto.PushRequest, error) {
+type TenantsRetention interface {
+	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
+}
 
+func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention) (*logproto.PushRequest, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
-	bodySize := NewSizeReader(r.Body)
+	bodySize := loki_util.NewSizeReader(r.Body)
 	contentEncoding := r.Header.Get(contentEnc)
 	switch contentEncoding {
 	case "":
@@ -66,48 +71,12 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request) (*logproto.
 	}
 
 	contentType := r.Header.Get(contentType)
-	var req logproto.PushRequest
-
-	defer func() {
-		var (
-			entriesSize      int64
-			streamLabelsSize int64
-			totalEntries     int64
-		)
-
-		mostRecentEntry := time.Unix(0, 0)
-
-		for _, s := range req.Streams {
-			streamLabelsSize += int64(len(s.Labels))
-			for _, e := range s.Entries {
-				totalEntries++
-				entriesSize += int64(len(e.Line))
-				if e.Timestamp.After(mostRecentEntry) {
-					mostRecentEntry = e.Timestamp
-				}
-			}
-		}
-
-		// incrementing tenant metrics if we have a tenant.
-		if totalEntries != 0 && userID != "" {
-			bytesIngested.WithLabelValues(userID).Add(float64(entriesSize))
-			linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
-		}
-
-		level.Debug(logger).Log(
-			"msg", "push request parsed",
-			"path", r.URL.Path,
-			"contentType", contentType,
-			"contentEncoding", contentEncoding,
-			"bodySize", humanize.Bytes(uint64(bodySize.Size())),
-			"streams", len(req.Streams),
-			"entries", totalEntries,
-			"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
-			"entriesSize", humanize.Bytes(uint64(entriesSize)),
-			"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
-			"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
-		)
-	}()
+	var (
+		entriesSize      int64
+		streamLabelsSize int64
+		totalEntries     int64
+		req              logproto.PushRequest
+	)
 
 	switch contentType {
 	case applicationJSON:
@@ -132,5 +101,46 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request) (*logproto.
 			return nil, err
 		}
 	}
+
+	mostRecentEntry := time.Unix(0, 0)
+
+	for _, s := range req.Streams {
+		streamLabelsSize += int64(len(s.Labels))
+		var retentionHours string
+		if tenantsRetention != nil {
+			lbs, err := logql.ParseLabels(s.Labels)
+			if err != nil {
+				return nil, err
+			}
+			retentionHours = fmt.Sprintf("%d", int64(math.Floor(tenantsRetention.RetentionPeriodFor(userID, lbs).Hours())))
+		}
+		for _, e := range s.Entries {
+			totalEntries++
+			entriesSize += int64(len(e.Line))
+			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(int64(len(e.Line))))
+			if e.Timestamp.After(mostRecentEntry) {
+				mostRecentEntry = e.Timestamp
+			}
+		}
+	}
+
+	// incrementing tenant metrics if we have a tenant.
+	if totalEntries != 0 && userID != "" {
+		linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
+	}
+
+	level.Debug(logger).Log(
+		"msg", "push request parsed",
+		"path", r.URL.Path,
+		"contentType", contentType,
+		"contentEncoding", contentEncoding,
+		"bodySize", humanize.Bytes(uint64(bodySize.Size())),
+		"streams", len(req.Streams),
+		"entries", totalEntries,
+		"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
+		"entriesSize", humanize.Bytes(uint64(entriesSize)),
+		"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
+		"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
+	)
 	return &req, nil
 }

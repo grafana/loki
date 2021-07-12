@@ -9,6 +9,7 @@ import (
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -27,13 +28,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
-var (
-	maxLabelCacheSize = 100000
-)
+var maxLabelCacheSize = 100000
 
 // Config for a Distributor.
 type Config struct {
@@ -53,12 +53,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Distributor struct {
 	services.Service
 
-	cfg           Config
-	clientCfg     client.Config
-	tenantConfigs *runtime.TenantConfigs
-	ingestersRing ring.ReadRing
-	validator     *Validator
-	pool          *ring_client.Pool
+	cfg              Config
+	clientCfg        client.Config
+	tenantConfigs    *runtime.TenantConfigs
+	tenantsRetention *retention.TenantsRetention
+	ingestersRing    ring.ReadRing
+	validator        *Validator
+	pool             *ring_client.Pool
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -118,6 +119,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		cfg:                  cfg,
 		clientCfg:            clientCfg,
 		tenantConfigs:        configs,
+		tenantsRetention:     retention.NewTenantsRetention(overrides),
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
 		validator:            validator,
@@ -190,7 +192,7 @@ type pushTracker struct {
 
 // Push a set of streams.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

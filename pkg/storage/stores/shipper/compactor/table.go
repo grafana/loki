@@ -66,7 +66,7 @@ func newTable(ctx context.Context, workingDirectory string, objectClient chunk.O
 	return &table, nil
 }
 
-func (t *table) compact() error {
+func (t *table) compact(tableHasExpiredStreams bool) error {
 	objects, err := util.ListDirectory(t.ctx, t.name, t.storageClient)
 	if err != nil {
 		return err
@@ -81,7 +81,9 @@ func (t *table) compact() error {
 		}
 	}()
 
-	if !t.applyRetention {
+	applyRetention := t.applyRetention && tableHasExpiredStreams
+
+	if !applyRetention {
 		if len(objects) < compactMinDBs {
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
 			return nil
@@ -204,7 +206,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 
 					err = t.readFile(downloadAt)
 					if err != nil {
-						level.Error(util_log.Logger).Log("msg", "error reading file", "err", err)
+						level.Error(util_log.Logger).Log("msg", fmt.Sprintf("error reading file %s", objectKey), "err", err)
 						return
 					}
 				case <-t.quit:
