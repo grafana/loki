@@ -360,7 +360,35 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr"))},
+			),
 		},
+		{
+			in: `{ foo = "bar" }|logfmt|level="error"| addr=ip("1.2.3.4")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr")),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|remote_addr=ip("2.3.4.5")|level="error"| addr=ip("1.2.3.4")`, // chain label filters with ip matcher
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr")),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr")),
+				},
+			),
+		},
+
 		{
 			in:  `sum(3 ,count_over_time({ foo = "bar" }[5h]))`,
 			err: logqlmodel.NewParseError("unsupported parameter for operation sum(3,", 0, 0),

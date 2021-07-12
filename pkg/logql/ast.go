@@ -394,7 +394,13 @@ type LabelFilterExpr struct {
 	implicit
 }
 
-func (e *LabelFilterExpr) Shardable() bool { return true }
+func newLabelFilterExpr(filterer log.LabelFilterer) *labelFilterExpr {
+	return &labelFilterExpr{
+		LabelFilterer: filterer,
+	}
+}
+
+func (e *labelFilterExpr) Shardable() bool { return true }
 
 func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
 
