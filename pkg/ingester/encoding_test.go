@@ -51,46 +51,93 @@ func Test_Encoding_Series(t *testing.T) {
 }
 
 func Test_Encoding_Entries(t *testing.T) {
-	record := &WALRecord{
-		entryIndexMap: make(map[uint64]int),
-		UserID:        "123",
-		RefEntries: []RefEntries{
-			{
-				Ref: 456,
-				Entries: []logproto.Entry{
+	for _, tc := range []struct {
+		desc    string
+		rec     *WALRecord
+		version RecordType
+	}{
+		{
+			desc: "v1",
+			rec: &WALRecord{
+				entryIndexMap: make(map[uint64]int),
+				UserID:        "123",
+				RefEntries: []RefEntries{
 					{
-						Timestamp: time.Unix(1000, 0),
-						Line:      "first",
+						Ref: 456,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(1000, 0),
+								Line:      "first",
+							},
+							{
+								Timestamp: time.Unix(2000, 0),
+								Line:      "second",
+							},
+						},
 					},
 					{
-						Timestamp: time.Unix(2000, 0),
-						Line:      "second",
+						Ref: 789,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(3000, 0),
+								Line:      "third",
+							},
+							{
+								Timestamp: time.Unix(4000, 0),
+								Line:      "fourth",
+							},
+						},
 					},
 				},
 			},
-			{
-				Ref: 789,
-				Entries: []logproto.Entry{
-					{
-						Timestamp: time.Unix(3000, 0),
-						Line:      "third",
-					},
-					{
-						Timestamp: time.Unix(4000, 0),
-						Line:      "fourth",
-					},
-				},
-			},
+			version: WALRecordEntriesV1,
 		},
+		{
+			desc: "v2",
+			rec: &WALRecord{
+				entryIndexMap: make(map[uint64]int),
+				UserID:        "123",
+				RefEntries: []RefEntries{
+					{
+						Ref:     456,
+						Counter: 1, // v2 uses counter for WAL replay
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(1000, 0),
+								Line:      "first",
+							},
+							{
+								Timestamp: time.Unix(2000, 0),
+								Line:      "second",
+							},
+						},
+					},
+					{
+						Ref:     789,
+						Counter: 2, // v2 uses counter for WAL replay
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(3000, 0),
+								Line:      "third",
+							},
+							{
+								Timestamp: time.Unix(4000, 0),
+								Line:      "fourth",
+							},
+						},
+					},
+				},
+			},
+			version: WALRecordEntriesV2,
+		},
+	} {
+		decoded := recordPool.GetRecord()
+		buf := tc.rec.encodeEntries(tc.version, nil)
+		err := decodeWALRecord(buf, decoded)
+		require.Nil(t, err)
+		require.Equal(t, tc.rec, decoded)
+
 	}
-
-	buf := record.encodeEntries(nil)
-
-	decoded := recordPool.GetRecord()
-
-	err := decodeWALRecord(buf, decoded)
-	require.Nil(t, err)
-	require.Equal(t, record, decoded)
 }
 
 func Benchmark_EncodeEntries(b *testing.B) {
@@ -121,7 +168,7 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	defer recordPool.PutBytes(buf)
 
 	for n := 0; n < b.N; n++ {
-		record.encodeEntries(buf)
+		record.encodeEntries(CurrentEntriesRec, buf)
 	}
 }
 
@@ -148,7 +195,7 @@ func Benchmark_DecodeWAL(b *testing.B) {
 		},
 	}
 
-	buf := record.encodeEntries(nil)
+	buf := record.encodeEntries(CurrentEntriesRec, nil)
 	rec := recordPool.GetRecord()
 	b.ReportAllocs()
 	b.ResetTimer()

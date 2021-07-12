@@ -33,4 +33,8 @@ message Series {
   // Last timestamp of the last chunk.
   google.protobuf.Timestamp to = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   string lastLine = 6;
+  // highest counter value for pushes to this stream.
+  // Used to skip already applied entries during WAL replay.
+  int64 entryCt = 7;
+
 }
