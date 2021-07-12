@@ -362,6 +362,12 @@ type labelFilterExpr struct {
 	implicit
 }
 
+func newLabelFilterExpr(filterer log.LabelFilterer) *labelFilterExpr {
+	return &labelFilterExpr{
+		LabelFilterer: filterer,
+	}
+}
+
 func (e *labelFilterExpr) Shardable() bool { return true }
 
 func (e *labelFilterExpr) Stage() (log.Stage, error) {
