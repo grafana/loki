@@ -20,7 +20,7 @@ func Test_IPFilter(t *testing.T) {
 		fail bool
 	}{
 		{
-			name: "single IP",
+			name: "single IPv4",
 			pat:  "192.168.0.1",
 			input: []string{
 				"vpn 192.168.0.5 connected to vm",
@@ -30,20 +30,48 @@ func Test_IPFilter(t *testing.T) {
 				"",
 			},
 			expected: []int{1}, // should match with only line at index `1` from the input
+
 		},
 		{
-			name: "IP range",
+			name: "single IPv6",
+			pat:  "::1", // localhost address
+			input: []string{
+				"vpn ::1 connected to vm", // still a match
+				"vpn 192.168.0.1 connected to vm",
+				"x",
+				"hello world!",
+				"",
+			},
+			expected: []int{0}, // should match with only line at index `0` from the input
+
+		},
+		{
+			name: "IPv4 range",
 			pat:  "192.168.0.1-192.189.10.12",
 			input: []string{
 				"vpn 192.168.0.0 connected to vm",
-				"vpn 192.168.0.1 connected to vm",
-				"vpn 192.172.6.1 connected to vm",
+				"vpn 192.168.0.0 192.168.0.1 connected to vm", // match
+				"vpn 192.172.6.1 connected to vm",             // match
 				"vpn 192.255.255.255 connected to vm",
 				"x",
 				"hello world!",
 				"",
 			},
 			expected: []int{1, 2},
+		},
+		{
+			name: "IPv6 range",
+			pat:  "2001:db8::1-2001:db8::8",
+			input: []string{
+				"vpn 192.168.0.0 connected to vm", // not match
+				"vpn 2001:db8::2 connected to vm", // match
+				"vpn 2001:db8::9 connected to vm", // not match
+				"vpn 2001:db8::5 connected to vm", // match
+				"x",
+				"hello world!",
+				"",
+			},
+			expected: []int{1, 3},
 		},
 		{
 			name: "wrong IP range syntax extra space", // NOTE(kavi): Should we handle this as normal valid range pattern?
@@ -65,16 +93,30 @@ func Test_IPFilter(t *testing.T) {
 			},
 			expected: []int{0, 1, 3},
 		},
+		{
+			name: "CIDR IPv6",
+			pat:  "2001:db8::/32",
+			input: []string{
+				"vpn 2001:db8::1 connected to vm",                 // match
+				"vpn 2001:db9::3 connected to vm",                 // not a match
+				"vpn 2001:dc8::1 and 2001:db8::2 connected to vm", // firt not match, but second did match. So overall its a match
+				"vpn 192.168.255.255 connected to vm",             // not match
+				"x",
+				"hello world!",
+				"",
+			},
+			expected: []int{0, 2},
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ip, err := NewIPFilter(c.pat)
+			ip := NewIPFilter(c.pat)
 			if c.fail {
-				assert.Error(t, c.err, err)
+				assert.Error(t, c.err, ip.patternError)
 				return
 			}
-			require.NoError(t, err)
+			assert.NoError(t, ip.patternError)
 
 			got := make([]int, 0)
 			for i, in := range c.input {
@@ -103,8 +145,8 @@ func Benchmark_IPFilter(b *testing.B) {
 		"192.168.4.5/16",
 	} {
 		b.Run(pattern, func(b *testing.B) {
-			stage, err := NewIPFilter(pattern)
-			require.Nil(b, err)
+			stage := NewIPFilter(pattern)
+			require.Nil(b, stage.patternError)
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
