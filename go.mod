@@ -78,6 +78,7 @@ require (
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+	inet.af/netaddr v0.0.0-20210707202901-70468d781e6c
 	k8s.io/klog v1.0.0
 )
 
