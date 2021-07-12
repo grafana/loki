@@ -87,6 +87,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	shardedLog, ctx := spanlogger.New(ctx, "shardedEngine")
 	defer shardedLog.Finish()
 
+	// todo suppoer LokiInstantRequest as well
 	req, ok := r.(*LokiRequest)
 	if !ok {
 		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)

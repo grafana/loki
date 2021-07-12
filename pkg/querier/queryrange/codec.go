@@ -707,27 +707,27 @@ func paramsFromRequest(req queryrange.Request) *paramsWrapper {
 }
 
 func (p paramsWrapper) Query() string {
-	return p.LokiRequest.Query
+	return p.GetQuery()
 }
 
 func (p paramsWrapper) Start() time.Time {
-	return p.StartTs
+	return p.GetStartTs()
 }
 
 func (p paramsWrapper) End() time.Time {
-	return p.EndTs
+	return p.GetEndTs()
 }
 
 func (p paramsWrapper) Step() time.Duration {
-	return time.Duration(p.LokiRequest.Step * 1e6)
+	return time.Duration(p.GetStep() * 1e6)
 }
 func (p paramsWrapper) Interval() time.Duration { return 0 }
 func (p paramsWrapper) Direction() logproto.Direction {
-	return p.LokiRequest.Direction
+	return p.GetDirection()
 }
 func (p paramsWrapper) Limit() uint32 { return p.LokiRequest.Limit }
 func (p paramsWrapper) Shards() []string {
-	return p.LokiRequest.Shards
+	return p.GetShards()
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrange.PrometheusResponseHeader {
