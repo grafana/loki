@@ -15,8 +15,8 @@ var (
 type IPMatchType int
 
 const (
-	IPV4_CHARSET = "0123456789."
-	IPV6_CHARSET = "0123456789abcdefABCDEF:."
+	IPv4Charset = "0123456789."
+	IPv6Charset = "0123456789abcdefABCDEF:."
 
 	IPMatchLine IPMatchType = iota
 	IPMatchLabel
@@ -87,7 +87,7 @@ func (ipf *IPFilter) Filter(line string) bool {
 	// It uses IPv4 and IPv6 prefix hints to find the IP addresses faster without using regexp.
 	for i := 0; i < n; i++ {
 		if i+3 < n && ipv4Hint([4]byte{line[i], line[i+1], line[i+2], line[i+3]}) {
-			ok, iplen := filterFn(line, i, IPV4_CHARSET)
+			ok, iplen := filterFn(line, i, IPv4Charset)
 			if ok {
 				return true
 			}
@@ -96,7 +96,7 @@ func (ipf *IPFilter) Filter(line string) bool {
 		}
 
 		if i+4 < n && ipv6Hint([5]byte{line[i], line[i+1], line[i+2], line[i+3], line[i+4]}) {
-			ok, iplen := filterFn(line, i, IPV6_CHARSET)
+			ok, iplen := filterFn(line, i, IPv6Charset)
 			if ok {
 				return true
 			}
