@@ -76,30 +76,36 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, log, limits, schema, LokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
+	if err != nil {
+		return nil, nil, err
+	}
 	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		seriesRT := seriesTripperware(next)
 		labelsRT := labelsTripperware(next)
-		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, labelsRT, limits)
+		instantRT := instantMetricTripperware(next)
+		return newRoundTripper(next, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, limits)
 	}, cache, nil
 }
 
 type roundTripper struct {
-	next, log, metric, series, labels http.RoundTripper
+	next, log, metric, series, labels, instantMetrics http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(next, log, metric, series, labels http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(next, log, metric, series, labels, instantMetrics http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
-		log:    log,
-		limits: limits,
-		metric: metric,
-		series: series,
-		labels: labels,
-		next:   next,
+		log:            log,
+		limits:         limits,
+		metric:         metric,
+		series:         series,
+		labels:         labels,
+		instantMetrics: instantMetrics,
+		next:           next,
 	}
 }
 
@@ -150,8 +156,21 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		return r.labels.RoundTrip(req)
-	case InstanteQueryOp:
-		return r.log.RoundTrip(req)
+	case InstantQueryOp:
+		instantQuery, err := loghttp.ParseInstantQuery(req)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		expr, err := logql.ParseExpr(instantQuery.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		switch expr.(type) {
+		case logql.SampleExpr:
+			return r.instantMetrics.RoundTrip(req)
+		default:
+			return r.next.RoundTrip(req)
+		}
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -192,10 +211,10 @@ func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 }
 
 const (
-	InstanteQueryOp = "instant_query"
-	QueryRangeOp    = "query_range"
-	SeriesOp        = "series"
-	LabelNamesOp    = "labels"
+	InstantQueryOp = "instant_query"
+	QueryRangeOp   = "query_range"
+	SeriesOp       = "series"
+	LabelNamesOp   = "labels"
 )
 
 func getOperation(path string) string {
@@ -207,7 +226,7 @@ func getOperation(path string) string {
 	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
 		return LabelNamesOp
 	case strings.HasSuffix(path, "/v1/query"):
-		return InstanteQueryOp
+		return InstantQueryOp
 	default:
 		return ""
 	}
@@ -239,7 +258,6 @@ func NewLogFilterTripperware(
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
-				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
 				shardingMetrics,
 				limits,
@@ -401,7 +419,6 @@ func NewMetricTripperware(
 			NewQueryShardMiddleware(
 				log,
 				schema.Configs,
-				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
 				shardingMetrics,
 				limits,
@@ -430,4 +447,50 @@ func NewMetricTripperware(
 		}
 		return next
 	}, c, nil
+}
+
+// NewInstantMetricTripperware creates a new frontend tripperware responsible for handling metric queries
+func NewInstantMetricTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema chunk.SchemaConfig,
+	codec queryrange.Codec,
+	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
+	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
+	shardingMetrics *logql.ShardingMetrics,
+	splitByMetrics *SplitByMetrics,
+) (queryrange.Tripperware, error) {
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), nil}
+
+	if cfg.CacheResults {
+		// think about caching
+	}
+
+	if cfg.ShardedQueries {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQueryShardMiddleware(
+				log,
+				schema.Configs,
+				instrumentMetrics, // instrumentation is included in the sharding middleware
+				shardingMetrics,
+				limits,
+			),
+		)
+	}
+
+	if cfg.MaxRetries > 0 {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("retry", instrumentMetrics),
+			queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics),
+		)
+	}
+
+	return func(next http.RoundTripper) http.RoundTripper {
+		if len(queryRangeMiddleware) > 0 {
+			return NewLimitedRoundTripper(next, codec, limits, queryRangeMiddleware...)
+		}
+		return next
+	}, nil
 }

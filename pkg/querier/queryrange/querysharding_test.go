@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
@@ -232,6 +233,54 @@ func mockHandler(resp queryrange.Response, err error) queryrange.Handler {
 
 		return resp, err
 	})
+}
+
+func Test_InstantSharding(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	sharding := NewQueryShardMiddleware(log.NewNopLogger(), queryrange.ShardingConfigs{
+		chunk.PeriodConfig{
+			RowShards: 3,
+		},
+	}, queryrange.NewInstrumentMiddlewareMetrics(nil),
+		nilShardingMetrics,
+		fakeLimits{
+			maxQueryParallelism: 10,
+		})
+	response, err := sharding.Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		t.Log(r)
+		return &LokiPromResponse{Response: &queryrange.PrometheusResponse{
+			Data: queryrange.PrometheusData{
+				ResultType: loghttp.ResultTypeVector,
+				Result: []queryrange.SampleStream{
+					{
+						Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+						Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+					},
+				},
+			},
+		}}, nil
+	})).Do(ctx, &LokiInstantRequest{
+		Query:  `rate({app="foo"}[1m])`,
+		TimeTs: time.Now(),
+		Path:   "/v1/query",
+	})
+	require.Nil(t, err)
+	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
+		Data: queryrange.PrometheusData{
+			ResultType: loghttp.ResultTypeVector,
+			Result: []queryrange.SampleStream{
+				{
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				},
+				{
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "buzz"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				},
+			},
+		},
+	}}, response)
 }
 
 func Test_SeriesShardingHandler(t *testing.T) {

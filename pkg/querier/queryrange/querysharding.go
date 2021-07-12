@@ -23,7 +23,6 @@ import (
 func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs queryrange.ShardingConfigs,
-	minShardingLookback time.Duration,
 	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
 	limits logql.Limits,

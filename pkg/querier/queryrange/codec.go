@@ -75,6 +75,48 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
 
+func (r *LokiInstantRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *LokiInstantRequest) GetEnd() int64 {
+	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiInstantRequest) GetStart() int64 {
+	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiInstantRequest) WithStartEnd(s int64, e int64) queryrange.Request {
+	new := *r
+	new.TimeTs = time.Unix(0, s*int64(time.Millisecond))
+	return &new
+}
+
+func (r *LokiInstantRequest) WithQuery(query string) queryrange.Request {
+	new := *r
+	new.Query = query
+	return &new
+}
+
+func (r *LokiInstantRequest) WithShards(shards logql.Shards) *LokiInstantRequest {
+	new := *r
+	new.Shards = shards.Encode()
+	return &new
+}
+
+func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("query", r.GetQuery()),
+		otlog.String("ts", timestamp.Time(r.GetStart()).String()),
+		otlog.Int64("limit", int64(r.GetLimit())),
+		otlog.String("direction", r.GetDirection().String()),
+		otlog.String("shards", strings.Join(r.GetShards(), ",")),
+	)
+}
+
+func (*LokiInstantRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
+
 func (r *LokiSeriesRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
@@ -172,6 +214,19 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 			Step:   int64(req.Step) / 1e6,
 			Path:   r.URL.Path,
 			Shards: req.Shards,
+		}, nil
+	case InstantQueryOp:
+		req, err := loghttp.ParseInstantQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &LokiInstantRequest{
+			Query:     req.Query,
+			Limit:     req.Limit,
+			Direction: req.Direction,
+			TimeTs:    req.Ts.UTC(),
+			Path:      r.URL.Path,
+			Shards:    req.Shards,
 		}, nil
 	case SeriesOp:
 		req, err := logql.ParseAndValidateSeriesQuery(r)

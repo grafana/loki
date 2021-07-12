@@ -25,6 +25,17 @@ type DownstreamHandler struct {
 }
 
 func ParamsToLokiRequest(params logql.Params) *LokiRequest {
+	if params.Start() == params.End() {
+		return &LokiRequest{
+			Query:     params.Query(),
+			Limit:     params.Limit(),
+			Step:      int64(params.Step() / time.Millisecond),
+			StartTs:   params.Start(),
+			EndTs:     params.End(),
+			Direction: params.Direction(),
+			Path:      "/loki/api/v1/query", // TODO(owen-d): make this derivable
+		}
+	}
 	return &LokiRequest{
 		Query:     params.Query(),
 		Limit:     params.Limit(),
@@ -58,6 +69,7 @@ type instance struct {
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
+		// todo handle instant queries
 		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
