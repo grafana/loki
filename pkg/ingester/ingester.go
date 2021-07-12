@@ -77,6 +77,8 @@ type Config struct {
 	QueryStoreMaxLookBackPeriod time.Duration `yaml:"query_store_max_look_back_period"`
 
 	WAL WALConfig `yaml:"wal,omitempty"`
+
+	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -218,6 +220,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
+
+	if i.cfg.ChunkFilterer != nil {
+		i.SetChunkFilterer(i.cfg.ChunkFilterer)
+	}
 	return i, nil
 }
 
