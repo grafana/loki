@@ -171,16 +171,16 @@ func ComputeMonthlyCost(MonthlyUnitCost *UnitCostInfo, storageBytes int, cr Comp
 
 	objStorageCost := float64(GBStored) * MonthlyUnitCost.CostPerGBObjStorage
 
-	cpuCost_base := float64(cr.CPURequests.Cores()) * MonthlyUnitCost.CostPerCPU
-	cpuCost_peak := float64(cr.CPULimits.Cores()) * MonthlyUnitCost.CostPerCPU
+	cpuCostBase := float64(cr.CPURequests.Cores()) * MonthlyUnitCost.CostPerCPU
+	cpuCostPeak := float64(cr.CPULimits.Cores()) * MonthlyUnitCost.CostPerCPU
 
-	memCost_base := float64(cr.MemoryRequests.Val()/(1<<30)) * MonthlyUnitCost.CostPerGBMem
-	memCost_peak := float64(cr.MemoryLimits.Val()/(1<<30)) * MonthlyUnitCost.CostPerGBMem
+	memCostBase := float64(cr.MemoryRequests.Val()/(1<<30)) * MonthlyUnitCost.CostPerGBMem
+	memCostPeak := float64(cr.MemoryLimits.Val()/(1<<30)) * MonthlyUnitCost.CostPerGBMem
 
 	diskCost := float64(cr.DiskGB) * MonthlyUnitCost.CostPerGBDisk
 
-	mc.BaseLoadCost = objStorageCost + diskCost + cpuCost_base + memCost_base
-	mc.PeakCost = objStorageCost + diskCost + cpuCost_peak + memCost_peak
+	mc.BaseLoadCost = objStorageCost + diskCost + cpuCostBase + memCostBase
+	mc.PeakCost = objStorageCost + diskCost + cpuCostPeak + memCostPeak
 
 	return mc
 }

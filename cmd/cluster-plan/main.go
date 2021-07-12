@@ -82,10 +82,10 @@ func main() {
 		return
 	}
 
-	printClusterArchitecture(&cluster, &cfg, true)
+	printClusterArchitecture(&cluster, &cfg)
 }
 
-func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config, useResourceRequests bool) {
+func printClusterArchitecture(c *sizing.ClusterResources, cfg *Config) {
 	totals := c.Totals()
 	ingestRate := cfg.BytesPerSecond
 

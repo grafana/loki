@@ -83,7 +83,7 @@ func ingesterSizing(ingestionRateMB float64) *ComponentDescription {
 	return component
 }
 
-func queryFrontendSizing(ingestionRateMB float64) *ComponentDescription {
+func queryFrontendSizing(_ float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	// run two for HA
 	n := 2
@@ -163,7 +163,7 @@ func indexCacheSizing(ingestionRateMB float64) *ComponentDescription {
 	return component
 }
 
-func rulerSizing(ingestionRateMB float64) *ComponentDescription {
+func rulerSizing(_ float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	// use a constant two rulers for now
 	n := 2
@@ -177,7 +177,7 @@ func rulerSizing(ingestionRateMB float64) *ComponentDescription {
 	return component
 }
 
-func compactorSizing(ingestionRateMB float64) *ComponentDescription {
+func compactorSizing(_ float64) *ComponentDescription {
 	component := &ComponentDescription{}
 	n := 1
 
