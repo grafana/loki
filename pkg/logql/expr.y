@@ -42,8 +42,9 @@ import (
   DurationFilter          log.LabelFilterer
   LabelFilter             log.LabelFilterer
   UnitFilter              log.LabelFilterer
-  LineFormatExpr          *LineFmtExpr
-  LabelFormatExpr         *LabelFmtExpr
+  IPFilter                log.LabelFilterer
+  LineFormatExpr          *lineFmtExpr
+  LabelFormatExpr         *labelFmtExpr
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
   JSONExpressionParser    *jsonExpressionParser
@@ -91,6 +92,7 @@ import (
 %type <JSONExpressionList>    jsonExpressionList
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
+%type <IPFilter>              ipFilter
 %type <OffsetExpr>            offsetExpr
 
 %token <bytes> BYTES
@@ -100,7 +102,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN
+                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -269,6 +271,7 @@ labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }
+    | ipFilter                                       { $$ = $1 }
     | unitFilter                                     { $$ = $1 }
     | numberFilter                                   { $$ = $1 }
     | OPEN_PARENTHESIS labelFilter CLOSE_PARENTHESIS { $$ = $2 }
@@ -285,6 +288,9 @@ jsonExpressionList:
     jsonExpression                          { $$ = []log.JSONExpression{$1} }
   | jsonExpressionList COMMA jsonExpression { $$ = append($1, $3) }
   ;
+
+ipFilter:
+IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1) }
 
 unitFilter:
       durationFilter { $$ = $1 }
