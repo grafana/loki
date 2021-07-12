@@ -150,6 +150,8 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		return r.labels.RoundTrip(req)
+	case InstanteQueryOp:
+		return r.log.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -190,9 +192,10 @@ func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
 }
 
 const (
-	QueryRangeOp = "query_range"
-	SeriesOp     = "series"
-	LabelNamesOp = "labels"
+	InstanteQueryOp = "instant_query"
+	QueryRangeOp    = "query_range"
+	SeriesOp        = "series"
+	LabelNamesOp    = "labels"
 )
 
 func getOperation(path string) string {
@@ -203,6 +206,8 @@ func getOperation(path string) string {
 		return SeriesOp
 	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
 		return LabelNamesOp
+	case strings.HasSuffix(path, "/v1/query"):
+		return InstanteQueryOp
 	default:
 		return ""
 	}
