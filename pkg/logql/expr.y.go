@@ -45,7 +45,7 @@ type exprSymType struct {
 	DurationFilter        log.LabelFilterer
 	LabelFilter           log.LabelFilterer
 	UnitFilter            log.LabelFilterer
-	IPFilter              log.LabelFilterer
+	IPLabelFilter         log.LabelFilterer
 	LineFormatExpr        *lineFmtExpr
 	LabelFormatExpr       *labelFmtExpr
 	LabelFormat           log.LabelFmt
@@ -1245,7 +1245,7 @@ exprdefault:
 	case 93:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.LabelFilter = exprDollar[1].IPFilter
+			exprVAL.LabelFilter = exprDollar[1].IPLabelFilter
 		}
 	case 94:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
@@ -1300,7 +1300,7 @@ exprdefault:
 	case 104:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.IPFilter = log.NewIPLabelFilter(exprDollar[5].str, exprDollar[1].str)
+			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[5].str, exprDollar[1].str)
 		}
 	case 105:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
