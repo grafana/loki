@@ -1,8 +1,0 @@
-level=info ts=2021-07-10T20:29:12.464740436Z caller=main.go:129 msg="Starting Loki" version="(version=, branch=, revision=)"
-level=info ts=2021-07-10T20:29:12.477325579Z caller=server.go:239 http=[::]:3100 grpc=[::]:9096 msg="server listening on addresses"
-level=info ts=2021-07-10T20:29:12.478423515Z caller=shipper_index_client.go:108 msg="starting boltdb shipper in 0 mode"
-level=info ts=2021-07-10T20:29:12.478421065Z caller=table_manager.go:171 msg="uploading tables"
-level=info ts=2021-07-10T20:29:12.481869432Z caller=mapper.go:46 msg="cleaning up mapped rules directory" path=/tmp/loki/rules-temp
-level=error ts=2021-07-10T20:29:12.481942251Z caller=mapper.go:50 msg="unable to read rules directory" path=/tmp/loki/rules-temp err="open /tmp/loki/rules-temp: no such file or directory"
-level=info ts=2021-07-10T20:29:12.485403993Z caller=module_service.go:59 msg=initialising module=memberlist-kv
-level=info ts=2021-07-10T20:29:12.485512367Z caller=module_service.go:59 msg=initialising module=server
