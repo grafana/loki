@@ -47,7 +47,14 @@ type FileClient struct {
 
 // NewFileClient returns the new instance of FileClient for the given `io.ReadCloser`
 func NewFileClient(r io.ReadCloser) *FileClient {
-	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r}, &limiter{n: defaultMetricSeriesLimit})
+	lbs := []labels.Label{
+		{
+			Name:  defaultLabelKey,
+			Value: defaultLabelValue,
+		},
+	}
+
+	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit})
 	return &FileClient{
 		r:           r,
 		orgID:       defaultOrgID,
@@ -186,28 +193,20 @@ func (l *limiter) MaxQuerySeries(userID string) int {
 }
 
 type querier struct {
-	r io.Reader
+	r      io.Reader
+	labels labels.Labels
 }
 
 func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := params.LogSelector()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to extract selector for logs: %w", err)
 	}
 	pipeline, err := expr.Pipeline()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to extract pipeline for logs: %w", err)
 	}
-	streampipe := pipeline.ForStream(labels.Labels{
-		labels.Label{Name: "foo", Value: "bar"},
-	})
-
-	it, err := NewFileIterator(q.r, params, streampipe)
-	if err != nil {
-		return nil, err
-	}
-
-	return it, nil
+	return newFileIterator(ctx, q.r, q.labels, params, pipeline.ForStream(q.labels))
 }
 
 func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -283,72 +282,82 @@ func (f *FileSampleIterator) Close() error {
 	return nil
 }
 
-type FileIterator struct {
-	s      *bufio.Scanner
-	err    error
-	sp     logqllog.StreamPipeline
-	curr   logproto.Entry
-	params logql.SelectLogParams
-	labels string
+// this is the generated timestamp for each input log line based on start and end
+// of the query.
+// start and end are unix timestamps in secs.
+func assignTimestamps(lines []string, start, end int64) map[string]int64 {
+	res := make(map[string]int64)
+
+	n := int64(len(lines))
+
+	if end < start {
+		panic("`start` cannot be after `end`")
+	}
+
+	step := (end - start) / n
+
+	for i, line := range lines {
+		fmt.Println("line", line, "ts", (step*int64(i+1) + start))
+		res[line] = (step * int64(i+1)) + start
+	}
+
+	return res
 }
 
-func NewFileIterator(r io.Reader, params logql.SelectLogParams, sp logqllog.StreamPipeline) (*FileIterator, error) {
-	s := bufio.NewScanner(r)
-	if params.Direction == logproto.FORWARD {
-		lr := io.LimitReader(r, defaultMaxFileSize)
-		b, err := ioutil.ReadAll(lr)
-		if err != nil {
-			return nil, err
+func newFileIterator(
+	ctx context.Context,
+	r io.Reader,
+	labels labels.Labels,
+	params logql.SelectLogParams,
+	pipeline logqllog.StreamPipeline,
+) (iter.EntryIterator, error) {
+
+	lr := io.LimitReader(r, defaultMaxFileSize)
+	b, err := ioutil.ReadAll(lr)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.FieldsFunc(string(b), func(r rune) bool {
+		if r == '\n' {
+			return true
 		}
-		lines := strings.FieldsFunc(string(b), func(r rune) bool {
-			if r == '\n' {
-				return true
-			}
-			return false
-		})
-		// reverse
+		return false
+	})
+
+	if len(lines) == 0 {
+		return iter.NoopIterator, nil
+	}
+
+	stream := logproto.Stream{
+		Labels: labels.String(),
+	}
+
+	fmt.Println("directions", params.Direction)
+
+	// reverse all the input lines if direction == FORWARD
+	if params.Direction == logproto.FORWARD {
 		sort.Slice(lines, func(i, j int) bool {
 			return i > j
 		})
-
-		s = bufio.NewScanner(strings.NewReader(strings.Join(lines, "\n")))
 	}
 
-	s.Split(bufio.ScanLines)
+	// timestamps := assignTimestamps(lines, params.Start.Unix(), params.End.Unix())
 
-	return &FileIterator{
-		s:      s,
-		params: params,
-		sp:     sp,
-	}, nil
-}
-
-func (f *FileIterator) Next() bool {
-	for f.s.Scan() {
-		line, _, ok := f.sp.Process([]byte(f.s.Text()))
-		if ok {
-			f.curr = logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      string(line),
-			}
-			return true
+	for _, line := range lines {
+		parsedLine, _, ok := pipeline.ProcessString(line)
+		if !ok {
+			continue
 		}
+		stream.Entries = append(stream.Entries, logproto.Entry{
+			Timestamp: time.Now(),
+			// Timestamp: time.Unix(timestamps[line], 0),
+			Line: parsedLine,
+		})
 	}
-	return false
-}
 
-func (f *FileIterator) Entry() logproto.Entry {
-	return f.curr
-}
-
-func (f *FileIterator) Labels() string {
-	return f.labels
-}
-
-func (f *FileIterator) Error() error {
-	return f.err
-}
-
-func (f *FileIterator) Close() error {
-	return nil
+	return iter.NewHeapIterator(
+		ctx,
+		[]iter.EntryIterator{iter.NewStreamIterator(stream)},
+		params.Direction,
+	), nil
 }
