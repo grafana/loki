@@ -3,7 +3,6 @@ package log
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"unicode"
 
 	"inet.af/netaddr"
@@ -17,7 +16,7 @@ type IPMatchType int
 
 const (
 	IPV4_CHARSET = "0123456789."
-	IPV6_CHARSET = "0123456789abcdefABCDEF.:"
+	IPV6_CHARSET = "0123456789abcdefABCDEF:."
 
 	IPMatchLine IPMatchType = iota
 	IPMatchLabel
@@ -70,28 +69,36 @@ func (ipf *IPFilter) Filter(line string) bool {
 
 	n := len(line)
 
+	filterFn := func(line string, start int, charset string) (bool, int) {
+		iplen := stringSpan(line[start:], charset)
+		if iplen < 0 {
+			return false, 0
+		}
+		ip, err := netaddr.ParseIP(line[start : start+iplen])
+		if err == nil {
+			if contains(ipf.matcher, ip) {
+				return true, 0
+			}
+		}
+		return false, iplen
+	}
+
+	// This loop try to extract IPv4 or IPv6 address from the arbitrary string.
+	// It uses IPv4 and IPv6 prefix hints to find the IP addresses faster without using regexp.
 	for i := 0; i < n; i++ {
 		if i+3 < n && ipv4Hint([4]byte{line[i], line[i+1], line[i+2], line[i+3]}) {
-			start := i
-			iplen := strings.LastIndexAny(line[start:], IPV4_CHARSET)
-			ip, err := netaddr.ParseIP(line[start : start+iplen+1])
-			if err == nil {
-				if contains(ipf.matcher, ip) {
-					return true
-				}
+			ok, iplen := filterFn(line, i, IPV4_CHARSET)
+			if ok {
+				return true
 			}
 			i += iplen
 			continue
 		}
 
 		if i+4 < n && ipv6Hint([5]byte{line[i], line[i+1], line[i+2], line[i+3], line[i+4]}) {
-			start := i
-			iplen := strings.LastIndex(line[start:], IPV6_CHARSET)
-			ip, err := netaddr.ParseIP(line[start : start+iplen+1])
-			if err == nil {
-				if contains(ipf.matcher, ip) {
-					return true
-				}
+			ok, iplen := filterFn(line, i, IPV6_CHARSET)
+			if ok {
+				return true
 			}
 			i += iplen
 			continue
@@ -187,4 +194,23 @@ func ipv6Hint(prefix [5]byte) bool {
 
 func isHexDigit(r byte) bool {
 	return unicode.IsDigit(rune(r)) || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+}
+
+// stringSpan is same as C's `strcspan()` function.
+// It returns the number of chars in the initial segment of `s`
+// which consist only of chars from `accept`.
+func stringSpan(s, accept string) int {
+	m := make(map[rune]bool)
+
+	for _, r := range accept {
+		m[r] = true
+	}
+
+	for i, r := range s {
+		if !m[r] {
+			return i
+		}
+	}
+
+	return len(s)
 }
