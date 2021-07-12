@@ -42,7 +42,7 @@ import (
   DurationFilter          log.LabelFilterer
   LabelFilter             log.LabelFilterer
   UnitFilter              log.LabelFilterer
-  IPFilter                log.LabelFilterer
+  IPLabelFilter           log.LabelFilterer
   LineFormatExpr          *lineFmtExpr
   LabelFormatExpr         *labelFmtExpr
   LabelFormat             log.LabelFmt
@@ -92,7 +92,7 @@ import (
 %type <JSONExpressionList>    jsonExpressionList
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
-%type <IPFilter>              ipFilter
+%type <IPLabelFilter>         ipLabelFilter
 %type <OffsetExpr>            offsetExpr
 
 %token <bytes> BYTES
@@ -271,7 +271,7 @@ labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }
-    | ipFilter                                       { $$ = $1 }
+    | ipLabelFilter                                       { $$ = $1 }
     | unitFilter                                     { $$ = $1 }
     | numberFilter                                   { $$ = $1 }
     | OPEN_PARENTHESIS labelFilter CLOSE_PARENTHESIS { $$ = $2 }
@@ -289,8 +289,8 @@ jsonExpressionList:
   | jsonExpressionList COMMA jsonExpression { $$ = append($1, $3) }
   ;
 
-ipFilter:
-IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1) }
+ipLabelFilter:
+    IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1) }
 
 unitFilter:
       durationFilter { $$ = $1 }
