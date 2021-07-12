@@ -22,6 +22,7 @@ type ingesterMetrics struct {
 	recoveredStreamsTotal prometheus.Counter
 	recoveredChunksTotal  prometheus.Counter
 	recoveredEntriesTotal prometheus.Counter
+	duplicateEntriesTotal prometheus.Counter
 	recoveredBytesTotal   prometheus.Counter
 	recoveryBytesInUse    prometheus.Gauge
 	recoveryIsFlushing    prometheus.Gauge
@@ -99,6 +100,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		recoveredEntriesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_recovered_entries_total",
 			Help: "Total number of entries recovered from the WAL.",
+		}),
+		duplicateEntriesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_duplicate_entries_total",
+			Help: "Entries discarded during WAL replay due to existing in checkpoints.",
 		}),
 		recoveredBytesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_recovered_bytes_total",
