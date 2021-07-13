@@ -15,6 +15,7 @@ service Ingester {
   rpc Push(cortexpb.WriteRequest) returns (cortexpb.WriteResponse) {};
   rpc Query(QueryRequest) returns (QueryResponse) {};
   rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
+  rpc QueryExemplars(ExemplarQueryRequest) returns (ExemplarQueryResponse) {};
 
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
   rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {};
@@ -41,6 +42,12 @@ message QueryRequest {
   repeated LabelMatcher matchers = 3;
 }
 
+message ExemplarQueryRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  repeated LabelMatchers matchers = 3;
+}
+
 message QueryResponse {
   repeated cortexpb.TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
 }
@@ -49,6 +56,10 @@ message QueryResponse {
 message QueryStreamResponse {
   repeated TimeSeriesChunk chunkseries = 1 [(gogoproto.nullable) = false];
   repeated cortexpb.TimeSeries timeseries = 2 [(gogoproto.nullable) = false];
+}
+
+message ExemplarQueryResponse {
+  repeated cortexpb.TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
 }
 
 message LabelValuesRequest {

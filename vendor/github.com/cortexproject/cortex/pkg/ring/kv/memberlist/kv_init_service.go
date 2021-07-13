@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/memberlist"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -106,12 +105,12 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	if err := req.ParseForm(); err == nil {
 		if req.Form[downloadKeyParam] != nil {
-			downloadKey(w, kv.storeCopy(), req.Form[downloadKeyParam][0]) // Use first value, ignore the rest.
+			downloadKey(w, kv, kv.storeCopy(), req.Form[downloadKeyParam][0]) // Use first value, ignore the rest.
 			return
 		}
 
 		if req.Form[viewKeyParam] != nil {
-			viewKey(w, kv, kv.storeCopy(), req.Form[viewKeyParam][0], getFormat(req))
+			viewKey(w, kv.storeCopy(), req.Form[viewKeyParam][0], getFormat(req))
 			return
 		}
 
@@ -179,30 +178,25 @@ func viewMessage(w http.ResponseWriter, kv *KV, msg message, format string) {
 		return
 	}
 
-	formatValue(w, c, msg.Pair.Value, format)
+	val, err := c.Decode(msg.Pair.Value)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to decode: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	formatValue(w, val, format)
 }
 
-func viewKey(w http.ResponseWriter, kv *KV, store map[string]valueDesc, key string, format string) {
+func viewKey(w http.ResponseWriter, store map[string]valueDesc, key string, format string) {
 	if store[key].value == nil {
 		http.Error(w, "value not found", http.StatusNotFound)
 		return
 	}
 
-	c := kv.GetCodec(store[key].codecID)
-	if c == nil {
-		http.Error(w, "codec not found", http.StatusNotFound)
-		return
-	}
-
-	formatValue(w, c, store[key].value, format)
+	formatValue(w, store[key].value, format)
 }
 
-func formatValue(w http.ResponseWriter, codec codec.Codec, value []byte, format string) {
-	val, err := codec.Decode(value)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to decode: %v", err), http.StatusInternalServerError)
-		return
-	}
+func formatValue(w http.ResponseWriter, val interface{}, format string) {
 
 	w.WriteHeader(200)
 	w.Header().Add("content-type", "text/plain")
@@ -214,7 +208,7 @@ func formatValue(w http.ResponseWriter, codec codec.Codec, value []byte, format 
 			enc.SetIndent("", "    ")
 		}
 
-		err = enc.Encode(val)
+		err := enc.Encode(val)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -224,7 +218,7 @@ func formatValue(w http.ResponseWriter, codec codec.Codec, value []byte, format 
 	}
 }
 
-func downloadKey(w http.ResponseWriter, store map[string]valueDesc, key string) {
+func downloadKey(w http.ResponseWriter, kv *KV, store map[string]valueDesc, key string) {
 	if store[key].value == nil {
 		http.Error(w, "value not found", http.StatusNotFound)
 		return
@@ -232,14 +226,26 @@ func downloadKey(w http.ResponseWriter, store map[string]valueDesc, key string) 
 
 	val := store[key]
 
+	c := kv.GetCodec(store[key].codecID)
+	if c == nil {
+		http.Error(w, "codec not found", http.StatusNotFound)
+		return
+	}
+
+	encoded, err := c.Encode(val.value)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to encode: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Add("content-type", "application/octet-stream")
 	// Set content-length so that client knows whether it has received full response or not.
-	w.Header().Add("content-length", strconv.Itoa(len(val.value)))
+	w.Header().Add("content-length", strconv.Itoa(len(encoded)))
 	w.Header().Add("content-disposition", fmt.Sprintf("attachment; filename=%d-%s", val.version, key))
 	w.WriteHeader(200)
 
 	// Ignore errors, we cannot do anything about them.
-	_, _ = w.Write(val.value)
+	_, _ = w.Write(encoded)
 }
 
 type pageData struct {

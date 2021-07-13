@@ -84,6 +84,13 @@ func (m *KV) createAndRegisterMetrics() {
 		Help:      "Total size of messages waiting in the broadcast queue",
 	})
 
+	m.numberOfBroadcastMessagesDropped = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "messages_to_broadcast_dropped_total",
+		Help:      "Number of broadcast messages intended to be sent but were dropped due to encoding errors or for being too big",
+	})
+
 	m.casAttempts = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
@@ -110,10 +117,19 @@ func (m *KV) createAndRegisterMetrics() {
 		"Number of values in KV Store",
 		nil, nil)
 
-	m.storeSizesDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_bytes"), // gauge
-		"Sizes of values in KV Store in bytes",
-		[]string{"key"}, nil)
+	m.storeTombstones = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "kv_store_value_tombstones",
+		Help:      "Number of tombstones currently present in KV store values",
+	}, []string{"key"})
+
+	m.storeRemovedTombstones = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "kv_store_value_tombstones_removed_total",
+		Help:      "Total number of tombstones which have been removed from KV store values",
+	}, []string{"key"})
 
 	m.memberlistMembersCount = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: m.cfg.MetricsNamespace,
@@ -162,10 +178,13 @@ func (m *KV) createAndRegisterMetrics() {
 		m.totalSizeOfPushes,
 		m.totalSizeOfPulls,
 		m.totalSizeOfBroadcastMessagesInQueue,
+		m.numberOfBroadcastMessagesDropped,
 		m.casAttempts,
 		m.casFailures,
 		m.casSuccesses,
 		m.watchPrefixDroppedNotifications,
+		m.storeTombstones,
+		m.storeRemovedTombstones,
 		m.memberlistMembersCount,
 		m.memberlistHealthScore,
 	}
@@ -198,7 +217,6 @@ func (m *KV) createAndRegisterMetrics() {
 // Describe returns prometheus descriptions via supplied channel
 func (m *KV) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.storeValuesDesc
-	ch <- m.storeSizesDesc
 }
 
 // Collect returns extra metrics via supplied channel
@@ -207,8 +225,4 @@ func (m *KV) Collect(ch chan<- prometheus.Metric) {
 	defer m.storeMu.Unlock()
 
 	ch <- prometheus.MustNewConstMetric(m.storeValuesDesc, prometheus.GaugeValue, float64(len(m.store)))
-
-	for k, v := range m.store {
-		ch <- prometheus.MustNewConstMetric(m.storeSizesDesc, prometheus.GaugeValue, float64(len(v.value)), k)
-	}
 }

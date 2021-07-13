@@ -33,12 +33,13 @@ import (
 
 // DispatcherMetrics represents metrics associated to a dispatcher.
 type DispatcherMetrics struct {
-	aggrGroups         prometheus.Gauge
-	processingDuration prometheus.Summary
+	aggrGroups            prometheus.Gauge
+	processingDuration    prometheus.Summary
+	aggrGroupLimitReached prometheus.Counter
 }
 
 // NewDispatcherMetrics returns a new registered DispatchMetrics.
-func NewDispatcherMetrics(r prometheus.Registerer) *DispatcherMetrics {
+func NewDispatcherMetrics(registerLimitMetrics bool, r prometheus.Registerer) *DispatcherMetrics {
 	m := DispatcherMetrics{
 		aggrGroups: prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -52,10 +53,19 @@ func NewDispatcherMetrics(r prometheus.Registerer) *DispatcherMetrics {
 				Help: "Summary of latencies for the processing of alerts.",
 			},
 		),
+		aggrGroupLimitReached: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "alertmanager_dispatcher_aggregation_group_limit_reached_total",
+				Help: "Number of times when dispatcher failed to create new aggregation group due to limit.",
+			},
+		),
 	}
 
 	if r != nil {
 		r.MustRegister(m.aggrGroups, m.processingDuration)
+		if registerLimitMetrics {
+			r.MustRegister(m.aggrGroupLimitReached)
+		}
 	}
 
 	return &m
@@ -68,18 +78,28 @@ type Dispatcher struct {
 	alerts  provider.Alerts
 	stage   notify.Stage
 	metrics *DispatcherMetrics
+	limits  Limits
 
 	marker  types.Marker
 	timeout func(time.Duration) time.Duration
 
-	aggrGroups map[*Route]map[model.Fingerprint]*aggrGroup
-	mtx        sync.RWMutex
+	mtx                sync.RWMutex
+	aggrGroupsPerRoute map[*Route]map[model.Fingerprint]*aggrGroup
+	aggrGroupsNum      int
 
 	done   chan struct{}
 	ctx    context.Context
 	cancel func()
 
 	logger log.Logger
+}
+
+// Limits describes limits used by Dispatcher.
+type Limits interface {
+	// MaxNumberOfAggregationGroups returns max number of aggregation groups that dispatcher can have.
+	// 0 or negative value = unlimited.
+	// If dispatcher hits this limit, it will not create additional groups, but will log an error instead.
+	MaxNumberOfAggregationGroups() int
 }
 
 // NewDispatcher returns a new Dispatcher.
@@ -89,9 +109,14 @@ func NewDispatcher(
 	s notify.Stage,
 	mk types.Marker,
 	to func(time.Duration) time.Duration,
+	lim Limits,
 	l log.Logger,
 	m *DispatcherMetrics,
 ) *Dispatcher {
+	if lim == nil {
+		lim = nilLimits{}
+	}
+
 	disp := &Dispatcher{
 		alerts:  ap,
 		stage:   s,
@@ -100,6 +125,7 @@ func NewDispatcher(
 		timeout: to,
 		logger:  log.With(l, "component", "dispatcher"),
 		metrics: m,
+		limits:  lim,
 	}
 	return disp
 }
@@ -109,7 +135,8 @@ func (d *Dispatcher) Run() {
 	d.done = make(chan struct{})
 
 	d.mtx.Lock()
-	d.aggrGroups = map[*Route]map[model.Fingerprint]*aggrGroup{}
+	d.aggrGroupsPerRoute = map[*Route]map[model.Fingerprint]*aggrGroup{}
+	d.aggrGroupsNum = 0
 	d.metrics.aggrGroups.Set(0)
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 	d.mtx.Unlock()
@@ -152,11 +179,12 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 		case <-cleanup.C:
 			d.mtx.Lock()
 
-			for _, groups := range d.aggrGroups {
+			for _, groups := range d.aggrGroupsPerRoute {
 				for _, ag := range groups {
 					if ag.empty() {
 						ag.stop()
 						delete(groups, ag.fingerprint())
+						d.aggrGroupsNum--
 						d.metrics.aggrGroups.Dec()
 					}
 				}
@@ -201,7 +229,7 @@ func (d *Dispatcher) Groups(routeFilter func(*Route) bool, alertFilter func(*typ
 	receivers := map[model.Fingerprint][]string{}
 
 	now := time.Now()
-	for route, ags := range d.aggrGroups {
+	for route, ags := range d.aggrGroupsPerRoute {
 		if !routeFilter(route) {
 			continue
 		}
@@ -259,6 +287,7 @@ func (d *Dispatcher) Stop() {
 	}
 	d.mtx.Lock()
 	if d.cancel == nil {
+		d.mtx.Unlock()
 		return
 	}
 	d.cancel()
@@ -283,36 +312,49 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	group, ok := d.aggrGroups[route]
+	routeGroups, ok := d.aggrGroupsPerRoute[route]
 	if !ok {
-		group = map[model.Fingerprint]*aggrGroup{}
-		d.aggrGroups[route] = group
+		routeGroups = map[model.Fingerprint]*aggrGroup{}
+		d.aggrGroupsPerRoute[route] = routeGroups
 	}
 
-	// If the group does not exist, create it.
-	ag, ok := group[fp]
-	if !ok {
-		ag = newAggrGroup(d.ctx, groupLabels, route, d.timeout, d.logger)
-		group[fp] = ag
-		d.metrics.aggrGroups.Inc()
-
-		go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
-			_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
-			if err != nil {
-				lvl := level.Error(d.logger)
-				if ctx.Err() == context.Canceled {
-					// It is expected for the context to be canceled on
-					// configuration reload or shutdown. In this case, the
-					// message should only be logged at the debug level.
-					lvl = level.Debug(d.logger)
-				}
-				lvl.Log("msg", "Notify for alerts failed", "num_alerts", len(alerts), "err", err)
-			}
-			return err == nil
-		})
+	ag, ok := routeGroups[fp]
+	if ok {
+		ag.insert(alert)
+		return
 	}
 
+	// If the group does not exist, create it. But check the limit first.
+	if limit := d.limits.MaxNumberOfAggregationGroups(); limit > 0 && d.aggrGroupsNum >= limit {
+		d.metrics.aggrGroupLimitReached.Inc()
+		level.Error(d.logger).Log("msg", "Too many aggregation groups, cannot create new group for alert", "groups", d.aggrGroupsNum, "limit", limit, "alert", alert.Name())
+		return
+	}
+
+	ag = newAggrGroup(d.ctx, groupLabels, route, d.timeout, d.logger)
+	routeGroups[fp] = ag
+	d.aggrGroupsNum++
+	d.metrics.aggrGroups.Inc()
+
+	// Insert the 1st alert in the group before starting the group's run()
+	// function, to make sure that when the run() will be executed the 1st
+	// alert is already there.
 	ag.insert(alert)
+
+	go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
+		_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
+		if err != nil {
+			lvl := level.Error(d.logger)
+			if ctx.Err() == context.Canceled {
+				// It is expected for the context to be canceled on
+				// configuration reload or shutdown. In this case, the
+				// message should only be logged at the debug level.
+				lvl = level.Debug(d.logger)
+			}
+			lvl.Log("msg", "Notify for alerts failed", "num_alerts", len(alerts), "err", err)
+		}
+		return err == nil
+	})
 }
 
 func getGroupLabels(alert *types.Alert, route *Route) model.LabelSet {
@@ -492,3 +534,7 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 		}
 	}
 }
+
+type nilLimits struct{}
+
+func (n nilLimits) MaxNumberOfAggregationGroups() int { return 0 }

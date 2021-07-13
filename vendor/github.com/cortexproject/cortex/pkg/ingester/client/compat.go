@@ -34,6 +34,38 @@ func FromQueryRequest(req *QueryRequest) (model.Time, model.Time, []*labels.Matc
 	return from, to, matchers, nil
 }
 
+// ToExemplarQueryRequest builds an ExemplarQueryRequest proto.
+func ToExemplarQueryRequest(from, to model.Time, matchers ...[]*labels.Matcher) (*ExemplarQueryRequest, error) {
+	var reqMatchers []*LabelMatchers
+	for _, m := range matchers {
+		ms, err := toLabelMatchers(m)
+		if err != nil {
+			return nil, err
+		}
+		reqMatchers = append(reqMatchers, &LabelMatchers{ms})
+	}
+
+	return &ExemplarQueryRequest{
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
+		Matchers:         reqMatchers,
+	}, nil
+}
+
+// FromExemplarQueryRequest unpacks a ExemplarQueryRequest proto.
+func FromExemplarQueryRequest(req *ExemplarQueryRequest) (int64, int64, [][]*labels.Matcher, error) {
+	var result [][]*labels.Matcher
+	for _, m := range req.Matchers {
+		matchers, err := FromLabelMatchers(m.Matchers)
+		if err != nil {
+			return 0, 0, nil, err
+		}
+		result = append(result, matchers)
+	}
+
+	return req.StartTimestampMs, req.EndTimestampMs, result, nil
+}
+
 // ToQueryResponse builds a QueryResponse proto.
 func ToQueryResponse(matrix model.Matrix) *QueryResponse {
 	resp := &QueryResponse{}

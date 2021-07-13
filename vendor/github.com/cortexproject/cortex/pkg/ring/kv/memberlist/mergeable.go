@@ -38,5 +38,9 @@ type Mergeable interface {
 	// Remove tombstones older than given limit from this mergeable.
 	// If limit is zero time, remove all tombstones. Memberlist client calls this method with zero limit each
 	// time when client is accessing value from the store. It can be used to hide tombstones from the clients.
-	RemoveTombstones(limit time.Time)
+	// Returns the total number of tombstones present and the number of removed tombstones by this invocation.
+	RemoveTombstones(limit time.Time) (total, removed int)
+
+	// Clone should return a deep copy of the state.
+	Clone() Mergeable
 }
