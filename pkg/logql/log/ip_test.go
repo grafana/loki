@@ -134,7 +134,8 @@ func Benchmark_IPFilter(b *testing.B) {
 
 	line := [][]byte{
 		[]byte(`vpn 192.168.0.0 connected to vm`),
-		/// todo add more cases,long line without match, with match etc....
+		[]byte(`vpn <missing-ip> connected to vm just wanted to make some long line without match`),
+		[]byte(`vpn ::1 connected to vm just wanted to make some long line with match at the end 127.0.0.1`),
 	}
 	lbbb := NewBaseLabelsBuilder()
 	lbb := lbbb.ForLabels(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, 0)
