@@ -248,7 +248,7 @@ func Test_InstantSharding(t *testing.T) {
 	}, queryrange.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
-			maxSeries: math.MaxInt32,
+			maxSeries:           math.MaxInt32,
 			maxQueryParallelism: 10,
 		})
 	response, err := sharding.Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
@@ -280,15 +280,15 @@ func Test_InstantSharding(t *testing.T) {
 			ResultType: loghttp.ResultTypeVector,
 			Result: []queryrange.SampleStream{
 				{
-					Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
 					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
 					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
 				},
 				{
-					Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
 					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
 				},
 			},

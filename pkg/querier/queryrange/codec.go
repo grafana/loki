@@ -699,7 +699,7 @@ func toProtoVector(v loghttp.Vector) []queryrange.SampleStream {
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			}},
-			Labels:  cortexpb.FromMetricsToLabelAdapters(s.Metric),
+			Labels: cortexpb.FromMetricsToLabelAdapters(s.Metric),
 		})
 	}
 	return res

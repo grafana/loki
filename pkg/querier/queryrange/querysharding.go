@@ -158,9 +158,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 			Status: loghttp.QueryStatusSuccess,
 			Data: queryrange.PrometheusData{
 				ResultType: loghttp.ResultTypeVector,
-				Result: toProtoVector(value.(loghttp.Vector)),
-				},
+				Result:     toProtoVector(value.(loghttp.Vector)),
 			},
+		},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data.Type())
