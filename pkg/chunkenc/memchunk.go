@@ -9,8 +9,9 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"sort"
+	"reflect"
 	"time"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -939,14 +940,12 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		lhash := parsedLabels.Hash()
 		if s, found = series[lhash]; !found {
 			s = &logproto.Series{
-				Labels: parsedLabels.String(),
+				Labels:  parsedLabels.String(),
+				Samples: SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
 			}
 			series[lhash] = s
 		}
-
-		// []byte here doesn't create allocation because Sum64 has go:noescape directive
-		// It specifies that the function does not allow any of the pointers passed as arguments to escape into the heap or into the values returned from the function.
-		h := xxhash.Sum64([]byte(e.s))
+		h := xxhash.Sum64(unsafeGetBytes(e.s))
 		s.Samples = append(s.Samples, logproto.Sample{
 			Timestamp: e.t,
 			Value:     value,
@@ -959,11 +958,22 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
-		// todo(ctovena) not sure we need this sort.
-		sort.Sort(s)
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.NewMultiSeriesIterator(ctx, seriesRes)
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(ctx, seriesRes), func() error {
+		for _, s := range series {
+			SamplesPool.Put(s.Samples)
+		}
+		return nil
+	})
+}
+
+func unsafeGetBytes(s string) []byte {
+	var buf []byte
+	p := unsafe.Pointer(&buf)
+	*(*string)(p) = s
+	(*reflect.SliceHeader)(p).Cap = len(s)
+	return buf
 }
 
 type bufferedIterator struct {
