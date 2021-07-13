@@ -77,7 +77,7 @@ func Test_IPFilter(t *testing.T) {
 			name: "wrong IP range syntax extra space", // NOTE(kavi): Should we handle this as normal valid range pattern?
 			pat:  "192.168.0.1 - 192.189.10.12",
 			fail: true,
-			err:  errIPFilterInvalidPattern,
+			err:  ErrIPFilterInvalidPattern,
 		},
 		{
 			name: "CIDR",
@@ -164,7 +164,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
-			err:   errIPFilterInvalidOperation.Error(),
+			err:   ErrIPFilterInvalidOperation.Error(),
 		},
 		{
 			name:  "great than or equal to operator-not-supported",
@@ -173,7 +173,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
-			err:   errIPFilterInvalidOperation.Error(),
+			err:   ErrIPFilterInvalidOperation.Error(),
 		},
 		{
 			name:  "less than operator-not-supported",
@@ -182,7 +182,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
-			err:   errIPFilterInvalidOperation.Error(),
+			err:   ErrIPFilterInvalidOperation.Error(),
 		},
 		{
 			name:  "less than or equal to operator-not-supported",
@@ -191,7 +191,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
-			err:   errIPFilterInvalidOperation.Error(),
+			err:   ErrIPFilterInvalidOperation.Error(),
 		},
 	}
 

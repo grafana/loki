@@ -21,6 +21,8 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
 		{`{foo="bar", bar!="baz"} |= ""`, false},
+		{`{foo="bar", bar!="baz"} |= "" |= ip("::1")`, true},
+		{`{foo="bar", bar!="baz"} |= "" != ip("127.0.0.1")`, true},
 		{`{foo="bar", bar!="baz"} |~ ""`, false},
 		{`{foo="bar", bar!="baz"} |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} |= "" |= ""`, false},

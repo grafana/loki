@@ -31,7 +31,7 @@ func TestParse(t *testing.T) {
 				left: &LogRange{
 					left: &PipelineExpr{
 						pipeline: MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchRegexp, "error\\"),
+							newLineFilterExpr(labels.MatchRegexp, "", "error\\"),
 						},
 						left: &MatchersExpr{
 							matchers: []*labels.Matcher{
@@ -52,7 +52,7 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
 						MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "error"),
+							newLineFilterExpr(labels.MatchEqual, "", "error"),
 						},
 					),
 					interval: 12 * time.Hour,
@@ -67,7 +67,7 @@ func TestParse(t *testing.T) {
 				left: &LogRange{
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
-						MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "error")},
+						MultiStageExpr{newLineFilterExpr(labels.MatchEqual, "", "error")},
 					),
 					interval: 12 * time.Hour,
 				},
@@ -338,6 +338,104 @@ func TestParse(t *testing.T) {
 			in:  `min({ foo = "bar" }[5m])`,
 			err: logqlmodel.NewParseError("syntax error: unexpected RANGE", 0, 20),
 		},
+		// line filter for ip-matcher
+		{
+			in: `{foo="bar"} |= "baz" |= ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newNestedLineFilterExpr(
+						newLineFilterExpr(labels.MatchEqual, "", "baz"),
+						newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+					),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} |= ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} |= ip("123.123.123.123")|= "baz"`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newNestedLineFilterExpr(
+						newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+						newLineFilterExpr(labels.MatchEqual, "", "baz"),
+					),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} |= ip("123.123.123.123")|= "baz" |=ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newNestedLineFilterExpr(
+						newNestedLineFilterExpr(
+							newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+							newLineFilterExpr(labels.MatchEqual, "", "baz"),
+						),
+						newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+					),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} |= "baz" |= ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newNestedLineFilterExpr(
+						newLineFilterExpr(labels.MatchEqual, "", "baz"),
+						newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+					),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} != ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} != ip("123.123.123.123")|= "baz"`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newNestedLineFilterExpr(
+						newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
+						newLineFilterExpr(labels.MatchEqual, "", "baz"),
+					),
+				},
+			),
+		},
+		{
+			in: `{foo="bar"} != ip("123.123.123.123")|= "baz" !=ip("123.123.123.123")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newNestedLineFilterExpr(
+						newNestedLineFilterExpr(
+							newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
+							newLineFilterExpr(labels.MatchEqual, "", "baz"),
+						),
+						newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
+					),
+				},
+			),
+		},
+		// label filter for ip-matcher
 		{
 			in:  `{ foo = "bar" }|logfmt|addr>=ip("1.2.3.4")`,
 			err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
@@ -457,7 +555,7 @@ func TestParse(t *testing.T) {
 			in: `{foo="bar"} |= "baz"`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-				MultiStageExpr{newLineFilterExpr(nil, labels.MatchEqual, "baz")},
+				MultiStageExpr{newLineFilterExpr(labels.MatchEqual, "", "baz")},
 			),
 		},
 		{
@@ -465,13 +563,16 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLineFilterExpr(
-						newLineFilterExpr(
-							newLineFilterExpr(
-								newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-								labels.MatchRegexp, "blip"),
-							labels.MatchNotEqual, "flip"),
-						labels.MatchNotRegexp, "flap"),
+					newNestedLineFilterExpr(
+						newNestedLineFilterExpr(
+							newNestedLineFilterExpr(
+								newLineFilterExpr(labels.MatchEqual, "", "baz"),
+								newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+							),
+							newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+						),
+						newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+					),
 				},
 			),
 		},
@@ -482,13 +583,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -501,13 +605,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -520,13 +627,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 							newLabelParserExpr(OpParserTypeUnpack, ""),
 						},
 					),
@@ -549,13 +659,16 @@ func TestParse(t *testing.T) {
 						left: newPipelineExpr(
 							newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 							MultiStageExpr{
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(
-											newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-											labels.MatchRegexp, "blip"),
-										labels.MatchNotEqual, "flip"),
-									labels.MatchNotRegexp, "flap"),
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newNestedLineFilterExpr(
+											newLineFilterExpr(labels.MatchEqual, "", "baz"),
+											newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+										),
+										newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+									),
+									newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+								),
 							},
 						),
 						interval: 5 * time.Minute,
@@ -573,13 +686,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -598,13 +714,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -623,13 +742,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -650,13 +772,16 @@ func TestParse(t *testing.T) {
 							left: newPipelineExpr(
 								newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 								MultiStageExpr{
-									newLineFilterExpr(
-										newLineFilterExpr(
-											newLineFilterExpr(
-												newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-												labels.MatchRegexp, "blip"),
-											labels.MatchNotEqual, "flip"),
-										labels.MatchNotRegexp, "flap"),
+									newNestedLineFilterExpr(
+										newNestedLineFilterExpr(
+											newNestedLineFilterExpr(
+												newLineFilterExpr(labels.MatchEqual, "", "baz"),
+												newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+											),
+											newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+										),
+										newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+									),
 								},
 							),
 							interval: 5 * time.Minute,
@@ -678,13 +803,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -697,13 +825,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -722,13 +853,16 @@ func TestParse(t *testing.T) {
 					left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(
-								newLineFilterExpr(
-									newLineFilterExpr(
-										newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-										labels.MatchRegexp, "blip"),
-									labels.MatchNotEqual, "flip"),
-								labels.MatchNotRegexp, "flap"),
+							newNestedLineFilterExpr(
+								newNestedLineFilterExpr(
+									newNestedLineFilterExpr(
+										newLineFilterExpr(labels.MatchEqual, "", "baz"),
+										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									),
+									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								),
+								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							),
 						},
 					),
 					interval: 5 * time.Minute,
@@ -749,13 +883,16 @@ func TestParse(t *testing.T) {
 							left: newPipelineExpr(
 								newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 								MultiStageExpr{
-									newLineFilterExpr(
-										newLineFilterExpr(
-											newLineFilterExpr(
-												newLineFilterExpr(nil, labels.MatchEqual, "baz"),
-												labels.MatchRegexp, "blip"),
-											labels.MatchNotEqual, "flip"),
-										labels.MatchNotRegexp, "flap"),
+									newNestedLineFilterExpr(
+										newNestedLineFilterExpr(
+											newNestedLineFilterExpr(
+												newLineFilterExpr(labels.MatchEqual, "", "baz"),
+												newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+											),
+											newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+										),
+										newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+									),
 								},
 							),
 							interval: 5 * time.Minute,
@@ -781,7 +918,7 @@ func TestParse(t *testing.T) {
 
 		{
 			in:  `{foo="bar"} |~`,
-			err: logqlmodel.NewParseError("syntax error: unexpected $end, expecting STRING", 1, 15),
+			err: logqlmodel.NewParseError("syntax error: unexpected $end, expecting STRING or ip", 1, 15),
 		},
 
 		{
@@ -999,7 +1136,7 @@ func TestParse(t *testing.T) {
 									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
 								}),
 								MultiStageExpr{
-									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+									newLineFilterExpr(labels.MatchEqual, "", "level=error"),
 								}),
 							interval: 5 * time.Minute,
 						}, OpRangeTypeCount, nil, nil),
@@ -1029,7 +1166,7 @@ func TestParse(t *testing.T) {
 									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
 								}),
 								MultiStageExpr{
-									newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+									newLineFilterExpr(labels.MatchEqual, "", "level=error"),
 								}),
 							interval: 5 * time.Minute,
 						}, OpRangeTypeCount, nil, nil),
@@ -1096,7 +1233,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1115,7 +1252,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeUnpack, ""),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
@@ -1135,7 +1272,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewAndLabelFilter(
@@ -1154,7 +1291,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypePattern, "<foo> bar <buzz>"),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewAndLabelFilter(
@@ -1173,7 +1310,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1192,7 +1329,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewAndLabelFilter(
@@ -1211,7 +1348,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1231,7 +1368,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1262,7 +1399,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLineFmtExpr("blip{{ .foo }}blop"),
 				},
 			},
@@ -1273,7 +1410,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1294,7 +1431,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1320,7 +1457,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -1366,7 +1503,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1387,7 +1524,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -1418,7 +1555,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -1448,7 +1585,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLineFilterExpr(labels.MatchEqual, "", "level=error"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewAndLabelFilter(
@@ -1470,7 +1607,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLineFilterExpr(labels.MatchEqual, "", "level=error"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewAndLabelFilter(
@@ -1492,7 +1629,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLineFilterExpr(labels.MatchEqual, "", "level=error"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewAndLabelFilter(
@@ -1514,7 +1651,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "level=error"),
+						newLineFilterExpr(labels.MatchEqual, "", "level=error"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewAndLabelFilter(
@@ -1536,7 +1673,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					},
 				},
 					5*time.Minute,
@@ -1607,7 +1744,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -1638,7 +1775,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -1669,7 +1806,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -1700,7 +1837,7 @@ func TestParse(t *testing.T) {
 				newLogRange(&PipelineExpr{
 					left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					pipeline: MultiStageExpr{
-						newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+						newLineFilterExpr(labels.MatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -1735,7 +1872,7 @@ func TestParse(t *testing.T) {
 					newLogRange(&PipelineExpr{
 						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						pipeline: MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLineFilterExpr(labels.MatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -1774,7 +1911,7 @@ func TestParse(t *testing.T) {
 					newLogRange(&PipelineExpr{
 						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						pipeline: MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLineFilterExpr(labels.MatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -1813,7 +1950,7 @@ func TestParse(t *testing.T) {
 					newLogRange(&PipelineExpr{
 						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						pipeline: MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLineFilterExpr(labels.MatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -1852,7 +1989,7 @@ func TestParse(t *testing.T) {
 					newLogRange(&PipelineExpr{
 						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						pipeline: MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLineFilterExpr(labels.MatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -1891,7 +2028,7 @@ func TestParse(t *testing.T) {
 					newLogRange(&PipelineExpr{
 						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						pipeline: MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLineFilterExpr(labels.MatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -1930,7 +2067,7 @@ func TestParse(t *testing.T) {
 					newLogRange(&PipelineExpr{
 						left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						pipeline: MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+							newLineFilterExpr(labels.MatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -1978,7 +2115,7 @@ func TestParse(t *testing.T) {
 						newLogRange(&PipelineExpr{
 							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 							pipeline: MultiStageExpr{
-								newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
 								newLabelParserExpr(OpParserTypeJSON, ""),
 								&LabelFilterExpr{
 									LabelFilterer: log.NewOrLabelFilter(
@@ -2010,7 +2147,7 @@ func TestParse(t *testing.T) {
 						newLogRange(&PipelineExpr{
 							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 							pipeline: MultiStageExpr{
-								newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
 								newLabelParserExpr(OpParserTypeJSON, ""),
 								&LabelFilterExpr{
 									LabelFilterer: log.NewOrLabelFilter(
@@ -2065,7 +2202,7 @@ func TestParse(t *testing.T) {
 							newLogRange(&PipelineExpr{
 								left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 								pipeline: MultiStageExpr{
-									newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+									newLineFilterExpr(labels.MatchEqual, "", "bar"),
 									newLabelParserExpr(OpParserTypeJSON, ""),
 									&LabelFilterExpr{
 										LabelFilterer: log.NewOrLabelFilter(
@@ -2097,7 +2234,7 @@ func TestParse(t *testing.T) {
 							newLogRange(&PipelineExpr{
 								left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 								pipeline: MultiStageExpr{
-									newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+									newLineFilterExpr(labels.MatchEqual, "", "bar"),
 									newLabelParserExpr(OpParserTypeJSON, ""),
 									&LabelFilterExpr{
 										LabelFilterer: log.NewOrLabelFilter(
@@ -2305,7 +2442,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "bar"),
+					newLineFilterExpr(labels.MatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 				},
 			},
@@ -2336,7 +2473,7 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				pipeline: MultiStageExpr{
-					newLineFilterExpr(nil, labels.MatchEqual, "#"),
+					newLineFilterExpr(labels.MatchEqual, "", "#"),
 				},
 			},
 		},

@@ -15,7 +15,7 @@ import (
   Grouping                *grouping
   Labels                  []string
   LogExpr                 LogSelectorExpr
-  LogRangeExpr            *LogRange
+  LogRangeExpr            *logRange
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
@@ -25,16 +25,18 @@ import (
   VectorAggregationExpr   SampleExpr
   MetricExpr              SampleExpr
   VectorOp                string
+  FilterOp                string
   BinOpExpr               SampleExpr
   LabelReplaceExpr        SampleExpr
   binOp                   string
   bytes                   uint64
   str                     string
   duration                time.Duration
-  LiteralExpr             *LiteralExpr
+  LiteralExpr             *literalExpr
   BinOpModifier           BinOpOptions
-  LabelParser             *LabelParserExpr
-  LineFilters             *LineFilterExpr
+  LabelParser             *labelParserExpr
+  LineFilters             *lineFilterExpr
+  LineFilter              *lineFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
   BytesFilter             log.LabelFilterer
@@ -50,8 +52,8 @@ import (
   JSONExpressionParser    *jsonExpressionParser
   JSONExpression          log.JSONExpression
   JSONExpressionList      []log.JSONExpression
-  UnwrapExpr              *UnwrapExpr
-  OffsetExpr              *OffsetExpr
+  UnwrapExpr              *unwrapExpr
+  OffsetExpr              *offsetExpr
 }
 
 %start root
@@ -71,6 +73,7 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
+%type <FilterOp>              filterOp
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
 %type <LabelReplaceExpr>      labelReplaceExpr
@@ -83,6 +86,7 @@ import (
 %type <DurationFilter>        durationFilter
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
+%type <LineFilter>            lineFilter
 %type <LineFormatExpr>        lineFormatExpr
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
@@ -234,14 +238,22 @@ pipelineStage:
    lineFilters                   { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
-  | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
+  | PIPE labelFilter             { $$ = &labelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
   ;
 
+filterOp:
+  IP { $$ = OpFilterIP }
+  ;
+
+lineFilter:
+    filter STRING                                             { $$ = newLineFilterExpr($1, "", $2,) }
+  | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4) }
+
 lineFilters:
-    filter STRING                 { $$ = newLineFilterExpr(nil, $1, $2 ) }
-  | lineFilters filter STRING     { $$ = newLineFilterExpr($1, $2, $3 ) }
+    lineFilter                { $$ = $1 }
+  | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
 
 labelParser:
     JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }

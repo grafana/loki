@@ -22,7 +22,6 @@ import (
 type Expr interface {
 	logQLExpr()      // ensure it's not implemented accidentally
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
-	Walkable
 	fmt.Stringer
 }
 
@@ -87,7 +86,7 @@ type Querier interface {
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {
 	Matchers() []*labels.Matcher
-	LogPipelineExpr
+	PipelineExpr
 	HasFilter() bool
 	Expr
 }
@@ -98,8 +97,8 @@ type (
 	SampleExtractor = log.SampleExtractor
 )
 
-// LogPipelineExpr is an expression defining a log pipeline.
-type LogPipelineExpr interface {
+// PipelineExpr is an expression defining a log pipeline.
+type PipelineExpr interface {
 	Pipeline() (Pipeline, error)
 	Expr
 }
@@ -149,28 +148,22 @@ func (m MultiStageExpr) String() string {
 
 func (MultiStageExpr) logQLExpr() {} // nolint:unused
 
-type MatchersExpr struct {
+type matchersExpr struct {
 	matchers []*labels.Matcher
 	implicit
 }
 
-func newMatcherExpr(matchers []*labels.Matcher) *MatchersExpr {
-	return &MatchersExpr{matchers: matchers}
+func newMatcherExpr(matchers []*labels.Matcher) *matchersExpr {
+	return &matchersExpr{matchers: matchers}
 }
 
-func (e *MatchersExpr) Matchers() []*labels.Matcher {
+func (e *matchersExpr) Matchers() []*labels.Matcher {
 	return e.matchers
 }
 
-func (e *MatchersExpr) AppendMatchers(m []*labels.Matcher) {
-	e.matchers = append(e.matchers, m...)
-}
+func (e *matchersExpr) Shardable() bool { return true }
 
-func (e *MatchersExpr) Shardable() bool { return true }
-
-func (e *MatchersExpr) Walk(f WalkFn) { f(e) }
-
-func (e *MatchersExpr) String() string {
+func (e *matchersExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString("{")
 	for i, m := range e.matchers {
@@ -183,28 +176,28 @@ func (e *MatchersExpr) String() string {
 	return sb.String()
 }
 
-func (e *MatchersExpr) Pipeline() (log.Pipeline, error) {
+func (e *matchersExpr) Pipeline() (log.Pipeline, error) {
 	return log.NewNoopPipeline(), nil
 }
 
-func (e *MatchersExpr) HasFilter() bool {
+func (e *matchersExpr) HasFilter() bool {
 	return false
 }
 
-type PipelineExpr struct {
+type pipelineExpr struct {
 	pipeline MultiStageExpr
-	left     *MatchersExpr
+	left     *matchersExpr
 	implicit
 }
 
-func newPipelineExpr(left *MatchersExpr, pipeline MultiStageExpr) LogSelectorExpr {
-	return &PipelineExpr{
+func newPipelineExpr(left *matchersExpr, pipeline MultiStageExpr) LogSelectorExpr {
+	return &pipelineExpr{
 		left:     left,
 		pipeline: pipeline,
 	}
 }
 
-func (e *PipelineExpr) Shardable() bool {
+func (e *pipelineExpr) Shardable() bool {
 	for _, p := range e.pipeline {
 		if !p.Shardable() {
 			return false
@@ -213,26 +206,11 @@ func (e *PipelineExpr) Shardable() bool {
 	return true
 }
 
-func (e *PipelineExpr) Walk(f WalkFn) {
-	f(e)
-
-	if e.left == nil {
-		return
-	}
-
-	xs := make([]Walkable, 0, len(e.pipeline)+1)
-	xs = append(xs, e.left)
-	for _, p := range e.pipeline {
-		xs = append(xs, p)
-	}
-	walkAll(f, xs...)
-}
-
-func (e *PipelineExpr) Matchers() []*labels.Matcher {
+func (e *pipelineExpr) Matchers() []*labels.Matcher {
 	return e.left.Matchers()
 }
 
-func (e *PipelineExpr) String() string {
+func (e *pipelineExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(e.left.String())
 	sb.WriteString(" ")
@@ -240,15 +218,15 @@ func (e *PipelineExpr) String() string {
 	return sb.String()
 }
 
-func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
+func (e *pipelineExpr) Pipeline() (log.Pipeline, error) {
 	return e.pipeline.Pipeline()
 }
 
 // HasFilter returns true if the pipeline contains stage that can filter out lines.
-func (e *PipelineExpr) HasFilter() bool {
+func (e *pipelineExpr) HasFilter() bool {
 	for _, p := range e.pipeline {
 		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		case *lineFilterExpr, *labelFilterExpr:
 			return true
 		default:
 			continue
@@ -257,36 +235,38 @@ func (e *PipelineExpr) HasFilter() bool {
 	return false
 }
 
-type LineFilterExpr struct {
-	left  *LineFilterExpr
+type lineFilterExpr struct {
+	left  *lineFilterExpr
 	ty    labels.MatchType
 	match string
+	op    string
 	implicit
 }
 
-func newLineFilterExpr(left *LineFilterExpr, ty labels.MatchType, match string) *LineFilterExpr {
-	return &LineFilterExpr{
-		left:  left,
+func newLineFilterExpr(ty labels.MatchType, op, match string) *lineFilterExpr {
+	return &lineFilterExpr{
 		ty:    ty,
 		match: match,
+		op:    op,
 	}
 }
 
-func (e *LineFilterExpr) Walk(f WalkFn) {
-	f(e)
-	if e.left == nil {
-		return
+func newNestedLineFilterExpr(left *lineFilterExpr, right *lineFilterExpr) *lineFilterExpr {
+	return &lineFilterExpr{
+		left:  left,
+		ty:    right.ty,
+		match: right.match,
+		op:    right.op,
 	}
-	e.left.Walk(f)
 }
 
 // AddFilterExpr adds a filter expression to a logselector expression.
-func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, match string) (LogSelectorExpr, error) {
-	filter := newLineFilterExpr(nil, ty, match)
+func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) (LogSelectorExpr, error) {
+	filter := newLineFilterExpr(ty, op, match)
 	switch e := expr.(type) {
-	case *MatchersExpr:
+	case *matchersExpr:
 		return newPipelineExpr(e, MultiStageExpr{filter}), nil
-	case *PipelineExpr:
+	case *pipelineExpr:
 		e.pipeline = append(e.pipeline, filter)
 		return e, nil
 	default:
@@ -294,9 +274,9 @@ func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, match string) (Log
 	}
 }
 
-func (e *LineFilterExpr) Shardable() bool { return true }
+func (e *lineFilterExpr) Shardable() bool { return true }
 
-func (e *LineFilterExpr) String() string {
+func (e *lineFilterExpr) String() string {
 	var sb strings.Builder
 	if e.left != nil {
 		sb.WriteString(e.left.String())
@@ -313,14 +293,35 @@ func (e *LineFilterExpr) String() string {
 		sb.WriteString("!=")
 	}
 	sb.WriteString(" ")
+	if e.op == "" {
+		sb.WriteString(strconv.Quote(e.match))
+		return sb.String()
+	}
+	sb.WriteString(e.op)
+	sb.WriteString("(")
 	sb.WriteString(strconv.Quote(e.match))
+	sb.WriteString(")")
 	return sb.String()
 }
 
-func (e *LineFilterExpr) Filter() (log.Filterer, error) {
-	f, err := log.NewFilter(e.match, e.ty)
-	if err != nil {
-		return nil, err
+func (e *lineFilterExpr) Filter() (log.Filterer, error) {
+	var f log.Filterer
+
+	if e.op == OpFilterIP {
+		// ip() supports only |= (matchEqual) and !=(matchNotEqual) matchtypes
+		switch e.ty {
+		case labels.MatchEqual, labels.MatchNotEqual:
+		default:
+			return nil, log.ErrIPFilterInvalidOperation
+		}
+
+		f = log.NewIPLineFilter(e.match)
+	} else {
+		var err error // to avoid `f` being shadowed.
+		f, err = log.NewFilter(e.match, e.ty)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if e.left != nil {
 		nextFilter, err := e.left.Filter()
@@ -335,7 +336,7 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	return f, nil
 }
 
-func (e *LineFilterExpr) Stage() (log.Stage, error) {
+func (e *lineFilterExpr) Stage() (log.Stage, error) {
 	f, err := e.Filter()
 	if err != nil {
 		return nil, err
@@ -343,24 +344,22 @@ func (e *LineFilterExpr) Stage() (log.Stage, error) {
 	return f.ToStage(), nil
 }
 
-type LabelParserExpr struct {
+type labelParserExpr struct {
 	op    string
 	param string
 	implicit
 }
 
-func newLabelParserExpr(op, param string) *LabelParserExpr {
-	return &LabelParserExpr{
+func newLabelParserExpr(op, param string) *labelParserExpr {
+	return &labelParserExpr{
 		op:    op,
 		param: param,
 	}
 }
 
-func (e *LabelParserExpr) Shardable() bool { return true }
+func (e *labelParserExpr) Shardable() bool { return true }
 
-func (e *LabelParserExpr) Walk(f WalkFn) { f(e) }
-
-func (e *LabelParserExpr) Stage() (log.Stage, error) {
+func (e *labelParserExpr) Stage() (log.Stage, error) {
 	switch e.op {
 	case OpParserTypeJSON:
 		return log.NewJSONParser(), nil
@@ -377,7 +376,7 @@ func (e *LabelParserExpr) Stage() (log.Stage, error) {
 	}
 }
 
-func (e *LabelParserExpr) String() string {
+func (e *labelParserExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpPipe)
 	sb.WriteString(" ")
@@ -389,7 +388,7 @@ func (e *LabelParserExpr) String() string {
 	return sb.String()
 }
 
-type LabelFilterExpr struct {
+type labelFilterExpr struct {
 	log.LabelFilterer
 	implicit
 }
@@ -402,60 +401,54 @@ func newLabelFilterExpr(filterer log.LabelFilterer) *labelFilterExpr {
 
 func (e *labelFilterExpr) Shardable() bool { return true }
 
-func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
-
-func (e *LabelFilterExpr) Stage() (log.Stage, error) {
+func (e *labelFilterExpr) Stage() (log.Stage, error) {
 	return e.LabelFilterer, nil
 }
 
-func (e *LabelFilterExpr) String() string {
+func (e *labelFilterExpr) String() string {
 	return fmt.Sprintf("%s %s", OpPipe, e.LabelFilterer.String())
 }
 
-type LineFmtExpr struct {
+type lineFmtExpr struct {
 	value string
 	implicit
 }
 
-func newLineFmtExpr(value string) *LineFmtExpr {
-	return &LineFmtExpr{
+func newLineFmtExpr(value string) *lineFmtExpr {
+	return &lineFmtExpr{
 		value: value,
 	}
 }
 
-func (e *LineFmtExpr) Shardable() bool { return true }
+func (e *lineFmtExpr) Shardable() bool { return true }
 
-func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
-
-func (e *LineFmtExpr) Stage() (log.Stage, error) {
+func (e *lineFmtExpr) Stage() (log.Stage, error) {
 	return log.NewFormatter(e.value)
 }
 
-func (e *LineFmtExpr) String() string {
+func (e *lineFmtExpr) String() string {
 	return fmt.Sprintf("%s %s %s", OpPipe, OpFmtLine, strconv.Quote(e.value))
 }
 
-type LabelFmtExpr struct {
+type labelFmtExpr struct {
 	formats []log.LabelFmt
 
 	implicit
 }
 
-func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
-	return &LabelFmtExpr{
+func newLabelFmtExpr(fmts []log.LabelFmt) *labelFmtExpr {
+	return &labelFmtExpr{
 		formats: fmts,
 	}
 }
 
-func (e *LabelFmtExpr) Shardable() bool { return false }
+func (e *labelFmtExpr) Shardable() bool { return false }
 
-func (e *LabelFmtExpr) Walk(f WalkFn) { f(e) }
-
-func (e *LabelFmtExpr) Stage() (log.Stage, error) {
+func (e *labelFmtExpr) Stage() (log.Stage, error) {
 	return log.NewLabelsFormatter(e.formats)
 }
 
-func (e *LabelFmtExpr) String() string {
+func (e *labelFmtExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
 	for i, f := range e.formats {
@@ -473,27 +466,25 @@ func (e *LabelFmtExpr) String() string {
 	return sb.String()
 }
 
-type JSONExpressionParser struct {
+type jsonExpressionParser struct {
 	expressions []log.JSONExpression
 
 	implicit
 }
 
-func newJSONExpressionParser(expressions []log.JSONExpression) *JSONExpressionParser {
-	return &JSONExpressionParser{
+func newJSONExpressionParser(expressions []log.JSONExpression) *jsonExpressionParser {
+	return &jsonExpressionParser{
 		expressions: expressions,
 	}
 }
 
-func (j *JSONExpressionParser) Shardable() bool { return true }
+func (j *jsonExpressionParser) Shardable() bool { return true }
 
-func (j *JSONExpressionParser) Walk(f WalkFn) { f(j) }
-
-func (j *JSONExpressionParser) Stage() (log.Stage, error) {
+func (j *jsonExpressionParser) Stage() (log.Stage, error) {
 	return log.NewJSONExpressionParser(j.expressions)
 }
 
-func (j *JSONExpressionParser) String() string {
+func (j *jsonExpressionParser) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeJSON))
 	for i, exp := range j.expressions {
@@ -524,14 +515,14 @@ func mustNewFloat(s string) float64 {
 	return n
 }
 
-type UnwrapExpr struct {
+type unwrapExpr struct {
 	identifier string
 	operation  string
 
 	postFilters []log.LabelFilterer
 }
 
-func (u UnwrapExpr) String() string {
+func (u unwrapExpr) String() string {
 	var sb strings.Builder
 	if u.operation != "" {
 		sb.WriteString(fmt.Sprintf(" %s %s %s(%s)", OpPipe, OpUnwrap, u.operation, u.identifier))
@@ -544,25 +535,25 @@ func (u UnwrapExpr) String() string {
 	return sb.String()
 }
 
-func (u *UnwrapExpr) addPostFilter(f log.LabelFilterer) *UnwrapExpr {
+func (u *unwrapExpr) addPostFilter(f log.LabelFilterer) *unwrapExpr {
 	u.postFilters = append(u.postFilters, f)
 	return u
 }
 
-func newUnwrapExpr(id string, operation string) *UnwrapExpr {
-	return &UnwrapExpr{identifier: id, operation: operation}
+func newUnwrapExpr(id string, operation string) *unwrapExpr {
+	return &unwrapExpr{identifier: id, operation: operation}
 }
 
-type LogRange struct {
+type logRange struct {
 	left     LogSelectorExpr
 	interval time.Duration
 	offset   time.Duration
 
-	unwrap *UnwrapExpr
+	unwrap *unwrapExpr
 }
 
 // impls Stringer
-func (r LogRange) String() string {
+func (r logRange) String() string {
 	var sb strings.Builder
 	sb.WriteString(r.left.String())
 	if r.unwrap != nil {
@@ -570,28 +561,20 @@ func (r LogRange) String() string {
 	}
 	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
 	if r.offset != 0 {
-		offsetExpr := OffsetExpr{offset: r.offset}
+		offsetExpr := offsetExpr{offset: r.offset}
 		sb.WriteString(offsetExpr.String())
 	}
 	return sb.String()
 }
 
-func (r *LogRange) Shardable() bool { return r.left.Shardable() }
+func (r *logRange) Shardable() bool { return r.left.Shardable() }
 
-func (r *LogRange) Walk(f WalkFn) {
-	f(r)
-	if r.left == nil {
-		return
-	}
-	r.left.Walk(f)
-}
-
-func newLogRange(left LogSelectorExpr, interval time.Duration, u *UnwrapExpr, o *OffsetExpr) *LogRange {
+func newLogRange(left LogSelectorExpr, interval time.Duration, u *unwrapExpr, o *offsetExpr) *logRange {
 	var offset time.Duration
 	if o != nil {
 		offset = o.offset
 	}
-	return &LogRange{
+	return &logRange{
 		left:     left,
 		interval: interval,
 		unwrap:   u,
@@ -599,18 +582,18 @@ func newLogRange(left LogSelectorExpr, interval time.Duration, u *UnwrapExpr, o 
 	}
 }
 
-type OffsetExpr struct {
+type offsetExpr struct {
 	offset time.Duration
 }
 
-func (o *OffsetExpr) String() string {
+func (o *offsetExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(" %s %s", OpOffset, o.offset.String()))
 	return sb.String()
 }
 
-func newOffsetExpr(offset time.Duration) *OffsetExpr {
-	return &OffsetExpr{
+func newOffsetExpr(offset time.Duration) *offsetExpr {
+	return &offsetExpr{
 		offset: offset,
 	}
 }
@@ -716,8 +699,8 @@ type SampleExpr interface {
 	Expr
 }
 
-type RangeAggregationExpr struct {
-	left      *LogRange
+type rangeAggregationExpr struct {
+	left      *logRange
 	operation string
 
 	params   *float64
@@ -725,7 +708,7 @@ type RangeAggregationExpr struct {
 	implicit
 }
 
-func newRangeAggregationExpr(left *LogRange, operation string, gr *grouping, stringParams *string) SampleExpr {
+func newRangeAggregationExpr(left *logRange, operation string, gr *grouping, stringParams *string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
 		if operation != OpRangeTypeQuantile {
@@ -743,7 +726,7 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *grouping, str
 			panic(logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
 		}
 	}
-	e := &RangeAggregationExpr{
+	e := &rangeAggregationExpr{
 		left:      left,
 		operation: operation,
 		grouping:  gr,
@@ -755,11 +738,11 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *grouping, str
 	return e
 }
 
-func (e *RangeAggregationExpr) Selector() LogSelectorExpr {
+func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.left
 }
 
-func (e RangeAggregationExpr) validate() error {
+func (e rangeAggregationExpr) validate() error {
 	if e.grouping != nil {
 		switch e.operation {
 		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
@@ -784,7 +767,7 @@ func (e RangeAggregationExpr) validate() error {
 }
 
 // impls Stringer
-func (e *RangeAggregationExpr) String() string {
+func (e *rangeAggregationExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(e.operation)
 	sb.WriteString("(")
@@ -801,16 +784,8 @@ func (e *RangeAggregationExpr) String() string {
 }
 
 // impl SampleExpr
-func (e *RangeAggregationExpr) Shardable() bool {
+func (e *rangeAggregationExpr) Shardable() bool {
 	return shardableOps[e.operation] && e.left.Shardable()
-}
-
-func (e *RangeAggregationExpr) Walk(f WalkFn) {
-	f(e)
-	if e.left == nil {
-		return
-	}
-	e.left.Walk(f)
 }
 
 type grouping struct {
@@ -836,7 +811,7 @@ func (g grouping) String() string {
 	return sb.String()
 }
 
-type VectorAggregationExpr struct {
+type vectorAggregationExpr struct {
 	left SampleExpr
 
 	grouping  *grouping
@@ -865,7 +840,7 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 	if gr == nil {
 		gr = &grouping{}
 	}
-	return &VectorAggregationExpr{
+	return &vectorAggregationExpr{
 		left:      left,
 		operation: operation,
 		grouping:  gr,
@@ -873,14 +848,14 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 	}
 }
 
-func (e *VectorAggregationExpr) Selector() LogSelectorExpr {
+func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.Selector()
 }
 
-func (e *VectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
+func (e *vectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
-	if r, ok := e.left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.operation, r.operation) {
+	if r, ok := e.left.(*rangeAggregationExpr); ok && canInjectVectorGrouping(e.operation, r.operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.grouping == nil {
 			return r.extractor(e.grouping)
@@ -902,7 +877,7 @@ func canInjectVectorGrouping(vecOp, rangeOp string) bool {
 	}
 }
 
-func (e *VectorAggregationExpr) String() string {
+func (e *vectorAggregationExpr) String() string {
 	var params []string
 	if e.params != 0 {
 		params = []string{fmt.Sprintf("%d", e.params), e.left.String()}
@@ -913,30 +888,22 @@ func (e *VectorAggregationExpr) String() string {
 }
 
 // impl SampleExpr
-func (e *VectorAggregationExpr) Shardable() bool {
+func (e *vectorAggregationExpr) Shardable() bool {
 	return shardableOps[e.operation] && e.left.Shardable()
-}
-
-func (e *VectorAggregationExpr) Walk(f WalkFn) {
-	f(e)
-	if e.left == nil {
-		return
-	}
-	e.left.Walk(f)
 }
 
 type BinOpOptions struct {
 	ReturnBool bool
 }
 
-type BinOpExpr struct {
+type binOpExpr struct {
 	SampleExpr
 	RHS  SampleExpr
 	op   string
 	opts BinOpOptions
 }
 
-func (e *BinOpExpr) String() string {
+func (e *binOpExpr) String() string {
 	if e.opts.ReturnBool {
 		return fmt.Sprintf("(%s %s bool %s)", e.SampleExpr.String(), e.op, e.RHS.String())
 	}
@@ -944,12 +911,8 @@ func (e *BinOpExpr) String() string {
 }
 
 // impl SampleExpr
-func (e *BinOpExpr) Shardable() bool {
+func (e *binOpExpr) Shardable() bool {
 	return shardableOps[e.op] && e.SampleExpr.Shardable() && e.RHS.Shardable()
-}
-
-func (e *BinOpExpr) Walk(f WalkFn) {
-	walkAll(f, e.SampleExpr, e.RHS)
 }
 
 func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
@@ -971,8 +934,8 @@ func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 		), 0, 0))
 	}
 
-	leftLit, lOk := left.(*LiteralExpr)
-	rightLit, rOk := right.(*LiteralExpr)
+	leftLit, lOk := left.(*literalExpr)
+	rightLit, rOk := right.(*literalExpr)
 
 	if IsLogicalBinOp(op) {
 		if lOk {
@@ -997,7 +960,7 @@ func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 		return reduceBinOp(op, leftLit, rightLit)
 	}
 
-	return &BinOpExpr{
+	return &binOpExpr{
 		SampleExpr: left,
 		RHS:        right,
 		op:         op,
@@ -1008,7 +971,7 @@ func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
 // Reduces a binary operation expression. A binop is reducible if both of its legs are literal expressions.
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
-func reduceBinOp(op string, left, right *LiteralExpr) *LiteralExpr {
+func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
 	merged := mergeBinOp(
 		op,
 		&promql.Sample{Point: promql.Point{V: left.value}},
@@ -1016,15 +979,15 @@ func reduceBinOp(op string, left, right *LiteralExpr) *LiteralExpr {
 		false,
 		false,
 	)
-	return &LiteralExpr{value: merged.V}
+	return &literalExpr{value: merged.V}
 }
 
-type LiteralExpr struct {
+type literalExpr struct {
 	value float64
 	implicit
 }
 
-func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
+func mustNewLiteralExpr(s string, invert bool) *literalExpr {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0))
@@ -1034,25 +997,24 @@ func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
 		n = -n
 	}
 
-	return &LiteralExpr{
+	return &literalExpr{
 		value: n,
 	}
 }
 
-func (e *LiteralExpr) String() string {
+func (e *literalExpr) String() string {
 	return fmt.Sprint(e.value)
 }
 
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *LiteralExpr) Selector() LogSelectorExpr               { return e }
-func (e *LiteralExpr) HasFilter() bool                         { return false }
-func (e *LiteralExpr) Shardable() bool                         { return true }
-func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
-func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
-func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
-func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
+func (e *literalExpr) Selector() LogSelectorExpr               { return e }
+func (e *literalExpr) HasFilter() bool                         { return false }
+func (e *literalExpr) Shardable() bool                         { return true }
+func (e *literalExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
+func (e *literalExpr) Matchers() []*labels.Matcher             { return nil }
+func (e *literalExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer
@@ -1075,7 +1037,7 @@ func formatOperation(op string, grouping *grouping, params ...string) string {
 	return sb.String()
 }
 
-type LabelReplaceExpr struct {
+type labelReplaceExpr struct {
 	left        SampleExpr
 	dst         string
 	replacement string
@@ -1086,12 +1048,12 @@ type LabelReplaceExpr struct {
 	implicit
 }
 
-func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex string) *LabelReplaceExpr {
+func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex string) *labelReplaceExpr {
 	re, err := regexp.Compile("^(?:" + regex + ")$")
 	if err != nil {
 		panic(logqlmodel.NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0))
 	}
-	return &LabelReplaceExpr{
+	return &labelReplaceExpr{
 		left:        left,
 		dst:         dst,
 		replacement: replacement,
@@ -1101,27 +1063,19 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 	}
 }
 
-func (e *LabelReplaceExpr) Selector() LogSelectorExpr {
+func (e *labelReplaceExpr) Selector() LogSelectorExpr {
 	return e.left.Selector()
 }
 
-func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
+func (e *labelReplaceExpr) Extractor() (SampleExtractor, error) {
 	return e.left.Extractor()
 }
 
-func (e *LabelReplaceExpr) Shardable() bool {
+func (e *labelReplaceExpr) Shardable() bool {
 	return false
 }
 
-func (e *LabelReplaceExpr) Walk(f WalkFn) {
-	f(e)
-	if e.left == nil {
-		return
-	}
-	e.left.Walk(f)
-}
-
-func (e *LabelReplaceExpr) String() string {
+func (e *labelReplaceExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpLabelReplace)
 	sb.WriteString("(")
