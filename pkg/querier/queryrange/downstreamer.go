@@ -24,16 +24,15 @@ type DownstreamHandler struct {
 	next queryrange.Handler
 }
 
-func ParamsToLokiRequest(params logql.Params) *LokiRequest {
+func ParamsToLokiRequest(params logql.Params) queryrange.Request {
 	if params.Start() == params.End() {
-		return &LokiRequest{
+		return &LokiInstantRequest{
 			Query:     params.Query(),
 			Limit:     params.Limit(),
-			Step:      int64(params.Step() / time.Millisecond),
-			StartTs:   params.Start(),
-			EndTs:     params.End(),
+			TimeTs:    params.Start(),
 			Direction: params.Direction(),
 			Path:      "/loki/api/v1/query", // TODO(owen-d): make this derivable
+			Shards:    params.Shards(),
 		}
 	}
 	return &LokiRequest{
@@ -44,6 +43,7 @@ func ParamsToLokiRequest(params logql.Params) *LokiRequest {
 		EndTs:     params.End(),
 		Direction: params.Direction(),
 		Path:      "/loki/api/v1/query_range", // TODO(owen-d): make this derivable
+		Shards:    params.Shards(),
 	}
 }
 
@@ -70,7 +70,7 @@ type instance struct {
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		// todo handle instant queries
-		req := ParamsToLokiRequest(qry.Params).WithShards(qry.Shards).WithQuery(qry.Expr.String()).(*LokiRequest)
+		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Expr.String()).(*LokiRequest)
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", req.Shards), "query", req.Query, "step", req.GetStep())

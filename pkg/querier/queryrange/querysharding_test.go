@@ -265,7 +265,7 @@ func Test_InstantSharding(t *testing.T) {
 		TimeTs: time.Now(),
 		Path:   "/v1/query",
 	})
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
 		Data: queryrange.PrometheusData{
 			ResultType: loghttp.ResultTypeVector,
