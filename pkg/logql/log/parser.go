@@ -177,24 +177,6 @@ func readValue(iter *jsoniter.Iterator) string {
 	}
 }
 
-type internedStringSet map[string]struct {
-	s  string
-	ok bool
-}
-
-func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (string, bool) {
-	s, ok := i[string(data)]
-	if ok {
-		return s.s, s.ok
-	}
-	new, ok := createNew()
-	i[string(data)] = struct {
-		s  string
-		ok bool
-	}{s: new, ok: ok}
-	return new, ok
-}
-
 type RegexpParser struct {
 	regex     *regexp.Regexp
 	nameIndex map[int]string
