@@ -660,6 +660,27 @@ func BenchmarkRead(b *testing.B) {
 			b.Log("bytes per second ", humanize.Bytes(uint64(float64(bytesRead)/time.Since(now).Seconds())))
 			b.Log("n=", b.N)
 		})
+
+		b.Run(enc.String()+"_sample", func(b *testing.B) {
+			chunks, size := generateData(enc, 5)
+			b.ResetTimer()
+			bytesRead := uint64(0)
+			now := time.Now()
+			for n := 0; n < b.N; n++ {
+				for _, c := range chunks {
+					iterator := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), countExtractor)
+					for iterator.Next() {
+						_ = iterator.Sample()
+					}
+					if err := iterator.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+				bytesRead += size
+			}
+			b.Log("bytes per second ", humanize.Bytes(uint64(float64(bytesRead)/time.Since(now).Seconds())))
+			b.Log("n=", b.N)
+		})
 	}
 }
 
@@ -733,7 +754,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 }
 
 func BenchmarkHeadBlockSampleIterator(b *testing.B) {
-	for _, j := range []int{100000, 50000, 15000, 10000} {
+	for _, j := range []int{20000, 10000, 8000, 5000} {
 		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
 			h := headBlock{}
 
@@ -751,6 +772,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 				for iter.Next() {
 					_ = iter.Sample()
 				}
+				iter.Close()
 			}
 		})
 	}
@@ -1132,7 +1154,6 @@ func TestMemChunk_Rebound(t *testing.T) {
 
 				require.Equal(t, originalChunkItr.Entry(), newChunkItr.Entry())
 			}
-
 		})
 	}
 }

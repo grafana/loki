@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
-	"sort"
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
@@ -20,9 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
-var (
-	noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
-)
+var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
 
 type unorderedHeadBlock struct {
 	// Opted for range tree over skiplist for space reduction.
@@ -86,7 +83,6 @@ func (hb *unorderedHeadBlock) append(ts int64, line string) {
 
 	hb.size += len(line)
 	hb.lines++
-
 }
 
 // Implements rangetree.Interval
@@ -238,15 +234,13 @@ func (hb *unorderedHeadBlock) sampleIterator(
 			lhash := parsedLabels.Hash()
 			if s, found = series[lhash]; !found {
 				s = &logproto.Series{
-					Labels: parsedLabels.String(),
+					Labels:  parsedLabels.String(),
+					Samples: SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
 				}
 				series[lhash] = s
 			}
 
-			// []byte here doesn't create allocation because Sum64 has go:noescape directive
-			// It specifies that the function does not allow any of the pointers passed as arguments
-			// to escape into the heap or into the values returned from the function.
-			h := xxhash.Sum64([]byte(line))
+			h := xxhash.Sum64(unsafeGetBytes(line))
 			s.Samples = append(s.Samples, logproto.Sample{
 				Timestamp: ts,
 				Value:     value,
@@ -261,11 +255,14 @@ func (hb *unorderedHeadBlock) sampleIterator(
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
-		// todo(ctovena) not sure we need this sort.
-		sort.Sort(s)
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.NewMultiSeriesIterator(ctx, seriesRes)
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(ctx, seriesRes), func() error {
+		for _, s := range series {
+			SamplesPool.Put(s.Samples)
+		}
+		return nil
+	})
 }
 
 // nolint:unused
