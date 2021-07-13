@@ -107,13 +107,13 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	var params logql.Params
 	var path string
-	switch r.(type) {
+	switch r := r.(type) {
 	case *LokiRequest:
 		params = paramsFromRequest(r)
-		path = r.(*LokiRequest).GetPath()
+		path = r.GetPath()
 	case *LokiInstantRequest:
 		params = paramsFromInstantRequest(r)
-		path = r.(*LokiInstantRequest).GetPath()
+		path = r.GetPath()
 	default:
 		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 	}
