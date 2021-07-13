@@ -273,23 +273,23 @@ func Test_InstantSharding(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
-	require.Len(t, response.(*LokiPromResponse).Response.Data.Result[0].Labels, 3)
+	require.Len(t, response.(*LokiPromResponse).Response.Data.Result, 3)
 	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
 		Status: "success",
 		Data: queryrange.PrometheusData{
 			ResultType: loghttp.ResultTypeVector,
 			Result: []queryrange.SampleStream{
 				{
-					Labels:  []cortexpb.LabelAdapter{
-						{Name: "foo", Value: "bar"},
-						{Name: "foo", Value: "bar"},
-						{Name: "foo", Value: "bar"},
-					},
-					Samples: []cortexpb.Sample{
-						{Value: 10, TimestampMs: 10},
-						{Value: 10, TimestampMs: 10},
-						{Value: 10, TimestampMs: 10},
-					},
+					Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				},
+				{
+					Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				},
+				{
+					Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
 				},
 			},
 		},
