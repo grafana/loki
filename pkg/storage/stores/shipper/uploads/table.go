@@ -489,6 +489,7 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 
 		db, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file to let Loki start successfully.", fullPath), "err", err)
 			return nil, err
 		}
 

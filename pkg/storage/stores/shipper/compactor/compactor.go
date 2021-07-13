@@ -198,7 +198,12 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 	}
 
 	interval := extractIntervalFromTableName(tableName)
-	err = table.compact(c.expirationChecker.IntervalHasExpiredChunks(interval))
+	intervalHasExpiredChunks := false
+	if c.cfg.RetentionEnabled {
+		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
+	}
+
+	err = table.compact(intervalHasExpiredChunks)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
@@ -216,15 +221,17 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 
 	defer func() {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
-		dmCallback := c.expirationChecker.MarkPhaseFailed
 		if status == statusSuccess {
-			dmCallback = c.expirationChecker.MarkPhaseFinished
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
 			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
 
 		if c.cfg.RetentionEnabled {
-			dmCallback()
+			if status == statusSuccess {
+				c.expirationChecker.MarkPhaseFinished()
+			} else {
+				c.expirationChecker.MarkPhaseFailed()
+			}
 		}
 	}()
 

@@ -40,10 +40,9 @@ var testEncoding = []Encoding{
 }
 
 var (
-	testBlockSize      = 256 * 1024
-	testTargetSize     = 1500 * 1024
-	noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
-	countExtractor     = func() log.StreamSampleExtractor {
+	testBlockSize  = 256 * 1024
+	testTargetSize = 1500 * 1024
+	countExtractor = func() log.StreamSampleExtractor {
 		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 		if err != nil {
 			panic(err)

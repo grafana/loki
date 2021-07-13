@@ -55,7 +55,6 @@ The current team members are:
 - Goutham Veeramachaneni - [gouthamve](https://github.com/gouthamve) ([Grafana Labs](https://grafana.com/))
 - Joe Elliott - [joe-elliott](https://github.com/joe-elliott) ([Grafana Labs](https://grafana.com/))
 - Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
-- Robert Fratto - [rfratto](https://github.com/rfratto) ([Grafana Labs](https://grafana.com/))
 - Sandeep Sukhani - [sandeepsukhani](https://github.com/sandeepsukhani) ([Grafana Labs](https://grafana.com/))
 - Tom Braack - [sh0rez](https://github.com/sh0rez) ([Grafana Labs](https://grafana.com/))
 - Tom Wilkie - [tomwilkie](https://github.com/tomwilkie) ([Grafana Labs](https://grafana.com/))

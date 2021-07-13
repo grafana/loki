@@ -177,7 +177,7 @@ url: <string>
 
 # Maximum batch size (in bytes) of logs to accumulate before sending
 # the batch to Loki.
-[batchsize: <int> | default = 102400]
+[batchsize: <int> | default = 1048576]
 
 # If using basic auth, configures the username and password
 # sent.
