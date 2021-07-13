@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	errInvalidPattern = errors.New("invalid pattern")
+	errIPFilterInvalidPattern   = errors.New("ip: invalid pattern")
+	errIPFilterInvalidOperation = errors.New("ip: invalid operation")
 )
 
 type IPMatchType int
@@ -36,6 +37,9 @@ type IPFilter struct {
 
 	// patternError represents any invalid pattern provided to match the ip.
 	patternError error
+
+	// filter `operation` used during label filter.
+	labelOp LabelFilterType
 }
 
 // IPFilter search for IP addresses of given `pattern` in the given `line`.
@@ -45,7 +49,7 @@ type IPFilter struct {
 // 1. SINGLE-IP - "192.168.0.1"
 // 2. IP RANGE  - "192.168.0.1-192.168.0.23"
 // 3. CIDR      - "192.168.0.0/16"
-func NewIPFilter(pattern string) *IPFilter {
+func newIPFilter(pattern string) *IPFilter {
 	filter := &IPFilter{pattern: pattern}
 
 	matcher, err := getMatcher(pattern)
@@ -55,26 +59,28 @@ func NewIPFilter(pattern string) *IPFilter {
 	return filter
 }
 
-func NewIPLabelFilter(pattern string, label string) *IPFilter {
-	filter := NewIPFilter(pattern)
+func NewIPLabelFilter(label string, op LabelFilterType, pattern string) *IPFilter {
+	filter := newIPFilter(pattern)
 	filter.labelName = label
 	filter.matchType = IPMatchLabel
+	filter.labelOp = op
 	return filter
 }
 
-func (ipf *IPFilter) Filter(line string) bool {
+// filter does the heavy lifting finding ip `pattern` in the givin `line`.
+func (ipf *IPFilter) filter(line []byte) bool {
 	if len(line) == 0 {
 		return false
 	}
 
 	n := len(line)
 
-	filterFn := func(line string, start int, charset string) (bool, int) {
-		iplen := stringSpan(line[start:], charset)
+	filterFn := func(line []byte, start int, charset string) (bool, int) {
+		iplen := bytesSpan(line[start:], []byte(charset))
 		if iplen < 0 {
 			return false, 0
 		}
-		ip, err := netaddr.ParseIP(line[start : start+iplen])
+		ip, err := netaddr.ParseIP(string(line[start : start+iplen]))
 		if err == nil {
 			if contains(ipf.matcher, ip) {
 				return true, 0
@@ -116,23 +122,30 @@ func (ipf *IPFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, false
 	}
 
-	input := string(line)
-
 	if ipf.matchType == IPMatchLabel {
 		v, ok := lbs.Get(ipf.labelName)
 		if !ok {
 			// we have not found the corresponding label.
 			return line, false
 		}
-		input = v
+
+		input := []byte(v)
+		switch ipf.labelOp {
+		case LabelFilterEqual:
+			return line, ipf.filter(input)
+		case LabelFilterNotEqual:
+			return line, !ipf.filter(input)
+		default:
+			lbs.SetErr(errIPFilterInvalidOperation.Error())
+		}
 	}
 
-	return line, ipf.Filter(input)
+	return line, ipf.filter(line)
 }
 
 // `RequiredLabelNames` implements `Stage` interface
 func (ipf *IPFilter) RequiredLabelNames() []string {
-	return []string{}
+	return []string{ipf.labelName}
 }
 
 // `String` implements fmt.Stringer inteface, by which also implements `LabelFilterer` inteface.
@@ -175,7 +188,7 @@ func getMatcher(pattern string) (IPMatcher, error) {
 		return matcher, nil
 	}
 
-	return nil, fmt.Errorf("%w: %q", errInvalidPattern, pattern)
+	return nil, fmt.Errorf("%w: %q", errIPFilterInvalidPattern, pattern)
 }
 
 func ipv4Hint(prefix [4]byte) bool {
@@ -196,11 +209,11 @@ func isHexDigit(r byte) bool {
 	return unicode.IsDigit(rune(r)) || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }
 
-// stringSpan is same as C's `strcspan()` function.
+// bytesSpan is same as C's `strcspan()` function.
 // It returns the number of chars in the initial segment of `s`
 // which consist only of chars from `accept`.
-func stringSpan(s, accept string) int {
-	m := make(map[rune]bool)
+func bytesSpan(s, accept []byte) int {
+	m := make(map[byte]bool)
 
 	for _, r := range accept {
 		m[r] = true

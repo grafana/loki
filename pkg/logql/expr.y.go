@@ -232,101 +232,102 @@ var exprExca = [...]int{
 
 const exprPrivate = 57344
 
-const exprLast = 493
+const exprLast = 500
 
 var exprAct = [...]int{
 
-	233, 186, 75, 4, 168, 58, 156, 5, 161, 195,
-	66, 109, 50, 57, 236, 130, 68, 2, 45, 46,
+	234, 186, 75, 4, 168, 58, 156, 5, 161, 195,
+	66, 109, 50, 57, 237, 130, 68, 2, 45, 46,
 	47, 48, 49, 50, 71, 42, 43, 44, 51, 52,
 	55, 56, 53, 54, 45, 46, 47, 48, 49, 50,
 	43, 44, 51, 52, 55, 56, 53, 54, 45, 46,
 	47, 48, 49, 50, 47, 48, 49, 50, 126, 128,
-	129, 64, 241, 97, 170, 128, 129, 101, 62, 63,
-	211, 238, 178, 212, 210, 290, 287, 82, 134, 309,
-	290, 132, 61, 304, 139, 51, 52, 55, 56, 53,
-	54, 45, 46, 47, 48, 49, 50, 116, 140, 236,
+	129, 64, 242, 97, 170, 128, 129, 101, 62, 63,
+	215, 239, 179, 216, 214, 293, 290, 82, 134, 313,
+	293, 132, 61, 271, 139, 51, 52, 55, 56, 53,
+	54, 45, 46, 47, 48, 49, 50, 116, 140, 237,
 	141, 142, 143, 144, 145, 146, 147, 148, 149, 150,
-	151, 152, 153, 154, 116, 113, 127, 65, 270, 297,
+	151, 152, 153, 154, 116, 113, 127, 65, 239, 308,
 	165, 176, 171, 174, 175, 172, 173, 74, 158, 76,
-	77, 209, 113, 104, 106, 105, 177, 114, 115, 241,
-	193, 189, 98, 295, 269, 239, 187, 269, 198, 190,
-	64, 76, 77, 237, 107, 279, 108, 62, 63, 293,
-	277, 182, 185, 237, 201, 202, 203, 64, 272, 273,
-	274, 248, 191, 12, 62, 63, 157, 242, 276, 238,
-	188, 133, 238, 261, 121, 182, 231, 234, 238, 240,
-	116, 243, 132, 97, 246, 101, 247, 188, 238, 235,
-	232, 120, 64, 244, 158, 197, 65, 245, 113, 62,
-	63, 250, 256, 254, 239, 250, 252, 185, 116, 64,
-	251, 260, 64, 65, 199, 197, 62, 63, 307, 62,
-	63, 303, 188, 182, 138, 262, 113, 264, 266, 137,
-	268, 97, 136, 116, 196, 267, 278, 263, 80, 188,
-	97, 236, 188, 280, 282, 183, 73, 158, 65, 249,
-	207, 113, 206, 131, 284, 285, 64, 123, 204, 97,
-	286, 12, 200, 62, 63, 65, 288, 289, 65, 133,
-	192, 122, 294, 184, 124, 125, 15, 208, 205, 302,
-	299, 64, 300, 301, 12, 292, 188, 229, 62, 63,
-	230, 228, 6, 305, 159, 157, 19, 20, 33, 34,
-	36, 37, 35, 38, 39, 40, 41, 21, 22, 291,
-	226, 60, 65, 227, 225, 79, 275, 23, 24, 25,
-	26, 27, 28, 29, 265, 116, 194, 30, 31, 32,
-	18, 78, 223, 308, 12, 224, 222, 65, 306, 158,
-	258, 259, 6, 113, 16, 17, 19, 20, 33, 34,
-	36, 37, 35, 38, 39, 40, 41, 21, 22, 214,
-	296, 179, 215, 213, 283, 255, 253, 23, 24, 25,
-	26, 27, 28, 29, 3, 116, 135, 30, 31, 32,
-	18, 67, 181, 180, 12, 220, 159, 157, 221, 219,
-	179, 178, 6, 113, 16, 17, 19, 20, 33, 34,
-	36, 37, 35, 38, 39, 40, 41, 21, 22, 81,
-	166, 104, 106, 105, 164, 114, 115, 23, 24, 25,
-	26, 27, 28, 29, 163, 155, 119, 30, 31, 32,
-	18, 298, 107, 217, 108, 257, 218, 216, 169, 70,
-	281, 162, 72, 72, 16, 17, 169, 110, 111, 160,
-	100, 167, 103, 83, 84, 85, 86, 87, 88, 89,
-	90, 91, 92, 93, 94, 95, 96, 102, 59, 117,
-	112, 118, 99, 11, 10, 9, 14, 8, 271, 13,
-	7, 69, 1,
+	77, 213, 113, 104, 106, 105, 177, 114, 115, 242,
+	193, 189, 98, 76, 77, 240, 187, 238, 198, 190,
+	64, 301, 300, 271, 107, 116, 108, 62, 63, 272,
+	279, 182, 185, 298, 201, 202, 203, 64, 296, 158,
+	238, 64, 281, 113, 62, 63, 157, 243, 62, 63,
+	188, 262, 239, 263, 249, 278, 232, 235, 239, 241,
+	116, 244, 132, 97, 247, 101, 248, 188, 191, 236,
+	233, 188, 240, 245, 158, 239, 65, 64, 113, 274,
+	275, 276, 257, 255, 62, 63, 159, 157, 182, 251,
+	237, 185, 182, 65, 253, 251, 64, 65, 121, 120,
+	252, 261, 138, 62, 63, 125, 264, 188, 266, 268,
+	246, 270, 97, 197, 183, 64, 269, 280, 265, 197,
+	64, 97, 62, 63, 282, 116, 188, 62, 63, 311,
+	137, 131, 199, 65, 136, 80, 287, 288, 196, 12,
+	73, 97, 289, 113, 123, 188, 307, 133, 291, 292,
+	60, 284, 65, 211, 297, 178, 212, 210, 122, 15,
+	12, 124, 250, 303, 267, 304, 305, 12, 133, 207,
+	204, 65, 200, 192, 184, 6, 65, 309, 208, 19,
+	20, 33, 34, 36, 37, 35, 38, 39, 40, 41,
+	21, 22, 205, 230, 306, 227, 231, 229, 228, 226,
+	23, 24, 25, 26, 27, 28, 29, 295, 294, 194,
+	30, 31, 32, 18, 209, 224, 277, 12, 225, 223,
+	221, 79, 78, 222, 220, 6, 312, 16, 17, 19,
+	20, 33, 34, 36, 37, 35, 38, 39, 40, 41,
+	21, 22, 218, 310, 302, 219, 217, 259, 260, 299,
+	23, 24, 25, 26, 27, 28, 29, 3, 116, 135,
+	30, 31, 32, 18, 67, 286, 285, 12, 258, 256,
+	254, 169, 110, 181, 180, 6, 113, 16, 17, 19,
+	20, 33, 34, 36, 37, 35, 38, 39, 40, 41,
+	21, 22, 81, 179, 104, 106, 105, 178, 114, 115,
+	23, 24, 25, 26, 27, 28, 29, 116, 111, 166,
+	30, 31, 32, 18, 164, 107, 163, 108, 155, 119,
+	70, 158, 283, 72, 162, 113, 206, 16, 17, 72,
+	169, 160, 100, 167, 103, 102, 83, 84, 85, 86,
+	87, 88, 89, 90, 91, 92, 93, 94, 95, 96,
+	59, 117, 112, 118, 99, 11, 10, 9, 14, 8,
+	273, 13, 7, 69, 1, 0, 0, 0, 159, 157,
 }
 var exprPact = [...]int{
 
-	279, -1000, -41, -1000, -1000, 277, 279, -1000, -1000, -1000,
-	-1000, -1000, 447, 233, 104, -1000, 334, 318, 225, -1000,
+	282, -1000, -41, -1000, -1000, 236, 282, -1000, -1000, -1000,
+	-1000, -1000, 448, 247, 104, -1000, 345, 344, 242, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
 	-1000, -1000, 37, 37, 37, 37, 37, 37, 37, 37,
-	37, 37, 37, 37, 37, 37, 37, 277, -1000, 47,
-	380, 430, -1000, -1000, -1000, -1000, 177, 160, -41, 265,
-	269, -1000, 46, 256, 379, 219, 216, 211, -1000, -1000,
-	279, 279, -1000, 279, 279, 279, 279, 279, 279, 279,
-	279, 279, 279, 279, 279, 279, 279, -1000, 429, -1000,
-	-1000, 330, -1000, -1000, 446, -1000, 428, -1000, 418, -1000,
-	-1000, -1000, -1000, 213, 414, 451, 52, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, 448, -1000, 395, 394, 387, 386,
-	231, 264, 208, 158, 148, 261, 329, 220, 200, 253,
+	37, 37, 37, 37, 37, 37, 37, 236, -1000, 47,
+	383, 443, -1000, -1000, -1000, -1000, 205, 204, -41, 272,
+	219, -1000, 46, 254, 382, 241, 237, 209, -1000, -1000,
+	282, 282, -1000, 282, 282, 282, 282, 282, 282, 282,
+	282, 282, 282, 282, 282, 282, 282, -1000, 442, -1000,
+	-1000, 150, -1000, -1000, 449, -1000, 440, -1000, 438, -1000,
+	-1000, -1000, -1000, 250, 433, 455, 52, -1000, -1000, -1000,
+	-1000, -1000, -1000, -1000, 454, -1000, 421, 417, 398, 397,
+	220, 285, 212, 275, 174, 284, 332, 244, 238, 283,
 	-27, 16, 16, -23, -23, -68, -68, -68, -68, -57,
-	-57, -57, -57, -57, -57, -1000, 330, 213, 213, 213,
-	249, -1000, 276, -1000, -1000, 238, -1000, 241, -1000, 275,
-	66, 365, 439, 391, 338, 316, 293, -1000, -1000, -1000,
-	-1000, -1000, -1000, 126, 158, 188, 144, 205, 92, 153,
-	183, 126, 279, 147, 240, 196, -1000, -1000, 192, -1000,
-	370, 185, 330, 109, 446, 369, -1000, 443, 345, 198,
+	-57, -57, -57, -57, -57, -1000, 150, 250, 250, 250,
+	281, -1000, 310, -1000, -1000, 432, -1000, 280, -1000, 296,
+	279, 66, 368, 346, 341, 321, 319, -1000, -1000, -1000,
+	-1000, -1000, -1000, 118, 275, 157, 138, 193, 92, 153,
+	216, 118, 282, 160, 273, 206, -1000, -1000, 200, -1000,
+	394, 185, 150, 109, 449, 393, -1000, 396, 372, 208,
+	-1000, -1000, -1000, 158, -1000, -1000, -1000, -1000, -1000, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, 159, 252, 27, 252, 326, -49, 213, -49,
-	138, 113, 317, 154, 136, -1000, -1000, 131, -1000, 279,
-	445, -1000, -1000, 235, -1000, -1000, -1000, -1000, -1000, -1000,
-	368, 126, 27, 252, 27, -1000, -1000, 330, -1000, -49,
-	-1000, 53, -1000, -1000, -1000, 36, 310, 286, 135, 126,
-	119, -1000, 364, 95, -1000, 27, -1000, 436, 31, 27,
-	15, -49, -49, 280, -1000, -1000, 212, -1000, 59, 27,
-	-1000, -1000, -49, 342, -1000, -1000, 209, 337, 55, -1000,
+	-1000, -1000, -1000, 159, 231, 27, 231, 286, -49, 250,
+	-49, 74, 154, 337, 161, 136, -1000, -1000, 148, -1000,
+	282, 447, -1000, -1000, 262, -1000, -1000, -1000, -1000, -1000,
+	-1000, 390, 389, 118, 27, 231, 27, -1000, -1000, 150,
+	-1000, -49, -1000, 53, -1000, -1000, -1000, 36, 329, 328,
+	144, 118, 139, -1000, 373, 128, 127, -1000, 27, -1000,
+	369, 31, 27, 15, -49, -49, 315, -1000, -1000, 257,
+	-1000, -1000, 95, 27, -1000, -1000, -49, 367, -1000, -1000,
+	240, 350, 55, -1000,
 }
 var exprPgo = [...]int{
 
-	0, 492, 16, 82, 2, 9, 384, 3, 15, 11,
-	491, 490, 489, 488, 7, 487, 486, 485, 484, 483,
-	419, 482, 13, 5, 481, 480, 479, 6, 478, 477,
-	462, 4, 461, 460, 8, 459, 1, 458, 457, 0,
+	0, 494, 16, 82, 2, 9, 387, 3, 15, 11,
+	493, 492, 491, 490, 7, 489, 488, 487, 486, 485,
+	422, 484, 13, 5, 483, 482, 481, 6, 480, 465,
+	464, 4, 463, 462, 8, 461, 1, 438, 402, 0,
 }
 var exprR1 = [...]int{
 
@@ -340,14 +341,14 @@ var exprR1 = [...]int{
 	22, 23, 23, 23, 23, 23, 23, 28, 28, 21,
 	21, 21, 21, 21, 33, 29, 31, 31, 32, 32,
 	32, 30, 27, 27, 27, 27, 27, 27, 27, 27,
-	27, 34, 35, 35, 38, 37, 37, 26, 26, 26,
-	26, 26, 26, 26, 24, 24, 24, 24, 24, 24,
-	24, 25, 25, 25, 25, 25, 25, 25, 17, 17,
+	27, 34, 35, 35, 38, 38, 37, 37, 26, 26,
+	26, 26, 26, 26, 26, 24, 24, 24, 24, 24,
+	24, 24, 25, 25, 25, 25, 25, 25, 25, 17,
 	17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
-	17, 17, 17, 20, 20, 18, 18, 18, 16, 16,
-	16, 16, 16, 16, 16, 16, 16, 12, 12, 12,
+	17, 17, 17, 17, 20, 20, 18, 18, 18, 16,
+	16, 16, 16, 16, 16, 16, 16, 16, 12, 12,
 	12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
-	12, 39, 5, 5, 4, 4, 4, 4,
+	12, 12, 39, 5, 5, 4, 4, 4, 4,
 }
 var exprR2 = [...]int{
 
@@ -361,14 +362,14 @@ var exprR2 = [...]int{
 	2, 1, 2, 2, 2, 2, 2, 2, 3, 1,
 	1, 2, 1, 2, 2, 2, 3, 3, 1, 3,
 	3, 2, 1, 1, 1, 1, 3, 2, 3, 3,
-	3, 3, 1, 3, 6, 1, 1, 3, 3, 3,
+	3, 3, 1, 3, 6, 6, 1, 1, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 3, 4, 4,
+	3, 3, 3, 3, 3, 3, 3, 3, 3, 4,
 	4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 4, 0, 1, 1, 2, 2, 1, 1,
+	4, 4, 4, 4, 0, 1, 1, 2, 2, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	1, 2, 1, 3, 4, 4, 3, 3,
+	1, 1, 2, 1, 3, 4, 4, 3, 3,
 }
 var exprChk = [...]int{
 
@@ -393,50 +394,52 @@ var exprChk = [...]int{
 	6, 6, 2, 24, 19, 9, -36, -22, 44, -14,
 	-8, 24, 19, -7, 7, -5, 24, 5, -5, 24,
 	19, -27, -27, -27, 19, 12, 24, 19, 12, 65,
+	8, 4, 7, 65, 8, 4, 7, 8, 4, 7,
 	8, 4, 7, 8, 4, 7, 8, 4, 7, 8,
-	4, 7, 8, 4, 7, 8, 4, 7, 8, 4,
-	7, -4, -8, -39, -36, -22, 63, 9, 44, 9,
-	-36, 47, 24, -36, -22, 24, -4, -7, 24, 19,
-	19, 24, 24, 6, -34, 6, -31, 2, 5, 6,
-	23, 24, -36, -22, -36, 8, -39, -27, -39, 9,
-	5, -13, 55, 56, 57, 9, 24, 24, -36, 24,
-	-7, 5, 19, 6, -4, -36, -39, 23, -39, -36,
-	44, 9, 9, 24, -4, 24, 6, 24, 5, -36,
-	-39, -39, 9, 19, 24, -39, 6, 19, 6, 24,
+	4, 7, -4, -8, -39, -36, -22, 63, 9, 44,
+	9, -36, 47, 24, -36, -22, 24, -4, -7, 24,
+	19, 19, 24, 24, 6, -34, 6, -31, 2, 5,
+	6, 23, 23, 24, -36, -22, -36, 8, -39, -27,
+	-39, 9, 5, -13, 55, 56, 57, 9, 24, 24,
+	-36, 24, -7, 5, 19, 6, 6, -4, -36, -39,
+	23, -39, -36, 44, 9, 9, 24, -4, 24, 6,
+	24, 24, 5, -36, -39, -39, 9, 19, 24, -39,
+	6, 19, 6, 24,
 }
 var exprDef = [...]int{
 
 	0, -2, 1, 2, 3, 10, 0, 4, 5, 6,
-	7, 8, 0, 0, 0, 145, 0, 0, 0, 157,
-	158, 159, 160, 161, 162, 163, 164, 165, 166, 167,
-	168, 169, 170, 148, 149, 150, 151, 152, 153, 154,
-	155, 156, 143, 143, 143, 143, 143, 143, 143, 143,
-	143, 143, 143, 143, 143, 143, 143, 11, 69, 71,
+	7, 8, 0, 0, 0, 146, 0, 0, 0, 158,
+	159, 160, 161, 162, 163, 164, 165, 166, 167, 168,
+	169, 170, 171, 149, 150, 151, 152, 153, 154, 155,
+	156, 157, 144, 144, 144, 144, 144, 144, 144, 144,
+	144, 144, 144, 144, 144, 144, 144, 11, 69, 71,
 	0, 0, 56, 57, 58, 59, 3, 2, 0, 0,
-	0, 63, 0, 0, 0, 0, 0, 0, 146, 147,
-	0, 0, 144, 0, 0, 0, 0, 0, 0, 0,
+	0, 63, 0, 0, 0, 0, 0, 0, 147, 148,
+	0, 0, 145, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 70, 0, 72,
 	73, 74, 75, 76, 79, 80, 0, 82, 0, 92,
-	93, 94, 95, 0, 0, 0, 0, 105, 106, 77,
+	93, 94, 95, 0, 0, 0, 0, 106, 107, 77,
 	9, 12, 60, 61, 0, 62, 0, 0, 0, 0,
-	0, 0, 0, 0, 3, 145, 0, 0, 0, 3,
-	128, 129, 130, 131, 132, 133, 134, 135, 136, 137,
-	138, 139, 140, 141, 142, 78, 97, 0, 0, 0,
+	0, 0, 0, 0, 3, 146, 0, 0, 0, 3,
+	129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
+	139, 140, 141, 142, 143, 78, 97, 0, 0, 0,
 	84, 102, 0, 81, 83, 0, 85, 91, 88, 0,
 	0, 0, 0, 0, 0, 0, 0, 64, 65, 66,
 	67, 68, 38, 45, 0, 13, 0, 0, 0, 0,
-	0, 49, 0, 3, 145, 0, 176, 172, 0, 177,
+	0, 49, 0, 3, 146, 0, 177, 173, 0, 178,
 	0, 98, 99, 100, 0, 0, 96, 0, 0, 0,
-	112, 119, 126, 111, 118, 125, 107, 114, 121, 108,
-	115, 122, 109, 116, 123, 110, 117, 124, 113, 120,
-	127, 47, 0, 14, 17, 33, 0, 21, 0, 25,
-	0, 0, 0, 0, 0, 37, 51, 3, 50, 0,
-	0, 174, 175, 0, 103, 101, 89, 90, 86, 87,
-	0, 46, 18, 34, 35, 171, 22, 41, 26, 29,
-	39, 0, 42, 43, 44, 15, 0, 0, 0, 52,
-	3, 173, 0, 0, 48, 36, 30, 0, 16, 19,
-	0, 23, 27, 0, 53, 54, 0, 104, 0, 20,
-	24, 28, 31, 0, 40, 32, 0, 0, 0, 55,
+	113, 120, 127, 0, 112, 119, 126, 108, 115, 122,
+	109, 116, 123, 110, 117, 124, 111, 118, 125, 114,
+	121, 128, 47, 0, 14, 17, 33, 0, 21, 0,
+	25, 0, 0, 0, 0, 0, 37, 51, 3, 50,
+	0, 0, 175, 176, 0, 103, 101, 89, 90, 86,
+	87, 0, 0, 46, 18, 34, 35, 172, 22, 41,
+	26, 29, 39, 0, 42, 43, 44, 15, 0, 0,
+	0, 52, 3, 174, 0, 0, 0, 48, 36, 30,
+	0, 16, 19, 0, 23, 27, 0, 53, 54, 0,
+	104, 105, 0, 20, 24, 28, 31, 0, 40, 32,
+	0, 0, 0, 55,
 }
 var exprTok1 = [...]int{
 
@@ -1300,47 +1303,47 @@ exprdefault:
 	case 104:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[5].str, exprDollar[1].str)
+			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[1].str, log.LabelFilterEqual, exprDollar[5].str)
 		}
 	case 105:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
+		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.UnitFilter = exprDollar[1].DurationFilter
+			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[1].str, log.LabelFilterNotEqual, exprDollar[5].str)
 		}
 	case 106:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.UnitFilter = exprDollar[1].BytesFilter
+			exprVAL.UnitFilter = exprDollar[1].DurationFilter
 		}
 	case 107:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
+		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.UnitFilter = exprDollar[1].BytesFilter
 		}
 	case 108:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].duration)
 		}
 	case 109:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
 		}
 	case 110:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].duration)
 		}
 	case 111:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
 		}
 	case 112:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].duration)
 		}
 	case 113:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1350,32 +1353,32 @@ exprdefault:
 	case 114:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].duration)
 		}
 	case 115:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].bytes)
 		}
 	case 116:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
 		}
 	case 117:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].bytes)
 		}
 	case 118:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
 		}
 	case 119:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].bytes)
 		}
 	case 120:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1385,32 +1388,32 @@ exprdefault:
 	case 121:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].bytes)
 		}
 	case 122:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
 		}
 	case 123:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
 		}
 	case 124:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
 		}
 	case 125:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
 		}
 	case 126:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
 		}
 	case 127:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1418,251 +1421,256 @@ exprdefault:
 			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
 		}
 	case 128:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
+		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("or", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].str))
 		}
 	case 129:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("and", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("or", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 130:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("unless", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("and", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 131:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("+", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("unless", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 132:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("-", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("+", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 133:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("*", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("-", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 134:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("/", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("*", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 135:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("%", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("/", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 136:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("^", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("%", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 137:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("==", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("^", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 138:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("!=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("==", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 139:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr(">", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("!=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 140:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr(">=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr(">", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 141:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("<", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr(">=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 142:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("<=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("<", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 143:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+		{
+			exprVAL.BinOpExpr = mustNewBinOpExpr("<=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+		}
+	case 144:
 		exprDollar = exprS[exprpt-0 : exprpt+1]
 		{
 			exprVAL.BinOpModifier = BinOpOptions{}
 		}
-	case 144:
+	case 145:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.BinOpModifier = BinOpOptions{ReturnBool: true}
 		}
-	case 145:
+	case 146:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[1].str, false)
 		}
-	case 146:
+	case 147:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
 			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[2].str, false)
 		}
-	case 147:
+	case 148:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
 			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[2].str, true)
 		}
-	case 148:
+	case 149:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeSum
 		}
-	case 149:
+	case 150:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeAvg
 		}
-	case 150:
+	case 151:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeCount
 		}
-	case 151:
+	case 152:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeMax
 		}
-	case 152:
+	case 153:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeMin
 		}
-	case 153:
+	case 154:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeStddev
 		}
-	case 154:
+	case 155:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeStdvar
 		}
-	case 155:
+	case 156:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeBottomK
 		}
-	case 156:
+	case 157:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.VectorOp = OpTypeTopK
 		}
-	case 157:
+	case 158:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeCount
 		}
-	case 158:
+	case 159:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeRate
 		}
-	case 159:
+	case 160:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeBytes
 		}
-	case 160:
+	case 161:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeBytesRate
 		}
-	case 161:
+	case 162:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeAvg
 		}
-	case 162:
+	case 163:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeSum
 		}
-	case 163:
+	case 164:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeMin
 		}
-	case 164:
+	case 165:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeMax
 		}
-	case 165:
+	case 166:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeStdvar
 		}
-	case 166:
+	case 167:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeStddev
 		}
-	case 167:
+	case 168:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeQuantile
 		}
-	case 168:
+	case 169:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeFirst
 		}
-	case 169:
+	case 170:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeLast
 		}
-	case 170:
+	case 171:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.RangeOp = OpRangeTypeAbsent
 		}
-	case 171:
+	case 172:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
 			exprVAL.OffsetExpr = newOffsetExpr(exprDollar[2].duration)
 		}
-	case 172:
+	case 173:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
 			exprVAL.Labels = []string{exprDollar[1].str}
 		}
-	case 173:
+	case 174:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
 			exprVAL.Labels = append(exprDollar[1].Labels, exprDollar[3].str)
 		}
-	case 174:
+	case 175:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.Grouping = &grouping{without: false, groups: exprDollar[3].Labels}
 		}
-	case 175:
+	case 176:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.Grouping = &grouping{without: true, groups: exprDollar[3].Labels}
 		}
-	case 176:
+	case 177:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
 			exprVAL.Grouping = &grouping{without: false, groups: nil}
 		}
-	case 177:
+	case 178:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
 			exprVAL.Grouping = &grouping{without: true, groups: nil}
