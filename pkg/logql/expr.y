@@ -25,6 +25,7 @@ import (
   VectorAggregationExpr   SampleExpr
   MetricExpr              SampleExpr
   VectorOp                string
+  FilterOp                string
   BinOpExpr               SampleExpr
   LabelReplaceExpr        SampleExpr
   binOp                   string
@@ -35,6 +36,7 @@ import (
   BinOpModifier           BinOpOptions
   LabelParser             *labelParserExpr
   LineFilters             *lineFilterExpr
+  LineFilter              *lineFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
   BytesFilter             log.LabelFilterer
@@ -71,6 +73,7 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
+%type <FilterOp>              filterOp
 %type <BinOpExpr>             binOpExpr
 %type <LiteralExpr>           literalExpr
 %type <LabelReplaceExpr>      labelReplaceExpr
@@ -83,6 +86,7 @@ import (
 %type <DurationFilter>        durationFilter
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
+%type <LineFilter>            lineFilter
 %type <LineFormatExpr>        lineFormatExpr
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
@@ -239,9 +243,17 @@ pipelineStage:
   | PIPE labelFormatExpr         { $$ = $2 }
   ;
 
+filterOp:
+  IP { $$ = OpFilterIP }
+  ;
+
+lineFilter:
+    filter STRING                                             { $$ = newLineFilterExpr($1, "", $2,) }
+  | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4) }
+
 lineFilters:
-    filter STRING                 { $$ = newLineFilterExpr(nil, $1, $2 ) }
-  | lineFilters filter STRING     { $$ = newLineFilterExpr($1, $2, $3 ) }
+    lineFilter                { $$ = $1 }
+  | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
 
 labelParser:
     JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }

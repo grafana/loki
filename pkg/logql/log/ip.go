@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	errIPFilterInvalidPattern   = errors.New("ip: invalid pattern")
-	errIPFilterInvalidOperation = errors.New("ip: invalid operation")
+	ErrIPFilterInvalidPattern   = errors.New("ip: invalid pattern")
+	ErrIPFilterInvalidOperation = errors.New("ip: invalid operation")
 )
 
 type IPMatchType int
@@ -26,6 +26,13 @@ const (
 // Should be one of the netaddr.IP, netaddr.IPRange, netadd.IPPrefix.
 type IPMatcher interface{}
 
+// IPFilter search for IP addresses of given `pattern` in the given `line`.
+// It returns true if pattern is matched with at least one IP in the `line`
+
+// pattern - can be of the following form for both IPv4 and IPv6.
+// 1. SINGLE-IP - "192.168.0.1"
+// 2. IP RANGE  - "192.168.0.1-192.168.0.23"
+// 3. CIDR      - "192.168.0.0/16"
 type IPFilter struct {
 	pattern   string
 	matcher   IPMatcher
@@ -42,13 +49,6 @@ type IPFilter struct {
 	labelOp LabelFilterType
 }
 
-// IPFilter search for IP addresses of given `pattern` in the given `line`.
-// It returns true if pattern is matched with at least one IP in the `line`
-
-// pattern - can be of the following form for both IPv4 and IPv6.
-// 1. SINGLE-IP - "192.168.0.1"
-// 2. IP RANGE  - "192.168.0.1-192.168.0.23"
-// 3. CIDR      - "192.168.0.0/16"
 func newIPFilter(pattern string) *IPFilter {
 	filter := &IPFilter{pattern: pattern}
 
@@ -59,6 +59,12 @@ func newIPFilter(pattern string) *IPFilter {
 	return filter
 }
 
+// NewIPLineFilter is used to construct ip filter as a `LineFilter`
+func NewIPLineFilter(pattern string) *IPFilter {
+	return newIPFilter(pattern)
+}
+
+// NewIPLabelFilter is used to construct ip filter as label filter for the given `label`.
 func NewIPLabelFilter(label string, op LabelFilterType, pattern string) *IPFilter {
 	filter := newIPFilter(pattern)
 	filter.labelName = label
@@ -68,6 +74,7 @@ func NewIPLabelFilter(label string, op LabelFilterType, pattern string) *IPFilte
 }
 
 // filter does the heavy lifting finding ip `pattern` in the givin `line`.
+// This is the function if you want to understand how the core logic how ip filter works!
 func (ipf *IPFilter) filter(line []byte) bool {
 	if len(line) == 0 {
 		return false
@@ -113,6 +120,16 @@ func (ipf *IPFilter) filter(line []byte) bool {
 	return false
 }
 
+// Filter implement `Filterer` interface.
+func (ipf *IPFilter) Filter(line []byte) bool {
+	return ipf.filter(line)
+}
+
+// ToStage implements `Filterer` interface.
+func (ipf *IPFilter) ToStage() Stage {
+	return ipf
+}
+
 // `Process` implements `Stage` interface
 func (ipf *IPFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 
@@ -136,7 +153,7 @@ func (ipf *IPFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		case LabelFilterNotEqual:
 			return line, !ipf.filter(input)
 		default:
-			lbs.SetErr(errIPFilterInvalidOperation.Error())
+			lbs.SetErr(ErrIPFilterInvalidOperation.Error())
 		}
 	}
 
@@ -188,7 +205,7 @@ func getMatcher(pattern string) (IPMatcher, error) {
 		return matcher, nil
 	}
 
-	return nil, fmt.Errorf("%w: %q", errIPFilterInvalidPattern, pattern)
+	return nil, fmt.Errorf("%w: %q", ErrIPFilterInvalidPattern, pattern)
 }
 
 func ipv4Hint(prefix [4]byte) bool {
