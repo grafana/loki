@@ -249,7 +249,6 @@ func Test_InstantSharding(t *testing.T) {
 			maxQueryParallelism: 10,
 		})
 	response, err := sharding.Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
-		t.Log(r)
 		return &LokiPromResponse{Response: &queryrange.PrometheusResponse{
 			Data: queryrange.PrometheusData{
 				ResultType: loghttp.ResultTypeVector,
@@ -263,11 +262,12 @@ func Test_InstantSharding(t *testing.T) {
 		}}, nil
 	})).Do(ctx, &LokiInstantRequest{
 		Query:  `rate({app="foo"}[1m])`,
-		TimeTs: time.Now(),
+		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
 	})
 	require.NoError(t, err)
 	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
+		Status: "success",
 		Data: queryrange.PrometheusData{
 			ResultType: loghttp.ResultTypeVector,
 			Result: []queryrange.SampleStream{

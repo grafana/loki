@@ -694,15 +694,17 @@ func toProtoVector(v loghttp.Vector) []queryrange.SampleStream {
 	}
 	res := make([]queryrange.SampleStream, 0, 1)
 	samples := make([]cortexpb.Sample, 0, len(v))
+	labels := make([]cortexpb.LabelAdapter, 0, len(v))
 	for _, s := range v {
 		samples = append(samples, cortexpb.Sample{
 			Value:       float64(s.Value),
 			TimestampMs: int64(s.Timestamp),
 		})
-		// todo add labels
+		labels = append(labels, cortexpb.FromMetricsToLabelAdapters(s.Metric)...)
 	}
 	res = append(res, queryrange.SampleStream{
 		Samples: samples,
+		Labels:  labels,
 	})
 	return res
 }
