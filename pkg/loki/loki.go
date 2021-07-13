@@ -101,7 +101,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
-	c.MemberlistKV.RegisterFlags(f, "")
+	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 }
