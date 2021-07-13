@@ -730,6 +730,40 @@ func (p paramsWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+type paramsInstantWrapper struct {
+	*LokiInstantRequest
+}
+
+func paramsFromInstantRequest(req queryrange.Request) *paramsInstantWrapper {
+	return &paramsInstantWrapper{
+		LokiInstantRequest: req.(*LokiInstantRequest),
+	}
+}
+
+func (p paramsInstantWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsInstantWrapper) Start() time.Time {
+	return p.LokiInstantRequest.GetTimeTs()
+}
+
+func (p paramsInstantWrapper) End() time.Time {
+	return p.LokiInstantRequest.GetTimeTs()
+}
+
+func (p paramsInstantWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsInstantWrapper) Interval() time.Duration { return 0 }
+func (p paramsInstantWrapper) Direction() logproto.Direction {
+	return p.GetDirection()
+}
+func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
+func (p paramsInstantWrapper) Shards() []string {
+	return p.GetShards()
+}
+
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrange.PrometheusResponseHeader {
 	var promHeaders []queryrange.PrometheusResponseHeader
 	for h, hv := range httpHeaders {

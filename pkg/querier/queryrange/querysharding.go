@@ -87,12 +87,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	shardedLog, ctx := spanlogger.New(ctx, "shardedEngine")
 	defer shardedLog.Finish()
 
-	// todo suppoer LokiInstantRequest as well
-	req, ok := r.(*LokiRequest)
-	if !ok {
-		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)
-	}
-
 	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
 	if err != nil {
 		return nil, err
@@ -111,7 +105,19 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		return ast.next.Do(ctx, r)
 	}
 
-	query := ast.ng.Query(paramsFromRequest(req), parsed)
+	var params logql.Params
+	var path string
+	switch r.(type) {
+	case *LokiRequest:
+		params = paramsFromRequest(r)
+		path = r.(*LokiRequest).GetPath()
+	case *LokiInstantRequest:
+		params = paramsFromInstantRequest(r)
+		path = r.(*LokiInstantRequest).GetPath()
+	default:
+		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+	}
+	query := ast.ng.Query(params, parsed)
 
 	res, err := query.Exec(ctx)
 	if err != nil {
@@ -138,9 +144,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	case logqlmodel.ValueTypeStreams:
 		return &LokiResponse{
 			Status:     loghttp.QueryStatusSuccess,
-			Direction:  req.Direction,
-			Limit:      req.Limit,
-			Version:    uint32(loghttp.GetVersion(req.Path)),
+			Direction:  params.Direction(),
+			Limit:      params.Limit(),
+			Version:    uint32(loghttp.GetVersion(path)),
 			Statistics: res.Statistics,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
