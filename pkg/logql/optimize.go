@@ -26,7 +26,7 @@ func optimizeSampleExpr(expr SampleExpr) (SampleExpr, error) {
 // removeLineformat removes unnecessary line_format within a SampleExpr.
 func removeLineformat(expr SampleExpr) {
 	walkSampleExpr(expr, func(e SampleExpr) {
-		rangeExpr, ok := e.(*rangeAggregationExpr)
+		rangeExpr, ok := e.(*RangeAggregationExpr)
 		if !ok {
 			return
 		}
@@ -35,13 +35,13 @@ func removeLineformat(expr SampleExpr) {
 			rangeExpr.operation == OpRangeTypeBytesRate {
 			return
 		}
-		pipelineExpr, ok := rangeExpr.left.left.(*pipelineExpr)
+		pipelineExpr, ok := rangeExpr.left.left.(*PipelineExpr)
 		if !ok {
 			return
 		}
 		temp := pipelineExpr.pipeline[:0]
 		for i, s := range pipelineExpr.pipeline {
-			_, ok := s.(*lineFmtExpr)
+			_, ok := s.(*LineFmtExpr)
 			if !ok {
 				temp = append(temp, s)
 				continue
@@ -50,11 +50,11 @@ func removeLineformat(expr SampleExpr) {
 			// in which case it could be useful for further processing.
 			var found bool
 			for j := i; j < len(pipelineExpr.pipeline); j++ {
-				if _, ok := pipelineExpr.pipeline[j].(*labelParserExpr); ok {
+				if _, ok := pipelineExpr.pipeline[j].(*LabelParserExpr); ok {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.pipeline[j].(*lineFilterExpr); ok {
+				if _, ok := pipelineExpr.pipeline[j].(*LineFilterExpr); ok {
 					found = true
 					break
 				}
@@ -67,7 +67,7 @@ func removeLineformat(expr SampleExpr) {
 		pipelineExpr.pipeline = temp
 		// transform into a matcherExpr if there's no more pipeline.
 		if len(pipelineExpr.pipeline) == 0 {
-			rangeExpr.left.left = &matchersExpr{
+			rangeExpr.left.left = &MatchersExpr{
 				matchers: rangeExpr.left.left.Matchers(),
 			}
 		}
@@ -85,15 +85,15 @@ func walkSampleExpr(expr SampleExpr, visitor func(e SampleExpr)) {
 // children returns children node of a SampleExpr.
 func children(expr SampleExpr) []SampleExpr {
 	switch e := expr.(type) {
-	case *rangeAggregationExpr:
+	case *RangeAggregationExpr:
 		return []SampleExpr{}
-	case *vectorAggregationExpr:
+	case *VectorAggregationExpr:
 		return []SampleExpr{e.left}
-	case *binOpExpr:
+	case *BinOpExpr:
 		return []SampleExpr{e.SampleExpr, e.RHS}
-	case *literalExpr:
+	case *LiteralExpr:
 		return []SampleExpr{}
-	case *labelReplaceExpr:
+	case *LabelReplaceExpr:
 		return []SampleExpr{e.left}
 	case *DownstreamSampleExpr:
 		return []SampleExpr{e.SampleExpr}
