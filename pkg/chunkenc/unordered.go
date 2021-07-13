@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"sort"
@@ -24,6 +25,35 @@ var (
 	noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
 )
 
+type HeadBlock interface {
+	IsEmpty() bool
+	CheckpointTo(w io.Writer) error
+	CheckpointBytes(b []byte) ([]byte, error)
+	CheckpointSize() int
+	LoadBytes(b []byte) error
+	Serialise(pool WriterPool) ([]byte, error)
+	Reset()
+	Bounds() (mint, maxt int64)
+	Entries() int
+	UncompressedSize() int
+	Convert(HeadBlockFmt) (HeadBlock, error)
+	Append(int64, string) error
+	Iterator(
+		ctx context.Context,
+		direction logproto.Direction,
+		mint,
+		maxt int64,
+		pipeline log.StreamPipeline,
+	) iter.EntryIterator
+	SampleIterator(
+		ctx context.Context,
+		mint,
+		maxt int64,
+		extractor log.StreamSampleExtractor,
+	) iter.SampleIterator
+	Format() HeadBlockFmt
+}
+
 type unorderedHeadBlock struct {
 	// Opted for range tree over skiplist for space reduction.
 	// Inserts: O(log(n))
@@ -41,8 +71,27 @@ func newUnorderedHeadBlock() *unorderedHeadBlock {
 	}
 }
 
-func (hb *unorderedHeadBlock) isEmpty() bool {
+func (hb *unorderedHeadBlock) Format() HeadBlockFmt { return UnorderedHeadBlockFmt }
+
+func (hb *unorderedHeadBlock) IsEmpty() bool {
 	return hb.size == 0
+}
+
+func (hb *unorderedHeadBlock) Bounds() (int64, int64) {
+	return hb.mint, hb.maxt
+}
+
+func (hb *unorderedHeadBlock) Entries() int {
+	return hb.lines
+}
+
+func (hb *unorderedHeadBlock) UncompressedSize() int {
+	return hb.size
+}
+
+func (hb *unorderedHeadBlock) Reset() {
+	x := newUnorderedHeadBlock()
+	*hb = *x
 }
 
 // collection of entries belonging to the same nanosecond
@@ -55,7 +104,7 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 	return e.ts
 }
 
-func (hb *unorderedHeadBlock) append(ts int64, line string) {
+func (hb *unorderedHeadBlock) Append(ts int64, line string) error {
 	// This is an allocation hack. The rangetree lib does not
 	// support the ability to pass a "mutate" function during an insert
 	// and instead will displace any existing entry at the specified timestamp.
@@ -87,6 +136,7 @@ func (hb *unorderedHeadBlock) append(ts int64, line string) {
 	hb.size += len(line)
 	hb.lines++
 
+	return nil
 }
 
 // Implements rangetree.Interval
@@ -108,7 +158,7 @@ func (hb *unorderedHeadBlock) forEntries(
 	maxt int64,
 	entryFn func(int64, string) error, // returning an error exits early
 ) (err error) {
-	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
+	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return
 	}
 
@@ -161,7 +211,7 @@ func (hb *unorderedHeadBlock) forEntries(
 	return nil
 }
 
-func (hb *unorderedHeadBlock) iterator(
+func (hb *unorderedHeadBlock) Iterator(
 	ctx context.Context,
 	direction logproto.Direction,
 	mint,
@@ -214,7 +264,7 @@ func (hb *unorderedHeadBlock) iterator(
 }
 
 // nolint:unused
-func (hb *unorderedHeadBlock) sampleIterator(
+func (hb *unorderedHeadBlock) SampleIterator(
 	ctx context.Context,
 	mint,
 	maxt int64,
@@ -270,7 +320,7 @@ func (hb *unorderedHeadBlock) sampleIterator(
 
 // nolint:unused
 // serialise is used in creating an ordered, compressed block from an unorderedHeadBlock
-func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
+func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
@@ -309,8 +359,26 @@ func (hb *unorderedHeadBlock) serialise(pool WriterPool) ([]byte, error) {
 	return outBuf.Bytes(), nil
 }
 
+func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
+	if version > OrderedHeadBlockFmt {
+		return hb, nil
+	}
+	out := &headBlock{}
+
+	err := hb.forEntries(
+		context.Background(),
+		logproto.FORWARD,
+		0,
+		math.MaxInt64,
+		func(ts int64, line string) error {
+			return out.Append(ts, line)
+		},
+	)
+	return out, err
+}
+
 // CheckpointSize returns the estimated size of the headblock checkpoint.
-func (hb *unorderedHeadBlock) CheckpointSize(version byte) int {
+func (hb *unorderedHeadBlock) CheckpointSize() int {
 	size := 1                                                          // version
 	size += binary.MaxVarintLen32 * 2                                  // total entries + total size
 	size += binary.MaxVarintLen64 * 2                                  // mint,maxt
@@ -322,20 +390,20 @@ func (hb *unorderedHeadBlock) CheckpointSize(version byte) int {
 // CheckpointBytes serializes a headblock to []byte. This is used by the WAL checkpointing,
 // which does not want to mutate a chunk by cutting it (otherwise risking content address changes), but
 // needs to serialize/deserialize the data to disk to ensure data durability.
-func (hb *unorderedHeadBlock) CheckpointBytes(version byte, b []byte) ([]byte, error) {
+func (hb *unorderedHeadBlock) CheckpointBytes(b []byte) ([]byte, error) {
 	buf := bytes.NewBuffer(b[:0])
-	err := hb.CheckpointTo(version, buf)
+	err := hb.CheckpointTo(buf)
 	return buf.Bytes(), err
 }
 
 // CheckpointTo serializes a headblock to a `io.Writer`. see `CheckpointBytes`.
-func (hb *unorderedHeadBlock) CheckpointTo(version byte, w io.Writer) error {
+func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 	eb := EncodeBufferPool.Get().(*encbuf)
 	defer EncodeBufferPool.Put(eb)
 
 	eb.reset()
 
-	eb.putByte(version)
+	eb.putByte(byte(hb.Format()))
 	_, err := w.Write(eb.get())
 	if err != nil {
 		return errors.Wrap(err, "write headBlock version")
@@ -375,7 +443,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(version byte, w io.Writer) error {
 	return nil
 }
 
-func (hb *unorderedHeadBlock) FromCheckpoint(b []byte) error {
+func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 	// ensure it's empty
 	*hb = *newUnorderedHeadBlock()
 
@@ -390,9 +458,9 @@ func (hb *unorderedHeadBlock) FromCheckpoint(b []byte) error {
 		return errors.Wrap(db.err(), "verifying headblock header")
 	}
 	switch version {
-	case chunkFormatV1, chunkFormatV2, chunkFormatV3:
+	case UnorderedHeadBlockFmt.Byte():
 	default:
-		return errors.Errorf("incompatible headBlock version (%v), only V1,V2,V3 is currently supported", version)
+		return errors.Errorf("incompatible headBlock version (%v), only V4 is currently supported", version)
 	}
 
 	n := db.uvarint()
@@ -405,7 +473,9 @@ func (hb *unorderedHeadBlock) FromCheckpoint(b []byte) error {
 		ts := db.varint64()
 		lineLn := db.uvarint()
 		line := string(db.bytes(lineLn))
-		hb.append(ts, line)
+		if err := hb.Append(ts, line); err != nil {
+			return err
+		}
 	}
 
 	if err := db.err(); err != nil {
@@ -413,4 +483,37 @@ func (hb *unorderedHeadBlock) FromCheckpoint(b []byte) error {
 	}
 
 	return nil
+}
+
+// HeadFromCheckpoint handles reading any head block format and returning the desired form.
+// This is particularly helpful replaying WALs from different configurations
+// such as after enabling unordered writes.
+func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
+	db := decbuf{b: b}
+
+	version := db.byte()
+	if db.err() != nil {
+		return nil, errors.Wrap(db.err(), "verifying headblock header")
+	}
+	format := HeadBlockFmt(version)
+
+	var decodedBlock HeadBlock
+	switch {
+	case format <= OrderedHeadBlockFmt:
+		decodedBlock = &headBlock{}
+	case format == UnorderedHeadBlockFmt:
+		decodedBlock = newUnorderedHeadBlock()
+	default:
+		return nil, fmt.Errorf("unexpected head block version: %v", version)
+	}
+
+	if err := decodedBlock.LoadBytes(b); err != nil {
+		return nil, err
+	}
+
+	if decodedBlock.Format() != desired {
+		return decodedBlock.Convert(desired)
+	}
+	return decodedBlock, nil
+
 }
