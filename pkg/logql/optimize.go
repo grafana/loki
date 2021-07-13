@@ -4,10 +4,11 @@ package logql
 func optimizeSampleExpr(expr SampleExpr) (SampleExpr, error) {
 	var skip bool
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
-	walkSampleExpr(expr, func(e SampleExpr) {
+	expr.Walk(func(e interface{}) {
 		switch e.(type) {
 		case *ConcatSampleExpr, *DownstreamSampleExpr:
 			skip = true
+			return
 		}
 	})
 	if skip {
@@ -25,7 +26,7 @@ func optimizeSampleExpr(expr SampleExpr) (SampleExpr, error) {
 
 // removeLineformat removes unnecessary line_format within a SampleExpr.
 func removeLineformat(expr SampleExpr) {
-	walkSampleExpr(expr, func(e SampleExpr) {
+	expr.Walk(func(e interface{}) {
 		rangeExpr, ok := e.(*RangeAggregationExpr)
 		if !ok {
 			return
@@ -72,37 +73,4 @@ func removeLineformat(expr SampleExpr) {
 			}
 		}
 	})
-}
-
-// walkSampleExpr traverses in depth-first order a SampleExpr.
-func walkSampleExpr(expr SampleExpr, visitor func(e SampleExpr)) {
-	visitor(expr)
-	for _, c := range children(expr) {
-		walkSampleExpr(c, visitor)
-	}
-}
-
-// children returns children node of a SampleExpr.
-func children(expr SampleExpr) []SampleExpr {
-	switch e := expr.(type) {
-	case *RangeAggregationExpr:
-		return []SampleExpr{}
-	case *VectorAggregationExpr:
-		return []SampleExpr{e.left}
-	case *BinOpExpr:
-		return []SampleExpr{e.SampleExpr, e.RHS}
-	case *LiteralExpr:
-		return []SampleExpr{}
-	case *LabelReplaceExpr:
-		return []SampleExpr{e.left}
-	case *DownstreamSampleExpr:
-		return []SampleExpr{e.SampleExpr}
-	case *ConcatSampleExpr:
-		if e.next != nil {
-			return []SampleExpr{e.next}
-		}
-		return []SampleExpr{}
-	default:
-		panic("unknown sample expression")
-	}
 }
