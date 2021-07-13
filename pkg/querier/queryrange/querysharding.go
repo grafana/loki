@@ -153,8 +153,17 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 				Result:     value.(loghttp.Streams).ToProto(),
 			},
 		}, nil
+	case parser.ValueTypeVector:
+		return &LokiPromResponse{Response: &queryrange.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrange.PrometheusData{
+				ResultType: loghttp.ResultTypeVector,
+				Result: toProtoVector(value.(loghttp.Vector)),
+				},
+			},
+		}, nil
 	default:
-		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data)
+		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data.Type())
 	}
 }
 

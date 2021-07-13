@@ -688,6 +688,25 @@ func toProto(m loghttp.Matrix) []queryrange.SampleStream {
 	return res
 }
 
+func toProtoVector(v loghttp.Vector) []queryrange.SampleStream {
+	if len(v) == 0 {
+		return nil
+	}
+	res := make([]queryrange.SampleStream, 0, 1)
+	samples := make([]cortexpb.Sample, 0, len(v))
+	for _, s := range v {
+		samples = append(samples, cortexpb.Sample{
+			Value:       float64(s.Value),
+			TimestampMs: int64(s.Timestamp),
+		})
+		// todo add labels
+	}
+	res = append(res, queryrange.SampleStream{
+		Samples: samples,
+	})
+	return res
+}
+
 func (res LokiResponse) Count() int64 {
 	var result int64
 	for _, s := range res.Data.Result {

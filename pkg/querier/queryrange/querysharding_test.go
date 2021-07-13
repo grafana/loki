@@ -245,6 +245,7 @@ func Test_InstantSharding(t *testing.T) {
 	}, queryrange.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
+			maxSeries: math.MaxInt32,
 			maxQueryParallelism: 10,
 		})
 	response, err := sharding.Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {

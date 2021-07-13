@@ -69,11 +69,10 @@ type instance struct {
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
-		// todo handle instant queries
-		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Expr.String()).(*LokiRequest)
+		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Expr.String())
 		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
 		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", req.Shards), "query", req.Query, "step", req.GetStep())
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep())
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
