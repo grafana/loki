@@ -238,6 +238,9 @@ func mockHandler(resp queryrange.Response, err error) queryrange.Handler {
 func Test_InstantSharding(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
+	var lock sync.Mutex
+	called := 0
+
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), queryrange.ShardingConfigs{
 		chunk.PeriodConfig{
 			RowShards: 3,
@@ -249,6 +252,9 @@ func Test_InstantSharding(t *testing.T) {
 			maxQueryParallelism: 10,
 		})
 	response, err := sharding.Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		called++
 		return &LokiPromResponse{Response: &queryrange.PrometheusResponse{
 			Data: queryrange.PrometheusData{
 				ResultType: loghttp.ResultTypeVector,
@@ -266,18 +272,24 @@ func Test_InstantSharding(t *testing.T) {
 		Path:   "/v1/query",
 	})
 	require.NoError(t, err)
+	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
+	require.Len(t, response.(*LokiPromResponse).Response.Data.Result[0].Labels, 3)
 	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
 		Status: "success",
 		Data: queryrange.PrometheusData{
 			ResultType: loghttp.ResultTypeVector,
 			Result: []queryrange.SampleStream{
 				{
-					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
-				},
-				{
-					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "buzz"}},
-					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+					Labels:  []cortexpb.LabelAdapter{
+						{Name: "foo", Value: "bar"},
+						{Name: "foo", Value: "bar"},
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []cortexpb.Sample{
+						{Value: 10, TimestampMs: 10},
+						{Value: 10, TimestampMs: 10},
+						{Value: 10, TimestampMs: 10},
+					},
 				},
 			},
 		},
