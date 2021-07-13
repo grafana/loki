@@ -1,10 +1,13 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
@@ -163,7 +166,12 @@ func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 func readValue(iter *jsoniter.Iterator) string {
 	switch iter.WhatIsNext() {
 	case jsoniter.StringValue:
-		return iter.ReadString()
+		v := iter.ReadString()
+		// the rune error replacement is rejected by Prometheus, so we skip it.
+		if strings.ContainsRune(v, utf8.RuneError) {
+			return ""
+		}
+		return v
 	case jsoniter.NumberValue:
 		return iter.ReadNumber().String()
 	case jsoniter.BoolValue:
@@ -278,7 +286,12 @@ func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		if !ok {
 			continue
 		}
-		lbs.Set(key, string(l.dec.Value()))
+		val := l.dec.Value()
+		// the rune error replacement is rejected by Prometheus, so we skip it.
+		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = nil
+		}
+		lbs.Set(key, string(val))
 	}
 	if l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt)

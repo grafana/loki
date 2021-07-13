@@ -272,6 +272,7 @@ func (s *streamIterator) Next() bool {
 
 	s.current.To = stream.lastLine.ts
 	s.current.LastLine = stream.lastLine.content
+	s.current.EntryCt = stream.entryCt
 
 	return true
 }

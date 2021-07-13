@@ -125,6 +125,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		bytesAdded, entriesAdded, err := stream.setChunks(series.Chunks)
 		stream.lastLine.ts = series.To
 		stream.lastLine.content = series.LastLine
+		stream.entryCt = series.EntryCt
 
 		if err != nil {
 			return err
@@ -190,13 +191,23 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, _ := s.(*stream).Push(context.Background(), entries.Entries, nil)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter)
 		r.ing.replayController.Add(int64(bytesAdded))
+		if err != nil && err == ErrEntriesExist {
+			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
+		}
 		return nil
 	})
 }
 
 func (r *ingesterRecoverer) Close() {
+	// reset all the incrementing stream counters after a successful WAL replay.
+	for _, inst := range r.ing.getInstances() {
+		inst.forAllStreams(context.Background(), func(s *stream) error {
+			s.resetCounter()
+			return nil
+		})
+	}
 	close(r.done)
 }
 
