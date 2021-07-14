@@ -25,8 +25,7 @@ but many other [Agents](../clients/) seamlessly integrate with Loki.
 
 Loki indexes streams.
 Each stream identifies a set of logs associated with a unique set of labels.
-A quality identification and specification of the set of labels
-is key to the creation of an index that is both compact
+A quality set of labels is key to the creation of an index that is both compact
 and allows for efficient query execution.
 
 [LogQL](../logql) is the query language for Loki.
@@ -75,5 +74,4 @@ and allows for efficient query execution.
 
     Loki seamlessly integrates with Grafana,
     providing a complete observability stack.
-
 
