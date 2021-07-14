@@ -28,7 +28,7 @@ type runtimeConfigValues struct {
 
 	IngesterChunkStreaming *bool `yaml:"ingester_stream_chunks_when_using_blocks"`
 
-	IngesterLimits ingester.InstanceLimits `yaml:"ingester_limits"`
+	IngesterLimits *ingester.InstanceLimits `yaml:"ingester_limits"`
 }
 
 // runtimeConfigTenantLimits provides per-tenant limit overrides based on a runtimeconfig.Manager
@@ -134,7 +134,7 @@ func ingesterInstanceLimits(manager *runtimeconfig.Manager) func() *ingester.Ins
 	return func() *ingester.InstanceLimits {
 		val := manager.GetConfig()
 		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
-			return &cfg.IngesterLimits
+			return cfg.IngesterLimits
 		}
 		return nil
 	}

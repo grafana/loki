@@ -179,7 +179,7 @@ github.com/coreos/go-systemd/internal/dlopen
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/go-systemd/v22 v22.1.0
 github.com/coreos/go-systemd/v22/journal
-# github.com/cortexproject/cortex v1.9.1-0.20210527130655-bd720c688ffa
+# github.com/cortexproject/cortex v1.9.1-0.20210712083557-733f7de5c81f
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb
@@ -409,7 +409,7 @@ github.com/go-openapi/jsonpointer
 github.com/go-openapi/jsonreference
 # github.com/go-openapi/loads v0.20.2
 github.com/go-openapi/loads
-# github.com/go-openapi/runtime v0.19.26
+# github.com/go-openapi/runtime v0.19.28
 github.com/go-openapi/runtime
 github.com/go-openapi/runtime/flagext
 github.com/go-openapi/runtime/logger
@@ -422,14 +422,15 @@ github.com/go-openapi/runtime/security
 github.com/go-openapi/spec
 # github.com/go-openapi/strfmt v0.20.1
 github.com/go-openapi/strfmt
-# github.com/go-openapi/swag v0.19.14
+# github.com/go-openapi/swag v0.19.15
 github.com/go-openapi/swag
 # github.com/go-openapi/validate v0.20.2
 github.com/go-openapi/validate
-# github.com/go-redis/redis/v8 v8.2.3
+# github.com/go-redis/redis/v8 v8.9.0
 github.com/go-redis/redis/v8
 github.com/go-redis/redis/v8/internal
 github.com/go-redis/redis/v8/internal/hashtag
+github.com/go-redis/redis/v8/internal/hscan
 github.com/go-redis/redis/v8/internal/pool
 github.com/go-redis/redis/v8/internal/proto
 github.com/go-redis/redis/v8/internal/rand
@@ -575,7 +576,7 @@ github.com/hashicorp/go-sockaddr
 ## explicit
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
-# github.com/hashicorp/memberlist v0.2.2
+# github.com/hashicorp/memberlist v0.2.3
 github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.9.5
 github.com/hashicorp/serf/coordinate
@@ -602,7 +603,7 @@ github.com/influxdata/go-syslog/v3/rfc5424
 ## explicit
 github.com/influxdata/telegraf
 github.com/influxdata/telegraf/plugins/inputs
-# github.com/jessevdk/go-flags v1.4.0
+# github.com/jessevdk/go-flags v1.5.0
 github.com/jessevdk/go-flags
 # github.com/jmespath/go-jmespath v0.4.0
 ## explicit
@@ -734,7 +735,7 @@ github.com/pierrec/lz4/v4/internal/xxh32
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.21.1-0.20210422101724-8176f78a70e1
+# github.com/prometheus/alertmanager v0.22.1-0.20210603124511-8b584eb2265e
 github.com/prometheus/alertmanager/api
 github.com/prometheus/alertmanager/api/metrics
 github.com/prometheus/alertmanager/api/v1
@@ -788,7 +789,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.2.0
 ## explicit
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.23.0
+# github.com/prometheus/common v0.26.1-0.20210603143733-6ef301f414bf
 ## explicit
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -1109,19 +1110,23 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go.opentelemetry.io/otel v0.11.0
+# go.opentelemetry.io/otel v0.20.0
 go.opentelemetry.io/otel
-go.opentelemetry.io/otel/api/correlation
-go.opentelemetry.io/otel/api/global
-go.opentelemetry.io/otel/api/global/internal
-go.opentelemetry.io/otel/api/metric
-go.opentelemetry.io/otel/api/metric/registry
-go.opentelemetry.io/otel/api/propagation
-go.opentelemetry.io/otel/api/trace
-go.opentelemetry.io/otel/api/unit
+go.opentelemetry.io/otel/attribute
 go.opentelemetry.io/otel/codes
 go.opentelemetry.io/otel/internal
-go.opentelemetry.io/otel/label
+go.opentelemetry.io/otel/internal/baggage
+go.opentelemetry.io/otel/internal/global
+go.opentelemetry.io/otel/internal/trace/noop
+go.opentelemetry.io/otel/propagation
+go.opentelemetry.io/otel/unit
+# go.opentelemetry.io/otel/metric v0.20.0
+go.opentelemetry.io/otel/metric
+go.opentelemetry.io/otel/metric/global
+go.opentelemetry.io/otel/metric/number
+go.opentelemetry.io/otel/metric/registry
+# go.opentelemetry.io/otel/trace v0.20.0
+go.opentelemetry.io/otel/trace
 # go.uber.org/atomic v1.7.0
 ## explicit
 go.uber.org/atomic
@@ -1155,7 +1160,7 @@ golang.org/x/lint/golint
 # golang.org/x/mod v0.4.1
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20210505214959-0714010a04ed
+# golang.org/x/net v0.0.0-20210525063256-abc453219eb5
 ## explicit
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1175,7 +1180,7 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c
+# golang.org/x/oauth2 v0.0.0-20210514164344-f6687ab2804c
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
 golang.org/x/oauth2/clientcredentials
