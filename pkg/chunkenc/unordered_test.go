@@ -387,3 +387,103 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	require.Equal(t, false, forward.Next())
 	require.Equal(t, false, backward.Next())
 }
+
+func BenchmarkUnorderedRead(b *testing.B) {
+	legacy := NewMemChunk(EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkClose(legacy, false)
+	ordered := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkClose(ordered, false)
+	unordered := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkRandomOrder(unordered, false)
+
+	tcs := []struct {
+		desc string
+		c    *MemChunk
+	}{
+		{
+			desc: "ordered+legacy hblock",
+			c:    legacy,
+		},
+		{
+			desc: "ordered+unordered hblock",
+			c:    ordered,
+		},
+		{
+			desc: "unordered+unordered hblock",
+			c:    unordered,
+		},
+	}
+
+	b.Run("itr", func(b *testing.B) {
+		for _, tc := range tcs {
+			b.Run(tc.desc, func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					iterator, err := tc.c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+					if err != nil {
+						panic(err)
+					}
+					for iterator.Next() {
+						_ = iterator.Entry()
+					}
+					if err := iterator.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	})
+
+	b.Run("smpl", func(b *testing.B) {
+		for _, tc := range tcs {
+			b.Run(tc.desc, func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					for iterator.Next() {
+						_ = iterator.Sample()
+					}
+					if err := iterator.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	})
+
+}
+
+func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
+	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkRandomOrder(c, false)
+
+	ct := 0
+	var i int64
+	iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+	if err != nil {
+		panic(err)
+	}
+	for iterator.Next() {
+		next := iterator.Entry().Timestamp.UnixNano()
+		require.GreaterOrEqual(t, next, i)
+		i = next
+		ct++
+	}
+	if err := iterator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, c.Size(), ct)
+
+	ct = 0
+	i = 0
+	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+	for smpl.Next() {
+		next := smpl.Sample().Timestamp
+		require.GreaterOrEqual(t, next, i)
+		i = next
+		ct += int(smpl.Sample().Value)
+	}
+	require.Equal(t, c.Size(), ct)
+
+	if err := iterator.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
