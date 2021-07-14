@@ -331,3 +331,59 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 		})
 	}
 }
+
+func TestUnorderedChunkIterators(t *testing.T) {
+	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	for i := 0; i < 100; i++ {
+		// push in reverse order
+		require.Nil(t, c.Append(&logproto.Entry{
+			Timestamp: time.Unix(int64(99-i), 0),
+			Line:      fmt.Sprint(99 - i),
+		}))
+
+		// ensure we have a mix of cut blocks + head block.
+		if i%30 == 0 {
+			require.Nil(t, c.cut())
+		}
+	}
+
+	// ensure head block has data
+	require.Equal(t, false, c.head.IsEmpty())
+
+	forward, err := c.Iterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(100, 0),
+		logproto.FORWARD,
+		noopStreamPipeline,
+	)
+	require.Nil(t, err)
+
+	backward, err := c.Iterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(100, 0),
+		logproto.BACKWARD,
+		noopStreamPipeline,
+	)
+	require.Nil(t, err)
+
+	smpl := c.SampleIterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(100, 0),
+		countExtractor,
+	)
+
+	for i := 0; i < 100; i++ {
+		require.Equal(t, true, forward.Next())
+		require.Equal(t, true, backward.Next())
+		require.Equal(t, true, smpl.Next())
+		require.Equal(t, time.Unix(int64(i), 0), forward.Entry().Timestamp)
+		require.Equal(t, time.Unix(int64(99-i), 0), backward.Entry().Timestamp)
+		require.Equal(t, float64(1), smpl.Sample().Value)
+		require.Equal(t, time.Unix(int64(i), 0).UnixNano(), smpl.Sample().Timestamp)
+	}
+	require.Equal(t, false, forward.Next())
+	require.Equal(t, false, backward.Next())
+}

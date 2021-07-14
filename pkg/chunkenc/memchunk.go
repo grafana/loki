@@ -736,14 +736,28 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 	var headIterator iter.EntryIterator
 
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
 	for _, b := range c.blocks {
+
+		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
+
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
+
 		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
 	}
 
 	if !c.head.IsEmpty() {
+		from, _ := c.head.Bounds()
+		if from < lastMax {
+			ordered = false
+		}
 		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
@@ -752,8 +766,16 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if headIterator != nil {
 			blockItrs = append(blockItrs, headIterator)
 		}
+
+		var it iter.EntryIterator
+		if ordered {
+			it = iter.NewNonOverlappingIterator(blockItrs, "")
+		} else {
+			it = iter.NewHeapIterator(ctx, blockItrs, direction)
+		}
+
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(blockItrs, ""),
+			it,
 			time.Unix(0, mint),
 			time.Unix(0, maxt),
 		), nil
@@ -779,7 +801,11 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		blockItrs[i], blockItrs[j] = blockItrs[j], blockItrs[i]
 	}
 
-	return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+	if ordered {
+		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+	}
+	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
+
 }
 
 // Iterator implements Chunk.
@@ -787,19 +813,38 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
 	for _, b := range c.blocks {
+		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
+
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
 		its = append(its, encBlock{c.encoding, b}.SampleIterator(ctx, extractor))
 	}
 
 	if !c.head.IsEmpty() {
+		from, _ := c.head.Bounds()
+		if from < lastMax {
+			ordered = false
+		}
 		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
 	}
 
+	var it iter.SampleIterator
+	if ordered {
+		it = iter.NewNonOverlappingSampleIterator(its, "")
+	} else {
+		it = iter.NewHeapSampleIterator(ctx, its)
+	}
+
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewNonOverlappingSampleIterator(its, ""),
+		it,
 		mint,
 		maxt,
 	)
