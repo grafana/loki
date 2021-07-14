@@ -1324,12 +1324,12 @@ exprdefault:
 	case 107:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[1].str, log.LabelFilterEqual, exprDollar[5].str)
+			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[5].str, exprDollar[1].str, log.LabelFilterEqual)
 		}
 	case 108:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[1].str, log.LabelFilterNotEqual, exprDollar[5].str)
+			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[5].str, exprDollar[1].str, log.LabelFilterNotEqual)
 		}
 	case 109:
 		exprDollar = exprS[exprpt-1 : exprpt+1]

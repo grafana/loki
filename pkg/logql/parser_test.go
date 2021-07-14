@@ -456,14 +456,14 @@ func TestParse(t *testing.T) {
 			in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("addr", log.LabelFilterEqual, "1.2.3.4"))},
+				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual))},
 			),
 		},
 		{
 			in: `{ foo = "bar" }|logfmt|addr!=ip("1.2.3.4")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("addr", log.LabelFilterNotEqual, "1.2.3.4"))},
+				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual))},
 			),
 		},
 		{
@@ -473,7 +473,7 @@ func TestParse(t *testing.T) {
 				MultiStageExpr{
 					newLabelParserExpr(OpParserTypeLogfmt, ""),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
-					newLabelFilterExpr(log.NewIPLabelFilter("addr", log.LabelFilterEqual, "1.2.3.4")),
+					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual)),
 				},
 			),
 		},
@@ -484,7 +484,7 @@ func TestParse(t *testing.T) {
 				MultiStageExpr{
 					newLabelParserExpr(OpParserTypeLogfmt, ""),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
-					newLabelFilterExpr(log.NewIPLabelFilter("addr", log.LabelFilterNotEqual, "1.2.3.4")),
+					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
 				},
 			),
 		},
@@ -494,9 +494,9 @@ func TestParse(t *testing.T) {
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
 					newLabelParserExpr(OpParserTypeLogfmt, ""),
-					newLabelFilterExpr(log.NewIPLabelFilter("remote_addr", log.LabelFilterEqual, "2.3.4.5")),
+					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
-					newLabelFilterExpr(log.NewIPLabelFilter("addr", log.LabelFilterEqual, "1.2.3.4")),
+					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual)),
 				},
 			),
 		},
@@ -506,9 +506,9 @@ func TestParse(t *testing.T) {
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
 					newLabelParserExpr(OpParserTypeLogfmt, ""),
-					newLabelFilterExpr(log.NewIPLabelFilter("remote_addr", log.LabelFilterNotEqual, "2.3.4.5")),
+					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterNotEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
-					newLabelFilterExpr(log.NewIPLabelFilter("addr", log.LabelFilterNotEqual, "1.2.3.4")),
+					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
 				},
 			),
 		},
@@ -518,9 +518,9 @@ func TestParse(t *testing.T) {
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
 					newLabelParserExpr(OpParserTypeLogfmt, ""),
-					newLabelFilterExpr(log.NewIPLabelFilter("remote_addr", log.LabelFilterEqual, "2.3.4.5")),
+					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
-					newLabelFilterExpr(log.NewIPLabelFilter("addr", log.LabelFilterNotEqual, "1.2.3.4")),
+					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
 				},
 			),
 		},
