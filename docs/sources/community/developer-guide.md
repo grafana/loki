@@ -1,3 +1,12 @@
+---
+title: Developer Guide
+---
+
+# Developer Guide
+
+This guide tries to ease making contributions to Loki.
+
+<div class="mermaid">
 sequenceDiagram
     participant l as Loki
     participant handler as transport.Handler
@@ -49,3 +58,5 @@ sequenceDiagram
     codec-->>-lr: http.Response
     lr-->>-r: http.Response
     r-->>-handler: http.Response
+</div>
+<script async src="https://unpkg.com/mermaid@8.2.3/dist/mermaid.min.js"></script>
