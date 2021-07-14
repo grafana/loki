@@ -152,10 +152,10 @@ func Test_IPLabelFilterOp(t *testing.T) {
 		{
 			name:          "not equal operator",
 			pat:           "192.168.0.2",
-			op:            LabelFilterEqual,
+			op:            LabelFilterNotEqual,
 			label:         "addr",
-			val:           []byte("192.168.0.1"), // no match
-			expectedMatch: false,
+			val:           []byte("192.168.0.1"), // match because !=ip("192.168.0.2")
+			expectedMatch: true,
 		},
 		{
 			name:  "great than operator-not-supported",

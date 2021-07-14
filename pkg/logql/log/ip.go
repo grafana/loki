@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"unicode"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"inet.af/netaddr"
 )
 
@@ -47,6 +48,9 @@ type IPFilter struct {
 
 	// filter `operation` used during label filter.
 	labelOp LabelFilterType
+
+	// filter `operation` used during line filter.
+	lineOp labels.MatchType
 }
 
 func newIPFilter(pattern string) *IPFilter {
@@ -60,15 +64,18 @@ func newIPFilter(pattern string) *IPFilter {
 }
 
 // NewIPLineFilter is used to construct ip filter as a `LineFilter`
-func NewIPLineFilter(pattern string) *IPFilter {
-	return newIPFilter(pattern)
+func NewIPLineFilter(pattern string, op labels.MatchType) *IPFilter {
+	filter := newIPFilter(pattern)
+	filter.matchType = IPMatchLine
+	filter.lineOp = op
+	return filter
 }
 
 // NewIPLabelFilter is used to construct ip filter as label filter for the given `label`.
 func NewIPLabelFilter(label string, op LabelFilterType, pattern string) *IPFilter {
 	filter := newIPFilter(pattern)
-	filter.labelName = label
 	filter.matchType = IPMatchLabel
+	filter.labelName = label
 	filter.labelOp = op
 	return filter
 }
@@ -120,9 +127,16 @@ func (ipf *IPFilter) filter(line []byte) bool {
 	return false
 }
 
-// Filter implement `Filterer` interface.
+// Filter implement `Filterer` interface. Used by `LineFilter`
 func (ipf *IPFilter) Filter(line []byte) bool {
-	return ipf.filter(line)
+	ok := ipf.filter(line)
+
+	fmt.Println("linefilter here?", "op", ipf.lineOp, "equal?", ipf.lineOp == labels.MatchNotEqual)
+
+	if ipf.lineOp == labels.MatchNotEqual {
+		return !ok
+	}
+	return ok
 }
 
 // ToStage implements `Filterer` interface.
@@ -139,25 +153,29 @@ func (ipf *IPFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		return line, false
 	}
 
-	if ipf.matchType == IPMatchLabel {
+	switch ipf.matchType {
+	case IPMatchLine:
+		if ipf.lineOp == labels.MatchNotEqual {
+			return line, !ipf.filter(line)
+		}
+		return line, ipf.filter(line)
+	case IPMatchLabel:
 		v, ok := lbs.Get(ipf.labelName)
 		if !ok {
 			// we have not found the corresponding label.
 			return line, false
 		}
-
-		input := []byte(v)
 		switch ipf.labelOp {
 		case LabelFilterEqual:
-			return line, ipf.filter(input)
+			return line, ipf.filter([]byte(v))
 		case LabelFilterNotEqual:
-			return line, !ipf.filter(input)
+			return line, !ipf.filter([]byte(v))
 		default:
 			lbs.SetErr(ErrIPFilterInvalidOperation.Error())
+			return line, false
 		}
 	}
-
-	return line, ipf.filter(line)
+	return line, false
 }
 
 // `RequiredLabelNames` implements `Stage` interface
@@ -167,8 +185,12 @@ func (ipf *IPFilter) RequiredLabelNames() []string {
 
 // `String` implements fmt.Stringer inteface, by which also implements `LabelFilterer` inteface.
 func (ipf *IPFilter) String() string {
+	eq := "=" // LabelMatchNotEqual emits `==` string. which we don't want.
 	if ipf.matchType == IPMatchLabel {
-		return fmt.Sprintf("%s=ip(%q)", ipf.labelName, ipf.pattern)
+		if ipf.labelOp == LabelFilterNotEqual {
+			eq = "!="
+		}
+		return fmt.Sprintf("%s%sip(%q)", ipf.labelName, eq, ipf.pattern)
 	}
 	return fmt.Sprintf("ip(%q)", ipf.pattern)
 }
