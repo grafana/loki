@@ -111,12 +111,12 @@ func Test_IPFilter(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ip := newIPFilter(c.pat)
+			ip, err := newIPFilter(c.pat)
 			if c.fail {
-				assert.Error(t, c.err, ip.patternError)
+				assert.Error(t, c.err, err)
 				return
 			}
-			assert.NoError(t, ip.patternError)
+			assert.NoError(t, err)
 
 			got := make([]int, 0)
 			for i, in := range c.input {
@@ -129,11 +129,11 @@ func Test_IPFilter(t *testing.T) {
 	}
 }
 
-func Test_IPLabelFilterOp(t *testing.T) {
+func Test_IPLabelFilterTy(t *testing.T) {
 	cases := []struct {
 		name          string
 		pat           string
-		op            LabelFilterType
+		ty            LabelFilterType
 		label         string
 		val           []byte
 		expectedMatch bool
@@ -144,7 +144,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 		{
 			name:          "equal operator",
 			pat:           "192.168.0.1",
-			op:            LabelFilterEqual,
+			ty:            LabelFilterEqual,
 			label:         "addr",
 			val:           []byte("192.168.0.1"),
 			expectedMatch: true,
@@ -152,7 +152,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 		{
 			name:          "not equal operator",
 			pat:           "192.168.0.2",
-			op:            LabelFilterNotEqual,
+			ty:            LabelFilterNotEqual,
 			label:         "addr",
 			val:           []byte("192.168.0.1"), // match because !=ip("192.168.0.2")
 			expectedMatch: true,
@@ -160,7 +160,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 		{
 			name:  "great than operator-not-supported",
 			pat:   "192.168.0.2",
-			op:    LabelFilterGreaterThan, // not supported
+			ty:    LabelFilterGreaterThan, // not supported
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
@@ -169,7 +169,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 		{
 			name:  "great than or equal to operator-not-supported",
 			pat:   "192.168.0.2",
-			op:    LabelFilterGreaterThanOrEqual, // not supported
+			ty:    LabelFilterGreaterThanOrEqual, // not supported
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
@@ -178,7 +178,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 		{
 			name:  "less than operator-not-supported",
 			pat:   "192.168.0.2",
-			op:    LabelFilterLesserThan, // not supported
+			ty:    LabelFilterLesserThan, // not supported
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
@@ -187,7 +187,7 @@ func Test_IPLabelFilterOp(t *testing.T) {
 		{
 			name:  "less than or equal to operator-not-supported",
 			pat:   "192.168.0.2",
-			op:    LabelFilterLesserThanOrEqual, // not supported
+			ty:    LabelFilterLesserThanOrEqual, // not supported
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
@@ -197,8 +197,8 @@ func Test_IPLabelFilterOp(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			lf := NewIPLabelFilter(c.label, c.op, c.pat)
-			require.NoError(t, lf.patternError)
+			lf := NewIPLabelFilter(c.pat, c.label, c.ty)
+			require.NoError(t, lf.patError)
 
 			lbs := labels.Labels{labels.Label{Name: c.label, Value: string(c.val)}}
 			lbb := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
@@ -214,6 +214,62 @@ func Test_IPLabelFilterOp(t *testing.T) {
 	}
 }
 
+func Test_IPLineFilterTy(t *testing.T) {
+	cases := []struct {
+		name          string
+		pat           string
+		ty            labels.MatchType
+		line          []byte
+		expectedMatch bool
+
+		fail bool
+		err  error
+	}{
+		{
+			name:          "equal operator",
+			pat:           "192.168.0.1",
+			ty:            labels.MatchEqual,
+			line:          []byte("192.168.0.1"),
+			expectedMatch: true,
+		},
+		{
+			name:          "not equal operator",
+			pat:           "192.168.0.2",
+			ty:            labels.MatchNotEqual,
+			line:          []byte("192.168.0.1"), // match because !=ip("192.168.0.2")
+			expectedMatch: true,
+		},
+		{
+			name: "regex not equal",
+			pat:  "192.168.0.2",
+			ty:   labels.MatchNotRegexp, // not supported
+			line: []byte("192.168.0.1"),
+			fail: true,
+			err:  ErrIPFilterInvalidOperation,
+		},
+		{
+			name: "regex equal",
+			pat:  "192.168.0.2",
+			ty:   labels.MatchRegexp, // not supported
+			line: []byte("192.168.0.1"),
+			fail: true,
+			err:  ErrIPFilterInvalidOperation,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			lf, err := NewIPLineFilter(c.pat, c.ty)
+			if c.fail {
+				require.Error(t, err)
+				return
+			}
+			ok := lf.filterTy(c.line, c.ty)
+			assert.Equal(t, c.expectedMatch, ok)
+		})
+	}
+}
+
 func Benchmark_IPFilter(b *testing.B) {
 	b.ReportAllocs()
 
@@ -222,8 +278,6 @@ func Benchmark_IPFilter(b *testing.B) {
 		[]byte(`vpn <missing-ip> connected to vm just wanted to make some long line without match`),
 		[]byte(`vpn ::1 connected to vm just wanted to make some long line with match at the end 127.0.0.1`),
 	}
-	lbbb := NewBaseLabelsBuilder()
-	lbb := lbbb.ForLabels(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, 0)
 
 	for _, pattern := range []string{
 		"127.0.0.1",
@@ -231,14 +285,13 @@ func Benchmark_IPFilter(b *testing.B) {
 		"192.168.4.5/16",
 	} {
 		b.Run(pattern, func(b *testing.B) {
-			stage := newIPFilter(pattern)
-			require.Nil(b, stage.patternError)
+			stage, err := newIPFilter(pattern)
+			require.NoError(b, err)
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
 				for _, l := range line {
-					lbb.Reset()
-					_, _ = stage.Process(l, lbb)
+					_ = stage.filter(l)
 				}
 			}
 		})

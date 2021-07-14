@@ -308,14 +308,11 @@ func (e *lineFilterExpr) Filter() (log.Filterer, error) {
 	var f log.Filterer
 
 	if e.op == OpFilterIP {
-		// ip() supports only |= (matchEqual) and !=(matchNotEqual) matchtypes
-		switch e.ty {
-		case labels.MatchEqual, labels.MatchNotEqual:
-		default:
-			return nil, log.ErrIPFilterInvalidOperation
+		var err error
+		f, err = log.NewIPLineFilter(e.match, e.ty)
+		if err != nil {
+			return nil, err
 		}
-
-		f = log.NewIPLineFilter(e.match, e.ty)
 	} else {
 		var err error // to avoid `f` being shadowed.
 		f, err = log.NewFilter(e.match, e.ty)
