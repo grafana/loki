@@ -32,8 +32,16 @@ sequenceDiagram
     ast-->>-instant: logql.Query
     instant->>+query: Exec
 
-    query-->>query: Eval
-    query-->>Downstreamer: ???
+    query->>+query: Eval
+    query->>+query: evalSample
+    query->>+DownstreamEvaluator: StepEvaluator
+    DownstreamEvaluator->>+DownstreamEvaluator: Downstream
+    
+    DownstreamEvaluator-->>-query: StepEvaluator
+    query->>+StepEvaluator: Next
+    StepEvaluator-->>-query: promql.Vector
+    query-->>-query: promql_parser.Value
+    query-->>-query: logql.engine.query
 
     query-->>-instant: logqlmodel.Result
     instant-->>-lr: LokiResponse | LokiPromResponse
