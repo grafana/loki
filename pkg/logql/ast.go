@@ -315,7 +315,7 @@ func (e *lineFilterExpr) Filter() (log.Filterer, error) {
 			return nil, log.ErrIPFilterInvalidOperation
 		}
 
-		f = log.NewIPLineFilter(e.match)
+		f = log.NewIPLineFilter(e.match, e.ty)
 	} else {
 		var err error // to avoid `f` being shadowed.
 		f, err = log.NewFilter(e.match, e.ty)

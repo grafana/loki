@@ -249,11 +249,13 @@ filterOp:
 
 lineFilter:
     filter STRING                                             { $$ = newLineFilterExpr($1, "", $2,) }
-  | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4) }
+  | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4)}
+  ;
 
 lineFilters:
     lineFilter                { $$ = $1 }
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
+  ;
 
 labelParser:
     JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
