@@ -7,7 +7,7 @@ weight: 150
 Grafana Loki is a log aggregation tool,
 and it is the core of a fully-featured logging stack.
 
-Loki is a key-value datastore optimized for efficiently holding log data.
+Loki is a datastore optimized for efficiently holding log data.
 The efficient indexing of log data
 distinguishes Loki from other logging systems.
 Unlike other logging systems, a Loki index is built from labels,
@@ -75,6 +75,5 @@ and allows for efficient query execution.
 
     Loki seamlessly integrates with Grafana,
     providing a complete observability stack.
-
 
 
