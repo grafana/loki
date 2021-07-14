@@ -21,7 +21,7 @@ func generateData(enc Encoding, chunksCount int) ([]Chunk, uint64) {
 
 	for n := 0; n < chunksCount; n++ {
 		entry := logprotoEntry(0, testdata.LogString(0))
-		c := NewMemChunk(enc, testBlockSize, testTargetSize)
+		c := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
 		for c.SpaceFor(entry) {
 			size += uint64(len(entry.Line))
 			_ = c.Append(entry)

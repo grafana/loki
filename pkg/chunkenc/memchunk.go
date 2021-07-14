@@ -48,6 +48,15 @@ type HeadBlockFmt byte
 
 func (f HeadBlockFmt) Byte() byte { return byte(f) }
 
+func (f HeadBlockFmt) String() string {
+	switch {
+	case f < UnorderedHeadBlockFmt:
+		return "ordered"
+	default:
+		return "unordered"
+	}
+}
+
 const (
 	_ HeadBlockFmt = iota
 	// placeholders to start splitting chunk formats vs head block
@@ -93,6 +102,7 @@ type MemChunk struct {
 	// the chunk format default to v2
 	format   byte
 	encoding Encoding
+	headFmt  HeadBlockFmt
 }
 
 type block struct {
@@ -309,16 +319,23 @@ type entry struct {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
+func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	c := &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
 		blocks:     []block{},
 
-		head:   &headBlock{},
 		format: DefaultChunkFormat,
 
 		encoding: enc,
+		headFmt:  head,
+	}
+
+	switch {
+	case head < UnorderedHeadBlockFmt:
+		c.head = &headBlock{}
+	default:
+		c.head = newUnorderedHeadBlock()
 	}
 
 	return c
@@ -563,12 +580,19 @@ func (c *MemChunk) CheckpointSize() (chunk, head int) {
 	return c.BytesSize(), c.head.CheckpointSize()
 }
 
-func MemchunkFromCheckpoint(chk, head []byte, blockSize int, targetSize int) (*MemChunk, error) {
+func MemchunkFromCheckpoint(chk, head []byte, desired HeadBlockFmt, blockSize int, targetSize int) (*MemChunk, error) {
 	mc, err := NewByteChunk(chk, blockSize, targetSize)
 	if err != nil {
 		return nil, err
 	}
-	return mc, mc.head.LoadBytes(head)
+	h, err := HeadFromCheckpoint(head, desired)
+	if err != nil {
+		return nil, err
+	}
+
+	mc.head = h
+	mc.headFmt = desired
+	return mc, nil
 }
 
 // Encoding implements Chunk.
@@ -642,7 +666,7 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 
 	// If the head block is empty but there are cut blocks, we have to make
 	// sure the new entry is not out of order compared to the previous block
-	if c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
+	if c.headFmt < UnorderedHeadBlockFmt && c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
 		return ErrOutOfOrder
 	}
 
@@ -805,7 +829,7 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 	// Using defaultBlockSize for target block size.
 	// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
 	// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-	newChunk := NewMemChunk(c.Encoding(), defaultBlockSize, c.CompressedSize())
+	newChunk := NewMemChunk(c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
 
 	for itr.Next() {
 		entry := itr.Entry()
