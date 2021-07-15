@@ -135,6 +135,8 @@ While line filter expressions could be placed anywhere in a pipeline, it is almo
 
 For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line_format "{{.err}}"` will always run faster than  `{job="mysql"} | json | line_format "{{.message}}" |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
 
+Line filter also have built-in IP matcher support. It takes the form `<filter-op> ip("<pattern>")`. Only two filter operators are supported `|=`(equality) and `!=`(inequality). And `pattern` can be single IP, IP range or CIDR pattern. [Separate doc](./ip.md) explains how to use IP matcher in detail.
+
 #### Parser Expression
 
 Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](#metric-queries).
@@ -432,6 +434,8 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 ```
 
 > Label filter expressions are the only expression allowed after the [unwrap expression](#unwrapped-range-aggregations). This is mainly to allow filtering errors from the metric extraction (see [errors](#pipeline-errors)).
+
+Label filter also have built-in IP matcher support. It takes the form `<label_identifer> <op> ip("<pattern>")`. Only two filter operators are supported `=`(equality) and `!=`(inequality). And `pattern` can be single IP, IP range or CIDR pattern. [Separate doc](./ip.md) explains how to use IP matcher in detail.
 
 #### Line Format Expression
 
