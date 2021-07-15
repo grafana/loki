@@ -60,6 +60,7 @@ var tokens = map[string]int{
 	OpParserTypeLogfmt:  LOGFMT,
 	OpParserTypeUnpack:  UNPACK,
 	OpParserTypePattern: PATTERN,
+	OpParserTypeAwk:     AWK,
 
 	// fmt
 	OpFmtLabel: LABEL_FMT,
