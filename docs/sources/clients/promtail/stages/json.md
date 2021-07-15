@@ -97,6 +97,30 @@ and append the following key-value pairs to the set of extracted data:
 
 - `user`: `marco`
 
+Alternatively you can use a `.` between keys to reference sub-keys in a singe pipeline stage:
+
+```yaml
+- json:
+    expressions:
+      output:    log
+      stream:    stream
+      timestamp: time
+      extra.user:
+```
+so given log line:
+
+```
+{"log":"log message\n","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z","extra":"{\"user\":\"marco\"}"}
+```
+
+This single stage would create the following key-value pairs in the set of
+extracted data:
+
+- `output`: `log message\n`
+- `stream`: `stderr`
+- `timestamp`: `2019-04-30T02:12:41.8443515`
+- `extra.user`: `marco`
+
 ### Using a JMESPath Literal
 
 This pipeline uses a literal JMESPath expression to parse JSON fields with
