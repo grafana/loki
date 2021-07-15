@@ -36,7 +36,7 @@ func unquoteBytes(s []byte) (t []byte, ok bool) {
 	r := 0
 	for r < len(s) {
 		c := s[r]
-		if c == '\\' || c == '"' || c < ' ' {
+		if c == '\\' || c == '"' {
 			break
 		}
 		if c < utf8.RuneSelf {
@@ -118,8 +118,8 @@ func unquoteBytes(s []byte) (t []byte, ok bool) {
 				w += utf8.EncodeRune(b[w:], rr)
 			}
 
-		// Quote, control characters are invalid.
-		case c == '"', c < ' ':
+		// Unescaped quote is invalid.
+		case c == '"':
 			return
 
 		// ASCII
