@@ -42,6 +42,7 @@ type server struct {
 	tms               *targets.TargetManagers
 	externalURL       *url.URL
 	healthCheckTarget bool
+	promtailCfg       string
 }
 
 // Config extends weaveworks server config
@@ -67,7 +68,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // New makes a new Server
-func New(cfg Config, log log.Logger, tms *targets.TargetManagers) (Server, error) {
+func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg string) (Server, error) {
 	if cfg.Disable {
 		return newNoopServer(log), nil
 	}
@@ -93,6 +94,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers) (Server, error
 		tms:               tms,
 		externalURL:       externalURL,
 		healthCheckTarget: healthCheckTargetFlag,
+		promtailCfg:       promtailCfg,
 	}
 
 	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), 303))
@@ -100,6 +102,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers) (Server, error
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
+	serv.HTTP.Path("/config").Handler(http.HandlerFunc(serv.config))
 	serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 	return serv, nil
 }
@@ -169,6 +172,16 @@ func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 				return
 			},
 		},
+	})
+}
+
+func (s *server) config(rw http.ResponseWriter, req *http.Request) {
+	executeTemplate(req.Context(), rw, templateOptions{
+		Data:         s.promtailCfg,
+		BuildVersion: version.Info(),
+		Name:         "config.html",
+		PageTitle:    "Config",
+		ExternalURL:  s.externalURL,
 	})
 }
 
