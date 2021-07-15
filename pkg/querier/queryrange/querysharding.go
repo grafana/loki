@@ -136,7 +136,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 				Status: loghttp.QueryStatusSuccess,
 				Data: queryrange.PrometheusData{
 					ResultType: loghttp.ResultTypeMatrix,
-					Result:     toProto(value.(loghttp.Matrix)),
+					Result:     toProtoMatrix(value.(loghttp.Matrix)),
 				},
 			},
 			Statistics: res.Statistics,

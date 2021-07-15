@@ -389,7 +389,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 					Status: resp.Status,
 					Data: queryrange.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
-						Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
+						Result:     toProtoMatrix(resp.Data.Result.(loghttp.Matrix)),
 					},
 					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
 				},
@@ -667,7 +667,7 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 	return results
 }
 
-func toProto(m loghttp.Matrix) []queryrange.SampleStream {
+func toProtoMatrix(m loghttp.Matrix) []queryrange.SampleStream {
 	if len(m) == 0 {
 		return nil
 	}
