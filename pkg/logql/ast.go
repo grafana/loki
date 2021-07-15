@@ -239,20 +239,30 @@ type lineFilterExpr struct {
 	left  *lineFilterExpr
 	ty    labels.MatchType
 	match string
+	op    string
 	implicit
 }
 
-func newLineFilterExpr(left *lineFilterExpr, ty labels.MatchType, match string) *lineFilterExpr {
+func newLineFilterExpr(ty labels.MatchType, op, match string) *lineFilterExpr {
 	return &lineFilterExpr{
-		left:  left,
 		ty:    ty,
 		match: match,
+		op:    op,
+	}
+}
+
+func newNestedLineFilterExpr(left *lineFilterExpr, right *lineFilterExpr) *lineFilterExpr {
+	return &lineFilterExpr{
+		left:  left,
+		ty:    right.ty,
+		match: right.match,
+		op:    right.op,
 	}
 }
 
 // AddFilterExpr adds a filter expression to a logselector expression.
-func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, match string) (LogSelectorExpr, error) {
-	filter := newLineFilterExpr(nil, ty, match)
+func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) (LogSelectorExpr, error) {
+	filter := newLineFilterExpr(ty, op, match)
 	switch e := expr.(type) {
 	case *matchersExpr:
 		return newPipelineExpr(e, MultiStageExpr{filter}), nil
@@ -283,14 +293,32 @@ func (e *lineFilterExpr) String() string {
 		sb.WriteString("!=")
 	}
 	sb.WriteString(" ")
+	if e.op == "" {
+		sb.WriteString(strconv.Quote(e.match))
+		return sb.String()
+	}
+	sb.WriteString(e.op)
+	sb.WriteString("(")
 	sb.WriteString(strconv.Quote(e.match))
+	sb.WriteString(")")
 	return sb.String()
 }
 
 func (e *lineFilterExpr) Filter() (log.Filterer, error) {
-	f, err := log.NewFilter(e.match, e.ty)
-	if err != nil {
-		return nil, err
+	var f log.Filterer
+
+	if e.op == OpFilterIP {
+		var err error
+		f, err = log.NewIPLineFilter(e.match, e.ty)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var err error // to avoid `f` being shadowed.
+		f, err = log.NewFilter(e.match, e.ty)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if e.left != nil {
 		nextFilter, err := e.left.Filter()
@@ -360,6 +388,12 @@ func (e *labelParserExpr) String() string {
 type labelFilterExpr struct {
 	log.LabelFilterer
 	implicit
+}
+
+func newLabelFilterExpr(filterer log.LabelFilterer) *labelFilterExpr {
+	return &labelFilterExpr{
+		LabelFilterer: filterer,
+	}
 }
 
 func (e *labelFilterExpr) Shardable() bool { return true }
@@ -630,6 +664,9 @@ const (
 	OpConvDurationSeconds = "duration_seconds"
 
 	OpLabelReplace = "label_replace"
+
+	// function filters
+	OpFilterIP = "ip"
 )
 
 func IsComparisonOperator(op string) bool {
