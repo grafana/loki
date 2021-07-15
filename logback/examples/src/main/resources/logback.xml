@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration debug="true">
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <Pattern>%d{YYY-dd-MM HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</Pattern>
+    </encoder>
+  </appender>
+   <appender name="loki" class="com.grafana.loki.LokiAppender">
+    <encoder>
+      <Pattern>%d{YYY-dd-MM HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</Pattern>
+    </encoder>
+    <lokiConfig>
+    	<url>http://localhost:3100/loki/api/v1/push</url>
+    	<tenantID></tenantID>
+    	<batchWaitSeconds>1</batchWaitSeconds>
+    	<batchSizeBytes>102400</batchSizeBytes>
+    	<username></username>
+    	<password></password>
+    	<trustStore></trustStore>
+    	<trustStorePassword></trustStorePassword>
+    	<minDelaySeconds>1</minDelaySeconds>
+    	<maxDelaySeconds>300</maxDelaySeconds>
+    	<maxRetries>10</maxRetries>
+    	<labels>
+    		<key>test</key>
+    		<value>value</value>
+    	</labels>
+    	<labels>
+    		<key>otherkey</key>
+    		<value>someothervalue</value>
+    	</labels>
+    </lokiConfig>
+  </appender>
+
+  <root level="debug">
+    <appender-ref ref="STDOUT" />
+    <appender-ref ref="loki"/>
+  </root>
+</configuration>
+
