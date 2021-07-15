@@ -30,7 +30,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 func Test_forEntriesEarlyReturn(t *testing.T) {
 	hb := newUnorderedHeadBlock()
 	for i := 0; i < 10; i++ {
-		hb.append(int64(i), fmt.Sprint(i))
+		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i)))
 	}
 
 	// forward
@@ -143,10 +143,10 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			hb := newUnorderedHeadBlock()
 			for _, e := range tc.input {
-				hb.append(e.t, e.s)
+				require.Nil(t, hb.Append(e.t, e.s))
 			}
 
-			itr := hb.iterator(
+			itr := hb.Iterator(
 				context.Background(),
 				tc.dir,
 				0,
@@ -205,10 +205,10 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			hb := newUnorderedHeadBlock()
 			for _, e := range tc.input {
-				hb.append(e.t, e.s)
+				require.Nil(t, hb.Append(e.t, e.s))
 			}
 
-			itr := hb.iterator(
+			itr := hb.Iterator(
 				context.Background(),
 				tc.dir,
 				tc.mint,
@@ -221,26 +221,44 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 	}
 }
 
-func Test_UnorderedHeadBlockCheckpointRoundtrip(t *testing.T) {
-	hb := newUnorderedHeadBlock()
-
+func TestHeadBlockInterop(t *testing.T) {
+	unordered, ordered := newUnorderedHeadBlock(), &headBlock{}
 	for i := 0; i < 100; i++ {
-		hb.append(int64(i), fmt.Sprint(i))
+		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i)))
+		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i)))
 	}
 
 	// turn to bytes
-	b, err := hb.CheckpointBytes(DefaultChunkFormat, nil)
+	b1, err := ordered.CheckpointBytes(nil)
+	require.Nil(t, err)
+	b2, err := unordered.CheckpointBytes(nil)
 	require.Nil(t, err)
 
-	// restore a copy from bytes
-	cpy := newUnorderedHeadBlock()
-	require.Nil(t, cpy.FromCheckpoint(b))
-
-	// ensure copy's bytes match original
-	cpyBytes, err := cpy.CheckpointBytes(DefaultChunkFormat, nil)
+	// Ensure we can recover ordered checkpoint into ordered headblock
+	recovered, err := HeadFromCheckpoint(b1, OrderedHeadBlockFmt)
 	require.Nil(t, err)
-	require.Equal(t, b, cpyBytes)
+	require.Equal(t, ordered, recovered)
 
+	// Ensure we can recover ordered checkpoint into unordered headblock
+	recovered, err = HeadFromCheckpoint(b1, UnorderedHeadBlockFmt)
+	require.Nil(t, err)
+	require.Equal(t, unordered, recovered)
+
+	// Ensure we can recover unordered checkpoint into ordered headblock
+	recovered, err = HeadFromCheckpoint(b2, OrderedHeadBlockFmt)
+	require.Nil(t, err)
+	require.Equal(t, ordered, recovered)
+
+	// Ensure we can recover unordered checkpoint into unordered headblock
+	recovered, err = HeadFromCheckpoint(b2, UnorderedHeadBlockFmt)
+	require.Nil(t, err)
+	require.Equal(t, unordered, recovered)
+}
+
+// ensure backwards compatibility from when chunk format
+// and head block format was split
+func TestChunkBlockFmt(t *testing.T) {
+	require.Equal(t, chunkFormatV3, byte(OrderedHeadBlockFmt))
 }
 
 func BenchmarkHeadBlockWrites(b *testing.B) {
@@ -254,14 +272,14 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	headBlockFn := func() func(int64, string) {
 		hb := &headBlock{}
 		return func(ts int64, line string) {
-			_ = hb.append(ts, line)
+			_ = hb.Append(ts, line)
 		}
 	}
 
 	unorderedHeadBlockFn := func() func(int64, string) {
 		hb := newUnorderedHeadBlock()
 		return func(ts int64, line string) {
-			hb.append(ts, line)
+			_ = hb.Append(ts, line)
 		}
 	}
 

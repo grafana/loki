@@ -283,9 +283,9 @@ func TestRoundtripV3(t *testing.T) {
 			require.Nil(t, err)
 
 			// have to populate then clear the head block or fail comparing against nil vs zero values
-			err = r.head.append(1, "1")
+			err = r.head.Append(1, "1")
 			require.Nil(t, err)
-			r.head.clear()
+			r.head.Reset()
 
 			require.Equal(t, c, r)
 		})
@@ -418,7 +418,7 @@ func TestGZIPChunkTargetSize(t *testing.T) {
 
 	require.NoError(t, chk.Close())
 
-	require.Equal(t, 0, chk.head.size)
+	require.Equal(t, 0, chk.head.UncompressedSize())
 
 	// Even though the seed is static above and results should be deterministic,
 	// we will allow +/- 10% variance
@@ -735,7 +735,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
-				if err := h.append(int64(i), "this is the append string"); err != nil {
+				if err := h.Append(int64(i), "this is the append string"); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -743,7 +743,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				iter := h.iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
+				iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
 
 				for iter.Next() {
 					_ = iter.Entry()
@@ -759,7 +759,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
-				if err := h.append(int64(i), "this is the append string"); err != nil {
+				if err := h.Append(int64(i), "this is the append string"); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -767,7 +767,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				iter := h.sampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
+				iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
 
 				for iter.Next() {
 					_ = iter.Sample()
@@ -896,11 +896,11 @@ func TestHeadBlockCheckpointing(t *testing.T) {
 	// ensure blocks are not cut
 	require.Equal(t, 0, len(c.blocks))
 
-	b, err := c.head.CheckpointBytes(c.format, nil)
+	b, err := c.head.CheckpointBytes(nil)
 	require.Nil(t, err)
 
 	hb := &headBlock{}
-	require.Nil(t, hb.FromCheckpoint(b))
+	require.Nil(t, hb.LoadBytes(b))
 	require.Equal(t, c.head, hb)
 }
 
