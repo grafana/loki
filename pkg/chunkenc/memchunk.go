@@ -9,6 +9,7 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"math"
 	"reflect"
 	"time"
 	"unsafe"
@@ -684,7 +685,36 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 // Close implements Chunk.
 // TODO: Fix this to check edge cases.
 func (c *MemChunk) Close() error {
-	return c.cut()
+	if err := c.cut(); err != nil {
+		return err
+	}
+	return c.reorder()
+}
+
+// reorder ensures all blocks in a chunk are in
+// monotonically increasing order.
+// This mutates
+func (c *MemChunk) reorder() error {
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
+	for _, b := range c.blocks {
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
+	}
+
+	if ordered {
+		return nil
+	}
+
+	// Otherwise, we need to rebuild the blocks
+	newC, err := c.Rebound(time.Unix(0, 0), time.Unix(0, math.MaxInt64))
+	if err != nil {
+		return err
+	}
+	*c = *newC.(*MemChunk)
+	return nil
 }
 
 // cut a new block and add it to finished blocks.
@@ -871,10 +901,7 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 		return nil, err
 	}
 
-	// Using defaultBlockSize for target block size.
-	// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-	// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-	newChunk := NewMemChunk(c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
+	newChunk := NewMemChunk(c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
 
 	for itr.Next() {
 		entry := itr.Entry()

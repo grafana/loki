@@ -487,3 +487,81 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func chunkFrom(xs []logproto.Entry) ([]byte, error) {
+	c := NewMemChunk(EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	for _, x := range xs {
+		if err := c.Append(&x); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := c.Close(); err != nil {
+		return nil, err
+	}
+	return c.Bytes()
+}
+
+func TestReorder(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		input    []logproto.Entry
+		expected []logproto.Entry
+	}{
+		{
+			desc: "unordered",
+			input: []logproto.Entry{
+				{
+					Timestamp: time.Unix(4, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(2, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(3, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "x",
+				},
+			},
+			expected: []logproto.Entry{
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(2, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(3, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(4, 0),
+					Line:      "x",
+				},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+			for _, x := range tc.input {
+				require.Nil(t, c.Append(&x))
+			}
+			require.Nil(t, c.Close())
+			b, err := c.Bytes()
+			require.Nil(t, err)
+
+			exp, err := chunkFrom(tc.expected)
+			require.Nil(t, err)
+
+			require.Equal(t, exp, b)
+		})
+
+	}
+}
