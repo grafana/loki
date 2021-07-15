@@ -75,6 +75,48 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
 
+func (r *LokiInstantRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *LokiInstantRequest) GetEnd() int64 {
+	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiInstantRequest) GetStart() int64 {
+	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiInstantRequest) WithStartEnd(s int64, e int64) queryrange.Request {
+	new := *r
+	new.TimeTs = time.Unix(0, s*int64(time.Millisecond))
+	return &new
+}
+
+func (r *LokiInstantRequest) WithQuery(query string) queryrange.Request {
+	new := *r
+	new.Query = query
+	return &new
+}
+
+func (r *LokiInstantRequest) WithShards(shards logql.Shards) *LokiInstantRequest {
+	new := *r
+	new.Shards = shards.Encode()
+	return &new
+}
+
+func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("query", r.GetQuery()),
+		otlog.String("ts", timestamp.Time(r.GetStart()).String()),
+		otlog.Int64("limit", int64(r.GetLimit())),
+		otlog.String("direction", r.GetDirection().String()),
+		otlog.String("shards", strings.Join(r.GetShards(), ",")),
+	)
+}
+
+func (*LokiInstantRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
+
 func (r *LokiSeriesRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
@@ -172,6 +214,19 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 			Step:   int64(req.Step) / 1e6,
 			Path:   r.URL.Path,
 			Shards: req.Shards,
+		}, nil
+	case InstantQueryOp:
+		req, err := loghttp.ParseInstantQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &LokiInstantRequest{
+			Query:     req.Query,
+			Limit:     req.Limit,
+			Direction: req.Direction,
+			TimeTs:    req.Ts.UTC(),
+			Path:      r.URL.Path,
+			Shards:    req.Shards,
 		}, nil
 	case SeriesOp:
 		req, err := logql.ParseAndValidateSeriesQuery(r)
@@ -334,7 +389,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 					Status: resp.Status,
 					Data: queryrange.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
-						Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
+						Result:     toProtoMatrix(resp.Data.Result.(loghttp.Matrix)),
 					},
 					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
 				},
@@ -612,7 +667,7 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 	return results
 }
 
-func toProto(m loghttp.Matrix) []queryrange.SampleStream {
+func toProtoMatrix(m loghttp.Matrix) []queryrange.SampleStream {
 	if len(m) == 0 {
 		return nil
 	}
@@ -628,6 +683,23 @@ func toProto(m loghttp.Matrix) []queryrange.SampleStream {
 		res = append(res, queryrange.SampleStream{
 			Labels:  cortexpb.FromMetricsToLabelAdapters(stream.Metric),
 			Samples: samples,
+		})
+	}
+	return res
+}
+
+func toProtoVector(v loghttp.Vector) []queryrange.SampleStream {
+	if len(v) == 0 {
+		return nil
+	}
+	res := make([]queryrange.SampleStream, 0, len(v))
+	for _, s := range v {
+		res = append(res, queryrange.SampleStream{
+			Samples: []cortexpb.Sample{{
+				Value:       float64(s.Value),
+				TimestampMs: int64(s.Timestamp),
+			}},
+			Labels: cortexpb.FromMetricsToLabelAdapters(s.Metric),
 		})
 	}
 	return res
@@ -652,27 +724,61 @@ func paramsFromRequest(req queryrange.Request) *paramsWrapper {
 }
 
 func (p paramsWrapper) Query() string {
-	return p.LokiRequest.Query
+	return p.GetQuery()
 }
 
 func (p paramsWrapper) Start() time.Time {
-	return p.StartTs
+	return p.GetStartTs()
 }
 
 func (p paramsWrapper) End() time.Time {
-	return p.EndTs
+	return p.GetEndTs()
 }
 
 func (p paramsWrapper) Step() time.Duration {
-	return time.Duration(p.LokiRequest.Step * 1e6)
+	return time.Duration(p.GetStep() * 1e6)
 }
 func (p paramsWrapper) Interval() time.Duration { return 0 }
 func (p paramsWrapper) Direction() logproto.Direction {
-	return p.LokiRequest.Direction
+	return p.GetDirection()
 }
 func (p paramsWrapper) Limit() uint32 { return p.LokiRequest.Limit }
 func (p paramsWrapper) Shards() []string {
-	return p.LokiRequest.Shards
+	return p.GetShards()
+}
+
+type paramsInstantWrapper struct {
+	*LokiInstantRequest
+}
+
+func paramsFromInstantRequest(req queryrange.Request) *paramsInstantWrapper {
+	return &paramsInstantWrapper{
+		LokiInstantRequest: req.(*LokiInstantRequest),
+	}
+}
+
+func (p paramsInstantWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsInstantWrapper) Start() time.Time {
+	return p.LokiInstantRequest.GetTimeTs()
+}
+
+func (p paramsInstantWrapper) End() time.Time {
+	return p.LokiInstantRequest.GetTimeTs()
+}
+
+func (p paramsInstantWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsInstantWrapper) Interval() time.Duration { return 0 }
+func (p paramsInstantWrapper) Direction() logproto.Direction {
+	return p.GetDirection()
+}
+func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
+func (p paramsInstantWrapper) Shards() []string {
+	return p.GetShards()
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrange.PrometheusResponseHeader {

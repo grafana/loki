@@ -423,6 +423,10 @@ func TestPostQueries(t *testing.T) {
 			t.Error("unexpected labels roundtripper called")
 			return nil, nil
 		}),
+		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected labels roundtripper called")
+			return nil, nil
+		}),
 		fakeLimits{},
 	).RoundTrip(req)
 	require.NoError(t, err)

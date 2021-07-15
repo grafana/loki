@@ -173,6 +173,7 @@ type InstantQuery struct {
 	Ts        time.Time
 	Limit     uint32
 	Direction logproto.Direction
+	Shards    []string
 }
 
 // ParseInstantQuery parses an InstantQuery request from an http request.
@@ -190,6 +191,7 @@ func ParseInstantQuery(r *http.Request) (*InstantQuery, error) {
 	if err != nil {
 		return nil, err
 	}
+	request.Shards = shards(r)
 
 	request.Direction, err = direction(r)
 	if err != nil {
