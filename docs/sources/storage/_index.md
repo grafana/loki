@@ -64,6 +64,10 @@ DynamoDB is a cloud database offered by AWS. It is a good candidate for a manage
 
 DynamoDB is susceptible to rate limiting, particularly due to overconsuming what is called [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html). This can be controlled via the [provisioning](#provisioning) configs in the table manager.
 
+#### Costs and free tier
+
+Using Loki with DynamoDB will not fit in AWS free tier because it need far more read/write operations (ReadCapacityUnit-Hrs and WriteCapacityUnit-Hrs in AWS terms) that is covered by it. Free tier covers 18,600 Read and Write Capacity Unit-Hours per month. When using Loki with DynamoDB index you can expect about 750,000 Read and 450,000 Write Capacity Unit-Hours per month. These are highly approximate numbers because they are depend on a lot of factors, but you should consider monitoring your DynamoDB consumption to avoid unexpected costs.
+
 ### BoltDB
 
 BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](../operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
