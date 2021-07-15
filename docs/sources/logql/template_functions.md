@@ -108,7 +108,7 @@ Signature:
 `regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [Regexp.replaceAll documentation](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for more examples.
 
 ```template
-`{{ regexReplaceAllLiteral "(a*)bc" .some_label "${1}a" }}`
+`{{ regexReplaceAll "(a*)bc" .some_label "${1}a" }}`
 ```
 
 `regexReplaceAllLiteral` function returns a copy of the input string and replaces matches of the Regexp with the replacement string replacement. The replacement string is substituted directly, without using Expand.
