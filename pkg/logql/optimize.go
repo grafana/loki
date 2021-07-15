@@ -4,10 +4,11 @@ package logql
 func optimizeSampleExpr(expr SampleExpr) (SampleExpr, error) {
 	var skip bool
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
-	walkSampleExpr(expr, func(e SampleExpr) {
+	expr.Walk(func(e interface{}) {
 		switch e.(type) {
 		case *ConcatSampleExpr, *DownstreamSampleExpr:
 			skip = true
+			return
 		}
 	})
 	if skip {
@@ -25,8 +26,8 @@ func optimizeSampleExpr(expr SampleExpr) (SampleExpr, error) {
 
 // removeLineformat removes unnecessary line_format within a SampleExpr.
 func removeLineformat(expr SampleExpr) {
-	walkSampleExpr(expr, func(e SampleExpr) {
-		rangeExpr, ok := e.(*rangeAggregationExpr)
+	expr.Walk(func(e interface{}) {
+		rangeExpr, ok := e.(*RangeAggregationExpr)
 		if !ok {
 			return
 		}
@@ -35,13 +36,13 @@ func removeLineformat(expr SampleExpr) {
 			rangeExpr.operation == OpRangeTypeBytesRate {
 			return
 		}
-		pipelineExpr, ok := rangeExpr.left.left.(*pipelineExpr)
+		pipelineExpr, ok := rangeExpr.left.left.(*PipelineExpr)
 		if !ok {
 			return
 		}
 		temp := pipelineExpr.pipeline[:0]
 		for i, s := range pipelineExpr.pipeline {
-			_, ok := s.(*lineFmtExpr)
+			_, ok := s.(*LineFmtExpr)
 			if !ok {
 				temp = append(temp, s)
 				continue
@@ -50,11 +51,11 @@ func removeLineformat(expr SampleExpr) {
 			// in which case it could be useful for further processing.
 			var found bool
 			for j := i; j < len(pipelineExpr.pipeline); j++ {
-				if _, ok := pipelineExpr.pipeline[j].(*labelParserExpr); ok {
+				if _, ok := pipelineExpr.pipeline[j].(*LabelParserExpr); ok {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.pipeline[j].(*lineFilterExpr); ok {
+				if _, ok := pipelineExpr.pipeline[j].(*LineFilterExpr); ok {
 					found = true
 					break
 				}
@@ -67,42 +68,9 @@ func removeLineformat(expr SampleExpr) {
 		pipelineExpr.pipeline = temp
 		// transform into a matcherExpr if there's no more pipeline.
 		if len(pipelineExpr.pipeline) == 0 {
-			rangeExpr.left.left = &matchersExpr{
+			rangeExpr.left.left = &MatchersExpr{
 				matchers: rangeExpr.left.left.Matchers(),
 			}
 		}
 	})
-}
-
-// walkSampleExpr traverses in depth-first order a SampleExpr.
-func walkSampleExpr(expr SampleExpr, visitor func(e SampleExpr)) {
-	visitor(expr)
-	for _, c := range children(expr) {
-		walkSampleExpr(c, visitor)
-	}
-}
-
-// children returns children node of a SampleExpr.
-func children(expr SampleExpr) []SampleExpr {
-	switch e := expr.(type) {
-	case *rangeAggregationExpr:
-		return []SampleExpr{}
-	case *vectorAggregationExpr:
-		return []SampleExpr{e.left}
-	case *binOpExpr:
-		return []SampleExpr{e.SampleExpr, e.RHS}
-	case *literalExpr:
-		return []SampleExpr{}
-	case *labelReplaceExpr:
-		return []SampleExpr{e.left}
-	case *DownstreamSampleExpr:
-		return []SampleExpr{e.SampleExpr}
-	case *ConcatSampleExpr:
-		if e.next != nil {
-			return []SampleExpr{e.next}
-		}
-		return []SampleExpr{}
-	default:
-		panic("unknown sample expression")
-	}
 }

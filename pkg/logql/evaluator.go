@@ -167,8 +167,8 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	q Params,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
-	case *vectorAggregationExpr:
-		if rangExpr, ok := e.left.(*rangeAggregationExpr); ok && e.operation == OpTypeSum {
+	case *VectorAggregationExpr:
+		if rangExpr, ok := e.left.(*RangeAggregationExpr); ok && e.operation == OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
 			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr SampleExpr, p Params) (StepEvaluator, error) {
@@ -187,7 +187,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 			})
 		}
 		return vectorAggEvaluator(ctx, nextEv, e, q)
-	case *rangeAggregationExpr:
+	case *RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
 				Start:    q.Start().Add(-e.left.interval).Add(-e.left.offset),
@@ -200,9 +200,9 @@ func (ev *DefaultEvaluator) StepEvaluator(
 			return nil, err
 		}
 		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.left.offset)
-	case *binOpExpr:
+	case *BinOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
-	case *labelReplaceExpr:
+	case *LabelReplaceExpr:
 		return labelReplaceEvaluator(ctx, nextEv, e, q)
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
@@ -212,7 +212,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 func vectorAggEvaluator(
 	ctx context.Context,
 	ev SampleEvaluator,
-	expr *vectorAggregationExpr,
+	expr *VectorAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
 	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
@@ -404,7 +404,7 @@ func vectorAggEvaluator(
 
 func rangeAggEvaluator(
 	it iter.PeekingSampleIterator,
-	expr *rangeAggregationExpr,
+	expr *RangeAggregationExpr,
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
@@ -511,12 +511,12 @@ func (r absentRangeVectorEvaluator) Error() error {
 func binOpStepEvaluator(
 	ctx context.Context,
 	ev SampleEvaluator,
-	expr *binOpExpr,
+	expr *BinOpExpr,
 	q Params,
 ) (StepEvaluator, error) {
 	// first check if either side is a literal
-	leftLit, lOk := expr.SampleExpr.(*literalExpr)
-	rightLit, rOk := expr.RHS.(*literalExpr)
+	leftLit, lOk := expr.SampleExpr.(*LiteralExpr)
+	rightLit, rOk := expr.RHS.(*LiteralExpr)
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
@@ -904,7 +904,7 @@ func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 // non commutative operations, inverted should be true when the literalExpr is not the left argument.
 func literalStepEvaluator(
 	op string,
-	lit *literalExpr,
+	lit *LiteralExpr,
 	eval StepEvaluator,
 	inverted bool,
 	returnBool bool,
@@ -946,7 +946,7 @@ func literalStepEvaluator(
 func labelReplaceEvaluator(
 	ctx context.Context,
 	ev SampleEvaluator,
-	expr *labelReplaceExpr,
+	expr *LabelReplaceExpr,
 	q Params,
 ) (StepEvaluator, error) {
 	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)

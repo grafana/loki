@@ -173,7 +173,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 
 // evalSample evaluate a sampleExpr
 func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.Value, error) {
-	if lit, ok := expr.(*literalExpr); ok {
+	if lit, ok := expr.(*LiteralExpr); ok {
 		return q.evalLiteral(ctx, lit)
 	}
 
@@ -257,7 +257,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 	return result, stepEvaluator.Error()
 }
 
-func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (promql_parser.Value, error) {
+func (q *query) evalLiteral(_ context.Context, expr *LiteralExpr) (promql_parser.Value, error) {
 	s := promql.Scalar{
 		T: q.params.Start().UnixNano() / int64(time.Millisecond),
 		V: expr.value,
