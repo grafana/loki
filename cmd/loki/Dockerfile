@@ -16,7 +16,7 @@ COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 RUN addgroup -g 10001 -S loki && \
     adduser -u 10001 -S loki -G loki
 RUN mkdir -p /loki/rules && \
-    mkdir -p /loki/tmprules && \
+    mkdir -p /loki/rules-temp && \
     chown -R loki:loki /etc/loki /loki
 
 # See https://github.com/grafana/loki/issues/1928
