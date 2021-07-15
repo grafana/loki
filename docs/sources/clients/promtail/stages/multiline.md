@@ -72,7 +72,7 @@ We would like to collapse all lines of the traceback into one multiline block. I
 
 ### Custom Log Format
 
-The previous example assumed you had no control over the log format. Thus it required a more ellaborrate regular expression to match the first line. However, if you can control the log format of the system under observation we can simplify the first line matching.
+The previous example assumed you had no control over the log format. Thus it required a more elaborate regular expression to match the first line. However, if you can control the log format of the system under observation we can simplify the first line matching.
 
 This time we are looking at the logs of a simple [Akka HTTP service](https://doc.akka.io/docs/akka-http/current/introduction.html).
 
