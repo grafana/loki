@@ -30,6 +30,7 @@ func TestTransferOut(t *testing.T) {
 	f := newTestIngesterFactory(t)
 
 	ing := f.getIngester(time.Duration(0), t)
+	ing.cfg.UnorderedWrites = false // enforce ordered writes on old testware (transfers are deprecated).
 
 	// Push some data into our original ingester
 	ctx := user.InjectOrgID(context.Background(), "test")

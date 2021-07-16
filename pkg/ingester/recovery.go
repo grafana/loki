@@ -126,6 +126,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		stream.lastLine.ts = series.To
 		stream.lastLine.content = series.LastLine
 		stream.entryCt = series.EntryCt
+		stream.highestTs = series.HighestTs
 
 		if err != nil {
 			return err

@@ -30,11 +30,13 @@ message Series {
   uint64 fingerprint = 2;
   repeated cortexpb.LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
-  // Last timestamp of the last chunk.
+  // most recently pushed timestamp.
   google.protobuf.Timestamp to = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  // most recently pushed line.
   string lastLine = 6;
   // highest counter value for pushes to this stream.
   // Used to skip already applied entries during WAL replay.
   int64 entryCt = 7;
-
+  // highest timestamp pushed to this stream.
+  google.protobuf.Timestamp highestTs = 8 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 }
