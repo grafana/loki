@@ -183,14 +183,11 @@ func (s *stream) Push(
 
 	var bytesAdded int
 	prevNumChunks := len(s.chunks)
-	var lastChunkTimestamp time.Time
 	if prevNumChunks == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
 			chunk: s.NewChunk(),
 		})
 		chunksCreatedTotal.Inc()
-	} else {
-		_, lastChunkTimestamp = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 
 	var storedEntries []logproto.Entry
@@ -230,18 +227,16 @@ func (s *stream) Push(
 				chunk: s.NewChunk(),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
-			lastChunkTimestamp = time.Time{}
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus the max-chunk-age config.
-		if s.cfg.UnorderedWrites && s.highestTs.Add(-s.cfg.MaxChunkAge).Before(entries[i].Timestamp) {
+		if s.cfg.UnorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge).After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
 			storedEntries = append(storedEntries, entries[i])
-			lastChunkTimestamp = entries[i].Timestamp
-			s.lastLine.ts = lastChunkTimestamp
+			s.lastLine.ts = entries[i].Timestamp
 			s.lastLine.content = entries[i].Line
 			if s.highestTs.Before(entries[i].Timestamp) {
 				s.highestTs = entries[i].Timestamp
