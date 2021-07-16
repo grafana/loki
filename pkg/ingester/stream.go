@@ -229,8 +229,8 @@ func (s *stream) Push(
 			chunk = &s.chunks[len(s.chunks)-1]
 		}
 
-		// The validity window for unordered writes is the highest timestamp present minus the max-chunk-age config.
-		if s.cfg.UnorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge).After(entries[i].Timestamp) {
+		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
+		if s.cfg.UnorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
