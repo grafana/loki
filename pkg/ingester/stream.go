@@ -72,8 +72,17 @@ type stream struct {
 
 	labels       labels.Labels
 	labelsString string
-	lastLine     line
-	metrics      *ingesterMetrics
+
+	// most recently pushed line. This is used to prevent duplicate pushes.
+	// It also determines chunk synchronization when unordered writes are disabled.
+	lastLine line
+
+	// keeps track of the highest timestamp accepted by the stream.
+	// This is used when unordered writes are enabled to cap the validity window
+	// of accepted writes and for chunk synchronization.
+	highestTs time.Time
+
+	metrics *ingesterMetrics
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -113,6 +122,7 @@ func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics 
 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
+// DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 	if err != nil {
@@ -145,7 +155,11 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	hbType := chunkenc.OrderedHeadBlockFmt
+	if s.cfg.UnorderedWrites {
+		hbType = chunkenc.UnorderedHeadBlockFmt
+	}
+	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, hbType, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
 func (s *stream) Push(
@@ -198,7 +212,7 @@ func (s *stream) Push(
 		}
 
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
@@ -218,13 +232,20 @@ func (s *stream) Push(
 			chunk = &s.chunks[len(s.chunks)-1]
 			lastChunkTimestamp = time.Time{}
 		}
-		if err := chunk.chunk.Append(&entries[i]); err != nil {
+
+		// The validity window for unordered writes is the highest timestamp present minus the max-chunk-age config.
+		if s.cfg.UnorderedWrites && s.highestTs.Add(-s.cfg.MaxChunkAge).Before(entries[i].Timestamp) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
+		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
 			storedEntries = append(storedEntries, entries[i])
 			lastChunkTimestamp = entries[i].Timestamp
 			s.lastLine.ts = lastChunkTimestamp
 			s.lastLine.content = entries[i].Line
+			if s.highestTs.Before(entries[i].Timestamp) {
+				s.highestTs = entries[i].Timestamp
+			}
 			s.entryCt++
 
 			// length of string plus
@@ -307,15 +328,15 @@ func (s *stream) Push(
 
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters
 // cut the chunk for this stream at the same moment, so that new chunk will contain exactly the same entries.
-func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
-	if synchronizePeriod <= 0 || prevEntryTimestamp.IsZero() {
+func (s *stream) cutChunkForSynchronization(entryTimestamp, latestTs time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
+	if synchronizePeriod <= 0 || latestTs.IsZero() {
 		return false
 	}
 
 	// we use fingerprint as a jitter here, basically offsetting stream synchronization points to different
 	// this breaks if streams are mapped to different fingerprints on different ingesters, which is too bad.
 	cts := (uint64(entryTimestamp.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
-	pts := (uint64(prevEntryTimestamp.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
+	pts := (uint64(latestTs.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
 
 	// if current entry timestamp has rolled over synchronization period
 	if cts < pts {

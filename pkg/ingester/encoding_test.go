@@ -231,7 +231,7 @@ func dummyConf() *Config {
 
 func Test_EncodingChunks(t *testing.T) {
 	conf := dummyConf()
-	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
+	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
 	fillChunk(t, c)
 
 	from := []chunkDesc{
@@ -276,7 +276,7 @@ func Test_EncodingChunks(t *testing.T) {
 
 func Test_EncodingCheckpoint(t *testing.T) {
 	conf := dummyConf()
-	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
+	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
 	require.Nil(t, c.Append(&logproto.Entry{
 		Timestamp: time.Unix(1, 0),
 		Line:      "hi there",
