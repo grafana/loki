@@ -36,14 +36,10 @@ type tailer struct {
 	done    chan struct{}
 }
 
-func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
+func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, checkForBinary bool) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +52,15 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 		positions.Remove(path)
 	}
 
-	if err := checkIfBinary(file); err != nil {
-		return nil, err
+	if checkForBinary {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := checkIfBinary(file); err != nil {
+			return nil, err
+		}
 	}
 
 	tail, err := tail.TailFile(path, tail.Config{

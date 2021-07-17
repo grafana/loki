@@ -11,21 +11,15 @@ import (
 )
 
 func Test_checkIfBinary(t *testing.T) {
+	// from https://mimesniff.spec.whatwg.org/#terminology:
+	// A binary data byte is a byte in the range 0x00 to 0x08 (NUL to BS), the byte 0x0B (VT),
+	// a byte in the range 0x0E to 0x1A (SO to SUB), or a byte in the range 0x1C to 0x1F (FS to US).
+
 	blank := ""
 	for i := 0; i < 512; i++ {
 		blank += " "
 	}
-	nullBytes := []byte{0, 0, 0, 0, 0, 0, 0, 0}
-
-	// from https://datatracker.ietf.org/doc/html/draft-ietf-websec-mime-sniff#page-9
-	// +-------------------------+
-	// | Binary Data Byte Ranges |
-	// +-------------------------+
-	// | 0x00 -- 0x08            |
-	// | 0x0B                    |
-	// | 0x0E -- 0x1A            |
-	// | 0x1C -- 0x1F            |
-	// +-------------------------+
+	binaryBytes := []byte{0x00, 0x07, 0x0B, 0x0E, 0x19, 0x1C, 0x1D, 0x1F}
 
 	tests := []struct {
 		name   string
@@ -54,14 +48,14 @@ func Test_checkIfBinary(t *testing.T) {
 		},
 		{
 			// only the first 512 bytes are examined
-			name:   "blank text content followed by 8 NUL bytes",
-			reader: strings.NewReader(fmt.Sprintf("%s%s", blank, nullBytes)),
+			name:   "blank text content followed by 8 binary bytes",
+			reader: strings.NewReader(fmt.Sprintf("%s%s", blank, binaryBytes)),
 			err:    nil,
 		},
 		{
 			// only the first 512 bytes are examined
-			name:   "8 NUL bytes followed by 512 bytes of blank data",
-			reader: strings.NewReader(fmt.Sprintf("%s%s", nullBytes, blank)),
+			name:   "8 binary bytes followed by 512 bytes of blank data",
+			reader: strings.NewReader(fmt.Sprintf("%s%s", binaryBytes, blank)),
 			err:    binaryContentErr,
 		},
 		{
@@ -105,8 +99,8 @@ func Test_checkIfBinary(t *testing.T) {
 			err:    binaryContentErr,
 		},
 		{
-			name:   "slice of NUL bytes",
-			reader: bytes.NewBuffer(nullBytes),
+			name:   "slice of binary bytes",
+			reader: bytes.NewBuffer(binaryBytes),
 			err:    binaryContentErr,
 		},
 	}

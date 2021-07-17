@@ -27,15 +27,17 @@ const (
 
 // Config describes behavior for Target
 type Config struct {
-	SyncPeriod time.Duration `yaml:"sync_period"`
-	Stdin      bool          `yaml:"stdin"`
+	SyncPeriod     time.Duration `yaml:"sync_period"`
+	Stdin          bool          `yaml:"stdin"`
+	CheckForBinary bool          `yaml:"check_for_binary"`
 }
 
-// RegisterFlags with prefix registers flags where every name is prefixed by
+// RegisterFlagsWithPrefix with prefix registers flags where every name is prefixed by
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.SyncPeriod, prefix+"target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
 	f.BoolVar(&cfg.Stdin, prefix+"stdin", false, "Set to true to pipe logs to promtail.")
+	f.BoolVar(&cfg.CheckForBinary, prefix+"target.check-for-binary", true, "Whether to check for binary content before file is tailed.")
 }
 
 // RegisterFlags register flags.
@@ -282,7 +284,7 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p)
+		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.targetConfig.CheckForBinary)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 			continue

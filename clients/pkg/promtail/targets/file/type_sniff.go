@@ -9,7 +9,7 @@ import (
 
 var binaryContentErr = errors.New("content is binary")
 
-// checkIfBinary uses http.DetectContentType, which implements https://datatracker.ietf.org/doc/html/draft-ietf-websec-mime-sniff#page-9
+// checkIfBinary uses http.DetectContentType, which implements https://mimesniff.spec.whatwg.org/
 func checkIfBinary(r io.Reader) error {
 	reader := bufio.NewReader(r)
 
