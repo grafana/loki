@@ -1335,6 +1335,17 @@ targets.
 # Period to resync directories being watched and files being tailed to discover
 # new ones or stop watching removed ones.
 sync_period: "10s"
+
+# Use to pipe logs directly into promtail
+stdin: false
+
+# check_for_binary determines whether the first 512 bytes of each target file
+# should be examined to see if the content is binary according to
+# https://mimesniff.spec.whatwg.org/
+#
+# warning: disable at your own risk as this can lead to memory exhaustion if attempting
+# to tail a file with binary content
+check_for_binary: true
 ```
 
 ## Example Docker Config
