@@ -43,6 +43,10 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 	if err != nil {
 		return nil, err
 	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
 	pos, err := positions.Get(path)
 	if err != nil {
 		return nil, err
@@ -50,6 +54,10 @@ func newTailer(metrics *Metrics, logger log.Logger, handler api.EntryHandler, po
 
 	if fi.Size() < pos {
 		positions.Remove(path)
+	}
+
+	if err := checkIfBinary(file); err != nil {
+		return nil, err
 	}
 
 	tail, err := tail.TailFile(path, tail.Config{
