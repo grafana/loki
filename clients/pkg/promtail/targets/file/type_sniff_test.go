@@ -37,11 +37,6 @@ func Test_checkIfBinary(t *testing.T) {
 			err:    nil,
 		},
 		{
-			name:   "blank file",
-			reader: strings.NewReader("                         "),
-			err:    nil,
-		},
-		{
 			name:   "blank text content",
 			reader: strings.NewReader(blank),
 			err:    nil,
