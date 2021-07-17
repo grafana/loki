@@ -56,7 +56,7 @@ func Test_checkIfBinary(t *testing.T) {
 			// only the first 512 bytes are examined
 			name:   "8 binary bytes followed by 512 bytes of blank data",
 			reader: strings.NewReader(fmt.Sprintf("%s%s", binaryBytes, blank)),
-			err:    binaryContentErr,
+			err:    errBinaryContent,
 		},
 		{
 			// https://www.freedesktop.org/wiki/Software/systemd/journal-files/#header
@@ -96,12 +96,12 @@ func Test_checkIfBinary(t *testing.T) {
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0xc8, 0xef, 0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc8, 0xef, 0x42, 0x00, 0x00, 0x00, 0x00, 0x00,
 			}),
-			err:    binaryContentErr,
+			err: errBinaryContent,
 		},
 		{
 			name:   "slice of binary bytes",
 			reader: bytes.NewBuffer(binaryBytes),
-			err:    binaryContentErr,
+			err:    errBinaryContent,
 		},
 	}
 	for _, tt := range tests {

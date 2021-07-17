@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-var binaryContentErr = errors.New("content is binary")
+var errBinaryContent = errors.New("content is binary")
 
 // checkIfBinary uses http.DetectContentType, which implements https://mimesniff.spec.whatwg.org/
 func checkIfBinary(r io.Reader) error {
@@ -17,7 +17,7 @@ func checkIfBinary(r io.Reader) error {
 	buf, _ := reader.Peek(512) //nolint:errcheck
 
 	if http.DetectContentType(buf) == "application/octet-stream" {
-		return binaryContentErr
+		return errBinaryContent
 	}
 
 	return nil
