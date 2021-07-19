@@ -424,7 +424,7 @@ func TestPostQueries(t *testing.T) {
 			return nil, nil
 		}),
 		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected labels roundtripper called")
+			t.Error("unexpected instant roundtripper called")
 			return nil, nil
 		}),
 		fakeLimits{},
