@@ -104,6 +104,11 @@ func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 		}
 		for _, chunkResponse := range receivedChunks.GetChunks() {
 			var c chunk.Chunk
+			for i := range req.Chunks {
+				if req.Chunks[i].Key == chunkResponse.Key {
+					c = input[i]
+				}
+			}
 			if chunkResponse != nil {
 				err = c.Decode(decodeContext, chunkResponse.Encoded)
 				if err != nil {
