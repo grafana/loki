@@ -399,6 +399,11 @@ func newLabelFilterExpr(filterer log.LabelFilterer) *labelFilterExpr {
 func (e *labelFilterExpr) Shardable() bool { return true }
 
 func (e *labelFilterExpr) Stage() (log.Stage, error) {
+	switch ip := e.LabelFilterer.(type) {
+	case *log.IPLabelFilter:
+		return ip, ip.PatternError()
+	}
+
 	return e.LabelFilterer, nil
 }
 
