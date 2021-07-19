@@ -307,19 +307,21 @@ func (e *lineFilterExpr) String() string {
 func (e *lineFilterExpr) Filter() (log.Filterer, error) {
 	var f log.Filterer
 
-	if e.op == OpFilterIP {
+	switch e.op {
+	case OpFilterIP:
 		var err error
 		f, err = log.NewIPLineFilter(e.match, e.ty)
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	default:
 		var err error // to avoid `f` being shadowed.
 		f, err = log.NewFilter(e.match, e.ty)
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	if e.left != nil {
 		nextFilter, err := e.left.Filter()
 		if err != nil {

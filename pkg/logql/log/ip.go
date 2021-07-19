@@ -109,20 +109,19 @@ func (f *IPLabelFilter) RequiredLabelNames() []string {
 }
 
 // PatternError will be used `labelFilter.Stage()` method so that, if the given pattern is wrong
-// it retuns proper 400 error to the client of LogQL.
+// it returns proper 400 error to the client of LogQL.
 func (f *IPLabelFilter) PatternError() error {
 	return f.patError
 }
 
 func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilder) bool {
-	if f.patError != nil {
-		lbs.SetErr(f.patError.Error())
-		return false
+	if lbs.HasErr() {
+		// why `true`?. if there's an error only the string matchers can filter out.
+		return true
 	}
-
 	input, ok := lbs.Get(f.label)
 	if !ok {
-		lbs.SetErr(fmt.Sprintf("%s: %q %s", errLabelFilter, f.label, "label not found"))
+		// we have not found the label.
 		return false
 	}
 
@@ -132,8 +131,6 @@ func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilde
 	case LabelFilterNotEqual:
 		return !f.ip.filter([]byte(input))
 	}
-	// any other operation not supported
-	lbs.SetErr(fmt.Sprintf("%q, %s", ty, ErrIPFilterInvalidOperation))
 	return false
 }
 
