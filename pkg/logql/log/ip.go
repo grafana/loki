@@ -85,6 +85,9 @@ type IPLabelFilter struct {
 
 	// patError records if given pattern is invalid.
 	patError error
+
+	// local copy of pattern to display it in errors, even though pattern matcher fails because of invalid pattern.
+	pattern string
 }
 
 // NewIPLabelFilter is used to construct ip filter as label filter for the given `label`.
@@ -95,6 +98,7 @@ func NewIPLabelFilter(pattern string, label string, ty LabelFilterType) *IPLabel
 		label:    label,
 		ty:       ty,
 		patError: err,
+		pattern:  pattern,
 	}
 }
 
@@ -145,13 +149,7 @@ func (f *IPLabelFilter) String() string {
 		eq = LabelFilterNotEqual.String()
 	}
 
-	pattern := "invalid"
-	if f.ip != nil {
-		// may be pattern error
-		pattern = f.ip.pattern
-	}
-
-	return fmt.Sprintf("%s%sip(%q)", f.label, eq, pattern) // label filter
+	return fmt.Sprintf("%s%sip(%q)", f.label, eq, f.pattern) // label filter
 }
 
 // ipFilter search for IP addresses of given `pattern` in the given `line`.
