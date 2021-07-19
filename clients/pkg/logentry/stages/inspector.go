@@ -73,7 +73,7 @@ type diffReporter struct {
 
 	formatter *formatter
 
-	diffs         []string
+	diffs []string
 }
 
 func (r *diffReporter) PushStep(ps cmp.PathStep) {
