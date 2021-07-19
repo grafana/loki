@@ -114,7 +114,7 @@ func (f *IPLabelFilter) PatternError() error {
 	return f.patError
 }
 
-func (f *IPLabelFilter) filterTy(line []byte, ty LabelFilterType, lbs *LabelsBuilder) bool {
+func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilder) bool {
 	if f.patError != nil {
 		lbs.SetErr(f.patError.Error())
 		return false

@@ -56,11 +56,17 @@ When specifying label filter expressions, only the  `=` and `!=` operations are 
 - Label filter examples
 
     ```logql
-    {job_name="myapp"} | logfmt | remote_addr = ip("2001:db8::1-2001:db8::8") | level = "error"
+    {job_name="myapp"}
+		| logfmt
+		| remote_addr = ip("2001:db8::1-2001:db8::8")
+		| level = "error"
     ```
 
     Filters can be chained. This example matches log lines with all IPv4 subnet values `192.168.4.5/16` except IP address `192.168.4.2`:
 
     ```logql
-    {job_name="myapp"} | logfmt | addr = ip("192.168.4.5/16") | addr != ip("192.168.4.2")
+    {job_name="myapp"}
+		| logfmt
+		| addr =f ip("192.168.4.5/16")
+		| addr != ip("192.168.4.2")
     ```
