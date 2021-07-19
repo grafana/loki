@@ -248,8 +248,8 @@ filterOp:
   ;
 
 lineFilter:
-    filter STRING                                             { $$ = newLineFilterExpr($1, "", $2,) }
-  | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4)}
+    filter STRING                                                   { $$ = newLineFilterExpr($1, "", $2) }
+  | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4) }
   ;
 
 lineFilters:

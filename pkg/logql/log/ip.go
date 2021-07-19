@@ -75,12 +75,6 @@ func (f *IPLineFilter) filterTy(line []byte, ty labels.MatchType) bool {
 	return f.ip.filter(line)
 }
 
-// `String` implements fmt.Stringer inteface, by which also implements `LabelFilterer` inteface.
-func (f *IPLineFilter) String() string {
-	// return fmt.Sprintf("%s%sip(%q)", ipf.labelName, eq, ipf.pattern) // label filter
-	return fmt.Sprintf("ip(%q)", f.ip.pattern)
-}
-
 type IPLabelFilter struct {
 	ip *ipFilter
 	ty LabelFilterType
