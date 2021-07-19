@@ -84,7 +84,7 @@ For all the queries which require chunks to be read from the store, Queriers als
 
 ### Queriers
 
-**Note:** To avoid running Queriers as statefulset with persistent storage, we highly recommend running `IndexGateway` which takes care of downloading & syncing the index and serves it over gRPC to Queriers and Rulers.
+To avoid running Queriers as a StatefulSet with persistent storage, we recommend running an Index Gateway. An Index Gateway will download and synchronize the index, and it will serve it over gRPC to Queriers and Rulers.
 
 Queriers lazily loads BoltDB files from shared object store to configured `cache_location`.
 When a querier receives a read request, the query range from the request is resolved to period numbers and all the files for those period numbers are downloaded to `cache_location`, if not already.
@@ -138,7 +138,6 @@ storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 ```
-
 
 
 
