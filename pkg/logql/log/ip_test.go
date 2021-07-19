@@ -158,54 +158,25 @@ func Test_IPLabelFilterTy(t *testing.T) {
 			expectedMatch: true,
 		},
 		{
-			name:  "great than operator-not-supported",
-			pat:   "192.168.0.2",
-			ty:    LabelFilterGreaterThan, // not supported
+			name:  "pattern-invalid",
+			pat:   "192.168.0.2-1.0.0.0",
+			ty:    LabelFilterEqual, // not supported
 			label: "addr",
 			val:   []byte("192.168.0.1"),
 			fail:  true,
-			err:   ErrIPFilterInvalidOperation.Error(),
-		},
-		{
-			name:  "great than or equal to operator-not-supported",
-			pat:   "192.168.0.2",
-			ty:    LabelFilterGreaterThanOrEqual, // not supported
-			label: "addr",
-			val:   []byte("192.168.0.1"),
-			fail:  true,
-			err:   ErrIPFilterInvalidOperation.Error(),
-		},
-		{
-			name:  "less than operator-not-supported",
-			pat:   "192.168.0.2",
-			ty:    LabelFilterLesserThan, // not supported
-			label: "addr",
-			val:   []byte("192.168.0.1"),
-			fail:  true,
-			err:   ErrIPFilterInvalidOperation.Error(),
-		},
-		{
-			name:  "less than or equal to operator-not-supported",
-			pat:   "192.168.0.2",
-			ty:    LabelFilterLesserThanOrEqual, // not supported
-			label: "addr",
-			val:   []byte("192.168.0.1"),
-			fail:  true,
-			err:   ErrIPFilterInvalidOperation.Error(),
+			err:   ErrIPFilterInvalidPattern.Error(),
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			lf := NewIPLabelFilter(c.pat, c.label, c.ty)
-			require.NoError(t, lf.patError)
 
 			lbs := labels.Labels{labels.Label{Name: c.label, Value: string(c.val)}}
 			lbb := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 			_, ok := lf.Process([]byte("x"), lbb)
 			if c.fail {
-				assert.NotEmpty(t, lbb.GetErr())
-				assert.False(t, ok)
+				assert.Error(t, lf.patError)
 				return
 			}
 			require.Empty(t, lbb.GetErr())

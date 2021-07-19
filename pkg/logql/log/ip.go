@@ -125,6 +125,10 @@ func (f *IPLabelFilter) filterTy(_ []byte, ty LabelFilterType, lbs *LabelsBuilde
 		return false
 	}
 
+	if f.ip == nil {
+		return false
+	}
+
 	switch ty {
 	case LabelFilterEqual:
 		return f.ip.filter([]byte(input))
