@@ -84,6 +84,8 @@ For all the queries which require chunks to be read from the store, Queriers als
 
 ### Queriers
 
+To avoid running Queriers as a StatefulSet with persistent storage, we recommend running an Index Gateway. An Index Gateway will download and synchronize the index, and it will serve it over gRPC to Queriers and Rulers.
+
 Queriers lazily loads BoltDB files from shared object store to configured `cache_location`.
 When a querier receives a read request, the query range from the request is resolved to period numbers and all the files for those period numbers are downloaded to `cache_location`, if not already.
 Once we have downloaded files for a period we keep looking for updates in shared object store and download them every 5 Minutes by default.
@@ -92,7 +94,17 @@ Frequency for checking updates can be configured with `resync_interval` config.
 To avoid keeping downloaded index files forever there is a ttl for them which defaults to 24 hours, which means if index files for a period are not used for 24 hours they would be removed from cache location.
 ttl can be configured using `cache_ttl` config.
 
-**Note:** For better read performance and to avoid using node disk it is recommended to run Queriers as statefulset(when using k8s) with persistent storage for downloading and querying index files.
+Within Kubernetes, if you are not using an Index Gateway, we recommend running Queriers as a StatefulSet with persistent storage for downloading and querying index files. This will obtain better read performance, and it will avoid using node disk.
+
+### Index Gateway
+
+An Index Gateway downloads and synchronizes the BoltDB index from the Object Storage in order to serve index queries to the Queriers and Rulers over gRPC.
+This avoids running Queriers and Rulers with a disk for persistence. Disks can become costly in a big cluster.
+
+To run an Index Gateway, configure [StorageConfig](../../../configuration/#storage_config) and set the `-target` CLI flag to `index-gateway`.
+To connect Queriers and Rulers to the Index Gateway, set the address (with gRPC port) of the Index Gateway with the `-boltdb.shipper.index-gateway-client.server-address` CLI flag or its equivalent YAML value under [StorageConfig](../../../configuration/#storage_config).
+
+Within Kubernetes, if you are not using an Index Gateway, we recommend running an Index Gateway as a StatefulSet with persistent storage for downloading and querying index files. This will obtain better read performance, and it will avoid using node disk.
 
 ### Write Deduplication disabled
 
@@ -126,7 +138,5 @@ storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 ```
-
-
 
 
