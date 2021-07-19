@@ -463,10 +463,6 @@ func NewInstantMetricTripperware(
 ) (queryrange.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), nil}
 
-	//if cfg.CacheResults {
-	// think about caching
-	//}
-
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			NewQueryShardMiddleware(
