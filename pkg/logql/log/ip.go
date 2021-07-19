@@ -140,7 +140,14 @@ func (f *IPLabelFilter) String() string {
 	if f.ty == LabelFilterNotEqual {
 		eq = LabelFilterNotEqual.String()
 	}
-	return fmt.Sprintf("%s%sip(%q)", f.label, eq, f.ip.pattern) // label filter
+
+	pattern := "invalid"
+	if f.ip != nil {
+		// may be pattern error
+		pattern = f.ip.pattern
+	}
+
+	return fmt.Sprintf("%s%sip(%q)", f.label, eq, pattern) // label filter
 }
 
 // ipFilter search for IP addresses of given `pattern` in the given `line`.
