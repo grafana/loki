@@ -86,7 +86,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params = paramsFromRequest(&LokiRequest{
+				data.params = paramsFromRangeRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -106,7 +106,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params = paramsFromRequest(&LokiRequest{
+				data.params = paramsFromRangeRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -127,7 +127,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params = paramsFromRequest(&LokiRequest{
+				data.params = paramsFromRangeRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,

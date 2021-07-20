@@ -323,6 +323,29 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			Header:     http.Header{},
 		}
 		return req.WithContext(ctx), nil
+	case *LokiInstantRequest:
+		params := url.Values{
+			"query":     []string{request.Query},
+			"direction": []string{request.Direction.String()},
+			"limit":     []string{fmt.Sprintf("%d", request.Limit)},
+		}
+		if len(request.Shards) > 0 {
+			params["shards"] = request.Shards
+		}
+		u := &url.URL{
+			// the request could come /api/prom/query but we want to only use the new api.
+			Path:     "/loki/api/v1/query",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     http.Header{},
+		}
+
+		return req.WithContext(ctx), nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
@@ -396,11 +419,24 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				Statistics: resp.Data.Statistics,
 			}, nil
 		case loghttp.ResultTypeStream:
+			// This is the same as in querysharding.go
+			var params logql.Params
+			var path string
+			switch r := req.(type) {
+			case *LokiRequest:
+				params = paramsFromRangeRequest(r)
+				path = r.GetPath()
+			case *LokiInstantRequest:
+				params = paramsFromInstantRequest(r)
+				path = r.GetPath()
+			default:
+				return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+			}
 			return &LokiResponse{
 				Status:     resp.Status,
-				Direction:  req.(*LokiRequest).Direction,
-				Limit:      req.(*LokiRequest).Limit,
-				Version:    uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
+				Direction:  params.Direction(),
+				Limit:      params.Limit(),
+				Version:    uint32(loghttp.GetVersion(path)),
 				Statistics: resp.Data.Statistics,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
@@ -717,7 +753,7 @@ type paramsWrapper struct {
 	*LokiRequest
 }
 
-func paramsFromRequest(req queryrange.Request) *paramsWrapper {
+func paramsFromRangeRequest(req queryrange.Request) *paramsWrapper {
 	return &paramsWrapper{
 		LokiRequest: req.(*LokiRequest),
 	}

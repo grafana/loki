@@ -202,6 +202,40 @@ func TestLogFilterTripperware(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestInstantQueryTripperware(t *testing.T) {
+
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiInstantRequest{
+		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
+		Limit:     1000,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	//testing limit
+	count, h := promqlResult(streams)
+	rt.setHandler(h)
+	_, err = tpw(rt).RoundTrip(req)
+	require.Equal(t, 1, *count)
+	require.NoError(t, err)
+}
+
 func TestSeriesTripperware(t *testing.T) {
 
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)

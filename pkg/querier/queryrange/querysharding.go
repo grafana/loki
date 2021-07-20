@@ -109,7 +109,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	var path string
 	switch r := r.(type) {
 	case *LokiRequest:
-		params = paramsFromRequest(r)
+		params = paramsFromRangeRequest(r)
 		path = r.GetPath()
 	case *LokiInstantRequest:
 		params = paramsFromInstantRequest(r)
