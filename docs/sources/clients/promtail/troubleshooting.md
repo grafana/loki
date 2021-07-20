@@ -34,7 +34,7 @@ Whenever any of these change, a log message will be printed:
 cat my.log | promtail --stdin --dry-run --inspect --client.url http://127.0.0.1:3100/loki/api/v1/push
 ```
 
-![inspect.png](inspect.png)
+![screenshot](../inspect.png)
 
 It can be used in combination with `--stdin` and `--dry-run`.
 
