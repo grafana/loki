@@ -53,8 +53,19 @@ func (f HeadBlockFmt) String() string {
 	switch {
 	case f < UnorderedHeadBlockFmt:
 		return "ordered"
-	default:
+	case f == UnorderedHeadBlockFmt:
 		return "unordered"
+	default:
+		return fmt.Sprintf("unknown: %v", byte(f))
+	}
+}
+
+func (f HeadBlockFmt) NewBlock() HeadBlock {
+	switch {
+	case f < UnorderedHeadBlockFmt:
+		return &headBlock{}
+	default:
+		return newUnorderedHeadBlock()
 	}
 }
 
@@ -321,25 +332,17 @@ type entry struct {
 
 // NewMemChunk returns a new in-mem chunk.
 func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
-	c := &MemChunk{
+	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
 		blocks:     []block{},
 
 		format: DefaultChunkFormat,
+		head:   head.NewBlock(),
 
 		encoding: enc,
 		headFmt:  head,
 	}
-
-	switch {
-	case head < UnorderedHeadBlockFmt:
-		c.head = &headBlock{}
-	default:
-		c.head = newUnorderedHeadBlock()
-	}
-
-	return c
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
