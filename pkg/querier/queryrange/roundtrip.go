@@ -461,7 +461,7 @@ func NewInstantMetricTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), nil}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware()}
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
