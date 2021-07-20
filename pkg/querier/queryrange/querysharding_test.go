@@ -240,6 +240,7 @@ func Test_InstantSharding(t *testing.T) {
 
 	var lock sync.Mutex
 	called := 0
+	shards := []string{}
 
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), queryrange.ShardingConfigs{
 		chunk.PeriodConfig{
@@ -255,6 +256,7 @@ func Test_InstantSharding(t *testing.T) {
 		lock.Lock()
 		defer lock.Unlock()
 		called++
+		shards = append(shards, r.(*LokiInstantRequest).Shards...)
 		return &LokiPromResponse{Response: &queryrange.PrometheusResponse{
 			Data: queryrange.PrometheusData{
 				ResultType: loghttp.ResultTypeVector,
@@ -274,6 +276,7 @@ func Test_InstantSharding(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
 	require.Len(t, response.(*LokiPromResponse).Response.Data.Result, 3)
+	require.ElementsMatch(t, []string{"0_of_3", "1_of_3", "2_of_3"}, shards)
 	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
 		Status: "success",
 		Data: queryrange.PrometheusData{
