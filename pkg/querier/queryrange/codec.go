@@ -445,7 +445,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 			}, nil
 		default:
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, "unsupported response type")
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "unsupported response type, got (%s)", string(resp.Data.ResultType))
 		}
 	}
 }

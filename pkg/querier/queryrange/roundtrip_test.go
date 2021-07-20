@@ -228,12 +228,14 @@ func TestInstantQueryTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	//testing limit
 	count, h := promqlResult(streams)
 	rt.setHandler(h)
-	_, err = tpw(rt).RoundTrip(req)
+	resp, err := tpw(rt).RoundTrip(req)
 	require.Equal(t, 1, *count)
 	require.NoError(t, err)
+
+	lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.IsType(t, &LokiResponse{}, lokiResponse)
 }
 
 func TestSeriesTripperware(t *testing.T) {
