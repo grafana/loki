@@ -12,6 +12,7 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 
@@ -113,6 +114,30 @@ func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
 		})
 	}
 	sort.Sort(byLabel(result)) // The labels should be sorted upon initialisation.
+	return result
+}
+
+func FromExemplarsToExemplarProtos(es []exemplar.Exemplar) []Exemplar {
+	result := make([]Exemplar, 0, len(es))
+	for _, e := range es {
+		result = append(result, Exemplar{
+			Labels:      FromLabelsToLabelAdapters(e.Labels),
+			Value:       e.Value,
+			TimestampMs: e.Ts,
+		})
+	}
+	return result
+}
+
+func FromExemplarProtosToExemplars(es []Exemplar) []exemplar.Exemplar {
+	result := make([]exemplar.Exemplar, 0, len(es))
+	for _, e := range es {
+		result = append(result, exemplar.Exemplar{
+			Labels: FromLabelAdaptersToLabels(e.Labels),
+			Value:  e.Value,
+			Ts:     e.TimestampMs,
+		})
+	}
 	return result
 }
 

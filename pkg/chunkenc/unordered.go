@@ -455,10 +455,8 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 	if db.err() != nil {
 		return errors.Wrap(db.err(), "verifying headblock header")
 	}
-	switch version {
 
-	case UnorderedHeadBlockFmt.Byte():
-	default:
+	if version != UnorderedHeadBlockFmt.Byte() {
 		return errors.Errorf("incompatible headBlock version (%v), only V4 is currently supported", version)
 	}
 
@@ -504,7 +502,6 @@ func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
 	}
 
 	decodedBlock := format.NewBlock()
-
 	if err := decodedBlock.LoadBytes(b); err != nil {
 		return nil, err
 	}

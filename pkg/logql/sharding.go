@@ -326,13 +326,13 @@ func (ev *DownstreamEvaluator) Iterator(
 // Contract: They must be of identical start, end, and step values.
 func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 	return newStepEvaluator(
-		func() (done bool, ts int64, vec promql.Vector) {
+		func() (ok bool, ts int64, vec promql.Vector) {
 			var cur promql.Vector
 			for _, eval := range evaluators {
-				done, ts, cur = eval.Next()
+				ok, ts, cur = eval.Next()
 				vec = append(vec, cur...)
 			}
-			return done, ts, vec
+			return ok, ts, vec
 		},
 		func() (lastErr error) {
 			for _, eval := range evaluators {

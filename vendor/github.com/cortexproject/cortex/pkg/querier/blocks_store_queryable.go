@@ -616,7 +616,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					// Add series fingerprint to query limiter; will return error if we are over the limit
 					limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))
 					if limitErr != nil {
-						return limitErr
+						return validation.LimitError(limitErr.Error())
 					}
 
 					// Ensure the max number of chunks limit hasn't been reached (max == 0 means disabled).
@@ -625,6 +625,16 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 						if actual > int32(leftChunksLimit) {
 							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
 						}
+					}
+					chunksSize := 0
+					for _, c := range s.Chunks {
+						chunksSize += c.Size()
+					}
+					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
+						return validation.LimitError(chunkBytesLimitErr.Error())
+					}
+					if chunkLimitErr := queryLimiter.AddChunks(len(s.Chunks)); chunkLimitErr != nil {
+						return validation.LimitError(chunkLimitErr.Error())
 					}
 				}
 

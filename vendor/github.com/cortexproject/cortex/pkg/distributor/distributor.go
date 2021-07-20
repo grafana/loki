@@ -242,7 +242,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "distributor_query_duration_seconds",
-			Help:      "Time spent executing expression queries.",
+			Help:      "Time spent executing expression and exemplar queries.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
 		}, []string{"method", "status_code"})),
 		receivedSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{

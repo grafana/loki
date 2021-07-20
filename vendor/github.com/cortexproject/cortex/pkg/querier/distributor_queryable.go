@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
@@ -27,6 +28,7 @@ import (
 type Distributor interface {
 	Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
 	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
+	QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error)
 	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
 	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
@@ -197,4 +199,44 @@ func (q *distributorQuerier) LabelNames() ([]string, storage.Warnings, error) {
 
 func (q *distributorQuerier) Close() error {
 	return nil
+}
+
+type distributorExemplarQueryable struct {
+	distributor Distributor
+}
+
+func newDistributorExemplarQueryable(d Distributor) storage.ExemplarQueryable {
+	return &distributorExemplarQueryable{
+		distributor: d,
+	}
+}
+
+func (d distributorExemplarQueryable) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
+	return &distributorExemplarQuerier{
+		distributor: d.distributor,
+		ctx:         ctx,
+	}, nil
+}
+
+type distributorExemplarQuerier struct {
+	distributor Distributor
+	ctx         context.Context
+}
+
+// Select querys for exemplars, prometheus' storage.ExemplarQuerier's Select function takes the time range as two int64 values.
+func (q *distributorExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Matcher) ([]exemplar.QueryResult, error) {
+	allResults, err := q.distributor.QueryExemplars(q.ctx, model.Time(start), model.Time(end), matchers...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var e exemplar.QueryResult
+	ret := make([]exemplar.QueryResult, len(allResults.Timeseries))
+	for i, ts := range allResults.Timeseries {
+		e.SeriesLabels = cortexpb.FromLabelAdaptersToLabels(ts.Labels)
+		e.Exemplars = cortexpb.FromExemplarProtosToExemplars(ts.Exemplars)
+		ret[i] = e
+	}
+	return ret, nil
 }

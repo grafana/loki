@@ -157,6 +157,10 @@ func (u *userTSDB) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.
 	return u.db.ChunkQuerier(ctx, mint, maxt)
 }
 
+func (u *userTSDB) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
+	return u.db.ExemplarQuerier(ctx)
+}
+
 func (u *userTSDB) Head() *tsdb.Head {
 	return u.db.Head()
 }
@@ -1031,6 +1035,53 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	return result, ss.Err()
 }
 
+func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	from, through, matchers, err := client.FromExemplarQueryRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	i.metrics.queries.Inc()
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.ExemplarQueryResponse{}, nil
+	}
+
+	q, err := db.ExemplarQuerier(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// It's not required to sort series from a single ingester because series are sorted by the Exemplar Storage before returning from Select.
+	res, err := q.Select(from, through, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	numExemplars := 0
+
+	result := &client.ExemplarQueryResponse{}
+	for _, es := range res {
+		ts := cortexpb.TimeSeries{
+			Labels:    cortexpb.FromLabelsToLabelAdapters(es.SeriesLabels),
+			Exemplars: cortexpb.FromExemplarsToExemplarProtos(es.Exemplars),
+		}
+
+		numExemplars += len(ts.Exemplars)
+		result.Timeseries = append(result.Timeseries, ts)
+	}
+
+	i.metrics.queriedExemplars.Observe(float64(numExemplars))
+
+	return result, nil
+}
+
 func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
 	if err != nil {
@@ -1507,7 +1558,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
-		seriesInMetric:      newMetricCounter(i.limiter),
+		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 

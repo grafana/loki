@@ -173,6 +173,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	// Log stats.
 	logMessage := append([]interface{}{
 		"msg", "query stats",
+		"component", "query-frontend",
 		"method", r.Method,
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,

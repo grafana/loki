@@ -2,15 +2,14 @@ package distributor
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/instrument"
-	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -21,10 +20,6 @@ import (
 	grpc_util "github.com/cortexproject/cortex/pkg/util/grpc"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-)
-
-var (
-	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from ingesters for %s (limit: %d)"
 )
 
 // Query multiple ingesters and returns a Matrix of samples.
@@ -54,15 +49,37 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 	return matrix, err
 }
 
-// QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
-func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
-	var result *ingester_client.QueryStreamResponse
-	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		userID, err := tenant.TenantID(ctx)
+func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*ingester_client.ExemplarQueryResponse, error) {
+	var result *ingester_client.ExemplarQueryResponse
+	err := instrument.CollectedRequest(ctx, "Distributor.QueryExemplars", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		req, err := ingester_client.ToExemplarQueryRequest(from, to, matchers...)
 		if err != nil {
 			return err
 		}
 
+		// We ask for all ingesters without passing matchers because exemplar queries take in an array of array of label matchers.
+		replicationSet, err := d.GetIngestersForQuery(ctx, nil)
+		if err != nil {
+			return err
+		}
+
+		result, err = d.queryIngestersExemplars(ctx, replicationSet, req)
+		if err != nil {
+			return err
+		}
+
+		if s := opentracing.SpanFromContext(ctx); s != nil {
+			s.LogKV("series", len(result.Timeseries))
+		}
+		return nil
+	})
+	return result, err
+}
+
+// QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
+func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
+	var result *ingester_client.QueryStreamResponse
+	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
@@ -73,7 +90,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 			return err
 		}
 
-		result, err = d.queryIngesterStream(ctx, userID, replicationSet, req)
+		result, err = d.queryIngesterStream(ctx, replicationSet, req)
 		if err != nil {
 			return err
 		}
@@ -106,7 +123,7 @@ func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*lab
 	}
 
 	// If "shard by all labels" is disabled, we can get ingesters by metricName if exists.
-	if !d.cfg.ShardByAllLabels {
+	if !d.cfg.ShardByAllLabels && len(matchers) > 0 {
 		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 
 		if ok && metricNameMatcher.Type == labels.MatchEqual {
@@ -185,11 +202,85 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 	return result, nil
 }
 
+// mergeExemplarSets merges and dedupes two sets of already sorted exemplar pairs.
+// Both a and b should be lists of exemplars from the same series.
+// Defined here instead of pkg/util to avoid a import cycle.
+func mergeExemplarSets(a, b []cortexpb.Exemplar) []cortexpb.Exemplar {
+	result := make([]cortexpb.Exemplar, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i].TimestampMs < b[j].TimestampMs {
+			result = append(result, a[i])
+			i++
+		} else if a[i].TimestampMs > b[j].TimestampMs {
+			result = append(result, b[j])
+			j++
+		} else {
+			result = append(result, a[i])
+			i++
+			j++
+		}
+	}
+	// Add the rest of a or b. One of them is empty now.
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
+	return result
+}
+
+// queryIngestersExemplars queries the ingesters for exemplars.
+func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.ExemplarQueryRequest) (*ingester_client.ExemplarQueryResponse, error) {
+	// Fetch exemplars from multiple ingesters in parallel, using the replicationSet
+	// to deal with consistency.
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+		client, err := d.ingesterPool.GetClientFor(ing.Addr)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err := client.(ingester_client.IngesterClient).QueryExemplars(ctx, req)
+		d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
+		if err != nil {
+			d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+			return nil, err
+		}
+
+		return resp, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge results from replication set.
+	var keys []string
+	exemplarResults := make(map[string]cortexpb.TimeSeries)
+	for _, result := range results {
+		r := result.(*ingester_client.ExemplarQueryResponse)
+		for _, ts := range r.Timeseries {
+			lbls := cortexpb.FromLabelAdaptersToLabels(ts.Labels).String()
+			e, ok := exemplarResults[lbls]
+			if !ok {
+				exemplarResults[lbls] = ts
+				keys = append(keys, lbls)
+			}
+			// Merge in any missing values from another ingesters exemplars for this series.
+			e.Exemplars = mergeExemplarSets(e.Exemplars, ts.Exemplars)
+		}
+	}
+
+	// Query results from each ingester were sorted, but are not necessarily still sorted after merging.
+	sort.Strings(keys)
+
+	result := make([]cortexpb.TimeSeries, len(exemplarResults))
+	for i, k := range keys {
+		result[i] = exemplarResults[k]
+	}
+
+	return &ingester_client.ExemplarQueryResponse{Timeseries: result}, nil
+}
+
 // queryIngesterStream queries the ingesters using the new streaming API.
-func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
+func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	var (
-		chunksLimit  = d.limits.MaxChunksPerQueryFromIngesters(userID)
-		chunksCount  = atomic.Int32{}
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
@@ -223,23 +314,23 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 			}
 
 			// Enforce the max chunks limits.
-			if chunksLimit > 0 {
-				if count := int(chunksCount.Add(int32(resp.ChunksCount()))); count > chunksLimit {
-					// We expect to be always able to convert the label matchers back to Prometheus ones.
-					// In case we fail (unexpected) the error will not include the matchers, but the core
-					// logic doesn't break.
-					matchers, _ := ingester_client.FromLabelMatchers(req.Matchers)
-					return nil, validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), chunksLimit))
-				}
+			if chunkLimitErr := queryLimiter.AddChunks(resp.ChunksCount()); chunkLimitErr != nil {
+				return nil, validation.LimitError(chunkLimitErr.Error())
 			}
+
 			for _, series := range resp.Chunkseries {
 				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
-					return nil, limitErr
+					return nil, validation.LimitError(limitErr.Error())
 				}
 			}
+
+			if chunkBytesLimitErr := queryLimiter.AddChunkBytes(resp.ChunksSize()); chunkBytesLimitErr != nil {
+				return nil, validation.LimitError(chunkBytesLimitErr.Error())
+			}
+
 			for _, series := range resp.Timeseries {
 				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
-					return nil, limitErr
+					return nil, validation.LimitError(limitErr.Error())
 				}
 			}
 

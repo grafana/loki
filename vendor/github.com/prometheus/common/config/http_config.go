@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -54,9 +55,9 @@ type closeIdler interface {
 
 // BasicAuth contains basic HTTP authentication credentials.
 type BasicAuth struct {
-	Username     string `yaml:"username"`
-	Password     Secret `yaml:"password,omitempty"`
-	PasswordFile string `yaml:"password_file,omitempty"`
+	Username     string `yaml:"username" json:"username"`
+	Password     Secret `yaml:"password,omitempty" json:"password,omitempty"`
+	PasswordFile string `yaml:"password_file,omitempty" json:"password_file,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -69,9 +70,9 @@ func (a *BasicAuth) SetDirectory(dir string) {
 
 // Authorization contains HTTP authorization credentials.
 type Authorization struct {
-	Type            string `yaml:"type,omitempty"`
-	Credentials     Secret `yaml:"credentials,omitempty"`
-	CredentialsFile string `yaml:"credentials_file,omitempty"`
+	Type            string `yaml:"type,omitempty" json:"type,omitempty"`
+	Credentials     Secret `yaml:"credentials,omitempty" json:"credentials,omitempty"`
+	CredentialsFile string `yaml:"credentials_file,omitempty" json:"credentials_file,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -110,14 +111,36 @@ func (u URL) MarshalYAML() (interface{}, error) {
 	return nil, nil
 }
 
+// UnmarshalJSON implements the json.Marshaler interface for URL.
+func (u *URL) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	urlp, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+	u.URL = urlp
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for URL.
+func (u URL) MarshalJSON() ([]byte, error) {
+	if u.URL != nil {
+		return json.Marshal(u.URL.String())
+	}
+	return []byte("null"), nil
+}
+
 // OAuth2 is the oauth2 client configuration.
 type OAuth2 struct {
-	ClientID         string            `yaml:"client_id"`
-	ClientSecret     Secret            `yaml:"client_secret"`
-	ClientSecretFile string            `yaml:"client_secret_file"`
-	Scopes           []string          `yaml:"scopes,omitempty"`
-	TokenURL         string            `yaml:"token_url"`
-	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty"`
+	ClientID         string            `yaml:"client_id" json:"client_id"`
+	ClientSecret     Secret            `yaml:"client_secret" json:"client_secret"`
+	ClientSecretFile string            `yaml:"client_secret_file" json:"client_secret_file"`
+	Scopes           []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+	TokenURL         string            `yaml:"token_url" json:"token_url"`
+	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -131,25 +154,25 @@ func (a *OAuth2) SetDirectory(dir string) {
 // HTTPClientConfig configures an HTTP client.
 type HTTPClientConfig struct {
 	// The HTTP basic authentication credentials for the targets.
-	BasicAuth *BasicAuth `yaml:"basic_auth,omitempty"`
+	BasicAuth *BasicAuth `yaml:"basic_auth,omitempty" json:"basic_auth,omitempty"`
 	// The HTTP authorization credentials for the targets.
-	Authorization *Authorization `yaml:"authorization,omitempty"`
+	Authorization *Authorization `yaml:"authorization,omitempty" json:"authorization,omitempty"`
 	// The OAuth2 client credentials used to fetch a token for the targets.
-	OAuth2 *OAuth2 `yaml:"oauth2,omitempty"`
+	OAuth2 *OAuth2 `yaml:"oauth2,omitempty" json:"oauth2,omitempty"`
 	// The bearer token for the targets. Deprecated in favour of
 	// Authorization.Credentials.
-	BearerToken Secret `yaml:"bearer_token,omitempty"`
+	BearerToken Secret `yaml:"bearer_token,omitempty" json:"bearer_token,omitempty"`
 	// The bearer token file for the targets. Deprecated in favour of
 	// Authorization.CredentialsFile.
-	BearerTokenFile string `yaml:"bearer_token_file,omitempty"`
+	BearerTokenFile string `yaml:"bearer_token_file,omitempty" json:"bearer_token_file,omitempty"`
 	// HTTP proxy server to use to connect to the targets.
-	ProxyURL URL `yaml:"proxy_url,omitempty"`
+	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
 	// TLSConfig to use to connect to the targets.
-	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
+	TLSConfig TLSConfig `yaml:"tls_config,omitempty" json:"tls_config,omitempty"`
 	// FollowRedirects specifies whether the client should follow HTTP 3xx redirects.
 	// The omitempty flag is not set, because it would be hidden from the
 	// marshalled configuration when set to false.
-	FollowRedirects bool `yaml:"follow_redirects"`
+	FollowRedirects bool `yaml:"follow_redirects" json:"follow_redirects"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -231,6 +254,16 @@ func (c *HTTPClientConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	type plain HTTPClientConfig
 	*c = DefaultHTTPClientConfig
 	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	return c.Validate()
+}
+
+// UnmarshalJSON implements the json.Marshaler interface for URL.
+func (c *HTTPClientConfig) UnmarshalJSON(data []byte) error {
+	type plain HTTPClientConfig
+	*c = DefaultHTTPClientConfig
+	if err := json.Unmarshal(data, (*plain)(c)); err != nil {
 		return err
 	}
 	return c.Validate()
@@ -387,7 +420,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		return newRT(tlsConfig)
 	}
 
-	return newTLSRoundTripper(tlsConfig, cfg.TLSConfig.CAFile, newRT)
+	return NewTLSRoundTripper(tlsConfig, cfg.TLSConfig.CAFile, newRT)
 }
 
 type authorizationCredentialsRoundTripper struct {
@@ -616,15 +649,15 @@ func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 // TLSConfig configures the options for TLS connections.
 type TLSConfig struct {
 	// The CA cert to use for the targets.
-	CAFile string `yaml:"ca_file,omitempty"`
+	CAFile string `yaml:"ca_file,omitempty" json:"ca_file,omitempty"`
 	// The client cert file for the targets.
-	CertFile string `yaml:"cert_file,omitempty"`
+	CertFile string `yaml:"cert_file,omitempty" json:"cert_file,omitempty"`
 	// The client key file for the targets.
-	KeyFile string `yaml:"key_file,omitempty"`
+	KeyFile string `yaml:"key_file,omitempty" json:"key_file,omitempty"`
 	// Used to verify the hostname for the targets.
-	ServerName string `yaml:"server_name,omitempty"`
+	ServerName string `yaml:"server_name,omitempty" json:"server_name,omitempty"`
 	// Disable target certificate validation.
-	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify" json:"insecure_skip_verify"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -684,7 +717,7 @@ type tlsRoundTripper struct {
 	tlsConfig  *tls.Config
 }
 
-func newTLSRoundTripper(
+func NewTLSRoundTripper(
 	cfg *tls.Config,
 	caFile string,
 	newRT func(*tls.Config) (http.RoundTripper, error),

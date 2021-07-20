@@ -31,17 +31,27 @@ const (
 )
 
 var (
-	// BlocksSync is the operation run by the store-gateway to sync blocks.
-	BlocksSync = ring.NewOp([]ring.InstanceState{ring.JOINING, ring.ACTIVE, ring.LEAVING}, func(s ring.InstanceState) bool {
-		// If the instance is JOINING or LEAVING we should extend the replica set:
-		// - JOINING: the previous replica set should be kept while an instance is JOINING
-		// - LEAVING: the instance is going to be decommissioned soon so we need to include
-		//   		  another replica in the set
-		return s == ring.JOINING || s == ring.LEAVING
+	// BlocksOwnerSync is the operation used to check the authoritative owners of a block
+	// (replicas included).
+	BlocksOwnerSync = ring.NewOp([]ring.InstanceState{ring.JOINING, ring.ACTIVE, ring.LEAVING}, func(s ring.InstanceState) bool {
+		// Extend the replication set only when an instance is LEAVING so that
+		// their blocks will be loaded sooner on the next authoritative owner(s).
+		return s == ring.LEAVING
 	})
 
+	// BlocksOwnerRead is the operation used to check the authoritative owners of a block
+	// (replicas included) that are available for queries (a store-gateway is available for
+	// queries only when ACTIVE).
+	BlocksOwnerRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+
 	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
-	BlocksRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+	BlocksRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
+		// Blocks can only be queried from ACTIVE instances. However, if the block belongs to
+		// a non-active instance, then we should extend the replication set and try to query it
+		// from the next ACTIVE instance in the ring (which is expected to have it because a
+		// store-gateway keeps their previously owned blocks until new owners are ACTIVE).
+		return s != ring.ACTIVE
+	})
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -55,6 +65,10 @@ type RingConfig struct {
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	TokensFilePath       string        `yaml:"tokens_file_path"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
+
+	// Wait ring stability.
+	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
+	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -80,11 +94,15 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Ring flags
 	cfg.KVStore.RegisterFlagsWithPrefix(ringFlagsPrefix, "collectors/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, ringFlagsPrefix+"heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring.")
-	f.DurationVar(&cfg.HeartbeatTimeout, ringFlagsPrefix+"heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring."+sharedOptionWithQuerier)
+	f.DurationVar(&cfg.HeartbeatPeriod, ringFlagsPrefix+"heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
+	f.DurationVar(&cfg.HeartbeatTimeout, ringFlagsPrefix+"heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring. 0 = never (timeout disabled)."+sharedOptionWithQuerier)
 	f.IntVar(&cfg.ReplicationFactor, ringFlagsPrefix+"replication-factor", 3, "The replication factor to use when sharding blocks."+sharedOptionWithQuerier)
 	f.StringVar(&cfg.TokensFilePath, ringFlagsPrefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, ringFlagsPrefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate blocks across different availability zones.")
+
+	// Wait stability flags.
+	f.DurationVar(&cfg.WaitStabilityMinDuration, ringFlagsPrefix+"wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
+	f.DurationVar(&cfg.WaitStabilityMaxDuration, ringFlagsPrefix+"wait-stability-max-duration", 5*time.Minute, "Maximum time to wait for ring stability at startup. If the store-gateway ring keeps changing after this period of time, the store-gateway will start anyway.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
