@@ -908,7 +908,10 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 		return nil, err
 	}
 
-	newChunk := NewMemChunk(c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
+	// Using defaultBlockSize for target block size.
+	// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
+	// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
+	newChunk := NewMemChunk(c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
 
 	for itr.Next() {
 		entry := itr.Entry()
