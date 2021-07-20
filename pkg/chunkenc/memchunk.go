@@ -45,6 +45,10 @@ const (
 	defaultBlockSize = 256 * 1024
 )
 
+var (
+	HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
+)
+
 type HeadBlockFmt byte
 
 func (f HeadBlockFmt) Byte() byte { return byte(f) }

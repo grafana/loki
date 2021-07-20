@@ -49,7 +49,6 @@ var (
 		}
 		return ex.ForStream(labels.Labels{})
 	}()
-	HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
 )
 
 const DefaultHeadBlockFmt = OrderedHeadBlockFmt
