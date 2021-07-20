@@ -21,7 +21,7 @@ cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/
 
 ## Inspecting
 
-Promtail can be configured to print all changes to log entries as each pipeline stage is executed (via the flag `--inspect`).
+Promtail can output all changes to log entries as each pipeline stage is executed.
 Each log entry contains four fields:
 - line
 - timestamp
@@ -40,7 +40,7 @@ It can be used in combination with `--stdin` and `--dry-run`.
 
 Additions will be highlighted in green, modifications in yellow, and removals in red.
 
-If no changes are applied during a stage, that is usually an indication of a misconfiguration or undesired behaviour.
+If no changes are applied during a stage, that is usually an indication of a misconfiguration or undesired behavior.
 
 **Note**: the `--inspect` flag should _not_ be used in production.
 
