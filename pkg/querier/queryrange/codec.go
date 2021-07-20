@@ -444,6 +444,18 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				},
 				Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 			}, nil
+		case loghttp.ResultTypeVector:
+			return &LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: resp.Status,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     toProtoVector(resp.Data.Result.(loghttp.Vector)),
+					},
+					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
+				},
+				Statistics: resp.Data.Statistics,
+			}, nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "unsupported response type, got (%s)", string(resp.Data.ResultType))
 		}

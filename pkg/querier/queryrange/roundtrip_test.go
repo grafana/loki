@@ -235,7 +235,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	require.NoError(t, err)
 
 	lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
-	require.IsType(t, &LokiResponse{}, lokiResponse)
+	require.IsType(t, &LokiResponse{}, lokiResponse) // Is LokiPromResponse in Docker compose
 }
 
 func TestSeriesTripperware(t *testing.T) {
