@@ -194,7 +194,7 @@ func NewQuerierHandler(
 
 	api := v1.NewAPI(
 		engine,
-		querier.NewErrorTranslateQueryable(queryable), // Translate errors to errors expected by API.
+		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
 		nil, // No remote write support.
 		exemplarQueryable,
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },

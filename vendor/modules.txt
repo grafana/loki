@@ -179,7 +179,7 @@ github.com/coreos/go-systemd/internal/dlopen
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/go-systemd/v22 v22.1.0
 github.com/coreos/go-systemd/v22/journal
-# github.com/cortexproject/cortex v1.9.1-0.20210712083557-733f7de5c81f
+# github.com/cortexproject/cortex v1.9.1-0.20210721130445-d9e1f81f40c6
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb

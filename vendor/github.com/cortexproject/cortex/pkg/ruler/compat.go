@@ -149,16 +149,30 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
 		result, err := qf(ctx, qs, t)
-		// We rely on TranslateToPromqlApiError to do its job here... it returns nil, if err is nil.
-		// It returns promql.ErrStorage, if error should be reported back as 500.
-		// Other errors it returns are either for canceled or timed-out queriers (we're not reporting those as failures),
-		// or various user-errors (limits, duplicate samples, etc. ... also not failures).
-		//
-		// All errors will still be counted towards "evaluation failures" metrics and logged by Prometheus Ruler,
-		// but we only want internal errors here.
-		if _, ok := querier.TranslateToPromqlAPIError(err).(promql.ErrStorage); ok {
-			failedQueries.Inc()
+
+		// We only care about errors returned by underlying Queryable. Errors returned by PromQL engine are "user-errors",
+		// and not interesting here.
+		qerr := QueryableError{}
+		if err != nil && errors.As(err, &qerr) {
+			origErr := qerr.Unwrap()
+
+			// Not all errors returned by Queryable are interesting, only those that would result in 500 status code.
+			//
+			// We rely on TranslateToPromqlApiError to do its job here... it returns nil, if err is nil.
+			// It returns promql.ErrStorage, if error should be reported back as 500.
+			// Other errors it returns are either for canceled or timed-out queriers (we're not reporting those as failures),
+			// or various user-errors (limits, duplicate samples, etc. ... also not failures).
+			//
+			// All errors will still be counted towards "evaluation failures" metrics and logged by Prometheus Ruler,
+			// but we only want internal errors here.
+			if _, ok := querier.TranslateToPromqlAPIError(origErr).(promql.ErrStorage); ok {
+				failedQueries.Inc()
+			}
+
+			// Return unwrapped error.
+			return result, origErr
 		}
+
 		return result, err
 	}
 }
@@ -234,6 +248,11 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		}, []string{"user"})
 	}
 
+	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
+	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
+	// Errors from PromQL are always "user" errors.
+	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
+
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		var queryTime prometheus.Counter = nil
 		if rulerQuerySeconds != nil {
@@ -254,4 +273,24 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			ResendDelay:     cfg.ResendDelay,
 		})
 	}
+}
+
+type QueryableError struct {
+	err error
+}
+
+func (q QueryableError) Unwrap() error {
+	return q.err
+}
+
+func (q QueryableError) Error() string {
+	return q.err.Error()
+}
+
+func WrapQueryableErrors(err error) error {
+	if err == nil {
+		return err
+	}
+
+	return QueryableError{err: err}
 }
