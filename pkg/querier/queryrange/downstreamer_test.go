@@ -329,7 +329,7 @@ func TestInstanceDownstream(t *testing.T) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(params, queries[0].Shards.Encode()).WithQuery(expr.String())
+			want = ParamsToLokiRequest(params, queries[0].Shards).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},

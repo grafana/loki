@@ -91,21 +91,21 @@ func NewTripperware(
 }
 
 type roundTripper struct {
-	next, log, metric, series, labels, instantMetrics http.RoundTripper
+	next, log, metric, series, labels, instantMetric http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(next, log, metric, series, labels, instantMetrics http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(next, log, metric, series, labels, instantMetric http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
-		log:            log,
-		limits:         limits,
-		metric:         metric,
-		series:         series,
-		labels:         labels,
-		instantMetrics: instantMetrics,
-		next:           next,
+		log:           log,
+		limits:        limits,
+		metric:        metric,
+		series:        series,
+		labels:        labels,
+		instantMetric: instantMetric,
+		next:          next,
 	}
 }
 
@@ -167,7 +167,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		switch expr.(type) {
 		case logql.SampleExpr:
-			return r.instantMetrics.RoundTrip(req)
+			return r.instantMetric.RoundTrip(req)
 		default:
 			return r.next.RoundTrip(req)
 		}
@@ -461,7 +461,7 @@ func NewInstantMetricTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware()}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,
