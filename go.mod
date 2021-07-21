@@ -13,7 +13,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.9.1-0.20210712083557-733f7de5c81f
+	github.com/cortexproject/cortex v1.9.1-0.20210721130445-d9e1f81f40c6
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.6+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
@@ -29,6 +29,7 @@ require (
 	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.3
+	github.com/google/go-cmp v0.5.6
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
