@@ -449,7 +449,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				Response: &queryrange.PrometheusResponse{
 					Status: resp.Status,
 					Data: queryrange.PrometheusData{
-						ResultType: loghttp.ResultTypeMatrix,
+						ResultType: loghttp.ResultTypeVector,
 						Result:     toProtoVector(resp.Data.Result.(loghttp.Vector)),
 					},
 					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
