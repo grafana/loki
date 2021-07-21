@@ -9,7 +9,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"math"
 	"reflect"
 	"time"
 	"unsafe"
@@ -716,7 +715,8 @@ func (c *MemChunk) reorder() error {
 	}
 
 	// Otherwise, we need to rebuild the blocks
-	newC, err := c.Rebound(time.Unix(0, 0), time.Unix(0, math.MaxInt64))
+	from, to := c.Bounds()
+	newC, err := c.Rebound(from, to)
 	if err != nil {
 		return err
 	}

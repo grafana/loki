@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
@@ -564,4 +565,48 @@ func TestReorder(t *testing.T) {
 		})
 
 	}
+}
+
+func TestReorderAcrossBlocks(t *testing.T) {
+	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	for _, batch := range [][]int{
+		// ensure our blocks have overlapping bounds and must be reordered
+		// before closing.
+		{1, 5},
+		{3, 7},
+	} {
+		for _, x := range batch {
+			require.Nil(t, c.Append(&logproto.Entry{
+				Timestamp: time.Unix(int64(x), 0),
+				Line:      fmt.Sprint(x),
+			}))
+		}
+		require.Nil(t, c.cut())
+	}
+	// get bounds before it's reordered
+	from, to := c.Bounds()
+	require.Nil(t, c.Close())
+
+	itr, err := c.Iterator(context.Background(), from, to.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+	require.Nil(t, err)
+
+	exp := []entry{
+		{
+			t: time.Unix(1, 0).UnixNano(),
+			s: "1",
+		},
+		{
+			t: time.Unix(3, 0).UnixNano(),
+			s: "3",
+		},
+		{
+			t: time.Unix(5, 0).UnixNano(),
+			s: "5",
+		},
+		{
+			t: time.Unix(7, 0).UnixNano(),
+			s: "7",
+		},
+	}
+	iterEq(t, exp, itr)
 }
