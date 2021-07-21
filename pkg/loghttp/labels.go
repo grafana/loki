@@ -1,10 +1,10 @@
 package loghttp
 
 import (
-	"bytes"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -27,7 +27,7 @@ func (l LabelSet) Map() map[string]string {
 
 // String implements the Stringer interface.  It returns a formatted/sorted set of label key/value pairs.
 func (l LabelSet) String() string {
-	b := bytes.NewBuffer(make([]byte, 0, 1024))
+	var b strings.Builder
 
 	keys := make([]string, 0, len(l))
 	for k := range l {
