@@ -324,7 +324,9 @@ func (s *stream) Push(
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters
 // cut the chunk for this stream at the same moment, so that new chunk will contain exactly the same entries.
 func (s *stream) cutChunkForSynchronization(entryTimestamp, latestTs time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
-	if synchronizePeriod <= 0 || latestTs.IsZero() {
+	// Never sync when it's not enabled, it's the first push, or if a write isn't the latest ts
+	// to prevent syncing many unordered writes.
+	if synchronizePeriod <= 0 || latestTs.IsZero() || latestTs.After(entryTimestamp) {
 		return false
 	}
 
