@@ -268,10 +268,12 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 						return
 					}
 
+					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
 					err = c.CompactTable(ctx, tableName)
 					if err != nil {
 						return
 					}
+					level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
 				case <-ctx.Done():
 					return
 				}
