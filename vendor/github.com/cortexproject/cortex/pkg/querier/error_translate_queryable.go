@@ -69,72 +69,103 @@ func TranslateToPromqlAPIError(err error) error {
 	}
 }
 
-func NewErrorTranslateQueryable(q storage.SampleAndChunkQueryable) storage.SampleAndChunkQueryable {
-	return errorTranslateQueryable{q}
+// ErrTranslateFn is used to translate or wrap error before returning it by functions in
+// storage.SampleAndChunkQueryable interface.
+// Input error may be nil.
+type ErrTranslateFn func(err error) error
+
+func NewErrorTranslateQueryable(q storage.Queryable) storage.Queryable {
+	return NewErrorTranslateQueryableWithFn(q, TranslateToPromqlAPIError)
+}
+
+func NewErrorTranslateQueryableWithFn(q storage.Queryable, fn ErrTranslateFn) storage.Queryable {
+	return errorTranslateQueryable{q: q, fn: fn}
+}
+
+func NewErrorTranslateSampleAndChunkQueryable(q storage.SampleAndChunkQueryable) storage.SampleAndChunkQueryable {
+	return NewErrorTranslateSampleAndChunkQueryableWithFn(q, TranslateToPromqlAPIError)
+}
+
+func NewErrorTranslateSampleAndChunkQueryableWithFn(q storage.SampleAndChunkQueryable, fn ErrTranslateFn) storage.SampleAndChunkQueryable {
+	return errorTranslateSampleAndChunkQueryable{q: q, fn: fn}
 }
 
 type errorTranslateQueryable struct {
-	q storage.SampleAndChunkQueryable
+	q  storage.Queryable
+	fn ErrTranslateFn
 }
 
 func (e errorTranslateQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	q, err := e.q.Querier(ctx, mint, maxt)
-	return errorTranslateQuerier{q: q}, TranslateToPromqlAPIError(err)
+	return errorTranslateQuerier{q: q, fn: e.fn}, e.fn(err)
 }
 
-func (e errorTranslateQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+type errorTranslateSampleAndChunkQueryable struct {
+	q  storage.SampleAndChunkQueryable
+	fn ErrTranslateFn
+}
+
+func (e errorTranslateSampleAndChunkQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	q, err := e.q.Querier(ctx, mint, maxt)
+	return errorTranslateQuerier{q: q, fn: e.fn}, e.fn(err)
+}
+
+func (e errorTranslateSampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
 	q, err := e.q.ChunkQuerier(ctx, mint, maxt)
-	return errorTranslateChunkQuerier{q: q}, TranslateToPromqlAPIError(err)
+	return errorTranslateChunkQuerier{q: q, fn: e.fn}, e.fn(err)
 }
 
 type errorTranslateQuerier struct {
-	q storage.Querier
+	q  storage.Querier
+	fn ErrTranslateFn
 }
 
 func (e errorTranslateQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelValues(name, matchers...)
-	return values, warnings, TranslateToPromqlAPIError(err)
+	return values, warnings, e.fn(err)
 }
 
 func (e errorTranslateQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelNames()
-	return values, warnings, TranslateToPromqlAPIError(err)
+	return values, warnings, e.fn(err)
 }
 
 func (e errorTranslateQuerier) Close() error {
-	return TranslateToPromqlAPIError(e.q.Close())
+	return e.fn(e.q.Close())
 }
 
 func (e errorTranslateQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	s := e.q.Select(sortSeries, hints, matchers...)
-	return errorTranslateSeriesSet{s}
+	return errorTranslateSeriesSet{s: s, fn: e.fn}
 }
 
 type errorTranslateChunkQuerier struct {
-	q storage.ChunkQuerier
+	q  storage.ChunkQuerier
+	fn ErrTranslateFn
 }
 
 func (e errorTranslateChunkQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelValues(name, matchers...)
-	return values, warnings, TranslateToPromqlAPIError(err)
+	return values, warnings, e.fn(err)
 }
 
 func (e errorTranslateChunkQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelNames()
-	return values, warnings, TranslateToPromqlAPIError(err)
+	return values, warnings, e.fn(err)
 }
 
 func (e errorTranslateChunkQuerier) Close() error {
-	return TranslateToPromqlAPIError(e.q.Close())
+	return e.fn(e.q.Close())
 }
 
 func (e errorTranslateChunkQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.ChunkSeriesSet {
 	s := e.q.Select(sortSeries, hints, matchers...)
-	return errorTranslateChunkSeriesSet{s}
+	return errorTranslateChunkSeriesSet{s: s, fn: e.fn}
 }
 
 type errorTranslateSeriesSet struct {
-	s storage.SeriesSet
+	s  storage.SeriesSet
+	fn ErrTranslateFn
 }
 
 func (e errorTranslateSeriesSet) Next() bool {
@@ -146,7 +177,7 @@ func (e errorTranslateSeriesSet) At() storage.Series {
 }
 
 func (e errorTranslateSeriesSet) Err() error {
-	return TranslateToPromqlAPIError(e.s.Err())
+	return e.fn(e.s.Err())
 }
 
 func (e errorTranslateSeriesSet) Warnings() storage.Warnings {
@@ -154,7 +185,8 @@ func (e errorTranslateSeriesSet) Warnings() storage.Warnings {
 }
 
 type errorTranslateChunkSeriesSet struct {
-	s storage.ChunkSeriesSet
+	s  storage.ChunkSeriesSet
+	fn ErrTranslateFn
 }
 
 func (e errorTranslateChunkSeriesSet) Next() bool {
@@ -166,7 +198,7 @@ func (e errorTranslateChunkSeriesSet) At() storage.ChunkSeries {
 }
 
 func (e errorTranslateChunkSeriesSet) Err() error {
-	return TranslateToPromqlAPIError(e.s.Err())
+	return e.fn(e.s.Err())
 }
 
 func (e errorTranslateChunkSeriesSet) Warnings() storage.Warnings {

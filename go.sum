@@ -490,8 +490,8 @@ github.com/cortexproject/cortex v1.6.1-0.20210215155036-dfededd9f331/go.mod h1:8
 github.com/cortexproject/cortex v1.7.1-0.20210224085859-66d6fb5b0d42/go.mod h1:u2dxcHInYbe45wxhLoWVdlFJyDhXewsMcxtnbq/QbH4=
 github.com/cortexproject/cortex v1.7.1-0.20210316085356-3fedc1108a49/go.mod h1:/DBOW8TzYBTE/U+O7Whs7i7E2eeeZl1iRVDtIqxn5kg=
 github.com/cortexproject/cortex v1.8.1-0.20210422151339-cf1c444e0905/go.mod h1:xxm4/CLvTmDxwE7yXwtClR4dIvkG4S09o5DygPOgc1U=
-github.com/cortexproject/cortex v1.9.1-0.20210712083557-733f7de5c81f h1:+77Qgcyyz7iwlZd+m9n5c/4Zw5CSn5IwC7wV2xDIVV4=
-github.com/cortexproject/cortex v1.9.1-0.20210712083557-733f7de5c81f/go.mod h1:I9ew9PB8l8+YI+Qq85XJ2wEkAg8y8dAX1z/g6SFZ8g0=
+github.com/cortexproject/cortex v1.9.1-0.20210720143429-1e4e0ca902ed h1:KkbPC47adW6P8JI469JT6lBYr8JWDra8kNvGPJZr7zQ=
+github.com/cortexproject/cortex v1.9.1-0.20210720143429-1e4e0ca902ed/go.mod h1:I9ew9PB8l8+YI+Qq85XJ2wEkAg8y8dAX1z/g6SFZ8g0=
 github.com/couchbase/go-couchbase v0.0.0-20180501122049-16db1f1fe037/go.mod h1:TWI8EKQMs5u5jLKW/tsb9VwauIrMIxQG1r5fMsswK5U=
 github.com/couchbase/gomemcached v0.0.0-20180502221210-0da75df14530/go.mod h1:srVSlQLB8iXBVXHgnqemxUXqN6FCvClgCMPCsjBDR7c=
 github.com/couchbase/goutils v0.0.0-20180530154633-e865a1461c8a/go.mod h1:BQwMFlJzDjFDG3DJUdU0KORxn88UlsOULuxLExMh3Hs=
