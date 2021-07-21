@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -120,12 +121,10 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		if err != nil {
 			return err
 		}
-		t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(downloadAt)
+		t.compactedDB, err = openBoltdbFileWithNoSync(downloadAt)
 		if err != nil {
 			return err
 		}
-		// no need to enforce write to disk, we'll upload and delete the file anyway.
-		t.compactedDB.NoSync = true
 	}
 
 	if t.compactedDB == nil {
@@ -157,15 +156,23 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 
 func (t *table) compactFiles(objects []chunk.StorageObject) error {
 	var err error
-	// create a new compacted db
-	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
+	level.Info(util_log.Logger).Log("msg", "starting compaction of dbs")
+
+	compactedDBName := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
+	seedFileIdx, err := findSeedObjectIdx(objects)
 	if err != nil {
 		return err
 	}
-	// no need to enforce write to disk, we'll upload and delete the file anyway.
-	// in case of failure we'll restart the whole process anyway.
-	t.compactedDB.NoSync = true
-	level.Info(util_log.Logger).Log("msg", "starting compaction of dbs")
+
+	err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[seedFileIdx].Key, compactedDBName, false)
+	if err != nil {
+		return err
+	}
+
+	t.compactedDB, err = openBoltdbFileWithNoSync(compactedDBName)
+	if err != nil {
+		return err
+	}
 
 	errChan := make(chan error)
 	readObjectChan := make(chan string)
@@ -220,7 +227,11 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 
 	// send all files to readObjectChan
 	go func() {
-		for _, object := range objects {
+		for i, object := range objects {
+			// skip seed file
+			if i == seedFileIdx {
+				continue
+			}
 			select {
 			case readObjectChan <- object.Key:
 			case <-t.quit:
@@ -295,11 +306,11 @@ func (t *table) writeBatch(batch []indexEntry) error {
 func (t *table) readFile(path string) error {
 	level.Debug(util_log.Logger).Log("msg", "reading file for compaction", "path", path)
 
-	db, err := shipper_util.SafeOpenBoltdbFile(path)
+	db, err := openBoltdbFileWithNoSync(path)
 	if err != nil {
 		return err
 	}
-	db.NoSync = true
+
 	defer func() {
 		if err := db.Close(); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to close db", "path", path, "err", err)
@@ -405,4 +416,37 @@ func (t *table) removeObjectsFromStorage(objects []chunk.StorageObject) error {
 	}
 
 	return nil
+}
+
+// openBoltdbFileWithNoSync opens a boltdb file and configures it to not sync the file to disk.
+// Compaction process is idempotent and we do not retain the files so there is no need to sync them to disk.
+func openBoltdbFileWithNoSync(path string) (*bbolt.DB, error) {
+	boltdb, err := shipper_util.SafeOpenBoltdbFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// no need to enforce write to disk, we'll upload and delete the file anyway.
+	boltdb.NoSync = true
+
+	return boltdb, nil
+}
+
+// findSeedObjectIdx returns index of object to use as seed which would then get index from all the files written to.
+// It tries to find previously compacted file(which has uploaderName) which would be the biggest file.
+// In a large cluster, using previously compacted file as seed would significantly reduce compaction time.
+// If it can't find a previously compacted file, it would just use the first file from the list of files.
+func findSeedObjectIdx(objects []chunk.StorageObject) (int, error) {
+	for i, object := range objects {
+		dbName, err := shipper_util.GetDBNameFromObjectKey(object.Key)
+		if err != nil {
+			return 0, err
+		}
+
+		if strings.HasPrefix(dbName, uploaderName) {
+			return i, nil
+		}
+	}
+
+	return 0, nil
 }
