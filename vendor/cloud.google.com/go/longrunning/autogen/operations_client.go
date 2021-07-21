@@ -46,7 +46,7 @@ type OperationsCallOptions struct {
 	WaitOperation   []gax.CallOption
 }
 
-func defaultOperationsClientOptions() []option.ClientOption {
+func defaultOperationsGRPCClientOptions() []option.ClientOption {
 	return []option.ClientOption{
 		internaloption.WithDefaultEndpoint("longrunning.googleapis.com:443"),
 		internaloption.WithDefaultMTLSEndpoint("longrunning.mtls.googleapis.com:443"),
@@ -108,27 +108,138 @@ func defaultOperationsCallOptions() *OperationsCallOptions {
 	}
 }
 
+// internalOperationsClient is an interface that defines the methods availaible from Long Running Operations API.
+type internalOperationsClient interface {
+	Close() error
+	setGoogleClientInfo(...string)
+	Connection() *grpc.ClientConn
+	ListOperations(context.Context, *longrunningpb.ListOperationsRequest, ...gax.CallOption) *OperationIterator
+	GetOperation(context.Context, *longrunningpb.GetOperationRequest, ...gax.CallOption) (*longrunningpb.Operation, error)
+	DeleteOperation(context.Context, *longrunningpb.DeleteOperationRequest, ...gax.CallOption) error
+	CancelOperation(context.Context, *longrunningpb.CancelOperationRequest, ...gax.CallOption) error
+	WaitOperation(context.Context, *longrunningpb.WaitOperationRequest, ...gax.CallOption) (*longrunningpb.Operation, error)
+}
+
 // OperationsClient is a client for interacting with Long Running Operations API.
+// Methods, except Close, may be called concurrently. However, fields must not be modified concurrently with method calls.
+//
+// Manages long-running operations with an API service.
+//
+// When an API method normally takes long time to complete, it can be designed
+// to return Operation to the client, and the client can use this
+// interface to receive the real response asynchronously by polling the
+// operation resource, or pass the operation resource to another API (such as
+// Google Cloud Pub/Sub API) to receive the response.  Any API service that
+// returns long-running operations should implement the Operations interface
+// so developers can have a consistent client experience.
+type OperationsClient struct {
+	// The internal transport-dependent client.
+	internalClient internalOperationsClient
+
+	// The call options for this service.
+	CallOptions *OperationsCallOptions
+}
+
+// Wrapper methods routed to the internal client.
+
+// Close closes the connection to the API service. The user should invoke this when
+// the client is no longer required.
+func (c *OperationsClient) Close() error {
+	return c.internalClient.Close()
+}
+
+// setGoogleClientInfo sets the name and version of the application in
+// the `x-goog-api-client` header passed on each request. Intended for
+// use by Google-written clients.
+func (c *OperationsClient) setGoogleClientInfo(keyval ...string) {
+	c.internalClient.setGoogleClientInfo(keyval...)
+}
+
+// Connection returns a connection to the API service.
+//
+// Deprecated.
+func (c *OperationsClient) Connection() *grpc.ClientConn {
+	return c.internalClient.Connection()
+}
+
+// ListOperations lists operations that match the specified filter in the request. If the
+// server doesn’t support this method, it returns UNIMPLEMENTED.
+//
+// NOTE: the name binding allows API services to override the binding
+// to use different resource name schemes, such as users/*/operations. To
+// override the binding, API services can add a binding such as
+// "/v1/{name=users/*}/operations" to their service configuration.
+// For backwards compatibility, the default name includes the operations
+// collection id, however overriding users must ensure the name binding
+// is the parent resource, without the operations collection id.
+func (c *OperationsClient) ListOperations(ctx context.Context, req *longrunningpb.ListOperationsRequest, opts ...gax.CallOption) *OperationIterator {
+	return c.internalClient.ListOperations(ctx, req, opts...)
+}
+
+// GetOperation gets the latest state of a long-running operation.  Clients can use this
+// method to poll the operation result at intervals as recommended by the API
+// service.
+func (c *OperationsClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
+	return c.internalClient.GetOperation(ctx, req, opts...)
+}
+
+// DeleteOperation deletes a long-running operation. This method indicates that the client is
+// no longer interested in the operation result. It does not cancel the
+// operation. If the server doesn’t support this method, it returns
+// google.rpc.Code.UNIMPLEMENTED.
+func (c *OperationsClient) DeleteOperation(ctx context.Context, req *longrunningpb.DeleteOperationRequest, opts ...gax.CallOption) error {
+	return c.internalClient.DeleteOperation(ctx, req, opts...)
+}
+
+// CancelOperation starts asynchronous cancellation on a long-running operation.  The server
+// makes a best effort to cancel the operation, but success is not
+// guaranteed.  If the server doesn’t support this method, it returns
+// google.rpc.Code.UNIMPLEMENTED.  Clients can use
+// Operations.GetOperation or
+// other methods to check whether the cancellation succeeded or whether the
+// operation completed despite cancellation. On successful cancellation,
+// the operation is not deleted; instead, it becomes an operation with
+// an Operation.error value with a google.rpc.Status.code of 1,
+// corresponding to Code.CANCELLED.
+func (c *OperationsClient) CancelOperation(ctx context.Context, req *longrunningpb.CancelOperationRequest, opts ...gax.CallOption) error {
+	return c.internalClient.CancelOperation(ctx, req, opts...)
+}
+
+// WaitOperation waits until the specified long-running operation is done or reaches at most
+// a specified timeout, returning the latest state.  If the operation is
+// already done, the latest state is immediately returned.  If the timeout
+// specified is greater than the default HTTP/RPC timeout, the HTTP/RPC
+// timeout is used.  If the server does not support this method, it returns
+// google.rpc.Code.UNIMPLEMENTED.
+// Note that this method is on a best-effort basis.  It may return the latest
+// state before the specified timeout (including immediately), meaning even an
+// immediate response is no guarantee that the operation is done.
+func (c *OperationsClient) WaitOperation(ctx context.Context, req *longrunningpb.WaitOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
+	return c.internalClient.WaitOperation(ctx, req, opts...)
+}
+
+// operationsGRPCClient is a client for interacting with Long Running Operations API over gRPC transport.
 //
 // Methods, except Close, may be called concurrently. However, fields must not be modified concurrently with method calls.
-type OperationsClient struct {
+type operationsGRPCClient struct {
 	// Connection pool of gRPC connections to the service.
 	connPool gtransport.ConnPool
 
 	// flag to opt out of default deadlines via GOOGLE_API_GO_EXPERIMENTAL_DISABLE_DEFAULT_DEADLINE
 	disableDeadlines bool
 
+	// Points back to the CallOptions field of the containing OperationsClient
+	CallOptions **OperationsCallOptions
+
 	// The gRPC API client.
 	operationsClient longrunningpb.OperationsClient
-
-	// The call options for this service.
-	CallOptions *OperationsCallOptions
 
 	// The x-goog-* metadata to be sent with each request.
 	xGoogMetadata metadata.MD
 }
 
-// NewOperationsClient creates a new operations client.
+// NewOperationsClient creates a new operations client based on gRPC.
+// The returned client must be Closed when it is done being used to clean up its underlying connections.
 //
 // Manages long-running operations with an API service.
 //
@@ -140,8 +251,7 @@ type OperationsClient struct {
 // returns long-running operations should implement the Operations interface
 // so developers can have a consistent client experience.
 func NewOperationsClient(ctx context.Context, opts ...option.ClientOption) (*OperationsClient, error) {
-	clientOpts := defaultOperationsClientOptions()
-
+	clientOpts := defaultOperationsGRPCClientOptions()
 	if newOperationsClientHook != nil {
 		hookOpts, err := newOperationsClientHook(ctx, clientHookParams{})
 		if err != nil {
@@ -159,54 +269,47 @@ func NewOperationsClient(ctx context.Context, opts ...option.ClientOption) (*Ope
 	if err != nil {
 		return nil, err
 	}
-	c := &OperationsClient{
+	client := OperationsClient{CallOptions: defaultOperationsCallOptions()}
+
+	c := &operationsGRPCClient{
 		connPool:         connPool,
 		disableDeadlines: disableDeadlines,
-		CallOptions:      defaultOperationsCallOptions(),
-
 		operationsClient: longrunningpb.NewOperationsClient(connPool),
+		CallOptions:      &client.CallOptions,
 	}
 	c.setGoogleClientInfo()
 
-	return c, nil
+	client.internalClient = c
+
+	return &client, nil
 }
 
 // Connection returns a connection to the API service.
 //
 // Deprecated.
-func (c *OperationsClient) Connection() *grpc.ClientConn {
+func (c *operationsGRPCClient) Connection() *grpc.ClientConn {
 	return c.connPool.Conn()
-}
-
-// Close closes the connection to the API service. The user should invoke this when
-// the client is no longer required.
-func (c *OperationsClient) Close() error {
-	return c.connPool.Close()
 }
 
 // setGoogleClientInfo sets the name and version of the application in
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
-func (c *OperationsClient) setGoogleClientInfo(keyval ...string) {
+func (c *operationsGRPCClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", versionGo()}, keyval...)
 	kv = append(kv, "gapic", versionClient, "gax", gax.Version, "grpc", grpc.Version)
 	c.xGoogMetadata = metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
 }
 
-// ListOperations lists operations that match the specified filter in the request. If the
-// server doesn’t support this method, it returns UNIMPLEMENTED.
-//
-// NOTE: the name binding allows API services to override the binding
-// to use different resource name schemes, such as users/*/operations. To
-// override the binding, API services can add a binding such as
-// "/v1/{name=users/*}/operations" to their service configuration.
-// For backwards compatibility, the default name includes the operations
-// collection id, however overriding users must ensure the name binding
-// is the parent resource, without the operations collection id.
-func (c *OperationsClient) ListOperations(ctx context.Context, req *longrunningpb.ListOperationsRequest, opts ...gax.CallOption) *OperationIterator {
+// Close closes the connection to the API service. The user should invoke this when
+// the client is no longer required.
+func (c *operationsGRPCClient) Close() error {
+	return c.connPool.Close()
+}
+
+func (c *operationsGRPCClient) ListOperations(ctx context.Context, req *longrunningpb.ListOperationsRequest, opts ...gax.CallOption) *OperationIterator {
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append(c.CallOptions.ListOperations[0:len(c.CallOptions.ListOperations):len(c.CallOptions.ListOperations)], opts...)
+	opts = append((*c.CallOptions).ListOperations[0:len((*c.CallOptions).ListOperations):len((*c.CallOptions).ListOperations)], opts...)
 	it := &OperationIterator{}
 	req = proto.Clone(req).(*longrunningpb.ListOperationsRequest)
 	it.InternalFetch = func(pageSize int, pageToken string) ([]*longrunningpb.Operation, string, error) {
@@ -243,10 +346,7 @@ func (c *OperationsClient) ListOperations(ctx context.Context, req *longrunningp
 	return it
 }
 
-// GetOperation gets the latest state of a long-running operation.  Clients can use this
-// method to poll the operation result at intervals as recommended by the API
-// service.
-func (c *OperationsClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
+func (c *operationsGRPCClient) GetOperation(ctx context.Context, req *longrunningpb.GetOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
 	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
 		cctx, cancel := context.WithTimeout(ctx, 10000*time.Millisecond)
 		defer cancel()
@@ -254,7 +354,7 @@ func (c *OperationsClient) GetOperation(ctx context.Context, req *longrunningpb.
 	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append(c.CallOptions.GetOperation[0:len(c.CallOptions.GetOperation):len(c.CallOptions.GetOperation)], opts...)
+	opts = append((*c.CallOptions).GetOperation[0:len((*c.CallOptions).GetOperation):len((*c.CallOptions).GetOperation)], opts...)
 	var resp *longrunningpb.Operation
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
@@ -267,11 +367,7 @@ func (c *OperationsClient) GetOperation(ctx context.Context, req *longrunningpb.
 	return resp, nil
 }
 
-// DeleteOperation deletes a long-running operation. This method indicates that the client is
-// no longer interested in the operation result. It does not cancel the
-// operation. If the server doesn’t support this method, it returns
-// google.rpc.Code.UNIMPLEMENTED.
-func (c *OperationsClient) DeleteOperation(ctx context.Context, req *longrunningpb.DeleteOperationRequest, opts ...gax.CallOption) error {
+func (c *operationsGRPCClient) DeleteOperation(ctx context.Context, req *longrunningpb.DeleteOperationRequest, opts ...gax.CallOption) error {
 	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
 		cctx, cancel := context.WithTimeout(ctx, 10000*time.Millisecond)
 		defer cancel()
@@ -279,7 +375,7 @@ func (c *OperationsClient) DeleteOperation(ctx context.Context, req *longrunning
 	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append(c.CallOptions.DeleteOperation[0:len(c.CallOptions.DeleteOperation):len(c.CallOptions.DeleteOperation)], opts...)
+	opts = append((*c.CallOptions).DeleteOperation[0:len((*c.CallOptions).DeleteOperation):len((*c.CallOptions).DeleteOperation)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
 		_, err = c.operationsClient.DeleteOperation(ctx, req, settings.GRPC...)
@@ -288,17 +384,7 @@ func (c *OperationsClient) DeleteOperation(ctx context.Context, req *longrunning
 	return err
 }
 
-// CancelOperation starts asynchronous cancellation on a long-running operation.  The server
-// makes a best effort to cancel the operation, but success is not
-// guaranteed.  If the server doesn’t support this method, it returns
-// google.rpc.Code.UNIMPLEMENTED.  Clients can use
-// Operations.GetOperation or
-// other methods to check whether the cancellation succeeded or whether the
-// operation completed despite cancellation. On successful cancellation,
-// the operation is not deleted; instead, it becomes an operation with
-// an Operation.error value with a google.rpc.Status.code of 1,
-// corresponding to Code.CANCELLED.
-func (c *OperationsClient) CancelOperation(ctx context.Context, req *longrunningpb.CancelOperationRequest, opts ...gax.CallOption) error {
+func (c *operationsGRPCClient) CancelOperation(ctx context.Context, req *longrunningpb.CancelOperationRequest, opts ...gax.CallOption) error {
 	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
 		cctx, cancel := context.WithTimeout(ctx, 10000*time.Millisecond)
 		defer cancel()
@@ -306,7 +392,7 @@ func (c *OperationsClient) CancelOperation(ctx context.Context, req *longrunning
 	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append(c.CallOptions.CancelOperation[0:len(c.CallOptions.CancelOperation):len(c.CallOptions.CancelOperation)], opts...)
+	opts = append((*c.CallOptions).CancelOperation[0:len((*c.CallOptions).CancelOperation):len((*c.CallOptions).CancelOperation)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
 		_, err = c.operationsClient.CancelOperation(ctx, req, settings.GRPC...)
@@ -315,18 +401,9 @@ func (c *OperationsClient) CancelOperation(ctx context.Context, req *longrunning
 	return err
 }
 
-// WaitOperation waits until the specified long-running operation is done or reaches at most
-// a specified timeout, returning the latest state.  If the operation is
-// already done, the latest state is immediately returned.  If the timeout
-// specified is greater than the default HTTP/RPC timeout, the HTTP/RPC
-// timeout is used.  If the server does not support this method, it returns
-// google.rpc.Code.UNIMPLEMENTED.
-// Note that this method is on a best-effort basis.  It may return the latest
-// state before the specified timeout (including immediately), meaning even an
-// immediate response is no guarantee that the operation is done.
-func (c *OperationsClient) WaitOperation(ctx context.Context, req *longrunningpb.WaitOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
+func (c *operationsGRPCClient) WaitOperation(ctx context.Context, req *longrunningpb.WaitOperationRequest, opts ...gax.CallOption) (*longrunningpb.Operation, error) {
 	ctx = insertMetadata(ctx, c.xGoogMetadata)
-	opts = append(c.CallOptions.WaitOperation[0:len(c.CallOptions.WaitOperation):len(c.CallOptions.WaitOperation)], opts...)
+	opts = append((*c.CallOptions).WaitOperation[0:len((*c.CallOptions).WaitOperation):len((*c.CallOptions).WaitOperation)], opts...)
 	var resp *longrunningpb.Operation
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error

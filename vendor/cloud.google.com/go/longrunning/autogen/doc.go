@@ -17,6 +17,8 @@
 // Package longrunning is an auto-generated package for the
 // Long Running Operations API.
 //
+//   NOTE: This package is in alpha. It is not stable, and is likely to change.
+//
 // Use of Context
 //
 // The ctx passed to NewClient is used for authentication requests and
@@ -26,7 +28,7 @@
 // To close the open connection, use the Close() method.
 //
 // For information about setting deadlines, reusing contexts, and more
-// please visit pkg.go.dev/cloud.google.com/go.
+// please visit https://pkg.go.dev/cloud.google.com/go.
 package longrunning // import "cloud.google.com/go/longrunning/autogen"
 
 import (
@@ -46,7 +48,7 @@ import (
 type clientHookParams struct{}
 type clientHook func(context.Context, clientHookParams) ([]option.ClientOption, error)
 
-const versionClient = "20210402"
+const versionClient = "20210602"
 
 func insertMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
 	out, _ := metadata.FromOutgoingContext(ctx)

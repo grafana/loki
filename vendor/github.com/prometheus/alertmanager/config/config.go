@@ -106,7 +106,7 @@ func (u URL) MarshalJSON() ([]byte, error) {
 	if u.URL != nil {
 		return json.Marshal(u.URL.String())
 	}
-	return []byte("null"), nil
+	return nil, nil
 }
 
 // UnmarshalJSON implements the json.Marshaler interface for URL.
@@ -867,7 +867,7 @@ func (re Regexp) MarshalJSON() ([]byte, error) {
 	if re.original != "" {
 		return json.Marshal(re.original)
 	}
-	return []byte("null"), nil
+	return nil, nil
 }
 
 // Matchers is label.Matchers with an added UnmarshalYAML method to implement the yaml.Unmarshaler interface
@@ -920,7 +920,7 @@ func (m *Matchers) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements the json.Marshaler interface for Matchers.
 func (m Matchers) MarshalJSON() ([]byte, error) {
 	if len(m) == 0 {
-		return []byte("[]"), nil
+		return nil, nil
 	}
 	result := make([]string, len(m))
 	for i, matcher := range m {

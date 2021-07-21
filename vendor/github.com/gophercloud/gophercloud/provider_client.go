@@ -440,7 +440,7 @@ func (client *ProviderClient) doRequest(method, url string, options *RequestOpts
 		respErr := ErrUnexpectedResponseCode{
 			URL:            url,
 			Method:         method,
-			Expected:       options.OkCodes,
+			Expected:       okc,
 			Actual:         resp.StatusCode,
 			Body:           body,
 			ResponseHeader: resp.Header,

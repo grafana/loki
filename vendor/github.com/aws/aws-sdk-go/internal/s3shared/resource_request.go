@@ -31,6 +31,8 @@ func (r ResourceRequest) UseFIPS() bool {
 }
 
 // ResourceConfiguredForFIPS returns true if resource ARNs region is FIPS
+//
+// Deprecated: FIPS pseudo-regions will not be in the ARN
 func (r ResourceRequest) ResourceConfiguredForFIPS() bool {
 	return IsFIPS(r.ARN().Region)
 }

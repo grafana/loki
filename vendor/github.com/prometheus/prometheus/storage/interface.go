@@ -33,6 +33,7 @@ var (
 	ErrOutOfOrderExemplar          = errors.New("out of order exemplar")
 	ErrDuplicateExemplar           = errors.New("duplicate exemplar")
 	ErrExemplarLabelLength         = fmt.Errorf("label length for exemplar exceeds maximum of %d UTF-8 characters", exemplar.ExemplarMaxLabelSetLength)
+	ErrExemplarsDisabled           = fmt.Errorf("exemplar storage is disabled or max exemplars is less than or equal to 0")
 )
 
 // Appendable allows creating appenders.
@@ -106,7 +107,7 @@ type ChunkQuerier interface {
 // LabelQuerier provides querying access over labels.
 type LabelQuerier interface {
 	// LabelValues returns all potential values for a label name.
-	// It is not safe to use the strings beyond the lifefime of the querier.
+	// It is not safe to use the strings beyond the lifetime of the querier.
 	// If matchers are specified the returned result set is reduced
 	// to label values of metrics matching the matchers.
 	LabelValues(name string, matchers ...*labels.Matcher) ([]string, Warnings, error)
