@@ -13,6 +13,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -282,6 +283,7 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	var (
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
+		reqStats     = stats.FromContext(ctx)
 	)
 
 	// Fetch samples from multiple ingesters
@@ -382,6 +384,9 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	for _, series := range hashToTimeSeries {
 		resp.Timeseries = append(resp.Timeseries, series)
 	}
+
+	reqStats.AddFetchedSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
+	reqStats.AddFetchedChunkBytes(uint64(resp.ChunksSize()))
 
 	return resp, nil
 }

@@ -29,6 +29,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -565,6 +566,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		numChunks     = atomic.NewInt32(0)
 		spanLog       = spanlogger.FromContext(ctx)
 		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
+		reqStats      = stats.FromContext(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -626,10 +628,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
 						}
 					}
-					chunksSize := 0
-					for _, c := range s.Chunks {
-						chunksSize += c.Size()
-					}
+					chunksSize := countChunkBytes(s)
 					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
 						return validation.LimitError(chunkBytesLimitErr.Error())
 					}
@@ -657,10 +656,16 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				}
 			}
 
+			numSeries := len(mySeries)
+			chunkBytes := countChunkBytes(mySeries...)
+
+			reqStats.AddFetchedSeries(uint64(numSeries))
+			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
+
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),
-				"num series", len(mySeries),
-				"bytes series", countSeriesBytes(mySeries),
+				"fetched series", numSeries,
+				"fetched chunk bytes", chunkBytes,
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
 
@@ -944,12 +949,11 @@ func convertBlockHintsToULIDs(hints []hintspb.Block) ([]ulid.ULID, error) {
 	return res, nil
 }
 
-func countSeriesBytes(series []*storepb.Series) (count uint64) {
+// countChunkBytes returns the size of the chunks making up the provided series in bytes
+func countChunkBytes(series ...*storepb.Series) (count int) {
 	for _, s := range series {
 		for _, c := range s.Chunks {
-			if c.Raw != nil {
-				count += uint64(len(c.Raw.Data))
-			}
+			count += c.Size()
 		}
 	}
 
