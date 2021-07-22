@@ -66,6 +66,8 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 type BaseLabelsBuilder struct {
 	del []string
 	add []labels.Label
+	// nolint(structcheck) https://github.com/golangci/golangci-lint/issues/826
+	err string
 
 	groups            []string
 	parserKeyHints    ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
