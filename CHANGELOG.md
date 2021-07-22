@@ -5,6 +5,8 @@
 * [3446](https://github.com/grafana/loki/pull/3446) **pracucci, owen-d**: Remove deprecated config `querier.split-queries-by-day` in favor of `querier.split-queries-by-interval`
 * [3586](https://github.com/grafana/loki/pull/3587) **rsteneteg** Remove filemanager targets that no longer has any tails, to allow them to be recreated with the proper path
 * [3739](https://github.com/grafana/loki/pull/3739) **rsteneteg** Allow users to run instant queries in the past using LogCLI
+* [4020](https://github.com/grafana/loki/pull/4020) **simonswine** Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. (Users only have control of the HTTP header when Loki is not frontend by an auth proxy validating the tenant IDs) (CVE-2021-36156 CVE-2021-36157)
+
 
 ## 2.2.0 (2021/03/10)
 
