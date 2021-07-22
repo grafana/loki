@@ -67,6 +67,24 @@ var (
 			},
 		},
 	}
+	vector = promql.Vector{
+		{
+			Point: promql.Point{
+				T: toMs(testTime.Add(-4 * time.Hour)),
+				V: 0.013333333333333334,
+			},
+			Metric: []labels.Label{
+				{
+					Name:  "filename",
+					Value: `/var/hostlog/apport.log`,
+				},
+				{
+					Name:  "job",
+					Value: "varlogs",
+				},
+			},
+		},
+	}
 	streams = logqlmodel.Streams{
 		{
 			Entries: []logproto.Entry{
@@ -204,7 +222,9 @@ func TestLogFilterTripperware(t *testing.T) {
 
 func TestInstantQueryTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	testShardingConfig := testConfig
+	testShardingConfig.ShardedQueries = true
+	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 1*time.Second, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -216,7 +236,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	lreq := &LokiInstantRequest{
 		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
 		Limit:     1000,
-		Direction: logproto.FORWARD,
+		Direction: logproto.BACKWARD,
 		Path:      "/loki/api/v1/query",
 	}
 
@@ -228,7 +248,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	count, h := promqlResult(streams)
+	count, h := promqlResult(vector)
 	rt.setHandler(h)
 	resp, err := tpw(rt).RoundTrip(req)
 	require.Equal(t, 1, *count)
@@ -236,7 +256,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 
 	lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
-	require.IsType(t, &LokiResponse{}, lokiResponse) // Is LokiPromResponse in Docker compose
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
 }
 
 func TestSeriesTripperware(t *testing.T) {
