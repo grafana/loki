@@ -107,19 +107,13 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
-
-				switch r := req.(type) {
-				case *LokiRequest:
-					data.params = paramsFromRangeRequest(r)
-				case *LokiInstantRequest:
-					data.params = paramsFromInstantRequest(r)
-				default:
-					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute params, unexpected type: %T", resp))
-				}
-
 				data.recorded = true
 				data.statistics = statistics
 				data.result = res
+				data.params, err = paramsFromRequest(req)
+				if err != nil {
+					return nil, err
+				}
 			}
 			return resp, err
 		})

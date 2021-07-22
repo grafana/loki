@@ -420,14 +420,16 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			}, nil
 		case loghttp.ResultTypeStream:
 			// This is the same as in querysharding.go
-			var params logql.Params
+			params, err := paramsFromRequest(req)
+			if err != nil {
+				return nil, err
+			}
+
 			var path string
 			switch r := req.(type) {
 			case *LokiRequest:
-				params = paramsFromRangeRequest(r)
 				path = r.GetPath()
 			case *LokiInstantRequest:
-				params = paramsFromInstantRequest(r)
 				path = r.GetPath()
 			default:
 				return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
@@ -761,48 +763,51 @@ func (res LokiResponse) Count() int64 {
 	return result
 }
 
-type paramsWrapper struct {
-	*LokiRequest
-}
-
-func paramsFromRangeRequest(req queryrange.Request) *paramsWrapper {
-	return &paramsWrapper{
-		LokiRequest: req.(*LokiRequest),
+func paramsFromRequest(req queryrange.Request) (logql.Params, error) {
+	switch r := req.(type) {
+	case *LokiRequest:
+		return &paramsRangeWrapper{
+			LokiRequest: r,
+		}, nil
+	case *LokiInstantRequest:
+		return &paramsInstantWrapper{
+			LokiInstantRequest: r,
+		}, nil
+	default:
+		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 	}
 }
 
-func (p paramsWrapper) Query() string {
+type paramsRangeWrapper struct {
+	*LokiRequest
+}
+
+func (p paramsRangeWrapper) Query() string {
 	return p.GetQuery()
 }
 
-func (p paramsWrapper) Start() time.Time {
+func (p paramsRangeWrapper) Start() time.Time {
 	return p.GetStartTs()
 }
 
-func (p paramsWrapper) End() time.Time {
+func (p paramsRangeWrapper) End() time.Time {
 	return p.GetEndTs()
 }
 
-func (p paramsWrapper) Step() time.Duration {
+func (p paramsRangeWrapper) Step() time.Duration {
 	return time.Duration(p.GetStep() * 1e6)
 }
-func (p paramsWrapper) Interval() time.Duration { return 0 }
-func (p paramsWrapper) Direction() logproto.Direction {
+func (p paramsRangeWrapper) Interval() time.Duration { return 0 }
+func (p paramsRangeWrapper) Direction() logproto.Direction {
 	return p.GetDirection()
 }
-func (p paramsWrapper) Limit() uint32 { return p.LokiRequest.Limit }
-func (p paramsWrapper) Shards() []string {
+func (p paramsRangeWrapper) Limit() uint32 { return p.LokiRequest.Limit }
+func (p paramsRangeWrapper) Shards() []string {
 	return p.GetShards()
 }
 
 type paramsInstantWrapper struct {
 	*LokiInstantRequest
-}
-
-func paramsFromInstantRequest(req queryrange.Request) *paramsInstantWrapper {
-	return &paramsInstantWrapper{
-		LokiInstantRequest: req.(*LokiInstantRequest),
-	}
 }
 
 func (p paramsInstantWrapper) Query() string {
