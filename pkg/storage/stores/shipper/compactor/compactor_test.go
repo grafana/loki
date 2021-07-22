@@ -50,6 +50,7 @@ func TestIsDefaults(t *testing.T) {
 			RetentionDeleteDelay:      2 * time.Hour,
 			RetentionDeleteWorkCount:  150,
 			DeleteRequestCancelPeriod: 24 * time.Hour,
+			MaxCompactionParallelism:  1,
 		}, true},
 	} {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
