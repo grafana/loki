@@ -134,15 +134,21 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 	if s.Labels == nil {
 		s.Labels = LabelSet{}
 	}
-	return jsonparser.ObjectEach(data, func(key, value []byte, _ jsonparser.ValueType, _ int) error {
+	return jsonparser.ObjectEach(data, func(key, value []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
 			if err := s.Labels.UnmarshalJSON(value); err != nil {
 				return err
 			}
 		case "values":
+			if ty == jsonparser.Null {
+				return nil
+			}
 			var parseError error
-			_, err := jsonparser.ArrayEach(value, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+			_, err := jsonparser.ArrayEach(value, func(value []byte, ty jsonparser.ValueType, _ int, _ error) {
+				if ty == jsonparser.Null {
+					return
+				}
 				var entry Entry
 				if err := entry.UnmarshalJSON(value); err != nil {
 					parseError = err
@@ -172,7 +178,7 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 		case "result":
 			switch q.ResultType {
 			case ResultTypeStream:
-				var ss Streams
+				ss := Streams{}
 				if err := ss.UnmarshalJSON(value); err != nil {
 					return err
 				}
