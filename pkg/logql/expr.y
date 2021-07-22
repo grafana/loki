@@ -49,7 +49,7 @@ import (
   LabelFormatExpr         *LabelFmtExpr
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
-  JSONExpressionParser    *jsonExpressionParser
+  JSONExpressionParser    *JSONExpressionParser
   JSONExpression          log.JSONExpression
   JSONExpressionList      []log.JSONExpression
   UnwrapExpr              *UnwrapExpr
