@@ -148,7 +148,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, nil)
+		err = manager.Update(r.cfg.EvaluationInterval, files, nil, r.cfg.ExternalURL.String())
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)

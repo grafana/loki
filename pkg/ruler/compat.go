@@ -283,7 +283,7 @@ func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
 	}
 
 	// Trying to parse templates.
-	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, 0)
+	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", 0)
 	defs := []string{
 		"{{$labels := .Labels}}",
 		"{{$externalLabels := .ExternalLabels}}",

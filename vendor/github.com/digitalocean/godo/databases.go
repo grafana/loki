@@ -11,6 +11,7 @@ import (
 const (
 	databaseBasePath           = "/v2/databases"
 	databaseSinglePath         = databaseBasePath + "/%s"
+	databaseCAPath             = databaseBasePath + "/%s/ca"
 	databaseResizePath         = databaseBasePath + "/%s/resize"
 	databaseMigratePath        = databaseBasePath + "/%s/migrate"
 	databaseMaintenancePath    = databaseBasePath + "/%s/maintenance"
@@ -91,6 +92,7 @@ const (
 type DatabasesService interface {
 	List(context.Context, *ListOptions) ([]Database, *Response, error)
 	Get(context.Context, string) (*Database, *Response, error)
+	GetCA(context.Context, string) (*DatabaseCA, *Response, error)
 	Create(context.Context, *DatabaseCreateRequest) (*Database, *Response, error)
 	Delete(context.Context, string) (*Response, error)
 	Resize(context.Context, string, *DatabaseResizeRequest) (*Response, error)
@@ -152,6 +154,11 @@ type Database struct {
 	CreatedAt          time.Time                  `json:"created_at,omitempty"`
 	PrivateNetworkUUID string                     `json:"private_network_uuid,omitempty"`
 	Tags               []string                   `json:"tags,omitempty"`
+}
+
+// DatabaseCA represents a database ca.
+type DatabaseCA struct {
+	Certificate []byte `json:"certificate"`
 }
 
 // DatabaseConnection represents a database connection
@@ -333,6 +340,10 @@ type databaseRoot struct {
 	Database *Database `json:"database"`
 }
 
+type databaseCARoot struct {
+	CA *DatabaseCA `json:"ca"`
+}
+
 type databaseBackupsRoot struct {
 	Backups []DatabaseBackup `json:"backups"`
 }
@@ -402,6 +413,21 @@ func (svc *DatabasesServiceOp) Get(ctx context.Context, databaseID string) (*Dat
 		return nil, resp, err
 	}
 	return root.Database, resp, nil
+}
+
+// GetCA retrieves the CA of a database cluster.
+func (svc *DatabasesServiceOp) GetCA(ctx context.Context, databaseID string) (*DatabaseCA, *Response, error) {
+	path := fmt.Sprintf(databaseCAPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseCARoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.CA, resp, nil
 }
 
 // Create creates a database cluster

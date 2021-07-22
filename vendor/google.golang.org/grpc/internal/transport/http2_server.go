@@ -356,26 +356,6 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 	if state.data.statsTrace != nil {
 		s.ctx = stats.SetIncomingTrace(s.ctx, state.data.statsTrace)
 	}
-	if t.inTapHandle != nil {
-		var err error
-		info := &tap.Info{
-			FullMethodName: state.data.method,
-		}
-		s.ctx, err = t.inTapHandle(s.ctx, info)
-		if err != nil {
-			if logger.V(logLevel) {
-				logger.Warningf("transport: http2Server.operateHeaders got an error from InTapHandle: %v", err)
-			}
-			t.controlBuf.put(&cleanupStream{
-				streamID: s.id,
-				rst:      true,
-				rstCode:  http2.ErrCodeRefusedStream,
-				onWrite:  func() {},
-			})
-			s.cancel()
-			return false
-		}
-	}
 	t.mu.Lock()
 	if t.state != reachable {
 		t.mu.Unlock()
@@ -416,6 +396,25 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 		})
 		s.cancel()
 		return false
+	}
+	if t.inTapHandle != nil {
+		var err error
+		if s.ctx, err = t.inTapHandle(s.ctx, &tap.Info{FullMethodName: state.data.method}); err != nil {
+			t.mu.Unlock()
+			if logger.V(logLevel) {
+				logger.Infof("transport: http2Server.operateHeaders got an error from InTapHandle: %v", err)
+			}
+			stat, ok := status.FromError(err)
+			if !ok {
+				stat = status.New(codes.PermissionDenied, err.Error())
+			}
+			t.controlBuf.put(&earlyAbortStream{
+				streamID:       s.id,
+				contentSubtype: s.contentSubtype,
+				status:         stat,
+			})
+			return false
+		}
 	}
 	t.activeStreams[streamID] = s
 	if len(t.activeStreams) == 1 {

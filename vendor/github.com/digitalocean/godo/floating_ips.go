@@ -54,10 +54,10 @@ type floatingIPRoot struct {
 }
 
 // FloatingIPCreateRequest represents a request to create a floating IP.
-// If DropletID is not empty, the floating IP will be assigned to the
-// droplet.
+// Specify DropletID to assign the floating IP to a Droplet or Region
+// to reserve it to the region.
 type FloatingIPCreateRequest struct {
-	Region    string `json:"region"`
+	Region    string `json:"region,omitempty"`
 	DropletID int    `json:"droplet_id,omitempty"`
 }
 

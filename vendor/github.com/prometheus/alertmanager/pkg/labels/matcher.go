@@ -110,7 +110,10 @@ func (m Matcher) MarshalJSON() ([]byte, error) {
 }
 
 func (m *Matcher) UnmarshalJSON(data []byte) error {
-	var v1m apiV1Matcher
+	v1m := apiV1Matcher{
+		IsEqual: true,
+	}
+
 	if err := json.Unmarshal(data, &v1m); err != nil {
 		return err
 	}

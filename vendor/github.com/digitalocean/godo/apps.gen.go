@@ -12,6 +12,7 @@ type App struct {
 	ID                      string       `json:"id,omitempty"`
 	OwnerUUID               string       `json:"owner_uuid,omitempty"`
 	Spec                    *AppSpec     `json:"spec"`
+	LastDeploymentActiveAt  time.Time    `json:"last_deployment_active_at,omitempty"`
 	DefaultIngress          string       `json:"default_ingress,omitempty"`
 	CreatedAt               time.Time    `json:"created_at,omitempty"`
 	UpdatedAt               time.Time    `json:"updated_at,omitempty"`
@@ -257,8 +258,18 @@ type AppWorkerSpec struct {
 
 // AppCORSPolicy struct for AppCORSPolicy
 type AppCORSPolicy struct {
-	// The set of allowed CORS origins.
+	// The set of allowed CORS origins. This configures the Access-Control-Allow-Origin header.
 	AllowOrigins []*AppStringMatch `json:"allow_origins,omitempty"`
+	// The set of allowed HTTP methods. This configures the Access-Control-Allow-Methods header.
+	AllowMethods []string `json:"allow_methods,omitempty"`
+	// The set of allowed HTTP request headers. This configures the Access-Control-Allow-Headers header.
+	AllowHeaders []string `json:"allow_headers,omitempty"`
+	// The set of HTTP response headers that browsers are allowed to access. This configures the Access-Control-Expose-Headers  header.
+	ExposeHeaders []string `json:"expose_headers,omitempty"`
+	// An optional duration specifiying how long browsers can cache the results of a preflight request. This configures the Access-Control-Max-Age header. Example: `5h30m`.
+	MaxAge string `json:"max_age,omitempty"`
+	// Whether browsers should expose the response to the client-side JavaScript code when the request's credentials mode is `include`. This configures the Access-Control-Allow-Credentials header.
+	AllowCredentials bool `json:"allow_credentials,omitempty"`
 }
 
 // Deployment struct for Deployment
@@ -437,7 +448,7 @@ type GitSourceSpec struct {
 // ImageSourceSpec struct for ImageSourceSpec
 type ImageSourceSpec struct {
 	RegistryType ImageSourceSpecRegistryType `json:"registry_type,omitempty"`
-	// The registry name. Must be left empty for the `DOCR` registry type. Required for the `DOCKER_HUB` registry type.
+	// The registry name. Must be left empty for the `DOCR` registry type.  Required for the `DOCKER_HUB` registry type.
 	Registry string `json:"registry,omitempty"`
 	// The repository name.
 	Repository string `json:"repository,omitempty"`
@@ -482,7 +493,7 @@ const (
 // AppProposeRequest struct for AppProposeRequest
 type AppProposeRequest struct {
 	Spec *AppSpec `json:"spec"`
-	// An optional ID of an existing app. If set, the proposed spec will be treated as an update against the specified app.
+	// An optional ID of an existing app. If set, the spec will be treated as a proposed update to the specified app. The existing app is not modified using this method.
 	AppID string `json:"app_id,omitempty"`
 }
 
@@ -495,11 +506,13 @@ type AppProposeResponse struct {
 	// The number of existing static apps the account has.
 	ExistingStaticApps string `json:"existing_static_apps,omitempty"`
 	// The maximum number of free static apps the account can have. Any additional static apps will be charged for.
-	MaxFreeStaticApps    string   `json:"max_free_static_apps,omitempty"`
-	Spec                 *AppSpec `json:"spec,omitempty"`
-	AppCost              float32  `json:"app_cost,omitempty"`
-	AppTierUpgradeCost   float32  `json:"app_tier_upgrade_cost,omitempty"`
-	AppTierDowngradeCost float32  `json:"app_tier_downgrade_cost,omitempty"`
+	MaxFreeStaticApps string   `json:"max_free_static_apps,omitempty"`
+	Spec              *AppSpec `json:"spec,omitempty"`
+	AppCost           float32  `json:"app_cost,omitempty"`
+	// The monthly cost of the proposed app in USD using the next pricing plan tier. For example, if you propose an app that uses the Basic tier, the `app_tier_upgrade_cost` field displays the monthly cost of the app if it were to use the Professional tier. If the proposed app already uses the most expensive tier, the field is empty.
+	AppTierUpgradeCost float32 `json:"app_tier_upgrade_cost,omitempty"`
+	// The monthly cost of the proposed app in USD using the previous pricing plan tier. For example, if you propose an app that uses the Professional tier, the `app_tier_downgrade_cost` field displays the monthly cost of the app if it were to use the Basic tier. If the proposed app already uses the lest expensive tier, the field is empty.
+	AppTierDowngradeCost float32 `json:"app_tier_downgrade_cost,omitempty"`
 }
 
 // AppRegion struct for AppRegion
