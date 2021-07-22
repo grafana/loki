@@ -136,6 +136,7 @@ type KVConfig struct {
 	GossipNodes         int           `yaml:"gossip_nodes"`
 	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time"`
 	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time"`
+	EnableCompression   bool          `yaml:"compression_enabled"`
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
@@ -165,12 +166,14 @@ type KVConfig struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	mlDefaults := defaultMemberlistConfig()
+
 	// "Defaults to hostname" -- memberlist sets it to hostname by default.
 	f.StringVar(&cfg.NodeName, prefix+"memberlist.nodename", "", "Name of the node in memberlist cluster. Defaults to hostname.") // memberlist.DefaultLANConfig will put hostname here.
 	f.BoolVar(&cfg.RandomizeNodeName, prefix+"memberlist.randomize-node-name", true, "Add random suffix to the node name.")
-	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", 0, "The timeout for establishing a connection with a remote node, and for read/write operations. Uses memberlist LAN defaults if 0.")
-	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", 0, "Multiplication factor used when sending out messages (factor * log(N+1)).")
+	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", mlDefaults.TCPTimeout, "The timeout for establishing a connection with a remote node, and for read/write operations.")
+	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", mlDefaults.RetransmitMult, "Multiplication factor used when sending out messages (factor * log(N+1)).")
 	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. It can be an IP, hostname or an entry specified in the DNS Service Discovery format (see https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery for more details).")
 	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
 	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
@@ -179,14 +182,19 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.RejoinInterval, prefix+"memberlist.rejoin-interval", 0, "If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix the cluster split issue, and is harmless otherwise. For example when using only few components as a seed nodes (via -memberlist.join), then it's recommended to use rejoin. If -memberlist.join points to dynamic service that resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin is not needed.")
 	f.DurationVar(&cfg.LeftIngestersTimeout, prefix+"memberlist.left-ingesters-timeout", 5*time.Minute, "How long to keep LEFT ingesters in the ring.")
 	f.DurationVar(&cfg.LeaveTimeout, prefix+"memberlist.leave-timeout", 5*time.Second, "Timeout for leaving memberlist cluster.")
-	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", 0, "How often to gossip. Uses memberlist LAN defaults if 0.")
-	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", 0, "How many nodes to gossip to. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.PushPullInterval, prefix+"memberlist.pullpush-interval", 0, "How often to use pull/push sync. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", 0, "How long to keep gossiping to dead nodes, to give them chance to refute their death. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", 0, "How soon can dead node's name be reclaimed with new address. Defaults to 0, which is disabled.")
+	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", mlDefaults.GossipInterval, "How often to gossip.")
+	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", mlDefaults.GossipNodes, "How many nodes to gossip to.")
+	f.DurationVar(&cfg.PushPullInterval, prefix+"memberlist.pullpush-interval", mlDefaults.PushPullInterval, "How often to use pull/push sync.")
+	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", mlDefaults.GossipToTheDeadTime, "How long to keep gossiping to dead nodes, to give them chance to refute their death.")
+	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
+	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
+}
+
+func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix(f, "")
 }
 
 func generateRandomSuffix() string {
@@ -252,13 +260,15 @@ type KV struct {
 	totalSizeOfPushes                   prometheus.Counter
 	numberOfBroadcastMessagesInQueue    prometheus.GaugeFunc
 	totalSizeOfBroadcastMessagesInQueue prometheus.Gauge
+	numberOfBroadcastMessagesDropped    prometheus.Counter
 	casAttempts                         prometheus.Counter
 	casFailures                         prometheus.Counter
 	casSuccesses                        prometheus.Counter
 	watchPrefixDroppedNotifications     *prometheus.CounterVec
 
-	storeValuesDesc *prometheus.Desc
-	storeSizesDesc  *prometheus.Desc
+	storeValuesDesc        *prometheus.Desc
+	storeTombstones        *prometheus.GaugeVec
+	storeRemovedTombstones *prometheus.CounterVec
 
 	memberlistMembersCount prometheus.GaugeFunc
 	memberlistHealthScore  prometheus.GaugeFunc
@@ -283,9 +293,11 @@ type message struct {
 }
 
 type valueDesc struct {
-	// We store bytes here. Reason is that clients calling CAS function will modify the object in place,
-	// but unless CAS succeeds, we don't want those modifications to be visible.
-	value []byte
+	// We store the decoded value here to prevent decoding the entire state for every
+	// update we receive. Whilst the updates are small and fast to decode,
+	// the total state can be quite large.
+	// The CAS function is passed a deep copy because it modifies in-place.
+	value Mergeable
 
 	// version (local only) is used to keep track of what we're gossiping about, and invalidate old messages
 	version uint
@@ -294,8 +306,16 @@ type valueDesc struct {
 	codecID string
 }
 
+func (v valueDesc) Clone() (result valueDesc) {
+	result = v
+	if v.value != nil {
+		result.value = v.value.Clone()
+	}
+	return
+}
+
 func (v valueDesc) String() string {
-	return fmt.Sprintf("size: %d, version: %d, codec: %s", len(v.value), v.version, v.codecID)
+	return fmt.Sprintf("version: %d, codec: %s", v.version, v.codecID)
 }
 
 var (
@@ -342,36 +362,28 @@ func NewKV(cfg KVConfig, logger log.Logger) *KV {
 	return mlkv
 }
 
+func defaultMemberlistConfig() *memberlist.Config {
+	return memberlist.DefaultLANConfig()
+}
+
 func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	tr, err := NewTCPTransport(m.cfg.TCPTransport, m.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transport: %v", err)
 	}
 
-	mlCfg := memberlist.DefaultLANConfig()
+	mlCfg := defaultMemberlistConfig()
 	mlCfg.Delegate = m
 
-	if m.cfg.StreamTimeout != 0 {
-		mlCfg.TCPTimeout = m.cfg.StreamTimeout
-	}
-	if m.cfg.RetransmitMult != 0 {
-		mlCfg.RetransmitMult = m.cfg.RetransmitMult
-	}
-	if m.cfg.PushPullInterval != 0 {
-		mlCfg.PushPullInterval = m.cfg.PushPullInterval
-	}
-	if m.cfg.GossipInterval != 0 {
-		mlCfg.GossipInterval = m.cfg.GossipInterval
-	}
-	if m.cfg.GossipNodes != 0 {
-		mlCfg.GossipNodes = m.cfg.GossipNodes
-	}
-	if m.cfg.GossipToTheDeadTime > 0 {
-		mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
-	}
-	if m.cfg.DeadNodeReclaimTime > 0 {
-		mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
-	}
+	mlCfg.TCPTimeout = m.cfg.StreamTimeout
+	mlCfg.RetransmitMult = m.cfg.RetransmitMult
+	mlCfg.PushPullInterval = m.cfg.PushPullInterval
+	mlCfg.GossipInterval = m.cfg.GossipInterval
+	mlCfg.GossipNodes = m.cfg.GossipNodes
+	mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
+	mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
+	mlCfg.EnableCompression = m.cfg.EnableCompression
+
 	if m.cfg.NodeName != "" {
 		mlCfg.Name = m.cfg.NodeName
 	}
@@ -412,7 +424,7 @@ func (m *KV) starting(_ context.Context) error {
 	m.memberlist = list
 	m.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       list.NumMembers,
-		RetransmitMult: m.cfg.RetransmitMult,
+		RetransmitMult: mlCfg.RetransmitMult,
 	}
 	m.initWG.Done()
 
@@ -612,24 +624,16 @@ func (m *KV) Get(key string, codec codec.Codec) (interface{}, error) {
 // Returns current value with removed tombstones.
 func (m *KV) get(key string, codec codec.Codec) (out interface{}, version uint, err error) {
 	m.storeMu.Lock()
-	v := m.store[key]
+	v := m.store[key].Clone()
 	m.storeMu.Unlock()
 
-	out = nil
 	if v.value != nil {
-		out, err = codec.Decode(v.value)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		if mr, ok := out.(Mergeable); ok {
-			// remove ALL tombstones before returning to client.
-			// No need for clients to see them.
-			mr.RemoveTombstones(time.Time{})
-		}
+		// remove ALL tombstones before returning to client.
+		// No need for clients to see them.
+		_, _ = v.value.RemoveTombstones(time.Time{})
 	}
 
-	return out, v.version, nil
+	return v.value, v.version, nil
 }
 
 // WatchKey watches for value changes for given key. When value changes, 'f' function is called with the
@@ -883,14 +887,17 @@ func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) 
 func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec codec.Codec) {
 	data, err := codec.Encode(change)
 	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to encode change", "err", err)
+		level.Error(m.logger).Log("msg", "failed to encode change", "key", key, "version", version, "err", err)
+		m.numberOfBroadcastMessagesDropped.Inc()
 		return
 	}
 
 	kvPair := KeyValuePair{Key: key, Value: data, Codec: codec.CodecID()}
 	pairData, err := kvPair.Marshal()
 	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "err", err)
+		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "key", key, "version", version, "err", err)
+		m.numberOfBroadcastMessagesDropped.Inc()
+		return
 	}
 
 	if len(pairData) > 65535 {
@@ -900,7 +907,8 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		//
 		// Typically messages are smaller (when dealing with couple of updates only), but can get bigger
 		// when broadcasting result of push/pull update.
-		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "len", len(pairData))
+		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "key", key, "version", version, "len", len(pairData))
+		m.numberOfBroadcastMessagesDropped.Inc()
 		return
 	}
 
@@ -1039,9 +1047,21 @@ func (m *KV) LocalState(join bool) []byte {
 			continue
 		}
 
+		codec := m.GetCodec(val.codecID)
+		if codec == nil {
+			level.Error(m.logger).Log("msg", "failed to encode remote state: unknown codec for key", "codec", val.codecID, "key", key)
+			continue
+		}
+
+		encoded, err := codec.Encode(val.value)
+		if err != nil {
+			level.Error(m.logger).Log("msg", "failed to encode remote state", "err", err)
+			continue
+		}
+
 		kvPair.Reset()
 		kvPair.Key = key
-		kvPair.Value = val.value
+		kvPair.Value = encoded
 		kvPair.Codec = val.codecID
 
 		ser, err := kvPair.Marshal()
@@ -1051,7 +1071,7 @@ func (m *KV) LocalState(join bool) []byte {
 		}
 
 		if uint(len(ser)) > math.MaxUint32 {
-			level.Error(m.logger).Log("msg", "value too long", "key", key, "value_length", len(val.value))
+			level.Error(m.logger).Log("msg", "value too long", "key", key, "value_length", len(encoded))
 			continue
 		}
 
@@ -1173,12 +1193,12 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 
-	curr := m.store[key]
+	curr := m.store[key].Clone()
 	// if casVersion is 0, then there was no previous value, so we will just do normal merge, without localCAS flag set.
 	if casVersion > 0 && curr.version != casVersion {
 		return nil, 0, errVersionMismatch
 	}
-	result, change, err := computeNewValue(incomingValue, curr.value, codec, casVersion > 0)
+	result, change, err := computeNewValue(incomingValue, curr.value, casVersion > 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1190,17 +1210,14 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 
 	if m.cfg.LeftIngestersTimeout > 0 {
 		limit := time.Now().Add(-m.cfg.LeftIngestersTimeout)
-		result.RemoveTombstones(limit)
-	}
-
-	encoded, err := codec.Encode(result)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to encode merged result: %v", err)
+		total, removed := result.RemoveTombstones(limit)
+		m.storeTombstones.WithLabelValues(key).Set(float64(total))
+		m.storeRemovedTombstones.WithLabelValues(key).Add(float64(removed))
 	}
 
 	newVersion := curr.version + 1
 	m.store[key] = valueDesc{
-		value:   encoded,
+		value:   result,
 		version: newVersion,
 		codecID: codec.CodecID(),
 	}
@@ -1209,25 +1226,7 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 }
 
 // returns [result, change, error]
-func computeNewValue(incoming Mergeable, stored []byte, c codec.Codec, cas bool) (Mergeable, Mergeable, error) {
-	if len(stored) == 0 {
-		return incoming, incoming, nil
-	}
-
-	old, err := c.Decode(stored)
-	if err != nil {
-		return incoming, incoming, fmt.Errorf("failed to decode stored value: %v", err)
-	}
-
-	if old == nil {
-		return incoming, incoming, nil
-	}
-
-	oldVal, ok := old.(Mergeable)
-	if !ok {
-		return incoming, incoming, fmt.Errorf("stored value is not Mergeable, got %T", old)
-	}
-
+func computeNewValue(incoming Mergeable, oldVal Mergeable, cas bool) (Mergeable, Mergeable, error) {
 	if oldVal == nil {
 		return incoming, incoming, nil
 	}
@@ -1243,7 +1242,7 @@ func (m *KV) storeCopy() map[string]valueDesc {
 
 	result := make(map[string]valueDesc, len(m.store))
 	for k, v := range m.store {
-		result[k] = v
+		result[k] = v.Clone()
 	}
 	return result
 }

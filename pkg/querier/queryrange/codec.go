@@ -351,6 +351,10 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 	}
 }
 
+type Buffer interface {
+	Bytes() []byte
+}
+
 func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrange.Request) (queryrange.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
@@ -360,13 +364,18 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.DecodeResponse")
 	defer sp.Finish()
 
-	buf, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		sp.LogFields(otlog.Error(err))
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	var buf []byte
+	var err error
+	if buffer, ok := r.Body.(Buffer); ok {
+		buf = buffer.Bytes()
+	} else {
+		buf, err = ioutil.ReadAll(r.Body)
+		if err != nil {
+			sp.LogFields(otlog.Error(err))
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
 	}
-
-	sp.LogFields(otlog.Int("bytes", len(buf)))
+	sp.LogFields(otlog.Int64("bytes", r.ContentLength))
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
@@ -402,7 +411,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 		}, nil
 	default:
 		var resp loghttp.QueryResponse
-		if err := json.Unmarshal(buf, &resp); err != nil {
+		if err := resp.UnmarshalJSON(buf); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		switch string(resp.Data.ResultType) {
@@ -459,7 +468,7 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 				Statistics: resp.Data.Statistics,
 			}, nil
 		default:
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, "unsupported response type, got (%s)", string(resp.Data.ResultType))
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%s)", string(resp.Data.ResultType))
 		}
 	}
 }

@@ -26,6 +26,9 @@ type Config struct {
 	MaxRetries  int                     `yaml:"max_retries"`
 	EnableTLS   bool                    `yaml:"tls_enabled"`
 	TLS         cortex_tls.ClientConfig `yaml:",inline"`
+
+	UserName string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 // Client implements ring.KVClient for etcd.
@@ -42,6 +45,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS.")
+	f.StringVar(&cfg.UserName, prefix+"etcd.username", "", "Etcd username.")
+	f.StringVar(&cfg.Password, prefix+"etcd.password", "", "Etcd password.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix+"etcd", f)
 }
 
@@ -87,6 +92,8 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
 		PermitWithoutStream:  true,
 		TLS:                  tlsConfig,
+		Username:             cfg.UserName,
+		Password:             cfg.Password,
 	})
 	if err != nil {
 		return nil, err

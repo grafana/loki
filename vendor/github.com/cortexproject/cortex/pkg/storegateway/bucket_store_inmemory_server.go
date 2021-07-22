@@ -3,8 +3,10 @@ package storegateway
 import (
 	"context"
 
+	"github.com/gogo/protobuf/types"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
@@ -19,6 +21,7 @@ type bucketStoreSeriesServer struct {
 
 	SeriesSet []*storepb.Series
 	Warnings  storage.Warnings
+	Hints     hintspb.SeriesResponseHints
 }
 
 func newBucketStoreSeriesServer(ctx context.Context) *bucketStoreSeriesServer {
@@ -28,6 +31,13 @@ func newBucketStoreSeriesServer(ctx context.Context) *bucketStoreSeriesServer {
 func (s *bucketStoreSeriesServer) Send(r *storepb.SeriesResponse) error {
 	if r.GetWarning() != "" {
 		s.Warnings = append(s.Warnings, errors.New(r.GetWarning()))
+	}
+
+	if rawHints := r.GetHints(); rawHints != nil {
+		// We expect only 1 hints entry so we just keep 1.
+		if err := types.UnmarshalAny(rawHints, &s.Hints); err != nil {
+			return errors.Wrap(err, "failed to unmarshal series hints")
+		}
 	}
 
 	if recvSeries := r.GetSeries(); recvSeries != nil {

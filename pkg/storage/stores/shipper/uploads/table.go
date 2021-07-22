@@ -82,8 +82,8 @@ func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexCli
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
-	dbs, err := loadBoltDBsFromDir(path)
+func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
+	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +465,7 @@ func (lt *Table) buildObjectKey(dbName string) string {
 	return fmt.Sprintf("%s.gz", objectKey)
 }
 
-func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
+func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, error) {
 	dbs := map[string]*bbolt.DB{}
 	filesInfo, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -489,8 +489,9 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 
 		db, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file to let Loki start successfully.", fullPath), "err", err)
-			return nil, err
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file.", fullPath), "err", err)
+			metrics.openExistingFileFailuresTotal.Inc()
+			continue
 		}
 
 		hasBucket := false

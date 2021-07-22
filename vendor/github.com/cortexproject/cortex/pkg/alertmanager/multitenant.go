@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -38,6 +37,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -54,54 +54,14 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 5
-
-	statusPage = `
-<!doctype html>
-<html>
-	<head><title>Cortex Alertmanager Status</title></head>
-	<body>
-		<h1>Cortex Alertmanager Status</h1>
-		<h2>Node</h2>
-		<dl>
-			<dt>Name</dt><dd>{{.self.Name}}</dd>
-			<dt>Addr</dt><dd>{{.self.Addr}}</dd>
-			<dt>Port</dt><dd>{{.self.Port}}</dd>
-		</dl>
-		<h3>Members</h3>
-		{{ with .members }}
-		<table>
-		<tr><th>Name</th><th>Addr</th></tr>
-		{{ range . }}
-		<tr><td>{{ .Name }}</td><td>{{ .Addr }}</td></tr>
-		{{ end }}
-		</table>
-		{{ else }}
-		<p>No peers</p>
-		{{ end }}
-	</body>
-</html>
-`
 )
 
 var (
-	statusTemplate *template.Template
-
 	errInvalidExternalURL                  = errors.New("the configured external URL is invalid: should not end with /")
 	errShardingLegacyStorage               = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
 	errShardingUnsupportedStorage          = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 	errZoneAwarenessEnabledWithoutZoneInfo = errors.New("the configured alertmanager has zone awareness enabled but zone is not set")
 )
-
-func init() {
-	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
-		"state": func(enabled bool) string {
-			if enabled {
-				return "enabled"
-			}
-			return "disabled"
-		},
-	}).Parse(statusPage))
-}
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
@@ -259,6 +219,17 @@ type Limits interface {
 
 	// AlertmanagerMaxTemplateSize returns max size of individual template. 0 = no limit.
 	AlertmanagerMaxTemplateSize(tenant string) int
+
+	// AlertmanagerMaxDispatcherAggregationGroups returns maximum number of aggregation groups in Alertmanager's dispatcher that a tenant can have.
+	// Each aggregation group consumes single goroutine. 0 = unlimited.
+	AlertmanagerMaxDispatcherAggregationGroups(t string) int
+
+	// AlertmanagerMaxAlertsCount returns max number of alerts that tenant can have active at the same time. 0 = no limit.
+	AlertmanagerMaxAlertsCount(tenant string) int
+
+	// AlertmanagerMaxAlertsSizeBytes returns total max size of alerts that tenant can have active at the same time. 0 = no limit.
+	// Size of the alert is computed from alert labels, annotations and generator URL.
+	AlertmanagerMaxAlertsSizeBytes(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -364,6 +335,8 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 
 	var ringStore kv.Client
 	if cfg.ShardingEnabled {
+		util_log.WarnExperimentalUse("Alertmanager sharding")
+
 		ringStore, err = kv.NewClient(
 			cfg.ShardingRing.KVStore,
 			ring.GetCodec(),
@@ -1072,14 +1045,6 @@ func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string)
 	return am.alertmanagers[userID], nil
 }
 
-// GetStatusHandler returns the status handler for this multi-tenant
-// alertmanager.
-func (am *MultitenantAlertmanager) GetStatusHandler() StatusHandler {
-	return StatusHandler{
-		am: am,
-	}
-}
-
 // ReplicateStateForUser attempts to replicate a partial state sent by an alertmanager to its other replicas through the ring.
 func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, userID string, part *clusterpb.Part) error {
 	level.Debug(am.logger).Log("msg", "message received for replication", "user", userID, "key", part.Key)
@@ -1115,7 +1080,6 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 // ReadFullStateForUser attempts to read the full state from each replica for user. Note that it will try to obtain and return
 // state from all replicas, but will consider it a success if state is obtained from at least one replica.
 func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, userID string) ([]*clusterpb.FullState, error) {
-
 	// Only get the set of replicas which contain the specified user.
 	key := shardByUser(userID)
 	replicationSet, err := am.ring.Get(key, RingOp, nil, nil, nil)
@@ -1312,19 +1276,6 @@ func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmana
 		Status: alertmanagerpb.READ_OK,
 		State:  state,
 	}, nil
-}
-
-// StatusHandler shows the status of the alertmanager.
-type StatusHandler struct {
-	am *MultitenantAlertmanager
-}
-
-// ServeHTTP serves the status of the alertmanager.
-func (s StatusHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	err := statusTemplate.Execute(w, s.am.peer.Info())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
 }
 
 // validateTemplateFilename validated the template filename and returns error if it's not valid.

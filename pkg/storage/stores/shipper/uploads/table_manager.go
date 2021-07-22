@@ -239,7 +239,7 @@ func (tm *TableManager) loadTables() (map[string]*Table, error) {
 		}
 
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading table %s", fileInfo.Name()))
-		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient)
+		table, err := LoadTable(filepath.Join(tm.cfg.IndexDir, fileInfo.Name()), tm.cfg.Uploader, tm.storageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
 			return nil, err
 		}

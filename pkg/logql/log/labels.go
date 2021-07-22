@@ -8,6 +8,8 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
+const MaxInternedStrings = 1024
+
 var emptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
@@ -367,4 +369,25 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res
 	return res
+}
+
+type internedStringSet map[string]struct {
+	s  string
+	ok bool
+}
+
+func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (string, bool) {
+	s, ok := i[string(data)]
+	if ok {
+		return s.s, s.ok
+	}
+	new, ok := createNew()
+	if len(i) >= MaxInternedStrings {
+		return new, ok
+	}
+	i[string(data)] = struct {
+		s  string
+		ok bool
+	}{s: new, ok: ok}
+	return new, ok
 }

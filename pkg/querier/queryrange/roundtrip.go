@@ -180,7 +180,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) (logql.LogSelectorExpr, error) {
 	regexp := req.Form.Get("regexp")
 	if regexp != "" {
-		filterExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, regexp)
+		filterExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
 		if err != nil {
 			return nil, err
 		}

@@ -393,14 +393,18 @@ func (c *Compactor) starting(ctx context.Context) error {
 		// users scanner depends on the ring (to check whether an user belongs
 		// to this shard or not).
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
+
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, c.compactorCfg.ShardingRing.WaitActiveInstanceTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
+			level.Error(c.logger).Log("msg", "compactor failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
 
 		// In the event of a cluster cold start or scale up of 2+ compactor instances at the same
 		// time, we may end up in a situation where each new compactor instance starts at a slightly
-		// different time and thus each one starts with on a different state of the ring. It's better
+		// different time and thus each one starts with a different state of the ring. It's better
 		// to just wait the ring stability for a short time.
 		if c.compactorCfg.ShardingRing.WaitStabilityMinDuration > 0 {
 			minWaiting := c.compactorCfg.ShardingRing.WaitStabilityMinDuration
@@ -408,9 +412,9 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 			level.Info(c.logger).Log("msg", "waiting until compactor ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
 			if err := ring.WaitRingStability(ctx, c.ring, RingOp, minWaiting, maxWaiting); err != nil {
-				level.Warn(c.logger).Log("msg", "compactor is ring topology is not stable after the max waiting time, proceeding anyway")
+				level.Warn(c.logger).Log("msg", "compactor ring topology is not stable after the max waiting time, proceeding anyway")
 			} else {
-				level.Info(c.logger).Log("msg", "compactor is ring topology is stable")
+				level.Info(c.logger).Log("msg", "compactor ring topology is stable")
 			}
 		}
 	}
