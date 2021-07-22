@@ -134,6 +134,9 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 	if s.Labels == nil {
 		s.Labels = LabelSet{}
 	}
+	if len(s.Entries) > 0 {
+		s.Entries = s.Entries[:0]
+	}
 	return jsonparser.ObjectEach(data, func(key, value []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
@@ -185,15 +188,21 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 				q.Result = ss
 			case ResultTypeMatrix:
 				var m Matrix
-				err = json.Unmarshal(value, &m)
+				if err = json.Unmarshal(value, &m); err != nil {
+					return err
+				}
 				q.Result = m
 			case ResultTypeVector:
 				var v Vector
-				err = json.Unmarshal(value, &v)
+				if err = json.Unmarshal(value, &v); err != nil {
+					return err
+				}
 				q.Result = v
 			case ResultTypeScalar:
 				var v Scalar
-				err = json.Unmarshal(value, &v)
+				if err = json.Unmarshal(value, &v); err != nil {
+					return err
+				}
 				q.Result = v
 			default:
 				return fmt.Errorf("unknown type: %s", q.ResultType)

@@ -21,7 +21,10 @@ type LabelResponse struct {
 // LabelSet is a key/value pair mapping of labels
 type LabelSet map[string]string
 
-func (l LabelSet) UnmarshalJSON(data []byte) error {
+func (l *LabelSet) UnmarshalJSON(data []byte) error {
+	if *l == nil {
+		*l = make(LabelSet)
+	}
 	return jsonparser.ObjectEach(data, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
 		v, err := jsonparser.ParseString(val)
 		if err != nil {
@@ -31,7 +34,7 @@ func (l LabelSet) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return err
 		}
-		l[k] = v
+		(*l)[k] = v
 		return nil
 	})
 }
