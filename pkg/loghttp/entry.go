@@ -5,6 +5,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/modern-go/reflect2"
 )
@@ -17,6 +18,36 @@ func init() {
 type Entry struct {
 	Timestamp time.Time
 	Line      string
+}
+
+func (e *Entry) UnmarshalJSON(data []byte) error {
+	var (
+		i          int
+		parseError error
+	)
+	_, err := jsonparser.ArrayEach(data, func(value []byte, _ jsonparser.ValueType, offset int, _ error) {
+		switch i {
+		case 0: // timestamp
+			ts, err := jsonparser.ParseInt(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Timestamp = time.Unix(0, ts)
+		case 1: // value
+			v, err := jsonparser.ParseString(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Line = v
+		}
+		i++
+	})
+	if parseError != nil {
+		return parseError
+	}
+	return err
 }
 
 type jsonExtension struct {

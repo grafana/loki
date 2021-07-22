@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -19,6 +20,21 @@ type LabelResponse struct {
 
 // LabelSet is a key/value pair mapping of labels
 type LabelSet map[string]string
+
+func (l LabelSet) UnmarshalJSON(data []byte) error {
+	return jsonparser.ObjectEach(data, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+		v, err := jsonparser.ParseString(val)
+		if err != nil {
+			return err
+		}
+		k, err := jsonparser.ParseString(key)
+		if err != nil {
+			return err
+		}
+		l[k] = v
+		return nil
+	})
+}
 
 // Map coerces LabelSet into a map[string]string. This is useful for working with adapter types.
 func (l LabelSet) Map() map[string]string {

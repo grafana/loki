@@ -38,28 +38,19 @@ type QueryResponse struct {
 }
 
 func (q *QueryResponse) UnmarshalJSON(data []byte) error {
-	var err error
-	_ = jsonparser.EachKey(data, func(i int, data []byte, vt jsonparser.ValueType, e error) {
-		if e == jsonparser.KeyPathNotFoundError {
-			return
-		}
-		if e != nil {
-			err = e
-		}
-		switch i {
-		case 0:
+	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+		switch string(key) {
+		case "status":
+			q.Status = string(value)
+		case "data":
 			var responseData QueryResponseData
-			if jsonErr := responseData.UnmarshalJSON(data); jsonErr != nil {
-				err = jsonErr
-				return
+			if err := responseData.UnmarshalJSON(value); err != nil {
+				return err
 			}
 			q.Data = responseData
-		case 1:
-			q.Status = string(data)
-			return
 		}
-	}, [][]string{{"data"}, {"status"}}...)
-	return err
+		return nil
+	})
 }
 
 // PushRequest models a log stream push
@@ -105,6 +96,22 @@ func (Matrix) Type() ResultType { return ResultTypeMatrix }
 // Streams is a slice of Stream
 type Streams []Stream
 
+func (ss *Streams) UnmarshalJSON(data []byte) error {
+	var parseError error
+	_, err := jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+		var stream Stream
+		if err := stream.UnmarshalJSON(value); err != nil {
+			parseError = err
+			return
+		}
+		*ss = append(*ss, stream)
+	})
+	if parseError != nil {
+		return parseError
+	}
+	return err
+}
+
 func (s Streams) ToProto() []logproto.Stream {
 	if len(s) == 0 {
 		return nil
@@ -123,6 +130,35 @@ type Stream struct {
 	Entries []Entry  `json:"values"`
 }
 
+func (s *Stream) UnmarshalJSON(data []byte) error {
+	if s.Labels == nil {
+		s.Labels = LabelSet{}
+	}
+	return jsonparser.ObjectEach(data, func(key, value []byte, _ jsonparser.ValueType, _ int) error {
+		switch string(key) {
+		case "stream":
+			if err := s.Labels.UnmarshalJSON(value); err != nil {
+				return err
+			}
+		case "values":
+			var parseError error
+			_, err := jsonparser.ArrayEach(value, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+				var entry Entry
+				if err := entry.UnmarshalJSON(value); err != nil {
+					parseError = err
+					return
+				}
+				s.Entries = append(s.Entries, entry)
+			})
+			if parseError != nil {
+				return parseError
+			}
+			return err
+		}
+		return nil
+	})
+}
+
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 	resultType, err := jsonparser.GetString(data, "resultType")
@@ -131,88 +167,14 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 	}
 	q.ResultType = ResultType(resultType)
 
-	err = jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, _ int) error {
 		switch string(key) {
-		case "result": // result
+		case "result":
 			switch q.ResultType {
 			case ResultTypeStream:
 				var ss Streams
-				if _, innerErr := jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, jsonErr error) {
-					if jsonErr != nil {
-						err = jsonErr
-						return
-					}
-					stream := Stream{
-						Labels:  LabelSet{},
-						Entries: []Entry{},
-					}
-					if jsonErr := jsonparser.ObjectEach(value, func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
-						switch string(key) {
-						case "stream":
-							jsonErr := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, offset int) error {
-								v, err := jsonparser.ParseString(val)
-								if err != nil {
-									return err
-								}
-								k, err := jsonparser.ParseString(key)
-								if err != nil {
-									return err
-								}
-								stream.Labels[k] = v
-								return nil
-							})
-							if jsonErr != nil {
-								return jsonErr
-							}
-						case "values": // values
-							_, jsonErr := jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, jsonErr error) {
-								if jsonErr != nil {
-									err = jsonErr
-									return
-								}
-								var entry Entry
-								var i int
-								_, jsonErr = jsonparser.ArrayEach(value, func(value []byte, dataType jsonparser.ValueType, offset int, jsonErr error) {
-									if jsonErr != nil {
-										err = jsonErr
-										return
-									}
-									switch i {
-									case 0: // timestamp
-										ts, perr := jsonparser.ParseInt(value)
-										if perr != nil {
-											err = jsonErr
-											return
-										}
-										entry.Timestamp = time.Unix(0, ts)
-									case 1: // value
-										v, pErr := jsonparser.ParseString(value)
-										if pErr != nil {
-											err = jsonErr
-											return
-										}
-										entry.Line = v
-									}
-									i++
-								})
-								if jsonErr != nil {
-									err = jsonErr
-									return
-								}
-								stream.Entries = append(stream.Entries, entry)
-							})
-							if jsonErr != nil {
-								return jsonErr
-							}
-						}
-						return nil
-					}); jsonErr != nil {
-						err = jsonErr
-						return
-					}
-					ss = append(ss, stream)
-				}); innerErr != nil {
-					return innerErr
+				if err := ss.UnmarshalJSON(value); err != nil {
+					return err
 				}
 				q.Result = ss
 			case ResultTypeMatrix:
@@ -230,18 +192,13 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 			default:
 				return fmt.Errorf("unknown type: %s", q.ResultType)
 			}
-		case "stats": // stats
-			if innerErr := json.Unmarshal(value, &q.Statistics); innerErr != nil {
-				return innerErr
+		case "stats":
+			if err := json.Unmarshal(value, &q.Statistics); err != nil {
+				return err
 			}
-
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // Scalar is a single timestamp/float with no labels
