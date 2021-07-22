@@ -191,6 +191,8 @@ will always run faster than
 Line filter expressions are the fastest way to filter logs once the
 log stream selectors have been applied.
 
+Line filter expressions have support matching IP addresses. See [Matching IP addresses](ip/) for details.
+
 #### Parser Expression
 
 Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](#metric-queries).
@@ -488,6 +490,8 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 ```
 
 > Label filter expressions are the only expression allowed after the [unwrap expression](#unwrapped-range-aggregations). This is mainly to allow filtering errors from the metric extraction (see [errors](#pipeline-errors)).
+
+Label filter expressions have support matching IP addresses. See [Matching IP addresses](ip/) for details.
 
 #### Line Format Expression
 

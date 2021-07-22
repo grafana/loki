@@ -1147,6 +1147,10 @@ go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
+# go4.org/intern v0.0.0-20210108033219-3eb7198706b2
+go4.org/intern
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20201222180813-1025295fd063
+go4.org/unsafe/assume-no-moving-gc
 # golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 ## explicit
 golang.org/x/crypto/argon2
@@ -1399,6 +1403,9 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 ## explicit
 gopkg.in/yaml.v3
+# inet.af/netaddr v0.0.0-20210707202901-70468d781e6c
+## explicit
+inet.af/netaddr
 # k8s.io/api v0.21.0 => k8s.io/api v0.21.0
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
