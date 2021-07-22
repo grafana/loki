@@ -15,7 +15,7 @@ import (
   Grouping                *grouping
   Labels                  []string
   LogExpr                 LogSelectorExpr
-  LogRangeExpr            *logRange
+  LogRangeExpr            *LogRange
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
@@ -32,11 +32,11 @@ import (
   bytes                   uint64
   str                     string
   duration                time.Duration
-  LiteralExpr             *literalExpr
+  LiteralExpr             *LiteralExpr
   BinOpModifier           BinOpOptions
-  LabelParser             *labelParserExpr
-  LineFilters             *lineFilterExpr
-  LineFilter              *lineFilterExpr
+  LabelParser             *LabelParserExpr
+  LineFilters             *LineFilterExpr
+  LineFilter              *LineFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
   BytesFilter             log.LabelFilterer
@@ -45,15 +45,15 @@ import (
   LabelFilter             log.LabelFilterer
   UnitFilter              log.LabelFilterer
   IPLabelFilter           log.LabelFilterer
-  LineFormatExpr          *lineFmtExpr
-  LabelFormatExpr         *labelFmtExpr
+  LineFormatExpr          *LineFmtExpr
+  LabelFormatExpr         *LabelFmtExpr
   LabelFormat             log.LabelFmt
   LabelsFormat            []log.LabelFmt
   JSONExpressionParser    *jsonExpressionParser
   JSONExpression          log.JSONExpression
   JSONExpressionList      []log.JSONExpression
-  UnwrapExpr              *unwrapExpr
-  OffsetExpr              *offsetExpr
+  UnwrapExpr              *UnwrapExpr
+  OffsetExpr              *OffsetExpr
 }
 
 %start root
@@ -238,7 +238,7 @@ pipelineStage:
    lineFilters                   { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
-  | PIPE labelFilter             { $$ = &labelFilterExpr{LabelFilterer: $2 }}
+  | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
   ;
