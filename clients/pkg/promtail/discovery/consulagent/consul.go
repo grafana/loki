@@ -275,7 +275,7 @@ func (d *Discovery) getDatacenter() error {
 	}
 	info, err := d.client.Agent().Self()
 	if err != nil {
-		_ = level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
+		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		rpcFailuresCount.Inc()
 		return err
 	}
@@ -283,7 +283,7 @@ func (d *Discovery) getDatacenter() error {
 	dc, ok := info["Config"]["Datacenter"].(string)
 	if !ok {
 		err := errors.Errorf("invalid value '%v' for Config.Datacenter", info["Config"]["Datacenter"])
-		_ = level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
+		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		return err
 	}
 
@@ -352,7 +352,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 // entire list of services.
 func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func()) {
 	agent := d.client.Agent()
-	_ = level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
+	level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
 
 	t0 := time.Now()
 	srvs, err := agent.Services()
