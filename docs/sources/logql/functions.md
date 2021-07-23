@@ -1,5 +1,6 @@
 ---
 title: Functions
+weight: 10
 ---
 
 # Functions
