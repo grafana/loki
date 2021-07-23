@@ -269,8 +269,8 @@ func (t *Loki) Run() error {
 	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
-	stopped := func() { level.Info(util_log.Logger).Log("msg", "Loki stopped") }
+	healthy := func() { _ = level.Info(util_log.Logger).Log("msg", "Loki started") }
+	stopped := func() { _ = level.Info(util_log.Logger).Log("msg", "Loki stopped") }
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Loki
 		sm.StopAsync()
