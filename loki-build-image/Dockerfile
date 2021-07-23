@@ -37,6 +37,11 @@ RUN GO111MODULE=on go get github.com/drone/drone-cli/drone@1fad337d74ca0ecf42099
 FROM golang:1.16.6 as faillint
 RUN GO111MODULE=on go get github.com/fatih/faillint@v1.5.0
 
+# Install ghr used to push binaries and template the release
+# This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
+FROM golang:1.16.6 as ghr
+RUN GO111MODULE=on go get github.com/tcnksm/ghr
+
 FROM golang:1.16.6-buster
 RUN apt-get update && \
     apt-get install -qy \
@@ -52,6 +57,7 @@ COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=drone /go/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint
+COPY --from=ghr /go/bin/ghr /usr/bin/ghr
 
 # Install some necessary dependencies.
 # Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.
@@ -66,8 +72,7 @@ RUN GO111MODULE=on go get \
     # Due to the lack of a proper release tag, we use the commit hash of
     # https://github.com/golang/tools/releases v0.1.7
     golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69 \
-    github.com/mitchellh/gox \
-    github.com/tcnksm/ghr && \
+    github.com/mitchellh/gox && \
     rm -rf /go/pkg /go/src
 ENV GOCACHE=/go/cache
 
