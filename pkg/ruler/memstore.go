@@ -209,7 +209,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	}
 	ls := b.Labels()
 	if ruleKey == "" {
-		level.Error(m.logger).Log("msg", "Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
+		_ = level.Error(m.logger).Log("msg", "Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
 		return storage.NoopSeriesSet()
 	}
 
@@ -225,11 +225,11 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 
 	// should not happen
 	if rule == nil {
-		level.Error(m.logger).Log("msg", "failure trying to restore for state for untracked alerting rule", "name", ruleKey)
+		_ = level.Error(m.logger).Log("msg", "failure trying to restore for state for untracked alerting rule", "name", ruleKey)
 		return storage.NoopSeriesSet()
 	}
 
-	level.Debug(m.logger).Log("msg", "restoring for state via evaluation", "rule", ruleKey)
+	_ = level.Debug(m.logger).Log("msg", "restoring for state via evaluation", "rule", ruleKey)
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -244,7 +244,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	smpl, cached := cache.Get(m.ts, ls)
 	if cached {
 		m.metrics.cacheHits.WithLabelValues(m.userID).Inc()
-		level.Debug(m.logger).Log("msg", "result cached", "rule", ruleKey)
+		_ = level.Debug(m.logger).Log("msg", "result cached", "rule", ruleKey)
 		// Assuming the result is cached but the desired series is not in the result, it wouldn't be considered active.
 		if smpl == nil {
 			return storage.NoopSeriesSet()
@@ -264,12 +264,12 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	// that's the only condition under which this is queried (via RestoreForState).
 	vec, err := m.queryFunc(m.ctx, rule.Query().String(), m.ts.Add(-rule.HoldDuration()))
 	if err != nil {
-		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "err", err.Error())
+		_ = level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "err", err.Error())
 		m.metrics.evaluations.WithLabelValues(statusFailure, m.userID).Inc()
 		return storage.NoopSeriesSet()
 	}
 	m.metrics.evaluations.WithLabelValues(statusSuccess, m.userID).Inc()
-	level.Debug(m.logger).Log("msg", "rule state successfully restored", "rule", ruleKey, "len", len(vec))
+	_ = level.Debug(m.logger).Log("msg", "rule state successfully restored", "rule", ruleKey, "len", len(vec))
 
 	// translate the result into the ALERTS_FOR_STATE series for caching,
 	// considered active & written at the timetamp requested

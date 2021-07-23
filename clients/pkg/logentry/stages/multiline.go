@@ -113,14 +113,14 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 				// Pass through entries until we hit first start line.
 				if !m.cfg.regex.MatchString(e.Line) {
 					if Debug {
-						level.Debug(m.logger).Log("msg", "pass through entry", "stream", key)
+						_ = level.Debug(m.logger).Log("msg", "pass through entry", "stream", key)
 					}
 					out <- e
 					continue
 				}
 
 				if Debug {
-					level.Debug(m.logger).Log("msg", "creating new stream", "stream", key)
+					_ = level.Debug(m.logger).Log("msg", "creating new stream", "stream", key)
 				}
 				s = make(chan Entry)
 				streams[key] = s
@@ -129,7 +129,7 @@ func (m *multilineStage) Run(in chan Entry) chan Entry {
 				go m.runMultiline(s, out, wg)
 			}
 			if Debug {
-				level.Debug(m.logger).Log("msg", "pass entry", "stream", key, "line", e.Line)
+				_ = level.Debug(m.logger).Log("msg", "pass entry", "stream", key, "line", e.Line)
 			}
 			s <- e
 		}
@@ -155,17 +155,17 @@ func (m *multilineStage) runMultiline(in chan Entry, out chan Entry, wg *sync.Wa
 		select {
 		case <-time.After(m.cfg.maxWait):
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("flush multiline block due to %v timeout", m.cfg.maxWait), "block", state.buffer.String())
+				_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("flush multiline block due to %v timeout", m.cfg.maxWait), "block", state.buffer.String())
 			}
 			m.flush(out, state)
 		case e, ok := <-in:
 			if Debug {
-				level.Debug(m.logger).Log("msg", "processing line", "line", e.Line, "stream", e.Labels.FastFingerprint())
+				_ = level.Debug(m.logger).Log("msg", "processing line", "line", e.Line, "stream", e.Labels.FastFingerprint())
 			}
 
 			if !ok {
 				if Debug {
-					level.Debug(m.logger).Log("msg", "flush multiline block because inbound closed", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+					_ = level.Debug(m.logger).Log("msg", "flush multiline block because inbound closed", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
 				}
 				m.flush(out, state)
 				return
@@ -174,7 +174,7 @@ func (m *multilineStage) runMultiline(in chan Entry, out chan Entry, wg *sync.Wa
 			isFirstLine := m.cfg.regex.MatchString(e.Line)
 			if isFirstLine {
 				if Debug {
-					level.Debug(m.logger).Log("msg", "flush multiline block because new start line", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
+					_ = level.Debug(m.logger).Log("msg", "flush multiline block because new start line", "block", state.buffer.String(), "stream", e.Labels.FastFingerprint())
 				}
 				m.flush(out, state)
 
@@ -200,7 +200,7 @@ func (m *multilineStage) runMultiline(in chan Entry, out chan Entry, wg *sync.Wa
 func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 	if s.buffer.Len() == 0 {
 		if Debug {
-			level.Debug(m.logger).Log("msg", "nothing to flush", "buffer_len", s.buffer.Len())
+			_ = level.Debug(m.logger).Log("msg", "nothing to flush", "buffer_len", s.buffer.Len())
 		}
 		return
 	}

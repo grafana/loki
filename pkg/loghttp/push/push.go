@@ -129,7 +129,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		linesIngested.WithLabelValues(userID).Add(float64(totalEntries))
 	}
 
-	level.Debug(logger).Log(
+	_ = level.Debug(logger).Log(
 		"msg", "push request parsed",
 		"path", r.URL.Path,
 		"contentType", contentType,

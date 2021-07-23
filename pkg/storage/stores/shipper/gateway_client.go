@@ -130,7 +130,7 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuer
 		}
 		query, ok := queryKeyQueryMap[resp.QueryKey]
 		if !ok {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKeyQueryMap)))
+			_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKeyQueryMap)))
 			return fmt.Errorf("unexpected %s QueryKey received", resp.QueryKey)
 		}
 		if !callback(query, &readBatch{resp}) {

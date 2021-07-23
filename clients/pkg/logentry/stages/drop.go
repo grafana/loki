@@ -126,11 +126,11 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		if len(e.Line) > m.cfg.longerThan.Val() {
 			// Too long, drop
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for length %v > %v", len(e.Line), m.cfg.longerThan.Val()))
+				_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for length %v > %v", len(e.Line), m.cfg.longerThan.Val()))
 			}
 		} else {
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet criteria for drop length %v is not greater than %v", len(e.Line), m.cfg.longerThan.Val()))
+				_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet criteria for drop length %v is not greater than %v", len(e.Line), m.cfg.longerThan.Val()))
 			}
 			return false
 		}
@@ -141,11 +141,11 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		if e.Timestamp.Before(ct.Add(-m.cfg.olderThan)) {
 			// Too old, drop
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), e.Timestamp))
+				_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("line met drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), e.Timestamp))
 			}
 		} else {
 			if Debug {
-				level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), e.Timestamp))
+				_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, it did not meet drop criteria for age; current time=%v, drop before=%v, log timestamp=%v", ct, ct.Add(-m.cfg.olderThan), e.Timestamp))
 			}
 			return false
 		}
@@ -156,18 +156,18 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 			if m.cfg.Value == nil {
 				// Found in map, no value set meaning drop if found in map
 				if Debug {
-					level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map")
+					_ = level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map")
 				}
 			} else {
 				if *m.cfg.Value == v {
 					// Found in map with value set for drop
 					if Debug {
-						level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map with value matching desired drop value")
+						_ = level.Debug(m.logger).Log("msg", "line met drop criteria for finding source key in extracted map with value matching desired drop value")
 					}
 				} else {
 					// Value doesn't match, don't drop
 					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, source key was found in extracted map but value '%v' did not match desired value '%v'", v, *m.cfg.Value))
+						_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, source key was found in extracted map but value '%v' did not match desired value '%v'", v, *m.cfg.Value))
 					}
 					return false
 				}
@@ -175,7 +175,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 		} else {
 			// Not found in extact map, don't drop
 			if Debug {
-				level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
+				_ = level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
 			}
 			return false
 		}
@@ -187,7 +187,7 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 				s, err := getString(v)
 				if err != nil {
 					if Debug {
-						level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be dropped.", "err", err, "type", reflect.TypeOf(v))
+						_ = level.Debug(m.logger).Log("msg", "Failed to convert extracted map value to string, cannot test regex line will not be dropped.", "err", err, "type", reflect.TypeOf(v))
 					}
 					return false
 				}
@@ -195,19 +195,19 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 				if match == nil {
 					// Not a match to the regex, don't drop
 					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
+						_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("line will not be dropped, the provided regular expression did not match the value found in the extracted map for source key: %v", *m.cfg.Source))
 					}
 					return false
 				}
 				// regex match, will be dropped
 				if Debug {
-					level.Debug(m.logger).Log("msg", "line met drop criteria, regex matched the value in the extracted map source key")
+					_ = level.Debug(m.logger).Log("msg", "line met drop criteria, regex matched the value in the extracted map source key")
 				}
 
 			} else {
 				// Not found in extact map, don't drop
 				if Debug {
-					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
+					_ = level.Debug(m.logger).Log("msg", "line will not be dropped, the provided source was not found in the extracted map")
 				}
 				return false
 			}
@@ -216,19 +216,19 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 			if match == nil {
 				// Not a match to the regex, don't drop
 				if Debug {
-					level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
+					_ = level.Debug(m.logger).Log("msg", "line will not be dropped, the provided regular expression did not match the log line")
 				}
 				return false
 			}
 			if Debug {
-				level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
+				_ = level.Debug(m.logger).Log("msg", "line met drop criteria, the provided regular expression matched the log line")
 			}
 		}
 	}
 
 	// Everything matched, drop the line
 	if Debug {
-		level.Debug(m.logger).Log("msg", "all criteria met, line will be dropped")
+		_ = level.Debug(m.logger).Log("msg", "all criteria met, line will be dropped")
 	}
 	return true
 }

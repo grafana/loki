@@ -365,7 +365,7 @@ func EvtSubscribe(logName, xquery string) (EvtHandle, error) {
 	if err != nil {
 		return 0, err
 	}
-	level.Debug(util_log.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
+	_ = level.Debug(util_log.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
 
 	return subsHandle, nil
 }
@@ -394,7 +394,7 @@ func EvtSubscribeWithBookmark(logName, xquery string, bookMark EvtHandle) (EvtHa
 	if err != nil {
 		return 0, err
 	}
-	level.Debug(util_log.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
+	_ = level.Debug(util_log.Logger).Log("msg", "Subcribed with handle id", "id", subsHandle)
 
 	return subsHandle, nil
 }

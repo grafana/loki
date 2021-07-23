@@ -116,10 +116,10 @@ func (lt *Table) Snapshot() error {
 	lt.dbSnapshotsMtx.Lock()
 	defer lt.dbSnapshotsMtx.Unlock()
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("snapshotting table %s", lt.name))
+	_ = level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("snapshotting table %s", lt.name))
 
 	for name, db := range lt.dbs {
-		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("checking db %s for snapshot", name))
+		_ = level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("checking db %s for snapshot", name))
 		srcWriteCount := 0
 		err := db.View(func(tx *bbolt.Tx) error {
 			srcWriteCount = db.Stats().TxStats.Write
@@ -176,10 +176,10 @@ func (lt *Table) Snapshot() error {
 		snapshot.writesCount = srcWriteCount
 		lt.dbSnapshots[name] = snapshot
 
-		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("finished snaphotting db %s", name))
+		_ = level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("finished snaphotting db %s", name))
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("finished snapshotting table %s", lt.name))
+	_ = level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("finished snapshotting table %s", lt.name))
 
 	return nil
 }
@@ -266,7 +266,7 @@ func (lt *Table) Stop() {
 
 	for name, db := range lt.dbs {
 		if err := db.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Errorf("failed to close file %s for table %s", name, lt.name))
+			_ = level.Error(util_log.Logger).Log("msg", fmt.Errorf("failed to close file %s for table %s", name, lt.name))
 		}
 	}
 
@@ -333,7 +333,7 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 		return err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("uploading table %s", lt.name))
+	_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("uploading table %s", lt.name))
 
 	for name, db := range lt.dbs {
 		// doing string comparison between unix timestamps in string form since they are anyways of same length
@@ -360,13 +360,13 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 		lt.dbUploadTimeMtx.Unlock()
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", lt.name))
+	_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", lt.name))
 
 	return nil
 }
 
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error {
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
+	_ = level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 
 	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, tempFileSuffix))
 	f, err := os.Create(filePath)
@@ -376,11 +376,11 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close temp file", "path", filePath, "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "failed to close temp file", "path", filePath, "err", err)
 		}
 
 		if err := os.Remove(filePath); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "path", filePath, "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "path", filePath, "err", err)
 		}
 	}()
 
@@ -418,7 +418,7 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
 // This is to avoid keeping all the files forever in the ingesters.
 func (lt *Table) Cleanup(dbRetainPeriod time.Duration) error {
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
+	_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
 
 	var filesToCleanup []string
 	cutoffTime := time.Now().Add(-dbRetainPeriod)
@@ -439,14 +439,14 @@ func (lt *Table) Cleanup(dbRetainPeriod time.Duration) error {
 	lt.dbsMtx.RUnlock()
 
 	for i := range filesToCleanup {
-		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("removing db %s from table %s", filesToCleanup[i], lt.name))
+		_ = level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("removing db %s from table %s", filesToCleanup[i], lt.name))
 
 		if err := lt.RemoveDB(filesToCleanup[i]); err != nil {
 			return err
 		}
 
 		if err := lt.RemoveSnapshotDB(filesToCleanup[i]); err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove snapshot db %s", filesToCleanup[i]))
+			_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove snapshot db %s", filesToCleanup[i]))
 		}
 	}
 
@@ -482,14 +482,14 @@ func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, err
 			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
 			// Cleaning up those temp files to avoid problems.
 			if err := os.Remove(fullPath); err != nil {
-				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", fullPath), "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", fullPath), "err", err)
 			}
 			continue
 		}
 
 		db, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file.", fullPath), "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file.", fullPath), "err", err)
 			metrics.openExistingFileFailuresTotal.Inc()
 			continue
 		}
@@ -501,10 +501,10 @@ func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, err
 		})
 
 		if !hasBucket {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("file %s has no bucket named %s, so removing it", fullPath, bucketName))
+			_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("file %s has no bucket named %s, so removing it", fullPath, bucketName))
 			_ = db.Close()
 			if err := os.Remove(fullPath); err != nil {
-				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove file %s without bucket", fullPath), "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove file %s without bucket", fullPath), "err", err)
 			}
 			continue
 		}

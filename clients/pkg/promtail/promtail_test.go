@@ -440,7 +440,7 @@ func waitForEntries(timeoutSec int, handler *testServerHandler, expectedCounts m
 			if rcvd, ok := handler.receivedMap[file]; !ok || len(rcvd) != expectedCount {
 				waiting = waiting + " " + file
 				for _, e := range rcvd {
-					level.Info(util_log.Logger).Log("file", file, "entry", e.Line)
+					_ = level.Info(util_log.Logger).Log("file", file, "entry", e.Line)
 				}
 			}
 		}

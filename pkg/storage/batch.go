@@ -155,7 +155,7 @@ func (it *batchChunkIterator) Next() *chunkBatch {
 func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 	defer func() {
 		if p := recover(); p != nil {
-			level.Error(util_log.Logger).Log("msg", "panic while fetching chunks", "panic", p)
+			_ = level.Error(util_log.Logger).Log("msg", "panic while fetching chunks", "panic", p)
 			res = &chunkBatch{
 				err: errors.Errorf("panic while fecthing chunks %+v", p),
 			}
@@ -668,7 +668,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 	if len(chksByFetcher) == 0 {
 		return nil
 	}
-	level.Debug(log).Log("msg", "loading lazy chunks", "chunks", totalChunks)
+	_ = level.Debug(log).Log("msg", "loading lazy chunks", "chunks", totalChunks)
 
 	errChan := make(chan error)
 	for fetcher, chunks := range chksByFetcher {
@@ -687,9 +687,9 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
-					level.Error(util_log.Logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
+					_ = level.Error(util_log.Logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
 					errChan <- nil
 					return
 				}

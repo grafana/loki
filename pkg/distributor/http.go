@@ -19,7 +19,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := push.ParseRequest(logger, userID, r, d.tenantsRetention)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(userID) {
-			level.Debug(logger).Log(
+			_ = level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusBadRequest,
 				"err", err,
@@ -34,7 +34,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range req.Streams {
 			sb.WriteString(s.Labels)
 		}
-		level.Debug(logger).Log(
+		_ = level.Debug(logger).Log(
 			"msg", "push request streams",
 			"streams", sb.String(),
 		)
@@ -43,7 +43,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = d.Push(r.Context(), req)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(userID) {
-			level.Debug(logger).Log(
+			_ = level.Debug(logger).Log(
 				"msg", "push request successful",
 			)
 		}
@@ -55,7 +55,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		body := string(resp.Body)
 		if d.tenantConfigs.LogPushRequest(userID) {
-			level.Debug(logger).Log(
+			_ = level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", resp.Code,
 				"err", body,
@@ -64,7 +64,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, body, int(resp.Code))
 	} else {
 		if d.tenantConfigs.LogPushRequest(userID) {
-			level.Debug(logger).Log(
+			_ = level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusInternalServerError,
 				"err", err.Error(),

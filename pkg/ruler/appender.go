@@ -59,7 +59,7 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 	if found {
 		err := appender.WithQueueCapacity(capacity)
 		if err != nil {
-			level.Warn(a.logger).Log("msg", "attempting to set capacity failed", "err", err)
+			_ = level.Warn(a.logger).Log("msg", "attempting to set capacity failed", "err", err)
 		}
 
 		return appender
@@ -67,13 +67,13 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 
 	client, err := NewRemoteWriter(a.cfg, a.userID)
 	if err != nil {
-		level.Error(a.logger).Log("msg", "error creating remote-write client; setting appender as noop", "err", err, "tenant", a.userID)
+		_ = level.Error(a.logger).Log("msg", "error creating remote-write client; setting appender as noop", "err", err, "tenant", a.userID)
 		return &NoopAppender{}
 	}
 
 	queue, err := util.NewEvictingQueue(capacity, a.onEvict(a.userID, groupKey))
 	if err != nil {
-		level.Error(a.logger).Log("msg", "queue creation error; setting appender as noop", "err", err, "tenant", a.userID)
+		_ = level.Error(a.logger).Log("msg", "queue creation error; setting appender as noop", "err", err, "tenant", a.userID)
 		return &NoopAppender{}
 	}
 
@@ -90,7 +90,7 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 
 	// only track reference if groupKey was retrieved
 	if groupKey == "" {
-		level.Warn(a.logger).Log("msg", "blank group key passed via context; creating new appender")
+		_ = level.Warn(a.logger).Log("msg", "blank group key passed via context; creating new appender")
 		return appender
 	}
 
@@ -129,22 +129,22 @@ func (a *RemoteWriteAppender) Commit() error {
 	}
 
 	if a.remoteWriter == nil {
-		level.Warn(a.logger).Log("msg", "no remote_write client defined, skipping commit")
+		_ = level.Warn(a.logger).Log("msg", "no remote_write client defined, skipping commit")
 		return nil
 	}
 
-	level.Debug(a.logger).Log("msg", "writing samples to remote_write target", "target", a.remoteWriter.Endpoint(), "count", a.queue.Length())
+	_ = level.Debug(a.logger).Log("msg", "writing samples to remote_write target", "target", a.remoteWriter.Endpoint(), "count", a.queue.Length())
 
 	req, err := a.remoteWriter.PrepareRequest(a.queue)
 	if err != nil {
-		level.Error(a.logger).Log("msg", "could not prepare remote-write request", "err", err)
+		_ = level.Error(a.logger).Log("msg", "could not prepare remote-write request", "err", err)
 		a.metrics.remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
 		return err
 	}
 
 	err = a.remoteWriter.Store(a.ctx, req)
 	if err != nil {
-		level.Error(a.logger).Log("msg", "could not store recording rule samples", "err", err)
+		_ = level.Error(a.logger).Log("msg", "could not store recording rule samples", "err", err)
 		a.metrics.remoteWriteErrors.WithLabelValues(a.userID, a.groupKey).Inc()
 		return err
 	}

@@ -40,19 +40,19 @@ func main() {
 
 	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry)
 	if err := i.Start(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
+		_ = level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
 		os.Exit(1)
 	}
 
 	// Run the proxy.
 	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), registry)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
+		_ = level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
 	}
 
 	if err := proxy.Start(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
+		_ = level.Error(util_log.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
 		os.Exit(1)
 	}
 

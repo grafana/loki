@@ -81,11 +81,11 @@ func (t *Tailer) loop() {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
 			if err := t.checkIngesterConnections(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "Error reconnecting to disconnected ingesters", "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "Error reconnecting to disconnected ingesters", "err", err)
 			}
 		case <-tailMaxDurationTicker.C:
 			if err := t.close(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
 			}
 			t.closeErrChan <- errors.New("reached tail max duration limit")
 			return
@@ -127,12 +127,12 @@ func (t *Tailer) loop() {
 			if numClients == 0 {
 				// All the connections to ingesters are dropped, try reconnecting or return error
 				if err := t.checkIngesterConnections(); err != nil {
-					level.Error(util_log.Logger).Log("msg", "Error reconnecting to ingesters", "err", err)
+					_ = level.Error(util_log.Logger).Log("msg", "Error reconnecting to ingesters", "err", err)
 				} else {
 					continue
 				}
 				if err := t.close(); err != nil {
-					level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
+					_ = level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
 				}
 				t.closeErrChan <- errors.New("all ingesters closed the connection")
 				return
@@ -202,7 +202,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {
-				level.Error(logger).Log("msg", "Error closing grpc tail client", "err", err)
+				_ = level.Error(logger).Log("msg", "Error closing grpc tail client", "err", err)
 			}
 			break
 		}
@@ -210,7 +210,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 		if err != nil {
 			// We don't want to log error when its due to stopping the tail request
 			if !t.stopped {
-				level.Error(logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
+				_ = level.Error(logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
 			}
 			break
 		}

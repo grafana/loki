@@ -198,7 +198,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 
 	for _, group := range groups {
 		for _, t := range group.Targets {
-			level.Debug(s.log).Log("msg", "new target", "labels", t)
+			_ = level.Debug(s.log).Log("msg", "new target", "labels", t)
 
 			discoveredLabels := group.Labels.Merge(t)
 			var labelMap = make(map[string]string)
@@ -216,7 +216,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			// Drop empty targets (drop in relabeling).
 			if processedLabels == nil {
 				dropped = append(dropped, target.NewDroppedTarget("dropping target, no labels", discoveredLabels))
-				level.Debug(s.log).Log("msg", "dropping target, no labels")
+				_ = level.Debug(s.log).Log("msg", "dropping target, no labels")
 				s.metrics.failedTargets.WithLabelValues("empty_labels").Inc()
 				continue
 			}
@@ -224,7 +224,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			host, ok := labels[hostLabel]
 			if ok && string(host) != s.hostname {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("ignoring target, wrong host (labels:%s hostname:%s)", labels.String(), s.hostname), discoveredLabels))
-				level.Debug(s.log).Log("msg", "ignoring target, wrong host", "labels", labels.String(), "hostname", s.hostname)
+				_ = level.Debug(s.log).Log("msg", "ignoring target, wrong host", "labels", labels.String(), "hostname", s.hostname)
 				s.metrics.failedTargets.WithLabelValues("wrong_host").Inc()
 				continue
 			}
@@ -232,7 +232,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			path, ok := labels[pathLabel]
 			if !ok {
 				dropped = append(dropped, target.NewDroppedTarget("no path for target", discoveredLabels))
-				level.Info(s.log).Log("msg", "no path for target", "labels", labels.String())
+				_ = level.Info(s.log).Log("msg", "no path for target", "labels", labels.String())
 				s.metrics.failedTargets.WithLabelValues("no_path").Inc()
 				continue
 			}
@@ -247,16 +247,16 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			targets[key] = struct{}{}
 			if _, ok := s.targets[key]; ok {
 				dropped = append(dropped, target.NewDroppedTarget("ignoring target, already exists", discoveredLabels))
-				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
+				_ = level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
 				s.metrics.failedTargets.WithLabelValues("exists").Inc()
 				continue
 			}
 
-			level.Info(s.log).Log("msg", "Adding target", "key", key)
+			_ = level.Info(s.log).Log("msg", "Adding target", "key", key)
 			t, err := s.newTarget(string(path), labels, discoveredLabels)
 			if err != nil {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
-				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
+				_ = level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
 				s.metrics.failedTargets.WithLabelValues("error").Inc()
 				continue
 			}
@@ -268,7 +268,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 
 	for key, target := range s.targets {
 		if _, ok := targets[key]; !ok || !target.Ready() {
-			level.Info(s.log).Log("msg", "Removing target", "key", key)
+			_ = level.Info(s.log).Log("msg", "Removing target", "key", key)
 			target.Stop()
 			s.metrics.targetsActive.Add(-1.)
 			delete(s.targets, key)
@@ -313,7 +313,7 @@ func (s *targetSyncer) stop() {
 	defer s.mtx.Unlock()
 
 	for key, target := range s.targets {
-		level.Info(s.log).Log("msg", "Removing target", "key", key)
+		_ = level.Info(s.log).Log("msg", "Removing target", "key", key)
 		target.Stop()
 		delete(s.targets, key)
 	}

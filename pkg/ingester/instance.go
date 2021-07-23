@@ -176,7 +176,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
 				i.metrics.walDiskFullFailures.Inc()
 				i.flushOnShutdownSwitch.TriggerAnd(func() {
-					level.Error(util_log.Logger).Log(
+					_ = level.Error(util_log.Logger).Log(
 						"msg",
 						"Error writing to WAL, disk full, no further messages will be logged for this error",
 					)
@@ -211,7 +211,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
+			_ = level.Debug(util_log.Logger).Log(
 				"msg", "failed to create stream, exceeded limit",
 				"org_id", i.instanceID,
 				"err", err,
@@ -231,7 +231,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	labels, err := logql.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
+			_ = level.Debug(util_log.Logger).Log(
 				"msg", "failed to create stream, failed to parse labels",
 				"org_id", i.instanceID,
 				"err", err,
@@ -263,7 +263,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	i.addTailersToNewStream(stream)
 
 	if i.configs.LogStreamCreation(i.instanceID) {
-		level.Debug(util_log.Logger).Log(
+		_ = level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
 			"org_id", i.instanceID,
 			"stream", pushReqStream.Labels,

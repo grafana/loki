@@ -113,7 +113,7 @@ func (t *Target) loop() {
 			if err != nil {
 				if err != win_eventlog.ERROR_NO_MORE_ITEMS {
 					t.err = err
-					level.Error(util_log.Logger).Log("msg", "error fetching events", "err", err)
+					_ = level.Error(util_log.Logger).Log("msg", "error fetching events", "err", err)
 				}
 				break loop
 			}
@@ -123,7 +123,7 @@ func (t *Target) loop() {
 				t.handler.Chan() <- entry
 				if err := t.bm.save(handles[i]); err != nil {
 					t.err = err
-					level.Error(util_log.Logger).Log("msg", "error saving bookmark", "err", err)
+					_ = level.Error(util_log.Logger).Log("msg", "error saving bookmark", "err", err)
 				}
 			}
 			win_eventlog.Close(handles)
@@ -151,7 +151,7 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 		if t.cfg.UseIncomingTimestamp {
 			timeStamp, err := time.Parse(time.RFC3339Nano, fmt.Sprintf("%v", event.TimeCreated.SystemTime))
 			if err != nil {
-				level.Warn(t.logger).Log("msg", "error parsing timestamp", "err", err)
+				_ = level.Warn(t.logger).Log("msg", "error parsing timestamp", "err", err)
 			} else {
 				entry.Timestamp = timeStamp
 			}
@@ -179,7 +179,7 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 
 		line, err := formatLine(t.cfg, event)
 		if err != nil {
-			level.Warn(t.logger).Log("msg", "error formatting event", "err", err)
+			_ = level.Warn(t.logger).Log("msg", "error formatting event", "err", err)
 			continue
 		}
 		entry.Line = line

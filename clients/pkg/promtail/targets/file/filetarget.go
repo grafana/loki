@@ -148,7 +148,7 @@ func (t *FileTarget) run() {
 		for _, v := range t.tails {
 			v.stop()
 		}
-		level.Info(t.logger).Log("msg", "filetarget: watcher closed, tailer stopped, positions saved", "path", t.path)
+		_ = level.Info(t.logger).Log("msg", "filetarget: watcher closed, tailer stopped, positions saved", "path", t.path)
 		close(t.done)
 	}()
 
@@ -161,11 +161,11 @@ func (t *FileTarget) run() {
 			case fsnotify.Create:
 				matched, err := doublestar.Match(t.path, event.Name)
 				if err != nil {
-					level.Error(t.logger).Log("msg", "failed to match file", "error", err, "filename", event.Name)
+					_ = level.Error(t.logger).Log("msg", "failed to match file", "error", err, "filename", event.Name)
 					continue
 				}
 				if !matched {
-					level.Debug(t.logger).Log("msg", "new file does not match glob", "filename", event.Name)
+					_ = level.Debug(t.logger).Log("msg", "new file does not match glob", "filename", event.Name)
 					continue
 				}
 				t.startTailing([]string{event.Name})
@@ -173,11 +173,11 @@ func (t *FileTarget) run() {
 				// No-op we only care about Create events
 			}
 		case err := <-t.watcher.Errors:
-			level.Error(t.logger).Log("msg", "error from fswatch", "error", err)
+			_ = level.Error(t.logger).Log("msg", "error from fswatch", "error", err)
 		case <-ticker.C:
 			err := t.sync()
 			if err != nil {
-				level.Error(t.logger).Log("msg", "error running sync function", "error", err)
+				_ = level.Error(t.logger).Log("msg", "error running sync function", "error", err)
 			}
 		case <-t.quit:
 			return
@@ -194,7 +194,7 @@ func (t *FileTarget) sync() error {
 	}
 
 	if len(matches) == 0 {
-		level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path)
+		_ = level.Debug(t.logger).Log("msg", "no files matched requested path, nothing will be tailed", "path", t.path)
 	}
 
 	// Gets absolute path for each pattern.
@@ -247,9 +247,9 @@ func (t *FileTarget) startWatching(dirs map[string]struct{}) {
 		if _, ok := t.watches[dir]; ok {
 			continue
 		}
-		level.Debug(t.logger).Log("msg", "watching new directory", "directory", dir)
+		_ = level.Debug(t.logger).Log("msg", "watching new directory", "directory", dir)
 		if err := t.watcher.Add(dir); err != nil {
-			level.Error(t.logger).Log("msg", "error adding directory to watcher", "error", err)
+			_ = level.Error(t.logger).Log("msg", "error adding directory to watcher", "error", err)
 		}
 	}
 }
@@ -259,10 +259,10 @@ func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
 		if _, ok := t.watches[dir]; !ok {
 			continue
 		}
-		level.Debug(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
+		_ = level.Debug(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
 		err := t.watcher.Remove(dir)
 		if err != nil {
-			level.Error(t.logger).Log("msg", " failed to remove directory from watcher", "error", err)
+			_ = level.Error(t.logger).Log("msg", " failed to remove directory from watcher", "error", err)
 		}
 	}
 }
@@ -274,17 +274,17 @@ func (t *FileTarget) startTailing(ps []string) {
 		}
 		fi, err := os.Stat(p)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
+			_ = level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
 			continue
 		}
 		if fi.IsDir() {
-			level.Error(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
+			_ = level.Error(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
 			continue
 		}
-		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
+		_ = level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
 		tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
+			_ = level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 			continue
 		}
 		t.tails[p] = tailer
@@ -348,7 +348,7 @@ func (t *FileTarget) reportSize(ms []string) {
 		if tailer, ok := t.tails[m]; ok {
 			err := tailer.markPositionAndSize()
 			if err != nil {
-				level.Warn(t.logger).Log("msg", "failed to get file size from tailer, ", "file", m, "error", err)
+				_ = level.Warn(t.logger).Log("msg", "failed to get file size from tailer, ", "file", m, "error", err)
 				return
 			}
 		} else {

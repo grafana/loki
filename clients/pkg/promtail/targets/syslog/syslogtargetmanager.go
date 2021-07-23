@@ -66,7 +66,7 @@ func (tm *SyslogTargetManager) Ready() bool {
 func (tm *SyslogTargetManager) Stop() {
 	for _, t := range tm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("msg", "error stopping SyslogTarget", "err", err.Error())
+			_ = level.Error(t.logger).Log("msg", "error stopping SyslogTarget", "err", err.Error())
 		}
 	}
 }

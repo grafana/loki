@@ -227,7 +227,7 @@ func (s *server) ready(rw http.ResponseWriter, _ *http.Request) {
 
 	rw.WriteHeader(http.StatusOK)
 	if _, err := rw.Write(readinessProbeSuccess); err != nil {
-		level.Error(s.log).Log("msg", "error writing success message", "error", err)
+		_ = level.Error(s.log).Log("msg", "error writing success message", "error", err)
 	}
 }
 
@@ -272,7 +272,7 @@ func newNoopServer(log log.Logger) *noopServer {
 func (s *noopServer) Run() error {
 	signal.Notify(s.sigs, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-s.sigs
-	level.Info(s.log).Log("msg", "received shutdown signal", "sig", sig)
+	_ = level.Info(s.log).Log("msg", "received shutdown signal", "sig", sig)
 	return nil
 }
 

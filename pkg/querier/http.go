@@ -215,26 +215,26 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
+		_ = level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
 		return
 	}
 
 	defer func() {
 		if err := conn.Close(); err != nil {
-			level.Error(logger).Log("msg", "Error closing websocket", "err", err)
+			_ = level.Error(logger).Log("msg", "Error closing websocket", "err", err)
 		}
 	}()
 
 	tailer, err := q.Tail(r.Context(), req)
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
+			_ = level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
 		}
 		return
 	}
 	defer func() {
 		if err := tailer.close(); err != nil {
-			level.Error(logger).Log("msg", "Error closing Tailer", "err", err)
+			_ = level.Error(logger).Log("msg", "Error closing Tailer", "err", err)
 		}
 	}()
 
@@ -254,12 +254,12 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 					if closeErr.Code == websocket.CloseNormalClosure {
 						break
 					}
-					level.Error(logger).Log("msg", "Error from client", "err", err)
+					_ = level.Error(logger).Log("msg", "Error from client", "err", err)
 					break
 				} else if tailer.stopped {
 					return
 				} else {
-					level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
+					_ = level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
 					break
 				}
 			}
@@ -277,25 +277,25 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}
 			if err != nil {
-				level.Error(logger).Log("msg", "Error writing to websocket", "err", err)
+				_ = level.Error(logger).Log("msg", "Error writing to websocket", "err", err)
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
+					_ = level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
 				}
 				return
 			}
 
 		case err := <-closeErrChan:
-			level.Error(logger).Log("msg", "Error from iterator", "err", err)
+			_ = level.Error(logger).Log("msg", "Error from iterator", "err", err)
 			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-				level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
+				_ = level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
 			}
 			return
 		case <-ticker.C:
 			// This is to periodically check whether connection is active, useful to clean up dead connections when there are no entries to send
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				level.Error(logger).Log("msg", "Error writing ping message to websocket", "err", err)
+				_ = level.Error(logger).Log("msg", "Error writing ping message to websocket", "err", err)
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
+					_ = level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
 				}
 				return
 			}

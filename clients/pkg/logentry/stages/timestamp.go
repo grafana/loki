@@ -173,7 +173,7 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 	v, ok := extracted[ts.cfg.Source]
 	if !ok {
 		if Debug {
-			level.Debug(ts.logger).Log("msg", ErrTimestampSourceMissing)
+			_ = level.Debug(ts.logger).Log("msg", ErrTimestampSourceMissing)
 		}
 
 		return nil, errors.New(ErrTimestampSourceMissing)
@@ -183,7 +183,7 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 	s, err := getString(v)
 	if err != nil {
 		if Debug {
-			level.Debug(ts.logger).Log("msg", ErrTimestampConversionFailed, "err", err, "type", reflect.TypeOf(v))
+			_ = level.Debug(ts.logger).Log("msg", ErrTimestampConversionFailed, "err", err, "type", reflect.TypeOf(v))
 		}
 
 		return nil, errors.New(ErrTimestampConversionFailed)
@@ -193,7 +193,7 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 	parsedTs, err := ts.parser(s)
 	if err != nil {
 		if Debug {
-			level.Debug(ts.logger).Log("msg", ErrTimestampParsingFailed, "err", err, "format", ts.cfg.Format, "value", s)
+			_ = level.Debug(ts.logger).Log("msg", ErrTimestampParsingFailed, "err", err, "format", ts.cfg.Format, "value", s)
 		}
 
 		return nil, errors.New(ErrTimestampParsingFailed)

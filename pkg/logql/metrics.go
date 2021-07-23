@@ -75,7 +75,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 	)
 	queryType, err := QueryType(p.Query())
 	if err != nil {
-		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
+		_ = level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -89,7 +89,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 	}
 
 	// we also log queries, useful for troubleshooting slow queries.
-	level.Info(logger).Log(
+	_ = level.Info(logger).Log(
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
 		"query_type", queryType,

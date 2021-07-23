@@ -62,9 +62,9 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.
 	status := statusSuccess
 	defer func() {
 		t.markerMetrics.tableProcessedDurationSeconds.WithLabelValues(tableName, status).Observe(time.Since(start).Seconds())
-		level.Debug(util_log.Logger).Log("msg", "finished to process table", "table", tableName, "duration", time.Since(start))
+		_ = level.Debug(util_log.Logger).Log("msg", "finished to process table", "table", tableName, "duration", time.Since(start))
 	}()
-	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
+	_ = level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
 
 	empty, markCount, err := t.markTable(ctx, tableName, db)
 	if err != nil {
@@ -212,11 +212,11 @@ func (s *Sweeper) Start() {
 		err = s.chunkClient.DeleteChunk(ctx, unsafeGetString(userID), chunkIDString)
 		if err == chunk.ErrStorageObjectNotFound {
 			status = statusNotFound
-			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
+			_ = level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
 			return nil
 		}
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error deleting chunk", "chunkID", chunkIDString, "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "error deleting chunk", "chunkID", chunkIDString, "err", err)
 			status = statusFailure
 		}
 		return err

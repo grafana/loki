@@ -183,7 +183,7 @@ func journalTargetWithReader(
 				if err == sdjournal.ErrExpired || err == io.EOF {
 					return
 				}
-				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
+				_ = level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
 			}
 		}
 	}()
@@ -229,7 +229,7 @@ func (t *JournalTarget) generateJournalConfig(
 	// rather than cfg.Cursor.
 	entry, err := cb.EntryFunc(cfg, cb.Position)
 	if err != nil {
-		level.Error(t.logger).Log("msg", "received error reading saved journal position", "err", err.Error())
+		_ = level.Error(t.logger).Log("msg", "received error reading saved journal position", "err", err.Error())
 		cfg.Since = -1 * cb.MaxAge
 		return cfg
 	}
@@ -254,7 +254,7 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 
 		bb, err := json.Marshal(entry.Fields)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "could not marshal journal fields to JSON", "err", err)
+			_ = level.Error(t.logger).Log("msg", "could not marshal journal fields to JSON", "err", err)
 			return journalEmptyStr, nil
 		}
 		msg = string(bb)
@@ -262,7 +262,7 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 		var ok bool
 		msg, ok = entry.Fields["MESSAGE"]
 		if !ok {
-			level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field")
+			_ = level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field")
 			return journalEmptyStr, nil
 		}
 	}

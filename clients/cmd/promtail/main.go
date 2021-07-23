@@ -99,28 +99,28 @@ func main() {
 	if config.printConfig {
 		err := logutil.PrintConfig(os.Stderr, &config)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
+			_ = level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
 	}
 
 	if config.logConfig {
 		err := logutil.LogConfig(&config)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
+			_ = level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
 	}
 
 	p, err := promtail.New(config.Config, config.dryRun)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
+		_ = level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)
 	}
 
-	level.Info(util_log.Logger).Log("msg", "Starting Promtail", "version", version.Info())
+	_ = level.Info(util_log.Logger).Log("msg", "Starting Promtail", "version", version.Info())
 	defer p.Shutdown()
 
 	if err := p.Run(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "error starting promtail", "error", err)
+		_ = level.Error(util_log.Logger).Log("msg", "error starting promtail", "error", err)
 		os.Exit(1)
 	}
 }

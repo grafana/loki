@@ -59,7 +59,7 @@ func (t *deleteRequestsTable) init() error {
 	tempFilePath := fmt.Sprintf("%s%s", t.dbPath, tempFileSuffix)
 
 	if err := os.Remove(tempFilePath); err != nil && !os.IsNotExist(err) {
-		level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", tempFilePath), "err", err)
+		_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", tempFilePath), "err", err)
 	}
 
 	_, err := os.Stat(t.dbPath)
@@ -85,7 +85,7 @@ func (t *deleteRequestsTable) loop() {
 		select {
 		case <-uploadTicker.C:
 			if err := t.uploadFile(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to upload delete requests file", "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "failed to upload delete requests file", "err", err)
 			}
 		case <-t.done:
 			return
@@ -94,7 +94,7 @@ func (t *deleteRequestsTable) loop() {
 }
 
 func (t *deleteRequestsTable) uploadFile() error {
-	level.Debug(util_log.Logger).Log("msg", "uploading delete requests db")
+	_ = level.Debug(util_log.Logger).Log("msg", "uploading delete requests db")
 
 	tempFilePath := fmt.Sprintf("%s.%s", t.dbPath, tempFileSuffix)
 	f, err := os.Create(tempFilePath)
@@ -104,11 +104,11 @@ func (t *deleteRequestsTable) uploadFile() error {
 
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close temp file", "path", tempFilePath, "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "failed to close temp file", "path", tempFilePath, "err", err)
 		}
 
 		if err := os.Remove(tempFilePath); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "path", tempFilePath, "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "path", tempFilePath, "err", err)
 		}
 	}()
 
@@ -147,11 +147,11 @@ func (t *deleteRequestsTable) Stop() {
 	t.wg.Wait()
 
 	if err := t.uploadFile(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to upload delete requests file during shutdown", "err", err)
+		_ = level.Error(util_log.Logger).Log("msg", "failed to upload delete requests file during shutdown", "err", err)
 	}
 
 	if err := t.db.Close(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to close delete requests db", "err", err)
+		_ = level.Error(util_log.Logger).Log("msg", "failed to close delete requests db", "err", err)
 	}
 
 	t.boltdbIndexClient.Stop()

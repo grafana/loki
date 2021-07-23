@@ -93,7 +93,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 	if r.cfg.Source != nil {
 		if _, ok := extracted[*r.cfg.Source]; !ok {
 			if Debug {
-				level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
+				_ = level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
 			}
 			return
 		}
@@ -101,7 +101,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 		value, err := getString(extracted[*r.cfg.Source])
 		if err != nil {
 			if Debug {
-				level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]))
+				_ = level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]))
 			}
 			return
 		}
@@ -111,7 +111,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 
 	if input == nil {
 		if Debug {
-			level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
+			_ = level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
 		}
 		return
 	}
@@ -122,7 +122,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 
 	if matchAllIndex == nil {
 		if Debug {
-			level.Debug(r.logger).Log("msg", "regex did not match", "input", *input, "regex", r.expression)
+			_ = level.Debug(r.logger).Log("msg", "regex did not match", "input", *input, "regex", r.expression)
 		}
 		return
 	}
@@ -134,7 +134,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 	templ, err := template.New("pipeline_template").Funcs(functionMap).Parse(r.cfg.Replace)
 	if err != nil {
 		if Debug {
-			level.Debug(r.logger).Log("msg", "template initialization error", "err", err)
+			_ = level.Debug(r.logger).Log("msg", "template initialization error", "err", err)
 		}
 		return
 	}
@@ -142,7 +142,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 	result, capturedMap, err := r.getReplacedEntry(matchAllIndex, *input, td, templ)
 	if err != nil {
 		if Debug {
-			level.Debug(r.logger).Log("msg", "failed to execute template on extracted value", "err", err)
+			_ = level.Debug(r.logger).Log("msg", "failed to execute template on extracted value", "err", err)
 		}
 		return
 	}
@@ -162,7 +162,7 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 		}
 	}
 	if Debug {
-		level.Debug(r.logger).Log("msg", "extracted data debug in replace stage", "extracted data", fmt.Sprintf("%v", extracted))
+		_ = level.Debug(r.logger).Log("msg", "extracted data debug in replace stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }
 
@@ -206,7 +206,7 @@ func (r *replaceStage) getTemplateData(extracted map[string]interface{}) map[str
 		s, err := getString(v)
 		if err != nil {
 			if Debug {
-				level.Debug(r.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
+				_ = level.Debug(r.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
 			}
 			continue
 		}

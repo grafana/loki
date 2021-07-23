@@ -44,16 +44,16 @@ type logPair struct {
 
 func (l *logPair) Close() {
 	if err := l.stream.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing fifo stream", "err", err)
+		_ = level.Error(l.logger).Log("msg", "error while closing fifo stream", "err", err)
 	}
 	if err := l.lokil.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing loki logger", "err", err)
+		_ = level.Error(l.logger).Log("msg", "error while closing loki logger", "err", err)
 	}
 	if l.jsonl == nil {
 		return
 	}
 	if err := l.jsonl.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
+		_ = level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
 	}
 }
 
@@ -74,7 +74,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	d.mu.Unlock()
 	folder := fmt.Sprintf("/var/log/docker/%s/", logCtx.ContainerID)
 	logCtx.LogPath = filepath.Join(folder, "json.log")
-	level.Info(d.logger).Log("msg", "starting logging driver for container", "id", logCtx.ContainerID, "config", fmt.Sprintf("%+v", logCtx.Config), "file", file, "logpath", logCtx.LogPath)
+	_ = level.Info(d.logger).Log("msg", "starting logging driver for container", "id", logCtx.ContainerID, "config", fmt.Sprintf("%+v", logCtx.Config), "file", file, "logpath", logCtx.LogPath)
 
 	noFile, err := parseBoolean(cfgNofile, logCtx, false)
 	if err != nil {
@@ -118,7 +118,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 }
 
 func (d *driver) StopLogging(file string) {
-	level.Debug(d.logger).Log("msg", "Stop logging", "file", file)
+	_ = level.Debug(d.logger).Log("msg", "Stop logging", "file", file)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	lf, ok := d.logs[file]
@@ -130,7 +130,7 @@ func (d *driver) StopLogging(file string) {
 	if !lf.keepFile && lf.jsonl != nil {
 		// delete the folder where all log files were created.
 		if err := os.RemoveAll(lf.folder); err != nil {
-			level.Debug(d.logger).Log("msg", "error deleting folder", "folder", lf.folder)
+			_ = level.Debug(d.logger).Log("msg", "error deleting folder", "folder", lf.folder)
 		}
 	}
 }
@@ -143,7 +143,7 @@ func consumeLog(lf *logPair) {
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
 			if err == io.EOF || err == os.ErrClosed || strings.Contains(err.Error(), "file already closed") {
-				level.Debug(lf.logger).Log("msg", "shutting down log logger", "id", lf.info.ContainerID, "err", err)
+				_ = level.Debug(lf.logger).Log("msg", "shutting down log logger", "id", lf.info.ContainerID, "err", err)
 				return
 			}
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
@@ -163,11 +163,11 @@ func consumeLog(lf *logPair) {
 
 		// loki goes first as the json logger reset the message on completion.
 		if err := lf.lokil.Log(&msg); err != nil {
-			level.Error(lf.logger).Log("msg", "error pushing message to loki", "id", lf.info.ContainerID, "err", err, "message", msg)
+			_ = level.Error(lf.logger).Log("msg", "error pushing message to loki", "id", lf.info.ContainerID, "err", err, "message", msg)
 		}
 		if lf.jsonl != nil {
 			if err := lf.jsonl.Log(&msg); err != nil {
-				level.Error(lf.logger).Log("msg", "error writing log message", "id", lf.info.ContainerID, "err", err, "message", msg)
+				_ = level.Error(lf.logger).Log("msg", "error writing log message", "id", lf.info.ContainerID, "err", err, "message", msg)
 				continue
 			}
 		}

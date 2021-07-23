@@ -104,7 +104,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 		// A new mapping has to be created.
 		mappedFP = m.nextMappedFP()
 		mappedFPs[ms] = mappedFP
-		level.Info(util_log.Logger).Log(
+		_ = level.Info(util_log.Logger).Log(
 			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
@@ -118,7 +118,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 	m.mtx.Lock()
 	m.mappings[fp] = mappedFPs
 	m.mtx.Unlock()
-	level.Info(util_log.Logger).Log(
+	_ = level.Info(util_log.Logger).Log(
 		"msg", "fingerprint collision detected, mapping to new fingerprint",
 		"old_fp", fp,
 		"new_fp", mappedFP,

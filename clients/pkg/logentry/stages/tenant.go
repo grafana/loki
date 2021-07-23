@@ -89,7 +89,7 @@ func (s *tenantStage) getTenantFromSourceField(extracted map[string]interface{})
 	value, ok := extracted[s.cfg.Source]
 	if !ok {
 		if Debug {
-			level.Debug(s.logger).Log("msg", "the tenant source does not exist in the extracted data", "source", s.cfg.Source)
+			_ = level.Debug(s.logger).Log("msg", "the tenant source does not exist in the extracted data", "source", s.cfg.Source)
 		}
 		return ""
 	}
@@ -98,7 +98,7 @@ func (s *tenantStage) getTenantFromSourceField(extracted map[string]interface{})
 	tenantID, err := getString(value)
 	if err != nil {
 		if Debug {
-			level.Debug(s.logger).Log("msg", "failed to convert value to string", "err", err, "type", reflect.TypeOf(value))
+			_ = level.Debug(s.logger).Log("msg", "failed to convert value to string", "err", err, "type", reflect.TypeOf(value))
 		}
 		return ""
 	}

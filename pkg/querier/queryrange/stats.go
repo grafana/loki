@@ -97,7 +97,7 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				case *LokiPromResponse:
 					statistics = &r.Statistics
 				default:
-					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
+					_ = level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
 			}
 			if statistics != nil {

@@ -55,7 +55,7 @@ func NewTargetManagers(
 	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
 
 	if targetConfig.Stdin {
-		level.Debug(logger).Log("msg", "configured to read from stdin")
+		_ = level.Debug(logger).Log("msg", "configured to read from stdin")
 		stdin, err := stdin.NewStdinTargetManager(reg, logger, app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err

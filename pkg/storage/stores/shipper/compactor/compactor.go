@@ -157,7 +157,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 	runCompaction := func() {
 		err := c.RunCompaction(ctx)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 		}
 	}
 	var wg sync.WaitGroup
@@ -198,7 +198,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient, c.cfg.RetentionEnabled, c.tableMarker)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
+		_ = level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
 	}
 
@@ -210,7 +210,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 
 	err = table.compact(intervalHasExpiredChunks)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+		_ = level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
 	}
 	return nil
@@ -268,12 +268,12 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 						return
 					}
 
-					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
+					_ = level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
 					err = c.CompactTable(ctx, tableName)
 					if err != nil {
 						return
 					}
-					level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
+					_ = level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
 				case <-ctx.Done():
 					return
 				}

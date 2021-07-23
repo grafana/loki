@@ -31,7 +31,7 @@ func NewQueryShardMiddleware(
 	noshards := !hasShards(confs)
 
 	if noshards {
-		level.Warn(logger).Log(
+		_ = level.Warn(logger).Log(
 			"middleware", "QueryShard",
 			"msg", "no configuration with shard found",
 			"confs", fmt.Sprintf("%+v", confs),
@@ -80,7 +80,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	conf, err := ast.confs.GetConf(r)
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(ast.logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
+		_ = level.Warn(ast.logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
 
@@ -94,10 +94,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	noop, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
-		level.Warn(shardedLog).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
+		_ = level.Warn(shardedLog).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
-	level.Debug(shardedLog).Log("no-op", noop, "mapped", parsed.String())
+	_ = level.Debug(shardedLog).Log("no-op", noop, "mapped", parsed.String())
 
 	if noop {
 		// the ast can't be mapped to a sharded equivalent
@@ -212,7 +212,7 @@ func NewSeriesQueryShardMiddleware(
 	noshards := !hasShards(confs)
 
 	if noshards {
-		level.Warn(logger).Log(
+		_ = level.Warn(logger).Log(
 			"middleware", "QueryShard",
 			"msg", "no configuration with shard found",
 			"confs", fmt.Sprintf("%+v", confs),
@@ -246,7 +246,7 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrange.Request) (
 	conf, err := ss.confs.GetConf(r)
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
+		_ = level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
 		return ss.next.Do(ctx, r)
 	}
 

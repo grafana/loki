@@ -204,7 +204,7 @@ func (s *stream) Push(
 			if err != nil {
 				// This should be an unlikely situation, returning an error up the stack doesn't help much here
 				// so instead log this to help debug the issue if it ever arises.
-				level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to Close chunk", "err", err)
+				_ = level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to Close chunk", "err", err)
 			}
 			chunk.closed = true
 

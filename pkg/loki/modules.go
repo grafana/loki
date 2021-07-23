@@ -185,7 +185,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		// In case someone set scheduler address, we ignore it.
 		t.Cfg.Worker.SchedulerAddress = ""
 		t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
-		level.Debug(util_log.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.Cfg.Worker))
+		_ = level.Debug(util_log.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.Cfg.Worker))
 		worker, err = cortex_querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), util_log.Logger, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
@@ -261,7 +261,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		t.Cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
 		t.Cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
 		t.Cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "" {
-		level.Error(util_log.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
+		_ = level.Error(util_log.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
 		os.Exit(1)
 	}
 
@@ -381,7 +381,7 @@ type disabledShuffleShardingLimits struct{}
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { return 0 }
 
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
-	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
@@ -401,7 +401,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
-	level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
+	_ = level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
 
 	roundTripper, frontendV1, _, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
 		// Don't set FrontendV2 field to make sure that only frontendV1 can be initialized.
@@ -485,7 +485,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		// Log but not return in case of error, so that other following dependencies
 		// are stopped too.
 		if err := services.StopAndAwaitTerminated(context.Background(), t.frontend); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to stop frontend service", "err", err)
+			_ = level.Warn(util_log.Logger).Log("msg", "failed to stop frontend service", "err", err)
 		}
 
 		if t.stopper != nil {
@@ -501,7 +501,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
 	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		_ = level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
 		return
 	}
 
@@ -526,7 +526,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 
 func (t *Loki) initRuler() (_ services.Service, err error) {
 	if t.RulerStorage == nil {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
+		_ = level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
 

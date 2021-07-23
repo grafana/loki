@@ -54,7 +54,7 @@ func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, name string)
 	}
 
 	if len(dirs) != 0 {
-		level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected directories in %s folder, not touching them", name), "directories", fmt.Sprint(dirs))
+		_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected directories in %s folder, not touching them", name), "directories", fmt.Sprint(dirs))
 	}
 
 	for _, object := range objects {

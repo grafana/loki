@@ -48,12 +48,12 @@ func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
 // sendRecord send fluentbit records to loki as an entry.
 func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	records := toStringMap(r)
-	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
+	_ = level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
 	if l.cfg.autoKubernetesLabels {
 		err := autoLabels(records, lbs)
 		if err != nil {
-			level.Error(l.logger).Log("msg", err.Error(), "records", fmt.Sprintf("%+v", records))
+			_ = level.Error(l.logger).Log("msg", err.Error(), "records", fmt.Sprintf("%+v", records))
 		}
 	} else if l.cfg.labelMap != nil {
 		mapLabels(records, l.cfg.labelMap, lbs)

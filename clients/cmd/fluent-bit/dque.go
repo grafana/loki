@@ -96,7 +96,7 @@ func (c *dqueClient) dequeuer() {
 			case dque.ErrQueueClosed:
 				return
 			default:
-				level.Error(c.logger).Log("msg", "error dequeuing record", "error", err)
+				_ = level.Error(c.logger).Log("msg", "error dequeuing record", "error", err)
 				continue
 			}
 		}
@@ -104,7 +104,7 @@ func (c *dqueClient) dequeuer() {
 		// Assert type of the response to an Item pointer so we can work with it
 		record, ok := entry.(*dqueEntry)
 		if !ok {
-			level.Error(c.logger).Log("msg", "error dequeued record is not an valid type", "error")
+			_ = level.Error(c.logger).Log("msg", "error dequeued record is not an valid type", "error")
 			continue
 		}
 
@@ -147,7 +147,7 @@ func (c *dqueClient) enqueuer() {
 	defer c.wg.Done()
 	for e := range c.entries {
 		if err := c.queue.Enqueue(&dqueEntry{e.Labels, e.Timestamp, e.Line}); err != nil {
-			level.Warn(c.logger).Log("msg", fmt.Sprintf("cannot enqueue record %s:", e.Line), "err", err)
+			_ = level.Warn(c.logger).Log("msg", fmt.Sprintf("cannot enqueue record %s:", e.Line), "err", err)
 		}
 	}
 }

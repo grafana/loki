@@ -92,7 +92,7 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 	if r.cfg.Source != nil {
 		if _, ok := extracted[*r.cfg.Source]; !ok {
 			if Debug {
-				level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
+				_ = level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
 			}
 			return
 		}
@@ -100,7 +100,7 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 		value, err := getString(extracted[*r.cfg.Source])
 		if err != nil {
 			if Debug {
-				level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]))
+				_ = level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]))
 			}
 			return
 		}
@@ -110,7 +110,7 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 
 	if input == nil {
 		if Debug {
-			level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
+			_ = level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
 		}
 		return
 	}
@@ -118,7 +118,7 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 	match := r.expression.FindStringSubmatch(*input)
 	if match == nil {
 		if Debug {
-			level.Debug(r.logger).Log("msg", "regex did not match", "input", *input, "regex", r.expression)
+			_ = level.Debug(r.logger).Log("msg", "regex did not match", "input", *input, "regex", r.expression)
 		}
 		return
 	}
@@ -129,7 +129,7 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 		}
 	}
 	if Debug {
-		level.Debug(r.logger).Log("msg", "extracted data debug in regex stage", "extracted data", fmt.Sprintf("%v", extracted))
+		_ = level.Debug(r.logger).Log("msg", "extracted data debug in regex stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }
 

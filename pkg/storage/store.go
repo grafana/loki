@@ -88,7 +88,7 @@ func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
 	if cfg.MaxLookBackPeriod > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
+		_ = level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
 	}
 	return cfg.StoreConfig.Validate(logger)
 }

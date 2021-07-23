@@ -105,7 +105,7 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometh
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %d mode", cfg.Mode))
+	_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %d mode", cfg.Mode))
 
 	return &shipper, nil
 }
@@ -230,7 +230,7 @@ func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, ca
 				return err
 			}
 
-			level.Debug(spanLogger).Log("queried", "uploads-manager")
+			_ = level.Debug(spanLogger).Log("queried", "uploads-manager")
 		}
 
 		if s.downloadsManager != nil {
@@ -239,7 +239,7 @@ func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, ca
 				return err
 			}
 
-			level.Debug(spanLogger).Log("queried", "downloads-manager")
+			_ = level.Debug(spanLogger).Log("queried", "downloads-manager")
 		}
 
 		return nil

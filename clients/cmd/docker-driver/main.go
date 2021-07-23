@@ -32,7 +32,7 @@ func main() {
 		os.Exit(1)
 	}
 	logger := newLogger(logLevel)
-	level.Info(util_log.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
+	_ = level.Info(util_log.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
 
 	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
 

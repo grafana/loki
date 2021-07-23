@@ -75,7 +75,7 @@ func (m *markerStorageWriter) createFile() error {
 	if err != nil {
 		return err
 	}
-	level.Info(util_log.Logger).Log("msg", "mark file created", "file", fileName)
+	_ = level.Info(util_log.Logger).Log("msg", "mark file created", "file", fileName)
 	bucket.FillPercent = 1
 	m.db = db
 	m.tx = tx
@@ -175,7 +175,7 @@ func newMarkerStorageReader(workingDir string, maxParallelism int, minAgeFile ti
 }
 
 func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []byte) error) {
-	level.Info(util_log.Logger).Log("msg", "mark processor started", "workers", r.maxParallelism, "delay", r.minAgeFile)
+	_ = level.Info(util_log.Logger).Log("msg", "mark processor started", "workers", r.maxParallelism, "delay", r.minAgeFile)
 	r.wg.Wait() // only one start at a time.
 	r.wg.Add(1)
 	go func() {
@@ -196,27 +196,27 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 			}
 			paths, times, err := r.availablePath()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
 				continue
 			}
 			if len(paths) == 0 {
-				level.Info(util_log.Logger).Log("msg", "no marks file found")
+				_ = level.Info(util_log.Logger).Log("msg", "no marks file found")
 				r.sweeperMetrics.markerFileCurrentTime.Set(0)
 				continue
 			}
 			for i, path := range paths {
-				level.Debug(util_log.Logger).Log("msg", "processing mark file", "path", path)
+				_ = level.Debug(util_log.Logger).Log("msg", "processing mark file", "path", path)
 				if r.ctx.Err() != nil {
 					return
 				}
 				r.sweeperMetrics.markerFileCurrentTime.Set(float64(times[i].UnixNano()) / 1e9)
 				if err := r.processPath(path, deleteFunc); err != nil {
-					level.Warn(util_log.Logger).Log("msg", "failed to process marks", "path", path, "err", err)
+					_ = level.Warn(util_log.Logger).Log("msg", "failed to process marks", "path", path, "err", err)
 					continue
 				}
 				// delete if empty.
 				if err := r.deleteEmptyMarks(path); err != nil {
-					level.Warn(util_log.Logger).Log("msg", "failed to delete marks", "path", path, "err", err)
+					_ = level.Warn(util_log.Logger).Log("msg", "failed to delete marks", "path", path, "err", err)
 				}
 			}
 
@@ -239,7 +239,7 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 			}
 			paths, _, err := r.availablePath()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
 				continue
 			}
 			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
@@ -262,7 +262,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 	}
 	defer func() {
 		if err := os.Remove(viewFile.Name()); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to delete view file", "file", viewFile.Name(), "err", err)
+			_ = level.Warn(util_log.Logger).Log("msg", "failed to delete view file", "file", viewFile.Name(), "err", err)
 		}
 	}()
 	if _, err := copyFile(path, viewFile.Name()); err != nil {
@@ -276,7 +276,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 	dbView.NoSync = true
 	defer func() {
 		if err := dbView.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close db view", "err", err)
+			_ = level.Warn(util_log.Logger).Log("msg", "failed to close db view", "err", err)
 		}
 	}()
 	dbUpdate, err := shipper_util.SafeOpenBoltdbFile(path)
@@ -288,7 +288,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 		close(queue)
 		wg.Wait()
 		if err := dbUpdate.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close db", "err", err)
+			_ = level.Warn(util_log.Logger).Log("msg", "failed to close db", "err", err)
 		}
 	}()
 	for i := 0; i < r.maxParallelism; i++ {
@@ -297,7 +297,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 			defer wg.Done()
 			for key := range queue {
 				if err := processKey(r.ctx, key, dbUpdate, deleteFunc); err != nil {
-					level.Warn(util_log.Logger).Log("msg", "failed to delete key", "key", key.key.String(), "value", key.value.String(), "err", err)
+					_ = level.Warn(util_log.Logger).Log("msg", "failed to delete key", "key", key.key.String(), "value", key.value.String(), "err", err)
 				}
 				putKeyBuffer(key)
 			}
@@ -390,7 +390,7 @@ func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
 		base := filepath.Base(path)
 		i, err := strconv.ParseInt(base, 10, 64)
 		if err != nil {
-			level.Warn(util_log.Logger).Log("msg", "wrong file name", "path", path, "base", base, "err", err)
+			_ = level.Warn(util_log.Logger).Log("msg", "wrong file name", "path", path, "base", base, "err", err)
 			return nil
 		}
 

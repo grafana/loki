@@ -82,7 +82,7 @@ func (c *replayController) Flush() {
 	if c.isFlushing.CAS(false, true) {
 		c.metrics.recoveryIsFlushing.Set(1)
 		prior := c.currentBytes.Load()
-		level.Debug(util_log.Logger).Log(
+		_ = level.Debug(util_log.Logger).Log(
 			"msg", "replay flusher pre-flush",
 			"bytes", humanize.Bytes(uint64(prior)),
 		)
@@ -90,7 +90,7 @@ func (c *replayController) Flush() {
 		c.flusher.Flush()
 
 		after := c.currentBytes.Load()
-		level.Debug(util_log.Logger).Log(
+		_ = level.Debug(util_log.Logger).Log(
 			"msg", "replay flusher post-flush",
 			"bytes", humanize.Bytes(uint64(after)),
 		)

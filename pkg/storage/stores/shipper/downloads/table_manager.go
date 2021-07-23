@@ -99,18 +99,18 @@ func (tm *TableManager) loop() {
 		case <-syncTicker.C:
 			err := tm.syncTables(tm.ctx)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
 			err = tm.ensureQueryReadiness()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error ensuring query readiness of tables", "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
 			err := tm.cleanupCache()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error cleaning up expired tables", "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", "error cleaning up expired tables", "err", err)
 			}
 		case <-tm.ctx.Done():
 			return
@@ -146,7 +146,7 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Query")
 	defer log.Span.Finish()
 
-	level.Debug(log).Log("table-name", tableName)
+	_ = level.Debug(log).Log("table-name", tableName)
 
 	table := tm.getOrCreateTable(ctx, tableName)
 
@@ -157,7 +157,7 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 			tm.tablesMtx.Lock()
 			defer tm.tablesMtx.Unlock()
 
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", tableName), "err", table.Err())
+			_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("table %s has some problem, cleaning it up", tableName), "err", table.Err())
 
 			delete(tm.tables, tableName)
 			return table.Err()
@@ -179,7 +179,7 @@ func (tm *TableManager) getOrCreateTable(spanCtx context.Context, tableName stri
 		table, ok = tm.tables[tableName]
 		if !ok {
 			// table not found, creating one.
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
+			_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
 			table = NewTable(spanCtx, tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
 			tm.tables[tableName] = table
@@ -205,7 +205,7 @@ func (tm *TableManager) syncTables(ctx context.Context) error {
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
 	}()
 
-	level.Info(util_log.Logger).Log("msg", "syncing tables")
+	_ = level.Info(util_log.Logger).Log("msg", "syncing tables")
 
 	for _, table := range tm.tables {
 		err = table.Sync(ctx)
@@ -221,12 +221,12 @@ func (tm *TableManager) cleanupCache() error {
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 
-	level.Info(util_log.Logger).Log("msg", "cleaning tables cache")
+	_ = level.Info(util_log.Logger).Log("msg", "cleaning tables cache")
 
 	for name, table := range tm.tables {
 		lastUsedAt := table.LastUsedAt()
 		if lastUsedAt.Add(tm.cfg.CacheTTL).Before(time.Now()) {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
+			_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
 			err := table.CleanupAllDBs()
 			if err != nil {
 				return err
@@ -237,7 +237,7 @@ func (tm *TableManager) cleanupCache() error {
 			// remove the directory where files for the table were downloaded.
 			err = os.RemoveAll(path.Join(tm.cfg.CacheDir, name))
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove directory for table %s", name), "err", err)
+				_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove directory for table %s", name), "err", err)
 			}
 		}
 	}
@@ -262,7 +262,7 @@ func (tm *TableManager) ensureQueryReadiness() error {
 		return err
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("list of tables required for query-readiness %s", tableNames))
+	_ = level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("list of tables required for query-readiness %s", tableNames))
 
 	for _, tableName := range tableNames {
 		tm.tablesMtx.RLock()
@@ -274,7 +274,7 @@ func (tm *TableManager) ensureQueryReadiness() error {
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", "table required for query readiness does not exist locally, downloading it", "table-name", tableName)
+		_ = level.Info(util_log.Logger).Log("msg", "table required for query readiness does not exist locally, downloading it", "table-name", tableName)
 		// table doesn't exist, download it.
 		table, err := LoadTable(tm.ctx, tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
@@ -340,7 +340,7 @@ func (tm *TableManager) loadLocalTables() error {
 			continue
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
+		_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
 
 		table, err := LoadTable(tm.ctx, fileInfo.Name(), tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {

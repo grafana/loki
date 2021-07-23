@@ -247,11 +247,11 @@ func (i *Ingester) setupAutoForget() {
 		ctx := context.Background()
 		err := i.Service.AwaitRunning(ctx)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
+			_ = level.Error(util_log.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+		_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 
 		ticker := time.NewTicker(i.cfg.LifecyclerConfig.HeartbeatPeriod)
 		defer ticker.Stop()
@@ -266,14 +266,14 @@ func (i *Ingester) setupAutoForget() {
 
 				ringDesc, ok := in.(*ring.Desc)
 				if !ok {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
+					_ = level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
 					return nil, false, nil
 				}
 
 				for id, ingester := range ringDesc.Ingesters {
 					if !ingester.IsHealthy(ring.Reporting, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout, time.Now()) {
 						if i.lifecycler.ID == id {
-							level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
+							_ = level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
 							return nil, false, nil
 						}
 						forgetList = append(forgetList, id)
@@ -281,7 +281,7 @@ func (i *Ingester) setupAutoForget() {
 				}
 
 				if len(forgetList) == len(ringDesc.Ingesters)-1 {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
+					_ = level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
 					forgetList = forgetList[:0]
 					return nil, false, nil
 				}
@@ -295,12 +295,12 @@ func (i *Ingester) setupAutoForget() {
 				return nil, false, nil
 			})
 			if err != nil {
-				level.Warn(util_log.Logger).Log("msg", err)
+				_ = level.Warn(util_log.Logger).Log("msg", err)
 				continue
 			}
 
 			for _, id := range forgetList {
-				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+				_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 			}
 			i.metrics.autoForgetUnhealthyIngestersTotal.Add(float64(len(forgetList)))
 		}
@@ -325,7 +325,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 		start := time.Now()
 
-		level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
+		_ = level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
 		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
 		if err != nil {
 			return err
@@ -335,19 +335,19 @@ func (i *Ingester) starting(ctx context.Context) error {
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util_log.Logger).Log(
+			_ = level.Error(util_log.Logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		_ = level.Info(util_log.Logger).Log(
 			"msg", "recovered WAL checkpoint recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", checkpointRecoveryErr != nil,
 		)
 
-		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
+		_ = level.Info(util_log.Logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
@@ -357,13 +357,13 @@ func (i *Ingester) starting(ctx context.Context) error {
 		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(util_log.Logger).Log(
+			_ = level.Error(util_log.Logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		_ = level.Info(util_log.Logger).Log(
 			"msg", "WAL segment recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", segmentRecoveryErr != nil,
@@ -371,7 +371,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
-		level.Info(util_log.Logger).Log("msg", "recovery finished", "time", elapsed.String())
+		_ = level.Info(util_log.Logger).Log("msg", "recovery finished", "time", elapsed.String())
 
 		i.wal.Start()
 	}

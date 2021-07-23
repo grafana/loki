@@ -76,12 +76,12 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		return err
 	}
 
-	level.Info(t.logger).Log("msg", "listed files", "count", len(objects))
+	_ = level.Info(t.logger).Log("msg", "listed files", "count", len(objects))
 
 	defer func() {
 		err := t.cleanup()
 		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to cleanup table")
+			_ = level.Error(t.logger).Log("msg", "failed to cleanup table")
 		}
 	}()
 
@@ -89,7 +89,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 
 	if !applyRetention {
 		if len(objects) < compactMinDBs {
-			level.Info(t.logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
+			_ = level.Info(t.logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
 			return nil
 		}
 		if err := t.compactFiles(objects); err != nil {
@@ -131,7 +131,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 	}
 
 	if t.compactedDB == nil {
-		level.Info(t.logger).Log("msg", "skipping compaction no files found.")
+		_ = level.Info(t.logger).Log("msg", "skipping compaction no files found.")
 		return nil
 	}
 
@@ -159,7 +159,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 
 func (t *table) compactFiles(objects []chunk.StorageObject) error {
 	var err error
-	level.Info(t.logger).Log("msg", "starting compaction of dbs")
+	_ = level.Info(t.logger).Log("msg", "starting compaction of dbs")
 
 	compactedDBName := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
 	seedFileIdx, err := findSeedObjectIdx(objects)
@@ -167,7 +167,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 		return err
 	}
 
-	level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", objects[seedFileIdx].Key))
+	_ = level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", objects[seedFileIdx].Key))
 
 	err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[seedFileIdx].Key, compactedDBName, false)
 	if err != nil {
@@ -218,7 +218,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 
 					err = t.readFile(downloadAt)
 					if err != nil {
-						level.Error(t.logger).Log("msg", fmt.Sprintf("error reading file %s", objectKey), "err", err)
+						_ = level.Error(t.logger).Log("msg", fmt.Sprintf("error reading file %s", objectKey), "err", err)
 						return
 					}
 				case <-t.quit:
@@ -246,7 +246,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 			}
 		}
 
-		level.Debug(t.logger).Log("msg", "closing readObjectChan")
+		_ = level.Debug(t.logger).Log("msg", "closing readObjectChan")
 
 		close(readObjectChan)
 	}()
@@ -273,7 +273,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 	default:
 	}
 
-	level.Info(t.logger).Log("msg", "finished compacting the dbs")
+	_ = level.Info(t.logger).Log("msg", "finished compacting the dbs")
 	return nil
 }
 
@@ -309,7 +309,7 @@ func (t *table) writeBatch(batch []indexEntry) error {
 
 // readFile reads a boltdb file from a path and writes the index in batched mode to compactedDB
 func (t *table) readFile(path string) error {
-	level.Debug(t.logger).Log("msg", "reading file for compaction", "path", path)
+	_ = level.Debug(t.logger).Log("msg", "reading file for compaction", "path", path)
 
 	db, err := openBoltdbFileWithNoSync(path)
 	if err != nil {
@@ -318,11 +318,11 @@ func (t *table) readFile(path string) error {
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			level.Error(t.logger).Log("msg", "failed to close db", "path", path, "err", err)
+			_ = level.Error(t.logger).Log("msg", "failed to close db", "path", path, "err", err)
 		}
 
 		if err = os.Remove(path); err != nil {
-			level.Error(t.logger).Log("msg", "failed to remove file", "path", path, "err", err)
+			_ = level.Error(t.logger).Log("msg", "failed to remove file", "path", path, "err", err)
 		}
 	}()
 
@@ -395,23 +395,23 @@ func (t *table) upload() error {
 
 	defer func() {
 		if err := compressedDB.Close(); err != nil {
-			level.Error(t.logger).Log("msg", "failed to close file", "path", compactedDBPath, "err", err)
+			_ = level.Error(t.logger).Log("msg", "failed to close file", "path", compactedDBPath, "err", err)
 		}
 
 		if err := os.Remove(compressedDBPath); err != nil {
-			level.Error(t.logger).Log("msg", "failed to remove file", "path", compressedDBPath, "err", err)
+			_ = level.Error(t.logger).Log("msg", "failed to remove file", "path", compressedDBPath, "err", err)
 		}
 	}()
 
 	objectKey := fmt.Sprintf("%s.gz", shipper_util.BuildObjectKey(t.name, uploaderName, fmt.Sprint(time.Now().Unix())))
-	level.Info(t.logger).Log("msg", "uploading the compacted file", "objectKey", objectKey)
+	_ = level.Info(t.logger).Log("msg", "uploading the compacted file", "objectKey", objectKey)
 
 	return t.storageClient.PutObject(t.ctx, objectKey, compressedDB)
 }
 
 // removeObjectsFromStorage deletes objects from storage.
 func (t *table) removeObjectsFromStorage(objects []chunk.StorageObject) error {
-	level.Info(t.logger).Log("msg", "removing source db files from storage", "count", len(objects))
+	_ = level.Info(t.logger).Log("msg", "removing source db files from storage", "count", len(objects))
 
 	for _, object := range objects {
 		err := t.storageClient.DeleteObject(t.ctx, object.Key)

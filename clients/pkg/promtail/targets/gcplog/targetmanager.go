@@ -60,7 +60,7 @@ func (tm *GcplogTargetManager) Ready() bool {
 func (tm *GcplogTargetManager) Stop() {
 	for name, t := range tm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("event", "failed to stop pubsub target", "name", name, "cause", err)
+			_ = level.Error(t.logger).Log("event", "failed to stop pubsub target", "name", name, "cause", err)
 		}
 	}
 }

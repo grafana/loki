@@ -279,15 +279,15 @@ func (t *Loki) Run() error {
 		for m, s := range serviceMap {
 			if s == service {
 				if service.FailureCase() == util.ErrStopProcess {
-					level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
+					_ = level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
 				} else {
-					level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+					_ = level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
 				}
 				return
 			}
 		}
 
-		level.Error(util_log.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
+		_ = level.Error(util_log.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
 	}
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))

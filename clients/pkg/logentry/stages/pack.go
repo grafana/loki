@@ -170,7 +170,7 @@ func (m *packStage) pack(e Entry) Entry {
 				sv, err := getString(lv)
 				if err != nil {
 					if Debug {
-						level.Debug(m.logger).Log("msg", fmt.Sprintf("value for key: '%s' cannot be converted to a string and cannot be packed", lk), "err", err, "type", reflect.TypeOf(lv))
+						_ = level.Debug(m.logger).Log("msg", fmt.Sprintf("value for key: '%s' cannot be converted to a string and cannot be packed", lk), "err", err, "type", reflect.TypeOf(lv))
 					}
 					continue
 				}
@@ -190,7 +190,7 @@ func (m *packStage) pack(e Entry) Entry {
 	wl, err := json.Marshal(w)
 	if err != nil {
 		if Debug {
-			level.Debug(m.logger).Log("msg", "pack stage failed to marshal packed object to json, packing will be skipped", "err", err)
+			_ = level.Debug(m.logger).Log("msg", "pack stage failed to marshal packed object to json, packing will be skipped", "err", err)
 		}
 		return e
 	}

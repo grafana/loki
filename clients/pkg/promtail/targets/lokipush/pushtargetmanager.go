@@ -88,7 +88,7 @@ func (tm *PushTargetManager) Ready() bool {
 func (tm *PushTargetManager) Stop() {
 	for _, t := range tm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("msg", "error stopping PushTarget", "err", err.Error())
+			_ = level.Error(t.logger).Log("msg", "error stopping PushTarget", "err", err.Error())
 		}
 	}
 }

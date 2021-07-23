@@ -55,7 +55,7 @@ func NewPushTarget(logger log.Logger,
 	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
 	// Then apply any config values loaded as overrides to the defaults.
 	if err := mergo.Merge(&defaults, config.Server, mergo.WithOverride); err != nil {
-		level.Error(logger).Log("msg", "failed to parse configs and override defaults when configuring push server", "err", err)
+		_ = level.Error(logger).Log("msg", "failed to parse configs and override defaults when configuring push server", "err", err)
 	}
 	// The merge won't overwrite with a zero value but in the case of ports 0 value
 	// indicates the desire for a random port so reset these to zero if the incoming config val is 0
@@ -77,7 +77,7 @@ func NewPushTarget(logger log.Logger,
 }
 
 func (t *PushTarget) run() error {
-	level.Info(t.logger).Log("msg", "starting push server", "job", t.jobName)
+	_ = level.Info(t.logger).Log("msg", "starting push server", "job", t.jobName)
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
 	t.config.Server.MetricsNamespace = "promtail_" + t.jobName
 
@@ -97,7 +97,7 @@ func (t *PushTarget) run() error {
 	go func() {
 		err := srv.Run()
 		if err != nil {
-			level.Error(t.logger).Log("msg", "Loki push server shutdown with error", "err", err)
+			_ = level.Error(t.logger).Log("msg", "Loki push server shutdown with error", "err", err)
 		}
 	}()
 
@@ -109,7 +109,7 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	userID, _ := tenant.TenantID(r.Context())
 	req, err := push.ParseRequest(logger, userID, r, nil)
 	if err != nil {
-		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
+		_ = level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -162,7 +162,7 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if lastErr != nil {
-		level.Warn(t.logger).Log("msg", "at least one entry in the push request failed to process", "err", lastErr.Error())
+		_ = level.Warn(t.logger).Log("msg", "at least one entry in the push request failed to process", "err", lastErr.Error())
 		http.Error(w, lastErr.Error(), http.StatusBadRequest)
 		return
 	}
@@ -199,7 +199,7 @@ func (t *PushTarget) Details() interface{} {
 
 // Stop shuts down the PushTarget.
 func (t *PushTarget) Stop() error {
-	level.Info(t.logger).Log("msg", "stopping push server", "job", t.jobName)
+	_ = level.Info(t.logger).Log("msg", "stopping push server", "job", t.jobName)
 	t.server.Shutdown()
 	t.handler.Stop()
 	return nil

@@ -80,7 +80,7 @@ func getStdinConfig(log log.Logger, configs []scrapeconfig.Config) scrapeconfig.
 	// if we receive configs we use the first one.
 	if len(configs) > 0 {
 		if len(configs) > 1 {
-			level.Warn(log).Log("msg", fmt.Sprintf("too many scrape configs, skipping %d configs.", len(configs)-1))
+			_ = level.Warn(log).Log("msg", fmt.Sprintf("too many scrape configs, skipping %d configs.", len(configs)-1))
 		}
 		cfg = configs[0]
 	}
@@ -140,7 +140,7 @@ func (t *readerTarget) read() {
 		}
 		line, err := t.in.ReadString('\n')
 		if err != nil && err != io.EOF {
-			level.Warn(t.logger).Log("msg", "error reading buffer", "err", err)
+			_ = level.Warn(t.logger).Log("msg", "error reading buffer", "err", err)
 			return
 		}
 		line = strings.TrimRight(line, "\r\n")

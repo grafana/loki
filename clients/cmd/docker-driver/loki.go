@@ -72,7 +72,7 @@ func (l *loki) Log(m *logger.Message) error {
 	}
 
 	if len(bytes.Fields(m.Line)) == 0 {
-		level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
+		_ = level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
 	lbs := l.labels.Clone()

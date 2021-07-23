@@ -62,7 +62,7 @@ func (tm *TargetManager) Ready() bool {
 func (tm *TargetManager) Stop() {
 	for _, t := range tm.targets {
 		if err := t.Stop(); err != nil {
-			level.Error(t.logger).Log("msg", "error stopping windows target", "err", err.Error())
+			_ = level.Error(t.logger).Log("msg", "error stopping windows target", "err", err.Error())
 		}
 	}
 }

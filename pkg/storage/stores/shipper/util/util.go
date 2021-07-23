@@ -78,7 +78,7 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 
 	defer func() {
 		if err := readCloser.Close(); err != nil {
-			level.Error(util_log.Logger)
+			_ = level.Error(util_log.Logger)
 		}
 	}()
 
@@ -89,7 +89,7 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close file", "file", destination)
+			_ = level.Warn(util_log.Logger).Log("msg", "failed to close file", "file", destination)
 		}
 	}()
 	var objectReader io.Reader = readCloser
@@ -105,7 +105,7 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 		return err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
+	_ = level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
 	if sync {
 		return f.Sync()
 	}
@@ -137,7 +137,7 @@ func BuildObjectKey(tableName, uploader, dbName string) string {
 }
 
 func CompressFile(src, dest string, sync bool) error {
-	level.Info(util_log.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
+	_ = level.Info(util_log.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
 	uncompressedFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -145,7 +145,7 @@ func CompressFile(src, dest string, sync bool) error {
 
 	defer func() {
 		if err := uncompressedFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close uncompressed file", "path", src, "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "failed to close uncompressed file", "path", src, "err", err)
 		}
 	}()
 
@@ -156,7 +156,7 @@ func CompressFile(src, dest string, sync bool) error {
 
 	defer func() {
 		if err := compressedFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
+			_ = level.Error(util_log.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
 		}
 	}()
 

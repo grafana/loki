@@ -141,7 +141,7 @@ func (w *walWrapper) Stop() error {
 	close(w.quit)
 	w.wait.Wait()
 	err := w.wal.Close()
-	level.Info(util_log.Logger).Log("msg", "stopped", "component", "wal")
+	_ = level.Info(util_log.Logger).Log("msg", "stopped", "component", "wal")
 	return err
 }
 
@@ -153,7 +153,7 @@ func (w *walWrapper) checkpointWriter() *WALCheckpointWriter {
 }
 
 func (w *walWrapper) run() {
-	level.Info(util_log.Logger).Log("msg", "started", "component", "wal")
+	_ = level.Info(util_log.Logger).Log("msg", "started", "component", "wal")
 	defer w.wait.Done()
 
 	checkpointer := NewCheckpointer(

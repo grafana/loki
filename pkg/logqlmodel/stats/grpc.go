@@ -47,7 +47,7 @@ func CollectTrailer(ctx context.Context) grpc.CallOption {
 func SendAsTrailer(ctx context.Context, stream grpc.ServerStream) {
 	trailer, err := encodeTrailer(ctx)
 	if err != nil {
-		level.Warn(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to encode trailer", "err", err)
+		_ = level.Warn(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to encode trailer", "err", err)
 		return
 	}
 	stream.SetTrailer(trailer)
@@ -117,21 +117,21 @@ func decodeTrailer(ctx context.Context, meta *metadata.MD) Result {
 	values := meta.Get(ingesterDataKey)
 	if len(values) == 1 {
 		if err := jsoniter.UnmarshalFromString(values[0], &ingData); err != nil {
-			level.Warn(logger).Log("msg", "could not unmarshal ingester data", "err", err)
+			_ = level.Warn(logger).Log("msg", "could not unmarshal ingester data", "err", err)
 		}
 	}
 	var chunkData ChunkData
 	values = meta.Get(chunkDataKey)
 	if len(values) == 1 {
 		if err := jsoniter.UnmarshalFromString(values[0], &chunkData); err != nil {
-			level.Warn(logger).Log("msg", "could not unmarshal chunk data", "err", err)
+			_ = level.Warn(logger).Log("msg", "could not unmarshal chunk data", "err", err)
 		}
 	}
 	var storeData StoreData
 	values = meta.Get(storeDataKey)
 	if len(values) == 1 {
 		if err := jsoniter.UnmarshalFromString(values[0], &storeData); err != nil {
-			level.Warn(logger).Log("msg", "could not unmarshal chunk data", "err", err)
+			_ = level.Warn(logger).Log("msg", "could not unmarshal chunk data", "err", err)
 		}
 	}
 	return Result{

@@ -109,7 +109,7 @@ func (t *GcplogTarget) run() error {
 		})
 		if err != nil {
 			// TODO(kavi): Add proper error propagation maybe?
-			level.Error(t.logger).Log("error", err)
+			_ = level.Error(t.logger).Log("error", err)
 			t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
 		}
 	}()
@@ -121,7 +121,7 @@ func (t *GcplogTarget) run() error {
 		case m := <-t.msgs:
 			entry, err := format(m, t.config.Labels, t.config.UseIncomingTimestamp, t.relabelConfig)
 			if err != nil {
-				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
+				_ = level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
 				m.Ack()
 				break
 			}

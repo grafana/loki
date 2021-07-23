@@ -92,7 +92,7 @@ func (t *SyslogTarget) run() error {
 		return fmt.Errorf("error setting up syslog target %w", err)
 	}
 	t.listener = l
-	level.Info(t.logger).Log("msg", "syslog listening on address", "address", t.ListenAddress().String())
+	_ = level.Info(t.logger).Log("msg", "syslog listening on address", "address", t.ListenAddress().String())
 
 	t.openConnections.Add(1)
 	go t.acceptConnections()
@@ -114,17 +114,17 @@ func (t *SyslogTarget) acceptConnections() {
 		c, err := t.listener.Accept()
 		if err != nil {
 			if t.ctx.Err() != nil {
-				level.Info(l).Log("msg", "syslog server shutting down")
+				_ = level.Info(l).Log("msg", "syslog server shutting down")
 				return
 			}
 
 			if ne, ok := err.(net.Error); ok && ne.Temporary() {
-				level.Warn(l).Log("msg", "failed to accept syslog connection", "err", err, "num_retries", backoff.NumRetries())
+				_ = level.Warn(l).Log("msg", "failed to accept syslog connection", "err", err, "num_retries", backoff.NumRetries())
 				backoff.Wait()
 				continue
 			}
 
-			level.Error(l).Log("msg", "failed to accept syslog connection. quiting", "err", err)
+			_ = level.Error(l).Log("msg", "failed to accept syslog connection. quiting", "err", err)
 			return
 		}
 		backoff.Reset()
@@ -158,17 +158,17 @@ func (t *SyslogTarget) handleConnection(cn net.Conn) {
 	}, t.maxMessageLength())
 
 	if err != nil {
-		level.Warn(t.logger).Log("msg", "error initializing syslog stream", "err", err)
+		_ = level.Warn(t.logger).Log("msg", "error initializing syslog stream", "err", err)
 	}
 }
 
 func (t *SyslogTarget) handleMessageError(err error) {
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
-		level.Debug(t.logger).Log("msg", "connection timed out", "err", ne)
+		_ = level.Debug(t.logger).Log("msg", "connection timed out", "err", ne)
 		return
 	}
-	level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
+	_ = level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
 	t.metrics.syslogParsingErrors.Inc()
 }
 

@@ -96,7 +96,7 @@ func (t *tailer) updatePosition() {
 	positionWait := time.NewTicker(positionSyncPeriod)
 	defer func() {
 		positionWait.Stop()
-		level.Info(t.logger).Log("msg", "position timer: exited", "path", t.path)
+		_ = level.Info(t.logger).Log("msg", "position timer: exited", "path", t.path)
 		close(t.posdone)
 	}()
 
@@ -105,10 +105,10 @@ func (t *tailer) updatePosition() {
 		case <-positionWait.C:
 			err := t.markPositionAndSize()
 			if err != nil {
-				level.Error(t.logger).Log("msg", "position timer: error getting tail position and/or size, stopping tailer", "path", t.path, "error", err)
+				_ = level.Error(t.logger).Log("msg", "position timer: error getting tail position and/or size, stopping tailer", "path", t.path, "error", err)
 				err := t.tail.Stop()
 				if err != nil {
-					level.Error(t.logger).Log("msg", "position timer: error stopping tailer", "path", t.path, "error", err)
+					_ = level.Error(t.logger).Log("msg", "position timer: error stopping tailer", "path", t.path, "error", err)
 				}
 				return
 			}
@@ -123,7 +123,7 @@ func (t *tailer) updatePosition() {
 // tailer which can happen if there are unread lines in this channel and the Stop method on the tailer
 // is called, the underlying tailer will never exit if there are unread lines in the t.tail.Lines channel
 func (t *tailer) readLines() {
-	level.Info(t.logger).Log("msg", "tail routine: started", "path", t.path)
+	_ = level.Info(t.logger).Log("msg", "tail routine: started", "path", t.path)
 
 	t.running.Store(true)
 
@@ -132,20 +132,20 @@ func (t *tailer) readLines() {
 	defer func() {
 		t.cleanupMetrics()
 		t.running.Store(false)
-		level.Info(t.logger).Log("msg", "tail routine: exited", "path", t.path)
+		_ = level.Info(t.logger).Log("msg", "tail routine: exited", "path", t.path)
 		close(t.done)
 	}()
 	entries := t.handler.Chan()
 	for {
 		line, ok := <-t.tail.Lines
 		if !ok {
-			level.Info(t.logger).Log("msg", "tail routine: tail channel closed, stopping tailer", "path", t.path, "reason", t.tail.Tomb.Err())
+			_ = level.Info(t.logger).Log("msg", "tail routine: tail channel closed, stopping tailer", "path", t.path, "reason", t.tail.Tomb.Err())
 			return
 		}
 
 		// Note currently the tail implementation hardcodes Err to nil, this should never hit.
 		if line.Err != nil {
-			level.Error(t.logger).Log("msg", "tail routine: error reading line", "path", t.path, "error", line.Err)
+			_ = level.Error(t.logger).Log("msg", "tail routine: error reading line", "path", t.path, "error", line.Err)
 			continue
 		}
 
@@ -171,7 +171,7 @@ func (t *tailer) markPositionAndSize() error {
 	if err != nil {
 		// If the file no longer exists, no need to save position information
 		if err == os.ErrNotExist {
-			level.Info(t.logger).Log("msg", "skipping update of position for a file which does not currently exist", "path", t.path)
+			_ = level.Info(t.logger).Log("msg", "skipping update of position for a file which does not currently exist", "path", t.path)
 			return nil
 		}
 		return err
@@ -199,17 +199,17 @@ func (t *tailer) stop() {
 		// Save the current position before shutting down tailer
 		err := t.markPositionAndSize()
 		if err != nil {
-			level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
+			_ = level.Error(t.logger).Log("msg", "error marking file position when stopping tailer", "path", t.path, "error", err)
 		}
 
 		// Stop the underlying tailer
 		err = t.tail.Stop()
 		if err != nil {
-			level.Error(t.logger).Log("msg", "error stopping tailer", "path", t.path, "error", err)
+			_ = level.Error(t.logger).Log("msg", "error stopping tailer", "path", t.path, "error", err)
 		}
 		// Wait for readLines() to consume all the remaining messages and exit when the channel is closed
 		<-t.done
-		level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
+		_ = level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 		t.handler.Stop()
 	})
 }
