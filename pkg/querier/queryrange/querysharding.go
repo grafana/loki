@@ -23,7 +23,6 @@ import (
 func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs queryrange.ShardingConfigs,
-	minShardingLookback time.Duration,
 	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.ShardingMetrics,
 	limits logql.Limits,
@@ -88,11 +87,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	shardedLog, ctx := spanlogger.New(ctx, "shardedEngine")
 	defer shardedLog.Finish()
 
-	req, ok := r.(*LokiRequest)
-	if !ok {
-		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)
-	}
-
 	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
 	if err != nil {
 		return nil, err
@@ -111,7 +105,21 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		return ast.next.Do(ctx, r)
 	}
 
-	query := ast.ng.Query(paramsFromRequest(req), parsed)
+	params, err := paramsFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
+
+	var path string
+	switch r := r.(type) {
+	case *LokiRequest:
+		path = r.GetPath()
+	case *LokiInstantRequest:
+		path = r.GetPath()
+	default:
+		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+	}
+	query := ast.ng.Query(params, parsed)
 
 	res, err := query.Exec(ctx)
 	if err != nil {
@@ -130,7 +138,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 				Status: loghttp.QueryStatusSuccess,
 				Data: queryrange.PrometheusData{
 					ResultType: loghttp.ResultTypeMatrix,
-					Result:     toProto(value.(loghttp.Matrix)),
+					Result:     toProtoMatrix(value.(loghttp.Matrix)),
 				},
 			},
 			Statistics: res.Statistics,
@@ -138,17 +146,26 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	case logqlmodel.ValueTypeStreams:
 		return &LokiResponse{
 			Status:     loghttp.QueryStatusSuccess,
-			Direction:  req.Direction,
-			Limit:      req.Limit,
-			Version:    uint32(loghttp.GetVersion(req.Path)),
+			Direction:  params.Direction(),
+			Limit:      params.Limit(),
+			Version:    uint32(loghttp.GetVersion(path)),
 			Statistics: res.Statistics,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result:     value.(loghttp.Streams).ToProto(),
 			},
 		}, nil
+	case parser.ValueTypeVector:
+		return &LokiPromResponse{Response: &queryrange.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrange.PrometheusData{
+				ResultType: loghttp.ResultTypeVector,
+				Result:     toProtoVector(value.(loghttp.Vector)),
+			},
+		},
+		}, nil
 	default:
-		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data)
+		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data.Type())
 	}
 }
 

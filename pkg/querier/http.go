@@ -96,7 +96,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		0,
 		request.Direction,
 		request.Limit,
-		nil,
+		request.Shards,
 	)
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
