@@ -38,7 +38,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.16.0
+BUILD_IMAGE_VERSION := 0.17.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
