@@ -234,7 +234,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	lreq := &LokiInstantRequest{
 		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
 		Limit:     1000,
-		Direction: logproto.BACKWARD,
+		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
 	}
 
