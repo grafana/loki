@@ -22,7 +22,7 @@ func LogConfig(cfg interface{}) error {
 	cfgStr := string(lc)
 	cfgStrs := strings.Split(cfgStr, "\n")
 	for i := len(cfgStrs) - 1; i >= 0; i-- {
-		level.Info(util_log.Logger).Log("type", "config", "msg", cfgStrs[i])
+		_ = level.Info(util_log.Logger).Log("type", "config", "msg", cfgStrs[i])
 	}
 	return nil
 }

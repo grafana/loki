@@ -125,7 +125,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 func mustRegisterOrGet(reg prometheus.Registerer, c prometheus.Collector) prometheus.Collector {
 	if err := reg.Register(c); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			return are.ExistingCollector.(prometheus.Collector)
+			return are.ExistingCollector
 		}
 		panic(err)
 	}
@@ -295,7 +295,7 @@ func (c *client) Chan() chan<- api.Entry {
 func (c *client) sendBatch(tenantID string, batch *batch) {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
-		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
+		_ = level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
 		return
 	}
 	bufBytes := float64(len(buf))
@@ -317,7 +317,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 				lbls, err := parser.ParseMetric(s.Labels)
 				if err != nil {
 					// is this possible?
-					level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
+					_ = level.Warn(c.logger).Log("msg", "error converting stream label string to label.Labels, cannot update lagging metric", "error", err)
 					return
 				}
 				var lblSet model.LabelSet
@@ -341,7 +341,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 			break
 		}
 
-		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
+		_ = level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
 		c.metrics.batchRetries.WithLabelValues(c.cfg.URL.Host).Inc()
 		backoff.Wait()
 
@@ -352,7 +352,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	}
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
+		_ = level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
 		c.metrics.droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 		c.metrics.droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
 	}

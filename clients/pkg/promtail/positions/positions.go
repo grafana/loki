@@ -144,7 +144,7 @@ func (p *positions) SyncPeriod() time.Duration {
 func (p *positions) run() {
 	defer func() {
 		p.save()
-		level.Debug(p.logger).Log("msg", "positions saved")
+		_ = level.Debug(p.logger).Log("msg", "positions saved")
 		close(p.done)
 	}()
 
@@ -172,7 +172,7 @@ func (p *positions) save() {
 	p.mtx.Unlock()
 
 	if err := writePositionFile(p.cfg.PositionsFile, positions); err != nil {
-		level.Error(p.logger).Log("msg", "error writing positions file", "error", err)
+		_ = level.Error(p.logger).Log("msg", "error writing positions file", "error", err)
 	}
 }
 
@@ -193,7 +193,7 @@ func (p *positions) cleanup() {
 				toRemove = append(toRemove, k)
 			} else {
 				// Can't determine if file exists or not, some other error.
-				level.Warn(p.logger).Log("msg", "could not determine if log file "+
+				_ = level.Warn(p.logger).Log("msg", "could not determine if log file "+
 					"still exists while cleaning positions file", "error", err)
 			}
 		}
@@ -219,7 +219,7 @@ func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error)
 	if err != nil {
 		// return empty if cfg option enabled
 		if cfg.IgnoreInvalidYaml {
-			level.Debug(logger).Log("msg", "ignoring invalid positions file", "file", cleanfn, "error", err)
+			_ = level.Debug(logger).Log("msg", "ignoring invalid positions file", "file", cleanfn, "error", err)
 			return map[string]string{}, nil
 		}
 

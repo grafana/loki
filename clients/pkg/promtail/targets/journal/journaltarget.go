@@ -84,7 +84,7 @@ var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor strin
 }
 
 // JournalTarget tails systemd journal entries.
-// nolint(golint)
+// nolint:golint
 type JournalTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler

@@ -563,60 +563,55 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	cfg.PositionsConfig.SyncPeriod = 100 * time.Millisecond
 	cfg.PositionsConfig.PositionsFile = positionsFileName
 
-	pipeline := stages.PipelineStages{
-		stages.PipelineStage{
-			stages.StageTypeMatch: stages.MatcherConfig{
-				PipelineName: nil,
-				Selector:     "{match=\"true\"}",
-				Stages: stages.PipelineStages{
-					stages.PipelineStage{
-						stages.StageTypeDocker: nil,
-					},
-					stages.PipelineStage{
-						stages.StageTypeRegex: stages.RegexConfig{
-							Expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$",
-							Source:     nil,
+	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeconfig.Config{
+		JobName: "",
+		PipelineStages: stages.PipelineStages{
+			stages.PipelineStage{
+				stages.StageTypeMatch: stages.MatcherConfig{
+					PipelineName: nil,
+					Selector:     "{match=\"true\"}",
+					Stages: stages.PipelineStages{
+						stages.PipelineStage{
+							stages.StageTypeDocker: nil,
 						},
-					},
-					stages.PipelineStage{
-						stages.StageTypeTimestamp: stages.TimestampConfig{
-							Source: "timestamp",
-							Format: "02/Jan/2006:15:04:05 -0700",
+						stages.PipelineStage{
+							stages.StageTypeRegex: stages.RegexConfig{
+								Expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$",
+								Source:     nil,
+							},
 						},
-					},
-					stages.PipelineStage{
-						stages.StageTypeLabel: stages.LabelsConfig{
-							"action": nil,
+						stages.PipelineStage{
+							stages.StageTypeTimestamp: stages.TimestampConfig{
+								Source: "timestamp",
+								Format: "02/Jan/2006:15:04:05 -0700",
+							},
+						},
+						stages.PipelineStage{
+							stages.StageTypeLabel: stages.LabelsConfig{
+								"action": nil,
+							},
 						},
 					},
 				},
 			},
 		},
-	}
-
-	targetGroup := targetgroup.Group{
-		Targets: []model.LabelSet{{
-			"localhost": "",
-		}},
-		Labels: model.LabelSet{
-			"job":      "varlogs",
-			"match":    "true",
-			"__path__": model.LabelValue(logDirName + "/**/*.log"),
-		},
-		Source: "",
-	}
-	scrapeConfig := scrapeconfig.Config{
-		JobName:        "",
-		PipelineStages: pipeline,
 		RelabelConfigs: nil,
 		ServiceDiscoveryConfig: scrapeconfig.ServiceDiscoveryConfig{
 			StaticConfigs: discovery.StaticConfig{
-				&targetGroup,
+				&targetgroup.Group{
+					Targets: []model.LabelSet{{
+						"localhost": "",
+					}},
+					Labels: model.LabelSet{
+						"job":      "varlogs",
+						"match":    "true",
+						"__path__": model.LabelValue(logDirName + "/**/*.log"),
+					},
+					Source: "",
+				},
 			},
 		},
-	}
-
-	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
+	})
 
 	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)
 	// to avoid a race between the sync() function and the tailers noticing when files are deleted

@@ -275,7 +275,7 @@ func (d *Discovery) getDatacenter() error {
 	}
 	info, err := d.client.Agent().Self()
 	if err != nil {
-		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
+		_ = level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		rpcFailuresCount.Inc()
 		return err
 	}
@@ -283,7 +283,7 @@ func (d *Discovery) getDatacenter() error {
 	dc, ok := info["Config"]["Datacenter"].(string)
 	if !ok {
 		err := errors.Errorf("invalid value '%v' for Config.Datacenter", info["Config"]["Datacenter"])
-		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
+		_ = level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		return err
 	}
 
@@ -352,7 +352,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 // entire list of services.
 func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func()) {
 	agent := d.client.Agent()
-	level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
+	_ = level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
 
 	t0 := time.Now()
 	srvs, err := agent.Services()
@@ -367,7 +367,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 	}
 
 	if err != nil {
-		level.Error(d.logger).Log("msg", "Error refreshing service list", "err", err)
+		_ = level.Error(d.logger).Log("msg", "Error refreshing service list", "err", err)
 		rpcFailuresCount.Inc()
 		time.Sleep(retryInterval)
 		return
@@ -396,7 +396,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 	// Check for removed services.
 	for name, cancel := range services {
 		if _, ok := discoveredServices[name]; !ok {
-			level.Debug(d.logger).Log(
+			_ = level.Debug(d.logger).Log(
 				"msg", "removing service since consul no longer has a record of it",
 				"name", name)
 			// Call the watch cancellation function.
@@ -470,7 +470,7 @@ func (d *Discovery) watchService(ctx context.Context, ch chan<- []*targetgroup.G
 
 // Get updates for a service.
 func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Group, agent *consul.Agent) {
-	level.Debug(srv.logger).Log("msg", "Watching service", "service", srv.name, "tags", strings.Join(srv.tags, ","))
+	_ = level.Debug(srv.logger).Log("msg", "Watching service", "service", srv.name, "tags", strings.Join(srv.tags, ","))
 
 	t0 := time.Now()
 	aggregatedStatus, serviceChecks, err := agent.AgentHealthServiceByName(srv.name)
@@ -486,7 +486,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 	}
 
 	if err != nil {
-		level.Error(srv.logger).Log("msg", "Error refreshing service", "service", srv.name, "tags", strings.Join(srv.tags, ","), "err", err)
+		_ = level.Error(srv.logger).Log("msg", "Error refreshing service", "service", srv.name, "tags", strings.Join(srv.tags, ","), "err", err)
 		rpcFailuresCount.Inc()
 		time.Sleep(retryInterval)
 		return
@@ -494,18 +494,18 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 
 	self, err := agent.Self()
 	if err != nil {
-		level.Error(srv.logger).Log("msg", "failed to get agent info from agent api", "err", err)
+		_ = level.Error(srv.logger).Log("msg", "failed to get agent info from agent api", "err", err)
 		return
 	}
 	var member = consul.AgentMember{}
 	memberBytes, err := json.Marshal(self["Member"])
 	if err != nil {
-		level.Error(srv.logger).Log("msg", "failed to get member information from agent", "err", err)
+		_ = level.Error(srv.logger).Log("msg", "failed to get member information from agent", "err", err)
 		return
 	}
 	err = json.Unmarshal(memberBytes, &member)
 	if err != nil {
-		level.Error(srv.logger).Log("msg", "failed to unmarshal member information from agent", "err", err)
+		_ = level.Error(srv.logger).Log("msg", "failed to unmarshal member information from agent", "err", err)
 		return
 	}
 
