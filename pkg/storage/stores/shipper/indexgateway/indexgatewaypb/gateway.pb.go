@@ -9,11 +9,8 @@ import (
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
 	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
-	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -27,7 +24,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 type QueryIndexResponse struct {
 	QueryKey string `protobuf:"bytes,1,opt,name=QueryKey,proto3" json:"QueryKey,omitempty"`
@@ -47,7 +44,7 @@ func (m *QueryIndexResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return xxx_messageInfo_QueryIndexResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +95,7 @@ func (m *Row) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Row.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +145,7 @@ func (m *QueryIndexRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return xxx_messageInfo_QueryIndexRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +192,7 @@ func (m *IndexQuery) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_IndexQuery.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -536,14 +533,6 @@ type IndexGatewayServer interface {
 	QueryIndex(*QueryIndexRequest, IndexGateway_QueryIndexServer) error
 }
 
-// UnimplementedIndexGatewayServer can be embedded to have forward compatible implementations.
-type UnimplementedIndexGatewayServer struct {
-}
-
-func (*UnimplementedIndexGatewayServer) QueryIndex(req *QueryIndexRequest, srv IndexGateway_QueryIndexServer) error {
-	return status.Errorf(codes.Unimplemented, "method QueryIndex not implemented")
-}
-
 func RegisterIndexGatewayServer(s *grpc.Server, srv IndexGatewayServer) {
 	s.RegisterService(&_IndexGateway_serviceDesc, srv)
 }
@@ -586,7 +575,7 @@ var _IndexGateway_serviceDesc = grpc.ServiceDesc{
 func (m *QueryIndexResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -594,43 +583,35 @@ func (m *QueryIndexResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *QueryIndexResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *QueryIndexResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
+	if len(m.QueryKey) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.QueryKey)))
+		i += copy(dAtA[i:], m.QueryKey)
+	}
 	if len(m.Rows) > 0 {
-		for iNdEx := len(m.Rows) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Rows[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintGateway(dAtA, i, uint64(size))
-			}
-			i--
+		for _, msg := range m.Rows {
 			dAtA[i] = 0x12
+			i++
+			i = encodeVarintGateway(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
 		}
 	}
-	if len(m.QueryKey) > 0 {
-		i -= len(m.QueryKey)
-		copy(dAtA[i:], m.QueryKey)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.QueryKey)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
+	return i, nil
 }
 
 func (m *Row) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -638,36 +619,29 @@ func (m *Row) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Row) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Row) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if len(m.Value) > 0 {
-		i -= len(m.Value)
-		copy(dAtA[i:], m.Value)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.Value)))
-		i--
-		dAtA[i] = 0x12
-	}
 	if len(m.RangeValue) > 0 {
-		i -= len(m.RangeValue)
-		copy(dAtA[i:], m.RangeValue)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.RangeValue)))
-		i--
 		dAtA[i] = 0xa
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.RangeValue)))
+		i += copy(dAtA[i:], m.RangeValue)
 	}
-	return len(dAtA) - i, nil
+	if len(m.Value) > 0 {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.Value)))
+		i += copy(dAtA[i:], m.Value)
+	}
+	return i, nil
 }
 
 func (m *QueryIndexRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -675,36 +649,29 @@ func (m *QueryIndexRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *QueryIndexRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *QueryIndexRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
 	if len(m.Queries) > 0 {
-		for iNdEx := len(m.Queries) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Queries[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintGateway(dAtA, i, uint64(size))
-			}
-			i--
+		for _, msg := range m.Queries {
 			dAtA[i] = 0xa
+			i++
+			i = encodeVarintGateway(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
 		}
 	}
-	return len(dAtA) - i, nil
+	return i, nil
 }
 
 func (m *IndexQuery) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -712,63 +679,51 @@ func (m *IndexQuery) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *IndexQuery) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *IndexQuery) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if len(m.ValueEqual) > 0 {
-		i -= len(m.ValueEqual)
-		copy(dAtA[i:], m.ValueEqual)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.ValueEqual)))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if len(m.RangeValueStart) > 0 {
-		i -= len(m.RangeValueStart)
-		copy(dAtA[i:], m.RangeValueStart)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.RangeValueStart)))
-		i--
-		dAtA[i] = 0x22
-	}
-	if len(m.RangeValuePrefix) > 0 {
-		i -= len(m.RangeValuePrefix)
-		copy(dAtA[i:], m.RangeValuePrefix)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.RangeValuePrefix)))
-		i--
-		dAtA[i] = 0x1a
+	if len(m.TableName) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.TableName)))
+		i += copy(dAtA[i:], m.TableName)
 	}
 	if len(m.HashValue) > 0 {
-		i -= len(m.HashValue)
-		copy(dAtA[i:], m.HashValue)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.HashValue)))
-		i--
 		dAtA[i] = 0x12
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.HashValue)))
+		i += copy(dAtA[i:], m.HashValue)
 	}
-	if len(m.TableName) > 0 {
-		i -= len(m.TableName)
-		copy(dAtA[i:], m.TableName)
-		i = encodeVarintGateway(dAtA, i, uint64(len(m.TableName)))
-		i--
-		dAtA[i] = 0xa
+	if len(m.RangeValuePrefix) > 0 {
+		dAtA[i] = 0x1a
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.RangeValuePrefix)))
+		i += copy(dAtA[i:], m.RangeValuePrefix)
 	}
-	return len(dAtA) - i, nil
+	if len(m.RangeValueStart) > 0 {
+		dAtA[i] = 0x22
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.RangeValueStart)))
+		i += copy(dAtA[i:], m.RangeValueStart)
+	}
+	if len(m.ValueEqual) > 0 {
+		dAtA[i] = 0x2a
+		i++
+		i = encodeVarintGateway(dAtA, i, uint64(len(m.ValueEqual)))
+		i += copy(dAtA[i:], m.ValueEqual)
+	}
+	return i, nil
 }
 
 func encodeVarintGateway(dAtA []byte, offset int, v uint64) int {
-	offset -= sovGateway(v)
-	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return base
+	return offset + 1
 }
 func (m *QueryIndexResponse) Size() (n int) {
 	if m == nil {
@@ -851,7 +806,14 @@ func (m *IndexQuery) Size() (n int) {
 }
 
 func sovGateway(x uint64) (n int) {
-	return (math_bits.Len64(x|1) + 6) / 7
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
 }
 func sozGateway(x uint64) (n int) {
 	return sovGateway(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -860,14 +822,9 @@ func (this *QueryIndexResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForRows := "[]*Row{"
-	for _, f := range this.Rows {
-		repeatedStringForRows += strings.Replace(f.String(), "Row", "Row", 1) + ","
-	}
-	repeatedStringForRows += "}"
 	s := strings.Join([]string{`&QueryIndexResponse{`,
 		`QueryKey:` + fmt.Sprintf("%v", this.QueryKey) + `,`,
-		`Rows:` + repeatedStringForRows + `,`,
+		`Rows:` + strings.Replace(fmt.Sprintf("%v", this.Rows), "Row", "Row", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -887,13 +844,8 @@ func (this *QueryIndexRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForQueries := "[]*IndexQuery{"
-	for _, f := range this.Queries {
-		repeatedStringForQueries += strings.Replace(f.String(), "IndexQuery", "IndexQuery", 1) + ","
-	}
-	repeatedStringForQueries += "}"
 	s := strings.Join([]string{`&QueryIndexRequest{`,
-		`Queries:` + repeatedStringForQueries + `,`,
+		`Queries:` + strings.Replace(fmt.Sprintf("%v", this.Queries), "IndexQuery", "IndexQuery", 1) + `,`,
 		`}`,
 	}, "")
 	return s
