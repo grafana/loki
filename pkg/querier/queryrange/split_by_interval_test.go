@@ -279,8 +279,7 @@ func Benchmark_splitByInterval_Do(b *testing.B) {
 			Version:   uint32(loghttp.VersionV1),
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
-				Result: []logproto.Stream{
-				},
+				Result:     []logproto.Stream{},
 			},
 		}, nil
 	})
@@ -316,8 +315,7 @@ func Benchmark_splitByInterval_Do(b *testing.B) {
 				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
-					Result: []logproto.Stream{
-					},
+					Result: []logproto.Stream{},
 				},
 			},
 		},
