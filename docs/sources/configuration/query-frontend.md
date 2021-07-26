@@ -146,4 +146,17 @@ Once you've deployed these, you'll need your grafana datasource to point to the 
 the query frontend operates in one of two fashions:
 
 1) with `--frontend.downstream-url` or its yaml equivalent `frontend.downstream_url`. This simply proxies requests over http to said url.
-2) without (1) it defaults to a pull service. In this form, the frontend instantiates per-tenant queues that downstream queriers pull queries from via grpc. When operating in this mode, queriers need to specify `-querier.frontend-address` or its yaml equivalent `frontend_worker.frontend_address`.
+2) without (1) it defaults to a pull service. In this form, the frontend instantiates per-tenant queues that downstream queriers pull queries from via grpc. When operating in this mode, queriers need to specify `-querier.frontend-address` or its yaml equivalent `frontend_worker.frontend_address**.
+
+**(Pull Mode) Kubernetes Note: ClusterIP=None**:
+> Make sure the query frontend worker running in the querier resolves
+> each query-frontend pod IP and NOT the service IP. Thus we do NOT
+> use the service cluster IP so that when the service DNS is resolved it
+> returns the set of query-frontend IPs. To do this, enable `ClusterIP=None`
+> on the query-frontend service.
+
+**(Pull Mode) Kubernetes Note: publishNotReadyAddresses=True**:
+> The query-frontend will not become ready until at least one querier connects
+> which creates a chicken and egg scenario if we don't publish the
+> query-frontend address before it's ready.
+> To do this, we enable `publishNotReadyAddresses=True` on the query-frontend service.
