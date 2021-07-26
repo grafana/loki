@@ -62,7 +62,7 @@ func NewRemoteWriter(cfg Config, userID string) (RemoteWriter, error) {
 
 	return &RemoteWriteClient{
 		relabelConfigs: cfg.RemoteWrite.Client.WriteRelabelConfigs,
-		WriteClient: writeClient,
+		WriteClient:    writeClient,
 	}, nil
 }
 
