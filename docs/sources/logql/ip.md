@@ -67,6 +67,6 @@ When specifying label filter expressions, only the  `=` and `!=` operations are 
     ```logql
     {job_name="myapp"}
 		| logfmt
-		| addr =f ip("192.168.4.5/16")
+		| addr = ip("192.168.4.5/16")
 		| addr != ip("192.168.4.2")
     ```
