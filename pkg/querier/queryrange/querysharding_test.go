@@ -100,21 +100,27 @@ func Test_shardSplitter(t *testing.T) {
 			lookback:    end.Sub(start) + 1, // the entire query is in the ingester range and should avoid sharding.
 			shouldShard: false,
 		},
+		{
+			desc:        "default",
+			lookback:    0,
+			shouldShard: true,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			var didShard bool
-
 			splitter := &shardSplitter{
 				shardingware: queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
 					didShard = true
 					return mockHandler(lokiResps[0], nil).Do(ctx, req)
 				}),
-				next:                mockHandler(lokiResps[1], nil),
-				now:                 func() time.Time { return end },
-				MinShardingLookback: tc.lookback,
+				next: mockHandler(lokiResps[1], nil),
+				now:  func() time.Time { return end },
+				limits: fakeLimits{
+					minShardingLookback: tc.lookback,
+				},
 			}
 
-			resp, err := splitter.Do(context.Background(), req)
+			resp, err := splitter.Do(user.InjectOrgID(context.Background(), "1"), req)
 			require.Nil(t, err)
 
 			require.Equal(t, tc.shouldShard, didShard)

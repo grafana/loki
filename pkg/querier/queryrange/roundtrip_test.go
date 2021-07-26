@@ -219,7 +219,6 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestInstantQueryTripperware(t *testing.T) {
-
 	testShardingConfig := testConfig
 	testShardingConfig.ShardedQueries = true
 	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 1*time.Second, nil)
@@ -552,6 +551,7 @@ type fakeLimits struct {
 	maxEntriesLimitPerQuery int
 	maxSeries               int
 	splits                  map[string]time.Duration
+	minShardingLookback     time.Duration
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -586,6 +586,10 @@ func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
 
 func (f fakeLimits) MaxQueryLookback(string) time.Duration {
 	return 0
+}
+
+func (f fakeLimits) MinShardingLookback(string) time.Duration {
+	return f.minShardingLookback
 }
 
 func counter() (*int, http.Handler) {
