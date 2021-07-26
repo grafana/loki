@@ -13,6 +13,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logql"
 )
 
 const (
@@ -22,9 +24,11 @@ const (
 // Limits extends the cortex limits interface with support for per tenant splitby parameters
 type Limits interface {
 	queryrange.Limits
+	logql.Limits
 	QuerySplitDuration(string) time.Duration
 	MaxQuerySeries(string) int
 	MaxEntriesLimitPerQuery(string) int
+	MinShardingLookback(string) time.Duration
 }
 
 type limits struct {
