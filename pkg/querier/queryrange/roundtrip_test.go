@@ -91,7 +91,6 @@ var (
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -101,7 +100,7 @@ func TestMetricsTripperware(t *testing.T) {
 	lreq := &LokiRequest{
 		Query:     `rate({app="foo"} |= "foo"[1m])`,
 		Limit:     1000,
-		Step:      30000, //30sec
+		Step:      30000, // 30sec
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
@@ -155,7 +154,6 @@ func TestMetricsTripperware(t *testing.T) {
 }
 
 func TestLogFilterTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -182,7 +180,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	//testing limit
+	// testing limit
 	count, h := promqlResult(streams)
 	rt.setHandler(h)
 	_, err = tpw(rt).RoundTrip(req)
@@ -203,7 +201,6 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -245,7 +242,6 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -495,6 +491,7 @@ type fakeLimits struct {
 	maxEntriesLimitPerQuery int
 	maxSeries               int
 	splits                  map[string]time.Duration
+	minShardingLookback     time.Duration
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -529,6 +526,10 @@ func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
 
 func (f fakeLimits) MaxQueryLookback(string) time.Duration {
 	return 0
+}
+
+func (f fakeLimits) MinShardingLookback(string) time.Duration {
+	return f.minShardingLookback
 }
 
 func counter() (*int, http.Handler) {

@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/opentracing/opentracing-go"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -22,9 +23,11 @@ const (
 // Limits extends the cortex limits interface with support for per tenant splitby parameters
 type Limits interface {
 	queryrange.Limits
+	logql.Limits
 	QuerySplitDuration(string) time.Duration
 	MaxQuerySeries(string) int
 	MaxEntriesLimitPerQuery(string) int
+	MinShardingLookback(string) time.Duration
 }
 
 type limits struct {
