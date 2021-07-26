@@ -115,6 +115,25 @@ func Test_SortLabelsOnPush(t *testing.T) {
 	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
 }
 
+func Test_TruncateLogLines(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	limits.EnforceMetricName = false
+	limits.MaxLineSize = 5
+	limits.MaxLineSizeShouldTruncate = true
+
+	ingester := &mockIngester{}
+	d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+
+	request := makeWriteRequest(1, 10)
+
+	_, err := d.Push(ctx, request)
+	require.NoError(t, err)
+	require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
+}
+
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)

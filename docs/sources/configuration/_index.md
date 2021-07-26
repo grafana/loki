@@ -1781,6 +1781,10 @@ logs in Loki.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <string> | default = none ]
 
+# Truncate log lines when they exceed max_line_size.
+# CLI flag: -distributor.max-line-size-should-truncate
+[max_line_size_should_truncate: <boolean> | default = false ]
+
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]

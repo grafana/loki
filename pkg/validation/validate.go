@@ -43,6 +43,16 @@ const (
 	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
 )
 
+// TruncatedBytes is a metric of the total truncated bytes, by reason.
+var TruncatedBytes = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "truncated_bytes_total",
+		Help:      "The total number of bytes that were truncated.",
+	},
+	[]string{discardReasonLabel, "tenant"},
+)
+
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
 var DiscardedBytes = prometheus.NewCounterVec(
 	prometheus.CounterOpts{

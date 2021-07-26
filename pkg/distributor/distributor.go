@@ -209,6 +209,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validationContext := d.validator.getValidationContextFor(userID)
 
 	for _, stream := range req.Streams {
+		// Truncate first so subsequent steps have consistent line lengths
+		stream.Entries = d.truncateLines(validationContext, stream)
+
 		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
@@ -220,6 +223,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, userID).Add(float64(bytes))
 			continue
 		}
+
 		n := 0
 		for _, entry := range stream.Entries {
 			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
@@ -236,6 +240,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		if len(stream.Entries) == 0 {
 			continue
 		}
+
 		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,
@@ -298,6 +303,25 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (d *Distributor) truncateLines(vContext validationContext, stream logproto.Stream) []logproto.Entry {
+	if !vContext.maxLineSizeShouldTruncate {
+		return stream.Entries
+	}
+
+	n := 0
+	for _, e := range stream.Entries {
+		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
+			truncated := float64(len(e.Line) - maxSize)
+			stream.Entries[n].Line = e.Line[:maxSize]
+			n++
+
+			validation.TruncatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(truncated)
+		}
+	}
+
+	return stream.Entries
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

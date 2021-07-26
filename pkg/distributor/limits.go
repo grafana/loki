@@ -4,6 +4,7 @@ import "time"
 
 // Limits is an interface for distributor limits/related configs
 type Limits interface {
+	MaxLineSizeShouldTruncate(userID string) bool
 	MaxLineSize(userID string) int
 	EnforceMetricName(userID string) bool
 	MaxLabelNamesPerSeries(userID string) int
