@@ -321,6 +321,12 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Limit queries that can be sharded.
+# Queries with time range that fall between now and now minus the sharding lookback are not sharded.
+# By default 0s it's disable, meaning all queries of all time range are sharded.
+# CLI flag: -frontend.min-sharding-lookback
+[min_sharding_lookback: <duration> | default = 0s]
+
 # Deprecated: Split queries by day and execute in parallel. Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
