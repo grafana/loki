@@ -1,0 +1,16 @@
+server:
+  disable: true
+client:
+  url: https://loki-bigtable-dev-us-central-0.grafana.net
+  basic_auth:
+    username: ${GRAFANA_USER}
+    password: ${GRAFANA_PUBLISHER_KEY}
+
+scrape_configs:
+  - job_name: ci-karsten
+    static_configs:
+    - labels:
+        job: ci
+        build: ${DRONE_BUILD_NUMBER}
+        pr: ${DRONE_PULL_REQUEST}
+        commit: ${DRONE_COMMIT}

@@ -46,7 +46,7 @@ local run(name, commands) = {
 };
 
 local make(target, container=true) = run(target, [
-  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
+  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target + '| tee -a ci.log',
 ]);
 
 local docker(arch, app) = {
@@ -282,7 +282,20 @@ local manifest(apps) = pipeline('manifest') {
       {
         name: 'shellcheck',
         image: 'koalaman/shellcheck-alpine:stable',
-        commands: ['apk add make bash && make lint-scripts'],
+        commands: ['apk add make bash && make lint-scripts | tee -a ci.log'],
+      },
+      {
+        name: 'push logs',
+        image: 'grafana/promtail:2.0.0',
+        environment: {
+          GRAFANA_PUBLISHER_KEY: {
+            from_secret: 'lokibigtabledevuscentral0_publisher_token',
+          },
+          GRAFANA_USER: {
+            from_secret: 'lokibigtabledevuscentral0_user',
+          },
+        },
+        commands: ['cat ci.log | promtail --stdin --config.file promtail.yaml -config.expand-env=true'],
       },
     ],
   },
