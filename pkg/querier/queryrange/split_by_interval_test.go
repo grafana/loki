@@ -315,7 +315,7 @@ func Benchmark_splitByInterval_Do(b *testing.B) {
 				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
-					Result: []logproto.Stream{},
+					Result:     []logproto.Stream{},
 				},
 			},
 		},
@@ -323,7 +323,10 @@ func Benchmark_splitByInterval_Do(b *testing.B) {
 
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
-			split.Do(ctx, tt.req)
+			_, err := split.Do(ctx, tt.req)
+			if err != nil {
+				panic(err)
+			}
 		})
 	}
 }
