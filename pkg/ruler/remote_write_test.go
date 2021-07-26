@@ -134,14 +134,14 @@ func TestRelabelling(t *testing.T) {
 			relabelConfigs: []*relabel.Config{
 				{
 					SourceLabels: model.LabelNames{"cluster"},
-					Action: relabel.LabelDrop,
-					Regex: relabel.MustNewRegexp(".+"),
+					Action:       relabel.LabelDrop,
+					Regex:        relabel.MustNewRegexp(".+"),
 				},
 			},
 			expectedLabels: labels.Labels{},
 		},
 		{
-			name: "no relabel configs defined",
+			name:           "no relabel configs defined",
 			expectedLabels: lbs,
 		},
 	}
