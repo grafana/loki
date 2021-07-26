@@ -491,8 +491,8 @@ github.com/cortexproject/cortex v1.6.1-0.20210215155036-dfededd9f331/go.mod h1:8
 github.com/cortexproject/cortex v1.7.1-0.20210224085859-66d6fb5b0d42/go.mod h1:u2dxcHInYbe45wxhLoWVdlFJyDhXewsMcxtnbq/QbH4=
 github.com/cortexproject/cortex v1.7.1-0.20210316085356-3fedc1108a49/go.mod h1:/DBOW8TzYBTE/U+O7Whs7i7E2eeeZl1iRVDtIqxn5kg=
 github.com/cortexproject/cortex v1.8.1-0.20210422151339-cf1c444e0905/go.mod h1:xxm4/CLvTmDxwE7yXwtClR4dIvkG4S09o5DygPOgc1U=
-github.com/cortexproject/cortex v1.9.1-0.20210722081137-485474c9afb2 h1:zOmlCaoej8fpmvcSU401lWp32kQ7nD8BOjwKq5y7yuk=
-github.com/cortexproject/cortex v1.9.1-0.20210722081137-485474c9afb2/go.mod h1:AHNw98b1RQDjDkt1A3/AO7qQGfKLlpAZ8ocsMCOtZvo=
+github.com/cortexproject/cortex v1.9.1-0.20210726155107-a4bf10354786 h1:AIwk+TdXdOKD8KVkDAo4txZ3ozHmmnbe7wJoiT3USPU=
+github.com/cortexproject/cortex v1.9.1-0.20210726155107-a4bf10354786/go.mod h1:vMkymug9co7+mIu0d5eTkzP8i5v8xOGKke2kUM2Sj08=
 github.com/couchbase/go-couchbase v0.0.0-20180501122049-16db1f1fe037/go.mod h1:TWI8EKQMs5u5jLKW/tsb9VwauIrMIxQG1r5fMsswK5U=
 github.com/couchbase/gomemcached v0.0.0-20180502221210-0da75df14530/go.mod h1:srVSlQLB8iXBVXHgnqemxUXqN6FCvClgCMPCsjBDR7c=
 github.com/couchbase/goutils v0.0.0-20180530154633-e865a1461c8a/go.mod h1:BQwMFlJzDjFDG3DJUdU0KORxn88UlsOULuxLExMh3Hs=
@@ -1723,8 +1723,8 @@ github.com/prometheus/prometheus v1.8.2-0.20210215121130-6f488061dfb4/go.mod h1:
 github.com/prometheus/prometheus v1.8.2-0.20210315220929-1cba1741828b/go.mod h1:MS/bpdil77lPbfQeKk6OqVQ9OLnpN3Rszd0hka0EOWE=
 github.com/prometheus/prometheus v1.8.2-0.20210324152458-c7a62b95cea0/go.mod h1:sf7j/iAbhZahjeC0s3wwMmp5dksrJ/Za1UKdR+j6Hmw=
 github.com/prometheus/prometheus v1.8.2-0.20210421143221-52df5ef7a3be/go.mod h1:WbIKsp4vWCoPHis5qQfd0QimLOR7qe79roXN5O8U8bs=
-github.com/prometheus/prometheus v1.8.2-0.20210720084720-59d02b5ef003 h1:MYbsDV+OIFLkqwea5oC3jIUp/HxFyXQrvXpw/hooMRQ=
-github.com/prometheus/prometheus v1.8.2-0.20210720084720-59d02b5ef003/go.mod h1:o6V+A4iPEWjLG0rSEKeev3OzfBZwP+ay+4iS4dkfLI4=
+github.com/prometheus/prometheus v1.8.2-0.20210720123808-b1ed4a0a663d h1:UnqZFF2qXa+ctCfbss/J4yn9rTVoTiuawjrokqwt4Hg=
+github.com/prometheus/prometheus v1.8.2-0.20210720123808-b1ed4a0a663d/go.mod h1:o6V+A4iPEWjLG0rSEKeev3OzfBZwP+ay+4iS4dkfLI4=
 github.com/prometheus/tsdb v0.7.1/go.mod h1:qhTCs0VvXwvX/y3TZrWD7rabWM+ijKTux40TwIPHuXU=
 github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1/go.mod h1:JaY6n2sDr+z2WTsXkOmNRUfDy6FN0L6Nk7x06ndm4tY=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=

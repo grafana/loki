@@ -166,12 +166,15 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 // LabelNames returns all the unique label names present in the underlying
 // queriers. It also adds the `idLabelName` and if present in the original
 // results the original `idLabelName`.
-func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (m *mergeQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelNames")
 	defer log.Span.Finish()
-	labelNames, warnings, err := m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
-		return q.LabelNames()
-	})
+
+	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
+
+	labelNames, warnings, err := m.mergeDistinctStringSliceWithTenants(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
+		return q.LabelNames(filteredMatchers...)
+	}, matchedTenants)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -276,12 +279,6 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(f stringSliceFunc, te
 	return result, warnings, nil
 }
 
-// mergeDistinctStringSlice aggregates results from all stringSliceFunc calls
-// for all queriers, in parallel.
-func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
-	return m.mergeDistinctStringSliceWithTenants(f, nil)
-}
-
 // Close releases the resources of the Querier.
 func (m *mergeQuerier) Close() error {
 	errs := tsdb_errors.NewMulti()
@@ -354,7 +351,7 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 // are considered and the forwarded matchers do not contain matchers on the
 // `idLabelName`.
 func filterValuesByMatchers(idLabelName string, ids []string, matchers ...*labels.Matcher) (matchedIDs map[string]struct{}, unrelatedMatchers []*labels.Matcher) {
-	// this contains the matchers which are not related to labelName
+	// this contains the matchers which are not related to idLabelName
 	unrelatedMatchers = make([]*labels.Matcher, 0, len(matchers))
 
 	// build map of values to consider for the matchers
@@ -364,24 +361,25 @@ func filterValuesByMatchers(idLabelName string, ids []string, matchers ...*label
 	}
 
 	for _, m := range matchers {
-		if m.Name != idLabelName {
-			// check if has the retained label name
-			if m.Name == retainExistingPrefix+idLabelName {
-				// rewrite label to the original name, by copying matcher and
-				// replacing the label name
-				rewrittenM := *m
-				rewrittenM.Name = idLabelName
-				unrelatedMatchers = append(unrelatedMatchers, &rewrittenM)
-			} else {
-				unrelatedMatchers = append(unrelatedMatchers, m)
+		switch m.Name {
+		// matcher has idLabelName to target a specific tenant(s)
+		case idLabelName:
+			for value := range matchedIDs {
+				if !m.Matches(value) {
+					delete(matchedIDs, value)
+				}
 			}
-			continue
-		}
 
-		for value := range matchedIDs {
-			if !m.Matches(value) {
-				delete(matchedIDs, value)
-			}
+		// check if has the retained label name
+		case retainExistingPrefix + idLabelName:
+			// rewrite label to the original name, by copying matcher and
+			// replacing the label name
+			rewrittenM := *m
+			rewrittenM.Name = idLabelName
+			unrelatedMatchers = append(unrelatedMatchers, &rewrittenM)
+
+		default:
+			unrelatedMatchers = append(unrelatedMatchers, m)
 		}
 	}
 

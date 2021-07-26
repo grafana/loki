@@ -431,13 +431,13 @@ func (q querier) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 	return strutil.MergeSlices(sets...), warnings, nil
 }
 
-func (q querier) LabelNames() ([]string, storage.Warnings, error) {
+func (q querier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if !q.queryStoreForLabels {
-		return q.metadataQuerier.LabelNames()
+		return q.metadataQuerier.LabelNames(matchers...)
 	}
 
 	if len(q.queriers) == 1 {
-		return q.queriers[0].LabelNames()
+		return q.queriers[0].LabelNames(matchers...)
 	}
 
 	var (
@@ -453,7 +453,7 @@ func (q querier) LabelNames() ([]string, storage.Warnings, error) {
 		querier := querier
 		g.Go(func() error {
 			// NB: Names are sorted in Cortex already.
-			myNames, myWarnings, err := querier.LabelNames()
+			myNames, myWarnings, err := querier.LabelNames(matchers...)
 			if err != nil {
 				return err
 			}

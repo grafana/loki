@@ -125,8 +125,8 @@ func (e errorTranslateQuerier) LabelValues(name string, matchers ...*labels.Matc
 	return values, warnings, e.fn(err)
 }
 
-func (e errorTranslateQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	values, warnings, err := e.q.LabelNames()
+func (e errorTranslateQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	values, warnings, err := e.q.LabelNames(matchers...)
 	return values, warnings, e.fn(err)
 }
 
@@ -149,8 +149,8 @@ func (e errorTranslateChunkQuerier) LabelValues(name string, matchers ...*labels
 	return values, warnings, e.fn(err)
 }
 
-func (e errorTranslateChunkQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	values, warnings, err := e.q.LabelNames()
+func (e errorTranslateChunkQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	values, warnings, err := e.q.LabelNames(matchers...)
 	return values, warnings, e.fn(err)
 }
 

@@ -313,7 +313,7 @@ func (*memStoreQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (*memStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 
