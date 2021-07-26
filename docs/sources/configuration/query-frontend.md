@@ -84,6 +84,8 @@ spec:
     name: query-frontend
   sessionAffinity: None
   type: ClusterIP
+  ClusterIP: None
+  publishNotReadyAddresses: true
 ```
 
 ### Frontend Deployment
@@ -152,7 +154,7 @@ The query frontend operates in one of two ways:
     This causes DNS resolution of each query frontend pod IP address.
     It avoids wrongly resolving to the service IP.
 
-    Enable `publishNotReadyAddresses=True` on the query frontend pull service.
+    Enable `publishNotReadyAddresses=true` on the query frontend pull service.
     Doing so eliminates a race condition in which the query frontend address
     is needed before the query frontend becomes ready
     when at least one querier connects.
