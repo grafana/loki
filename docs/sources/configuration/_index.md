@@ -323,7 +323,7 @@ The queryrange_config configures the query splitting and caching in the Loki que
 
 # Limit queries that can be sharded.
 # Queries with time range that fall between now and now minus the sharding lookback are not sharded.
-# By default 0s it's disable, meaning all queries of all time range are sharded.
+# Default value is 0s (disable), meaning all queries of all time range are sharded.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
