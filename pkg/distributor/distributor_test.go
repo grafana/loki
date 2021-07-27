@@ -116,22 +116,50 @@ func Test_SortLabelsOnPush(t *testing.T) {
 }
 
 func Test_TruncateLogLines(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
+	setup := func() (*validation.Limits, *mockIngester) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
 
-	limits.EnforceMetricName = false
-	limits.MaxLineSize = 5
-	limits.MaxLineSizeShouldTruncate = true
+		limits.EnforceMetricName = false
+		limits.MaxLineSize = 5
+		limits.MaxLineSizeTruncate = true
+		return limits, &mockIngester{}
+	}
 
-	ingester := &mockIngester{}
-	d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	t.Run("it truncates lines to MaxLineSize when MaxLineSizeTruncate is true", func(t *testing.T) {
+		limits, ingester := setup()
 
-	request := makeWriteRequest(1, 10)
+		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
 
-	_, err := d.Push(ctx, request)
-	require.NoError(t, err)
-	require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
+		_, err := d.Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
+	})
+
+	t.Run("it truncates enough to accomodate MaxLineSizeTruncateInd if it exists", func(t *testing.T) {
+		limits, ingester := setup()
+		limits.MaxLineSizeTruncateInd = "..."
+
+		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+
+		_, err := d.Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		require.Equal(t, "0 ...", ingester.pushed[0].Streams[0].Entries[0].Line)
+	})
+
+	t.Run("it drops the log when MaxLineSize <= length of MaxLineSizeTruncateInd", func(t *testing.T) {
+		limits, ingester := setup()
+		limits.MaxLineSize = 2
+		limits.MaxLineSizeTruncateInd = "..."
+
+		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+
+		_, err := d.Push(ctx, makeWriteRequest(1, 10))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 2, "{foo=\"bar\"}", 10))
+	})
 }
 
 func Benchmark_SortLabelsOnPush(b *testing.B) {

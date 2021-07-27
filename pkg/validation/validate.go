@@ -5,7 +5,8 @@ import (
 )
 
 const (
-	discardReasonLabel = "reason"
+	reasonLabel                = "reason"
+	truncatedMutateReasonLabel = "truncated"
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
 	InvalidLabels = "invalid_labels"
 	MissingLabels = "missing_labels"
@@ -43,14 +44,24 @@ const (
 	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
 )
 
-// TruncatedBytes is a metric of the total truncated bytes, by reason.
+// TruncatedLines is a metric of the total number of lines mutated, by reason.
+var TruncatedLines = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "mutated_samples_total",
+		Help:      "The total number of samples that have been mutated.",
+	},
+	[]string{reasonLabel, "truncated"},
+)
+
+// TruncatedLines is a metric of the total mutated bytes, by reason.
 var TruncatedBytes = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
-		Name:      "truncated_bytes_total",
-		Help:      "The total number of bytes that were truncated.",
+		Name:      "mutated_bytes_total",
+		Help:      "The total number of bytes that have been mutated.",
 	},
-	[]string{discardReasonLabel, "tenant"},
+	[]string{reasonLabel, "truncated"},
 )
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
@@ -60,7 +71,7 @@ var DiscardedBytes = prometheus.NewCounterVec(
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
-	[]string{discardReasonLabel, "tenant"},
+	[]string{reasonLabel, "tenant"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -70,7 +81,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
-	[]string{discardReasonLabel, "tenant"},
+	[]string{reasonLabel, "tenant"},
 )
 
 func init() {

@@ -44,7 +44,8 @@ reject_old_samples_max_age: 40s
 creation_grace_period: 50s
 enforce_metric_name: true
 max_line_size: 60
-max_line_size_should_truncate: true
+max_line_size_truncate: true
+max_line_size_truncate_indicator: "..."
 max_streams_per_user: 70
 max_global_streams_per_user: 80
 max_chunks_per_query: 90
@@ -77,7 +78,8 @@ per_tenant_override_period: 230s
   "creation_grace_period": "50s",
   "enforce_metric_name": true,
   "max_line_size": 60,
-  "max_line_size_should_truncate": true,
+  "max_line_size_truncate": true,
+  "max_line_size_truncate_indicator": "...",
   "max_streams_per_user": 70,
   "max_global_streams_per_user": 80,
   "max_chunks_per_query": 90,

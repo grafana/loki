@@ -306,17 +306,25 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 }
 
 func (d *Distributor) truncateLines(vContext validationContext, stream logproto.Stream) []logproto.Entry {
-	if !vContext.maxLineSizeShouldTruncate {
+	if !vContext.maxLineSizeTruncate {
 		return stream.Entries
 	}
 
-	n := 0
-	for _, e := range stream.Entries {
+	for i, e := range stream.Entries {
 		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
-			truncated := float64(len(e.Line) - maxSize)
-			stream.Entries[n].Line = e.Line[:maxSize]
-			n++
+			indicator := vContext.maxLineSizeTruncateInd
+			truncateTo := maxSize - len(indicator)
+			if truncateTo <= 0 {
+				continue
+			}
 
+			stream.Entries[i].Line = e.Line[:truncateTo]
+			if len(indicator) > 0 { //don't make another string unless necessary
+				stream.Entries[i].Line += indicator
+			}
+
+			truncated := float64(len(e.Line) - truncateTo)
+			validation.TruncatedLines.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(1))
 			validation.TruncatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(truncated)
 		}
 	}
