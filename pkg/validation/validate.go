@@ -5,8 +5,7 @@ import (
 )
 
 const (
-	reasonLabel                = "reason"
-	truncatedMutateReasonLabel = "truncated"
+	reasonLabel = "reason"
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
 	InvalidLabels = "invalid_labels"
 	MissingLabels = "missing_labels"
@@ -54,7 +53,7 @@ var TruncatedLines = prometheus.NewCounterVec(
 	[]string{reasonLabel, "truncated"},
 )
 
-// TruncatedLines is a metric of the total mutated bytes, by reason.
+// TruncatedBytes is a metric of the total mutated bytes, by reason.
 var TruncatedBytes = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",

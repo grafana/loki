@@ -137,7 +137,7 @@ func Test_TruncateLogLines(t *testing.T) {
 		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
 	})
 
-	t.Run("it truncates enough to accomodate MaxLineSizeTruncateInd if it exists", func(t *testing.T) {
+	t.Run("it truncates enough to accommodate MaxLineSizeTruncateInd if it exists", func(t *testing.T) {
 		limits, ingester := setup()
 		limits.MaxLineSizeTruncateInd = "..."
 
