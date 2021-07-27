@@ -269,6 +269,90 @@ func Test_splitMetricQuery(t *testing.T) {
 	}
 }
 
+func Test_splitByInterval_Do_ErrorData(b *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	var lock sync.Mutex
+	index := 0
+	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		if index == 0 {
+			index++
+			return &LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: r.(*LokiRequest).Direction,
+				Limit:     r.(*LokiRequest).Limit,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     []logproto.Stream{},
+				},
+			}, nil
+		}
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: r.(*LokiRequest).Direction,
+			Limit:     r.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Error:     "bar",
+			ErrorType: "foo",
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result:     []logproto.Stream{},
+			},
+		}, nil
+	})
+
+	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	split := SplitByIntervalMiddleware(
+		l,
+		LokiCodec,
+		splitByTime,
+		nilMetrics,
+	).Wrap(next)
+
+	tests := []struct {
+		name string
+		req  *LokiRequest
+		want *LokiResponse
+	}{
+		{
+			"non empty data",
+			&LokiRequest{
+				StartTs:   time.Unix(0, 0),
+				EndTs:     time.Unix(0, (4 * time.Hour).Nanoseconds()),
+				Query:     "",
+				Limit:     1000,
+				Step:      1,
+				Direction: logproto.BACKWARD,
+				Path:      "/api/prom/query_range",
+			},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.BACKWARD,
+				Limit:     1000,
+				Version:   uint32(loghttp.VersionV1),
+				Error:     "bar",
+				ErrorType: "foo",
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     []logproto.Stream{},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(t *testing.T) {
+			res, err := split.Do(ctx, tt.req)
+			if err != nil {
+				panic(err)
+			}
+			require.Equal(t, tt.want, res)
+		})
+	}
+}
+
 func Benchmark_splitByInterval_Do_NonEmptyData(b *testing.B) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {

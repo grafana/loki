@@ -114,6 +114,7 @@ func (h *splitByInterval) Process(
 	}
 
 	var res *LokiResponse = nil
+	var errRes *LokiResponse = nil
 
 	for _, x := range input {
 		select {
@@ -128,6 +129,9 @@ func (h *splitByInterval) Process(
 			if casted, ok := data.resp.(*LokiResponse); !unlimited && ok {
 				if res == nil {
 					res = casted
+				}
+				if errRes == nil && casted.Error != "" {
+					errRes = casted
 				}
 				count := casted.Count()
 				if count > 0 {
@@ -146,7 +150,9 @@ func (h *splitByInterval) Process(
 		}
 	}
 
-	if len(responses) == 0 && res != nil {
+	if len(responses) == 0 && errRes != nil {
+		responses = append(responses, errRes)
+	} else if len(responses) == 0 && res != nil {
 		responses = append(responses, res)
 	}
 
