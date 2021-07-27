@@ -113,6 +113,8 @@ func (h *splitByInterval) Process(
 		go h.loop(ctx, ch, next)
 	}
 
+	var res *LokiResponse = nil
+
 	for _, x := range input {
 		select {
 		case <-ctx.Done():
@@ -123,6 +125,9 @@ func (h *splitByInterval) Process(
 			}
 
 			if casted, ok := data.resp.(*LokiResponse); ok {
+				if res == nil {
+					res = casted
+				}
 				if casted.Count() > 0 {
 					responses = append(responses, data.resp)
 				}
@@ -141,6 +146,10 @@ func (h *splitByInterval) Process(
 			}
 
 		}
+	}
+
+	if len(responses) == 0 && res != nil {
+		responses = append(responses, res)
 	}
 
 	return responses, nil
