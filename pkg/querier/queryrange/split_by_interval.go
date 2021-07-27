@@ -124,25 +124,23 @@ func (h *splitByInterval) Process(
 				return nil, data.err
 			}
 
-			if casted, ok := data.resp.(*LokiResponse); ok {
+			// see if we can exit early if a limit has been reached
+			if casted, ok := data.resp.(*LokiResponse); !unlimited && ok {
 				if res == nil {
 					res = casted
 				}
-				if casted.Count() > 0 {
+				count := casted.Count()
+				if count > 0 {
 					responses = append(responses, data.resp)
 				}
-			} else {
-				responses = append(responses, data.resp)
-			}
 
-			// see if we can exit early if a limit has been reached
-			if casted, ok := data.resp.(*LokiResponse); !unlimited && ok {
-				threshold -= casted.Count()
-
+				threshold -= count
 				if threshold <= 0 {
 					return responses, nil
 				}
 
+			} else {
+				responses = append(responses, data.resp)
 			}
 
 		}
