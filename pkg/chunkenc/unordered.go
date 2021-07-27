@@ -361,7 +361,7 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 	if version > OrderedHeadBlockFmt {
 		return hb, nil
 	}
-	out := &headBlock{}
+	out := version.NewBlock()
 
 	err := hb.forEntries(
 		context.Background(),
@@ -455,9 +455,8 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 	if db.err() != nil {
 		return errors.Wrap(db.err(), "verifying headblock header")
 	}
-	switch version {
-	case UnorderedHeadBlockFmt.Byte():
-	default:
+
+	if version != UnorderedHeadBlockFmt.Byte() {
 		return errors.Errorf("incompatible headBlock version (%v), only V4 is currently supported", version)
 	}
 
@@ -487,6 +486,10 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 // This is particularly helpful replaying WALs from different configurations
 // such as after enabling unordered writes.
 func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
+	if len(b) == 0 {
+		return desired.NewBlock(), nil
+	}
+
 	db := decbuf{b: b}
 
 	version := db.byte()
@@ -494,17 +497,11 @@ func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
 		return nil, errors.Wrap(db.err(), "verifying headblock header")
 	}
 	format := HeadBlockFmt(version)
-
-	var decodedBlock HeadBlock
-	switch {
-	case format <= OrderedHeadBlockFmt:
-		decodedBlock = &headBlock{}
-	case format == UnorderedHeadBlockFmt:
-		decodedBlock = newUnorderedHeadBlock()
-	default:
-		return nil, fmt.Errorf("unexpected head block version: %v", version)
+	if format > UnorderedHeadBlockFmt {
+		return nil, fmt.Errorf("unexpected head block version: %v", format)
 	}
 
+	decodedBlock := format.NewBlock()
 	if err := decodedBlock.LoadBytes(b); err != nil {
 		return nil, err
 	}

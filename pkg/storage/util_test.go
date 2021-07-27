@@ -99,9 +99,8 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		builder.Set(labels.MetricName, "logs")
 		lbs = builder.Labels()
 	}
-
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
 		_ = chk.Append(&e)
 	}

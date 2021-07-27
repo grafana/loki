@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 )
@@ -137,7 +138,9 @@ func TestStreamIterator(t *testing.T) {
 		name string
 		new  func() *chunkenc.MemChunk
 	}{
-		{"gzipChunk", func() *chunkenc.MemChunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0) }},
+		{"gzipChunk", func() *chunkenc.MemChunk {
+			return chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			var s stream
@@ -175,6 +178,79 @@ func TestStreamIterator(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUnorderedPush(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.MaxChunkAge = 10 * time.Second
+	s := newStream(
+		&cfg,
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		NilMetrics,
+	)
+
+	for _, x := range []struct {
+		entries []logproto.Entry
+		err     bool
+		written int
+	}{
+		{
+			entries: []logproto.Entry{
+				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(1, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
+				{Timestamp: time.Unix(10, 0), Line: "x"},
+			},
+			written: 4, // 1 ignored
+		},
+		// highest ts is now 10, validity bound is (10-10/2) = 5
+		{
+			entries: []logproto.Entry{
+				{Timestamp: time.Unix(4, 0), Line: "x"}, // ordering err, too far
+				{Timestamp: time.Unix(8, 0), Line: "x"},
+				{Timestamp: time.Unix(9, 0), Line: "x"},
+			},
+			err:     true,
+			written: 2, // 1 ignored
+		},
+	} {
+		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0)
+		if x.err {
+			require.NotNil(t, err)
+		} else {
+			require.Nil(t, err)
+		}
+		require.Equal(t, x.written, written)
+	}
+
+	exp := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "x"},
+		{Timestamp: time.Unix(2, 0), Line: "x"},
+		// duplicate was allowed here b/c it wasnt written sequentially
+		{Timestamp: time.Unix(2, 0), Line: "x"},
+		{Timestamp: time.Unix(8, 0), Line: "x"},
+		{Timestamp: time.Unix(9, 0), Line: "x"},
+		{Timestamp: time.Unix(10, 0), Line: "x"},
+	}
+
+	itr, err := s.Iterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(11, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+	require.Nil(t, err)
+	iterEq(t, exp, itr)
+
+}
+
+func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
+	var i int
+	for got.Next() {
+		require.Equal(t, exp[i].Timestamp, got.Entry().Timestamp, "failed on the (%d) ts", i)
+		require.Equal(t, exp[i].Line, got.Entry().Line)
+		i++
+	}
+	require.Equal(t, i, len(exp))
 }
 
 func Benchmark_PushStream(b *testing.B) {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
@@ -330,4 +331,282 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestUnorderedChunkIterators(t *testing.T) {
+	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	for i := 0; i < 100; i++ {
+		// push in reverse order
+		require.Nil(t, c.Append(&logproto.Entry{
+			Timestamp: time.Unix(int64(99-i), 0),
+			Line:      fmt.Sprint(99 - i),
+		}))
+
+		// ensure we have a mix of cut blocks + head block.
+		if i%30 == 0 {
+			require.Nil(t, c.cut())
+		}
+	}
+
+	// ensure head block has data
+	require.Equal(t, false, c.head.IsEmpty())
+
+	forward, err := c.Iterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(100, 0),
+		logproto.FORWARD,
+		noopStreamPipeline,
+	)
+	require.Nil(t, err)
+
+	backward, err := c.Iterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(100, 0),
+		logproto.BACKWARD,
+		noopStreamPipeline,
+	)
+	require.Nil(t, err)
+
+	smpl := c.SampleIterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(100, 0),
+		countExtractor,
+	)
+
+	for i := 0; i < 100; i++ {
+		require.Equal(t, true, forward.Next())
+		require.Equal(t, true, backward.Next())
+		require.Equal(t, true, smpl.Next())
+		require.Equal(t, time.Unix(int64(i), 0), forward.Entry().Timestamp)
+		require.Equal(t, time.Unix(int64(99-i), 0), backward.Entry().Timestamp)
+		require.Equal(t, float64(1), smpl.Sample().Value)
+		require.Equal(t, time.Unix(int64(i), 0).UnixNano(), smpl.Sample().Timestamp)
+	}
+	require.Equal(t, false, forward.Next())
+	require.Equal(t, false, backward.Next())
+}
+
+func BenchmarkUnorderedRead(b *testing.B) {
+	legacy := NewMemChunk(EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkClose(legacy, false)
+	ordered := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkClose(ordered, false)
+	unordered := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkRandomOrder(unordered, false)
+
+	tcs := []struct {
+		desc string
+		c    *MemChunk
+	}{
+		{
+			desc: "ordered+legacy hblock",
+			c:    legacy,
+		},
+		{
+			desc: "ordered+unordered hblock",
+			c:    ordered,
+		},
+		{
+			desc: "unordered+unordered hblock",
+			c:    unordered,
+		},
+	}
+
+	b.Run("itr", func(b *testing.B) {
+		for _, tc := range tcs {
+			b.Run(tc.desc, func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					iterator, err := tc.c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+					if err != nil {
+						panic(err)
+					}
+					for iterator.Next() {
+						_ = iterator.Entry()
+					}
+					if err := iterator.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	})
+
+	b.Run("smpl", func(b *testing.B) {
+		for _, tc := range tcs {
+			b.Run(tc.desc, func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					for iterator.Next() {
+						_ = iterator.Sample()
+					}
+					if err := iterator.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	})
+
+}
+
+func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
+	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunkRandomOrder(c, false)
+
+	ct := 0
+	var i int64
+	iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+	if err != nil {
+		panic(err)
+	}
+	for iterator.Next() {
+		next := iterator.Entry().Timestamp.UnixNano()
+		require.GreaterOrEqual(t, next, i)
+		i = next
+		ct++
+	}
+	if err := iterator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, c.Size(), ct)
+
+	ct = 0
+	i = 0
+	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+	for smpl.Next() {
+		next := smpl.Sample().Timestamp
+		require.GreaterOrEqual(t, next, i)
+		i = next
+		ct += int(smpl.Sample().Value)
+	}
+	require.Equal(t, c.Size(), ct)
+
+	if err := iterator.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func chunkFrom(xs []logproto.Entry) ([]byte, error) {
+	c := NewMemChunk(EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	for _, x := range xs {
+		if err := c.Append(&x); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := c.Close(); err != nil {
+		return nil, err
+	}
+	return c.Bytes()
+}
+
+func TestReorder(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		input    []logproto.Entry
+		expected []logproto.Entry
+	}{
+		{
+			desc: "unordered",
+			input: []logproto.Entry{
+				{
+					Timestamp: time.Unix(4, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(2, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(3, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "x",
+				},
+			},
+			expected: []logproto.Entry{
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(2, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(3, 0),
+					Line:      "x",
+				},
+				{
+					Timestamp: time.Unix(4, 0),
+					Line:      "x",
+				},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+			for _, x := range tc.input {
+				require.Nil(t, c.Append(&x))
+			}
+			require.Nil(t, c.Close())
+			b, err := c.Bytes()
+			require.Nil(t, err)
+
+			exp, err := chunkFrom(tc.expected)
+			require.Nil(t, err)
+
+			require.Equal(t, exp, b)
+		})
+
+	}
+}
+
+func TestReorderAcrossBlocks(t *testing.T) {
+	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	for _, batch := range [][]int{
+		// ensure our blocks have overlapping bounds and must be reordered
+		// before closing.
+		{1, 5},
+		{3, 7},
+	} {
+		for _, x := range batch {
+			require.Nil(t, c.Append(&logproto.Entry{
+				Timestamp: time.Unix(int64(x), 0),
+				Line:      fmt.Sprint(x),
+			}))
+		}
+		require.Nil(t, c.cut())
+	}
+	// get bounds before it's reordered
+	from, to := c.Bounds()
+	require.Nil(t, c.Close())
+
+	itr, err := c.Iterator(context.Background(), from, to.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+	require.Nil(t, err)
+
+	exp := []entry{
+		{
+			t: time.Unix(1, 0).UnixNano(),
+			s: "1",
+		},
+		{
+			t: time.Unix(3, 0).UnixNano(),
+			s: "3",
+		},
+		{
+			t: time.Unix(5, 0).UnixNano(),
+			s: "5",
+		},
+		{
+			t: time.Unix(7, 0).UnixNano(),
+			s: "7",
+		},
+	}
+	iterEq(t, exp, itr)
 }
