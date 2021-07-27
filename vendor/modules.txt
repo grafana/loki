@@ -184,7 +184,7 @@ github.com/coreos/go-systemd/sdjournal
 github.com/coreos/go-systemd/v22/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.9.1-0.20210722081137-485474c9afb2
+# github.com/cortexproject/cortex v1.9.1-0.20210726155107-a4bf10354786
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb
@@ -812,7 +812,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20210720084720-59d02b5ef003
+# github.com/prometheus/prometheus v1.8.2-0.20210720123808-b1ed4a0a663d
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

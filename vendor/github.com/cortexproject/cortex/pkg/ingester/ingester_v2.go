@@ -980,6 +980,10 @@ func (u *userTSDB) releaseAppendLock() {
 }
 
 func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1036,6 +1040,10 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 }
 
 func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1083,6 +1091,10 @@ func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQue
 }
 
 func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
 	if err != nil {
 		return nil, err
@@ -1120,6 +1132,10 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 }
 
 func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1152,6 +1168,10 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 }
 
 func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1219,6 +1239,10 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 }
 
 func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1233,6 +1257,10 @@ func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest
 }
 
 func (i *Ingester) v2AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
@@ -1265,6 +1293,10 @@ const queryStreamBatchMessageSize = 1 * 1024 * 1024
 
 // v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	if err := i.checkRunning(); err != nil {
+		return err
+	}
+
 	spanlog, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
 	defer spanlog.Finish()
 
@@ -1788,6 +1820,10 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 // getMemorySeriesMetric returns the total number of in-memory series across all open TSDBs.
 func (i *Ingester) getMemorySeriesMetric() float64 {
+	if err := i.checkRunning(); err != nil {
+		return 0
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 

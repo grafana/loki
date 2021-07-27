@@ -192,9 +192,42 @@ func (q *distributorQuerier) LabelValues(name string, matchers ...*labels.Matche
 	return lvs, nil, err
 }
 
-func (q *distributorQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	ln, err := q.distributor.LabelNames(q.ctx, model.Time(q.mint), model.Time(q.maxt))
+func (q *distributorQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	if len(matchers) > 0 {
+		return q.labelNamesWithMatchers(matchers...)
+	}
+
+	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.LabelNames")
+	defer log.Span.Finish()
+
+	ln, err := q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt))
 	return ln, nil, err
+}
+
+// labelNamesWithMatchers performs the LabelNames call by calling ingester's MetricsForLabelMatchers method
+func (q *distributorQuerier) labelNamesWithMatchers(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.labelNamesWithMatchers")
+	defer log.Span.Finish()
+
+	ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+	if err != nil {
+		return nil, nil, err
+	}
+	namesMap := make(map[string]struct{})
+
+	for _, m := range ms {
+		for name := range m.Metric {
+			namesMap[string(name)] = struct{}{}
+		}
+	}
+
+	names := make([]string, 0, len(namesMap))
+	for name := range namesMap {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	return names, nil, nil
 }
 
 func (q *distributorQuerier) Close() error {
