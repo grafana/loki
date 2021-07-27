@@ -44,9 +44,33 @@ const (
 	defaultBlockSize = 256 * 1024
 )
 
+var (
+	HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
+)
+
 type HeadBlockFmt byte
 
 func (f HeadBlockFmt) Byte() byte { return byte(f) }
+
+func (f HeadBlockFmt) String() string {
+	switch {
+	case f < UnorderedHeadBlockFmt:
+		return "ordered"
+	case f == UnorderedHeadBlockFmt:
+		return "unordered"
+	default:
+		return fmt.Sprintf("unknown: %v", byte(f))
+	}
+}
+
+func (f HeadBlockFmt) NewBlock() HeadBlock {
+	switch {
+	case f < UnorderedHeadBlockFmt:
+		return &headBlock{}
+	default:
+		return newUnorderedHeadBlock()
+	}
+}
 
 const (
 	_ HeadBlockFmt = iota
@@ -93,6 +117,7 @@ type MemChunk struct {
 	// the chunk format default to v2
 	format   byte
 	encoding Encoding
+	headFmt  HeadBlockFmt
 }
 
 type block struct {
@@ -309,19 +334,18 @@ type entry struct {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
-	c := &MemChunk{
+func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
 		blocks:     []block{},
 
-		head:   &headBlock{},
 		format: DefaultChunkFormat,
+		head:   head.NewBlock(),
 
 		encoding: enc,
+		headFmt:  head,
 	}
-
-	return c
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
@@ -563,12 +587,19 @@ func (c *MemChunk) CheckpointSize() (chunk, head int) {
 	return c.BytesSize(), c.head.CheckpointSize()
 }
 
-func MemchunkFromCheckpoint(chk, head []byte, blockSize int, targetSize int) (*MemChunk, error) {
+func MemchunkFromCheckpoint(chk, head []byte, desired HeadBlockFmt, blockSize int, targetSize int) (*MemChunk, error) {
 	mc, err := NewByteChunk(chk, blockSize, targetSize)
 	if err != nil {
 		return nil, err
 	}
-	return mc, mc.head.LoadBytes(head)
+	h, err := HeadFromCheckpoint(head, desired)
+	if err != nil {
+		return nil, err
+	}
+
+	mc.head = h
+	mc.headFmt = desired
+	return mc, nil
 }
 
 // Encoding implements Chunk.
@@ -642,7 +673,7 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 
 	// If the head block is empty but there are cut blocks, we have to make
 	// sure the new entry is not out of order compared to the previous block
-	if c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
+	if c.headFmt < UnorderedHeadBlockFmt && c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
 		return ErrOutOfOrder
 	}
 
@@ -660,7 +691,37 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 // Close implements Chunk.
 // TODO: Fix this to check edge cases.
 func (c *MemChunk) Close() error {
-	return c.cut()
+	if err := c.cut(); err != nil {
+		return err
+	}
+	return c.reorder()
+}
+
+// reorder ensures all blocks in a chunk are in
+// monotonically increasing order.
+// This mutates
+func (c *MemChunk) reorder() error {
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
+	for _, b := range c.blocks {
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
+	}
+
+	if ordered {
+		return nil
+	}
+
+	// Otherwise, we need to rebuild the blocks
+	from, to := c.Bounds()
+	newC, err := c.Rebound(from, to)
+	if err != nil {
+		return err
+	}
+	*c = *newC.(*MemChunk)
+	return nil
 }
 
 // cut a new block and add it to finished blocks.
@@ -712,14 +773,28 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 	var headIterator iter.EntryIterator
 
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
 	for _, b := range c.blocks {
+
+		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
+
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
+
 		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
 	}
 
 	if !c.head.IsEmpty() {
+		from, _ := c.head.Bounds()
+		if from < lastMax {
+			ordered = false
+		}
 		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
@@ -728,8 +803,16 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if headIterator != nil {
 			blockItrs = append(blockItrs, headIterator)
 		}
+
+		var it iter.EntryIterator
+		if ordered {
+			it = iter.NewNonOverlappingIterator(blockItrs, "")
+		} else {
+			it = iter.NewHeapIterator(ctx, blockItrs, direction)
+		}
+
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(blockItrs, ""),
+			it,
 			time.Unix(0, mint),
 			time.Unix(0, maxt),
 		), nil
@@ -755,7 +838,11 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		blockItrs[i], blockItrs[j] = blockItrs[j], blockItrs[i]
 	}
 
-	return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+	if ordered {
+		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+	}
+	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
+
 }
 
 // Iterator implements Chunk.
@@ -763,19 +850,38 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
 	for _, b := range c.blocks {
+		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
+
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
 		its = append(its, encBlock{c.encoding, b}.SampleIterator(ctx, extractor))
 	}
 
 	if !c.head.IsEmpty() {
+		from, _ := c.head.Bounds()
+		if from < lastMax {
+			ordered = false
+		}
 		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
 	}
 
+	var it iter.SampleIterator
+	if ordered {
+		it = iter.NewNonOverlappingSampleIterator(its, "")
+	} else {
+		it = iter.NewHeapSampleIterator(ctx, its)
+	}
+
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewNonOverlappingSampleIterator(its, ""),
+		it,
 		mint,
 		maxt,
 	)
@@ -802,10 +908,18 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 		return nil, err
 	}
 
-	// Using defaultBlockSize for target block size.
-	// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-	// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-	newChunk := NewMemChunk(c.Encoding(), defaultBlockSize, c.CompressedSize())
+	var newChunk *MemChunk
+	// as close as possible, respect the block/target sizes specified. However,
+	// if the blockSize is not set, use reasonable defaults.
+	if c.blockSize > 0 {
+		newChunk = NewMemChunk(c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
+	} else {
+		// Using defaultBlockSize for target block size.
+		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
+		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
+		newChunk = NewMemChunk(c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
+
+	}
 
 	for itr.Next() {
 		entry := itr.Entry()
