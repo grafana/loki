@@ -162,7 +162,10 @@ module Fluent
 
         res_summary = "#{res.code} #{res.message} #{res.body}"
         log.warn "failed to write post to #{@uri} (#{res_summary})"
-        log.debug Yajl.dump(body)
+        # Perform JSON conversion only if required by log level
+        if log.level <= log.LEVEL_DEBUG
+            log.debug Yajl.dump(body)
+        end
 
         # Only retry 429 and 500s
         raise(LogPostError, res_summary) if res.is_a?(Net::HTTPTooManyRequests) || res.is_a?(Net::HTTPServerError)
