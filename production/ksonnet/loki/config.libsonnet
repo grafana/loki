@@ -30,6 +30,12 @@
     compactor_pvc_size: '10Gi',
     compactor_pvc_class: 'fast',
 
+    // This is the configmap created with `$._config.overrides` data
+    overrides_configmap_name: 'overrides',
+
+    // This is the configmap which will be used by workloads.
+    overrides_configmap_mount_name: 'overrides',
+    overrides_configmap_mount_path: '/etc/loki/overrides',
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
@@ -345,15 +351,16 @@
     },
   },
 
-  local configMap = $.core.v1.configMap,
+  local k = import 'ksonnet-util/kausal.libsonnet',
+  local configMap = k.core.v1.configMap,
 
   config_file:
     configMap.new('loki') +
     configMap.withData({
-      'config.yaml': $.util.manifestYaml($._config.loki),
+      'config.yaml': k.util.manifestYaml($._config.loki),
     }),
 
-  local deployment = $.apps.v1.deployment,
+  local deployment = k.apps.v1.deployment,
 
   config_hash_mixin::
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({

@@ -144,7 +144,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, *promql.Engine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -157,6 +157,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		}
 	}
 	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits, tombstonesLoader)
+	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 		querier, err := queryable.Querier(ctx, mint, maxt)
@@ -178,7 +179,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	})
-	return NewSampleAndChunkQueryable(lazyQueryable), engine
+	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, engine
 }
 
 // NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a
@@ -224,7 +225,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			return nil, err
 		}
 
-		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(limits.MaxFetchedSeriesPerQuery(userID)))
+		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(limits.MaxFetchedSeriesPerQuery(userID), limits.MaxFetchedChunkBytesPerQuery(userID), limits.MaxChunksPerQuery(userID)))
 
 		mint, maxt, err = validateQueryTimeRange(ctx, userID, mint, maxt, limits, cfg.MaxQueryIntoFuture)
 		if err == errEmptyTimeRange {
@@ -430,13 +431,13 @@ func (q querier) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 	return strutil.MergeSlices(sets...), warnings, nil
 }
 
-func (q querier) LabelNames() ([]string, storage.Warnings, error) {
+func (q querier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if !q.queryStoreForLabels {
-		return q.metadataQuerier.LabelNames()
+		return q.metadataQuerier.LabelNames(matchers...)
 	}
 
 	if len(q.queriers) == 1 {
-		return q.queriers[0].LabelNames()
+		return q.queriers[0].LabelNames(matchers...)
 	}
 
 	var (
@@ -452,7 +453,7 @@ func (q querier) LabelNames() ([]string, storage.Warnings, error) {
 		querier := querier
 		g.Go(func() error {
 			// NB: Names are sorted in Cortex already.
-			myNames, myWarnings, err := querier.LabelNames()
+			myNames, myWarnings, err := querier.LabelNames(matchers...)
 			if err != nil {
 				return err
 			}

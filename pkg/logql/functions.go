@@ -13,12 +13,12 @@ import (
 
 const unsupportedErr = "unsupported range vector aggregation operation: %s"
 
-func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
+func (r RangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	return r.extractor(nil)
 }
 
 // extractor creates a SampleExtractor but allows for the grouping to be overridden.
-func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor, error) {
+func (r RangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 	sort.Strings(groups)
 
 	var stages []log.Stage
-	if p, ok := r.left.left.(*pipelineExpr); ok {
+	if p, ok := r.left.left.(*PipelineExpr); ok {
 		// if the expression is a pipeline then take all stages into account first.
 		st, err := p.pipeline.stages()
 		if err != nil {
@@ -89,7 +89,7 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 	}
 }
 
-func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
+func (r RangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 	switch r.operation {
 	case OpRangeTypeRate:
 		return rateLogs(r.left.interval, r.left.unwrap != nil), nil

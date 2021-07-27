@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -98,6 +99,8 @@ type Config struct {
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
 
+	IgnoreSeriesLimitForMetricNames string `yaml:"ignore_series_limit_for_metric_names"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -122,7 +125,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", false, "Enable tracking of active series and export them as metrics.")
+	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", true, "Enable tracking of active series and export them as metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
@@ -131,6 +134,29 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
+
+	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
+}
+
+func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
+	if cfg.IgnoreSeriesLimitForMetricNames == "" {
+		return nil
+	}
+
+	result := map[string]struct{}{}
+
+	for _, s := range strings.Split(cfg.IgnoreSeriesLimitForMetricNames, ",") {
+		tr := strings.TrimSpace(s)
+		if tr != "" {
+			result[tr] = struct{}{}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -454,9 +480,19 @@ func (i *Ingester) checkRunningOrStopping() error {
 	return status.Error(codes.Unavailable, s.String())
 }
 
+// Using block store, the ingester is only available when it is in a Running state. The ingester is not available
+// when stopping to prevent any read or writes to the TSDB after the ingester has closed them.
+func (i *Ingester) checkRunning() error {
+	s := i.State()
+	if s == services.Running {
+		return nil
+	}
+	return status.Error(codes.Unavailable, s.String())
+}
+
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
+	if err := i.checkRunning(); err != nil {
 		return nil, err
 	}
 
@@ -736,12 +772,12 @@ func (i *Ingester) purgeUserMetricsMetadata() {
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
-	}
-
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2Query(ctx, req)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
 	}
 
 	userID, err := tenant.TenantID(ctx)
@@ -803,12 +839,12 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return err
-	}
-
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2QueryStream(req, stream)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return err
 	}
 
 	spanLog, ctx := spanlogger.New(stream.Context(), "QueryStream")
@@ -885,14 +921,23 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	return err
 }
 
-// LabelValues returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
+// Query implements service.IngesterServer
+func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
+	if !i.cfg.BlocksStorageEnabled {
+		return nil, errors.New("not supported")
 	}
 
+	return i.v2QueryExemplars(ctx, req)
+}
+
+// LabelValues returns all label values that are associated with a given label name.
+func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2LabelValues(ctx, req)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
 	}
 
 	i.userStatesMtx.RLock()
@@ -912,12 +957,12 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
-	}
-
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2LabelNames(ctx, req)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
 	}
 
 	i.userStatesMtx.RLock()
@@ -937,12 +982,12 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
-	}
-
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2MetricsForLabelMatchers(ctx, req)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
 	}
 
 	i.userStatesMtx.RLock()
@@ -1007,12 +1052,12 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
-	}
-
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2UserStats(ctx, req)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
 	}
 
 	i.userStatesMtx.RLock()
@@ -1036,12 +1081,12 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
 func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
-	}
-
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2AllUserStats(ctx, req)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
 	}
 
 	i.userStatesMtx.RLock()

@@ -36,6 +36,10 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 
 	id := NewIndexDeduper(callback)
 
+	if len(queries) <= maxQueriesPerGoroutine {
+		return tableQuerier.MultiQueries(ctx, queries, id.Callback)
+	}
+
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
 		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]
 		go func(queries []chunk.IndexQuery) {

@@ -56,7 +56,7 @@ By adding our output plugin you can quickly try Loki without doing big configura
 
 ### Lambda Promtail
 
-This is a workflow combining the promtail push-api [scrape config](promtail/configuration#loki_push_api_config) and the [lambda-promtail](lambda-promtail/) AWS Lambda function which pipes logs from Cloudwatch to Loki.
+This is a workflow combining the Promtail push-api [scrape config](promtail/configuration#loki_push_api_config) and the [lambda-promtail](lambda-promtail/) AWS Lambda function which pipes logs from Cloudwatch to Loki.
 
 This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki.
 

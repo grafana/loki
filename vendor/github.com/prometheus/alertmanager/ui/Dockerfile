@@ -7,6 +7,7 @@ ENV PATH=$PATH:/home/node/.npm-global/bin
 
 RUN mkdir -p $NPM_CONFIG_PREFIX; yarn global add \
   elm@0.19.1 \
-  elm-format@0.8.4 \
+  elm-format@0.8.5 \
   elm-test@0.19.1-revision6 \
-  uglify-js@3.4.7
+  uglify-js@3.13.4 \
+  elm-review@2.5.0

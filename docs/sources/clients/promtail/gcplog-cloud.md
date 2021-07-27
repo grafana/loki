@@ -3,7 +3,7 @@ title: Cloud setup GCP Logs
 ---
 # Cloud setup GCP logs
 
-This document explain how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Loki promtail to consume.
+This document explain how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Loki Promtail to consume.
 
 This document assumes, that reader have `gcloud` installed and have required permissions(as mentioned in #[Roles and Permission] section)
 
@@ -15,7 +15,7 @@ User should have following roles to complete the setup.
 
 ## Setup Pubsub Topic
 
-Google Pubsub Topic will act as the queue to persist log messages which then can be read from `promtail`.
+Google Pubsub Topic will act as the queue to persist log messages which then can be read from Promtail.
 
 ```bash
 $ gcloud pubsub topics create $TOPIC_ID
@@ -48,7 +48,7 @@ We cover more advanced `log-filter` [below](#Advanced-Log-filter)
 
 ## Create Pubsub subscription for Loki
 
-We create subscription for the pubsub topic we create above and `promtail` uses this subscription to consume log messages.
+We create subscription for the pubsub topic we create above and Promtail uses this subscription to consume log messages.
 
 ```bash
 $ gcloud pubsub subscriptions create cloud-logs --topic=$TOPIC_ID \
@@ -70,9 +70,9 @@ For more fine grained options, refer to the `gcloud pubsub subscriptions --help`
 We need a service account with following permissions.
 - pubsub.subscriber
 
-This enables promtail to read log entries from the pubsub subscription created before.
+This enables Promtail to read log entries from the pubsub subscription created before.
 
-you can find example for promtail scrape config for `gcplog` [here](../scraping/#gcplog-scraping)
+you can find example for Promtail scrape config for `gcplog` [here](../scraping/#gcplog-scraping)
 
 If you are scraping logs from multiple GCP projects, then this serviceaccount should have above permissions in all the projects you are tyring to scrape.
 
@@ -80,7 +80,7 @@ If you are scraping logs from multiple GCP projects, then this serviceaccount sh
 
 Sometimes you may wish to clear the pending pubsub queue containing logs.
 
-These messages stays in Pubsub Subscription until they're acknowledged. The following command removes log messages without needing to be consumed via promtail or any other pubsub consumer.
+These messages stays in Pubsub Subscription until they're acknowledged. The following command removes log messages without needing to be consumed via Promtail or any other pubsub consumer.
 
 ```bash
 gcloud pubsub subscriptions seek <subscription-path> --time=<yyyy-mm-ddThh:mm:ss>

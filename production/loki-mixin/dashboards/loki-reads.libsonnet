@@ -33,6 +33,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         queryFrontend: [utils.selector.re('job', '($namespace)/query-frontend')],
         querier: [utils.selector.re('job', '($namespace)/querier')],
         ingester: [utils.selector.re('job', '($namespace)/ingester')],
+        querierOrIndexGateway: [utils.selector.re('job', '($namespace)/(querier|index-gateway)')],
       },
 
       local selector(matcherId) =
@@ -45,6 +46,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       queryFrontendSelector:: selector('queryFrontend'),
       querierSelector:: selector('querier'),
       ingesterSelector:: selector('ingester'),
+      querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
 
       templateLabels:: (
         if cfg.showMultiCluster then [
@@ -147,11 +149,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
       g.row('BoltDB Shipper')
       .addPanel(
         g.panel('QPS') +
-        g.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierSelector)
+        g.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
       )
       .addPanel(
         g.panel('Latency') +
-        g.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierSelector)
+        g.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
       )
     ){
       templating+: {

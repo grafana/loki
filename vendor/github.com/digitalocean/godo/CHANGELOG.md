@@ -1,5 +1,18 @@
 # Change Log
 
+## [v1.62.0] - 2021-06-07
+
+- #454 - @house-lee - add with_droplet_agent option to create requests
+
+## [v1.61.0] - 2021-05-12
+
+- #452 - @caiofilipini - Add support for DOKS clusters as peers in Firewall rules
+- #448 - @andrewsomething - flip: Set omitempty for Region in FloatingIPCreateRequest.
+- #451 - @andrewsomething - CheckResponse: Add RequestID from header to ErrorResponse when missing from body.
+- #450 - @nanzhong - dbaas: handle ca certificates as base64 encoded
+- #449 - @nanzhong - dbaas: add support for getting cluster CA
+- #446 - @kamaln7 - app spec: update cors policy
+
 ## [v1.60.0] - 2021-04-04
 
 - #443 - @andrewsomething - apps: Support pagination.

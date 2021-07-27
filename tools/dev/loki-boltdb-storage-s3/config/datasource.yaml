@@ -1,0 +1,6 @@
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://query-frontend:8007

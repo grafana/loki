@@ -6,6 +6,9 @@ import (
 	"os"
 	"reflect"
 
+	// embed time zone data
+	_ "time/tzdata"
+
 	"k8s.io/klog"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -14,9 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
-
-	// embed time zone data
-	_ "time/tzdata"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail"
@@ -39,6 +39,7 @@ type Config struct {
 	dryRun          bool
 	configFile      string
 	configExpandEnv bool
+	inspect         bool
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -47,6 +48,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.logConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.BoolVar(&c.dryRun, "dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
+	f.BoolVar(&c.inspect, "inspect", false, "Allows for detailed inspection of pipeline stages")
 	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
 	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
@@ -83,6 +85,10 @@ func main() {
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)
+
+	if config.inspect {
+		stages.Inspect = true
+	}
 
 	// Set the global debug variable in the stages package which is used to conditionally log
 	// debug messages which otherwise cause huge allocations processing log lines for log messages never printed

@@ -74,7 +74,7 @@ func (l *logger) Chan() chan<- api.Entry {
 
 func (l *logger) run() {
 	for e := range l.entries {
-		fmt.Fprint(l.Writer, blue.Sprint(e.Timestamp.Format("2006-01-02T15:04:05-0700")))
+		fmt.Fprint(l.Writer, blue.Sprint(e.Timestamp.Format("2006-01-02T15:04:05.999999999-0700")))
 		fmt.Fprint(l.Writer, "\t")
 		fmt.Fprint(l.Writer, yellow.Sprint(e.Labels.String()))
 		fmt.Fprint(l.Writer, "\t")

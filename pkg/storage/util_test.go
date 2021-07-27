@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	loki_util "github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -98,15 +99,10 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		builder.Set(labels.MetricName, "logs")
 		lbs = builder.Labels()
 	}
-	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
+
+	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
 	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
 	for _, e := range stream.Entries {
-		if e.Timestamp.UnixNano() < from.UnixNano() {
-			from = model.TimeFromUnixNano(e.Timestamp.UnixNano())
-		}
-		if e.Timestamp.UnixNano() > through.UnixNano() {
-			through = model.TimeFromUnixNano(e.Timestamp.UnixNano())
-		}
 		_ = chk.Append(&e)
 	}
 	chk.Close()

@@ -800,13 +800,13 @@ func newServicePrincipalTokenFromMSI(msiEndpoint, resource, userAssignedID, iden
 	}
 	msiType, endpoint, err := getMSIType()
 	if err != nil {
-		logger.Instance.Writef(logger.LogError, "Error determining managed identity environment: %v", err)
+		logger.Instance.Writef(logger.LogError, "Error determining managed identity environment: %v\n", err)
 		return nil, err
 	}
-	logger.Instance.Writef(logger.LogInfo, "Managed identity environment is %s, endpoint is %s", msiType, endpoint)
+	logger.Instance.Writef(logger.LogInfo, "Managed identity environment is %s, endpoint is %s\n", msiType, endpoint)
 	if msiEndpoint != "" {
 		endpoint = msiEndpoint
-		logger.Instance.Writef(logger.LogInfo, "Managed identity custom endpoint is %s", endpoint)
+		logger.Instance.Writef(logger.LogInfo, "Managed identity custom endpoint is %s\n", endpoint)
 	}
 	msiEndpointURL, err := url.Parse(endpoint)
 	if err != nil {

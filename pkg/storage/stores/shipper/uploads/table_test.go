@@ -80,14 +80,27 @@ func TestLoadTable(t *testing.T) {
 		},
 	}, false)
 
+	// change a boltdb file to text file which would fail to open.
+	invalidFilePath := filepath.Join(tablePath, "invalid")
+	require.NoError(t, ioutil.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0666))
+
+	// verify that changed boltdb file can't be opened.
+	_, err = local.OpenBoltdbFile(invalidFilePath)
+	require.Error(t, err)
+
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient)
+	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
 	defer func() {
 		table.Stop()
 	}()
+
+	// verify that we still have 3 files(2 valid, 1 invalid)
+	filesInfo, err := ioutil.ReadDir(tablePath)
+	require.NoError(t, err)
+	require.Len(t, filesInfo, 3)
 
 	require.NoError(t, table.Snapshot())
 
@@ -269,7 +282,7 @@ func TestTable_Cleanup(t *testing.T) {
 	testutil.AddRecordsToDB(t, notUploaded, boltDBIndexClient, 20, 10)
 
 	// load existing dbs
-	table, err := LoadTable(indexPath, "test", storageClient, boltDBIndexClient)
+	table, err := LoadTable(indexPath, "test", storageClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.Len(t, table.dbs, 3)
 
@@ -347,8 +360,13 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 		},
 	}, false)
 
+	// create a boltdb file without bucket which should get removed
+	db, err := local.OpenBoltdbFile(filepath.Join(tablePath, "no-bucket"))
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
 	// try loading the dbs
-	dbs, err := loadBoltDBsFromDir(tablePath)
+	dbs, err := loadBoltDBsFromDir(tablePath, newMetrics(nil))
 	require.NoError(t, err)
 
 	// check that we have just 2 dbs
@@ -360,6 +378,10 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 	for _, boltdb := range dbs {
 		require.NoError(t, boltdb.Close())
 	}
+
+	filesInfo, err := ioutil.ReadDir(tablePath)
+	require.NoError(t, err)
+	require.Len(t, filesInfo, 2)
 }
 
 func TestTable_ImmutableUploads(t *testing.T) {
@@ -397,7 +419,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	// setup some dbs for a table at a path.
 	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, dbs, false)
 
-	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient)
+	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -478,7 +500,7 @@ func TestTable_MultiQueries(t *testing.T) {
 	}, false)
 
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient)
+	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 

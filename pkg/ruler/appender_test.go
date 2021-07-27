@@ -102,13 +102,7 @@ func TestQueueCapacityTenantOverride(t *testing.T) {
 	appendable := createBasicAppendable(queueCapacity)
 
 	overriddenCapacity := 999
-	overrides, err := validation.NewOverrides(validation.Limits{}, func(userID string) *validation.Limits {
-		return &validation.Limits{
-			RulerRemoteWriteQueueCapacity: overriddenCapacity,
-		}
-	})
-	require.Nil(t, err)
-	appendable.overrides = overrides
+	appendable.overrides = fakeLimits(overriddenCapacity)
 
 	appender := appendable.Appender(ctx).(*RemoteWriteAppender)
 	require.Equal(t, appender.queue.Capacity(), overriddenCapacity)

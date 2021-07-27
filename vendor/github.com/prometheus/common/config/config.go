@@ -16,7 +16,12 @@
 
 package config
 
-import "path/filepath"
+import (
+	"encoding/json"
+	"path/filepath"
+)
+
+const secretToken = "<secret>"
 
 // Secret special type for storing secrets.
 type Secret string
@@ -24,7 +29,7 @@ type Secret string
 // MarshalYAML implements the yaml.Marshaler interface for Secrets.
 func (s Secret) MarshalYAML() (interface{}, error) {
 	if s != "" {
-		return "<secret>", nil
+		return secretToken, nil
 	}
 	return nil, nil
 }
@@ -33,6 +38,14 @@ func (s Secret) MarshalYAML() (interface{}, error) {
 func (s *Secret) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain Secret
 	return unmarshal((*plain)(s))
+}
+
+// MarshalJSON implements the json.Marshaler interface for Secret.
+func (s Secret) MarshalJSON() ([]byte, error) {
+	if len(s) == 0 {
+		return json.Marshal("")
+	}
+	return json.Marshal(secretToken)
 }
 
 // DirectorySetter is a config type that contains file paths that may

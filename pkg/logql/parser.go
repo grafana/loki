@@ -138,7 +138,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	matcherExpr, ok := expr.(*matchersExpr)
+	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
 		return nil, errors.New("only label matchers is supported")
 	}
@@ -161,13 +161,13 @@ func ParseSampleExpr(input string) (SampleExpr, error) {
 
 func validateSampleExpr(expr SampleExpr) error {
 	switch e := expr.(type) {
-	case *binOpExpr:
+	case *BinOpExpr:
 		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}
 
 		return validateSampleExpr(e.RHS)
-	case *literalExpr:
+	case *LiteralExpr:
 		return nil
 	default:
 		return validateMatchers(expr.Selector().Matchers())

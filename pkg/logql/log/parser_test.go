@@ -39,6 +39,26 @@ func Test_jsonParser_Parse(t *testing.T) {
 			},
 		},
 		{
+			"escaped",
+			[]byte(`{"counter":1,"foo":"foo\\\"bar", "price": {"_net_":5.56909}}`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "counter", Value: "1"},
+				{Name: "price__net_", Value: "5.56909"},
+				{Name: "foo", Value: `foo\"bar`},
+			},
+		},
+		{
+			"utf8 error rune",
+			[]byte(`{"counter":1,"foo":"�", "price": {"_net_":5.56909}}`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "counter", Value: "1"},
+				{Name: "price__net_", Value: "5.56909"},
+				{Name: "foo", Value: ""},
+			},
+		},
+		{
 			"skip arrays",
 			[]byte(`{"counter":1, "price": {"net_":["10","20"]}}`),
 			labels.Labels{},
@@ -394,7 +414,7 @@ func Benchmark_Parser(b *testing.B) {
 		{Name: "stream", Value: "stdout"},
 	}
 
-	jsonLine := `{"proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
+	jsonLine := `{"invalid":"a\\xc5z","proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api-","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
 	logfmtLine := `level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`
 	nginxline := `10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1" 200 60755 "https://grafana.com/go/observabilitycon/grafana-the-open-and-composable-observability-platform/?tech=ggl-o&pg=oss-graf&plcmt=hero-txt" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15" "123.123.123.123, 35.35.122.223" "TLSv1.3"`
 	packedLike := `{"job":"123","pod":"someuid123","app":"foo","_entry":"10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1"}`
@@ -552,6 +572,15 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 		},
 		{
+			"utf8 error rune",
+			[]byte(`buzz=foo bar=�f`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "buzz", Value: "foo"},
+				{Name: "bar", Value: ""},
+			},
+		},
+		{
 			"key alone logfmt",
 			[]byte("buzz bar=foo"),
 			labels.Labels{
@@ -572,6 +601,50 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
 				{Name: "foobar", Value: "foo bar"},
+			},
+		},
+		{
+			"escaped control chars in logfmt",
+			[]byte(`foobar="foo\nbar\tbaz"`),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo\nbar\tbaz"},
+			},
+		},
+		{
+			"literal control chars in logfmt",
+			[]byte("foobar=\"foo\nbar\tbaz\""),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo\nbar\tbaz"},
+			},
+		},
+		{
+			"escaped slash logfmt",
+			[]byte(`foobar="foo ba\\r baz"`),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: `foo ba\r baz`},
+			},
+		},
+		{
+			"literal newline and escaped slash logfmt",
+			[]byte("foobar=\"foo bar\nb\\\\az\""),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo bar\nb\\az"},
 			},
 		},
 		{

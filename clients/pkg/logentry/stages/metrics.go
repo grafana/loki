@@ -48,7 +48,7 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 		return errors.New(ErrEmptyMetricsStageConfig)
 	}
 	for name, config := range cfg {
-		//If the source is not defined, default to the metric name
+		// If the source is not defined, default to the metric name
 		if config.Source == nil {
 			cp := cfg[name]
 			nm := name
@@ -201,7 +201,7 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 		counter.With(labels).Inc()
 	case metric.CounterAdd:
 		f, err := getFloat(v)
-		if err != nil || f < 0 {
+		if err != nil {
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			}
@@ -232,7 +232,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	switch gauge.Cfg.Action {
 	case metric.GaugeSet:
 		f, err := getFloat(v)
-		if err != nil || f < 0 {
+		if err != nil {
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			}
@@ -245,7 +245,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 		gauge.With(labels).Dec()
 	case metric.GaugeAdd:
 		f, err := getFloat(v)
-		if err != nil || f < 0 {
+		if err != nil {
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			}
@@ -254,7 +254,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 		gauge.With(labels).Add(f)
 	case metric.GaugeSub:
 		f, err := getFloat(v)
-		if err != nil || f < 0 {
+		if err != nil {
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			}
@@ -293,7 +293,6 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 
 // getFloat will take the provided value and return a float64 if possible
 func getFloat(unk interface{}) (float64, error) {
-
 	switch i := unk.(type) {
 	case float64:
 		return i, nil
