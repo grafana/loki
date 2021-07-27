@@ -3946,21 +3946,21 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
+              "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le, container))",
               "intervalFactor": 1,
-              "legendFormat": ".99-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: .99-{{method}}-{{name}}",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
+              "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le, container))",
               "hide": false,
-              "legendFormat": ".9-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: .9-{{method}}-{{name}}",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
+              "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le, container))",
               "hide": false,
-              "legendFormat": ".5-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: .5-{{method}}-{{name}}",
               "refId": "C"
             }
           ],
@@ -4049,9 +4049,9 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, method, name)",
+              "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, method, name, container)",
               "intervalFactor": 1,
-              "legendFormat": "{{status_code}}-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: {{status_code}}-{{method}}-{{name}}",
               "refId": "A"
             }
           ],
