@@ -7,7 +7,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/golang/snappy"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -34,7 +37,7 @@ func TestPrepare(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		queue.Append(TimeSeriesEntry{Labels: lbs, Sample: sample})
 	}
-	require.Nil(t, client.prepare(queue))
+	require.NoError(t, client.prepare(queue))
 
 	assert.Equal(t, len(client.labels), queue.Length())
 	assert.Equal(t, len(client.samples), queue.Length())
@@ -47,7 +50,7 @@ func TestPrepare(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		queue.Append(TimeSeriesEntry{Labels: lbs, Sample: sample})
 	}
-	require.Nil(t, client.prepare(queue))
+	require.NoError(t, client.prepare(queue))
 
 	assert.Equal(t, len(client.labels), queue.Length())
 	assert.Equal(t, len(client.samples), queue.Length())
@@ -60,7 +63,7 @@ func TestPrepare(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		queue.Append(TimeSeriesEntry{Labels: lbs, Sample: sample})
 	}
-	require.Nil(t, client.prepare(queue))
+	require.NoError(t, client.prepare(queue))
 
 	assert.Equal(t, len(client.labels), queue.Length())
 	assert.Equal(t, len(client.samples), queue.Length())
@@ -98,6 +101,85 @@ func TestPrepareRequest(t *testing.T) {
 	require.Equal(t, req.Timeseries[0].Labels[0].Name, lbs[0].Name)
 	require.Equal(t, req.Timeseries[0].Labels[0].Value, lbs[0].Value)
 	require.Equal(t, req.Timeseries[0].Samples[0], sample)
+}
+
+func TestRelabelling(t *testing.T) {
+	lbs := labels.FromStrings("cluster", "us-central1")
+
+	queue, err := util.NewEvictingQueue(1000, func() {})
+	require.Nil(t, err)
+
+	queue.Append(TimeSeriesEntry{Labels: lbs, Sample: cortexpb.Sample{
+		Value:       rand.Float64(),
+		TimestampMs: time.Now().Unix(),
+	}})
+
+	tests := []struct {
+		name           string
+		relabelConfigs []*relabel.Config
+		expectedLabels labels.Labels
+	}{
+		{
+			name: "add a label",
+			relabelConfigs: []*relabel.Config{
+				{
+					Replacement: "bar",
+					TargetLabel: "foo",
+				},
+			},
+			expectedLabels: append(lbs, labels.FromStrings("foo", "bar")...),
+		},
+		{
+			name: "remove a label",
+			relabelConfigs: []*relabel.Config{
+				{
+					SourceLabels: model.LabelNames{"cluster"},
+					Action:       relabel.LabelDrop,
+					Regex:        relabel.MustNewRegexp(".+"),
+				},
+			},
+			expectedLabels: labels.Labels{},
+		},
+		{
+			name:           "no relabel configs defined",
+			expectedLabels: lbs,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setting default fields, mimicking the behaviour in Prometheus
+			// see https://github.com/prometheus/prometheus/blob/main/pkg/relabel/relabel_test.go#L434
+			for _, cfg := range tt.relabelConfigs {
+				if cfg.Action == "" {
+					cfg.Action = relabel.DefaultRelabelConfig.Action
+				}
+				if cfg.Separator == "" {
+					cfg.Separator = relabel.DefaultRelabelConfig.Separator
+				}
+				if cfg.Regex.Regexp == nil {
+					cfg.Regex = relabel.DefaultRelabelConfig.Regex
+				}
+				if cfg.Replacement == "" {
+					cfg.Replacement = relabel.DefaultRelabelConfig.Replacement
+				}
+			}
+
+			client, err := NewRemoteWriter(Config{
+				RemoteWrite: RemoteWriteConfig{
+					Client: config.RemoteWriteConfig{
+						WriteRelabelConfigs: tt.relabelConfigs,
+					},
+					Enabled: true,
+				},
+			}, "fake")
+			assert.NoError(t, err)
+
+			writer := client.(*RemoteWriteClient)
+			require.NoError(t, writer.prepare(queue))
+
+			assert.Equal(t, tt.expectedLabels, writer.labels[0])
+		})
+	}
 }
 
 func createBasicAppender(t *testing.T) *RemoteWriteAppender {

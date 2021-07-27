@@ -67,6 +67,24 @@ var (
 			},
 		},
 	}
+	vector = promql.Vector{
+		{
+			Point: promql.Point{
+				T: toMs(testTime.Add(-4 * time.Hour)),
+				V: 0.013333333333333334,
+			},
+			Metric: []labels.Label{
+				{
+					Name:  "filename",
+					Value: `/var/hostlog/apport.log`,
+				},
+				{
+					Name:  "job",
+					Value: "varlogs",
+				},
+			},
+		},
+	}
 	streams = logqlmodel.Streams{
 		{
 			Entries: []logproto.Entry{
@@ -91,7 +109,6 @@ var (
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxSeries: math.MaxInt32}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -101,7 +118,7 @@ func TestMetricsTripperware(t *testing.T) {
 	lreq := &LokiRequest{
 		Query:     `rate({app="foo"} |= "foo"[1m])`,
 		Limit:     1000,
-		Step:      30000, //30sec
+		Step:      30000, // 30sec
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
@@ -155,7 +172,6 @@ func TestMetricsTripperware(t *testing.T) {
 }
 
 func TestLogFilterTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -182,7 +198,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	//testing limit
+	// testing limit
 	count, h := promqlResult(streams)
 	rt.setHandler(h)
 	_, err = tpw(rt).RoundTrip(req)
@@ -202,8 +218,45 @@ func TestLogFilterTripperware(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestSeriesTripperware(t *testing.T) {
+func TestInstantQueryTripperware(t *testing.T) {
+	testShardingConfig := testConfig
+	testShardingConfig.ShardedQueries = true
+	tpw, stopper, err := NewTripperware(testShardingConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 1*time.Second, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
 
+	lreq := &LokiInstantRequest{
+		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
+		Limit:     1000,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	count, h := promqlResult(vector)
+	rt.setHandler(h)
+	resp, err := tpw(rt).RoundTrip(req)
+	require.Equal(t, 1, *count)
+	require.NoError(t, err)
+
+	lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
+	require.IsType(t, &LokiPromResponse{}, lokiResponse)
+}
+
+func TestSeriesTripperware(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -245,7 +298,6 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -423,6 +475,10 @@ func TestPostQueries(t *testing.T) {
 			t.Error("unexpected labels roundtripper called")
 			return nil, nil
 		}),
+		queryrange.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected instant roundtripper called")
+			return nil, nil
+		}),
 		fakeLimits{},
 	).RoundTrip(req)
 	require.NoError(t, err)
@@ -495,6 +551,7 @@ type fakeLimits struct {
 	maxEntriesLimitPerQuery int
 	maxSeries               int
 	splits                  map[string]time.Duration
+	minShardingLookback     time.Duration
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -529,6 +586,10 @@ func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
 
 func (f fakeLimits) MaxQueryLookback(string) time.Duration {
 	return 0
+}
+
+func (f fakeLimits) MinShardingLookback(string) time.Duration {
+	return f.minShardingLookback
 }
 
 func counter() (*int, http.Handler) {

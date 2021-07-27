@@ -229,6 +229,7 @@ type DropletCreateRequest struct {
 	Volumes           []DropletCreateVolume `json:"volumes,omitempty"`
 	Tags              []string              `json:"tags"`
 	VPCUUID           string                `json:"vpc_uuid,omitempty"`
+	WithDropletAgent  *bool                 `json:"with_droplet_agent,omitempty"`
 }
 
 // DropletMultiCreateRequest is a request to create multiple Droplets.
@@ -245,6 +246,7 @@ type DropletMultiCreateRequest struct {
 	UserData          string                `json:"user_data,omitempty"`
 	Tags              []string              `json:"tags"`
 	VPCUUID           string                `json:"vpc_uuid,omitempty"`
+	WithDropletAgent  *bool                 `json:"with_droplet_agent,omitempty"`
 }
 
 func (d DropletCreateRequest) String() string {

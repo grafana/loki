@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 func TestParseRangeQuery(t *testing.T) {
@@ -185,6 +187,82 @@ func TestStreams_ToProto(t *testing.T) {
 			if got := tt.s.ToProto(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Streams.ToProto() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func Test_QueryResponseUnmarshal(t *testing.T) {
+	for _, tt := range []QueryResponse{
+		{
+			Status: "ok",
+			Data: QueryResponseData{
+				ResultType: "streams",
+				Result:     Streams{},
+				Statistics: stats.Result{},
+			},
+		},
+		{
+			Status: "ok",
+			Data: QueryResponseData{
+				ResultType: "streams",
+				Result: Streams{
+					Stream{
+						Labels: LabelSet{"foo": "bar"},
+						Entries: []Entry{
+							{Timestamp: time.Unix(0, 1), Line: "1"},
+							{Timestamp: time.Unix(0, 2), Line: "2"},
+						},
+					},
+				},
+				Statistics: stats.Result{
+					Summary: stats.Summary{
+						BytesProcessedPerSecond: 1238,
+					},
+				},
+			},
+		},
+		{
+			Status: "ok",
+			Data: QueryResponseData{
+				ResultType: "streams",
+				Result: Streams{
+					Stream{
+						Labels: LabelSet{"foo": "bar"},
+						Entries: []Entry{
+							{Timestamp: time.Unix(0, 1), Line: "log line 1"},
+							{Timestamp: time.Unix(0, 2), Line: "some log line 2"},
+						},
+					},
+					Stream{
+						Labels: LabelSet{"bar": "buzz", "level": "err", "foo": "bar"},
+						Entries: []Entry{
+							{Timestamp: time.Unix(0, 1), Line: "1"},
+							{Timestamp: time.Unix(0, 2), Line: "2"},
+							{Timestamp: time.Unix(0, 2), Line: "2"},
+							{Timestamp: time.Unix(0, 2), Line: "2"},
+							{Timestamp: time.Unix(0, 2), Line: "2"},
+						},
+					},
+				},
+				Statistics: stats.Result{
+					Summary: stats.Summary{
+						BytesProcessedPerSecond: 1238,
+					},
+					Store: stats.Store{
+						TotalChunksRef: 1234123123,
+					},
+				},
+			},
+		},
+	} {
+		tt := tt
+		t.Run("", func(t *testing.T) {
+			b, err := jsoniter.Marshal(tt)
+			require.Nil(t, err)
+			var actual QueryResponse
+			err = actual.UnmarshalJSON(b)
+			require.Nil(t, err)
+			require.Equal(t, tt, actual)
 		})
 	}
 }

@@ -109,8 +109,11 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 			if data, ok := ctxValue.(*queryData); ok {
 				data.recorded = true
 				data.statistics = statistics
-				data.params = paramsFromRequest(req)
 				data.result = res
+				data.params, err = paramsFromRequest(req)
+				if err != nil {
+					return nil, err
+				}
 			}
 			return resp, err
 		})

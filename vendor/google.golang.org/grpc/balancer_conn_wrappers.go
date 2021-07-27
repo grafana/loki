@@ -205,7 +205,7 @@ func (acbw *acBalancerWrapper) UpdateAddresses(addrs []resolver.Address) {
 	acbw.mu.Lock()
 	defer acbw.mu.Unlock()
 	if len(addrs) <= 0 {
-		acbw.ac.tearDown(errConnDrain)
+		acbw.ac.cc.removeAddrConn(acbw.ac, errConnDrain)
 		return
 	}
 	if !acbw.ac.tryUpdateAddrs(addrs) {
@@ -220,7 +220,7 @@ func (acbw *acBalancerWrapper) UpdateAddresses(addrs []resolver.Address) {
 		acbw.ac.acbw = nil
 		acbw.ac.mu.Unlock()
 		acState := acbw.ac.getState()
-		acbw.ac.tearDown(errConnDrain)
+		acbw.ac.cc.removeAddrConn(acbw.ac, errConnDrain)
 
 		if acState == connectivity.Shutdown {
 			return

@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
@@ -34,6 +35,22 @@ const (
 type QueryResponse struct {
 	Status string            `json:"status"`
 	Data   QueryResponseData `json:"data"`
+}
+
+func (q *QueryResponse) UnmarshalJSON(data []byte) error {
+	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+		switch string(key) {
+		case "status":
+			q.Status = string(value)
+		case "data":
+			var responseData QueryResponseData
+			if err := responseData.UnmarshalJSON(value); err != nil {
+				return err
+			}
+			q.Data = responseData
+		}
+		return nil
+	})
 }
 
 // PushRequest models a log stream push
@@ -79,6 +96,22 @@ func (Matrix) Type() ResultType { return ResultTypeMatrix }
 // Streams is a slice of Stream
 type Streams []Stream
 
+func (ss *Streams) UnmarshalJSON(data []byte) error {
+	var parseError error
+	_, err := jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+		var stream Stream
+		if err := stream.UnmarshalJSON(value); err != nil {
+			parseError = err
+			return
+		}
+		*ss = append(*ss, stream)
+	})
+	if parseError != nil {
+		return parseError
+	}
+	return err
+}
+
 func (s Streams) ToProto() []logproto.Stream {
 	if len(s) == 0 {
 		return nil
@@ -97,52 +130,90 @@ type Stream struct {
 	Entries []Entry  `json:"values"`
 }
 
+func (s *Stream) UnmarshalJSON(data []byte) error {
+	if s.Labels == nil {
+		s.Labels = LabelSet{}
+	}
+	if len(s.Entries) > 0 {
+		s.Entries = s.Entries[:0]
+	}
+	return jsonparser.ObjectEach(data, func(key, value []byte, ty jsonparser.ValueType, _ int) error {
+		switch string(key) {
+		case "stream":
+			if err := s.Labels.UnmarshalJSON(value); err != nil {
+				return err
+			}
+		case "values":
+			if ty == jsonparser.Null {
+				return nil
+			}
+			var parseError error
+			_, err := jsonparser.ArrayEach(value, func(value []byte, ty jsonparser.ValueType, _ int, _ error) {
+				if ty == jsonparser.Null {
+					return
+				}
+				var entry Entry
+				if err := entry.UnmarshalJSON(value); err != nil {
+					parseError = err
+					return
+				}
+				s.Entries = append(s.Entries, entry)
+			})
+			if parseError != nil {
+				return parseError
+			}
+			return err
+		}
+		return nil
+	})
+}
+
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
-	unmarshal := struct {
-		Type       ResultType      `json:"resultType"`
-		Result     json.RawMessage `json:"result"`
-		Statistics stats.Result    `json:"stats"`
-	}{}
-
-	err := json.Unmarshal(data, &unmarshal)
+	resultType, err := jsonparser.GetString(data, "resultType")
 	if err != nil {
 		return err
 	}
+	q.ResultType = ResultType(resultType)
 
-	var value ResultValue
-
-	// unmarshal results
-	switch unmarshal.Type {
-	case ResultTypeStream:
-		var s Streams
-		err = json.Unmarshal(unmarshal.Result, &s)
-		value = s
-	case ResultTypeMatrix:
-		var m Matrix
-		err = json.Unmarshal(unmarshal.Result, &m)
-		value = m
-	case ResultTypeVector:
-		var v Vector
-		err = json.Unmarshal(unmarshal.Result, &v)
-		value = v
-	case ResultTypeScalar:
-		var v Scalar
-		err = json.Unmarshal(unmarshal.Result, &v)
-		value = v
-	default:
-		return fmt.Errorf("unknown type: %s", unmarshal.Type)
-	}
-
-	if err != nil {
-		return err
-	}
-
-	q.ResultType = unmarshal.Type
-	q.Result = value
-	q.Statistics = unmarshal.Statistics
-
-	return nil
+	return jsonparser.ObjectEach(data, func(key, value []byte, dataType jsonparser.ValueType, _ int) error {
+		switch string(key) {
+		case "result":
+			switch q.ResultType {
+			case ResultTypeStream:
+				ss := Streams{}
+				if err := ss.UnmarshalJSON(value); err != nil {
+					return err
+				}
+				q.Result = ss
+			case ResultTypeMatrix:
+				var m Matrix
+				if err = json.Unmarshal(value, &m); err != nil {
+					return err
+				}
+				q.Result = m
+			case ResultTypeVector:
+				var v Vector
+				if err = json.Unmarshal(value, &v); err != nil {
+					return err
+				}
+				q.Result = v
+			case ResultTypeScalar:
+				var v Scalar
+				if err = json.Unmarshal(value, &v); err != nil {
+					return err
+				}
+				q.Result = v
+			default:
+				return fmt.Errorf("unknown type: %s", q.ResultType)
+			}
+		case "stats":
+			if err := json.Unmarshal(value, &q.Statistics); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // Scalar is a single timestamp/float with no labels
@@ -173,6 +244,7 @@ type InstantQuery struct {
 	Ts        time.Time
 	Limit     uint32
 	Direction logproto.Direction
+	Shards    []string
 }
 
 // ParseInstantQuery parses an InstantQuery request from an http request.
@@ -190,6 +262,7 @@ func ParseInstantQuery(r *http.Request) (*InstantQuery, error) {
 	if err != nil {
 		return nil, err
 	}
+	request.Shards = shards(r)
 
 	request.Direction, err = direction(r)
 	if err != nil {

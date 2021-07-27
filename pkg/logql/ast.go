@@ -261,14 +261,24 @@ type LineFilterExpr struct {
 	left  *LineFilterExpr
 	ty    labels.MatchType
 	match string
+	op    string
 	implicit
 }
 
-func newLineFilterExpr(left *LineFilterExpr, ty labels.MatchType, match string) *LineFilterExpr {
+func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 	return &LineFilterExpr{
-		left:  left,
 		ty:    ty,
 		match: match,
+		op:    op,
+	}
+}
+
+func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	return &LineFilterExpr{
+		left:  left,
+		ty:    right.ty,
+		match: right.match,
+		op:    right.op,
 	}
 }
 
@@ -281,8 +291,8 @@ func (e *LineFilterExpr) Walk(f WalkFn) {
 }
 
 // AddFilterExpr adds a filter expression to a logselector expression.
-func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, match string) (LogSelectorExpr, error) {
-	filter := newLineFilterExpr(nil, ty, match)
+func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) (LogSelectorExpr, error) {
+	filter := newLineFilterExpr(ty, op, match)
 	switch e := expr.(type) {
 	case *MatchersExpr:
 		return newPipelineExpr(e, MultiStageExpr{filter}), nil
@@ -313,15 +323,35 @@ func (e *LineFilterExpr) String() string {
 		sb.WriteString("!=")
 	}
 	sb.WriteString(" ")
+	if e.op == "" {
+		sb.WriteString(strconv.Quote(e.match))
+		return sb.String()
+	}
+	sb.WriteString(e.op)
+	sb.WriteString("(")
 	sb.WriteString(strconv.Quote(e.match))
+	sb.WriteString(")")
 	return sb.String()
 }
 
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
-	f, err := log.NewFilter(e.match, e.ty)
-	if err != nil {
-		return nil, err
+	var f log.Filterer
+
+	switch e.op {
+	case OpFilterIP:
+		var err error
+		f, err = log.NewIPLineFilter(e.match, e.ty)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		var err error // to avoid `f` being shadowed.
+		f, err = log.NewFilter(e.match, e.ty)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	if e.left != nil {
 		nextFilter, err := e.left.Filter()
 		if err != nil {
@@ -394,11 +424,21 @@ type LabelFilterExpr struct {
 	implicit
 }
 
+func newLabelFilterExpr(filterer log.LabelFilterer) *LabelFilterExpr {
+	return &LabelFilterExpr{
+		LabelFilterer: filterer,
+	}
+}
+
 func (e *LabelFilterExpr) Shardable() bool { return true }
 
 func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
 
 func (e *LabelFilterExpr) Stage() (log.Stage, error) {
+	switch ip := e.LabelFilterer.(type) {
+	case *log.IPLabelFilter:
+		return ip, ip.PatternError()
+	}
 	return e.LabelFilterer, nil
 }
 
@@ -678,6 +718,9 @@ const (
 	OpConvDurationSeconds = "duration_seconds"
 
 	OpLabelReplace = "label_replace"
+
+	// function filters
+	OpFilterIP = "ip"
 )
 
 func IsComparisonOperator(op string) bool {

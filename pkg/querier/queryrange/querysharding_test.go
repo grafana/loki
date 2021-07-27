@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
@@ -99,21 +100,27 @@ func Test_shardSplitter(t *testing.T) {
 			lookback:    end.Sub(start) + 1, // the entire query is in the ingester range and should avoid sharding.
 			shouldShard: false,
 		},
+		{
+			desc:        "default",
+			lookback:    0,
+			shouldShard: true,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			var didShard bool
-
 			splitter := &shardSplitter{
 				shardingware: queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
 					didShard = true
 					return mockHandler(lokiResps[0], nil).Do(ctx, req)
 				}),
-				next:                mockHandler(lokiResps[1], nil),
-				now:                 func() time.Time { return end },
-				MinShardingLookback: tc.lookback,
+				next: mockHandler(lokiResps[1], nil),
+				now:  func() time.Time { return end },
+				limits: fakeLimits{
+					minShardingLookback: tc.lookback,
+				},
 			}
 
-			resp, err := splitter.Do(context.Background(), req)
+			resp, err := splitter.Do(user.InjectOrgID(context.Background(), "1"), req)
 			require.Nil(t, err)
 
 			require.Equal(t, tc.shouldShard, didShard)
@@ -232,6 +239,70 @@ func mockHandler(resp queryrange.Response, err error) queryrange.Handler {
 
 		return resp, err
 	})
+}
+
+func Test_InstantSharding(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	var lock sync.Mutex
+	called := 0
+	shards := []string{}
+
+	sharding := NewQueryShardMiddleware(log.NewNopLogger(), queryrange.ShardingConfigs{
+		chunk.PeriodConfig{
+			RowShards: 3,
+		},
+	}, queryrange.NewInstrumentMiddlewareMetrics(nil),
+		nilShardingMetrics,
+		fakeLimits{
+			maxSeries:           math.MaxInt32,
+			maxQueryParallelism: 10,
+		})
+	response, err := sharding.Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		called++
+		shards = append(shards, r.(*LokiInstantRequest).Shards...)
+		return &LokiPromResponse{Response: &queryrange.PrometheusResponse{
+			Data: queryrange.PrometheusData{
+				ResultType: loghttp.ResultTypeVector,
+				Result: []queryrange.SampleStream{
+					{
+						Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+						Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+					},
+				},
+			},
+		}}, nil
+	})).Do(ctx, &LokiInstantRequest{
+		Query:  `rate({app="foo"}[1m])`,
+		TimeTs: util.TimeFromMillis(10),
+		Path:   "/v1/query",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
+	require.Len(t, response.(*LokiPromResponse).Response.Data.Result, 3)
+	require.ElementsMatch(t, []string{"0_of_3", "1_of_3", "2_of_3"}, shards)
+	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
+		Status: "success",
+		Data: queryrange.PrometheusData{
+			ResultType: loghttp.ResultTypeVector,
+			Result: []queryrange.SampleStream{
+				{
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				},
+				{
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				},
+				{
+					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+				},
+			},
+		},
+	}}, response)
 }
 
 func Test_SeriesShardingHandler(t *testing.T) {
