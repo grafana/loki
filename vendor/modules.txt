@@ -10,6 +10,7 @@ cloud.google.com/go/internal/version
 cloud.google.com/go/longrunning
 cloud.google.com/go/longrunning/autogen
 # cloud.google.com/go/bigtable v1.3.0
+## explicit
 cloud.google.com/go/bigtable
 cloud.google.com/go/bigtable/bttest
 cloud.google.com/go/bigtable/internal/option
@@ -20,14 +21,17 @@ cloud.google.com/go/pubsub/apiv1
 cloud.google.com/go/pubsub/internal/distribution
 cloud.google.com/go/pubsub/pstest
 # cloud.google.com/go/storage v1.10.0
+## explicit
 cloud.google.com/go/storage
 # github.com/Azure/azure-pipeline-go v0.2.2
+## explicit
 github.com/Azure/azure-pipeline-go/pipeline
 # github.com/Azure/azure-sdk-for-go v55.2.0+incompatible => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-10-01/network
 github.com/Azure/azure-sdk-for-go/version
 # github.com/Azure/azure-storage-blob-go v0.8.0
+## explicit
 github.com/Azure/azure-storage-blob-go/azblob
 # github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
 github.com/Azure/go-ansiterm
@@ -77,6 +81,13 @@ github.com/alecthomas/template
 github.com/alecthomas/template/parse
 # github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15
 github.com/alecthomas/units
+# github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a
+github.com/alicebob/gopher-json
+# github.com/alicebob/miniredis/v2 v2.14.3
+## explicit
+github.com/alicebob/miniredis/v2
+github.com/alicebob/miniredis/v2/geohash
+github.com/alicebob/miniredis/v2/server
 # github.com/armon/go-metrics v0.3.6
 github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
@@ -90,6 +101,7 @@ github.com/aws/aws-lambda-go/lambda/handlertrace
 github.com/aws/aws-lambda-go/lambda/messages
 github.com/aws/aws-lambda-go/lambdacontext
 # github.com/aws/aws-sdk-go v1.38.60
+## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
@@ -152,6 +164,7 @@ github.com/beorn7/perks/quantile
 ## explicit
 github.com/bmatcuk/doublestar
 # github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+## explicit
 github.com/bradfitz/gomemcache/memcache
 # github.com/buger/jsonparser v1.1.1
 ## explicit
@@ -162,6 +175,7 @@ github.com/c2h5oh/datasize
 # github.com/cenkalti/backoff/v4 v4.1.0
 github.com/cenkalti/backoff/v4
 # github.com/cespare/xxhash v1.1.0
+## explicit
 github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.1.1
 ## explicit
@@ -374,6 +388,7 @@ github.com/dustin/go-humanize
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
+## explicit
 github.com/facette/natsort
 # github.com/fatih/color v1.9.0
 ## explicit
@@ -391,6 +406,7 @@ github.com/form3tech-oss/jwt-go
 # github.com/fsnotify/fsnotify v1.4.9
 github.com/fsnotify/fsnotify
 # github.com/fsouza/fake-gcs-server v1.7.0
+## explicit
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
 # github.com/go-kit/kit v0.10.0
@@ -434,6 +450,7 @@ github.com/go-openapi/swag
 # github.com/go-openapi/validate v0.20.2
 github.com/go-openapi/validate
 # github.com/go-redis/redis/v8 v8.9.0
+## explicit
 github.com/go-redis/redis/v8
 github.com/go-redis/redis/v8/internal
 github.com/go-redis/redis/v8/internal/hashtag
@@ -447,6 +464,7 @@ github.com/go-stack/stack
 # github.com/go-zookeeper/zk v1.0.2
 github.com/go-zookeeper/zk
 # github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7 => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
+## explicit
 github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
 github.com/gocql/gocql/internal/murmur
@@ -481,6 +499,7 @@ github.com/golang-migrate/migrate/v4/source/file
 github.com/golang/groupcache/lru
 github.com/golang/groupcache/singleflight
 # github.com/golang/protobuf v1.5.2
+## explicit
 github.com/golang/protobuf/descriptor
 github.com/golang/protobuf/internal/gengogrpc
 github.com/golang/protobuf/jsonpb
@@ -676,6 +695,7 @@ github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.0
 github.com/minio/md5-simd
 # github.com/minio/minio-go/v7 v7.0.10
+## explicit
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/credentials
 github.com/minio/minio-go/v7/pkg/encrypt
@@ -712,10 +732,12 @@ github.com/morikuni/aec
 ## explicit
 github.com/mwitkow/go-conntrack
 # github.com/ncw/swift v1.0.52
+## explicit
 github.com/ncw/swift
 # github.com/oklog/run v1.1.0
 github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
+## explicit
 github.com/oklog/ulid
 # github.com/opencontainers/go-digest v1.0.0
 github.com/opencontainers/go-digest
@@ -723,6 +745,7 @@ github.com/opencontainers/go-digest
 github.com/opencontainers/image-spec/specs-go
 github.com/opencontainers/image-spec/specs-go/v1
 # github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
+## explicit
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v1.0.0
 github.com/opentracing-contrib/go-stdlib/nethttp
@@ -896,6 +919,7 @@ github.com/sirupsen/logrus
 # github.com/soheilhy/cmux v0.1.5-0.20210205191134-5ec6847320e5
 github.com/soheilhy/cmux
 # github.com/sony/gobreaker v0.4.1
+## explicit
 github.com/sony/gobreaker
 # github.com/spf13/afero v1.2.2
 ## explicit
@@ -913,6 +937,7 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 # github.com/thanos-io/thanos v0.19.1-0.20210427154226-d5bd651319d2
+## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -985,7 +1010,7 @@ github.com/uber/jaeger-lib/metrics/prometheus
 ## explicit
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
-# github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
+# github.com/weaveworks/common v0.0.0-20210506120931-f2676019da11
 ## explicit
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
@@ -998,12 +1023,18 @@ github.com/weaveworks/common/middleware
 github.com/weaveworks/common/mtime
 github.com/weaveworks/common/server
 github.com/weaveworks/common/signals
+github.com/weaveworks/common/test
 github.com/weaveworks/common/tracing
 github.com/weaveworks/common/user
 # github.com/weaveworks/promrus v1.2.0
 github.com/weaveworks/promrus
 # github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
 github.com/xiang90/probing
+# github.com/yuin/gopher-lua v0.0.0-20200816102855-ee81675732da
+github.com/yuin/gopher-lua
+github.com/yuin/gopher-lua/ast
+github.com/yuin/gopher-lua/parse
+github.com/yuin/gopher-lua/pm
 # go.etcd.io/bbolt v1.3.5
 ## explicit
 go.etcd.io/bbolt
@@ -1204,6 +1235,7 @@ golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+## explicit
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1
@@ -1225,6 +1257,7 @@ golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
 # golang.org/x/time v0.0.0-20210611083556-38a9dc6acbc6
+## explicit
 golang.org/x/time/rate
 # golang.org/x/tools v0.1.3
 golang.org/x/tools/cmd/goimports

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 var (
@@ -148,7 +148,7 @@ func Test_astMapper(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		queryrange.ShardingConfigs{
+		ShardingConfigs{
 			chunk.PeriodConfig{
 				RowShards: 2,
 			},
@@ -177,7 +177,7 @@ func Test_ShardingByPass(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		queryrange.ShardingConfigs{
+		ShardingConfigs{
 			chunk.PeriodConfig{
 				RowShards: 2,
 			},
@@ -195,23 +195,23 @@ func Test_ShardingByPass(t *testing.T) {
 
 func Test_hasShards(t *testing.T) {
 	for i, tc := range []struct {
-		input    queryrange.ShardingConfigs
+		input    ShardingConfigs
 		expected bool
 	}{
 		{
-			input: queryrange.ShardingConfigs{
+			input: ShardingConfigs{
 				{},
 			},
 			expected: false,
 		},
 		{
-			input: queryrange.ShardingConfigs{
+			input: ShardingConfigs{
 				{RowShards: 16},
 			},
 			expected: true,
 		},
 		{
-			input: queryrange.ShardingConfigs{
+			input: ShardingConfigs{
 				{},
 				{RowShards: 16},
 				{},
@@ -248,7 +248,7 @@ func Test_InstantSharding(t *testing.T) {
 	called := 0
 	shards := []string{}
 
-	sharding := NewQueryShardMiddleware(log.NewNopLogger(), queryrange.ShardingConfigs{
+	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		chunk.PeriodConfig{
 			RowShards: 3,
 		},
@@ -306,7 +306,7 @@ func Test_InstantSharding(t *testing.T) {
 }
 
 func Test_SeriesShardingHandler(t *testing.T) {
-	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), queryrange.ShardingConfigs{
+	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		chunk.PeriodConfig{
 			RowShards: 3,
 		},

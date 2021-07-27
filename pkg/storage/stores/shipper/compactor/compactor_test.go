@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -94,7 +94,6 @@ func TestExtractIntervalFromTableName(t *testing.T) {
 			require.Equal(t, tc.expectedInterval, extractIntervalFromTableName(tc.tableName))
 		})
 	}
-
 }
 
 func TestCompactor_RunCompaction(t *testing.T) {

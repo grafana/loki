@@ -16,6 +16,7 @@ import (
 	stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 	time "time"
@@ -31,7 +32,7 @@ var _ = time.Kitchen
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type LokiRequest struct {
 	Query     string             `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
@@ -57,7 +58,7 @@ func (m *LokiRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return xxx_messageInfo_LokiRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +155,7 @@ func (m *LokiInstantRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return xxx_messageInfo_LokiInstantRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -240,7 +241,7 @@ func (m *LokiResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_LokiResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -336,7 +337,7 @@ func (m *LokiSeriesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return xxx_messageInfo_LokiSeriesRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -410,7 +411,7 @@ func (m *LokiSeriesResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return xxx_messageInfo_LokiSeriesResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -469,7 +470,7 @@ func (m *LokiLabelNamesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byt
 		return xxx_messageInfo_LokiLabelNamesRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -529,7 +530,7 @@ func (m *LokiLabelNamesResponse) XXX_Marshal(b []byte, deterministic bool) ([]by
 		return xxx_messageInfo_LokiLabelNamesResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -587,7 +588,7 @@ func (m *LokiData) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_LokiData.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -632,7 +633,7 @@ func (m *LokiPromResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return xxx_messageInfo_LokiPromResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1254,7 +1255,7 @@ func valueToGoStringQueryrange(v interface{}, typ string) string {
 func (m *LokiRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1262,75 +1263,76 @@ func (m *LokiRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Query) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Query)))
-		i += copy(dAtA[i:], m.Query)
-	}
-	if m.Limit != 0 {
-		dAtA[i] = 0x10
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Limit))
-	}
-	if m.Step != 0 {
-		dAtA[i] = 0x18
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Step))
-	}
-	dAtA[i] = 0x22
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs)))
-	n1, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTs, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n1
-	dAtA[i] = 0x2a
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs)))
-	n2, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTs, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n2
-	if m.Direction != 0 {
-		dAtA[i] = 0x30
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Direction))
-	}
-	if len(m.Path) > 0 {
-		dAtA[i] = 0x3a
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
-		i += copy(dAtA[i:], m.Path)
-	}
 	if len(m.Shards) > 0 {
-		for _, s := range m.Shards {
+		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Shards[iNdEx])
+			copy(dAtA[i:], m.Shards[iNdEx])
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Shards[iNdEx])))
+			i--
 			dAtA[i] = 0x42
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	if len(m.Path) > 0 {
+		i -= len(m.Path)
+		copy(dAtA[i:], m.Path)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
+		i--
+		dAtA[i] = 0x3a
+	}
+	if m.Direction != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Direction))
+		i--
+		dAtA[i] = 0x30
+	}
+	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs):])
+	if err1 != nil {
+		return 0, err1
+	}
+	i -= n1
+	i = encodeVarintQueryrange(dAtA, i, uint64(n1))
+	i--
+	dAtA[i] = 0x2a
+	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs):])
+	if err2 != nil {
+		return 0, err2
+	}
+	i -= n2
+	i = encodeVarintQueryrange(dAtA, i, uint64(n2))
+	i--
+	dAtA[i] = 0x22
+	if m.Step != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Step))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Limit != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Query) > 0 {
+		i -= len(m.Query)
+		copy(dAtA[i:], m.Query)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiInstantRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1338,62 +1340,63 @@ func (m *LokiInstantRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiInstantRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiInstantRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Query) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Query)))
-		i += copy(dAtA[i:], m.Query)
-	}
-	if m.Limit != 0 {
-		dAtA[i] = 0x10
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Limit))
-	}
-	dAtA[i] = 0x1a
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.TimeTs)))
-	n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.TimeTs, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n3
-	if m.Direction != 0 {
-		dAtA[i] = 0x20
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Direction))
-	}
-	if len(m.Path) > 0 {
-		dAtA[i] = 0x2a
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
-		i += copy(dAtA[i:], m.Path)
-	}
 	if len(m.Shards) > 0 {
-		for _, s := range m.Shards {
+		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Shards[iNdEx])
+			copy(dAtA[i:], m.Shards[iNdEx])
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Shards[iNdEx])))
+			i--
 			dAtA[i] = 0x32
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	if len(m.Path) > 0 {
+		i -= len(m.Path)
+		copy(dAtA[i:], m.Path)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if m.Direction != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Direction))
+		i--
+		dAtA[i] = 0x20
+	}
+	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.TimeTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.TimeTs):])
+	if err3 != nil {
+		return 0, err3
+	}
+	i -= n3
+	i = encodeVarintQueryrange(dAtA, i, uint64(n3))
+	i--
+	dAtA[i] = 0x1a
+	if m.Limit != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Query) > 0 {
+		i -= len(m.Query)
+		copy(dAtA[i:], m.Query)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1401,78 +1404,92 @@ func (m *LokiResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Status) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
-		i += copy(dAtA[i:], m.Status)
-	}
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(m.Data.Size()))
-	n4, err := m.Data.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n4
-	if len(m.ErrorType) > 0 {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ErrorType)))
-		i += copy(dAtA[i:], m.ErrorType)
-	}
-	if len(m.Error) > 0 {
-		dAtA[i] = 0x22
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Error)))
-		i += copy(dAtA[i:], m.Error)
-	}
-	if m.Direction != 0 {
-		dAtA[i] = 0x28
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Direction))
-	}
-	if m.Limit != 0 {
-		dAtA[i] = 0x30
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Limit))
-	}
-	if m.Version != 0 {
-		dAtA[i] = 0x38
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Version))
-	}
-	dAtA[i] = 0x42
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(m.Statistics.Size()))
-	n5, err := m.Statistics.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n5
 	if len(m.Headers) > 0 {
-		for _, msg := range m.Headers {
-			dAtA[i] = 0x4a
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Headers) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Headers[iNdEx].Size()
+				i -= size
+				if _, err := m.Headers[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x4a
 		}
 	}
-	return i, nil
+	{
+		size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintQueryrange(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x42
+	if m.Version != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Version))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.Limit != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.Direction != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Direction))
+		i--
+		dAtA[i] = 0x28
+	}
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.ErrorType) > 0 {
+		i -= len(m.ErrorType)
+		copy(dAtA[i:], m.ErrorType)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ErrorType)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	{
+		size, err := m.Data.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintQueryrange(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x12
+	if len(m.Status) > 0 {
+		i -= len(m.Status)
+		copy(dAtA[i:], m.Status)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiSeriesRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1480,69 +1497,63 @@ func (m *LokiSeriesRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiSeriesRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiSeriesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Match) > 0 {
-		for _, s := range m.Match {
-			dAtA[i] = 0xa
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
-		}
-	}
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs)))
-	n6, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTs, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n6
-	dAtA[i] = 0x1a
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs)))
-	n7, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTs, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n7
-	if len(m.Path) > 0 {
-		dAtA[i] = 0x22
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
-		i += copy(dAtA[i:], m.Path)
-	}
 	if len(m.Shards) > 0 {
-		for _, s := range m.Shards {
+		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Shards[iNdEx])
+			copy(dAtA[i:], m.Shards[iNdEx])
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Shards[iNdEx])))
+			i--
 			dAtA[i] = 0x2a
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	if len(m.Path) > 0 {
+		i -= len(m.Path)
+		copy(dAtA[i:], m.Path)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
+		i--
+		dAtA[i] = 0x22
+	}
+	n6, err6 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs):])
+	if err6 != nil {
+		return 0, err6
+	}
+	i -= n6
+	i = encodeVarintQueryrange(dAtA, i, uint64(n6))
+	i--
+	dAtA[i] = 0x1a
+	n7, err7 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs):])
+	if err7 != nil {
+		return 0, err7
+	}
+	i -= n7
+	i = encodeVarintQueryrange(dAtA, i, uint64(n7))
+	i--
+	dAtA[i] = 0x12
+	if len(m.Match) > 0 {
+		for iNdEx := len(m.Match) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Match[iNdEx])
+			copy(dAtA[i:], m.Match[iNdEx])
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Match[iNdEx])))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiSeriesResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1550,52 +1561,62 @@ func (m *LokiSeriesResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiSeriesResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiSeriesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Status) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
-		i += copy(dAtA[i:], m.Status)
-	}
-	if len(m.Data) > 0 {
-		for _, msg := range m.Data {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+	if len(m.Headers) > 0 {
+		for iNdEx := len(m.Headers) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Headers[iNdEx].Size()
+				i -= size
+				if _, err := m.Headers[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x22
 		}
 	}
 	if m.Version != 0 {
-		dAtA[i] = 0x18
-		i++
 		i = encodeVarintQueryrange(dAtA, i, uint64(m.Version))
+		i--
+		dAtA[i] = 0x18
 	}
-	if len(m.Headers) > 0 {
-		for _, msg := range m.Headers {
-			dAtA[i] = 0x22
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+	if len(m.Data) > 0 {
+		for iNdEx := len(m.Data) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Data[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.Status) > 0 {
+		i -= len(m.Status)
+		copy(dAtA[i:], m.Status)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiLabelNamesRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1603,39 +1624,45 @@ func (m *LokiLabelNamesRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiLabelNamesRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiLabelNamesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs)))
-	n8, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTs, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n8
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs)))
-	n9, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTs, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n9
 	if len(m.Path) > 0 {
-		dAtA[i] = 0x1a
-		i++
+		i -= len(m.Path)
+		copy(dAtA[i:], m.Path)
 		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
-		i += copy(dAtA[i:], m.Path)
+		i--
+		dAtA[i] = 0x1a
 	}
-	return i, nil
+	n8, err8 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTs):])
+	if err8 != nil {
+		return 0, err8
+	}
+	i -= n8
+	i = encodeVarintQueryrange(dAtA, i, uint64(n8))
+	i--
+	dAtA[i] = 0x12
+	n9, err9 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTs):])
+	if err9 != nil {
+		return 0, err9
+	}
+	i -= n9
+	i = encodeVarintQueryrange(dAtA, i, uint64(n9))
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiLabelNamesResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1643,55 +1670,57 @@ func (m *LokiLabelNamesResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiLabelNamesResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiLabelNamesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Status) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
-		i += copy(dAtA[i:], m.Status)
-	}
-	if len(m.Data) > 0 {
-		for _, s := range m.Data {
-			dAtA[i] = 0x12
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
+	if len(m.Headers) > 0 {
+		for iNdEx := len(m.Headers) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Headers[iNdEx].Size()
+				i -= size
+				if _, err := m.Headers[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
+			i--
+			dAtA[i] = 0x22
 		}
 	}
 	if m.Version != 0 {
-		dAtA[i] = 0x18
-		i++
 		i = encodeVarintQueryrange(dAtA, i, uint64(m.Version))
+		i--
+		dAtA[i] = 0x18
 	}
-	if len(m.Headers) > 0 {
-		for _, msg := range m.Headers {
-			dAtA[i] = 0x22
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
+	if len(m.Data) > 0 {
+		for iNdEx := len(m.Data) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Data[iNdEx])
+			copy(dAtA[i:], m.Data[iNdEx])
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Data[iNdEx])))
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.Status) > 0 {
+		i -= len(m.Status)
+		copy(dAtA[i:], m.Status)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiData) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1699,35 +1728,43 @@ func (m *LokiData) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiData) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiData) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.ResultType) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ResultType)))
-		i += copy(dAtA[i:], m.ResultType)
-	}
 	if len(m.Result) > 0 {
-		for _, msg := range m.Result {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Result) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Result[iNdEx].Size()
+				i -= size
+				if _, err := m.Result[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.ResultType) > 0 {
+		i -= len(m.ResultType)
+		copy(dAtA[i:], m.ResultType)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ResultType)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LokiPromResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1735,39 +1772,50 @@ func (m *LokiPromResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LokiPromResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LokiPromResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.Response != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Response.Size()))
-		n10, err := m.Response.MarshalTo(dAtA[i:])
+	{
+		size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
-		i += n10
+		i -= size
+		i = encodeVarintQueryrange(dAtA, i, uint64(size))
 	}
+	i--
 	dAtA[i] = 0x12
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(m.Statistics.Size()))
-	n11, err := m.Statistics.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
+	if m.Response != nil {
+		{
+			size, err := m.Response.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
 	}
-	i += n11
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintQueryrange(dAtA []byte, offset int, v uint64) int {
+	offset -= sovQueryrange(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *LokiRequest) Size() (n int) {
 	if m == nil {
@@ -2013,14 +2061,7 @@ func (m *LokiPromResponse) Size() (n int) {
 }
 
 func sovQueryrange(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozQueryrange(x uint64) (n int) {
 	return sovQueryrange(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -2033,8 +2074,8 @@ func (this *LokiRequest) String() string {
 		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
 		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
 		`Step:` + fmt.Sprintf("%v", this.Step) + `,`,
-		`StartTs:` + strings.Replace(strings.Replace(this.StartTs.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`EndTs:` + strings.Replace(strings.Replace(this.EndTs.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`StartTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.StartTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`EndTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EndTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Direction:` + fmt.Sprintf("%v", this.Direction) + `,`,
 		`Path:` + fmt.Sprintf("%v", this.Path) + `,`,
 		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
@@ -2049,7 +2090,7 @@ func (this *LokiInstantRequest) String() string {
 	s := strings.Join([]string{`&LokiInstantRequest{`,
 		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
 		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
-		`TimeTs:` + strings.Replace(strings.Replace(this.TimeTs.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`TimeTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TimeTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Direction:` + fmt.Sprintf("%v", this.Direction) + `,`,
 		`Path:` + fmt.Sprintf("%v", this.Path) + `,`,
 		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
@@ -2069,7 +2110,7 @@ func (this *LokiResponse) String() string {
 		`Direction:` + fmt.Sprintf("%v", this.Direction) + `,`,
 		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
 		`Version:` + fmt.Sprintf("%v", this.Version) + `,`,
-		`Statistics:` + strings.Replace(strings.Replace(this.Statistics.String(), "Result", "stats.Result", 1), `&`, ``, 1) + `,`,
+		`Statistics:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Statistics), "Result", "stats.Result", 1), `&`, ``, 1) + `,`,
 		`Headers:` + fmt.Sprintf("%v", this.Headers) + `,`,
 		`}`,
 	}, "")
@@ -2081,8 +2122,8 @@ func (this *LokiSeriesRequest) String() string {
 	}
 	s := strings.Join([]string{`&LokiSeriesRequest{`,
 		`Match:` + fmt.Sprintf("%v", this.Match) + `,`,
-		`StartTs:` + strings.Replace(strings.Replace(this.StartTs.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`EndTs:` + strings.Replace(strings.Replace(this.EndTs.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`StartTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.StartTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`EndTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EndTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Path:` + fmt.Sprintf("%v", this.Path) + `,`,
 		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
 		`}`,
@@ -2093,9 +2134,14 @@ func (this *LokiSeriesResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForData := "[]SeriesIdentifier{"
+	for _, f := range this.Data {
+		repeatedStringForData += fmt.Sprintf("%v", f) + ","
+	}
+	repeatedStringForData += "}"
 	s := strings.Join([]string{`&LokiSeriesResponse{`,
 		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
-		`Data:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Data), "SeriesIdentifier", "logproto.SeriesIdentifier", 1), `&`, ``, 1) + `,`,
+		`Data:` + repeatedStringForData + `,`,
 		`Version:` + fmt.Sprintf("%v", this.Version) + `,`,
 		`Headers:` + fmt.Sprintf("%v", this.Headers) + `,`,
 		`}`,
@@ -2107,8 +2153,8 @@ func (this *LokiLabelNamesRequest) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&LokiLabelNamesRequest{`,
-		`StartTs:` + strings.Replace(strings.Replace(this.StartTs.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`EndTs:` + strings.Replace(strings.Replace(this.EndTs.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`StartTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.StartTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`EndTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EndTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Path:` + fmt.Sprintf("%v", this.Path) + `,`,
 		`}`,
 	}, "")
@@ -2144,7 +2190,7 @@ func (this *LokiPromResponse) String() string {
 	}
 	s := strings.Join([]string{`&LokiPromResponse{`,
 		`Response:` + strings.Replace(fmt.Sprintf("%v", this.Response), "PrometheusResponse", "queryrange.PrometheusResponse", 1) + `,`,
-		`Statistics:` + strings.Replace(strings.Replace(this.Statistics.String(), "Result", "stats.Result", 1), `&`, ``, 1) + `,`,
+		`Statistics:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Statistics), "Result", "stats.Result", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s

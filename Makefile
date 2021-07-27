@@ -38,7 +38,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.15.0
+BUILD_IMAGE_VERSION := 0.17.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -607,7 +607,7 @@ fmt-jsonnet:
 lint-scripts:
 	@find . -name '*.sh' -not -path '*/vendor/*' -print0 | \
 		xargs -0 -n1 shellcheck -x -o all
-	
+
 
 # search for dead link in our documentation.
 # To avoid being rate limited by Github you can use an env variable GITHUB_TOKEN to pass a github token API.

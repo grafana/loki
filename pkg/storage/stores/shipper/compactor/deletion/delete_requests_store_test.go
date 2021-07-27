@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 )
 
 func TestDeleteRequestsStore(t *testing.T) {

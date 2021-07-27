@@ -65,9 +65,9 @@ COPY --from=ghr /go/bin/ghr /usr/bin/ghr
 # file for it to detect and switch to Go Modules automatically.
 # It's possible this can be revisited in newer versions of Go if the behavior around GOPATH vs GO111MODULES changes
 RUN GO111MODULE=on go get \
-    github.com/golang/protobuf/protoc-gen-go@v1.3.0 \
-    github.com/gogo/protobuf/protoc-gen-gogoslick@v1.2.1 \
-    github.com/gogo/protobuf/gogoproto@v1.2.1 \
+    github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
+    github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 \
+    github.com/gogo/protobuf/gogoproto@v1.3.0 \
     github.com/go-delve/delve/cmd/dlv@v1.3.2 \
     # Due to the lack of a proper release tag, we use the commit hash of
     # https://github.com/golang/tools/releases v0.1.7
