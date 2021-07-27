@@ -32,7 +32,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 * [Installing Loki](https://grafana.com/docs/loki/latest/installation/)
 * [Installing Promtail](https://grafana.com/docs/loki/latest/clients/promtail/installation/)
-* [Getting Started Guide](https://grafana.com/docs/loki/latest/getting-started/)
+* [Getting Started](https://grafana.com/docs/loki/latest/getting-started/)
 
 ## Upgrading
 
@@ -40,7 +40,13 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 ### Documentation
 
-* [master](https://grafana.com/docs/loki/latest/)
+* [v2.2.1](https://grafana.com/docs/loki/latest/)
+* [v2.2.0](https://github.com/docs/loki/v2.2.0/)
+* [v2.1.0](https://github.com/docs/loki/v2.1.0/)
+* [v2.0.1](https://github.com/docs/loki/v2.0.1/)
+* [v2.0.0](https://github.com/docs/loki/v2.0.0/)
+* [v1.6.1](https://github.com/docs/loki/v1.6.1/)
+* [v1.6.0](https://github.com/docs/loki/v1.6.0/)
 * [v1.5.0](https://github.com/grafana/loki/tree/v1.5.0/docs/README.md)
 * [v1.4.1](https://github.com/grafana/loki/tree/v1.4.1/docs/README.md)
 * [v1.4.0](https://github.com/grafana/loki/tree/v1.4.0/docs/README.md)
@@ -56,7 +62,7 @@ Commonly used sections:
 - [Operations](https://grafana.com/docs/loki/latest/operations/) for important aspects of running Loki.
 - [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which can tail your log files and push them to Loki.
 - [Pipelines](https://grafana.com/docs/loki/latest/clients/promtail/pipelines/) for detailed log processing pipeline documentation
-- [Docker Logging Driver](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a docker plugin to send logs directly to Loki from Docker containers.
+- [Docker Driver Client](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a docker plugin to send logs directly to Loki from Docker containers.
 - [LogCLI](https://grafana.com/docs/loki/latest/getting-started/logcli/) on how to query your logs without Grafana.
 - [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) for monitoring your Loki installation for missing logs.
 - [Troubleshooting](https://grafana.com/docs/loki/latest/getting-started/troubleshooting/) for help around frequent error messages.
@@ -101,7 +107,7 @@ Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/master/loki-build-image/Dockerfile)
+You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/main/loki-build-image/Dockerfile)
 
 ```bash
 
