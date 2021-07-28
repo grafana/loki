@@ -90,6 +90,8 @@ type IndexQuery struct {
 	// - If RangeValuePrefix is not nil, must read all keys with that prefix.
 	// - If RangeValueStart is not nil, must read all keys from there onwards.
 	// - If neither is set, must read all keys for that row.
+	// RangeValueStart should only be used for querying Chunk IDs.
+	// If this is going to change then please take care of func isChunksQuery in pkg/chunk/storage/caching_index_client.go which relies on it.
 	RangeValuePrefix []byte
 	RangeValueStart  []byte
 
