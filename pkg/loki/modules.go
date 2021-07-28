@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -403,18 +404,22 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
 
-	roundTripper, frontendV1, _, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
-		// Don't set FrontendV2 field to make sure that only frontendV1 can be initialized.
+	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
 		Handler:       t.Cfg.Frontend.Handler,
 		FrontendV1:    t.Cfg.Frontend.FrontendV1,
+		FrontendV2:    t.Cfg.Frontend.FrontendV2,
 		DownstreamURL: t.Cfg.Frontend.DownstreamURL,
 	}, disabledShuffleShardingLimits{}, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
-	t.frontend = frontendV1
-	if t.frontend != nil {
-		frontendv1pb.RegisterFrontendServer(t.Server.GRPC, t.frontend)
+
+	if frontendV1 != nil {
+		frontendv1pb.RegisterFrontendServer(t.Server.GRPC, frontendV1)
+		t.frontend = frontendV1
+	} else if frontendV2 != nil {
+		frontendv2pb.RegisterFrontendForQuerierServer(t.Server.GRPC, frontendV2)
+		t.frontend = frontendV2
 	}
 
 	roundTripper = t.QueryFrontEndTripperware(roundTripper)

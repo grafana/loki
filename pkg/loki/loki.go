@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 
-	frontend "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/felixge/fgprof"
@@ -155,6 +154,11 @@ func (c *Config) isModuleEnabled(m string) bool {
 	return util.StringsContain(c.Target, m)
 }
 
+type Frontend interface {
+	services.Service
+	CheckReady(_ context.Context) error 
+}
+
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	Cfg Config
@@ -173,7 +177,7 @@ type Loki struct {
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
-	frontend                 *frontend.Frontend
+	frontend                 Frontend
 	ruler                    *cortex_ruler.Ruler
 	RulerStorage             rulestore.RuleStore
 	rulerAPI                 *cortex_ruler.API

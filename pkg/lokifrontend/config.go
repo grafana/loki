@@ -5,11 +5,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	v1 "github.com/cortexproject/cortex/pkg/frontend/v1"
+	v2 "github.com/cortexproject/cortex/pkg/frontend/v2"
 )
 
 type Config struct {
 	Handler    transport.HandlerConfig `yaml:",inline"`
 	FrontendV1 v1.Config               `yaml:",inline"`
+	FrontendV2 v2.Config               `yaml:",inline"`
 
 	CompressResponses bool   `yaml:"compress_responses"`
 	DownstreamURL     string `yaml:"downstream_url"`
