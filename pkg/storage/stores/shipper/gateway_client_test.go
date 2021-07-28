@@ -8,13 +8,13 @@ import (
 	"net"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
@@ -32,8 +32,7 @@ const (
 	valuePrefix      = "value"
 )
 
-type mockIndexGatewayServer struct {
-}
+type mockIndexGatewayServer struct{}
 
 func (m mockIndexGatewayServer) QueryIndex(request *indexgatewaypb.QueryIndexRequest, server indexgatewaypb.IndexGateway_QueryIndexServer) error {
 	for i, query := range request.Queries {

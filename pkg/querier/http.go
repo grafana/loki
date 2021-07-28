@@ -96,7 +96,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		0,
 		request.Direction,
 		request.Limit,
-		nil,
+		request.Shards,
 	)
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
@@ -337,7 +337,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, regexp)
+		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
 		if err != nil {
 			return "", err
 		}

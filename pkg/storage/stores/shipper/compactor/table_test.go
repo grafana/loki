@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
@@ -24,51 +24,75 @@ const (
 )
 
 func TestTable_Compaction(t *testing.T) {
-	tempDir, err := ioutil.TempDir("", "table-compaction")
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name              string
+		withCompactedFile bool
+	}{
+		{
+			name:              "without compacted file",
+			withCompactedFile: false,
+		},
+		{
+			name:              "with compacted file",
+			withCompactedFile: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir, err := ioutil.TempDir("", fmt.Sprintf("table-compaction-%v", tc.withCompactedFile))
+			require.NoError(t, err)
 
-	defer func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	}()
+			defer func() {
+				require.NoError(t, os.RemoveAll(tempDir))
+			}()
 
-	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-	tablePathInStorage := filepath.Join(objectStoragePath, tableName)
-	tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
+			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+			tablePathInStorage := filepath.Join(objectStoragePath, tableName)
+			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
-	// setup some dbs
-	numDBs := compactMinDBs * 2
-	numRecordsPerDB := 100
+			// setup some dbs
+			numDBs := compactMinDBs * 2
+			numRecordsPerDB := 100
 
-	dbsToSetup := make(map[string]testutil.DBRecords)
-	for i := 0; i < numDBs; i++ {
-		dbsToSetup[fmt.Sprint(i)] = testutil.DBRecords{
-			Start:      i * numRecordsPerDB,
-			NumRecords: (i + 1) * numRecordsPerDB,
-		}
+			dbsToSetup := make(map[string]testutil.DBRecords)
+			for i := 0; i < numDBs; i++ {
+				dbsToSetup[fmt.Sprint(i)] = testutil.DBRecords{
+					Start:      i * numRecordsPerDB,
+					NumRecords: (i + 1) * numRecordsPerDB,
+				}
+			}
+
+			if tc.withCompactedFile {
+				// add a compacted file with some overlap with previously created dbs
+				dbsToSetup[fmt.Sprintf("%s-0", uploaderName)] = testutil.DBRecords{
+					Start:      (numDBs / 2) * numRecordsPerDB,
+					NumRecords: (numDBs + 10) * numRecordsPerDB,
+				}
+			}
+
+			testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbsToSetup, true)
+
+			// setup exact same copy of dbs for comparison.
+			testutil.SetupDBTablesAtPath(t, "test-copy", objectStoragePath, dbsToSetup, false)
+
+			// do the compaction
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+			require.NoError(t, err)
+
+			table, err := newTable(context.Background(), tableWorkingDirectory, objectClient, false, nil)
+			require.NoError(t, err)
+
+			require.NoError(t, table.compact(false))
+
+			// verify that we have only 1 file left in storage after compaction.
+			files, err := ioutil.ReadDir(tablePathInStorage)
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+			require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+
+			// verify we have all the kvs in compacted db which were there in source dbs.
+			compareCompactedDB(t, filepath.Join(tablePathInStorage, files[0].Name()), filepath.Join(objectStoragePath, "test-copy"))
+		})
 	}
-
-	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbsToSetup, true)
-
-	// setup exact same copy of dbs for comparison.
-	testutil.SetupDBTablesAtPath(t, "test-copy", objectStoragePath, dbsToSetup, false)
-
-	// do the compaction
-	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
-	require.NoError(t, err)
-
-	table, err := newTable(context.Background(), tableWorkingDirectory, objectClient, false, nil)
-	require.NoError(t, err)
-
-	require.NoError(t, table.compact(false))
-
-	// verify that we have only 1 file left in storage after compaction.
-	files, err := ioutil.ReadDir(tablePathInStorage)
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
-
-	// verify we have all the kvs in compacted db which were there in source dbs.
-	compareCompactedDB(t, filepath.Join(tablePathInStorage, files[0].Name()), filepath.Join(objectStoragePath, "test-copy"))
 }
 
 type TableMarkerFunc func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error)

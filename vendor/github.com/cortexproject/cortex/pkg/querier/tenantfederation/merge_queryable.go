@@ -139,8 +139,17 @@ type mergeQuerier struct {
 func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelValues")
 	defer log.Span.Finish()
+
+	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
+
 	if name == m.idLabelName {
-		return m.ids, nil, nil
+		var labelValues = make([]string, 0, len(matchedTenants))
+		for _, id := range m.ids {
+			if _, matched := matchedTenants[id]; matched {
+				labelValues = append(labelValues, id)
+			}
+		}
+		return labelValues, nil, nil
 	}
 
 	// ensure the name of a retained label gets handled under the original
@@ -149,20 +158,23 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 		name = m.idLabelName
 	}
 
-	return m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
-		return q.LabelValues(name, matchers...)
-	})
+	return m.mergeDistinctStringSliceWithTenants(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
+		return q.LabelValues(name, filteredMatchers...)
+	}, matchedTenants)
 }
 
 // LabelNames returns all the unique label names present in the underlying
 // queriers. It also adds the `idLabelName` and if present in the original
 // results the original `idLabelName`.
-func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (m *mergeQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelNames")
 	defer log.Span.Finish()
-	labelNames, warnings, err := m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
-		return q.LabelNames()
-	})
+
+	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
+
+	labelNames, warnings, err := m.mergeDistinctStringSliceWithTenants(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
+		return q.LabelNames(filteredMatchers...)
+	}, matchedTenants)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -200,18 +212,25 @@ type stringSliceFuncJob struct {
 	warnings storage.Warnings
 }
 
-// mergeDistinctStringSlice is aggregating results from stringSliceFunc calls
-// on per querier in parallel. It removes duplicates and sorts the result. It
-// doesn't require the output of the stringSliceFunc to be sorted, as results
+// mergeDistinctStringSliceWithTenants aggregates stringSliceFunc call
+// results from queriers whose tenant ids match the tenants map. If a nil map is
+// provided, all queriers are used. It removes duplicates and sorts the result.
+// It doesn't require the output of the stringSliceFunc to be sorted, as results
 // of LabelValues are not sorted.
-func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
-	var jobs = make([]interface{}, len(m.ids))
+func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(f stringSliceFunc, tenants map[string]struct{}) ([]string, storage.Warnings, error) {
+	var jobs []interface{}
 
-	for pos := range m.ids {
-		jobs[pos] = &stringSliceFuncJob{
+	for pos, id := range m.ids {
+		if tenants != nil {
+			if _, matched := tenants[id]; !matched {
+				continue
+			}
+		}
+
+		jobs = append(jobs, &stringSliceFuncJob{
 			querier: m.queriers[pos],
 			id:      m.ids[pos],
-		}
+		})
 	}
 
 	run := func(ctx context.Context, jobIntf interface{}) error {
@@ -332,7 +351,7 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 // are considered and the forwarded matchers do not contain matchers on the
 // `idLabelName`.
 func filterValuesByMatchers(idLabelName string, ids []string, matchers ...*labels.Matcher) (matchedIDs map[string]struct{}, unrelatedMatchers []*labels.Matcher) {
-	// this contains the matchers which are not related to labelName
+	// this contains the matchers which are not related to idLabelName
 	unrelatedMatchers = make([]*labels.Matcher, 0, len(matchers))
 
 	// build map of values to consider for the matchers
@@ -342,24 +361,25 @@ func filterValuesByMatchers(idLabelName string, ids []string, matchers ...*label
 	}
 
 	for _, m := range matchers {
-		if m.Name != idLabelName {
-			// check if has the retained label name
-			if m.Name == retainExistingPrefix+idLabelName {
-				// rewrite label to the original name, by copying matcher and
-				// replacing the label name
-				rewrittenM := *m
-				rewrittenM.Name = idLabelName
-				unrelatedMatchers = append(unrelatedMatchers, &rewrittenM)
-			} else {
-				unrelatedMatchers = append(unrelatedMatchers, m)
+		switch m.Name {
+		// matcher has idLabelName to target a specific tenant(s)
+		case idLabelName:
+			for value := range matchedIDs {
+				if !m.Matches(value) {
+					delete(matchedIDs, value)
+				}
 			}
-			continue
-		}
 
-		for value := range matchedIDs {
-			if !m.Matches(value) {
-				delete(matchedIDs, value)
-			}
+		// check if has the retained label name
+		case retainExistingPrefix + idLabelName:
+			// rewrite label to the original name, by copying matcher and
+			// replacing the label name
+			rewrittenM := *m
+			rewrittenM.Name = idLabelName
+			unrelatedMatchers = append(unrelatedMatchers, &rewrittenM)
+
+		default:
+			unrelatedMatchers = append(unrelatedMatchers, m)
 		}
 	}
 

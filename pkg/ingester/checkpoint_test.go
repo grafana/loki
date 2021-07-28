@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -22,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -468,7 +468,7 @@ func Test_SeriesIterator(t *testing.T) {
 		for j := 0; j < 2; j++ {
 			iter.Next()
 			assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
-			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, 0, 0)
+			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, chunkenc.UnorderedHeadBlockFmt, 0, 0)
 			require.NoError(t, err)
 			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
 			require.NoError(t, err)
@@ -561,7 +561,7 @@ func buildChunks(t testing.TB, size int) []Chunk {
 
 	for i := 0; i < size; i++ {
 		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
-		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 1500*1024)
+		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
 		fillChunk(t, c)
 		descs = append(descs, chunkDesc{
 			chunk: c,

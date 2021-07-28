@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/signals"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -44,6 +43,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
@@ -100,7 +100,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
-	c.MemberlistKV.RegisterFlags(f, "")
+	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 }
@@ -265,10 +265,10 @@ func (t *Loki) Run() error {
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
 	// This adds a way to see the config and the changes compared to the defaults
-	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
+	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
 
 	// Each component serves its version.
-	t.Server.HTTP.Path("/version").HandlerFunc(versionHandler())
+	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").HandlerFunc(versionHandler())
 
 	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 

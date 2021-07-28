@@ -29,7 +29,7 @@
   "description": "Creates and runs virtual machines on Google Cloud Platform.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/compute/docs/reference/latest/",
-  "etag": "\"uWj2hSb4GVjzdDlAnRd2gbM1ZQ8/PpBdeGiizCXCXx-f24-1pqppw9k\"",
+  "etag": "\"uWj2hSb4GVjzdDlAnRd2gbM1ZQ8/ZaZJQHlGpem6MpLhBwASZW1zrzE\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/compute_engine-16.png",
     "x32": "https://www.google.com/images/icons/product/compute_engine-32.png"
@@ -27120,7 +27120,7 @@
       }
     }
   },
-  "revision": "20210415",
+  "revision": "20210518",
   "rootUrl": "https://compute.googleapis.com/",
   "schemas": {
     "AcceleratorConfig": {
@@ -27527,6 +27527,15 @@
       "description": "An access configuration attached to an instance's network interface. Only one access config per instance is supported.",
       "id": "AccessConfig",
       "properties": {
+        "externalIpv6": {
+          "description": "[Output Only] The first IPv6 address of the external IPv6 range associated with this instance, prefix length is stored in externalIpv6PrefixLength in ipv6AccessConfig. The field is output only, an IPv6 address from a subnetwork associated with the instance will be allocated dynamically.",
+          "type": "string"
+        },
+        "externalIpv6PrefixLength": {
+          "description": "[Output Only] The prefix length of the external IPv6 range.",
+          "format": "int32",
+          "type": "integer"
+        },
         "kind": {
           "default": "compute#accessConfig",
           "description": "[Output Only] Type of the resource. Always compute#accessConfig for access configs.",
@@ -27564,9 +27573,11 @@
           "default": "ONE_TO_ONE_NAT",
           "description": "The type of configuration. The default and only option is ONE_TO_ONE_NAT.",
           "enum": [
+            "DIRECT_IPV6",
             "ONE_TO_ONE_NAT"
           ],
           "enumDescriptions": [
+            "",
             ""
           ],
           "type": "string"
@@ -27660,7 +27671,7 @@
           "type": "integer"
         },
         "purpose": {
-          "description": "The purpose of this resource, which can be one of the following values:  \n- `GCE_ENDPOINT` for addresses that are used by VM instances, alias IP ranges, internal load balancers, and similar resources. \n- `DNS_RESOLVER` for a DNS resolver address in a subnetwork \n- `VPC_PEERING` for addresses that are reserved for VPC peer networks. \n- `NAT_AUTO` for addresses that are external IP addresses automatically reserved for Cloud NAT. \n- `IPSEC_INTERCONNECT` for addresses created from a private IP range that are reserved for a VLAN attachment in an IPsec-encrypted Cloud Interconnect configuration. These addresses are regional resources.",
+          "description": "The purpose of this resource, which can be one of the following values:  \n- `GCE_ENDPOINT` for addresses that are used by VM instances, alias IP ranges, internal load balancers, and similar resources. \n- `DNS_RESOLVER` for a DNS resolver address in a subnetwork \n- `VPC_PEERING` for addresses that are reserved for VPC peer networks. \n- `NAT_AUTO` for addresses that are external IP addresses automatically reserved for Cloud NAT. \n- `IPSEC_INTERCONNECT` for addresses created from a private IP range that are reserved for a VLAN attachment in an IPsec-encrypted Cloud Interconnect configuration. These addresses are regional resources. Not currently available publicly.",
           "enum": [
             "DNS_RESOLVER",
             "GCE_ENDPOINT",
@@ -29458,8 +29469,7 @@
           "description": "Cloud CDN configuration for this BackendService. Only available for  external HTTP(S) Load Balancing."
         },
         "circuitBreakers": {
-          "$ref": "CircuitBreakers",
-          "description": "Settings controlling the volume of connections to a backend service. If not set, this feature is considered disabled.\n\nThis field is applicable to either:  \n- A regional backend service with the service_protocol set to HTTP, HTTPS, or HTTP2, and load_balancing_scheme set to INTERNAL_MANAGED. \n- A global backend service with the load_balancing_scheme set to INTERNAL_SELF_MANAGED.  \n\nNot supported when the backend service is referenced by a URL map that is bound to target gRPC proxy that has validateForProxyless field set to true."
+          "$ref": "CircuitBreakers"
         },
         "connectionDraining": {
           "$ref": "ConnectionDraining"
@@ -29570,7 +29580,7 @@
         },
         "maxStreamDuration": {
           "$ref": "Duration",
-          "description": "Specifies the default maximum duration (timeout) for streams to this service. Duration is computed from the beginning of the stream until the response has been completely processed, including all retries. A stream that does not complete in this duration is closed.\nIf not specified, there will be no timeout limit, i.e. the maximum duration is infinite.\nThis field is only allowed when the loadBalancingScheme of the backend service is INTERNAL_SELF_MANAGED."
+          "description": "Specifies the default maximum duration (timeout) for streams to this service. Duration is computed from the beginning of the stream until the response has been completely processed, including all retries. A stream that does not complete in this duration is closed.\nIf not specified, there will be no timeout limit, i.e. the maximum duration is infinite.\nThis value can be overridden in the PathMatcher configuration of the UrlMap that references this backend service.\nThis field is only allowed when the loadBalancingScheme of the backend service is INTERNAL_SELF_MANAGED."
         },
         "name": {
           "description": "Name of the resource. Provided by the client when the resource is created. The name must be 1-63 characters long, and comply with RFC1035. Specifically, the name must be 1-63 characters long and match the regular expression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first character must be a lowercase letter, and all following characters must be a dash, lowercase letter, or digit, except the last character, which cannot be a dash.",
@@ -29657,7 +29667,7 @@
           "type": "string"
         },
         "timeoutSec": {
-          "description": "The backend service timeout has a different meaning depending on the type of load balancer. For more information see,  Backend service settings The default is 30 seconds. The full range of timeout values allowed is 1 - 2,147,483,647 seconds.",
+          "description": "Not supported when the backend service is referenced by a URL map that is bound to target gRPC proxy that has validateForProxyless field set to true. Instead, use maxStreamDuration.",
           "format": "int32",
           "type": "integer"
         }
@@ -30231,6 +30241,7 @@
       "type": "object"
     },
     "BulkInsertInstanceResource": {
+      "description": "A transient resource used in compute.instances.bulkInsert and compute.regionInstances.bulkInsert and compute.regionInstances.recommendLocations. This resource is not persisted anywhere, it is used only for processing the requests.",
       "id": "BulkInsertInstanceResource",
       "properties": {
         "count": {
@@ -30331,12 +30342,12 @@
       "id": "CircuitBreakers",
       "properties": {
         "maxConnections": {
-          "description": "The maximum number of connections to the backend service. If not specified, there is no limit.",
+          "description": "Not supported when the backend service is referenced by a URL map that is bound to target gRPC proxy that has validateForProxyless field set to true.",
           "format": "int32",
           "type": "integer"
         },
         "maxPendingRequests": {
-          "description": "The maximum number of pending requests allowed to the backend service. If not specified, there is no limit.",
+          "description": "Not supported when the backend service is referenced by a URL map that is bound to target gRPC proxy that has validateForProxyless field set to true.",
           "format": "int32",
           "type": "integer"
         },
@@ -30346,12 +30357,12 @@
           "type": "integer"
         },
         "maxRequestsPerConnection": {
-          "description": "Maximum requests for a single connection to the backend service. This parameter is respected by both the HTTP/1.1 and HTTP/2 implementations. If not specified, there is no limit. Setting this parameter to 1 will effectively disable keep alive.",
+          "description": "Not supported when the backend service is referenced by a URL map that is bound to target gRPC proxy that has validateForProxyless field set to true.",
           "format": "int32",
           "type": "integer"
         },
         "maxRetries": {
-          "description": "The maximum number of parallel retries allowed to the backend cluster. If not specified, the default is 1.",
+          "description": "Not supported when the backend service is referenced by a URL map that is bound to target gRPC proxy that has validateForProxyless field set to true.",
           "format": "int32",
           "type": "integer"
         }
@@ -32362,7 +32373,7 @@
           "type": "string"
         },
         "interfaces": {
-          "description": "List of interfaces for this external VPN gateway.",
+          "description": "List of interfaces for this external VPN gateway.\n\nIf your peer-side gateway is an on-premises gateway and non-AWS cloud providers? gateway, at most two interfaces can be provided for an external VPN gateway. If your peer side is an AWS virtual private gateway, four interfaces should be provided for an external VPN gateway.",
           "items": {
             "$ref": "ExternalVpnGatewayInterface"
           },
@@ -32421,7 +32432,7 @@
       "id": "ExternalVpnGatewayInterface",
       "properties": {
         "id": {
-          "description": "The numeric ID of this interface. The allowed input values for this id for different redundancy types of external VPN gateway: SINGLE_IP_INTERNALLY_REDUNDANT - 0 TWO_IPS_REDUNDANCY - 0, 1 FOUR_IPS_REDUNDANCY - 0, 1, 2, 3",
+          "description": "The numeric ID of this interface. The allowed input values for this id for different redundancy types of external VPN gateway: \n- SINGLE_IP_INTERNALLY_REDUNDANT - 0 \n- TWO_IPS_REDUNDANCY - 0, 1 \n- FOUR_IPS_REDUNDANCY - 0, 1, 2, 3",
           "format": "uint32",
           "type": "integer"
         },
@@ -33214,7 +33225,7 @@
       "id": "FixedOrPercent",
       "properties": {
         "calculated": {
-          "description": "[Output Only] Absolute value of VM instances calculated based on the specific mode.\n\n \n- If the value is fixed, then the calculated value is equal to the fixed value. \n- If the value is a percent, then the calculated value is percent/100 * targetSize. For example, the calculated value of a 80% of a managed instance group with 150 instances would be (80/100 * 150) = 120 VM instances. If there is a remainder, the number is rounded up.",
+          "description": "[Output Only] Absolute value of VM instances calculated based on the specific mode.\n\n \n- If the value is fixed, then the calculated value is equal to the fixed value. \n- If the value is a percent, then the calculated value is percent/100 * targetSize. For example, the calculated value of a 80% of a managed instance group with 150 instances would be (80/100 * 150) = 120 VM instances. If there is a remainder, the number is rounded.",
           "format": "int32",
           "type": "integer"
         },
@@ -33240,7 +33251,7 @@
           "type": "string"
         },
         "IPProtocol": {
-          "description": "The IP protocol to which this rule applies.\n\nFor protocol forwarding, valid options are TCP, UDP, ESP, AH, SCTP and ICMP.\n\nThe valid IP protocols are different for different load balancing products:  \n- Internal TCP/UDP Load Balancing: The load balancing scheme is INTERNAL, and one of TCP, UDP or ALL is valid. \n- Traffic Director: The load balancing scheme is INTERNAL_SELF_MANAGED, and only TCP is valid.  \n- Internal HTTP(S) Load Balancing: The load balancing scheme is INTERNAL_MANAGED, and only TCP is valid. \n- HTTP(S), SSL Proxy, and TCP Proxy Load Balancing: The load balancing scheme is EXTERNAL and only TCP is valid. \n- Network Load Balancing: The load balancing scheme is EXTERNAL, and one of TCP or UDP is valid.",
+          "description": "The IP protocol to which this rule applies.\n\nFor protocol forwarding, valid options are TCP, UDP, ESP, AH, SCTP, ICMP and L3_DEFAULT.\n\nThe valid IP protocols are different for different load balancing products:  \n- Internal TCP/UDP Load Balancing: The load balancing scheme is INTERNAL, and one of TCP, UDP or L3_DEFAULT is valid. \n- Traffic Director: The load balancing scheme is INTERNAL_SELF_MANAGED, and only TCP is valid.  \n- Internal HTTP(S) Load Balancing: The load balancing scheme is INTERNAL_MANAGED, and only TCP is valid. \n- HTTP(S), SSL Proxy, and TCP Proxy Load Balancing: The load balancing scheme is EXTERNAL and only TCP is valid. \n- Network Load Balancing: The load balancing scheme is EXTERNAL, and one of TCP, UDP or L3_DEFAULT is valid.",
           "enum": [
             "AH",
             "ESP",
@@ -33260,7 +33271,7 @@
           "type": "string"
         },
         "allPorts": {
-          "description": "This field is used along with the backend_service field for internal load balancing or with the target field for internal TargetInstance. This field cannot be used with port or portRange fields.\n\nWhen the load balancing scheme is INTERNAL and protocol is TCP/UDP, specify this field to allow packets addressed to any ports will be forwarded to the backends configured with this forwarding rule.",
+          "description": "This field is used along with the backend_service field for Internal TCP/UDP Load Balancing or Network Load Balancing, or with the target field for internal and external TargetInstance.\n\nYou can only use one of ports and port_range, or allPorts. The three are mutually exclusive.\n\nFor TCP, UDP and SCTP traffic, packets addressed to any ports will be forwarded to the target or backendService.",
           "type": "boolean"
         },
         "allowGlobalAccess": {
@@ -33371,11 +33382,11 @@
           "type": "string"
         },
         "portRange": {
-          "description": "This field can be used only if: * Load balancing scheme is one of EXTERNAL,  INTERNAL_SELF_MANAGED or INTERNAL_MANAGED, and * IPProtocol is one of TCP, UDP, or SCTP.\n\nPackets addressed to ports in the specified range will be forwarded to target or  backend_service. You can only use one of ports, port_range, or allPorts. The three are mutually exclusive. Forwarding rules with the same [IPAddress, IPProtocol] pair must have disjoint port ranges.\n\nSome types of forwarding target have constraints on the acceptable ports:  \n- TargetHttpProxy: 80, 8080 \n- TargetHttpsProxy: 443 \n- TargetGrpcProxy: no constraints \n- TargetTcpProxy: 25, 43, 110, 143, 195, 443, 465, 587, 700, 993, 995, 1688, 1883, 5222 \n- TargetSslProxy: 25, 43, 110, 143, 195, 443, 465, 587, 700, 993, 995, 1688, 1883, 5222 \n- TargetVpnGateway: 500, 4500",
+          "description": "This field can be used only if:  \n- Load balancing scheme is one of EXTERNAL,  INTERNAL_SELF_MANAGED or INTERNAL_MANAGED \n- IPProtocol is one of TCP, UDP, or SCTP.  \n\nPackets addressed to ports in the specified range will be forwarded to target or  backend_service.\n\nYou can only use one of ports, port_range, or allPorts. The three are mutually exclusive.\n\nForwarding rules with the same [IPAddress, IPProtocol] pair must have disjoint ports.\n\nSome types of forwarding target have constraints on the acceptable ports:  \n- TargetHttpProxy: 80, 8080 \n- TargetHttpsProxy: 443 \n- TargetGrpcProxy: no constraints \n- TargetTcpProxy: 25, 43, 110, 143, 195, 443, 465, 587, 700, 993, 995, 1688, 1883, 5222 \n- TargetSslProxy: 25, 43, 110, 143, 195, 443, 465, 587, 700, 993, 995, 1688, 1883, 5222 \n- TargetVpnGateway: 500, 4500",
           "type": "string"
         },
         "ports": {
-          "description": "The ports field is only supported when the forwarding rule references a backend_service directly. Supported load balancing products are Internal TCP/UDP Load Balancing and Network Load Balancing. Only packets addressed to the specified list of ports are forwarded to backends.\n\nYou can only use one of ports and port_range, or allPorts. The three are mutually exclusive.\n\nYou can specify a list of up to five ports, which can be non-contiguous.\n\nFor Internal TCP/UDP Load Balancing, if you specify allPorts, you should not specify ports.\n\nFor more information, see [Port specifications](/load-balancing/docs/forwarding-rule-concepts#port_specifications).",
+          "description": "The ports field is only supported when the forwarding rule references a backend_service directly. Supported load balancing products are Internal TCP/UDP Load Balancing and Network Load Balancing. Only packets addressed to the specified list of ports are forwarded to backends.\n\nYou can only use one of ports and port_range, or allPorts. The three are mutually exclusive.\n\nYou can specify a list of up to five ports, which can be non-contiguous.\n\nForwarding rules with the same [IPAddress, IPProtocol] pair must have disjoint ports.\n\nFor more information, see [Port specifications](/load-balancing/docs/forwarding-rule-concepts#port_specifications).",
           "items": {
             "type": "string"
           },
@@ -34417,7 +34428,7 @@
           "type": "string"
         },
         "healthChecks": {
-          "description": "List of URLs to the HealthCheck resources. Must have at least one HealthCheck, and not more than 10. HealthCheck resources must have portSpecification=USE_SERVING_PORT. For regional HealthCheckService, the HealthCheck must be regional and in the same region. For global HealthCheckService, HealthCheck must be global. Mix of regional and global HealthChecks is not supported. Multiple regional HealthChecks must belong to the same region. Regional HealthChecks\u003c/code? must belong to the same region as zones of NEGs.",
+          "description": "List of URLs to the HealthCheck resources. Must have at least one HealthCheck, and not more than 10. HealthCheck resources must have portSpecification=USE_SERVING_PORT or portSpecification=USE_FIXED_PORT. For regional HealthCheckService, the HealthCheck must be regional and in the same region. For global HealthCheckService, HealthCheck must be global. Mix of regional and global HealthChecks is not supported. Multiple regional HealthChecks must belong to the same region. Regional HealthChecks must belong to the same region as zones of NEGs.",
           "items": {
             "type": "string"
           },
@@ -34950,7 +34961,7 @@
       "id": "HttpFaultAbort",
       "properties": {
         "httpStatus": {
-          "description": "The HTTP status code used to abort the request.\nThe value must be between 200 and 599 inclusive.",
+          "description": "The HTTP status code used to abort the request.\nThe value must be between 200 and 599 inclusive.\nFor gRPC protocol, the gRPC status code is mapped to HTTP status code according to this  mapping table. HTTP status 200 is mapped to gRPC status UNKNOWN. Injecting an OK status is currently not supported by Traffic Director.",
           "format": "uint32",
           "type": "integer"
         },
@@ -35351,7 +35362,7 @@
           "description": "Specifies a non-zero timeout per retry attempt.\nIf not specified, will use the timeout set in HttpRouteAction. If timeout in HttpRouteAction is not set, will use the largest timeout among all backend services associated with the route."
         },
         "retryConditions": {
-          "description": "Specfies one or more conditions when this retry rule applies. Valid values are:  \n- 5xx: Loadbalancer will attempt a retry if the backend service responds with any 5xx response code, or if the backend service does not respond at all, example: disconnects, reset, read timeout, connection failure, and refused streams. \n- gateway-error: Similar to 5xx, but only applies to response codes 502, 503 or 504.\n- \n- connect-failure: Loadbalancer will retry on failures connecting to backend services, for example due to connection timeouts. \n- retriable-4xx: Loadbalancer will retry for retriable 4xx response codes. Currently the only retriable error supported is 409. \n- refused-stream:Loadbalancer will retry if the backend service resets the stream with a REFUSED_STREAM error code. This reset type indicates that it is safe to retry. \n- cancelledLoadbalancer will retry if the gRPC status code in the response header is set to cancelled \n- deadline-exceeded: Loadbalancer will retry if the gRPC status code in the response header is set to deadline-exceeded \n- resource-exhausted: Loadbalancer will retry if the gRPC status code in the response header is set to resource-exhausted \n- unavailable: Loadbalancer will retry if the gRPC status code in the response header is set to unavailable",
+          "description": "Specifies one or more conditions when this retry rule applies. Valid values are:  \n- 5xx: Loadbalancer will attempt a retry if the backend service responds with any 5xx response code, or if the backend service does not respond at all, example: disconnects, reset, read timeout, connection failure, and refused streams. \n- gateway-error: Similar to 5xx, but only applies to response codes 502, 503 or 504.\n- \n- connect-failure: Loadbalancer will retry on failures connecting to backend services, for example due to connection timeouts. \n- retriable-4xx: Loadbalancer will retry for retriable 4xx response codes. Currently the only retriable error supported is 409. \n- refused-stream:Loadbalancer will retry if the backend service resets the stream with a REFUSED_STREAM error code. This reset type indicates that it is safe to retry. \n- cancelledLoadbalancer will retry if the gRPC status code in the response header is set to cancelled \n- deadline-exceeded: Loadbalancer will retry if the gRPC status code in the response header is set to deadline-exceeded \n- resource-exhausted: Loadbalancer will retry if the gRPC status code in the response header is set to resource-exhausted \n- unavailable: Loadbalancer will retry if the gRPC status code in the response header is set to unavailable",
           "items": {
             "type": "string"
           },
@@ -35369,7 +35380,7 @@
         },
         "faultInjectionPolicy": {
           "$ref": "HttpFaultInjection",
-          "description": "The specification for fault injection introduced into traffic to test the resiliency of clients to backend service failure. As part of fault injection, when clients send requests to a backend service, delays can be introduced by Loadbalancer on a percentage of requests before sending those request to the backend service. Similarly requests from clients can be aborted by the Loadbalancer for a percentage of requests.\ntimeout and retry_policy will be ignored by clients that are configured with a fault_injection_policy.\nNot supported when the URL map is bound to target gRPC proxy that has validateForProxyless field set to true."
+          "description": "The specification for fault injection introduced into traffic to test the resiliency of clients to backend service failure. As part of fault injection, when clients send requests to a backend service, delays can be introduced by Loadbalancer on a percentage of requests before sending those request to the backend service. Similarly requests from clients can be aborted by the Loadbalancer for a percentage of requests.\ntimeout and retry_policy will be ignored by clients that are configured with a fault_injection_policy."
         },
         "maxStreamDuration": {
           "$ref": "Duration",
@@ -35774,12 +35785,7 @@
               "type": "string"
             },
             "source": {
-              "annotations": {
-                "required": [
-                  "compute.images.insert"
-                ]
-              },
-              "description": "The full Google Cloud Storage URL where the disk image is stored. You must provide either this property or the sourceDisk property but not both.",
+              "description": "The full Google Cloud Storage URL where the disk image is stored.\n\nIn order to create an image, you must provide the full or partial URL of one of the following:  \n- The rawDisk.source URL  \n- The sourceDisk URL  \n- The sourceImage URL  \n- The sourceSnapshot URL",
               "type": "string"
             }
           },
@@ -35798,7 +35804,7 @@
           "description": "Set the secure boot keys of shielded instance."
         },
         "sourceDisk": {
-          "description": "URL of the source disk used to create this image. This can be a full or valid partial URL. You must provide either this property or the rawDisk.source property but not both to create an image. For example, the following are valid values:  \n- https://www.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk \n- projects/project/zones/zone/disks/disk \n- zones/zone/disks/disk",
+          "description": "URL of the source disk used to create this image. For example, the following are valid values:  \n- https://www.googleapis.com/compute/v1/projects/project/zones/zone/disks/disk \n- projects/project/zones/zone/disks/disk \n- zones/zone/disks/disk \n\nIn order to create an image, you must provide the full or partial URL of one of the following:  \n- The rawDisk.source URL  \n- The sourceDisk URL  \n- The sourceImage URL  \n- The sourceSnapshot URL",
           "type": "string"
         },
         "sourceDiskEncryptionKey": {
@@ -35810,7 +35816,7 @@
           "type": "string"
         },
         "sourceImage": {
-          "description": "URL of the source image used to create this image.\n\nIn order to create an image, you must provide the full or partial URL of one of the following:  \n- The selfLink URL  \n- This property  \n- The rawDisk.source URL  \n- The sourceDisk URL",
+          "description": "URL of the source image used to create this image.\n\nIn order to create an image, you must provide the full or partial URL of one of the following:  \n- The rawDisk.source URL  \n- The sourceDisk URL  \n- The sourceImage URL  \n- The sourceSnapshot URL",
           "type": "string"
         },
         "sourceImageEncryptionKey": {
@@ -35822,7 +35828,7 @@
           "type": "string"
         },
         "sourceSnapshot": {
-          "description": "URL of the source snapshot used to create this image.\n\nIn order to create an image, you must provide the full or partial URL of one of the following:  \n- The selfLink URL  \n- This property \n- The sourceImage URL  \n- The rawDisk.source URL  \n- The sourceDisk URL",
+          "description": "URL of the source snapshot used to create this image.\n\nIn order to create an image, you must provide the full or partial URL of one of the following:  \n- The rawDisk.source URL  \n- The sourceDisk URL  \n- The sourceImage URL  \n- The sourceSnapshot URL",
           "type": "string"
         },
         "sourceSnapshotEncryptionKey": {
@@ -36676,7 +36682,7 @@
       "type": "object"
     },
     "InstanceGroupManager": {
-      "description": "Represents a Managed Instance Group resource.\n\nAn instance group is a collection of VM instances that you can manage as a single entity. For more information, read Instance groups.\n\nFor zonal Managed Instance Group, use the instanceGroupManagers resource.\n\nFor regional Managed Instance Group, use the regionInstanceGroupManagers resource. (== resource_for {$api_version}.instanceGroupManagers ==) (== resource_for {$api_version}.regionInstanceGroupManagers ==)",
+      "description": "Whether the instance is a standby. Properties of a standby instance comparing to the regular instance: ========================================================================= | regular | standby ========================================================================= managed by IGM? | yes | yes added to the IG? | yes | yes counts towards IGM's target size? | yes | no taken into account by Autoscaler? | yes | no receives traffic from LB? | yes | no =========================================================================\n\nRepresents a Managed Instance Group resource.\n\nAn instance group is a collection of VM instances that you can manage as a single entity. For more information, read Instance groups.\n\nFor zonal Managed Instance Group, use the instanceGroupManagers resource.\n\nFor regional Managed Instance Group, use the regionInstanceGroupManagers resource. (== resource_for {$api_version}.instanceGroupManagers ==) (== resource_for {$api_version}.regionInstanceGroupManagers ==)",
       "id": "InstanceGroupManager",
       "properties": {
         "autoHealingPolicies": {
@@ -37184,11 +37190,11 @@
         },
         "maxSurge": {
           "$ref": "FixedOrPercent",
-          "description": "The maximum number of instances that can be created above the specified targetSize during the update process. This value can be either a fixed number or, if the group has 10 or more instances, a percentage. If you set a percentage, the number of instances is rounded up if necessary. The default value for maxSurge is a fixed value equal to the number of zones in which the managed instance group operates.\n\nAt least one of either maxSurge or maxUnavailable must be greater than 0. Learn more about maxSurge."
+          "description": "The maximum number of instances that can be created above the specified targetSize during the update process. This value can be either a fixed number or, if the group has 10 or more instances, a percentage. If you set a percentage, the number of instances is rounded if necessary. The default value for maxSurge is a fixed value equal to the number of zones in which the managed instance group operates.\n\nAt least one of either maxSurge or maxUnavailable must be greater than 0. Learn more about maxSurge."
         },
         "maxUnavailable": {
           "$ref": "FixedOrPercent",
-          "description": "The maximum number of instances that can be unavailable during the update process. An instance is considered available if all of the following conditions are satisfied:\n\n \n- The instance's status is RUNNING. \n- If there is a health check on the instance group, the instance's health check status must be HEALTHY at least once. If there is no health check on the group, then the instance only needs to have a status of RUNNING to be considered available.  This value can be either a fixed number or, if the group has 10 or more instances, a percentage. If you set a percentage, the number of instances is rounded up if necessary. The default value for maxUnavailable is a fixed value equal to the number of zones in which the managed instance group operates.\n\nAt least one of either maxSurge or maxUnavailable must be greater than 0. Learn more about maxUnavailable."
+          "description": "The maximum number of instances that can be unavailable during the update process. An instance is considered available if all of the following conditions are satisfied:\n\n \n- The instance's status is RUNNING. \n- If there is a health check on the instance group, the instance's health check status must be HEALTHY at least once. If there is no health check on the group, then the instance only needs to have a status of RUNNING to be considered available.  This value can be either a fixed number or, if the group has 10 or more instances, a percentage. If you set a percentage, the number of instances is rounded if necessary. The default value for maxUnavailable is a fixed value equal to the number of zones in which the managed instance group operates.\n\nAt least one of either maxSurge or maxUnavailable must be greater than 0. Learn more about maxUnavailable."
         },
         "minimalAction": {
           "description": "Minimal action to be taken on an instance. You can specify either RESTART to restart existing instances or REPLACE to delete and create new instances from the target template. If you specify a RESTART, the Updater will attempt to perform that action only. However, if the Updater determines that the minimal action you specify is not enough to perform the update, it might perform a more disruptive action.",
@@ -37246,7 +37252,7 @@
         },
         "targetSize": {
           "$ref": "FixedOrPercent",
-          "description": "Specifies the intended number of instances to be created from the instanceTemplate. The final number of instances created from the template will be equal to:  \n- If expressed as a fixed number, the minimum of either targetSize.fixed or instanceGroupManager.targetSize is used. \n- if expressed as a percent, the targetSize would be (targetSize.percent/100 * InstanceGroupManager.targetSize) If there is a remainder, the number is rounded up.  If unset, this version will update any remaining instances not updated by another version. Read Starting a canary update for more information."
+          "description": "Specifies the intended number of instances to be created from the instanceTemplate. The final number of instances created from the template will be equal to:  \n- If expressed as a fixed number, the minimum of either targetSize.fixed or instanceGroupManager.targetSize is used. \n- if expressed as a percent, the targetSize would be (targetSize.percent/100 * InstanceGroupManager.targetSize) If there is a remainder, the number is rounded.  If unset, this version will update any remaining instances not updated by another version. Read Starting a canary update for more information."
         }
       },
       "type": "object"
@@ -39093,7 +39099,7 @@
           "type": "string"
         },
         "encryption": {
-          "description": "Indicates the user-supplied encryption option of this interconnect attachment: \n- NONE is the default value, which means that the attachment carries unencrypted traffic. VMs can send traffic to, or receive traffic from, this type of attachment. \n- IPSEC indicates that the attachment carries only traffic encrypted by an IPsec device such as an HA VPN gateway. VMs cannot directly send traffic to, or receive traffic from, such an attachment. To use IPsec-encrypted Cloud Interconnect, create the attachment using this option. \nNot currently available in all Interconnect locations.",
+          "description": "Indicates the user-supplied encryption option of this VLAN attachment (interconnectAttachment). Can only be specified at attachment creation for PARTNER or DEDICATED attachments. Possible values are: \n- NONE - This is the default value, which means that the VLAN attachment carries unencrypted traffic. VMs are able to send traffic to, or receive traffic from, such a VLAN attachment. \n- IPSEC - The VLAN attachment carries only encrypted traffic that is encrypted by an IPsec device, such as an HA VPN gateway or third-party IPsec VPN. VMs cannot directly send traffic to, or receive traffic from, such a VLAN attachment. To use IPsec-encrypted Cloud Interconnect, the VLAN attachment must be created with this option. \nNot currently available publicly.",
           "enum": [
             "IPSEC",
             "NONE"
@@ -39118,7 +39124,7 @@
           "type": "string"
         },
         "ipsecInternalAddresses": {
-          "description": "URL of addresses that have been reserved for the interconnect attachment, Used only for interconnect attachment that has the encryption option as IPSEC. The addresses must be RFC 1918 IP address ranges. When creating HA VPN gateway over the interconnect attachment, if the attachment is configured to use an RFC 1918 IP address, then the VPN gateway's IP address will be allocated from the IP address range specified here. For example, if the HA VPN gateway's interface 0 is paired to this interconnect attachment, then an RFC 1918 IP address for the VPN gateway interface 0 will be allocated from the IP address specified for this interconnect attachment. If this field is not specified for interconnect attachment that has encryption option as IPSEC, later on when creating HA VPN gateway on this interconnect attachment, the HA VPN gateway's IP address will be allocated from regional external IP address pool.\nNot currently available in all Interconnect locations.",
+          "description": "List of URL of addresses that have been reserved for the VLAN attachment. Used only for the VLAN attachment that has the encryption option as IPSEC. The addresses must be regional internal IP address ranges. When creating an HA VPN gateway over the VLAN attachment, if the attachment is configured to use a regional internal IP address, then the VPN gateway's IP address is allocated from the IP address range specified here. For example, if the HA VPN gateway's interface 0 is paired to this VLAN attachment, then a regional internal IP address for the VPN gateway interface 0 will be allocated from the IP address specified for this VLAN attachment. If this field is not specified when creating the VLAN attachment, then later on when creating an HA VPN gateway on this VLAN attachment, the HA VPN gateway's IP address is allocated from the regional external IP address pool.\nNot currently available publicly.",
           "items": {
             "type": "string"
           },
@@ -40515,7 +40521,7 @@
       "id": "LocationPolicyLocation",
       "properties": {
         "preference": {
-          "description": "Preference for a given locaction: ALLOW or DENY.",
+          "description": "Preference for a given location: ALLOW or DENY.",
           "enum": [
             "ALLOW",
             "DENY",
@@ -42134,6 +42140,25 @@
           "format": "byte",
           "type": "string"
         },
+        "ipv6AccessConfigs": {
+          "description": "An array of IPv6 access configurations for this interface. Currently, only one IPv6 access config, DIRECT_IPV6, is supported. If there is no ipv6AccessConfig specified, then this instance will have no external IPv6 Internet access.",
+          "items": {
+            "$ref": "AccessConfig"
+          },
+          "type": "array"
+        },
+        "ipv6AccessType": {
+          "description": "[Output Only] One of EXTERNAL, INTERNAL to indicate whether the IP can be accessed from the Internet. This field is always inherited from its subnetwork.\n\nValid only if stackType is IPV4_IPV6.",
+          "enum": [
+            "EXTERNAL",
+            "UNSPECIFIED_IPV6_ACCESS_TYPE"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
+          "type": "string"
+        },
         "ipv6Address": {
           "description": "[Output Only] An IPv6 internal network address for this network interface.",
           "type": "string"
@@ -42161,6 +42186,20 @@
             "GVNIC",
             "UNSPECIFIED_NIC_TYPE",
             "VIRTIO_NET"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "stackType": {
+          "description": "The stack type for this network interface to identify whether the IPv6 feature is enabled or not. If not specified, IPV4_ONLY will be used.\n\nThis field can be both set at instance creation and update network interface operations.",
+          "enum": [
+            "IPV4_IPV6",
+            "IPV4_ONLY",
+            "UNSPECIFIED_STACK_TYPE"
           ],
           "enumDescriptions": [
             "",
@@ -46471,6 +46510,7 @@
             "COMMITTED_NVIDIA_P4_GPUS",
             "COMMITTED_NVIDIA_T4_GPUS",
             "COMMITTED_NVIDIA_V100_GPUS",
+            "COMMITTED_P2D_CPUS",
             "CPUS",
             "CPUS_ALL_REGIONS",
             "DISKS_TOTAL_GB",
@@ -46519,6 +46559,7 @@
             "NVIDIA_T4_GPUS",
             "NVIDIA_T4_VWS_GPUS",
             "NVIDIA_V100_GPUS",
+            "P2D_CPUS",
             "PACKET_MIRRORINGS",
             "PD_EXTREME_TOTAL_PROVISIONED_IOPS",
             "PREEMPTIBLE_CPUS",
@@ -46542,8 +46583,10 @@
             "ROUTERS",
             "ROUTES",
             "SECURITY_POLICIES",
+            "SECURITY_POLICIES_PER_REGION",
             "SECURITY_POLICY_CEVAL_RULES",
             "SECURITY_POLICY_RULES",
+            "SECURITY_POLICY_RULES_PER_REGION",
             "SNAPSHOTS",
             "SSD_TOTAL_GB",
             "SSL_CERTIFICATES",
@@ -46563,6 +46606,10 @@
             "XPN_SERVICE_PROJECTS"
           ],
           "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
             "",
             "",
             "",
@@ -48041,7 +48088,7 @@
           "type": "string"
         },
         "values": {
-          "description": "Corresponds to the label values of a reservation resource.",
+          "description": "Corresponds to the label values of a reservation resource. This can be either a name to a reservation in the same project or \"projects/different-project/reservations/some-reservation-name\" to target a shared reservation in the same zone but in a different project.",
           "items": {
             "type": "string"
           },
@@ -49469,7 +49516,7 @@
           "type": "string"
         },
         "encryptedInterconnectRouter": {
-          "description": "Field to indicate if a router is dedicated to use with encrypted Interconnect Attachment (IPsec-encrypted Cloud Interconnect feature).\nNot currently available in all Interconnect locations.",
+          "description": "Indicates if a router is dedicated for use with encrypted VLAN attachments (interconnectAttachments).\nNot currently available publicly.",
           "type": "boolean"
         },
         "id": {
@@ -49705,6 +49752,11 @@
           "description": "Local BGP Autonomous System Number (ASN). Must be an RFC6996 private ASN, either 16-bit or 32-bit. The value will be fixed for this router resource. All VPN tunnels that link to this router will have the same local ASN.",
           "format": "uint32",
           "type": "integer"
+        },
+        "keepaliveInterval": {
+          "description": "The interval in seconds between BGP keepalive messages that are sent to the peer.\nHold time is three times the interval at which keepalive messages are sent, and the hold time is the maximum number of seconds allowed to elapse between successive keepalive messages that BGP receives from a peer.\nBGP will use the smaller of either the local hold time value or the peer's hold time value as the hold time for the BGP connection between the two peers.\nIf set, this value must be between 20 and 60. The default is 20.",
+          "format": "uint32",
+          "type": "integer"
         }
       },
       "type": "object"
@@ -49748,6 +49800,18 @@
           "description": "The priority of routes advertised to this BGP peer. Where there is more than one matching route of maximum length, the routes with the lowest priority value win.",
           "format": "uint32",
           "type": "integer"
+        },
+        "enable": {
+          "description": "The status of the BGP peer connection.\nIf set to FALSE, any active session with the peer is terminated and all associated routing information is removed. If set to TRUE, the peer connection can be established with routing information. The default is TRUE.",
+          "enum": [
+            "FALSE",
+            "TRUE"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
+          "type": "string"
         },
         "interfaceName": {
           "description": "Name of the interface the BGP peer is associated with.",
@@ -50523,7 +50587,7 @@
       "type": "object"
     },
     "Scheduling": {
-      "description": "Sets the scheduling options for an Instance. NextID: 20",
+      "description": "Sets the scheduling options for an Instance. NextID: 21",
       "id": "Scheduling",
       "properties": {
         "automaticRestart": {
@@ -50635,6 +50699,9 @@
       "description": "Represents a Google Cloud Armor security policy resource.\n\nOnly external backend services that use load balancers can reference a security policy. For more information, see  Google Cloud Armor security policy overview. (== resource_for {$api_version}.securityPolicies ==)",
       "id": "SecurityPolicy",
       "properties": {
+        "advancedOptionsConfig": {
+          "$ref": "SecurityPolicyAdvancedOptionsConfig"
+        },
         "creationTimestamp": {
           "description": "[Output Only] Creation timestamp in RFC3339 text format.",
           "type": "string"
@@ -50672,6 +50739,34 @@
         },
         "selfLink": {
           "description": "[Output Only] Server-defined URL for the resource.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SecurityPolicyAdvancedOptionsConfig": {
+      "id": "SecurityPolicyAdvancedOptionsConfig",
+      "properties": {
+        "jsonParsing": {
+          "enum": [
+            "DISABLED",
+            "STANDARD"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "logLevel": {
+          "enum": [
+            "NORMAL",
+            "VERBOSE"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
           "type": "string"
         }
       },
@@ -52164,6 +52259,10 @@
           "description": "Whether to enable flow logging for this subnetwork. If this field is not explicitly set, it will not appear in get listings. If not set the default behavior is to disable flow logging. This field isn't supported with the purpose field set to INTERNAL_HTTPS_LOAD_BALANCER.",
           "type": "boolean"
         },
+        "externalIpv6Prefix": {
+          "description": "[Output Only] The range of external IPv6 addresses that are owned by this subnetwork.",
+          "type": "string"
+        },
         "fingerprint": {
           "description": "Fingerprint of this resource. A hash of the contents stored in this object. This field is used in optimistic locking. This field will be ignored when inserting a Subnetwork. An up-to-date fingerprint must be provided in order to update the Subnetwork, otherwise the request will fail with error 412 conditionNotMet.\n\nTo see the latest fingerprint, make a get() request to retrieve a Subnetwork.",
           "format": "byte",
@@ -52180,6 +52279,18 @@
         },
         "ipCidrRange": {
           "description": "The range of internal addresses that are owned by this subnetwork. Provide this property when you create the subnetwork. For example, 10.0.0.0/8 or 100.64.0.0/10. Ranges must be unique and non-overlapping within a network. Only IPv4 is supported. This field is set at resource creation time. The range can be any range listed in the Valid ranges list. The range can be expanded after creation using expandIpCidrRange.",
+          "type": "string"
+        },
+        "ipv6AccessType": {
+          "description": "The access type of IPv6 address this subnet holds. It's immutable and can only be specified during creation or the first time the subnet is updated into IPV4_IPV6 dual stack. If the ipv6_type is EXTERNAL then this subnet cannot enable direct path.",
+          "enum": [
+            "EXTERNAL",
+            "UNSPECIFIED_IPV6_ACCESS_TYPE"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
           "type": "string"
         },
         "ipv6CidrRange": {
@@ -52261,6 +52372,20 @@
         },
         "selfLink": {
           "description": "[Output Only] Server-defined URL for the resource.",
+          "type": "string"
+        },
+        "stackType": {
+          "description": "The stack type for this subnet to identify whether the IPv6 feature is enabled or not. If not specified IPV4_ONLY will be used.\n\nThis field can be both set at resource creation time and updated using patch.",
+          "enum": [
+            "IPV4_IPV6",
+            "IPV4_ONLY",
+            "UNSPECIFIED_STACK_TYPE"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            ""
+          ],
           "type": "string"
         },
         "state": {
@@ -53374,7 +53499,7 @@
       "id": "TargetHttpsProxiesSetSslCertificatesRequest",
       "properties": {
         "sslCertificates": {
-          "description": "New set of SslCertificate resources to associate with this TargetHttpsProxy resource. Currently exactly one SslCertificate resource must be specified.",
+          "description": "New set of SslCertificate resources to associate with this TargetHttpsProxy resource. At least one SSL certificate must be specified. Currently, you may specify up to 15 SSL certificates.",
           "items": {
             "type": "string"
           },
@@ -53450,7 +53575,7 @@
           "type": "string"
         },
         "sslCertificates": {
-          "description": "URLs to SslCertificate resources that are used to authenticate connections between users and the load balancer. At least one SSL certificate must be specified. Currently, you may specify up to 15 SSL certificates.",
+          "description": "URLs to SslCertificate resources that are used to authenticate connections between users and the load balancer. At least one SSL certificate must be specified. Currently, you may specify up to 15 SSL certificates. sslCertificates do not apply when the load balancing scheme is set to INTERNAL_SELF_MANAGED.",
           "items": {
             "type": "string"
           },
@@ -54627,7 +54752,7 @@
       "id": "TargetSslProxiesSetSslCertificatesRequest",
       "properties": {
         "sslCertificates": {
-          "description": "New set of URLs to SslCertificate resources to associate with this TargetSslProxy. Currently exactly one ssl certificate must be specified.",
+          "description": "New set of URLs to SslCertificate resources to associate with this TargetSslProxy. At least one SSL certificate must be specified. Currently, you may specify up to 15 SSL certificates.",
           "items": {
             "type": "string"
           },
@@ -54684,7 +54809,7 @@
           "type": "string"
         },
         "sslCertificates": {
-          "description": "URLs to SslCertificate resources that are used to authenticate connections to Backends. At least one SSL certificate must be specified. Currently, you may specify up to 15 SSL certificates.",
+          "description": "URLs to SslCertificate resources that are used to authenticate connections to Backends. At least one SSL certificate must be specified. Currently, you may specify up to 15 SSL certificates. sslCertificates do not apply when the load balancing scheme is set to INTERNAL_SELF_MANAGED.",
           "items": {
             "type": "string"
           },
@@ -56105,7 +56230,7 @@
           "type": "string"
         },
         "nextPageToken": {
-          "description": "[Output Only] This token allows you to get the next page of results for list requests. If the number of results is larger than maxResults, use the nextPageToken as a value for the query parameter pageToken in the next list request. Subsequent list requests will have their own nextPageToken to continue paging through the results.",
+          "description": "[Output Only] This token allows you to get the next page of results for list requests. If the number of results is larger than maxResults, use the nextPageToken as a value for the query parameter pageToken in the next list request. Subsequent list requests will have their own nextPageToken to continue paging through the results. In special cases listUsable may return 0 subnetworks and nextPageToken which still should be used to get the next page of results.",
           "type": "string"
         },
         "selfLink": {
@@ -56449,7 +56574,7 @@
           "type": "string"
         },
         "vpnInterfaces": {
-          "description": "A list of interfaces on this VPN gateway.",
+          "description": "The list of VPN interfaces associated with this VPN gateway.",
           "items": {
             "$ref": "VpnGatewayVpnGatewayInterface"
           },
@@ -56791,16 +56916,16 @@
       "id": "VpnGatewayVpnGatewayInterface",
       "properties": {
         "id": {
-          "description": "The numeric ID of this VPN gateway interface.",
+          "description": "[Output Only] Numeric identifier for this VPN interface associated with the VPN gateway.",
           "format": "uint32",
           "type": "integer"
         },
         "interconnectAttachment": {
-          "description": "URL of the interconnect attachment resource. When the value of this field is present, the VPN Gateway will be used for IPsec-encrypted Cloud Interconnect; all Egress or Ingress traffic for this VPN Gateway interface will go through the specified interconnect attachment resource.\nNot currently available in all Interconnect locations.",
+          "description": "URL of the VLAN attachment (interconnectAttachment) resource for this VPN gateway interface. When the value of this field is present, the VPN gateway is used for IPsec-encrypted Cloud Interconnect; all egress or ingress traffic for this VPN gateway interface goes through the specified VLAN attachment resource.\nNot currently available publicly.",
           "type": "string"
         },
         "ipAddress": {
-          "description": "[Output Only] The external IP address for this VPN gateway interface.",
+          "description": "[Output Only] IP address for this VPN interface associated with the VPN gateway. The IP address could be either a regional external IP address or a regional internal IP address. The two IP addresses for a VPN gateway must be all regional external or regional internal IP addresses. There cannot be a mix of regional external IP addresses and regional internal IP addresses. For IPsec-encrypted Cloud Interconnect, the IP addresses for both interfaces could either be regional internal IP addresses or regional external IP addresses. For regular (non IPsec-encrypted Cloud Interconnect) HA VPN tunnels, the IP address must be a regional external IP address.",
           "type": "string"
         }
       },

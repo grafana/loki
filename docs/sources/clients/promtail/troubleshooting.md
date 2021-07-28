@@ -19,6 +19,30 @@ To start Promtail in dry run mode use the flag `--dry-run` as shown in the examp
 cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/api/v1/push
 ```
 
+## Inspecting pipeline stages
+
+Promtail can output all changes to log entries as each pipeline stage is executed.
+Each log entry contains four fields:
+- line
+- timestamp
+- labels
+- extracted fields
+
+Enable the inspection output using the `--inspect` command-line option. The `--inspect` option can be used in combination with `--stdin` and `--dry-run`.
+
+```bash
+cat my.log | promtail --stdin --dry-run --inspect --client.url http://127.0.0.1:3100/loki/api/v1/push
+```
+
+![screenshot](../inspect.png)
+
+The output uses color to highlight changes. Additions are in green, modifications in yellow, and removals in red.
+
+If no changes are applied during a stage, that is usually an indication of a misconfiguration or undesired behavior.
+
+The `--inspect` flag should not be used in production, as the calculation of changes between pipeline stages negatively
+impacts Promtail's performance.
+
 ## Pipe data to Promtail
 
 Promtail supports piping data for sending logs to Loki (via the flag `--stdin`). This is a very useful way to troubleshooting your configuration.

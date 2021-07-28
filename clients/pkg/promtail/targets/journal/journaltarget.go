@@ -45,8 +45,10 @@ type journalReader interface {
 }
 
 // Abstracted functions for interacting with the journal, used for mocking in tests:
-type journalReaderFunc func(sdjournal.JournalReaderConfig) (journalReader, error)
-type journalEntryFunc func(cfg sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error)
+type (
+	journalReaderFunc func(sdjournal.JournalReaderConfig) (journalReader, error)
+	journalEntryFunc  func(cfg sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error)
+)
 
 // Default implementations of abstracted functions:
 var defaultJournalReaderFunc = func(c sdjournal.JournalReaderConfig) (journalReader, error) {
@@ -84,7 +86,7 @@ var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor strin
 }
 
 // JournalTarget tails systemd journal entries.
-// nolint(golint)
+// nolint
 type JournalTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler

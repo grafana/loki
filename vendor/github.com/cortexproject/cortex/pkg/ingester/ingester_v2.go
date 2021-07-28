@@ -157,6 +157,10 @@ func (u *userTSDB) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.
 	return u.db.ChunkQuerier(ctx, mint, maxt)
 }
 
+func (u *userTSDB) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
+	return u.db.ExemplarQuerier(ctx)
+}
+
 func (u *userTSDB) Head() *tsdb.Head {
 	return u.db.Head()
 }
@@ -976,6 +980,10 @@ func (u *userTSDB) releaseAppendLock() {
 }
 
 func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1031,7 +1039,62 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	return result, ss.Err()
 }
 
+func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	from, through, matchers, err := client.FromExemplarQueryRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	i.metrics.queries.Inc()
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.ExemplarQueryResponse{}, nil
+	}
+
+	q, err := db.ExemplarQuerier(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// It's not required to sort series from a single ingester because series are sorted by the Exemplar Storage before returning from Select.
+	res, err := q.Select(from, through, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	numExemplars := 0
+
+	result := &client.ExemplarQueryResponse{}
+	for _, es := range res {
+		ts := cortexpb.TimeSeries{
+			Labels:    cortexpb.FromLabelsToLabelAdapters(es.SeriesLabels),
+			Exemplars: cortexpb.FromExemplarsToExemplarProtos(es.Exemplars),
+		}
+
+		numExemplars += len(ts.Exemplars)
+		result.Timeseries = append(result.Timeseries, ts)
+	}
+
+	i.metrics.queriedExemplars.Observe(float64(numExemplars))
+
+	return result, nil
+}
+
 func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
 	if err != nil {
 		return nil, err
@@ -1069,6 +1132,10 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 }
 
 func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1101,6 +1168,10 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 }
 
 func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1168,6 +1239,10 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 }
 
 func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1182,6 +1257,10 @@ func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest
 }
 
 func (i *Ingester) v2AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
@@ -1214,6 +1293,10 @@ const queryStreamBatchMessageSize = 1 * 1024 * 1024
 
 // v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	if err := i.checkRunning(); err != nil {
+		return err
+	}
+
 	spanlog, ctx := spanlogger.New(stream.Context(), "v2QueryStream")
 	defer spanlog.Finish()
 
@@ -1507,7 +1590,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
-		seriesInMetric:      newMetricCounter(i.limiter),
+		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 
@@ -1515,6 +1598,10 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		instanceSeriesCount: &i.TSDBState.seriesCount,
 	}
 
+	enableExemplars := false
+	if i.cfg.BlocksStorageConfig.TSDB.MaxExemplars > 0 {
+		enableExemplars = true
+	}
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:         i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -1527,8 +1614,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		WALSegmentSize:            i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
 		SeriesLifecycleCallback:   userDB,
 		BlocksToDelete:            userDB.blocksToDelete,
-		MaxExemplars:              i.cfg.BlocksStorageConfig.TSDB.MaxExemplars,
-	})
+		EnableExemplarStorage:     enableExemplars,
+		MaxExemplars:              int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars),
+	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
 	}
@@ -1732,6 +1820,10 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 // getMemorySeriesMetric returns the total number of in-memory series across all open TSDBs.
 func (i *Ingester) getMemorySeriesMetric() float64 {
+	if err := i.checkRunning(); err != nil {
+		return 0
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 

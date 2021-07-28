@@ -8,6 +8,7 @@ import (
 	"github.com/go-redis/redis/v8/internal/util"
 )
 
+// redis resp protocol data type.
 const (
 	ErrorReply  = '-'
 	StatusReply = '+'
@@ -71,13 +72,25 @@ func (r *Reader) ReadLine() ([]byte, error) {
 func (r *Reader) readLine() ([]byte, error) {
 	b, err := r.rd.ReadSlice('\n')
 	if err != nil {
-		return nil, err
+		if err != bufio.ErrBufferFull {
+			return nil, err
+		}
+
+		full := make([]byte, len(b))
+		copy(full, b)
+
+		b, err = r.rd.ReadBytes('\n')
+		if err != nil {
+			return nil, err
+		}
+
+		full = append(full, b...) //nolint:makezero
+		b = full
 	}
 	if len(b) <= 2 || b[len(b)-1] != '\n' || b[len(b)-2] != '\r' {
 		return nil, fmt.Errorf("redis: invalid reply: %q", b)
 	}
-	b = b[:len(b)-2]
-	return b, nil
+	return b[:len(b)-2], nil
 }
 
 func (r *Reader) ReadReply(m MultiBulkParse) (interface{}, error) {

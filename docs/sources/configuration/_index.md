@@ -321,6 +321,13 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Limit queries that can be sharded.
+# Queries within the time range of now and now minus this sharding lookback
+# are not sharded. The default value of 0s disables the lookback, causing
+# sharding of all queries at all times.
+# CLI flag: -frontend.min-sharding-lookback
+[min_sharding_lookback: <duration> | default = 0s]
+
 # Deprecated: Split queries by day and execute in parallel. Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
@@ -929,6 +936,13 @@ lifecycler:
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
 
+# Forget about ingesters having heartbeat timestamps older than `ring.kvstore.heartbeat_timeout`.
+# This is equivalent to clicking on `/ring` `forget` button in the UI: the ingester is removed from the ring.
+# A useful setting when you are sure that an unhealthy node won't return. An example is when not
+# using stateful sets or the equivalent.
+# You may use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.
+# CLI flag: -ingester.autoforget-unhealthy
+[autoforget_unhealthy: <boolean> | default = false]
 
 # The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
 wal:
@@ -1415,6 +1429,15 @@ boltdb_shipper:
   # tables created with 24h period.
   # CLI flag: -boltdb.shipper.query-ready-num-days
   [query_ready_num_days: <int> | default = 0]
+
+  index_gateway_client:
+    # "Hostname or IP of the Index Gateway gRPC server.
+    # CLI flag: -boltdb.shipper.index-gateway-client.server-address
+    [server_address: <string> | default = ""]
+
+    # Configures the gRPC client used to connect to the Index Gateway gRPC server.
+    # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
+    [grpc_client_config: <grpc_client_config>]
 
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.

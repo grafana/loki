@@ -11,11 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
@@ -23,6 +18,11 @@ import (
 	"github.com/prometheus/common/model"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -40,6 +40,7 @@ type Config struct {
 	RetentionDeleteDelay      time.Duration `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int           `yaml:"retention_delete_worker_count"`
 	DeleteRequestCancelPeriod time.Duration `yaml:"delete_request_cancel_period"`
+	MaxCompactionParallelism  int           `yaml:"max_compaction_parallelism"`
 }
 
 // RegisterFlags registers flags.
@@ -52,6 +53,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 }
 
 func (cfg *Config) IsDefaults() bool {
@@ -61,6 +63,9 @@ func (cfg *Config) IsDefaults() bool {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.MaxCompactionParallelism < 1 {
+		return errors.New("max compaction parallelism must be >= 1")
+	}
 	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
@@ -246,23 +251,64 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 		tables[i] = strings.TrimSuffix(string(dir), delimiter)
 	}
 
-	for _, tableName := range tables {
-		if tableName == deletion.DeleteRequestsTableName {
-			// we do not want to compact or apply retention on delete requests table
-			continue
+	compactTablesChan := make(chan string)
+	errChan := make(chan error)
+
+	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
+		go func() {
+			var err error
+			defer func() {
+				errChan <- err
+			}()
+
+			for {
+				select {
+				case tableName, ok := <-compactTablesChan:
+					if !ok {
+						return
+					}
+
+					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
+					err = c.CompactTable(ctx, tableName)
+					if err != nil {
+						return
+					}
+					level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for _, tableName := range tables {
+			if tableName == deletion.DeleteRequestsTableName {
+				// we do not want to compact or apply retention on delete requests table
+				continue
+			}
+
+			select {
+			case compactTablesChan <- tableName:
+			case <-ctx.Done():
+				return
+			}
 		}
-		if err := c.CompactTable(ctx, tableName); err != nil {
+
+		close(compactTablesChan)
+	}()
+
+	var firstErr error
+	// read all the errors
+	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
+		err := <-errChan
+		if err != nil && firstErr == nil {
 			status = statusFailure
-		}
-		// check if context was cancelled before going for next table.
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
+			firstErr = err
 		}
 	}
 
-	return nil
+	return firstErr
 }
 
 type expirationChecker struct {

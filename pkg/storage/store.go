@@ -7,9 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -23,6 +20,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -137,7 +137,7 @@ func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, regist
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 	if name == shipper.BoltDBShipperType {
 		name = "boltdb"
-		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
+		cfg.FSConfig = chunk_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
 	}
 	return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
 }

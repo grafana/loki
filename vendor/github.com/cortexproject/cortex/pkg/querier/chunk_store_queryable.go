@@ -85,7 +85,7 @@ func (q *chunkStoreQuerier) LabelValues(name string, labels ...*labels.Matcher) 
 	return nil, nil, nil
 }
 
-func (q *chunkStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (q *chunkStoreQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

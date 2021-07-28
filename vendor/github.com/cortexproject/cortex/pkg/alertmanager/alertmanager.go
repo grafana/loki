@@ -166,6 +166,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 			Name: "alertmanager_notification_rate_limited_total",
 			Help: "Number of rate-limited notifications per integration.",
 		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
+
 	}
 
 	am.registry = reg
@@ -241,7 +242,12 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, am.logger)
+	var callback mem.AlertStoreCallback
+	if am.cfg.Limits != nil {
+		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
+	}
+
+	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, callback, am.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -278,7 +284,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.mux.Handle(a, http.NotFoundHandler())
 	}
 
-	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry)
 
 	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
@@ -382,6 +388,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		pipeline,
 		am.marker,
 		timeoutFunc,
+		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		log.With(am.logger, "component", "dispatcher"),
 		am.dispatcherMetrics,
 	)
@@ -573,4 +580,151 @@ func (t *tenantRateLimits) RateLimit() rate.Limit {
 
 func (t *tenantRateLimits) Burst() int {
 	return t.limits.NotificationBurstSize(t.tenant, t.integration)
+}
+
+type dispatcherLimits struct {
+	tenant string
+	limits Limits
+}
+
+func (g *dispatcherLimits) MaxNumberOfAggregationGroups() int {
+	return g.limits.AlertmanagerMaxDispatcherAggregationGroups(g.tenant)
+}
+
+var (
+	errTooManyAlerts = "too many alerts, limit: %d"
+	errAlertsTooBig  = "alerts too big, total size limit: %d bytes"
+)
+
+// alertsLimiter limits the number and size of alerts being received by the Alertmanager.
+// We consider an alert unique based on its fingerprint (a hash of its labels) and
+// its size it's determined by the sum of bytes of its labels, annotations, and generator URL.
+type alertsLimiter struct {
+	tenant string
+	limits Limits
+
+	failureCounter prometheus.Counter
+
+	mx        sync.Mutex
+	sizes     map[model.Fingerprint]int
+	count     int
+	totalSize int
+}
+
+func newAlertsLimiter(tenant string, limits Limits, reg prometheus.Registerer) *alertsLimiter {
+	limiter := &alertsLimiter{
+		tenant: tenant,
+		limits: limits,
+		sizes:  map[model.Fingerprint]int{},
+		failureCounter: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_alerts_insert_limited_total",
+			Help: "Number of failures to insert new alerts to in-memory alert store.",
+		}),
+	}
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts",
+		Help: "Number of alerts tracked by alerts limiter.",
+	}, func() float64 {
+		c, _ := limiter.currentStats()
+		return float64(c)
+	})
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts_size_bytes",
+		Help: "Total size of alerts tracked by alerts limiter.",
+	}, func() float64 {
+		_, s := limiter.currentStats()
+		return float64(s)
+	})
+
+	return limiter
+}
+
+func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
+	if alert == nil {
+		return nil
+	}
+
+	fp := alert.Fingerprint()
+
+	countLimit := a.limits.AlertmanagerMaxAlertsCount(a.tenant)
+	sizeLimit := a.limits.AlertmanagerMaxAlertsSizeBytes(a.tenant)
+
+	sizeDiff := alertSize(alert.Alert)
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	if !existing && countLimit > 0 && (a.count+1) > countLimit {
+		a.failureCounter.Inc()
+		return fmt.Errorf(errTooManyAlerts, countLimit)
+	}
+
+	if existing {
+		sizeDiff -= a.sizes[fp]
+	}
+
+	if sizeLimit > 0 && (a.totalSize+sizeDiff) > sizeLimit {
+		a.failureCounter.Inc()
+		return fmt.Errorf(errAlertsTooBig, sizeLimit)
+	}
+
+	return nil
+}
+
+func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
+	if alert == nil {
+		return
+	}
+
+	newSize := alertSize(alert.Alert)
+	fp := alert.Fingerprint()
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	if existing {
+		a.totalSize -= a.sizes[fp]
+	} else {
+		a.count++
+	}
+	a.sizes[fp] = newSize
+	a.totalSize += newSize
+}
+
+func (a *alertsLimiter) PostDelete(alert *types.Alert) {
+	if alert == nil {
+		return
+	}
+
+	fp := alert.Fingerprint()
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	a.totalSize -= a.sizes[fp]
+	delete(a.sizes, fp)
+	a.count--
+}
+
+func (a *alertsLimiter) currentStats() (count, totalSize int) {
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	return a.count, a.totalSize
+}
+
+func alertSize(alert model.Alert) int {
+	size := 0
+	for l, v := range alert.Labels {
+		size += len(l)
+		size += len(v)
+	}
+	for l, v := range alert.Annotations {
+		size += len(l)
+		size += len(v)
+	}
+	size += len(alert.GeneratorURL)
+	return size
 }

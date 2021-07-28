@@ -8,6 +8,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -21,9 +22,10 @@ type GCSObjectClient struct {
 
 // GCSConfig is config for the GCS Chunk Client.
 type GCSConfig struct {
-	BucketName      string        `yaml:"bucket_name"`
-	ChunkBufferSize int           `yaml:"chunk_buffer_size"`
-	RequestTimeout  time.Duration `yaml:"request_timeout"`
+	BucketName       string        `yaml:"bucket_name"`
+	ChunkBufferSize  int           `yaml:"chunk_buffer_size"`
+	RequestTimeout   time.Duration `yaml:"request_timeout"`
+	EnableOpenCensus bool          `yaml:"enable_opencensus"`
 }
 
 // RegisterFlags registers flags.
@@ -36,16 +38,22 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"gcs.bucketname", "", "Name of GCS bucket. Please refer to https://cloud.google.com/docs/authentication/production for more information about how to configure authentication.")
 	f.IntVar(&cfg.ChunkBufferSize, prefix+"gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
+	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enabled OpenCensus (OC) instrumentation for all requests.")
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
 func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, error) {
-	option, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
+	var opts []option.ClientOption
+	instrumentation, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
 	if err != nil {
 		return nil, err
 	}
+	opts = append(opts, instrumentation)
+	if !cfg.EnableOpenCensus {
+		opts = append(opts, option.WithTelemetryDisabled())
+	}
 
-	client, err := storage.NewClient(ctx, option)
+	client, err := storage.NewClient(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +93,6 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 
 func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
 	reader, err := s.bucket.Object(objectKey).NewReader(ctx)
-
 	if err != nil {
 		if err == storage.ErrObjectNotExist {
 			return nil, chunk.ErrStorageObjectNotFound
@@ -165,7 +172,6 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 // key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
 func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	err := s.bucket.Object(objectKey).Delete(ctx)
-
 	if err != nil {
 		if err == storage.ErrObjectNotExist {
 			return chunk.ErrStorageObjectNotFound

@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -82,8 +82,8 @@ func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexCli
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
-	dbs, err := loadBoltDBsFromDir(path)
+func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
+	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,6 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 			}
 			return nil
 		})
-
 		if err != nil {
 			return err
 		}
@@ -465,7 +464,7 @@ func (lt *Table) buildObjectKey(dbName string) string {
 	return fmt.Sprintf("%s.gz", objectKey)
 }
 
-func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
+func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, error) {
 	dbs := map[string]*bbolt.DB{}
 	filesInfo, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -489,8 +488,9 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 
 		db, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file to let Loki start successfully.", fullPath), "err", err)
-			return nil, err
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file.", fullPath), "err", err)
+			metrics.openExistingFileFailuresTotal.Inc()
+			continue
 		}
 
 		hasBucket := false

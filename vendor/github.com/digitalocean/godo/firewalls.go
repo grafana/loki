@@ -89,6 +89,7 @@ type Sources struct {
 	Tags             []string `json:"tags,omitempty"`
 	DropletIDs       []int    `json:"droplet_ids,omitempty"`
 	LoadBalancerUIDs []string `json:"load_balancer_uids,omitempty"`
+	KubernetesIDs    []string `json:"kubernetes_ids,omitempty"`
 }
 
 // PendingChange represents a DigitalOcean Firewall status details.
@@ -104,6 +105,7 @@ type Destinations struct {
 	Tags             []string `json:"tags,omitempty"`
 	DropletIDs       []int    `json:"droplet_ids,omitempty"`
 	LoadBalancerUIDs []string `json:"load_balancer_uids,omitempty"`
+	KubernetesIDs    []string `json:"kubernetes_ids,omitempty"`
 }
 
 var _ FirewallsService = &FirewallsServiceOp{}

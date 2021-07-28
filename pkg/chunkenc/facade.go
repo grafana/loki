@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 // GzipLogChunk is a cortex encoding type for our chunks.
@@ -77,7 +77,8 @@ func (f Facade) Size() int {
 	if f.c == nil {
 		return 0
 	}
-	return f.c.Size()
+	// Note this is an estimation (which is OK)
+	return f.c.CompressedSize()
 }
 
 // LokiChunk returns the chunkenc.Chunk.

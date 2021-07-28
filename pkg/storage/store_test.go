@@ -22,15 +22,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -192,8 +192,8 @@ func getLocalStore() Store {
 
 	storeConfig := Config{
 		Config: storage.Config{
-			BoltDBConfig: cortex_local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-			FSConfig:     cortex_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+			BoltDBConfig: chunk_local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+			FSConfig:     chunk_local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 		},
 		MaxChunkBatchSize: 10,
 	}
@@ -810,7 +810,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 
 	config := Config{
 		Config: storage.Config{
-			FSConfig: cortex_local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+			FSConfig: chunk_local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
@@ -1118,4 +1118,54 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_OverlappingChunks(t *testing.T) {
+	chunks := []chunk.Chunk{
+
+		newChunk(logproto.Stream{
+			Labels: `{foo="bar"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: time.Unix(0, 1), Line: "1"},
+				{Timestamp: time.Unix(0, 4), Line: "4"},
+			},
+		}),
+		newChunk(logproto.Stream{
+			Labels: `{foo="bar"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: time.Unix(0, 2), Line: "2"},
+				{Timestamp: time.Unix(0, 3), Line: "3"},
+			},
+		}),
+	}
+	s := &store{
+		Store: &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}},
+		cfg: Config{
+			MaxChunkBatchSize: 10,
+		},
+		chunkMetrics: NilMetrics,
+	}
+
+	ctx = user.InjectOrgID(context.Background(), "test-user")
+	it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+		Selector:  `{foo="bar"}`,
+		Limit:     1000,
+		Direction: logproto.BACKWARD,
+		Start:     time.Unix(0, 0),
+		End:       time.Unix(0, 10),
+	}})
+	if err != nil {
+		t.Errorf("store.SelectLogs() error = %v", err)
+		return
+	}
+	defer it.Close()
+	require.True(t, it.Next())
+	require.Equal(t, "4", it.Entry().Line)
+	require.True(t, it.Next())
+	require.Equal(t, "3", it.Entry().Line)
+	require.True(t, it.Next())
+	require.Equal(t, "2", it.Entry().Line)
+	require.True(t, it.Next())
+	require.Equal(t, "1", it.Entry().Line)
+	require.False(t, it.Next())
 }

@@ -1,6 +1,21 @@
 Changes by Version
 ==================
 
+2.29.2 (unreleased)
+-------------------
+- Nothing yet.
+
+
+2.29.1 (2021-05-24)
+-------------------
+- Remove dependency on "testing" in "thrift" (#586) -- @yurishkuro
+
+
+2.29.0 (2021-05-20)
+-------------------
+- Update vendored thrift to 0.14.1 (#584) -- @nhatthm
+
+
 2.28.0 (2021-04-30)
 -------------------
 - HTTPSamplingStrategyFetcher: Use http client with 10 second timeout (#578) -- Joe Elliott

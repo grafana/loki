@@ -24,8 +24,10 @@ type ShardingStrategy interface {
 	// that should be synced by the store-gateway.
 	FilterUsers(ctx context.Context, userIDs []string) []string
 
-	// FilterBlocks that should be loaded by the store-gateway.
-	FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error
+	// FilterBlocks filters metas in-place keeping only blocks that should be loaded by the store-gateway.
+	// The provided loaded map contains blocks which have been previously returned by this function and
+	// are now loaded or loading in the store-gateway.
+	FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error
 }
 
 // ShardingLimits is the interface that should be implemented by the limits provider,
@@ -45,7 +47,7 @@ func (s *NoShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []
 	return userIDs
 }
 
-func (s *NoShardingStrategy) FilterBlocks(_ context.Context, _ string, _ map[ulid.ULID]*metadata.Meta, _ *extprom.TxGaugeVec) error {
+func (s *NoShardingStrategy) FilterBlocks(_ context.Context, _ string, _ map[ulid.ULID]*metadata.Meta, _ map[ulid.ULID]struct{}, _ *extprom.TxGaugeVec) error {
 	return nil
 }
 
@@ -72,8 +74,8 @@ func (s *DefaultShardingStrategy) FilterUsers(_ context.Context, userIDs []strin
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *DefaultShardingStrategy) FilterBlocks(_ context.Context, _ string, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
-	filterBlocksByRingSharding(s.r, s.instanceAddr, metas, synced, s.logger)
+func (s *DefaultShardingStrategy) FilterBlocks(_ context.Context, _ string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error {
+	filterBlocksByRingSharding(s.r, s.instanceAddr, metas, loaded, synced, s.logger)
 	return nil
 }
 
@@ -115,30 +117,57 @@ func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []strin
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
+func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error {
 	subRing := GetShuffleShardingSubring(s.r, userID, s.limits)
-	filterBlocksByRingSharding(subRing, s.instanceAddr, metas, synced, s.logger)
+	filterBlocksByRingSharding(subRing, s.instanceAddr, metas, loaded, synced, s.logger)
 	return nil
 }
 
-func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec, logger log.Logger) {
+func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec, logger log.Logger) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
 	for blockID := range metas {
 		key := cortex_tsdb.HashBlockID(blockID)
-		set, err := r.Get(key, BlocksSync, bufDescs, bufHosts, bufZones)
 
-		// If there are no healthy instances in the replication set or
-		// the replication set for this block doesn't include this instance
-		// then we filter it out.
-		if err != nil || !set.Includes(instanceAddr) {
-			if err != nil {
-				level.Warn(logger).Log("msg", "excluded block because failed to get replication set", "block", blockID.String(), "err", err)
+		// Check if the block is owned by the store-gateway
+		set, err := r.Get(key, BlocksOwnerSync, bufDescs, bufHosts, bufZones)
+
+		// If an error occurs while checking the ring, we keep the previously loaded blocks.
+		if err != nil {
+			if _, ok := loaded[blockID]; ok {
+				level.Warn(logger).Log("msg", "failed to check block owner but block is kept because was previously loaded", "block", blockID.String(), "err", err)
+			} else {
+				level.Warn(logger).Log("msg", "failed to check block owner and block has been excluded because was not previously loaded", "block", blockID.String(), "err", err)
+
+				// Skip the block.
+				synced.WithLabelValues(shardExcludedMeta).Inc()
+				delete(metas, blockID)
 			}
 
-			synced.WithLabelValues(shardExcludedMeta).Inc()
-			delete(metas, blockID)
+			continue
 		}
+
+		// Keep the block if it is owned by the store-gateway.
+		if set.Includes(instanceAddr) {
+			continue
+		}
+
+		// The block is not owned by the store-gateway. However, if it's currently loaded
+		// we can safely unload it only once at least 1 authoritative owner is available
+		// for queries.
+		if _, ok := loaded[blockID]; ok {
+			// The ring Get() returns an error if there's no available instance.
+			if _, err := r.Get(key, BlocksOwnerRead, bufDescs, bufHosts, bufZones); err != nil {
+				// Keep the block.
+				continue
+			}
+		}
+
+		// The block is not owned by the store-gateway and there's at least 1 available
+		// authoritative owner available for queries, so we can filter it out (and unload
+		// it if it was loaded).
+		synced.WithLabelValues(shardExcludedMeta).Inc()
+		delete(metas, blockID)
 	}
 }
 
@@ -159,18 +188,33 @@ func GetShuffleShardingSubring(ring *ring.Ring, userID string, limits ShardingLi
 type shardingMetadataFilterAdapter struct {
 	userID   string
 	strategy ShardingStrategy
+
+	// Keep track of the last blocks returned by the Filter() function.
+	lastBlocks map[ulid.ULID]struct{}
 }
 
 func NewShardingMetadataFilterAdapter(userID string, strategy ShardingStrategy) block.MetadataFilter {
 	return &shardingMetadataFilterAdapter{
-		userID:   userID,
-		strategy: strategy,
+		userID:     userID,
+		strategy:   strategy,
+		lastBlocks: map[ulid.ULID]struct{}{},
 	}
 }
 
 // Filter implements block.MetadataFilter.
+// This function is NOT safe for use by multiple goroutines concurrently.
 func (a *shardingMetadataFilterAdapter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
-	return a.strategy.FilterBlocks(ctx, a.userID, metas, synced)
+	if err := a.strategy.FilterBlocks(ctx, a.userID, metas, a.lastBlocks, synced); err != nil {
+		return err
+	}
+
+	// Keep track of the last filtered blocks.
+	a.lastBlocks = make(map[ulid.ULID]struct{}, len(metas))
+	for blockID := range metas {
+		a.lastBlocks[blockID] = struct{}{}
+	}
+
+	return nil
 }
 
 type shardingBucketReaderAdapter struct {

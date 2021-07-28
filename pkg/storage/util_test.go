@@ -8,8 +8,6 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/davecgh/go-spew/spew"
@@ -20,10 +18,15 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	loki_util "github.com/grafana/loki/pkg/util"
 )
 
-var fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
-var fooLabels = "{foo=\"bar\"}"
+var (
+	fooLabelsWithName = "{foo=\"bar\", __name__=\"logs\"}"
+	fooLabels         = "{foo=\"bar\"}"
+)
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
 
@@ -96,15 +99,9 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		builder.Set(labels.MetricName, "logs")
 		lbs = builder.Labels()
 	}
-	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
+	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
+	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
-		if e.Timestamp.UnixNano() < from.UnixNano() {
-			from = model.TimeFromUnixNano(e.Timestamp.UnixNano())
-		}
-		if e.Timestamp.UnixNano() > through.UnixNano() {
-			through = model.TimeFromUnixNano(e.Timestamp.UnixNano())
-		}
 		_ = chk.Append(&e)
 	}
 	chk.Close()
@@ -154,8 +151,10 @@ type mockChunkStore struct {
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
 // since there is a conflict in signature for DeleteChunk method.
-var _ chunk.Store = &mockChunkStore{}
-var _ chunk.Client = &mockChunkStoreClient{}
+var (
+	_ chunk.Store  = &mockChunkStore{}
+	_ chunk.Client = &mockChunkStoreClient{}
+)
 
 func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	chunks := make([]chunk.Chunk, 0, len(streams))
@@ -169,9 +168,11 @@ func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { 
 func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return nil
 }
+
 func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
 	return nil, nil
 }
+
 func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	return nil, nil
 }
@@ -187,6 +188,7 @@ func (m *mockChunkStore) Stop() {}
 func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
+
 func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *chunk.Fetcher {
 	return nil
 }

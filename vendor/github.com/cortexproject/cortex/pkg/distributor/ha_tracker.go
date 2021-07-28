@@ -107,8 +107,8 @@ type haTracker struct {
 	limits              haTrackerLimits
 
 	electedLock sync.RWMutex
-	elected     map[string]ReplicaDesc // Replicas we are accepting samples from. Key = "user/cluster".
-	clusters    map[string]int         // Number of clusters with elected replicas that a single user has. Key = user.
+	elected     map[string]ReplicaDesc         // Replicas we are accepting samples from. Key = "user/cluster".
+	clusters    map[string]map[string]struct{} // Known clusters with elected replicas per user. First key = user, second key = cluster name.
 
 	electedReplicaChanges         *prometheus.CounterVec
 	electedReplicaTimestamp       *prometheus.GaugeVec
@@ -118,7 +118,7 @@ type haTracker struct {
 	cleanupRuns               prometheus.Counter
 	replicasMarkedForDeletion prometheus.Counter
 	deletedReplicas           prometheus.Counter
-	markingOrDeletionsFailed  prometheus.Counter
+	markingForDeletionsFailed prometheus.Counter
 }
 
 // NewClusterTracker returns a new HA cluster tracker using either Consul
@@ -135,7 +135,7 @@ func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Re
 		updateTimeoutJitter: jitter,
 		limits:              limits,
 		elected:             map[string]ReplicaDesc{},
-		clusters:            map[string]int{},
+		clusters:            map[string]map[string]struct{}{},
 
 		electedReplicaChanges: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ha_tracker_elected_replica_changes_total",
@@ -167,7 +167,7 @@ func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Re
 			Name: "cortex_ha_tracker_replicas_cleanup_deleted_total",
 			Help: "Number of elected replicas deleted from KV store.",
 		}),
-		markingOrDeletionsFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		markingForDeletionsFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ha_tracker_replicas_cleanup_delete_failed_total",
 			Help: "Number of elected replicas that failed to be marked for deletion, or deleted.",
 		}),
@@ -226,6 +226,14 @@ func (c *haTracker) loop(ctx context.Context) error {
 			delete(c.elected, key)
 			c.electedReplicaChanges.DeleteLabelValues(user, cluster)
 			c.electedReplicaTimestamp.DeleteLabelValues(user, cluster)
+
+			userClusters := c.clusters[user]
+			if userClusters != nil {
+				delete(userClusters, cluster)
+				if len(userClusters) == 0 {
+					delete(c.clusters, user)
+				}
+			}
 			return true
 		}
 
@@ -234,7 +242,10 @@ func (c *haTracker) loop(ctx context.Context) error {
 			c.electedReplicaChanges.WithLabelValues(user, cluster).Inc()
 		}
 		if !exists {
-			c.clusters[user]++
+			if c.clusters[user] == nil {
+				c.clusters[user] = map[string]struct{}{}
+			}
+			c.clusters[user][cluster] = struct{}{}
 		}
 		c.elected[key] = *replica
 		c.electedReplicaTimestamp.WithLabelValues(user, cluster).Set(float64(replica.ReceivedAt / 1000))
@@ -312,7 +323,7 @@ func (c *haTracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 			err = c.client.Delete(ctx, key)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "cleanup: failed to delete old replica", "key", key, "err", err)
-				c.markingOrDeletionsFailed.Inc()
+				c.markingForDeletionsFailed.Inc()
 			} else {
 				level.Info(c.logger).Log("msg", "cleanup: deleted old replica", "key", key)
 				c.deletedReplicas.Inc()
@@ -333,7 +344,7 @@ func (c *haTracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 			})
 
 			if err != nil {
-				c.markingOrDeletionsFailed.Inc()
+				c.markingForDeletionsFailed.Inc()
 				level.Error(c.logger).Log("msg", "cleanup: failed to mark replica as deleted", "key", key, "err", err)
 			} else {
 				c.replicasMarkedForDeletion.Inc()
@@ -359,7 +370,7 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 
 	c.electedLock.RLock()
 	entry, ok := c.elected[key]
-	clusters := c.clusters[userID]
+	clusters := len(c.clusters[userID])
 	c.electedLock.RUnlock()
 
 	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout+c.updateTimeoutJitter {

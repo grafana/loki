@@ -20,6 +20,6 @@ import (
 func configureHTTP2(trans *http.Transport) {
 	http2Trans, err := http2.ConfigureTransports(trans)
 	if err == nil {
-		http2Trans.ReadIdleTimeout = time.Second * 15
+		http2Trans.ReadIdleTimeout = time.Second * 31
 	}
 }

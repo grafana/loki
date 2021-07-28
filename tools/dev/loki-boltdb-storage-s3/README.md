@@ -29,7 +29,7 @@ Logs from all containers are ingested via the [loki docker driver](https://grafa
 
 ## Remote Debugging
 
-You can also remote debug all Loki containers which are built in debug more. Each container automatically runs [`dlv`](https://github.com/go-delve/delve) headless and then start Loki process.
+You can also remote debug all Loki containers which are built in debug mode. Each container automatically runs [`dlv`](https://github.com/go-delve/delve) headless and then start Loki process.
 You'll need to grab the `dlv` port from the [docker-compose file](./docker-compose.yml) for the container you want to debug. (a different one is used per container.)
 
 ### dlv

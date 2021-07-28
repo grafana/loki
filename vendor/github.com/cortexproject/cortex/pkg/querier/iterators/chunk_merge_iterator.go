@@ -19,7 +19,7 @@ type chunkMergeIterator struct {
 	currErr   error
 }
 
-// NewChunkMergeIterator creates a storage.SeriesIterator for a set of chunks.
+// NewChunkMergeIterator creates a chunkenc.Iterator for a set of chunks.
 func NewChunkMergeIterator(cs []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	its := buildIterators(cs)
 	c := &chunkMergeIterator{

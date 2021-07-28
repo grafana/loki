@@ -76,7 +76,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addRow(
           $.row('')
           .addPanel(
-            $.fromNowPanel('Sweep Lag', 'loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time')
+            $.queryPanel(['time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{%s} > 0)' % $.namespaceMatcher()], ['lag']) + {
+              yaxes: g.yaxes({ format: 's', min: null }),
+            },
           )
           .addPanel(
             $.panel('Marks Files to Process') +

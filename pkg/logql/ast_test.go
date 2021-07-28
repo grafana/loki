@@ -21,6 +21,8 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
 		{`{foo="bar", bar!="baz"} |= ""`, false},
+		{`{foo="bar", bar!="baz"} |= "" |= ip("::1")`, true},
+		{`{foo="bar", bar!="baz"} |= "" != ip("127.0.0.1")`, true},
 		{`{foo="bar", bar!="baz"} |~ ""`, false},
 		{`{foo="bar", bar!="baz"} |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} |= "" |= ""`, false},
@@ -30,6 +32,9 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | pattern "<foo> bar <buzz>" | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b>=10GB`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1")`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error" | c=ip("::1")`, true}, // chain inside label filters.
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
 	}
@@ -367,7 +372,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := &labelParserExpr{
+			e := &LabelParserExpr{
 				op:    tt.op,
 				param: tt.param,
 			}

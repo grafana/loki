@@ -9,13 +9,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
 )
 

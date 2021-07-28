@@ -1,9 +1,10 @@
 package retention
 
 import (
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type userSeries struct {
