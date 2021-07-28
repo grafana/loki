@@ -192,7 +192,7 @@ func journalTargetWithReader(
 			}
 
 			// prevent tight loop
-			time.Sleep(100*time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 
