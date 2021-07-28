@@ -47,25 +47,29 @@ var (
 	})
 )
 
+const sep = "\xff"
+
 type cachingIndexClient struct {
 	chunk.IndexClient
-	cache    cache.Cache
-	validity time.Duration
-	limits   StoreLimits
-	logger   log.Logger
+	cache               cache.Cache
+	validity            time.Duration
+	limits              StoreLimits
+	logger              log.Logger
+	disableBroadQueries bool
 }
 
-func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits, logger log.Logger) chunk.IndexClient {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits, logger log.Logger, disableBroadQueries bool) chunk.IndexClient {
 	if c == nil || cache.IsEmptyTieredCache(c) {
 		return client
 	}
 
 	return &cachingIndexClient{
-		IndexClient: client,
-		cache:       cache.NewSnappy(c, logger),
-		validity:    validity,
-		limits:      limits,
-		logger:      logger,
+		IndexClient:         client,
+		cache:               cache.NewSnappy(c, logger),
+		validity:            validity,
+		limits:              limits,
+		logger:              logger,
+		disableBroadQueries: disableBroadQueries,
 	}
 }
 
@@ -75,8 +79,22 @@ func (s *cachingIndexClient) Stop() {
 }
 
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
-	// We cache the entire row, so filter client side.
-	callback = chunk_util.QueryFilter(callback)
+	if len(queries) == 0 {
+		return nil
+	}
+
+	if isChunksQuery(queries[0]) || !s.disableBroadQueries {
+		return s.doBroadQueries(ctx, queries, callback)
+	}
+
+	return s.doQueries(ctx, queries, callback)
+}
+
+func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback,
+	buildIndexQuery func(query chunk.IndexQuery) chunk.IndexQuery, buildQueryKey func(query chunk.IndexQuery) string) error {
+	if len(queries) == 0 {
+		return nil
+	}
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -88,7 +106,7 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	keys := make([]string, 0, len(queries))
 	queriesByKey := make(map[string][]chunk.IndexQuery, len(queries))
 	for _, query := range queries {
-		key := queryKey(query)
+		key := buildQueryKey(query)
 		keys = append(keys, key)
 		queriesByKey[key] = append(queriesByKey[key], query)
 	}
@@ -121,12 +139,9 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	)
 
 	for _, key := range misses {
-		// Only need to consider one of the queries as they have the same table & hash.
 		queries := queriesByKey[key]
-		cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
-			TableName: queries[0].TableName,
-			HashValue: queries[0].HashValue,
-		})
+		// queries with the same key would build same index query so just consider one of them
+		cacheableMissed = append(cacheableMissed, buildIndexQuery(queries[0]))
 
 		rb := ReadBatch{
 			Key:    key,
@@ -144,7 +159,7 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	err = s.IndexClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
 		resultsMtx.Lock()
 		defer resultsMtx.Unlock()
-		key := queryKey(cacheableQuery)
+		key := buildQueryKey(cacheableQuery)
 		existing := results[key]
 		for iter := r.Iterator(); iter.Next(); {
 			existing.Entries = append(existing.Entries, Entry{Column: iter.RangeValue(), Value: iter.Value()})
@@ -189,6 +204,38 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	}
 }
 
+// doBroadQueries does broad queries on the store by using just TableName and HashValue.
+// This is useful for chunks queries or when we need to reduce QPS on index store at the expense of higher cache requirement.
+// All the results from the index store are cached and the responses are filtered based on the actual queries.
+func (s *cachingIndexClient) doBroadQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+	// We cache all the entries for queries looking for Chunk IDs, so filter client side.
+	callback = chunk_util.QueryFilter(callback)
+	return s.queryPages(ctx, queries, callback, func(query chunk.IndexQuery) chunk.IndexQuery {
+		return chunk.IndexQuery{TableName: query.TableName, HashValue: query.HashValue}
+	}, func(q chunk.IndexQuery) string {
+		return q.TableName + sep + q.HashValue
+	})
+}
+
+// doQueries does the exact same queries as opposed to doBroadQueries doing broad queries with limited query params.
+func (s *cachingIndexClient) doQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+	return s.queryPages(ctx, queries, callback, func(query chunk.IndexQuery) chunk.IndexQuery {
+		return query
+	}, func(q chunk.IndexQuery) string {
+		ret := q.TableName + sep + q.HashValue
+
+		if len(q.RangeValuePrefix) != 0 {
+			ret += sep + yoloString(q.RangeValuePrefix)
+		}
+
+		if len(q.ValueEqual) != 0 {
+			ret += sep + yoloString(q.ValueEqual)
+		}
+
+		return ret
+	})
+}
+
 // Iterator implements chunk.ReadBatch.
 func (b ReadBatch) Iterator() chunk.ReadBatchIterator {
 	return &readBatchIterator{
@@ -218,9 +265,9 @@ func (b *readBatchIterator) Value() []byte {
 	return b.readBatch.Entries[b.index].Value
 }
 
-func queryKey(q chunk.IndexQuery) string {
-	const sep = "\xff"
-	return q.TableName + sep + q.HashValue
+func isChunksQuery(q chunk.IndexQuery) bool {
+	// RangeValueStart would only be set for chunks query.
+	return len(q.RangeValueStart) != 0
 }
 
 func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {
