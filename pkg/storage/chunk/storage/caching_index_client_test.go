@@ -435,7 +435,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 				})
 				assert.EqualValues(t, expectedStoreQueries, store.queries)
 
-				callbackQueries = callbackQueries[:]
+				callbackQueries = callbackQueries[:0]
 				// If we do the query to the cache again, the underlying store shouldn't see it.
 				err = client.QueryPages(ctx, tc.queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 					callbackQueries = append(callbackQueries, query)
