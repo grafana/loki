@@ -156,7 +156,7 @@ func (c *Config) isModuleEnabled(m string) bool {
 
 type Frontend interface {
 	services.Service
-	CheckReady(_ context.Context) error 
+	CheckReady(_ context.Context) error
 }
 
 // Loki is the root datastructure for Loki.
