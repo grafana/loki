@@ -737,10 +737,10 @@ func (v9Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName string
 	valueHash := sha256bytes(labelValue)
 	return []IndexQuery{
 		{
-			TableName:       bucket.tableName,
-			HashValue:       fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
-			RangeValueStart: rangeValuePrefix(valueHash),
-			ValueEqual:      []byte(labelValue),
+			TableName:        bucket.tableName,
+			HashValue:        fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
+			RangeValuePrefix: rangeValuePrefix(valueHash),
+			ValueEqual:       []byte(labelValue),
 		},
 	}, nil
 }
@@ -847,10 +847,10 @@ func (s v10Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName str
 	result := make([]IndexQuery, 0, s.rowShards)
 	for i := uint32(0); i < s.rowShards; i++ {
 		result = append(result, IndexQuery{
-			TableName:       bucket.tableName,
-			HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),
-			RangeValueStart: rangeValuePrefix(valueHash),
-			ValueEqual:      []byte(labelValue),
+			TableName:        bucket.tableName,
+			HashValue:        fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),
+			RangeValuePrefix: rangeValuePrefix(valueHash),
+			ValueEqual:       []byte(labelValue),
 		})
 	}
 	return result, nil
