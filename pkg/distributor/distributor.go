@@ -210,7 +210,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	for _, stream := range req.Streams {
 		// Truncate first so subsequent steps have consistent line lengths
-		stream.Entries = d.truncateLines(validationContext, stream)
+		d.truncateLines(validationContext, &stream)
 
 		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
@@ -305,11 +305,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
-func (d *Distributor) truncateLines(vContext validationContext, stream logproto.Stream) []logproto.Entry {
+func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
 	if !vContext.maxLineSizeTruncate {
-		return stream.Entries
+		return
 	}
 
+	var truncatedSamples, truncatedBytes int
 	for i, e := range stream.Entries {
 		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
 			indicator := vContext.maxLineSizeTruncateInd
@@ -318,18 +319,15 @@ func (d *Distributor) truncateLines(vContext validationContext, stream logproto.
 				continue
 			}
 
-			stream.Entries[i].Line = e.Line[:truncateTo]
-			if len(indicator) > 0 { //don't make another string unless necessary
-				stream.Entries[i].Line += indicator
-			}
+			stream.Entries[i].Line = e.Line[:truncateTo] + indicator
 
-			truncated := float64(len(e.Line) - truncateTo)
-			validation.TruncatedLines.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(1))
-			validation.TruncatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(truncated)
+			truncatedSamples++
+			truncatedBytes = len(e.Line) - truncateTo
 		}
 	}
 
-	return stream.Entries
+	validation.MutatedSamples.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedSamples))
+	validation.MutatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedBytes))
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

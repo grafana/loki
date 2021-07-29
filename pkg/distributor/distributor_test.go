@@ -209,6 +209,57 @@ func Benchmark_Push(b *testing.B) {
 	}
 }
 
+func Benchmark_PushWithLineTruncation(b *testing.B) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	limits.IngestionRateMB = math.MaxInt32
+	limits.MaxLineSizeTruncate = true
+	limits.MaxLineSize = 50
+
+	ingester := &mockIngester{}
+	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	request := makeWriteRequest(100000, 100)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+
+		_, err := d.Push(ctx, request)
+		if err != nil {
+			require.NoError(b, err)
+		}
+	}
+}
+
+func Benchmark_PushWithLineTruncationWithIndicator(b *testing.B) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	limits.IngestionRateMB = math.MaxInt32
+	limits.MaxLineSizeTruncate = true
+	limits.MaxLineSize = 50
+	limits.MaxLineSizeTruncateInd = "..."
+
+	ingester := &mockIngester{}
+	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	request := makeWriteRequest(100000, 100)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+
+		_, err := d.Push(ctx, request)
+		if err != nil {
+			require.NoError(b, err)
+		}
+	}
+}
+
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	type testPush struct {
 		bytes         int

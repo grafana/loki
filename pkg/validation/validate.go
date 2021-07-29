@@ -43,8 +43,8 @@ const (
 	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
 )
 
-// TruncatedLines is a metric of the total number of lines mutated, by reason.
-var TruncatedLines = prometheus.NewCounterVec(
+// MutatedSamples is a metric of the total number of lines mutated, by reason.
+var MutatedSamples = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "mutated_samples_total",
@@ -53,8 +53,8 @@ var TruncatedLines = prometheus.NewCounterVec(
 	[]string{reasonLabel, "truncated"},
 )
 
-// TruncatedBytes is a metric of the total mutated bytes, by reason.
-var TruncatedBytes = prometheus.NewCounterVec(
+// MutatedBytes is a metric of the total mutated bytes, by reason.
+var MutatedBytes = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "mutated_bytes_total",
