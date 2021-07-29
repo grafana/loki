@@ -5,9 +5,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
@@ -91,13 +93,11 @@ func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)
 	}
-	chunk, err := parseNewExternalKey(externalKey)
+	chunk, err := parseNewExternalKey(userID, externalKey)
 	if err != nil {
 		return Chunk{}, err
 	}
-	if chunk.UserID != userID {
-		return Chunk{}, errors.WithStack(ErrWrongMetadata)
-	}
+
 	return chunk, nil
 }
 
@@ -126,29 +126,43 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	}, nil
 }
 
-func parseNewExternalKey(key string) (Chunk, error) {
-	parts := strings.Split(key, "/")
-	if len(parts) != 2 {
+func parseNewExternalKey(userID, key string) (Chunk, error) {
+	userIdx := strings.Index(key, "/")
+	if userIdx == -1 || userIdx+1 >= len(key) {
 		return Chunk{}, errInvalidChunkID(key)
 	}
-	userID := parts[0]
-	hexParts := strings.Split(parts[1], ":")
-	if len(hexParts) != 4 {
+	if userID != key[:userIdx] {
+		return Chunk{}, errors.WithStack(ErrWrongMetadata)
+	}
+	hexParts := key[userIdx+1:]
+	partsBytes := unsafeGetBytes(hexParts)
+	h0, i := readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
 		return Chunk{}, errInvalidChunkID(key)
 	}
-	fingerprint, err := strconv.ParseUint(hexParts[0], 16, 64)
+	fingerprint, err := strconv.ParseUint(unsafeGetString(h0), 16, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	from, err := strconv.ParseInt(hexParts[1], 16, 64)
+	partsBytes = partsBytes[i+1:]
+	h1, i := readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errInvalidChunkID(key)
+	}
+	from, err := strconv.ParseInt(unsafeGetString(h1), 16, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	through, err := strconv.ParseInt(hexParts[2], 16, 64)
+	partsBytes = partsBytes[i+1:]
+	h2, i := readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errInvalidChunkID(key)
+	}
+	through, err := strconv.ParseInt(unsafeGetString(h2), 16, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	checksum, err := strconv.ParseUint(hexParts[3], 16, 32)
+	checksum, err := strconv.ParseUint(unsafeGetString(partsBytes[i+1:]), 16, 32)
 	if err != nil {
 		return Chunk{}, err
 	}
@@ -160,6 +174,29 @@ func parseNewExternalKey(key string) (Chunk, error) {
 		Checksum:    uint32(checksum),
 		ChecksumSet: true,
 	}, nil
+}
+
+func readOneHexPart(hex []byte) (part []byte, i int) {
+	for i < len(hex) {
+		if hex[i] != ':' {
+			i++
+			continue
+		}
+		return hex[:i], i
+	}
+	return nil, 0
+}
+
+func unsafeGetBytes(s string) []byte {
+	var buf []byte
+	p := unsafe.Pointer(&buf)
+	*(*string)(p) = s
+	(*reflect.SliceHeader)(p).Cap = len(s)
+	return buf
+}
+
+func unsafeGetString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }
 
 // ExternalKey returns the key you can use to fetch this chunk from external

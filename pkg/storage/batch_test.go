@@ -1522,6 +1522,7 @@ var entry logproto.Entry
 func Benchmark_store_OverlappingChunks(b *testing.B) {
 	b.ReportAllocs()
 	st := &store{
+		chunkMetrics: NilMetrics,
 		cfg: Config{
 			MaxChunkBatchSize: 50,
 		},

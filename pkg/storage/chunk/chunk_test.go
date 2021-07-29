@@ -378,3 +378,10 @@ func TestChunk_Slice(t *testing.T) {
 		})
 	}
 }
+
+func Benchmark_ParseExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := ParseExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+		require.NoError(b, err)
+	}
+}
