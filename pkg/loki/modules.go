@@ -417,9 +417,13 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	if frontendV1 != nil {
 		frontendv1pb.RegisterFrontendServer(t.Server.GRPC, frontendV1)
 		t.frontend = frontendV1
+		level.Debug(util_log.Logger).Log("msg", "using query frontend", "version", "v1")
 	} else if frontendV2 != nil {
 		frontendv2pb.RegisterFrontendForQuerierServer(t.Server.GRPC, frontendV2)
 		t.frontend = frontendV2
+		level.Debug(util_log.Logger).Log("msg", "using query frontend", "version", "v2")
+	} else {
+		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
 	}
 
 	roundTripper = t.QueryFrontEndTripperware(roundTripper)
