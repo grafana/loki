@@ -30,6 +30,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
@@ -102,6 +103,18 @@ func (t *Loki) initServer() (services.Service, error) {
 	}
 
 	s := cortex.NewServerService(t.Server, servicesToWaitFor)
+
+	// Best effort to propagate the org ID from the start.
+	t.Server.HTTPServer.Handler = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !t.Cfg.AuthEnabled {
+				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
+				return
+			}
+			_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}(t.Server.HTTPServer.Handler)
 
 	return s, nil
 }
