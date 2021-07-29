@@ -1,0 +1,8 @@
+auth_enabled: false
+
+query_range:
+  split_queries_by_interval: 24h
+
+limits:
+  # Limit max query time range to 31d
+  max_query_length: 744h
