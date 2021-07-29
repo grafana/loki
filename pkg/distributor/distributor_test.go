@@ -139,7 +139,7 @@ func Test_TruncateLogLines(t *testing.T) {
 
 	t.Run("it truncates enough to accommodate MaxLineSizeTruncateInd if it exists", func(t *testing.T) {
 		limits, ingester := setup()
-		limits.MaxLineSizeTruncateInd = "..."
+		limits.MaxLineSizeTruncateInd = "..." //nolint:goconst
 
 		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
@@ -152,7 +152,7 @@ func Test_TruncateLogLines(t *testing.T) {
 	t.Run("it drops the log when MaxLineSize <= length of MaxLineSizeTruncateInd", func(t *testing.T) {
 		limits, ingester := setup()
 		limits.MaxLineSize = 2
-		limits.MaxLineSizeTruncateInd = "..."
+		limits.MaxLineSizeTruncateInd = "..." //nolint:goconst
 
 		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
@@ -241,7 +241,7 @@ func Benchmark_PushWithLineTruncationWithIndicator(b *testing.B) {
 	limits.IngestionRateMB = math.MaxInt32
 	limits.MaxLineSizeTruncate = true
 	limits.MaxLineSize = 50
-	limits.MaxLineSizeTruncateInd = "..."
+	limits.MaxLineSizeTruncateInd = "..." //nolint:goconst
 
 	ingester := &mockIngester{}
 	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
