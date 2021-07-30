@@ -290,11 +290,6 @@ func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == s3.ErrCodeNoSuchKey {
-				return chunk.ErrStorageObjectNotFound
-			}
-		}
 		return err
 	}
 
@@ -314,8 +309,7 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]
 }
 
-// GetObject returns a reader for the specified object key from the configured S3 bucket. If the
-// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
+// GetObject returns a reader for the specified object key from the configured S3 bucket.
 func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	var resp *s3.GetObjectOutput
 
@@ -331,11 +325,6 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 		return err
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == s3.ErrCodeNoSuchKey {
-				return nil, chunk.ErrStorageObjectNotFound
-			}
-		}
 		return nil, err
 	}
 
@@ -411,4 +400,13 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	}
 
 	return storageObjects, commonPrefixes, nil
+}
+
+// IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
+func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
+	if aerr, ok := errors.Cause(err).(awserr.Error); ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+		return true
+	}
+
+	return false
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -61,11 +62,11 @@ func (FSObjectClient) Stop() {}
 // GetObject from the store
 func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, error) {
 	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))
-	if err != nil && os.IsNotExist(err) {
-		return nil, chunk.ErrStorageObjectNotFound
+	if err != nil {
+		return nil, err
 	}
 
-	return fl, err
+	return fl, nil
 }
 
 // PutObject into the store
@@ -195,6 +196,11 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		}
 		return nil
 	})
+}
+
+// IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
+func (f *FSObjectClient) IsObjectNotFoundErr(err error) bool {
+	return os.IsNotExist(errors.Cause(err))
 }
 
 // copied from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L181

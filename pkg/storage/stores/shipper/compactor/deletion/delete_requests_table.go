@@ -65,7 +65,7 @@ func (t *deleteRequestsTable) init() error {
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
 		err = shipper_util.GetFileFromStorage(context.Background(), t.objectClient, objectPathInStorage, t.dbPath, true)
-		if err != nil && !errors.Is(err, chunk.ErrStorageObjectNotFound) {
+		if err != nil && !t.objectClient.IsObjectNotFoundErr(err) {
 			return err
 		}
 	}

@@ -636,7 +636,7 @@ func (c *baseStore) deleteChunk(ctx context.Context,
 
 	err = c.chunks.DeleteChunk(ctx, userID, chunkID)
 	if err != nil {
-		if err == ErrStorageObjectNotFound {
+		if c.chunks.IsChunkNotFoundErr(err) {
 			return nil
 		}
 		return errors.Wrapf(err, "when deleting chunk from storage with chunkID=%s", chunkID)
@@ -657,7 +657,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 
 	chunks, err := c.fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
 	if err != nil {
-		if err == ErrStorageObjectNotFound {
+		if c.fetcher.IsChunkNotFoundErr(err) {
 			return nil
 		}
 		return errors.Wrap(err, "when fetching chunk from storage for slicing")

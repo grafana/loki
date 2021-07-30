@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 
 	"github.com/ncw/swift"
+	"github.com/pkg/errors"
 
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/cortexproject/cortex/pkg/util/log"
@@ -92,15 +93,11 @@ func (s *SwiftObjectClient) Stop() {
 	s.conn.UnAuthenticate()
 }
 
-// GetObject returns a reader for the specified object key from the configured swift container. If the
-// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
+// GetObject returns a reader for the specified object key from the configured swift container.
 func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	var buf bytes.Buffer
 	_, err := s.conn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, nil)
 	if err != nil {
-		if err == swift.ObjectNotFound {
-			return nil, chunk.ErrStorageObjectNotFound
-		}
 		return nil, err
 	}
 
@@ -151,15 +148,12 @@ func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) 
 	return storageObjects, storagePrefixes, nil
 }
 
-// DeleteObject deletes the specified object key from the configured Swift container. If the
-// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
+// DeleteObject deletes the specified object key from the configured Swift container.
 func (s *SwiftObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	err := s.conn.ObjectDelete(s.cfg.ContainerName, objectKey)
-	if err == nil {
-		return nil
-	}
-	if err == swift.ObjectNotFound {
-		return chunk.ErrStorageObjectNotFound
-	}
-	return err
+	return s.conn.ObjectDelete(s.cfg.ContainerName, objectKey)
+}
+
+// IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
+func (s *SwiftObjectClient) IsObjectNotFoundErr(err error) bool {
+	return errors.Is(err, swift.ObjectNotFound)
 }

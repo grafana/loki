@@ -74,6 +74,10 @@ func (s *StorageClient) DeleteChunk(ctx context.Context, userID, chunkID string)
 	return nil
 }
 
+func (s *StorageClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
 func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	req := &GetChunksRequest{}
 	req.Chunks = []*Chunk{}
