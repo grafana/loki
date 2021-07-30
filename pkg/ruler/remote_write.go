@@ -133,11 +133,11 @@ func newRemoteWriteMetrics(r prometheus.Registerer) *remoteWriteMetrics {
 			Name:      "recording_rules_samples_queued_current",
 			Help:      "Number of samples queued to be remote-written.",
 		}, []string{"tenant", "group_key"}),
+		// even though capacity can only be set per tenant, it's convenient to have a metric per rulegroup for calculations
 		samplesQueueCapacity: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Name:      "recording_rules_samples_queue_capacity",
 			Help:      "Number of samples that can be queued before eviction of oldest samples occurs.",
-		// even though capacity can only be set per tenant, it's convenient to have a metric per rulegroup for calculations
 		}, []string{"tenant", "group_key"}),
 		remoteWriteErrors: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
