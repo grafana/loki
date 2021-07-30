@@ -168,7 +168,7 @@ func (a *RemoteWriteAppender) WithQueueCapacity(capacity int) error {
 		return err
 	}
 
-	a.metrics.samplesQueueCapacity.WithLabelValues(a.userID).Set(float64(capacity))
+	a.metrics.samplesQueueCapacity.WithLabelValues(a.userID, a.groupKey).Set(float64(capacity))
 	return nil
 }
 
