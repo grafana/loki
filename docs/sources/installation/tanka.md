@@ -40,6 +40,7 @@ Next, replace the contents of `environments/loki/main.jsonnet` with the YAML bel
 1. Update the s3 or gcs variables and `boltdb_shipper_shared_store` variable based on your choice of object storage backend. See here for the full [storage_config](https://grafana.com/docs/loki/latest/configuration/#storage_config). 
 1. Remove the object storage variables that are not relevant for your setup (e.g., remove the s3 variables if you're using gcs)
 1. Update the `container_root_path` value so it reflects your own data root for the Docker Daemon. Run `docker info | grep "Root Dir"` to get the root path.
+1. Update the `schema_config` section so that `from` has today's date and `object-store` has your choice of object storage backend (e.g., s3, gcs)
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
@@ -66,7 +67,24 @@ loki + promtail + gateway {
     gcs_bucket_name: 'bucket',
 
     //Set this variable based on the object storage backend you're using (e.g., s3 or gcs)
-    boltdb_shipper_shared_store: 'object-storage-backend-name',
+    boltdb_shipper_shared_store: 'my-object-storage-backend-name',
+
+    //Update "from" to be today's date, and update the object_store to be your object-storage backend
+    loki+: {
+      schema_config: {
+        configs: [{
+          from: '2021-06-01',
+          store: 'boltdb-shipper',
+          object_store: 'my-object-storage-backend-name',
+          schema: 'v11',
+          index: {
+            prefix: '%s_index_' % $._config.table_prefix,
+            period: '%dh' % $._config.index_period_hours,
+          },
+        }],
+      },
+    },
+
 
     promtail_config+: {
       clients: [{
