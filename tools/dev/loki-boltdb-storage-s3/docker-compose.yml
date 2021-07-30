@@ -2,10 +2,11 @@ version: '3.4'
 services:
   consul:
     logging: &logging
-      driver: loki-compose
-      options:
-        loki-url: "http://localhost:8001/loki/api/v1/push"
-        loki-retries: "0"
+      driver: json-file
+     # driver: loki-compose
+     # options:
+     #   loki-url: "http://localhost:8001/loki/api/v1/push"
+     #   loki-retries: "0"
     image: consul
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
@@ -239,3 +240,14 @@ services:
       - 3000:3000
     volumes:
       - ./config/datasource.yaml:/etc/config/grafana/provisioning/datasources/ds.yaml
+
+  log-gen:
+    logging:
+      driver: loki-compose
+      options:
+        loki-url: "http://localhost:8001/loki/api/v1/push"
+        loki-retries: "0"
+    image: mingrammer/flog
+    command: ["-f", "json", "-l"]
+    depends_on:
+      - distributor

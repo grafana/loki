@@ -181,10 +181,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		err    error
 	)
 
-	// NewQuerierWorker now expects Frontend (or Scheduler) address to be set. Loki only supports Frontend for now.
-	if t.Cfg.Worker.FrontendAddress != "" {
-		// In case someone set scheduler address, we ignore it.
-		t.Cfg.Worker.SchedulerAddress = ""
+	// NewQuerierWorker now expects Frontend (or Scheduler) address to be set.
+	if t.Cfg.Worker.FrontendAddress != "" || t.Cfg.Worker.SchedulerAddress != "" {
 		t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 		level.Debug(util_log.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.Cfg.Worker))
 		worker, err = cortex_querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), util_log.Logger, prometheus.DefaultRegisterer)
