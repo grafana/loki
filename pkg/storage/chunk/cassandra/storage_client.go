@@ -546,6 +546,10 @@ func (s *ObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) 
 	return nil
 }
 
+func (s *ObjectClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
 // Stop implement chunk.ObjectClient.
 func (s *ObjectClient) Stop() {
 	s.readSession.Close()

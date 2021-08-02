@@ -117,3 +117,7 @@ func (o *Client) DeleteChunk(ctx context.Context, userID, chunkID string) error 
 	}
 	return o.store.DeleteObject(ctx, key)
 }
+
+func (o *Client) IsChunkNotFoundErr(err error) bool {
+	return o.store.IsObjectNotFoundErr(err)
+}

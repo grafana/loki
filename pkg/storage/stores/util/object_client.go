@@ -42,6 +42,10 @@ func (p PrefixedObjectClient) DeleteObject(ctx context.Context, objectKey string
 	return p.downstreamClient.DeleteObject(ctx, p.prefix+objectKey)
 }
 
+func (p PrefixedObjectClient) IsObjectNotFoundErr(err error) bool {
+	return p.downstreamClient.IsObjectNotFoundErr(err)
+}
+
 func (p PrefixedObjectClient) Stop() {
 	p.downstreamClient.Stop()
 }
