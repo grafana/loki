@@ -41,12 +41,12 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 ### Documentation
 
 * [v2.2.1](https://grafana.com/docs/loki/latest/)
-* [v2.2.0](https://github.com/docs/loki/v2.2.0/)
-* [v2.1.0](https://github.com/docs/loki/v2.1.0/)
-* [v2.0.1](https://github.com/docs/loki/v2.0.1/)
-* [v2.0.0](https://github.com/docs/loki/v2.0.0/)
-* [v1.6.1](https://github.com/docs/loki/v1.6.1/)
-* [v1.6.0](https://github.com/docs/loki/v1.6.0/)
+* [v2.2.0](https://grafana.com/docs/loki/v2.2.0/)
+* [v2.1.0](https://grafana.com/docs/loki/v2.1.0/)
+* [v2.0.1](https://grafana.com/docs/loki/v2.0.1/)
+* [v2.0.0](https://grafana.com/docs/loki/v2.0.0/)
+* [v1.6.1](https://grafana.com/docs/loki/v1.6.1/)
+* [v1.6.0](https://grafana.com/docs/loki/v1.6.0/)
 * [v1.5.0](https://github.com/grafana/loki/tree/v1.5.0/docs/README.md)
 * [v1.4.1](https://github.com/grafana/loki/tree/v1.4.1/docs/README.md)
 * [v1.4.0](https://github.com/grafana/loki/tree/v1.4.0/docs/README.md)
