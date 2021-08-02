@@ -763,6 +763,19 @@ The `frontend_worker_config` configures the worker - running within the Loki que
 
 # The CLI flags prefix for this block config is: querier.frontend-client
 [grpc_client_config: <grpc_client_config>]
+
+# DNS hostname used for finding query-schedulers.
+# CLI flag: -frontend.scheduler-address
+[scheduler_address: <string> | default = ""]
+
+# How often to resolve the scheduler-address, in order to look for new
+# query-scheduler instances.
+# CLI flag: -frontend.scheduler-dns-lookup-period
+[scheduler_dns_lookup_period: <duration> | default = 10s]
+
+# Number of concurrent workers forwarding queries to single query-scheduler.
+# CLI flag: -frontend.scheduler-worker-concurrency
+[scheduler_worker_concurrency: <int> | default = 5]
 ```
 
 ## ingester_client_config
