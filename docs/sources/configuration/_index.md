@@ -307,6 +307,19 @@ The query_frontend_config configures the Loki query-frontend.
 # URL of querier for tail proxy.
 # CLI flag: -frontend.tail-proxy-url
 [tail_proxy_url: <string> | default = ""]
+
+# DNS hostname used for finding query-schedulers.
+# CLI flag: -frontend.scheduler-address
+[scheduler_address: <string> | default = ""]
+
+# How often to resolve the scheduler-address, in order to look for new
+# query-scheduler instances.
+# CLI flag: -frontend.scheduler-dns-lookup-period
+[scheduler_dns_lookup_period: <duration> | default = 10s]
+
+# Number of concurrent workers forwarding queries to single query-scheduler.
+# CLI flag: -frontend.scheduler-worker-concurrency
+[scheduler_worker_concurrency: <int> | default = 5]
 ```
 
 ## queryrange_config
@@ -765,17 +778,8 @@ The `frontend_worker_config` configures the worker - running within the Loki que
 [grpc_client_config: <grpc_client_config>]
 
 # DNS hostname used for finding query-schedulers.
-# CLI flag: -frontend.scheduler-address
+# CLI flag: -querier.scheduler-address
 [scheduler_address: <string> | default = ""]
-
-# How often to resolve the scheduler-address, in order to look for new
-# query-scheduler instances.
-# CLI flag: -frontend.scheduler-dns-lookup-period
-[scheduler_dns_lookup_period: <duration> | default = 10s]
-
-# Number of concurrent workers forwarding queries to single query-scheduler.
-# CLI flag: -frontend.scheduler-worker-concurrency
-[scheduler_worker_concurrency: <int> | default = 5]
 ```
 
 ## ingester_client_config
