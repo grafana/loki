@@ -10,6 +10,7 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -46,6 +47,10 @@ var (
 	})
 )
 
+var (
+	ErrEntriesExist = errors.New("duplicate push - entries already exist")
+)
+
 func init() {
 	prometheus.MustRegister(chunksCreatedTotal)
 	prometheus.MustRegister(samplesPerChunk)
@@ -67,11 +72,27 @@ type stream struct {
 
 	labels       labels.Labels
 	labelsString string
-	lastLine     line
-	metrics      *ingesterMetrics
+
+	// most recently pushed line. This is used to prevent duplicate pushes.
+	// It also determines chunk synchronization when unordered writes are disabled.
+	lastLine line
+
+	// keeps track of the highest timestamp accepted by the stream.
+	// This is used when unordered writes are enabled to cap the validity window
+	// of accepted writes and for chunk synchronization.
+	highestTs time.Time
+
+	metrics *ingesterMetrics
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
+
+	// entryCt is a counter which is incremented on each accepted entry.
+	// This allows us to discard WAL entries during replays which were
+	// already recovered via checkpoints. Historically out of order
+	// errors were used to detect this, but this counter has been
+	// introduced to facilitate removing the ordering constraint.
+	entryCt int64
 }
 
 type chunkDesc struct {
@@ -101,6 +122,7 @@ func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics 
 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
+// DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 	if err != nil {
@@ -133,26 +155,39 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	hbType := chunkenc.OrderedHeadBlockFmt
+	if s.cfg.UnorderedWrites {
+		hbType = chunkenc.UnorderedHeadBlockFmt
+	}
+	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, hbType, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
+	// WAL record to add push contents to.
+	// May be nil to disable this functionality.
 	record *WALRecord,
+	// Counter used in WAL replay to avoid duplicates.
+	// If this is non-zero, the stream will reject entries
+	// with a counter value less than or equal to it's own.
+	// It is set to zero and thus bypassed outside of WAL replays.
+	counter int64,
 ) (int, error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
+
+	if counter > 0 && counter <= s.entryCt {
+		return 0, ErrEntriesExist
+	}
+
 	var bytesAdded int
 	prevNumChunks := len(s.chunks)
-	var lastChunkTimestamp time.Time
 	if prevNumChunks == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
 			chunk: s.NewChunk(),
 		})
 		chunksCreatedTotal.Inc()
-	} else {
-		_, lastChunkTimestamp = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 
 	var storedEntries []logproto.Entry
@@ -174,7 +209,7 @@ func (s *stream) Push(
 		}
 
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
@@ -192,15 +227,21 @@ func (s *stream) Push(
 				chunk: s.NewChunk(),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
-			lastChunkTimestamp = time.Time{}
 		}
-		if err := chunk.chunk.Append(&entries[i]); err != nil {
+
+		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
+		if s.cfg.UnorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
+		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
 			storedEntries = append(storedEntries, entries[i])
-			lastChunkTimestamp = entries[i].Timestamp
-			s.lastLine.ts = lastChunkTimestamp
+			s.lastLine.ts = entries[i].Timestamp
 			s.lastLine.content = entries[i].Line
+			if s.highestTs.Before(entries[i].Timestamp) {
+				s.highestTs = entries[i].Timestamp
+			}
+			s.entryCt++
 
 			// length of string plus
 			bytesAdded += len(entries[i].Line)
@@ -211,7 +252,7 @@ func (s *stream) Push(
 	if len(storedEntries) != 0 {
 		// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 		if record != nil {
-			record.AddEntries(uint64(s.fp), storedEntries...)
+			record.AddEntries(uint64(s.fp), s.entryCt, storedEntries...)
 		} else {
 			// If record is nil, this is a WAL recovery.
 			s.metrics.recoveredEntriesTotal.Add(float64(len(storedEntries)))
@@ -282,15 +323,17 @@ func (s *stream) Push(
 
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters
 // cut the chunk for this stream at the same moment, so that new chunk will contain exactly the same entries.
-func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
-	if synchronizePeriod <= 0 || prevEntryTimestamp.IsZero() {
+func (s *stream) cutChunkForSynchronization(entryTimestamp, latestTs time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
+	// Never sync when it's not enabled, it's the first push, or if a write isn't the latest ts
+	// to prevent syncing many unordered writes.
+	if synchronizePeriod <= 0 || latestTs.IsZero() || latestTs.After(entryTimestamp) {
 		return false
 	}
 
 	// we use fingerprint as a jitter here, basically offsetting stream synchronization points to different
 	// this breaks if streams are mapped to different fingerprints on different ingesters, which is too bad.
 	cts := (uint64(entryTimestamp.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
-	pts := (uint64(prevEntryTimestamp.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
+	pts := (uint64(latestTs.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
 
 	// if current entry timestamp has rolled over synchronization period
 	if cts < pts {
@@ -367,4 +410,8 @@ func (s *stream) addTailer(t *tailer) {
 	defer s.tailerMtx.Unlock()
 
 	s.tailers[t.getID()] = t
+}
+
+func (s *stream) resetCounter() {
+	s.entryCt = 0
 }

@@ -39,6 +39,26 @@ func Test_jsonParser_Parse(t *testing.T) {
 			},
 		},
 		{
+			"escaped",
+			[]byte(`{"counter":1,"foo":"foo\\\"bar", "price": {"_net_":5.56909}}`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "counter", Value: "1"},
+				{Name: "price__net_", Value: "5.56909"},
+				{Name: "foo", Value: `foo\"bar`},
+			},
+		},
+		{
+			"utf8 error rune",
+			[]byte(`{"counter":1,"foo":"�", "price": {"_net_":5.56909}}`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "counter", Value: "1"},
+				{Name: "price__net_", Value: "5.56909"},
+				{Name: "foo", Value: ""},
+			},
+		},
+		{
 			"skip arrays",
 			[]byte(`{"counter":1, "price": {"net_":["10","20"]}}`),
 			labels.Labels{},
@@ -394,7 +414,7 @@ func Benchmark_Parser(b *testing.B) {
 		{Name: "stream", Value: "stdout"},
 	}
 
-	jsonLine := `{"proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
+	jsonLine := `{"invalid":"a\\xc5z","proxy_protocol_addr": "","remote_addr": "3.112.221.14","remote_user": "","upstream_addr": "10.12.15.234:5000","the_real_ip": "3.112.221.14","timestamp": "2020-12-11T16:20:07+00:00","protocol": "HTTP/1.1","upstream_name": "hosted-grafana-hosted-grafana-api-80","request": {"id": "c8eacb6053552c0cd1ae443bc660e140","time": "0.001","method" : "GET","host": "hg-api-qa-us-central1.grafana.net","uri": "/","size" : "128","user_agent": "worldping-api-","referer": ""},"response": {"status": 200,"upstream_status": "200","size": "1155","size_sent": "265","latency_seconds": "0.001"}}`
 	logfmtLine := `level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`
 	nginxline := `10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1" 200 60755 "https://grafana.com/go/observabilitycon/grafana-the-open-and-composable-observability-platform/?tech=ggl-o&pg=oss-graf&plcmt=hero-txt" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Safari/605.1.15" "123.123.123.123, 35.35.122.223" "TLSv1.3"`
 	packedLike := `{"job":"123","pod":"someuid123","app":"foo","_entry":"10.1.0.88 - - [14/Dec/2020:22:56:24 +0000] "GET /static/img/about/bob.jpg HTTP/1.1"}`
@@ -408,8 +428,9 @@ func Benchmark_Parser(b *testing.B) {
 		{"json", jsonLine, NewJSONParser(), []string{"response_latency_seconds"}},
 		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}},
 		{"logfmt", logfmtLine, NewLogfmtParser(), []string{"info", "throughput", "org_id"}},
-		{"regex greedy", nginxline, mustNewRegexParser(`GET (?P<path>.*?)/\?`), []string{"path"}},
-		{"regex status digits", nginxline, mustNewRegexParser(`HTTP/1.1" (?P<statuscode>\d{3}) `), []string{"statuscode"}},
+		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), []string{"path"}},
+		{"regex status digits", nginxline, mustStage(NewRegexpParser(`HTTP/1.1" (?P<statuscode>\d{3}) `)), []string{"statuscode"}},
+		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), []string{"path"}},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)
@@ -431,6 +452,13 @@ func Benchmark_Parser(b *testing.B) {
 			})
 		})
 	}
+}
+
+func mustStage(s Stage, err error) Stage {
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
 func TestNewRegexpParser(t *testing.T) {
@@ -460,14 +488,14 @@ func TestNewRegexpParser(t *testing.T) {
 func Test_regexpParser_Parse(t *testing.T) {
 	tests := []struct {
 		name   string
-		parser *RegexpParser
+		parser Stage
 		line   []byte
 		lbs    labels.Labels
 		want   labels.Labels
 	}{
 		{
 			"no matches",
-			mustNewRegexParser("(?P<foo>foo|bar)buzz"),
+			mustStage(NewRegexpParser("(?P<foo>foo|bar)buzz")),
 			[]byte("blah"),
 			labels.Labels{
 				{Name: "app", Value: "foo"},
@@ -478,7 +506,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 		},
 		{
 			"double matches",
-			mustNewRegexParser("(?P<foo>.*)buzz"),
+			mustStage(NewRegexpParser("(?P<foo>.*)buzz")),
 			[]byte("matchebuzz barbuzz"),
 			labels.Labels{
 				{Name: "app", Value: "bar"},
@@ -490,7 +518,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 		},
 		{
 			"duplicate labels",
-			mustNewRegexParser("(?P<bar>bar)buzz"),
+			mustStage(NewRegexpParser("(?P<bar>bar)buzz")),
 			[]byte("barbuzz"),
 			labels.Labels{
 				{Name: "bar", Value: "foo"},
@@ -502,7 +530,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 		},
 		{
 			"multiple labels extracted",
-			mustNewRegexParser("status=(?P<status>\\w+),latency=(?P<latency>\\w+)(ms|ns)"),
+			mustStage(NewRegexpParser("status=(?P<status>\\w+),latency=(?P<latency>\\w+)(ms|ns)")),
 			[]byte("status=200,latency=500ms"),
 			labels.Labels{
 				{Name: "app", Value: "foo"},
@@ -544,6 +572,15 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			},
 		},
 		{
+			"utf8 error rune",
+			[]byte(`buzz=foo bar=�f`),
+			labels.Labels{},
+			labels.Labels{
+				{Name: "buzz", Value: "foo"},
+				{Name: "bar", Value: ""},
+			},
+		},
+		{
 			"key alone logfmt",
 			[]byte("buzz bar=foo"),
 			labels.Labels{
@@ -564,6 +601,50 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.Labels{
 				{Name: "foo", Value: "bar"},
 				{Name: "foobar", Value: "foo bar"},
+			},
+		},
+		{
+			"escaped control chars in logfmt",
+			[]byte(`foobar="foo\nbar\tbaz"`),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo\nbar\tbaz"},
+			},
+		},
+		{
+			"literal control chars in logfmt",
+			[]byte("foobar=\"foo\nbar\tbaz\""),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo\nbar\tbaz"},
+			},
+		},
+		{
+			"escaped slash logfmt",
+			[]byte(`foobar="foo ba\\r baz"`),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: `foo ba\r baz`},
+			},
+		},
+		{
+			"literal newline and escaped slash logfmt",
+			[]byte("foobar=\"foo bar\nb\\\\az\""),
+			labels.Labels{
+				{Name: "a", Value: "b"},
+			},
+			labels.Labels{
+				{Name: "a", Value: "b"},
+				{Name: "foobar", Value: "foo bar\nb\\az"},
 			},
 		},
 		{
@@ -730,6 +811,71 @@ func Test_unpackParser_Parse(t *testing.T) {
 			require.Equal(t, tt.wantLine, l)
 			require.Equal(t, string(tt.wantLine), string(l))
 			require.Equal(t, copy, string(tt.line), "the original log line should not be mutated")
+		})
+	}
+}
+
+func Test_PatternParser(t *testing.T) {
+	tests := []struct {
+		pattern string
+		line    []byte
+		lbs     labels.Labels
+		want    labels.Labels
+	}{
+		{
+			`<ip> <userid> <user> [<_>] "<method> <path> <_>" <status> <size>`,
+			[]byte(`127.0.0.1 user-identifier frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`),
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "foo", Value: "bar"},
+				{Name: "ip", Value: "127.0.0.1"},
+				{Name: "userid", Value: "user-identifier"},
+				{Name: "user", Value: "frank"},
+				{Name: "method", Value: "GET"},
+				{Name: "path", Value: "/apache_pb.gif"},
+				{Name: "status", Value: "200"},
+				{Name: "size", Value: "2326"},
+			},
+		},
+		{
+			`<_> msg="<method> <path> (<status>) <duration>"`,
+			[]byte(`level=debug ts=2021-05-19T07:54:26.864644382Z caller=logging.go:66 traceID=7fbb92fd0eb9c65d msg="POST /loki/api/v1/push (204) 1.238734ms"`),
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+				{Name: "method_extracted", Value: "POST"},
+				{Name: "path", Value: "/loki/api/v1/push"},
+				{Name: "status", Value: "204"},
+				{Name: "duration", Value: "1.238734ms"},
+			},
+		},
+		{
+			`foo <f>"`,
+			[]byte(`bar`),
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+			},
+			labels.Labels{
+				{Name: "method", Value: "bar"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.pattern, func(t *testing.T) {
+			t.Parallel()
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b.Reset()
+			pp, err := NewPatternParser(tt.pattern)
+			require.NoError(t, err)
+			_, _ = pp.Process(tt.line, b)
+			sort.Sort(tt.want)
+			require.Equal(t, tt.want, b.Labels())
 		})
 	}
 }

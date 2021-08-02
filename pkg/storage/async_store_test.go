@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -200,7 +200,6 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestAsyncStore_QueryIngestersWithin(t *testing.T) {

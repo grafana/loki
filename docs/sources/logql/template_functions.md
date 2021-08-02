@@ -1,5 +1,6 @@
 ---
 title: Template functions
+weight: 20
 ---
 
 # Template functions
@@ -68,7 +69,7 @@ The results in `This-is-a-string`.
 
 ## Trim, TrimLeft, TrimRight, and TrimSpace
 
-> **Note:** In Loki 2.1 [trim](#trim), [trimAll](#trimAll), [trimSuffix](#trimSuffix) and [trimPrefix](trimPrefix) have been added with a different signature for better pipeline chaining.
+> **Note:** In Loki 2.1 [trim](#trim), [trimAll](#trimall), [trimSuffix](#trimsuffix) and [trimPrefix](#trimprefix) have been added with a different signature for better pipeline chaining.
 
 `Trim` returns a slice of the string s with all leading and
 trailing Unicode code points contained in cutset removed.
@@ -108,7 +109,7 @@ Signature:
 `regexReplaceAll` returns a copy of the input string, replacing matches of the Regexp with the replacement string replacement. Inside string replacement, $ signs are interpreted as in Expand, so for instance $1 represents the text of the first sub-match. See the golang [Regexp.replaceAll documentation](https://golang.org/pkg/regexp/#Regexp.ReplaceAll) for more examples.
 
 ```template
-`{{ regexReplaceAllLiteral "(a*)bc" .some_label "${1}a" }}`
+`{{ regexReplaceAll "(a*)bc" .some_label "${1}a" }}`
 ```
 
 `regexReplaceAllLiteral` function returns a copy of the input string and replaces matches of the Regexp with the replacement string replacement. The replacement string is substituted directly, without using Expand.

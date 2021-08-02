@@ -6,15 +6,11 @@ import (
 	"flag"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
@@ -22,6 +18,11 @@ import (
 	"github.com/prometheus/common/model"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -39,6 +40,7 @@ type Config struct {
 	RetentionDeleteDelay      time.Duration `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount  int           `yaml:"retention_delete_worker_count"`
 	DeleteRequestCancelPeriod time.Duration `yaml:"delete_request_cancel_period"`
+	MaxCompactionParallelism  int           `yaml:"max_compaction_parallelism"`
 }
 
 // RegisterFlags registers flags.
@@ -50,7 +52,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
-	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "purger.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 }
 
 func (cfg *Config) IsDefaults() bool {
@@ -60,6 +63,9 @@ func (cfg *Config) IsDefaults() bool {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.MaxCompactionParallelism < 1 {
+		return errors.New("max compaction parallelism must be >= 1")
+	}
 	return shipper_util.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
 }
 
@@ -73,6 +79,7 @@ type Compactor struct {
 	deleteRequestsStore   deletion.DeleteRequestsStore
 	DeleteRequestsHandler *deletion.DeleteRequestHandler
 	deleteRequestsManager *deletion.DeleteRequestsManager
+	expirationChecker     retention.ExpirationChecker
 	metrics               *metrics
 }
 
@@ -81,59 +88,72 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 		return nil, errors.New("Must specify compactor config")
 	}
 
-	objectClient, err := storage.NewObjectClient(cfg.SharedStoreType, storageConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	err = chunk_util.EnsureDirectory(cfg.WorkingDirectory)
-	if err != nil {
-		return nil, err
-	}
-	prefixedClient := util.NewPrefixedObjectClient(objectClient, cfg.SharedStoreKeyPrefix)
-
-	var encoder objectclient.KeyEncoder
-	if _, ok := objectClient.(*local.FSObjectClient); ok {
-		encoder = objectclient.Base64Encoder
-	}
-
-	chunkClient := objectclient.NewClient(objectClient, encoder)
-
-	retentionWorkDir := filepath.Join(cfg.WorkingDirectory, "retention")
-	sweeper, err := retention.NewSweeper(retentionWorkDir, chunkClient, cfg.RetentionDeleteWorkCount, cfg.RetentionDeleteDelay, r)
-	if err != nil {
-		return nil, err
-	}
-
-	deletionWorkDir := filepath.Join(cfg.WorkingDirectory, "deletion")
-
-	deletesStore, err := deletion.NewDeleteStore(deletionWorkDir, prefixedClient)
-	if err != nil {
-		return nil, err
-	}
-
 	compactor := &Compactor{
-		cfg:                   cfg,
-		objectClient:          prefixedClient,
-		metrics:               newMetrics(r),
-		sweeper:               sweeper,
-		deleteRequestsStore:   deletesStore,
-		DeleteRequestsHandler: deletion.NewDeleteRequestHandler(deletesStore, time.Hour, r),
-		deleteRequestsManager: deletion.NewDeleteRequestsManager(deletesStore, cfg.DeleteRequestCancelPeriod, r),
+		cfg: cfg,
 	}
 
-	expirationChecker := newExpirationChecker(retention.NewExpirationChecker(limits), compactor.deleteRequestsManager)
-
-	marker, err := retention.NewMarker(retentionWorkDir, schemaConfig, expirationChecker, chunkClient, r)
-	if err != nil {
+	if err := compactor.init(storageConfig, schemaConfig, limits, r); err != nil {
 		return nil, err
 	}
-	compactor.tableMarker = marker
+
 	compactor.Service = services.NewBasicService(nil, compactor.loop, nil)
 	return compactor, nil
 }
 
+func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) error {
+	objectClient, err := storage.NewObjectClient(c.cfg.SharedStoreType, storageConfig)
+	if err != nil {
+		return err
+	}
+
+	err = chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
+	if err != nil {
+		return err
+	}
+	c.objectClient = util.NewPrefixedObjectClient(objectClient, c.cfg.SharedStoreKeyPrefix)
+	c.metrics = newMetrics(r)
+
+	if c.cfg.RetentionEnabled {
+		var encoder objectclient.KeyEncoder
+		if _, ok := objectClient.(*local.FSObjectClient); ok {
+			encoder = objectclient.Base64Encoder
+		}
+
+		chunkClient := objectclient.NewClient(objectClient, encoder)
+
+		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
+		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
+		if err != nil {
+			return err
+		}
+
+		deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
+
+		c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.objectClient)
+		if err != nil {
+			return err
+		}
+
+		c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(c.deleteRequestsStore, time.Hour, r)
+		c.deleteRequestsManager = deletion.NewDeleteRequestsManager(c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, r)
+
+		c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+
+		c.tableMarker, err = retention.NewMarker(retentionWorkDir, schemaConfig, c.expirationChecker, chunkClient, r)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (c *Compactor) loop(ctx context.Context) error {
+	if c.cfg.RetentionEnabled {
+		defer c.deleteRequestsStore.Stop()
+		defer c.deleteRequestsManager.Stop()
+	}
+
 	runCompaction := func() {
 		err := c.RunCompaction(ctx)
 		if err != nil {
@@ -172,8 +192,6 @@ func (c *Compactor) loop(ctx context.Context) error {
 	}
 
 	wg.Wait()
-	c.deleteRequestsManager.Stop()
-	c.deleteRequestsStore.Stop()
 	return nil
 }
 
@@ -184,7 +202,13 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 		return err
 	}
 
-	err = table.compact()
+	interval := extractIntervalFromTableName(tableName)
+	intervalHasExpiredChunks := false
+	if c.cfg.RetentionEnabled {
+		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
+	}
+
+	err = table.compact(intervalHasExpiredChunks)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
@@ -197,20 +221,22 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 	start := time.Now()
 
 	if c.cfg.RetentionEnabled {
-		c.deleteRequestsManager.MarkPhaseStarted()
+		c.expirationChecker.MarkPhaseStarted()
 	}
 
 	defer func() {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
-		dmCallback := c.deleteRequestsManager.MarkPhaseFailed
 		if status == statusSuccess {
-			dmCallback = c.deleteRequestsManager.MarkPhaseFinished
 			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
 			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
 
 		if c.cfg.RetentionEnabled {
-			dmCallback()
+			if status == statusSuccess {
+				c.expirationChecker.MarkPhaseFinished()
+			} else {
+				c.expirationChecker.MarkPhaseFailed()
+			}
 		}
 	}()
 
@@ -225,23 +251,64 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 		tables[i] = strings.TrimSuffix(string(dir), delimiter)
 	}
 
-	for _, tableName := range tables {
-		if tableName == deletion.DeleteRequestsTableName {
-			// we do not want to compact or apply retention on delete requests table
-			continue
+	compactTablesChan := make(chan string)
+	errChan := make(chan error)
+
+	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
+		go func() {
+			var err error
+			defer func() {
+				errChan <- err
+			}()
+
+			for {
+				select {
+				case tableName, ok := <-compactTablesChan:
+					if !ok {
+						return
+					}
+
+					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
+					err = c.CompactTable(ctx, tableName)
+					if err != nil {
+						return
+					}
+					level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		for _, tableName := range tables {
+			if tableName == deletion.DeleteRequestsTableName {
+				// we do not want to compact or apply retention on delete requests table
+				continue
+			}
+
+			select {
+			case compactTablesChan <- tableName:
+			case <-ctx.Done():
+				return
+			}
 		}
-		if err := c.CompactTable(ctx, tableName); err != nil {
+
+		close(compactTablesChan)
+	}()
+
+	var firstErr error
+	// read all the errors
+	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
+		err := <-errChan
+		if err != nil && firstErr == nil {
 			status = statusFailure
-		}
-		// check if context was cancelled before going for next table.
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
+			firstErr = err
 		}
 	}
 
-	return nil
+	return firstErr
 }
 
 type expirationChecker struct {
@@ -259,4 +326,38 @@ func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (b
 	}
 
 	return e.deletionExpiryChecker.Expired(ref, now)
+}
+
+func (e *expirationChecker) MarkPhaseStarted() {
+	e.retentionExpiryChecker.MarkPhaseStarted()
+	e.deletionExpiryChecker.MarkPhaseStarted()
+}
+
+func (e *expirationChecker) MarkPhaseFailed() {
+	e.retentionExpiryChecker.MarkPhaseFailed()
+	e.deletionExpiryChecker.MarkPhaseFailed()
+}
+
+func (e *expirationChecker) MarkPhaseFinished() {
+	e.retentionExpiryChecker.MarkPhaseFinished()
+	e.deletionExpiryChecker.MarkPhaseFinished()
+}
+
+func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
+	return e.retentionExpiryChecker.IntervalHasExpiredChunks(interval) || e.deletionExpiryChecker.IntervalHasExpiredChunks(interval)
+}
+
+func extractIntervalFromTableName(tableName string) model.Interval {
+	interval := model.Interval{
+		Start: 0,
+		End:   model.Now(),
+	}
+	tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
+	if err != nil {
+		return interval
+	}
+
+	interval.Start = model.TimeFromUnix(tableNumber * 86400)
+	interval.End = interval.Start.Add(24 * time.Hour)
+	return interval
 }

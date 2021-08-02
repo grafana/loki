@@ -424,3 +424,7 @@ func (r mockRing) ShuffleShardWithLookback(identifier string, size int, lookback
 }
 
 func (r mockRing) CleanupShuffleShardCache(identifier string) {}
+
+func (r mockRing) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+	return 0, nil
+}

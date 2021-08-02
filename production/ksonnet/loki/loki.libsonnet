@@ -1,4 +1,3 @@
-(import 'ksonnet-util/kausal.libsonnet') +
 (import 'jaeger-agent-mixin/jaeger.libsonnet') +
 (import 'images.libsonnet') +
 (import 'common.libsonnet') +
@@ -19,6 +18,9 @@
 
 // WAL support
 (import 'wal.libsonnet') +
+
+// Index Gateway support
+(import 'index-gateway.libsonnet') +
 
 // BoltDB Shipper support. This should be the last one to get imported.
 (import 'boltdb_shipper.libsonnet')

@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -119,7 +119,7 @@ func NewManager(logger log.Logger, app storage.Appendable) *Manager {
 }
 
 // Manager maintains a set of scrape pools and manages start/stop cycles
-// when receiving new target groups form the discovery manager.
+// when receiving new target groups from the discovery manager.
 type Manager struct {
 	logger    log.Logger
 	append    storage.Appendable

@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/signals"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -45,15 +44,16 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      string `yaml:"target,omitempty"`
-	AuthEnabled bool   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string `yaml:"http_prefix"`
+	Target      flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix  string                 `yaml:"http_prefix"`
 
 	Server           server.Config               `yaml:"server,omitempty"`
 	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
@@ -80,7 +80,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "loki"
 	c.Server.ExcludeRequestInLog = true
 
-	f.StringVar(&c.Target, "target", All, "target module (default All)")
+	// Set the default module list to 'all'
+	c.Target = []string{All}
+	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
+		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. ")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.Server.RegisterFlags(f)
@@ -98,7 +101,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
-	c.MemberlistKV.RegisterFlags(f, "")
+	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 }
@@ -146,6 +149,10 @@ func (c *Config) Validate() error {
 		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
 	}
 	return nil
+}
+
+func (c *Config) isModuleEnabled(m string) bool {
+	return util.StringsContain(c.Target, m)
 }
 
 // Loki is the root datastructure for Loki.
@@ -231,7 +238,7 @@ func newDefaultConfig() *Config {
 
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run() error {
-	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
+	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
 		return err
 	}
@@ -255,6 +262,9 @@ func (t *Loki) Run() error {
 
 	// This adds a way to see the config and the changes compared to the defaults
 	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
+
+	// Each component serves its version.
+	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").HandlerFunc(versionHandler())
 
 	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 
@@ -366,32 +376,36 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
 	deps := map[string][]string{
-		Ring:            {RuntimeConfig, Server, MemberlistKV},
-		Overrides:       {RuntimeConfig},
-		TenantConfigs:   {RuntimeConfig},
-		Distributor:     {Ring, Server, Overrides, TenantConfigs},
-		Store:           {Overrides},
-		Ingester:        {Store, Server, MemberlistKV, TenantConfigs},
-		Querier:         {Store, Ring, Server, IngesterQuerier, TenantConfigs},
-		QueryFrontend:   {Server, Overrides, TenantConfigs},
-		Ruler:           {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
-		TableManager:    {Server},
-		Compactor:       {Server, Overrides},
-		IngesterQuerier: {Ring},
-		All:             {Querier, Ingester, Distributor, TableManager, Ruler},
+		Ring:                     {RuntimeConfig, Server, MemberlistKV},
+		Overrides:                {RuntimeConfig},
+		TenantConfigs:            {RuntimeConfig},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs},
+		Store:                    {Overrides},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
+		QueryFrontend:            {QueryFrontendTripperware},
+		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
+		TableManager:             {Server},
+		Compactor:                {Server, Overrides},
+		IndexGateway:             {Server},
+		IngesterQuerier:          {Ring},
+		All:                      {Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
-	if t.Cfg.Target == Querier || t.Cfg.Target == Ruler {
+	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 

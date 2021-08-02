@@ -129,6 +129,11 @@ func ByteStreamProducer(opts ...byteStreamOpt) Producer {
 		}
 
 		if data != nil {
+			if str, ok := data.(string); ok {
+				_, err := writer.Write([]byte(str))
+				return err
+			}
+
 			if e, ok := data.(error); ok {
 				_, err := writer.Write([]byte(e.Error()))
 				return err

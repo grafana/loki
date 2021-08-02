@@ -1,5 +1,6 @@
 ---
 title: Authentication
+weight: 10
 ---
 # Authentication with Loki
 

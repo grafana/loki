@@ -57,12 +57,14 @@ type Limits struct {
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MinShardingLookback model.Duration `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerEvaluationDelay          model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerMaxRulesPerRuleGroup     int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant   int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerRemoteWriteQueueCapacity int            `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
@@ -114,6 +116,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Limit the number of concurrent tail requests")
 
+	_ = l.MinShardingLookback.Set("0s")
+	f.Var(&l.MinShardingLookback, "frontend.min-sharding-lookback", "Limit the sharding time range.Queries with time range that fall between now and now minus the sharding lookback are not sharded. 0 to disable.")
+
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
@@ -122,6 +127,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
+	f.IntVar(&l.RulerRemoteWriteQueueCapacity, "ruler.remote-write.queue-capacity", 10000, "Capacity of remote-write queues; if a queue exceeds its capacity it will evict oldest samples.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	_ = l.RetentionPeriod.Set("744h")
@@ -182,9 +188,14 @@ func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
 }
 
-// TenantLimits is a function that returns limits for given tenant, or
-// nil, if there are no tenant-specific limits.
-type TenantLimits func(userID string) *Limits
+type ForEachTenantLimitCallback func(userID string, limit *Limits)
+
+type TenantLimits interface {
+	// TenantLimits is a function that returns limits for given tenant, or
+	// nil, if there are no tenant-specific limits.
+	TenantLimits(userID string) *Limits
+	ForEachTenantLimit(ForEachTenantLimitCallback)
+}
 
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
@@ -304,6 +315,11 @@ func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
 }
 
+// MinShardingLookback returns the tenant specific min sharding lookback (e.g from when we should start sharding).
+func (o *Overrides) MinShardingLookback(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MinShardingLookback)
+}
+
 // QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
@@ -354,19 +370,32 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
+// RulerRemoteWriteQueueCapacity returns the remote-write queue capacity for a given user.
+func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
+}
+
 // RetentionPeriod returns the retention period for a given user.
 func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).RetentionPeriod)
 }
 
-// RetentionPeriod returns the retention period for a given user.
+// StreamRetention returns the retention period for a given user.
 func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 	return o.getOverridesForUser(userID).StreamRetention
 }
 
+func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
+	o.tenantLimits.ForEachTenantLimit(callback)
+}
+
+func (o *Overrides) DefaultLimits() *Limits {
+	return o.defaultLimits
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
-		l := o.tenantLimits(userID)
+		l := o.tenantLimits.TenantLimits(userID)
 		if l != nil {
 			return l
 		}

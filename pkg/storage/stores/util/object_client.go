@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type PrefixedObjectClient struct {
@@ -42,9 +42,14 @@ func (p PrefixedObjectClient) DeleteObject(ctx context.Context, objectKey string
 	return p.downstreamClient.DeleteObject(ctx, p.prefix+objectKey)
 }
 
+func (p PrefixedObjectClient) IsObjectNotFoundErr(err error) bool {
+	return p.downstreamClient.IsObjectNotFoundErr(err)
+}
+
 func (p PrefixedObjectClient) Stop() {
 	p.downstreamClient.Stop()
 }
+
 func NewPrefixedObjectClient(downstreamClient chunk.ObjectClient, prefix string) chunk.ObjectClient {
 	return PrefixedObjectClient{downstreamClient: downstreamClient, prefix: prefix}
 }

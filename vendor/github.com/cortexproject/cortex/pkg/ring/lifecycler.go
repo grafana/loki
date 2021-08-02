@@ -17,6 +17,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -83,7 +84,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	}
 
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
-	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
+	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul. 0 = disabled.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
@@ -392,8 +393,8 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	autoJoinAfter := time.After(i.cfg.JoinAfter)
 	var observeChan <-chan time.Time = nil
 
-	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
-	defer heartbeatTicker.Stop()
+	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(i.cfg.HeartbeatPeriod)
+	defer heartbeatTickerStop()
 
 	for {
 		select {
@@ -442,7 +443,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				observeChan = time.After(i.cfg.ObservePeriod)
 			}
 
-		case <-heartbeatTicker.C:
+		case <-heartbeatTickerChan:
 			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(log.Logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
@@ -469,8 +470,8 @@ func (i *Lifecycler) stopping(runningError error) error {
 		return nil
 	}
 
-	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
-	defer heartbeatTicker.Stop()
+	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(i.cfg.HeartbeatPeriod)
+	defer heartbeatTickerStop()
 
 	// Mark ourselved as Leaving so no more samples are send to us.
 	err := i.changeState(context.Background(), LEAVING)
@@ -489,7 +490,7 @@ func (i *Lifecycler) stopping(runningError error) error {
 heartbeatLoop:
 	for {
 		select {
-		case <-heartbeatTicker.C:
+		case <-heartbeatTickerChan:
 			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(log.Logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)

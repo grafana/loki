@@ -81,6 +81,8 @@ func (d DownstreamLogSelectorExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.LogSelectorExpr.String(), d.shard)
 }
 
+func (d DownstreamSampleExpr) Walk(f WalkFn) { f(d) }
+
 // ConcatSampleExpr is an expr for concatenating multiple SampleExpr
 // Contract: The embedded SampleExprs within a linked list of ConcatSampleExprs must be of the
 // same structure. This makes special implementations of SampleExpr.Associative() unnecessary.
@@ -95,6 +97,11 @@ func (c ConcatSampleExpr) String() string {
 	}
 
 	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.String())
+}
+
+func (c ConcatSampleExpr) Walk(f WalkFn) {
+	f(c)
+	f(c.next)
 }
 
 // ConcatLogSelectorExpr is an expr for concatenating multiple LogSelectorExpr
@@ -326,13 +333,13 @@ func (ev *DownstreamEvaluator) Iterator(
 // Contract: They must be of identical start, end, and step values.
 func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 	return newStepEvaluator(
-		func() (done bool, ts int64, vec promql.Vector) {
+		func() (ok bool, ts int64, vec promql.Vector) {
 			var cur promql.Vector
 			for _, eval := range evaluators {
-				done, ts, cur = eval.Next()
+				ok, ts, cur = eval.Next()
 				vec = append(vec, cur...)
 			}
-			return done, ts, vec
+			return ok, ts, vec
 		},
 		func() (lastErr error) {
 			for _, eval := range evaluators {

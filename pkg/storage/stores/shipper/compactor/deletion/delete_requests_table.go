@@ -12,11 +12,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -56,16 +56,16 @@ func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectCl
 }
 
 func (t *deleteRequestsTable) init() error {
-	tempFilePath := fmt.Sprintf("%s.%s", t.dbPath, tempFileSuffix)
+	tempFilePath := fmt.Sprintf("%s%s", t.dbPath, tempFileSuffix)
 
-	if err := os.Remove(tempFilePath); err != nil {
+	if err := os.Remove(tempFilePath); err != nil && !os.IsNotExist(err) {
 		level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", tempFilePath), "err", err)
 	}
 
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
 		err = shipper_util.GetFileFromStorage(context.Background(), t.objectClient, objectPathInStorage, t.dbPath, true)
-		if err != nil && !errors.Is(err, chunk.ErrStorageObjectNotFound) {
+		if err != nil && !t.objectClient.IsObjectNotFoundErr(err) {
 			return err
 		}
 	}

@@ -10,35 +10,6 @@ depending on which mode Loki is launched in.
 
 Configuration examples can be found in the [Configuration Examples](examples/) document.
 
-- [Configuring Loki](#configuring-loki)
-  - [Printing Loki Config At Runtime](#printing-loki-config-at-runtime)
-  - [Configuration File Reference](#configuration-file-reference)
-  - [server_config](#server_config)
-  - [distributor_config](#distributor_config)
-  - [querier_config](#querier_config)
-  - [query_frontend_config](#query_frontend_config)
-  - [queryrange_config](#queryrange_config)
-  - [ruler_config](#ruler_config)
-  - [frontend_worker_config](#frontend_worker_config)
-  - [ingester_client_config](#ingester_client_config)
-  - [ingester_config](#ingester_config)
-  - [consul_config](#consul_config)
-  - [etcd_config](#etcd_config)
-  - [compactor_config](#compactor_config)
-  - [memberlist_config](#memberlist_config)
-  - [storage_config](#storage_config)
-  - [chunk_store_config](#chunk_store_config)
-  - [cache_config](#cache_config)
-  - [schema_config](#schema_config)
-    - [period_config](#period_config)
-  - [limits_config](#limits_config)
-    - [grpc_client_config](#grpc_client_config)
-  - [table_manager_config](#table_manager_config)
-    - [provision_config](#provision_config)
-      - [auto_scaling_config](#auto_scaling_config)
-  - [tracing_config](#tracing_config)
-  - [Runtime Configuration file](#runtime-configuration-file)
-
 ## Printing Loki Config At Runtime
 
 If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
@@ -92,7 +63,7 @@ Where default_value is the value to use if the environment variable is undefined
 
 Pass the `-config.expand-env` flag at the command line to enable this way of setting configs.
 
-### Generic placeholders:
+### Generic placeholders
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
 - `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
@@ -104,11 +75,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<string>` : a regular string
 - `<secret>` : a regular string that is a secret, such as a password
 
-### Supported contents and default values of `loki.yaml`:
+### Supported contents and default values of `loki.yaml`
 
 ```yaml
 # The module to run Loki with. Supported values
-# all, distributor, ingester, querier, query-frontend, table-manager.
+# all, compactor, distributor, ingester, querier, query-frontend, table-manager.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -232,7 +203,7 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 
 # Base path to serve all API routes from (e.g., /v1/).
 # CLI flag: -server.path-prefix
-[http_prefix: <string> | default = "/api/prom"]
+[http_path_prefix: <string> | default = ""]
 ```
 
 ## distributor_config
@@ -288,6 +259,10 @@ The `querier_config` block configures the Loki Querier.
 # 0 means all queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
+
+# The maximum number of concurrent queries allowed.
+# CLI flag: -querier.max-concurrent
+[max_concurrent: <int> | default = 20]
 
 # Only query the store, do not attempt to query any ingesters,
 # useful for running a standalone querier pool opearting only against stored data.
@@ -346,6 +321,13 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Limit queries that can be sharded.
+# Queries within the time range of now and now minus this sharding lookback
+# are not sharded. The default value of 0s disables the lookback, causing
+# sharding of all queries at all times.
+# CLI flag: -frontend.min-sharding-lookback
+[min_sharding_lookback: <duration> | default = 0s]
+
 # Deprecated: Split queries by day and execute in parallel. Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
@@ -376,6 +358,8 @@ results_cache:
 ## ruler_config
 
 The `ruler_config` configures the Loki ruler.
+
+<span style="background-color:#f3f973;">The Ruler API is experimental.</span>
 
 ```yaml
 # URL of alerts return path.
@@ -594,6 +578,61 @@ storage:
     # Directory to scan for rules
     # CLI flag: -ruler.storage.local.directory
     [directory: <filename> | default = ""]
+
+# Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
+remote_write:
+  # Enable remote-write functionality.
+  # CLI flag: -ruler.remote-write.enabled
+  [enabled: <boolean> | default = false]
+
+  client:
+    # The URL of the endpoint to send samples to.
+    url: <string>
+
+    # Timeout for requests to the remote write endpoint.
+    [remote_timeout: <duration> | default = 30s]
+
+    # Custom HTTP headers to be sent along with each remote write request.
+    # Be aware that headers that are set by Prometheus itself can't be overwritten.
+    headers:
+      [<string>: <string> ...]
+
+    # HTTP proxy server to use to connect to the targets.
+    [proxy_url: <string>]
+
+    # Sets the `Authorization` header on every remote write request with the
+    # configured username and password.
+    # password and password_file are mutually exclusive.
+    basic_auth:
+      [username: <string>]
+      [password: <secret>]
+      [password_file: <string>]
+
+    # `Authorization` header configuration.
+    authorization:
+      # Sets the authentication type.
+      [type: <string> | default: Bearer]
+      # Sets the credentials. It is mutually exclusive with
+      # `credentials_file`.
+      [credentials: <secret>]
+      # Sets the credentials with the credentials read from the configured file.
+      # It is mutually exclusive with `credentials`.
+      [credentials_file: <filename>]
+
+    tls_config:
+      # CA certificate to validate API server certificate with.
+      [ca_file: <filename>]
+
+      # Certificate and key files for client cert authentication to the server.
+      [cert_file: <filename>]
+      [key_file: <filename>]
+
+      # ServerName extension to indicate the name of the server.
+      # https://tools.ietf.org/html/rfc4366#section-3.1
+      [server_name: <string>]
+
+      # Disable validation of the server certificate.
+      [insecure_skip_verify: <boolean>]
 
 # File path to store temporary rule files
 # CLI flag: -ruler.rule-path
@@ -897,6 +936,13 @@ lifecycler:
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
 
+# Forget about ingesters having heartbeat timestamps older than `ring.kvstore.heartbeat_timeout`.
+# This is equivalent to clicking on `/ring` `forget` button in the UI: the ingester is removed from the ring.
+# A useful setting when you are sure that an unhealthy node won't return. An example is when not
+# using stateful sets or the equivalent.
+# You may use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.
+# CLI flag: -ingester.autoforget-unhealthy
+[autoforget_unhealthy: <boolean> | default = false]
 
 # The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
 wal:
@@ -1384,6 +1430,15 @@ boltdb_shipper:
   # CLI flag: -boltdb.shipper.query-ready-num-days
   [query_ready_num_days: <int> | default = 0]
 
+  index_gateway_client:
+    # "Hostname or IP of the Index Gateway gRPC server.
+    # CLI flag: -boltdb.shipper.index-gateway-client.server-address
+    [server_address: <string> | default = ""]
+
+    # Configures the gRPC client used to connect to the Index Gateway gRPC server.
+    # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
+    [grpc_client_config: <grpc_client_config>]
+
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
 # CLI flag: -store.index-cache-validity
@@ -1432,6 +1487,8 @@ to wait before saving them to the backing store.
 The `cache_config` block configures how Loki will cache requests, chunks, and
 the index to a backing cache store.
 
+<span style="background-color:#f3f973;">The memcached configuration variable addresses is experimental.</span>
+
 ```yaml
 # Enable in-memory cache.
 # CLI flag: -<prefix>.cache.enable-fifocache
@@ -1476,6 +1533,11 @@ memcached_client:
   # SRV service used to discover memcached servers.
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
+
+  # (Experimental) Comma-separated addresses list in DNS Service Discovery format:
+  # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+  # CLI flag: -<prefix>.memcached.addresses
+  [addresses: <string> | default = ""]
 
   # Maximum time to wait before giving up on memcached requests.
   # CLI flag: -<prefix>.memcached.timeout
@@ -1524,8 +1586,8 @@ redis:
   [password: <string>]
 
   # Enables connecting to redis with TLS.
-  # CLI flag: -<prefix>.redis.enable-tls
-  [enable_tls: <boolean> | default = false]
+  # CLI flag: -<prefix>.redis.tls-enabled
+  [tls_enabled: <boolean> | default = false]
 
   # Close connections after remaining idle for this duration.
   # If the value is zero, then idle connections are not closed.
@@ -1618,6 +1680,8 @@ chunks:
 The `compactor_config` block configures the compactor component. This component periodically
 compacts index shards to more performant forms.
 
+<span style="background-color:#f3f973;">Retention through the Compactor is experimental.</span>
+
 ```yaml
 # Directory where files can be downloaded for compaction.
 [working_directory: <string>]
@@ -1631,8 +1695,20 @@ compacts index shards to more performant forms.
 # Prefix should never start with a separator but should always end with it.
 [shared_store_key_prefix: <string> | default = "index/"]
 
-# Interval at which to re-run the compaction operation.
-[compaction_interval: <duration> | default = 2h]
+# Interval at which to re-run the compaction operation (or retention if enabled).
+[compaction_interval: <duration> | default = 10m]
+
+# (Experimental) Activate custom (per-stream,per-tenant) retention.
+[retention_enabled: <bool> | default = false]
+
+# Delay after which chunks will be fully deleted during retention.
+[retention_delete_delay: <duration> | default = 2h]
+
+# The total amount of worker to use to delete chunks.
+[retention_delete_worker_count: <int> | default = 150]
+
+# Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.
+[delete_request_cancel_period: <duration> | default = 24h]
 ```
 
 ## limits_config
@@ -1752,6 +1828,28 @@ logs in Loki.
 # Maximum number of rule groups per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups_per_tenant: <int> | default = 0]
+
+# Retention to apply for the store, if the retention is enable on the compactor side.
+# CLI flag: -store.retention
+[retention_period: <duration> | default = 744h]
+
+# Per-stream retention to apply, if the retention is enable on the compactor side.
+# Example:
+# retention_stream:
+# - selector: '{namespace="dev"}'
+#   priority: 1
+#   period: 24h
+# - selector: '{container="nginx"}'
+#   priority: 1
+#   period: 744h
+# Selector is a Prometheus labels matchers that will apply the `period` retention only if
+# the stream is matching. In case multiple stream are matching, the highest priority will be picked.
+# If no rule is matched the `retention_period` is used.
+[retention_stream: <array> | default = none]
+
+# Capacity of remote-write queues; if a queue exceeds its capacity it will evict oldest samples.
+# CLI flag: -ruler.remote-write.queue-capacity
+[ruler_remote_write_queue_capacity: <int> | default = 10000]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config
@@ -1875,7 +1973,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 
 # DynamoDB table read throughput for inactive tables.
 # CLI flag: -<prefix>.inactive-read-throughput
-[inactive_read_throughput: <int> | Default = 300]
+[inactive_read_throughput: <int> | default = 300]
 
 # Active table write autoscale config.
 # The CLI flags prefix for this block config is: -<prefix>.write-throughput
@@ -1959,7 +2057,7 @@ Options for runtime configuration reload can also be configured via YAML:
 [file: <string>: default = empty]
 
 # How often to check the file.
-[period: <duration>: default 10 seconds]
+[period: <duration>: default 10s]
 ```
 
 Example runtime configuration file:

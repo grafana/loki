@@ -48,6 +48,10 @@ func ParseResource(s string, resParser ResourceParser) (resARN Resource, err err
 		return nil, InvalidARNError{ARN: a, Reason: "service is not supported"}
 	}
 
+	if strings.HasPrefix(a.Region, "fips-") || strings.HasSuffix(a.Region, "-fips") {
+		return nil, InvalidARNError{ARN: a, Reason: "FIPS region not allowed in ARN"}
+	}
+
 	if len(a.Resource) == 0 {
 		return nil, InvalidARNError{ARN: a, Reason: "resource not set"}
 	}

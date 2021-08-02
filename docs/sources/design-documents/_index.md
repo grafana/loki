@@ -1,4 +1,5 @@
 ---
 title: Design documents
-menu_exclude: true
+weight: 1300
 ---
+# Design documents

@@ -125,7 +125,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 func mustRegisterOrGet(reg prometheus.Registerer, c prometheus.Collector) prometheus.Collector {
 	if err := reg.Register(c); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			return are.ExistingCollector.(prometheus.Collector)
+			return are.ExistingCollector
 		}
 		panic(err)
 	}

@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -142,6 +143,47 @@ func newSampleTimestampTooNewError(metricName string, timestamp int64) Validatio
 		message:    "timestamp too new: %d metric: %.200q",
 		metricName: metricName,
 		timestamp:  timestamp,
+	}
+}
+
+// exemplarValidationError is a ValidationError implementation suitable for exemplar validation errors.
+type exemplarValidationError struct {
+	message        string
+	seriesLabels   []cortexpb.LabelAdapter
+	exemplarLabels []cortexpb.LabelAdapter
+	timestamp      int64
+}
+
+func (e *exemplarValidationError) Error() string {
+	return fmt.Sprintf(e.message, e.timestamp, cortexpb.FromLabelAdaptersToLabels(e.seriesLabels).String(), cortexpb.FromLabelAdaptersToLabels(e.exemplarLabels).String())
+}
+
+func newExemplarEmtpyLabelsError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
+	return &exemplarValidationError{
+		message:        "exemplar missing labels, timestamp: %d series: %s labels: %s",
+		seriesLabels:   seriesLabels,
+		exemplarLabels: exemplarLabels,
+		timestamp:      timestamp,
+	}
+}
+
+func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
+	return &exemplarValidationError{
+		message:        "exemplar missing timestamp, timestamp: %d series: %s labels: %s",
+		seriesLabels:   seriesLabels,
+		exemplarLabels: exemplarLabels,
+		timestamp:      timestamp,
+	}
+}
+
+var labelLenMsg = "exemplar combined labelset exceeds " + strconv.Itoa(ExemplarMaxLabelSetLength) + " characters, timestamp: %d series: %s labels: %s"
+
+func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
+	return &exemplarValidationError{
+		message:        labelLenMsg,
+		seriesLabels:   seriesLabels,
+		exemplarLabels: exemplarLabels,
+		timestamp:      timestamp,
 	}
 }
 

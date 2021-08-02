@@ -3,62 +3,12 @@ title: HTTP API
 weight: 900
 ---
 
-# Loki's HTTP API
+# Loki HTTP API
 
 Loki exposes an HTTP API for pushing, querying, and tailing log data.
 Note that [authenticating](../operations/authentication/) against the API is
 out of scope for Loki.
 
-The HTTP API includes the following endpoints:
-
-- [Loki's HTTP API](#lokis-http-api)
-  - [Microservices Mode](#microservices-mode)
-  - [Matrix, Vector, And Streams](#matrix-vector-and-streams)
-  - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
-    - [Examples](#examples)
-  - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-        - [Step vs Interval](#step-vs-interval)
-    - [Examples](#examples-1)
-  - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
-    - [Examples](#examples-2)
-  - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
-    - [Examples](#examples-3)
-  - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
-  - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
-    - [Examples](#examples-4)
-  - [`GET /api/prom/tail`](#get-apipromtail)
-  - [`GET /api/prom/query`](#get-apipromquery)
-    - [Examples](#examples-5)
-  - [`GET /api/prom/label`](#get-apipromlabel)
-    - [Examples](#examples-6)
-  - [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
-    - [Examples](#examples-7)
-  - [`POST /api/prom/push`](#post-apiprompush)
-    - [Examples](#examples-8)
-  - [`GET /ready`](#get-ready)
-  - [`POST /flush`](#post-flush)
-  - [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
-  - [`GET /metrics`](#get-metrics)
-  - [`GET /config`](#get-config)
-  - [Series](#series)
-    - [Examples](#examples-9)
-  - [Statistics](#statistics)
-  - [`GET /ruler/ring`](#ruler-ring-status)
-  - [`GET /loki/api/v1/rules`](#list-rule-groups)
-  - [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
-  - [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
-  - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
-  - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
-  - [`DELETE /loki/api/v1/rules/{namespace}`](#delete-namespace)
-  - [`GET /api/prom/rules`](#list-rule-groups)
-  - [`GET /api/prom/rules/{namespace}`](#get-rule-groups-by-namespace)
-  - [`GET /api/prom/rules/{namespace}/{groupName}`](#get-rule-group)
-  - [`POST /api/prom/rules/{namespace}`](#set-rule-group)
-  - [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
-  - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
-  - [`GET /prometheus/api/v1/rules`](#list-rules)
-  - [`GET /prometheus/api/v1/alerts`](#list-alerts)
-  
 ## Microservices mode
 
 When deploying Loki in microservices mode, the set of endpoints exposed by each
@@ -69,6 +19,7 @@ These endpoints are exposed by all components:
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
 - [`GET /config`](#get-config)
+- [`GET /loki/api/v1/status/buildinfo`](#get-lokiapiv1statusbuildinfo)
 
 These endpoints are exposed by the querier and the frontend:
 
@@ -292,18 +243,18 @@ accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.  Only applies to query types which produce a matrix response.
-- `interval`: **Experimental, See Below** Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
+- `interval`: <span style="background-color:#f3f973;">This parameter is experimental; see the explanation under Step versus Interval.</span> Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
 In microservices mode, `/loki/api/v1/query_range` is exposed by the querier and the frontend.
 
-##### Step vs Interval
+##### Step versus Interval
 
 Use the `step` parameter when making metric queries to Loki, or queries which return a matrix response.  It is evaluated in exactly the same way Prometheus evaluates `step`.  First the query will be evaluated at `start` and then evaluated again at `start + step` and again at `start + step + step` until `end` is reached.  The result will be a matrix of the query result evaluated at each step.
 
 Use the `interval` parameter when making log queries to Loki, or queries which return a stream response. It is evaluated by returning a log entry at `start`, then the next entry will be returned an entry with timestampe >= `start + interval`, and again at `start + interval + interval` and so on until `end` is reached.  It does not fill missing entries.
 
-**Note about the experimental nature of interval** This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time.  [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
+<span style="background-color:#f3f973;">Note about the experimental nature of the interval parameter:</span> This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time.  [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
 
 
 
@@ -873,6 +824,10 @@ and the current are returned. A value of `defaults` returns the default configur
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 
+## `GET /loki/api/v1/status/buildinfo`
+
+`/loki/api/v1/status/buildinfo` exposes the build information in a JSON object. The fields are `version`, `revision`, `branch`, `buildDate`, `buildUser`, and `goVersion`.
+
 ## Series
 
 The Series API is available under the following:
@@ -1005,13 +960,13 @@ Displays a web page with the ruler hash ring status, including the state, health
 
 ### List rule groups
 
+<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
+
 ```
 GET /loki/api/v1/rules
 ```
 
 List all rules configured for the authenticated tenant. This endpoint returns a YAML dictionary with all the rule groups for each namespace and `200` status code on success.
-
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
 #### Example response
 
@@ -1053,13 +1008,13 @@ _This experimental endpoint is disabled by default and can be enabled via the `-
 
 ### Get rule groups by namespace
 
+<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
+
 ```
 GET /loki/api/v1/rules/{namespace}
 ```
 
 Returns the rule groups defined for a given namespace.
-
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
 #### Example response
 
@@ -1078,23 +1033,23 @@ rules:
 
 ### Get rule group
 
+<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
+
 ```
 GET /loki/api/v1/rules/{namespace}/{groupName}
 ```
 
 Returns the rule group matching the request namespace and group name.
 
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
-
 ### Set rule group
+
+<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 POST /loki/api/v1/rules/{namespace}
 ```
 
 Creates or updates a rule group. This endpoint expects a request with `Content-Type: application/yaml` header and the rules **YAML** definition in the request body, and returns `202` on success.
-
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
 
 #### Example request
 
@@ -1127,15 +1082,17 @@ Deletes a rule group by namespace and group name. This endpoints returns `202` o
 
 ### Delete namespace
 
+<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
+
 ```
 DELETE /loki/api/v1/rules/{namespace}
 ```
 
 Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
 
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
-
 ### List rules
+
+<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/rules
@@ -1145,9 +1102,9 @@ Prometheus-compatible rules endpoint to list alerting and recording rules that a
 
 For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
 
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
-
 ### List alerts
+
+<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/alerts
@@ -1155,6 +1112,4 @@ GET /prometheus/api/v1/alerts
 
 Prometheus-compatible rules endpoint to list all active alerts.
 
-_For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation._
-
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation.

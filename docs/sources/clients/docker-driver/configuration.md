@@ -109,17 +109,18 @@ By default, the Docker driver will add the following labels to each log line:
 
 - `filename`: where the log is written to on disk
 - `host`: the hostname where the log has been generated
-- `container_name`: the name of the container generating logs
 - `swarm_stack`, `swarm_service`: added when deploying from Docker Swarm.
 
 Custom labels can be added using the `loki-external-labels`, `loki-pipeline-stages`,
 `loki-pipeline-stage-file`, `labels`, `env`, and `env-regex` options. See the
 next section for all supported options.
 
+`loki-external-labels` have the default value of `container_name={{.Name}}`. If you have custom value for `loki-external-labels` then that will replace the default value, meaning you won't have `container_name` label unless you explcity add it (e.g: `loki-external-lables: "job=docker,container_name={{.Name}}"`.
+
 ## Pipeline stages
 
 While you can provide `loki-pipeline-stage-file` it can be hard to mount the configuration file to the driver root filesystem.
-This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined.
+This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined. Pipeline stages are run at last on every lines.
 
 The example [docker-compose](https://github.com/grafana/loki/blob/master/cmd/docker-driver/docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
 
@@ -167,6 +168,8 @@ Providing both `loki-pipeline-stage-file` and `loki-pipeline-stages` will cause 
 
 You can use [Prometheus relabeling](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) configuration to modify labels discovered by the driver. The configuration must be passed as a YAML string like the [pipeline stages](#pipeline-stages).
 
+Relabeling phase will happen only once per container and it is applied on the container metadata when it starts. So you can for example rename the labels that are only available during the starting of the container, not the labels available on log lines. Use [pipeline stages](#pipeline-stages) instead.
+
 For example the configuration below will rename the label `swarm_stack` and `swarm_service` to respectively `namespace` and `service`.
 
 ```yaml
@@ -198,12 +201,12 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-external-labels`          |    No     | `container_name={{.Name}}` | Additional label value pair separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/config/containers/logging/log_tags/). (eg: `container_name={{.ID}}.{{.Name}},cluster=prod`)                               |
 | `loki-timeout`                  |    No     |           `10s`            | The timeout to use when sending logs to the Loki instance. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                    |
 | `loki-batch-wait`               |    No     |            `1s`            | The amount of time to wait before sending a log batch complete or not. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                        |
-| `loki-batch-size`               |    No     |          `102400`          | The maximum size of a log batch to send.                                                                                                                                                                                                                                      |
-| `loki-min-backoff`              |    No     |          `100ms`           | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
-| `loki-max-backoff`              |    No     |           `10s`            | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
+| `loki-batch-size`               |    No     |         `1048576`          | The maximum size of a log batch to send.                                                                                                                                                                                                                                      |
+| `loki-min-backoff`              |    No     |          `500ms`           | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
+| `loki-max-backoff`              |    No     |            `5m`            | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
 | `loki-retries`                  |    No     |            `10`            | The maximum amount of retries for a log batch.                                                                                                                                                                                                                                |
-| `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/master/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels, [see associated documentation](../promtail/pipelines.md). |
-| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see pipeline stages](#pipeline-stages) and [associated documentation](../promtail/stages/).                                                                                                                         |
+| `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/master/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels, [see associated documentation](../../promtail/stages/). |
+| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see pipeline stages](#pipeline-stages) and [associated documentation](../../promtail/stages/).                                                                                                                         |
 | `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see relabeling](#relabeling).                                                                                |
 | `loki-tenant-id`                |    No     |                            | Set the tenant id (http header`X-Scope-OrgID`) when sending logs to Loki. It can be overrides by a pipeline stage.                                                                                                                                                            |
 | `loki-tls-ca-file`              |    No     |                            | Set the path to a custom certificate authority.                                                                                                                                                                                                                               |

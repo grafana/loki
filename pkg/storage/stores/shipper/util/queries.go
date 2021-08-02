@@ -5,9 +5,10 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
 const maxQueriesPerGoroutine = 100
@@ -34,6 +35,10 @@ func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries [
 	errs := make(chan error)
 
 	id := NewIndexDeduper(callback)
+
+	if len(queries) <= maxQueriesPerGoroutine {
+		return tableQuerier.MultiQueries(ctx, queries, id.Callback)
+	}
 
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {
 		q := queries[i:util_math.Min(i+maxQueriesPerGoroutine, len(queries))]

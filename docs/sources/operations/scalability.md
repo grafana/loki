@@ -1,5 +1,6 @@
 ---
 title: Scalability
+weight: 30
 ---
 # Scaling with Loki
 

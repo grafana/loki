@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.58.0"
+	libraryVersion = "1.62.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -433,6 +433,7 @@ func (r *ErrorResponse) Error() string {
 // CheckResponse checks the API response for errors, and returns them if present. A response is considered an
 // error if it has a status code outside the 200 range. API error responses are expected to have either no response
 // body, or a JSON response body that maps to ErrorResponse. Any other response body will be silently ignored.
+// If the API error response does not include the request ID in its body, the one from its header will be used.
 func CheckResponse(r *http.Response) error {
 	if c := r.StatusCode; c >= 200 && c <= 299 {
 		return nil
@@ -445,6 +446,10 @@ func CheckResponse(r *http.Response) error {
 		if err != nil {
 			errorResponse.Message = string(data)
 		}
+	}
+
+	if errorResponse.RequestID == "" {
+		errorResponse.RequestID = r.Header.Get("x-request-id")
 	}
 
 	return errorResponse

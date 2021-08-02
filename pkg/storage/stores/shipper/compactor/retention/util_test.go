@@ -7,10 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -22,6 +18,10 @@ import (
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/validation"
@@ -66,7 +66,7 @@ var (
 					RowShards: 16,
 				},
 				{
-					From:       dayFromTime(start.Add(49 * time.Hour)),
+					From:       dayFromTime(start.Add(73 * time.Hour)),
 					IndexType:  "boltdb",
 					ObjectType: "filesystem",
 					Schema:     "v11",
@@ -115,7 +115,7 @@ type testStore struct {
 	indexDir, chunkDir string
 	schemaCfg          storage.SchemaConfig
 	t                  testing.TB
-	limits             cortex_storage.StoreLimits
+	limits             chunk_storage.StoreLimits
 }
 
 // testObjectClient is a testing object client
@@ -125,7 +125,7 @@ type testObjectClient struct {
 }
 
 func newTestObjectClient(path string) chunk.ObjectClient {
-	c, err := cortex_storage.NewObjectClient("filesystem", cortex_storage.Config{
+	c, err := chunk_storage.NewObjectClient("filesystem", chunk_storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
@@ -158,15 +158,13 @@ func (t *testStore) indexTables() []table {
 }
 
 func (t *testStore) HasChunk(c chunk.Chunk) bool {
-	t.t.Helper()
-	var matchers []*labels.Matcher
-	for _, l := range c.Metric {
-		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
+	chunks := t.GetChunks(c.UserID, c.From, c.Through, c.Metric)
+
+	chunkIDs := make(map[string]struct{})
+	for _, chk := range chunks {
+		chunkIDs[chk.ExternalKey()] = struct{}{}
 	}
-	chunks, err := t.Store.Get(user.InjectOrgID(context.Background(), c.UserID),
-		c.UserID, c.From, c.Through, matchers...)
-	require.NoError(t.t, err)
-	return len(chunks) == 1 && c.ExternalKey() == chunks[0].ExternalKey()
+	return len(chunkIDs) == 1 && c.ExternalKey() == chunks[0].ExternalKey()
 }
 
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
@@ -183,7 +181,7 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 }
 
 func (t *testStore) open() {
-	chunkStore, err := cortex_storage.NewStore(
+	chunkStore, err := chunk_storage.NewStore(
 		t.cfg.Config,
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
@@ -223,7 +221,7 @@ func newTestStore(t testing.TB) *testStore {
 	require.NoError(t, schemaCfg.SchemaConfig.Validate())
 
 	config := storage.Config{
-		Config: cortex_storage.Config{
+		Config: chunk_storage.Config{
 			BoltDBConfig: local.BoltDBConfig{
 				Directory: indexDir,
 			},
@@ -240,7 +238,7 @@ func newTestStore(t testing.TB) *testStore {
 			Mode:                 shipper.ModeReadWrite,
 		},
 	}
-	chunkStore, err := cortex_storage.NewStore(
+	chunkStore, err := chunk_storage.NewStore(
 		config.Config,
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,

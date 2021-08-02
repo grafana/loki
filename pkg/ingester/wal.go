@@ -126,7 +126,7 @@ func (w *walWrapper) Log(record *WALRecord) error {
 			buf = buf[:0]
 		}
 		if len(record.RefEntries) > 0 {
-			buf = record.encodeEntries(buf)
+			buf = record.encodeEntries(CurrentEntriesRec, buf)
 			if err := w.wal.Log(buf); err != nil {
 				return err
 			}

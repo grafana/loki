@@ -10,15 +10,19 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 )
 
-const delimiter = "/"
+const (
+	delimiter = "/"
+	sep       = "\xff"
+)
 
 var (
 	gzipReader = sync.Pool{}
@@ -251,4 +255,22 @@ func ListDirectory(ctx context.Context, dirName string, objectClient chunk.Objec
 		return nil, err
 	}
 	return objects, nil
+}
+
+func QueryKey(q chunk.IndexQuery) string {
+	ret := q.TableName + sep + q.HashValue
+
+	if len(q.RangeValuePrefix) != 0 {
+		ret += sep + string(q.RangeValuePrefix)
+	}
+
+	if len(q.RangeValueStart) != 0 {
+		ret += sep + string(q.RangeValueStart)
+	}
+
+	if len(q.ValueEqual) != 0 {
+		ret += sep + string(q.ValueEqual)
+	}
+
+	return ret
 }

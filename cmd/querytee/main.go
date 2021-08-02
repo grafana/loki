@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 
@@ -35,7 +36,7 @@ func main() {
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(prometheus.NewGoCollector())
+	registry.MustRegister(collectors.NewGoCollector())
 
 	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry)
 	if err := i.Start(); err != nil {

@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,10 +19,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ingester/index"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
+	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -164,7 +165,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		if _, err := stream.Push(ctx, s.Entries, record); err != nil {
+		if _, err := stream.Push(ctx, s.Entries, record, 0); err != nil {
 			appendErr = err
 			continue
 		}
@@ -300,9 +301,22 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 	ingStats := stats.GetIngesterData(ctx)
 	var iters []iter.EntryIterator
 
+	var shard *astmapper.ShardAnnotation
+	shards, err := logql.ParseShards(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+	if len(shards) > 1 {
+		return nil, errors.New("only one shard per ingester query is supported")
+	}
+	if len(shards) == 1 {
+		shard = &shards[0]
+	}
+
 	err = i.forMatchingStreams(
 		ctx,
 		expr.Matchers(),
+		shard,
 		func(stream *stream) error {
 			iter, err := stream.Iterator(ctx, ingStats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
@@ -331,9 +345,23 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 
 	ingStats := stats.GetIngesterData(ctx)
 	var iters []iter.SampleIterator
+
+	var shard *astmapper.ShardAnnotation
+	shards, err := logql.ParseShards(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+	if len(shards) > 1 {
+		return nil, errors.New("only one shard per ingester query is supported")
+	}
+	if len(shards) == 1 {
+		shard = &shards[0]
+	}
+
 	err = i.forMatchingStreams(
 		ctx,
 		expr.Selector().Matchers(),
+		shard,
 		func(stream *stream) error {
 			iter, err := stream.SampleIterator(ctx, ingStats, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
@@ -353,13 +381,19 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	var labels []string
 	if req.Values {
-		values := i.index.LabelValues(req.Name)
+		values, err := i.index.LabelValues(req.Name, nil)
+		if err != nil {
+			return nil, err
+		}
 		labels = make([]string, len(values))
 		for i := 0; i < len(values); i++ {
 			labels[i] = values[i]
 		}
 	} else {
-		names := i.index.LabelNames()
+		names, err := i.index.LabelNames(nil)
+		if err != nil {
+			return nil, err
+		}
 		labels = make([]string, len(names))
 		for i := 0; i < len(names); i++ {
 			labels[i] = names[i]
@@ -396,7 +430,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	} else {
 		dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
 		for _, matchers := range groups {
-			err = i.forMatchingStreams(ctx, matchers, func(stream *stream) error {
+			err = i.forMatchingStreams(ctx, matchers, nil, func(stream *stream) error {
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req) {
 					// exit early when this stream was added by an earlier group
@@ -458,13 +492,17 @@ func (i *instance) forAllStreams(ctx context.Context, fn func(*stream) error) er
 func (i *instance) forMatchingStreams(
 	ctx context.Context,
 	matchers []*labels.Matcher,
+	shards *astmapper.ShardAnnotation,
 	fn func(*stream) error,
 ) error {
 	i.streamsMtx.RLock()
 	defer i.streamsMtx.RUnlock()
 
 	filters, matchers := cutil.SplitFiltersAndMatchers(matchers)
-	ids := i.index.Lookup(matchers)
+	ids, err := i.index.Lookup(matchers, shards)
+	if err != nil {
+		return err
+	}
 	var chunkFilter storage.ChunkFilterer
 	if i.chunkFilter != nil {
 		chunkFilter = i.chunkFilter.ForRequest(ctx)
@@ -492,7 +530,7 @@ outer:
 }
 
 func (i *instance) addNewTailer(ctx context.Context, t *tailer) error {
-	if err := i.forMatchingStreams(ctx, t.matchers, func(s *stream) error {
+	if err := i.forMatchingStreams(ctx, t.matchers, nil, func(s *stream) error {
 		s.addTailer(t)
 		return nil
 	}); err != nil {

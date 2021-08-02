@@ -23,8 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/alecthomas/units"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -172,14 +173,24 @@ var (
 
 	// DefaultMetadataConfig is the default metadata configuration for a remote write endpoint.
 	DefaultMetadataConfig = MetadataConfig{
-		Send:         true,
-		SendInterval: model.Duration(1 * time.Minute),
+		Send:              true,
+		SendInterval:      model.Duration(1 * time.Minute),
+		MaxSamplesPerSend: 500,
 	}
 
 	// DefaultRemoteReadConfig is the default remote read configuration.
 	DefaultRemoteReadConfig = RemoteReadConfig{
 		RemoteTimeout:    model.Duration(1 * time.Minute),
 		HTTPClientConfig: config.DefaultHTTPClientConfig,
+	}
+
+	// DefaultStorageConfig is the default TSDB/Exemplar storage configuration.
+	DefaultStorageConfig = StorageConfig{
+		ExemplarsConfig: &DefaultExemplarsConfig,
+	}
+
+	DefaultExemplarsConfig = ExemplarsConfig{
+		MaxExemplars: 100000,
 	}
 )
 
@@ -189,6 +200,7 @@ type Config struct {
 	AlertingConfig AlertingConfig  `yaml:"alerting,omitempty"`
 	RuleFiles      []string        `yaml:"rule_files,omitempty"`
 	ScrapeConfigs  []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
+	StorageConfig  StorageConfig   `yaml:"storage,omitempty"`
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
@@ -382,11 +394,24 @@ type ScrapeConfig struct {
 	MetricsPath string `yaml:"metrics_path,omitempty"`
 	// The URL scheme with which to fetch metrics from targets.
 	Scheme string `yaml:"scheme,omitempty"`
-	// More than this many samples post metric-relabeling will cause the scrape to fail.
+	// An uncompressed response body larger than this many bytes will cause the
+	// scrape to fail. 0 means no limit.
+	BodySizeLimit units.Base2Bytes `yaml:"body_size_limit,omitempty"`
+	// More than this many samples post metric-relabeling will cause the scrape to
+	// fail.
 	SampleLimit uint `yaml:"sample_limit,omitempty"`
 	// More than this many targets after the target relabeling will cause the
 	// scrapes to fail.
 	TargetLimit uint `yaml:"target_limit,omitempty"`
+	// More than this many labels post metric-relabeling will cause the scrape to
+	// fail.
+	LabelLimit uint `yaml:"label_limit,omitempty"`
+	// More than this label name length post metric-relabeling will cause the
+	// scrape to fail.
+	LabelNameLengthLimit uint `yaml:"label_name_length_limit,omitempty"`
+	// More than this label value length post metric-relabeling will cause the
+	// scrape to fail.
+	LabelValueLengthLimit uint `yaml:"label_value_length_limit,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -447,6 +472,18 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // MarshalYAML implements the yaml.Marshaler interface.
 func (c *ScrapeConfig) MarshalYAML() (interface{}, error) {
 	return discovery.MarshalYAMLWithInlineConfigs(c)
+}
+
+// StorageConfig configures runtime reloadable configuration options.
+type StorageConfig struct {
+	ExemplarsConfig *ExemplarsConfig `yaml:"exemplars,omitempty"`
+}
+
+// ExemplarsConfig configures runtime reloadable configuration options.
+type ExemplarsConfig struct {
+	// MaxExemplars sets the size, in # of exemplars stored, of the single circular buffer used to store exemplars in memory.
+	// Use a value of 0 or less than 0 to disable the storage without having to restart Prometheus.
+	MaxExemplars int64 `yaml:"max_exemplars,omitempty"`
 }
 
 // AlertingConfig configures alerting and alertmanager related configs.
@@ -622,6 +659,7 @@ type RemoteWriteConfig struct {
 	Headers             map[string]string `yaml:"headers,omitempty"`
 	WriteRelabelConfigs []*relabel.Config `yaml:"write_relabel_configs,omitempty"`
 	Name                string            `yaml:"name,omitempty"`
+	SendExemplars       bool              `yaml:"send_exemplars,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -663,10 +701,10 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	}
 
 	httpClientConfigAuthEnabled := c.HTTPClientConfig.BasicAuth != nil ||
-		c.HTTPClientConfig.Authorization != nil
+		c.HTTPClientConfig.Authorization != nil || c.HTTPClientConfig.OAuth2 != nil
 
 	if httpClientConfigAuthEnabled && c.SigV4Config != nil {
-		return fmt.Errorf("at most one of basic_auth, authorization, & sigv4 must be configured")
+		return fmt.Errorf("at most one of basic_auth, authorization, oauth2, & sigv4 must be configured")
 	}
 
 	return nil
@@ -675,7 +713,7 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 func validateHeaders(headers map[string]string) error {
 	for header := range headers {
 		if strings.ToLower(header) == "authorization" {
-			return errors.New("authorization header must be changed via the basic_auth or authorization parameter")
+			return errors.New("authorization header must be changed via the basic_auth, authorization, oauth2, or sigv4 parameter")
 		}
 		if _, ok := reservedHeaders[strings.ToLower(header)]; ok {
 			return errors.Errorf("%s is a reserved header. It must not be changed", header)
@@ -716,6 +754,8 @@ type MetadataConfig struct {
 	Send bool `yaml:"send"`
 	// SendInterval controls how frequently we send metric metadata.
 	SendInterval model.Duration `yaml:"send_interval"`
+	// Maximum number of samples per send.
+	MaxSamplesPerSend int `yaml:"max_samples_per_send,omitempty"`
 }
 
 // SigV4Config is the configuration for signing remote write requests with

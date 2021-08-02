@@ -9,8 +9,9 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"sort"
+	"reflect"
 	"time"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -18,7 +19,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -32,6 +33,8 @@ const (
 	chunkFormatV2
 	chunkFormatV3
 
+	DefaultChunkFormat = chunkFormatV3 // the currently used chunk format
+
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
 
@@ -39,6 +42,44 @@ const (
 	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
 	// different block size in the new chunk which should be fine.
 	defaultBlockSize = 256 * 1024
+)
+
+var (
+	HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
+)
+
+type HeadBlockFmt byte
+
+func (f HeadBlockFmt) Byte() byte { return byte(f) }
+
+func (f HeadBlockFmt) String() string {
+	switch {
+	case f < UnorderedHeadBlockFmt:
+		return "ordered"
+	case f == UnorderedHeadBlockFmt:
+		return "unordered"
+	default:
+		return fmt.Sprintf("unknown: %v", byte(f))
+	}
+}
+
+func (f HeadBlockFmt) NewBlock() HeadBlock {
+	switch {
+	case f < UnorderedHeadBlockFmt:
+		return &headBlock{}
+	default:
+		return newUnorderedHeadBlock()
+	}
+}
+
+const (
+	_ HeadBlockFmt = iota
+	// placeholders to start splitting chunk formats vs head block
+	// fmts at v3
+	_
+	_
+	OrderedHeadBlockFmt
+	UnorderedHeadBlockFmt
 )
 
 var magicNumber = uint32(0x12EE56A)
@@ -71,11 +112,12 @@ type MemChunk struct {
 	cutBlockSize int
 
 	// Current in-mem block being appended to.
-	head *headBlock
+	head HeadBlock
 
 	// the chunk format default to v2
 	format   byte
 	encoding Encoding
+	headFmt  HeadBlockFmt
 }
 
 type block struct {
@@ -99,11 +141,17 @@ type headBlock struct {
 	mint, maxt int64
 }
 
-func (hb *headBlock) isEmpty() bool {
+func (hb *headBlock) Format() HeadBlockFmt { return OrderedHeadBlockFmt }
+
+func (hb *headBlock) IsEmpty() bool {
 	return len(hb.entries) == 0
 }
 
-func (hb *headBlock) clear() {
+func (hb *headBlock) Entries() int { return len(hb.entries) }
+
+func (hb *headBlock) UncompressedSize() int { return hb.size }
+
+func (hb *headBlock) Reset() {
 	if hb.entries != nil {
 		hb.entries = hb.entries[:0]
 	}
@@ -112,8 +160,10 @@ func (hb *headBlock) clear() {
 	hb.maxt = 0
 }
 
-func (hb *headBlock) append(ts int64, line string) error {
-	if !hb.isEmpty() && hb.maxt > ts {
+func (hb *headBlock) Bounds() (int64, int64) { return hb.mint, hb.maxt }
+
+func (hb *headBlock) Append(ts int64, line string) error {
+	if !hb.IsEmpty() && hb.maxt > ts {
 		return ErrOutOfOrder
 	}
 
@@ -127,7 +177,7 @@ func (hb *headBlock) append(ts int64, line string) error {
 	return nil
 }
 
-func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
+func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
@@ -161,14 +211,14 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 // CheckpointBytes serializes a headblock to []byte. This is used by the WAL checkpointing,
 // which does not want to mutate a chunk by cutting it (otherwise risking content address changes), but
 // needs to serialize/deserialize the data to disk to ensure data durability.
-func (hb *headBlock) CheckpointBytes(version byte, b []byte) ([]byte, error) {
+func (hb *headBlock) CheckpointBytes(b []byte) ([]byte, error) {
 	buf := bytes.NewBuffer(b[:0])
-	err := hb.CheckpointTo(version, buf)
+	err := hb.CheckpointTo(buf)
 	return buf.Bytes(), err
 }
 
 // CheckpointSize returns the estimated size of the headblock checkpoint.
-func (hb *headBlock) CheckpointSize(version byte) int {
+func (hb *headBlock) CheckpointSize() int {
 	size := 1                                                                 // version
 	size += binary.MaxVarintLen32 * 2                                         // total entries + total size
 	size += binary.MaxVarintLen64 * 2                                         // mint,maxt
@@ -181,13 +231,13 @@ func (hb *headBlock) CheckpointSize(version byte) int {
 }
 
 // CheckpointTo serializes a headblock to a `io.Writer`. see `CheckpointBytes`.
-func (hb *headBlock) CheckpointTo(version byte, w io.Writer) error {
+func (hb *headBlock) CheckpointTo(w io.Writer) error {
 	eb := EncodeBufferPool.Get().(*encbuf)
 	defer EncodeBufferPool.Put(eb)
 
 	eb.reset()
 
-	eb.putByte(version)
+	eb.putByte(byte(hb.Format()))
 	_, err := w.Write(eb.get())
 	if err != nil {
 		return errors.Wrap(err, "write headBlock version")
@@ -222,7 +272,7 @@ func (hb *headBlock) CheckpointTo(version byte, w io.Writer) error {
 	return nil
 }
 
-func (hb *headBlock) FromCheckpoint(b []byte) error {
+func (hb *headBlock) LoadBytes(b []byte) error {
 	if len(b) < 1 {
 		return nil
 	}
@@ -264,25 +314,38 @@ func (hb *headBlock) FromCheckpoint(b []byte) error {
 	return nil
 }
 
+func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
+	if version < UnorderedHeadBlockFmt {
+		return hb, nil
+	}
+	out := newUnorderedHeadBlock()
+
+	for _, e := range hb.entries {
+		if err := out.Append(e.t, e.s); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 type entry struct {
 	t int64
 	s string
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
-	c := &MemChunk{
+func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
 		blocks:     []block{},
 
-		head:   &headBlock{},
-		format: chunkFormatV3,
+		format: DefaultChunkFormat,
+		head:   head.NewBlock(),
 
 		encoding: enc,
+		headFmt:  head,
 	}
-
-	return c
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
@@ -350,7 +413,7 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
+			_ = level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
 			continue
 		}
 
@@ -508,11 +571,11 @@ func (c *MemChunk) SerializeForCheckpointTo(chk, head io.Writer) error {
 		return err
 	}
 
-	if c.head.isEmpty() {
+	if c.head.IsEmpty() {
 		return nil
 	}
 
-	err = c.head.CheckpointTo(c.format, head)
+	err = c.head.CheckpointTo(head)
 	if err != nil {
 		return err
 	}
@@ -521,15 +584,22 @@ func (c *MemChunk) SerializeForCheckpointTo(chk, head io.Writer) error {
 }
 
 func (c *MemChunk) CheckpointSize() (chunk, head int) {
-	return c.BytesSize(), c.head.CheckpointSize(c.format)
+	return c.BytesSize(), c.head.CheckpointSize()
 }
 
-func MemchunkFromCheckpoint(chk, head []byte, blockSize int, targetSize int) (*MemChunk, error) {
+func MemchunkFromCheckpoint(chk, head []byte, desired HeadBlockFmt, blockSize int, targetSize int) (*MemChunk, error) {
 	mc, err := NewByteChunk(chk, blockSize, targetSize)
 	if err != nil {
 		return nil, err
 	}
-	return mc, mc.head.FromCheckpoint(head)
+	h, err := HeadFromCheckpoint(head, desired)
+	if err != nil {
+		return nil, err
+	}
+
+	mc.head = h
+	mc.headFmt = desired
+	return mc, nil
 }
 
 // Encoding implements Chunk.
@@ -544,9 +614,7 @@ func (c *MemChunk) Size() int {
 		ne += blk.numEntries
 	}
 
-	if !c.head.isEmpty() {
-		ne += len(c.head.entries)
-	}
+	ne += c.head.Entries()
 
 	return ne
 }
@@ -561,7 +629,7 @@ func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
 	if c.targetSize > 0 {
 		// This is looking to see if the uncompressed lines will fit which is not
 		// a great check, but it will guarantee we are always under the target size
-		newHBSize := c.head.size + len(e.Line)
+		newHBSize := c.head.UncompressedSize() + len(e.Line)
 		return (c.cutBlockSize + newHBSize) < c.targetSize
 	}
 	// if targetSize is not defined, default to the original behavior of fixed blocks per chunk
@@ -572,9 +640,7 @@ func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
 func (c *MemChunk) UncompressedSize() int {
 	size := 0
 
-	if !c.head.isEmpty() {
-		size += c.head.size
-	}
+	size += c.head.UncompressedSize()
 
 	for _, b := range c.blocks {
 		size += b.uncompressedSize
@@ -587,9 +653,7 @@ func (c *MemChunk) UncompressedSize() int {
 func (c *MemChunk) CompressedSize() int {
 	size := 0
 	// Better to account for any uncompressed data than ignore it even though this isn't accurate.
-	if !c.head.isEmpty() {
-		size += c.head.size
-	}
+	size += c.head.UncompressedSize()
 	size += c.cutBlockSize
 	return size
 }
@@ -609,15 +673,15 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 
 	// If the head block is empty but there are cut blocks, we have to make
 	// sure the new entry is not out of order compared to the previous block
-	if c.head.isEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
+	if c.headFmt < UnorderedHeadBlockFmt && c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
 		return ErrOutOfOrder
 	}
 
-	if err := c.head.append(entryTimestamp, entry.Line); err != nil {
+	if err := c.head.Append(entryTimestamp, entry.Line); err != nil {
 		return err
 	}
 
-	if c.head.size >= c.blockSize {
+	if c.head.UncompressedSize() >= c.blockSize {
 		return c.cut()
 	}
 
@@ -627,49 +691,76 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 // Close implements Chunk.
 // TODO: Fix this to check edge cases.
 func (c *MemChunk) Close() error {
-	return c.cut()
+	if err := c.cut(); err != nil {
+		return err
+	}
+	return c.reorder()
+}
+
+// reorder ensures all blocks in a chunk are in
+// monotonically increasing order.
+// This mutates
+func (c *MemChunk) reorder() error {
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
+	for _, b := range c.blocks {
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
+	}
+
+	if ordered {
+		return nil
+	}
+
+	// Otherwise, we need to rebuild the blocks
+	from, to := c.Bounds()
+	newC, err := c.Rebound(from, to)
+	if err != nil {
+		return err
+	}
+	*c = *newC.(*MemChunk)
+	return nil
 }
 
 // cut a new block and add it to finished blocks.
 func (c *MemChunk) cut() error {
-	if c.head.isEmpty() {
+	if c.head.IsEmpty() {
 		return nil
 	}
 
-	b, err := c.head.serialise(getWriterPool(c.encoding))
+	b, err := c.head.Serialise(getWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
 
+	mint, maxt := c.head.Bounds()
 	c.blocks = append(c.blocks, block{
 		b:                b,
-		numEntries:       len(c.head.entries),
-		mint:             c.head.mint,
-		maxt:             c.head.maxt,
-		uncompressedSize: c.head.size,
+		numEntries:       c.head.Entries(),
+		mint:             mint,
+		maxt:             maxt,
+		uncompressedSize: c.head.UncompressedSize(),
 	})
 
 	c.cutBlockSize += len(b)
 
-	c.head.clear()
+	c.head.Reset()
 	return nil
 }
 
 // Bounds implements Chunk.
 func (c *MemChunk) Bounds() (fromT, toT time.Time) {
-	var from, to int64
-	if len(c.blocks) > 0 {
-		from = c.blocks[0].mint
-		to = c.blocks[len(c.blocks)-1].maxt
-	}
+	from, to := c.head.Bounds()
 
-	if !c.head.isEmpty() {
-		if from == 0 || from > c.head.mint {
-			from = c.head.mint
+	// need to check all the blocks in case they overlap
+	for _, b := range c.blocks {
+		if from == 0 || from > b.mint {
+			from = b.mint
 		}
-
-		if to < c.head.maxt {
-			to = c.head.maxt
+		if to < b.maxt {
+			to = b.maxt
 		}
 	}
 
@@ -682,15 +773,29 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 	var headIterator iter.EntryIterator
 
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
 	for _, b := range c.blocks {
+
+		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
+
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
+
 		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
 	}
 
-	if !c.head.isEmpty() {
-		headIterator = c.head.iterator(ctx, direction, mint, maxt, pipeline)
+	if !c.head.IsEmpty() {
+		from, _ := c.head.Bounds()
+		if from < lastMax {
+			ordered = false
+		}
+		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
 	if direction == logproto.FORWARD {
@@ -698,8 +803,16 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if headIterator != nil {
 			blockItrs = append(blockItrs, headIterator)
 		}
+
+		var it iter.EntryIterator
+		if ordered {
+			it = iter.NewNonOverlappingIterator(blockItrs, "")
+		} else {
+			it = iter.NewHeapIterator(ctx, blockItrs, direction)
+		}
+
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(blockItrs, ""),
+			it,
 			time.Unix(0, mint),
 			time.Unix(0, maxt),
 		), nil
@@ -725,7 +838,11 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		blockItrs[i], blockItrs[j] = blockItrs[j], blockItrs[i]
 	}
 
-	return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+	if ordered {
+		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+	}
+	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
+
 }
 
 // Iterator implements Chunk.
@@ -733,19 +850,38 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
+	var lastMax int64 // placeholder to check order across blocks
+	ordered := true
 	for _, b := range c.blocks {
+		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
+
+		if b.mint < lastMax {
+			ordered = false
+		}
+		lastMax = b.maxt
 		its = append(its, encBlock{c.encoding, b}.SampleIterator(ctx, extractor))
 	}
 
-	if !c.head.isEmpty() {
-		its = append(its, c.head.sampleIterator(ctx, mint, maxt, extractor))
+	if !c.head.IsEmpty() {
+		from, _ := c.head.Bounds()
+		if from < lastMax {
+			ordered = false
+		}
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
+	}
+
+	var it iter.SampleIterator
+	if ordered {
+		it = iter.NewNonOverlappingSampleIterator(its, "")
+	} else {
+		it = iter.NewHeapSampleIterator(ctx, its)
 	}
 
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewNonOverlappingSampleIterator(its, ""),
+		it,
 		mint,
 		maxt,
 	)
@@ -772,10 +908,18 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 		return nil, err
 	}
 
-	// Using defaultBlockSize for target block size.
-	// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-	// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-	newChunk := NewMemChunk(c.Encoding(), defaultBlockSize, c.CompressedSize())
+	var newChunk *MemChunk
+	// as close as possible, respect the block/target sizes specified. However,
+	// if the blockSize is not set, use reasonable defaults.
+	if c.blockSize > 0 {
+		newChunk = NewMemChunk(c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
+	} else {
+		// Using defaultBlockSize for target block size.
+		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
+		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
+		newChunk = NewMemChunk(c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
+
+	}
 
 	for itr.Next() {
 		entry := itr.Entry()
@@ -834,8 +978,8 @@ func (b block) MaxTime() int64 {
 	return b.maxt
 }
 
-func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
-	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
+func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
+	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
 
@@ -892,8 +1036,8 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	return iter.NewStreamsIterator(ctx, streamsResult, direction)
 }
 
-func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
-	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
+func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
+	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
 	chunkStats := stats.GetChunkData(ctx)
@@ -910,14 +1054,12 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extra
 		lhash := parsedLabels.Hash()
 		if s, found = series[lhash]; !found {
 			s = &logproto.Series{
-				Labels: parsedLabels.String(),
+				Labels:  parsedLabels.String(),
+				Samples: SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
 			}
 			series[lhash] = s
 		}
-
-		// []byte here doesn't create allocation because Sum64 has go:noescape directive
-		// It specifies that the function does not allow any of the pointers passed as arguments to escape into the heap or into the values returned from the function.
-		h := xxhash.Sum64([]byte(e.s))
+		h := xxhash.Sum64(unsafeGetBytes(e.s))
 		s.Samples = append(s.Samples, logproto.Sample{
 			Timestamp: e.t,
 			Value:     value,
@@ -930,11 +1072,22 @@ func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extra
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
-		// todo(ctovena) not sure we need this sort.
-		sort.Sort(s)
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.NewMultiSeriesIterator(ctx, seriesRes)
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(ctx, seriesRes), func() error {
+		for _, s := range series {
+			SamplesPool.Put(s.Samples)
+		}
+		return nil
+	})
+}
+
+func unsafeGetBytes(s string) []byte {
+	var buf []byte
+	p := unsafe.Pointer(&buf)
+	*(*string)(p) = s
+	(*reflect.SliceHeader)(p).Cap = len(s)
+	return buf
 }
 
 type bufferedIterator struct {

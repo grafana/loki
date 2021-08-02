@@ -30,8 +30,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -154,6 +154,7 @@ type TSDBAdminStats interface {
 	Snapshot(dir string, withHead bool) error
 
 	Stats(statsByLabelName string) (*tsdb.Stats, error)
+	WALReplayStatus() (tsdb.WALReplayStatus, error)
 }
 
 // API can register a set of endpoints in a router and handle
@@ -309,6 +310,7 @@ func (api *API) Register(r *route.Router) {
 	r.Get("/status/buildinfo", wrap(api.serveBuildInfo))
 	r.Get("/status/flags", wrap(api.serveFlags))
 	r.Get("/status/tsdb", wrap(api.serveTSDBStatus))
+	r.Get("/status/walreplay", api.serveWALReplayStatus)
 	r.Post("/read", api.ready(http.HandlerFunc(api.remoteRead)))
 	r.Post("/write", api.ready(http.HandlerFunc(api.remoteWrite)))
 
@@ -557,25 +559,17 @@ func (api *API) labelNames(r *http.Request) apiFuncResult {
 		warnings storage.Warnings
 	)
 	if len(matcherSets) > 0 {
-		hints := &storage.SelectHints{
-			Start: timestamp.FromTime(start),
-			End:   timestamp.FromTime(end),
-			Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
-		}
-
 		labelNamesSet := make(map[string]struct{})
-		// Get all series which match matchers.
-		for _, mset := range matcherSets {
-			s := q.Select(false, hints, mset...)
-			for s.Next() {
-				series := s.At()
-				for _, lb := range series.Labels() {
-					labelNamesSet[lb.Name] = struct{}{}
-				}
-			}
-			warnings = append(warnings, s.Warnings()...)
-			if err := s.Err(); err != nil {
+
+		for _, matchers := range matcherSets {
+			vals, callWarnings, err := q.LabelNames(matchers...)
+			if err != nil {
 				return apiFuncResult{nil, &apiError{errorExec, err}, warnings, nil}
+			}
+
+			warnings = append(warnings, callWarnings...)
+			for _, val := range vals {
+				labelNamesSet[val] = struct{}{}
 			}
 		}
 
@@ -1349,6 +1343,25 @@ func (api *API) serveTSDBStatus(*http.Request) apiFuncResult {
 		MemoryInBytesByLabelName:    convertStats(s.IndexPostingStats.LabelValueStats),
 		SeriesCountByLabelValuePair: convertStats(s.IndexPostingStats.LabelValuePairsStats),
 	}, nil, nil, nil}
+}
+
+type walReplayStatus struct {
+	Min     int `json:"min"`
+	Max     int `json:"max"`
+	Current int `json:"current"`
+}
+
+func (api *API) serveWALReplayStatus(w http.ResponseWriter, r *http.Request) {
+	httputil.SetCORS(w, api.CORSOrigin, r)
+	status, err := api.db.WALReplayStatus()
+	if err != nil {
+		api.respondError(w, &apiError{errorInternal, err}, nil)
+	}
+	api.respond(w, walReplayStatus{
+		Min:     status.Min,
+		Max:     status.Max,
+		Current: status.Current,
+	}, nil)
 }
 
 func (api *API) remoteRead(w http.ResponseWriter, r *http.Request) {

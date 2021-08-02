@@ -140,7 +140,7 @@ func (lb *lbBalancer) refreshSubConns(backendAddrs []resolver.Address, fallback 
 			break
 		}
 		if sc != nil {
-			sc.UpdateAddresses(backendAddrs)
+			lb.cc.cc.UpdateAddresses(sc, backendAddrs)
 			sc.Connect()
 			return
 		}

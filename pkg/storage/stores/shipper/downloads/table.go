@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -21,6 +19,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -40,6 +40,7 @@ type BoltDBIndexClient interface {
 type StorageClient interface {
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
 	List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error)
+	IsObjectNotFoundErr(err error) bool
 }
 
 // Table is a collection of multiple files created for a same table by various ingesters.
@@ -221,13 +222,16 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 
 	// open all the downloaded dbs
 	for _, object := range objects {
-
 		dbName, err := getDBNameFromObjectKey(object.Key)
 		if err != nil {
 			return err
 		}
 
 		filePath := path.Join(folderPath, dbName)
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping opening of non-existent file %s, possibly not downloaded due to it being removed during compaction.", filePath))
+			continue
+		}
 		boltdb, err := shipper_util.SafeOpenBoltdbFile(filePath)
 		if err != nil {
 			return err
@@ -454,6 +458,10 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 
 	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, filePath, true)
 	if err != nil {
+		if t.storageClient.IsObjectNotFoundErr(err) {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", storageObject.Key))
+			return nil
+		}
 		return err
 	}
 
@@ -529,7 +537,12 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 				filePath := path.Join(folderPathForTable, dbName)
 				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath, true)
 				if err != nil {
-					break
+					if t.storageClient.IsObjectNotFoundErr(err) {
+						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", object.Key))
+						err = nil
+					} else {
+						break
+					}
 				}
 			}
 

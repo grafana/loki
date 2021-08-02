@@ -4,15 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -23,27 +23,38 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 type mockChunkClient struct {
 	mtx           sync.Mutex
-	deletedChunks []string
+	deletedChunks map[string]struct{}
 }
 
 func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkID string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	m.deletedChunks = append(m.deletedChunks, string([]byte(chunkID))) // forces a copy, because this string is only valid within the delete fn.
+	m.deletedChunks[string([]byte(chunkID))] = struct{}{} // forces a copy, because this string is only valid within the delete fn.
 	return nil
+}
+
+func (m *mockChunkClient) IsChunkNotFoundErr(err error) bool {
+	return false
 }
 
 func (m *mockChunkClient) getDeletedChunkIds() []string {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	return m.deletedChunks
+	chunkIDs := make([]string, 0, len(m.deletedChunks))
+	for chunkID := range m.deletedChunks {
+		chunkIDs = append(chunkIDs, chunkID)
+	}
+
+	return chunkIDs
 }
 
 func Test_Retention(t *testing.T) {
@@ -57,11 +68,10 @@ func Test_Retention(t *testing.T) {
 		{
 			"nothing is expiring",
 			fakeLimits{
-				perTenant: map[string]time.Duration{
-					"1": 1000 * time.Hour,
-					"2": 1000 * time.Hour,
+				perTenant: map[string]retentionLimit{
+					"1": {retentionPeriod: 1000 * time.Hour},
+					"2": {retentionPeriod: 1000 * time.Hour},
 				},
-				perStream: map[string][]validation.StreamRetention{},
 			},
 			[]chunk.Chunk{
 				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
@@ -75,11 +85,10 @@ func Test_Retention(t *testing.T) {
 		{
 			"one global expiration",
 			fakeLimits{
-				perTenant: map[string]time.Duration{
-					"1": 10 * time.Hour,
-					"2": 1000 * time.Hour,
+				perTenant: map[string]retentionLimit{
+					"1": {retentionPeriod: 10 * time.Hour},
+					"2": {retentionPeriod: 1000 * time.Hour},
 				},
-				perStream: map[string][]validation.StreamRetention{},
 			},
 			[]chunk.Chunk{
 				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
@@ -93,14 +102,14 @@ func Test_Retention(t *testing.T) {
 		{
 			"one global expiration and stream",
 			fakeLimits{
-				perTenant: map[string]time.Duration{
-					"1": 10 * time.Hour,
-					"2": 1000 * time.Hour,
-				},
-				perStream: map[string][]validation.StreamRetention{
+				perTenant: map[string]retentionLimit{
 					"1": {
-						{Period: model.Duration(5 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "buzz")}},
+						retentionPeriod: 10 * time.Hour,
+						streamRetention: []validation.StreamRetention{
+							{Period: model.Duration(5 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "buzz")}},
+						},
 					},
+					"2": {retentionPeriod: 1000 * time.Hour},
 				},
 			},
 			[]chunk.Chunk{
@@ -132,7 +141,7 @@ func Test_Retention(t *testing.T) {
 			// marks and sweep
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
-			chunkClient := &mockChunkClient{}
+			chunkClient := &mockChunkClient{deletedChunks: map[string]struct{}{}}
 			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, nil)
 			require.NoError(t, err)
 			sweep.Start()
@@ -156,10 +165,14 @@ func Test_Retention(t *testing.T) {
 					expectDeleted = append(expectDeleted, tt.chunks[i].ExternalKey())
 				}
 			}
+			sort.Strings(expectDeleted)
 			store.Stop()
 			if len(expectDeleted) != 0 {
 				require.Eventually(t, func() bool {
-					return assert.ObjectsAreEqual(expectDeleted, chunkClient.getDeletedChunkIds())
+					actual := chunkClient.getDeletedChunkIds()
+					sort.Strings(actual)
+					fmt.Println(expectDeleted, actual)
+					return assert.ObjectsAreEqual(expectDeleted, actual)
 				}, 10*time.Second, 1*time.Second)
 			}
 		})
@@ -195,7 +208,7 @@ func Test_EmptyTable(t *testing.T) {
 		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 		require.NoError(t, err)
 		empty, err := markforDelete(context.Background(), noopWriter{}, it, noopCleaner{},
-			NewExpirationChecker(&fakeLimits{perTenant: map[string]time.Duration{"1": 0, "2": 0}}), nil)
+			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 		require.NoError(t, err)
 		require.True(t, empty)
 		return nil
@@ -213,7 +226,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := client.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		require.NoError(t, chunkEnc.Append(&logproto.Entry{

@@ -1,9 +1,11 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	strings "strings"
@@ -1090,4 +1092,115 @@ func mkResps(nResps, nStreams, nLogs int, direction logproto.Direction) (resps [
 		resps = append(resps, r)
 	}
 	return resps
+}
+
+type buffer struct {
+	buff []byte
+	io.ReadCloser
+}
+
+func (b *buffer) Bytes() []byte {
+	return b.buff
+}
+
+func Benchmark_CodecDecodeLogs(b *testing.B) {
+	ctx := context.Background()
+	resp, err := LokiCodec.EncodeResponse(ctx, &LokiResponse{
+		Status:    loghttp.QueryStatusSuccess,
+		Direction: logproto.BACKWARD,
+		Version:   uint32(loghttp.VersionV1),
+		Limit:     1000,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     generateStream(),
+		},
+	})
+	require.Nil(b, err)
+
+	buf, err := io.ReadAll(resp.Body)
+	require.Nil(b, err)
+	reader := bytes.NewReader(buf)
+	resp.Body = &buffer{
+		ReadCloser: ioutil.NopCloser(reader),
+		buff:       buf,
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		_, _ = reader.Seek(0, io.SeekStart)
+		result, err := LokiCodec.DecodeResponse(ctx, resp, &LokiRequest{
+			Limit:     100,
+			StartTs:   start,
+			EndTs:     end,
+			Direction: logproto.BACKWARD,
+			Path:      "/loki/api/v1/query_range",
+		})
+		require.Nil(b, err)
+		require.NotNil(b, result)
+	}
+}
+
+func Benchmark_CodecDecodeSamples(b *testing.B) {
+	ctx := context.Background()
+	resp, err := LokiCodec.EncodeResponse(ctx, &LokiPromResponse{
+		Response: &queryrange.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrange.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result:     generateMatrix(),
+			},
+		},
+	})
+	require.Nil(b, err)
+
+	buf, err := io.ReadAll(resp.Body)
+	require.Nil(b, err)
+	reader := bytes.NewReader(buf)
+	resp.Body = ioutil.NopCloser(reader)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		_, _ = reader.Seek(0, io.SeekStart)
+		result, err := LokiCodec.DecodeResponse(ctx, resp, &LokiRequest{
+			Limit:     100,
+			StartTs:   start,
+			EndTs:     end,
+			Direction: logproto.BACKWARD,
+			Path:      "/loki/api/v1/query_range",
+		})
+		require.Nil(b, err)
+		require.NotNil(b, result)
+	}
+}
+
+func generateMatrix() (res []queryrange.SampleStream) {
+	for i := 0; i < 100; i++ {
+		s := queryrange.SampleStream{
+			Labels:  []cortexpb.LabelAdapter{},
+			Samples: []cortexpb.Sample{},
+		}
+		for j := 0; j < 1000; j++ {
+			s.Samples = append(s.Samples, cortexpb.Sample{
+				Value:       float64(j),
+				TimestampMs: int64(j),
+			})
+		}
+		res = append(res, s)
+	}
+	return res
+}
+
+func generateStream() (res []logproto.Stream) {
+	for i := 0; i < 1000; i++ {
+		s := logproto.Stream{
+			Labels: fmt.Sprintf(`{foo="%d", buzz="bar", cluster="us-central2", namespace="loki-dev", container="query-frontend"}`, i),
+		}
+		for j := 0; j < 10; j++ {
+			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("%d\nyolo", j)})
+		}
+		res = append(res, s)
+	}
+	return res
 }

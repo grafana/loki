@@ -41,6 +41,7 @@ import (
 
 // DistributorPushWrapper wraps around a push. It is similar to middleware.Interface.
 type DistributorPushWrapper func(next push.Func) push.Func
+type ConfigHandler func(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc
 
 type Config struct {
 	ResponseCompression bool `yaml:"response_compression_enabled"`
@@ -56,6 +57,12 @@ type Config struct {
 	// This allows downstream projects to wrap the distributor push function
 	// and access the deserialized write requests before/after they are pushed.
 	DistributorPushWrapper DistributorPushWrapper `yaml:"-"`
+
+	// The CustomConfigHandler allows for providing a different handler for the
+	// `/config` endpoint. If this field is set _before_ the API module is
+	// initialized, the custom config handler will be used instead of
+	// DefaultConfigHandler.
+	CustomConfigHandler ConfigHandler `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -198,7 +205,7 @@ func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultC
 	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config (including the default values)")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/config?mode=diff", "Current Config (show only values that differ from the defaults)")
 
-	a.RegisterRoute("/config", configHandler(actualCfg, defaultCfg), false, "GET")
+	a.RegisterRoute("/config", a.cfg.configHandler(actualCfg, defaultCfg), false, "GET")
 	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false, "GET")
 	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
 }
@@ -217,9 +224,11 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 
 	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
 
+	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ring", "Distributor Ring Status")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/all_user_stats", "Usage Statistics")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ha_tracker", "HA Tracking Status")
 
+	a.RegisterRoute("/distributor/ring", d, false, "GET", "POST")
 	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false, "GET")
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false, "GET")
 
@@ -342,11 +351,16 @@ func (a *API) RegisterCompactor(c *compactor.Compactor) {
 	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false, "GET", "POST")
 }
 
+type Distributor interface {
+	querier.Distributor
+	UserStatsHandler(w http.ResponseWriter, r *http.Request)
+}
+
 // RegisterQueryable registers the the default routes associated with the querier
 // module.
 func (a *API) RegisterQueryable(
 	queryable storage.SampleAndChunkQueryable,
-	distributor *distributor.Distributor,
+	distributor Distributor,
 ) {
 	// these routes are always registered to the default server
 	a.RegisterRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
@@ -361,6 +375,7 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/read"), handler, true, "POST")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query"), handler, true, "GET", "POST")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query_range"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query_exemplars"), handler, true, "GET", "POST")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/labels"), handler, true, "GET", "POST")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")
@@ -370,6 +385,7 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/read"), handler, true, "POST")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query"), handler, true, "GET", "POST")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query_range"), handler, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query_exemplars"), handler, true, "GET", "POST")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/labels"), handler, true, "GET", "POST")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")

@@ -7,50 +7,6 @@ Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
 and how to scrape logs from files.
 
-- [Configuring Promtail](#configuring-promtail)
-  - [Printing Promtail Config At Runtime](#printing-promtail-config-at-runtime)
-  - [Configuration File Reference](#configuration-file-reference)
-  - [server](#server)
-  - [clients](#clients)
-  - [positions](#positions)
-  - [scrape_configs](#scrape_configs)
-    - [pipeline_stages](#pipeline_stages)
-      - [docker](#docker)
-      - [cri](#cri)
-      - [regex](#regex)
-      - [json](#json)
-      - [template](#template)
-      - [match](#match)
-      - [timestamp](#timestamp)
-        - [output](#output)
-      - [labels](#labels)
-      - [metrics](#metrics)
-        - [counter](#counter)
-        - [gauge](#gauge)
-        - [histogram](#histogram)
-      - [tenant](#tenant)
-    - [journal](#journal)
-    - [syslog](#syslog)
-      - [Available Labels](#available-labels)
-    - [loki_push_api](#loki_push_api)
-    - [windows_events](#windows_events)
-    - [relabel_configs](#relabel_configs)
-    - [static_configs](#static_configs)
-    - [file_sd_config](#file_sd_config)
-    - [kubernetes_sd_config](#kubernetes_sd_config)
-      - [`node`](#node)
-      - [`service`](#service)
-      - [`pod`](#pod)
-      - [`endpoints`](#endpoints)
-      - [`ingress`](#ingress)
-  - [target_config](#target_config)
-  - [Example Docker Config](#example-docker-config)
-  - [Example Static Config](#example-static-config)
-  - [Example Static Config without targets](#example-static-config-without-targets)
-  - [Example Journal Config](#example-journal-config)
-  - [Example Syslog Config](#example-syslog-config)
-  - [Example Push Config](#example-push-config)
-
 ## Printing Promtail Config At Runtime
 
 If you pass Promtail the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
@@ -128,7 +84,7 @@ Where default_value is the value to use if the environment variable is undefined
 # WARNING: If one of the remote Loki servers fails to respond or responds
 # with any error which is retryable, this will impact sending logs to any
 # other configured remote Loki servers.  Sending is done on a single thread!
-# It is generally recommended to run multiple promtail clients in parallel
+# It is generally recommended to run multiple Promtail clients in parallel
 # if you want to send to multiple remote Loki instances.
 clients:
   - [<client_config>]
@@ -194,7 +150,7 @@ The `server` block configures Promtail's behavior as an HTTP server:
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
 
-# Target managers check flag for promtail readiness, if set to false the check is ignored
+# Target managers check flag for Promtail readiness, if set to false the check is ignored
 [health_check_target: <bool> | default = true]
 ```
 
@@ -221,7 +177,7 @@ url: <string>
 
 # Maximum batch size (in bytes) of logs to accumulate before sending
 # the batch to Loki.
-[batchsize: <int> | default = 102400]
+[batchsize: <int> | default = 1048576]
 
 # If using basic auth, configures the username and password
 # sent.
@@ -234,6 +190,28 @@ basic_auth:
 
   # The file containing the password for basic auth
   [password_file: <filename>]
+
+# Optional OAuth 2.0 configuration
+# Cannot be used at the same time as basic_auth or authorization
+oauth2:
+  # Client id and secret for oauth2
+  [client_id: <string>]
+  [client_secret: <secret>]
+
+  # Read the client secret from a file
+  # It is mutually exclusive with `client_secret`
+  [client_secret_file: <filename>]
+
+  # Optional scopes for the token request
+  scopes:
+    [ - <string> ... ]
+
+  # The URL to fetch the token from
+  token_url: <string>
+
+  # Optional parameters to append to the token URL
+  endpoint_params:
+    [ <string>: <string> ... ]
 
 # Bearer token to send to the server.
 [bearer_token: <secret>]
@@ -352,13 +330,23 @@ file_sd_configs:
 # same host.
 kubernetes_sd_configs:
   - [<kubernetes_sd_config>]
+  
+# Describes how to use the Consul Catalog API to discover services registered with the 
+# consul cluster.
+consul_sd_configs:
+  [ - <consul_sd_config> ... ]
+  
+# Describes how to use the Consul Agent API to discover services registered with the consul agent
+# running on the same host as Promtail.
+consulagent_sd_configs:
+  [ - <consulagent_sd_config> ... ]
 ```
 
 ### pipeline_stages
 
 [Pipeline](../pipelines/) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
-In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
+In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by Promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
 ```yaml
 - [
@@ -603,7 +591,7 @@ type: Counter
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -632,7 +620,7 @@ type: Gauge
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -660,7 +648,7 @@ type: Histogram
 # Describes the metric.
 [description: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
@@ -730,17 +718,17 @@ labels:
 ### syslog
 
 The `syslog` block configures a syslog listener allowing users to push
-logs to promtail with the syslog protocol.
+logs to Promtail with the syslog protocol.
 Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
 with and without octet counting.
 
 The recommended deployment is to have a dedicated syslog forwarder like **syslog-ng** or **rsyslog**
-in front of promtail. The forwarder can take care of the various specifications
+in front of Promtail. The forwarder can take care of the various specifications
 and transports that exist (UDP, BSD syslog, ...).
 
 [Octet counting](https://tools.ietf.org/html/rfc6587#section-3.4.1) is recommended as the
 message framing method. In a stream with [non-transparent framing](https://tools.ietf.org/html/rfc6587#section-3.4.2),
-promtail needs to wait for the next message to catch multi-line messages,
+Promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
@@ -748,7 +736,7 @@ See recommended output configurations for
 [rsyslog](../scraping#rsyslog-output-configuration). Both configurations enable
 IETF Syslog with octet-counting.
 
-You may need to increase the open files limit for the promtail process
+You may need to increase the open files limit for the Promtail process
 if many clients are connected. (`ulimit -Sn`)
 
 ```yaml
@@ -767,7 +755,7 @@ label_structured_data: <bool>
 labels:
   [ <labelname>: <labelvalue> ... ]
 
-# Whether promtail should pass on the timestamp from the incoming syslog message.
+# Whether Promtail should pass on the timestamp from the incoming syslog message.
 # When false, or if no timestamp is present on the syslog message, Promtail will assign the current timestamp to the log when it was processed.
 # Default is false
 use_incoming_timestamp: <bool>
@@ -806,8 +794,8 @@ Note the `server` configuration is the same as [server](#server)
 labels:
   [ <labelname>: <labelvalue> ... ]
 
-# If promtail should pass on the timestamp from the incoming log or not.
-# When false promtail will assign the current timestamp to the log when it was processed
+# If Promtail should pass on the timestamp from the incoming log or not.
+# When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
@@ -823,7 +811,7 @@ To subcribe to a specific events stream you need to provide either an `eventlog_
 Events are scraped periodically every 3 seconds by default but can be changed using `poll_interval`.
 
 A bookmark path `bookmark_path` is mandatory and will be used as a position file where Promtail will
-keep record of the last event processed. This file persists across promtail restarts.
+keep record of the last event processed. This file persists across Promtail restarts.
 
 You can set `use_incoming_timestamp` if you want to keep incomming event timestamps. By default Promtail will use the timestamp when
 the event was read from the event log.
@@ -852,7 +840,7 @@ You can add additional labels with the `labels` property.
 
 # Sets the bookmark location on the filesystem.
 # The bookmark contains the current position of the target in XML.
-# When restarting or rolling out promtail, the target will continue to scrape events where it left off based on the bookmark position.
+# When restarting or rolling out Promtail, the target will continue to scrape events where it left off based on the bookmark position.
 # The position is updated after each entry processed.
 [bookmark_path: <string> | default = ""]
 
@@ -869,8 +857,8 @@ You can add additional labels with the `labels` property.
 labels:
   [ <labelname>: <labelvalue> ... ]
 
-# If promtail should pass on the timestamp from the incoming log or not.
-# When false promtail will assign the current timestamp to the log when it was processed
+# If Promtail should pass on the timestamp from the incoming log or not.
+# When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
@@ -1196,6 +1184,148 @@ You may wish to check out the 3rd party
 [Prometheus Operator](https://github.com/coreos/prometheus-operator),
 which automates the Prometheus setup on top of Kubernetes.
 
+### consul_sd_config
+
+Consul SD configurations allow retrieving scrape targets from the [Consul Catalog API](https://www.consul.io).
+When using the Catalog API, each running Promtail will get
+a list of all services known to the whole consul cluster when discovering
+new targets.
+
+The following meta labels are available on targets during [relabeling](#relabel_configs):
+
+* `__meta_consul_address`: the address of the target
+* `__meta_consul_dc`: the datacenter name for the target
+* `__meta_consul_health`: the health status of the service
+* `__meta_consul_metadata_<key>`: each node metadata key value of the target
+* `__meta_consul_node`: the node name defined for the target
+* `__meta_consul_service_address`: the service address of the target
+* `__meta_consul_service_id`: the service ID of the target
+* `__meta_consul_service_metadata_<key>`: each service metadata key value of the target
+* `__meta_consul_service_port`: the service port of the target
+* `__meta_consul_service`: the name of the service the target belongs to
+* `__meta_consul_tagged_address_<key>`: each node tagged address key value of the target
+* `__meta_consul_tags`: the list of tags of the target joined by the tag separator
+
+```yaml
+# The information to access the Consul Catalog API. It is to be defined
+# as the Consul documentation requires.
+[ server: <host> | default = "localhost:8500" ]
+[ token: <secret> ]
+[ datacenter: <string> ]
+[ scheme: <string> | default = "http" ]
+[ username: <string> ]
+[ password: <secret> ]
+
+tls_config:
+  [ <tls_config> ]
+
+# A list of services for which targets are retrieved. If omitted, all services
+# are scraped.
+services:
+  [ - <string> ]
+
+# See https://www.consul.io/api/catalog.html#list-nodes-for-service to know more
+# about the possible filters that can be used.
+
+# An optional list of tags used to filter nodes for a given service. Services must contain all tags in the list.
+tags:
+  [ - <string> ]
+
+# Node metadata key/value pairs to filter nodes for a given service.
+[ node_meta:
+  [ <string>: <string> ... ] ]
+
+# The string by which Consul tags are joined into the tag label.
+[ tag_separator: <string> | default = , ]
+
+# Allow stale Consul results (see https://www.consul.io/api/features/consistency.html). Will reduce load on Consul.
+[ allow_stale: <boolean> | default = true ]
+
+# The time after which the provided names are refreshed.
+# On large setup it might be a good idea to increase this value because the catalog will change all the time.
+[ refresh_interval: <duration> | default = 30s ]
+```
+
+Note that the IP number and port used to scrape the targets is assembled as
+`<__meta_consul_address>:<__meta_consul_service_port>`. However, in some
+Consul setups, the relevant address is in `__meta_consul_service_address`.
+In those cases, you can use the [relabel](#relabel_configs)
+feature to replace the special `__address__` label.
+
+The [relabeling phase](#relabel_configs) is the preferred and more powerful
+way to filter services or nodes for a service based on arbitrary labels. For
+users with thousands of services it can be more efficient to use the Consul API
+directly which has basic support for filtering nodes (currently by node
+metadata and a single tag).
+  
+### consulagent_sd_config
+
+Consul Agent SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)
+Agent API. When using the Agent API, each running Promtail will only get
+services registered with the local agent running on the same host when discovering
+new targets. This is suitable for very large Consul clusters for which using the
+Catalog API would be too slow or resource intensive.
+
+The following meta labels are available on targets during [relabeling](#relabel_configs):
+
+* `__meta_consulagent_address`: the address of the target
+* `__meta_consulagent_dc`: the datacenter name for the target
+* `__meta_consulagent_health`: the health status of the service
+* `__meta_consulagent_metadata_<key>`: each node metadata key value of the target
+* `__meta_consulagent_node`: the node name defined for the target
+* `__meta_consulagent_service_address`: the service address of the target
+* `__meta_consulagent_service_id`: the service ID of the target
+* `__meta_consulagent_service_metadata_<key>`: each service metadata key value of the target
+* `__meta_consulagent_service_port`: the service port of the target
+* `__meta_consulagent_service`: the name of the service the target belongs to
+* `__meta_consulagent_tagged_address_<key>`: each node tagged address key value of the target
+* `__meta_consulagent_tags`: the list of tags of the target joined by the tag separator
+
+```yaml
+# The information to access the Consul Agent API. It is to be defined
+# as the Consul documentation requires.
+[ server: <host> | default = "localhost:8500" ]
+[ token: <secret> ]
+[ datacenter: <string> ]
+[ scheme: <string> | default = "http" ]
+[ username: <string> ]
+[ password: <secret> ]
+
+tls_config:
+  [ <tls_config> ]
+
+# A list of services for which targets are retrieved. If omitted, all services
+# are scraped.
+services:
+  [ - <string> ]
+
+# See https://www.consul.io/api-docs/agent/service#filtering to know more
+# about the possible filters that can be used.
+
+# An optional list of tags used to filter nodes for a given service. Services must contain all tags in the list.
+tags:
+  [ - <string> ]
+
+# Node metadata key/value pairs to filter nodes for a given service.
+[ node_meta:
+  [ <string>: <string> ... ] ]
+
+# The string by which Consul tags are joined into the tag label.
+[ tag_separator: <string> | default = , ]
+```
+
+Note that the IP address and port number used to scrape the targets is assembled as
+`<__meta_consul_address>:<__meta_consul_service_port>`. However, in some
+Consul setups, the relevant address is in `__meta_consul_service_address`.
+In those cases, you can use the [relabel](#relabel_configs)
+feature to replace the special `__address__` label.
+
+The [relabeling phase](#relabel_configs) is the preferred and more powerful
+way to filter services or nodes for a service based on arbitrary labels. For
+users with thousands of services it can be more efficient to use the Consul API
+directly which has basic support for filtering nodes (currently by node
+metadata and a single tag).
+
 ## target_config
 
 The `target_config` block controls the behavior of reading files from discovered
@@ -1211,12 +1341,12 @@ sync_period: "10s"
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../docker-driver/) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config
 
-While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
+While Promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
 
 ```yaml
 server:
@@ -1224,7 +1354,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
+  filename: /var/log/positions.yaml # This location needs to be writeable by Promtail.
 
 client:
   url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
@@ -1245,7 +1375,7 @@ If you are rotating logs, be careful when using a wildcard pattern like `*.log`,
 
 ## Example Static Config without targets
 
-While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
+While Promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
 
 ```yaml
 server:
@@ -1253,7 +1383,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
+  filename: /var/log/positions.yaml # This location needs to be writeable by Promtail.
 
 client:
   url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
@@ -1347,6 +1477,6 @@ scrape_configs:
 
 Please note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
 
-A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the promtail `server` config section (unless it's disabled)
+A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the Promtail `server` config section (unless it's disabled)
 
 You can set `grpc_listen_port` to `0` to have a random port assigned if not using httpgrpc.

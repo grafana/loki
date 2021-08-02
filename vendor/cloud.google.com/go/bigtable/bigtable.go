@@ -43,7 +43,7 @@ const prodAddr = "bigtable.googleapis.com:443"
 //
 // A Client is safe to use concurrently, except for its Close method.
 type Client struct {
-	conn              *grpc.ClientConn
+	connPool          gtransport.ConnPool
 	client            btpb.BigtableClient
 	project, instance string
 	appProfile        string
@@ -80,14 +80,14 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		// can cause RPCs to fail randomly. We can delete this after the issue is fixed.
 		option.WithGRPCDialOption(grpc.WithBlock()))
 	o = append(o, opts...)
-	conn, err := gtransport.Dial(ctx, o...)
+	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
 		return nil, fmt.Errorf("dialing: %v", err)
 	}
 
 	return &Client{
-		conn:       conn,
-		client:     btpb.NewBigtableClient(conn),
+		connPool:   connPool,
+		client:     btpb.NewBigtableClient(connPool),
 		project:    project,
 		instance:   instance,
 		appProfile: config.AppProfile,
@@ -96,7 +96,7 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 
 // Close closes the Client.
 func (c *Client) Close() error {
-	return c.conn.Close()
+	return c.connPool.Close()
 }
 
 var (

@@ -43,8 +43,10 @@ import (
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -61,13 +63,13 @@ const (
 
 // Config configures an Alertmanager.
 type Config struct {
-	UserID            string
-	Logger            log.Logger
-	Peer              *cluster.Peer
-	PeerTimeout       time.Duration
-	Retention         time.Duration
-	ExternalURL       *url.URL
-	ReceiversFirewall FirewallConfig
+	UserID      string
+	Logger      log.Logger
+	Peer        *cluster.Peer
+	PeerTimeout time.Duration
+	Retention   time.Duration
+	ExternalURL *url.URL
+	Limits      Limits
 
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
@@ -97,7 +99,9 @@ type Alertmanager struct {
 	wg              sync.WaitGroup
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
-	firewallDialer  *util_net.FirewallDialer
+
+	// Pipeline created during last ApplyConfig call. Used for testing only.
+	lastPipeline notify.Stage
 
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
@@ -107,6 +111,8 @@ type Alertmanager struct {
 	// Further, in upstream AM, this metric is handled using the config coordinator which we don't use
 	// hence we need to generate the metric ourselves.
 	configHashMetric prometheus.Gauge
+
+	rateLimitedNotifications *prometheus.CounterVec
 }
 
 var (
@@ -151,14 +157,16 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		cfg:    cfg,
 		logger: log.With(cfg.Logger, "user", cfg.UserID),
 		stop:   make(chan struct{}),
-		firewallDialer: util_net.NewFirewallDialer(util_net.FirewallDialerConfig{
-			BlockCIDRNetworks:     cfg.ReceiversFirewall.Block.CIDRNetworks,
-			BlockPrivateAddresses: cfg.ReceiversFirewall.Block.PrivateAddresses,
-		}),
 		configHashMetric: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "alertmanager_config_hash",
 			Help: "Hash of the currently loaded alertmanager configuration.",
 		}),
+
+		rateLimitedNotifications: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "alertmanager_notification_rate_limited_total",
+			Help: "Number of rate-limited notifications per integration.",
+		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
+
 	}
 
 	am.registry = reg
@@ -175,7 +183,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
 		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, cfg.Store, am.logger, am.registry)
 		am.state = state
-		am.persister = newStatePersister(cfg.PersisterConfig, cfg.UserID, state, cfg.Store, am.logger)
+		am.persister = newStatePersister(cfg.PersisterConfig, cfg.UserID, state, cfg.Store, am.logger, am.registry)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -234,7 +242,12 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, am.logger)
+	var callback mem.AlertStoreCallback
+	if am.cfg.Limits != nil {
+		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
+	}
+
+	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, callback, am.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -271,10 +284,19 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.mux.Handle(a, http.NotFoundHandler())
 	}
 
-	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry)
 
 	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
+}
+
+func (am *Alertmanager) WaitInitialStateSync(ctx context.Context) error {
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.AwaitRunning(ctx); err != nil {
+			return errors.Wrap(err, "failed to wait for ring-based replication service")
+		}
+	}
+	return nil
 }
 
 // clusterWait returns a function that inspects the current peer state and returns
@@ -326,7 +348,21 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return d + waitFunc()
 	}
 
-	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.firewallDialer, am.logger)
+	// Create a firewall binded to the per-tenant config.
+	firewallDialer := util_net.NewFirewallDialer(newFirewallDialerConfigProvider(userID, am.cfg.Limits))
+
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, firewallDialer, am.logger, func(integrationName string, notifier notify.Notifier) notify.Notifier {
+		if am.cfg.Limits != nil {
+			rl := &tenantRateLimits{
+				tenant:      userID,
+				limits:      am.cfg.Limits,
+				integration: integrationName,
+			}
+
+			return newRateLimitedNotifier(notifier, rl, 10*time.Second, am.rateLimitedNotifications.WithLabelValues(integrationName))
+		}
+		return notifier
+	})
 	if err != nil {
 		return nil
 	}
@@ -345,12 +381,14 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.nflog,
 		am.state,
 	)
+	am.lastPipeline = pipeline
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
 		dispatch.NewRoute(conf.Route, nil),
 		pipeline,
 		am.marker,
 		timeoutFunc,
+		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		log.With(am.logger, "component", "dispatcher"),
 		am.dispatcherMetrics,
 	)
@@ -418,10 +456,10 @@ func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
 // list of receiver config.
-func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) (map[string][]notify.Integration, error) {
+func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, notifierWrapper func(string, notify.Notifier) notify.Notifier) (map[string][]notify.Integration, error) {
 	integrationsMap := make(map[string][]notify.Integration, len(nc))
 	for _, rcv := range nc {
-		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger)
+		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger, notifierWrapper)
 		if err != nil {
 			return nil, err
 		}
@@ -433,7 +471,7 @@ func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewa
 // buildReceiverIntegrations builds a list of integration notifiers off of a
 // receiver config.
 // Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
-func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) ([]notify.Integration, error) {
+func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
 	var (
 		errs         types.MultiError
 		integrations []notify.Integration
@@ -443,6 +481,7 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, fir
 				errs.Add(err)
 				return
 			}
+			n = wrapper(name, n)
 			integrations = append(integrations, notify.NewIntegration(n, rs, name, i))
 		}
 	)
@@ -476,6 +515,7 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, fir
 	for i, c := range nc.PushoverConfigs {
 		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l, httpOps...) })
 	}
+	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
 	if errs.Len() > 0 {
 		return nil, &errs
 	}
@@ -507,3 +547,184 @@ func (p *NilPeer) AddState(string, cluster.State, prometheus.Registerer) cluster
 type NilChannel struct{}
 
 func (c *NilChannel) Broadcast([]byte) {}
+
+type firewallDialerConfigProvider struct {
+	userID string
+	limits Limits
+}
+
+func newFirewallDialerConfigProvider(userID string, limits Limits) firewallDialerConfigProvider {
+	return firewallDialerConfigProvider{
+		userID: userID,
+		limits: limits,
+	}
+}
+
+func (p firewallDialerConfigProvider) BlockCIDRNetworks() []flagext.CIDR {
+	return p.limits.AlertmanagerReceiversBlockCIDRNetworks(p.userID)
+}
+
+func (p firewallDialerConfigProvider) BlockPrivateAddresses() bool {
+	return p.limits.AlertmanagerReceiversBlockPrivateAddresses(p.userID)
+}
+
+type tenantRateLimits struct {
+	tenant      string
+	integration string
+	limits      Limits
+}
+
+func (t *tenantRateLimits) RateLimit() rate.Limit {
+	return t.limits.NotificationRateLimit(t.tenant, t.integration)
+}
+
+func (t *tenantRateLimits) Burst() int {
+	return t.limits.NotificationBurstSize(t.tenant, t.integration)
+}
+
+type dispatcherLimits struct {
+	tenant string
+	limits Limits
+}
+
+func (g *dispatcherLimits) MaxNumberOfAggregationGroups() int {
+	return g.limits.AlertmanagerMaxDispatcherAggregationGroups(g.tenant)
+}
+
+var (
+	errTooManyAlerts = "too many alerts, limit: %d"
+	errAlertsTooBig  = "alerts too big, total size limit: %d bytes"
+)
+
+// alertsLimiter limits the number and size of alerts being received by the Alertmanager.
+// We consider an alert unique based on its fingerprint (a hash of its labels) and
+// its size it's determined by the sum of bytes of its labels, annotations, and generator URL.
+type alertsLimiter struct {
+	tenant string
+	limits Limits
+
+	failureCounter prometheus.Counter
+
+	mx        sync.Mutex
+	sizes     map[model.Fingerprint]int
+	count     int
+	totalSize int
+}
+
+func newAlertsLimiter(tenant string, limits Limits, reg prometheus.Registerer) *alertsLimiter {
+	limiter := &alertsLimiter{
+		tenant: tenant,
+		limits: limits,
+		sizes:  map[model.Fingerprint]int{},
+		failureCounter: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_alerts_insert_limited_total",
+			Help: "Number of failures to insert new alerts to in-memory alert store.",
+		}),
+	}
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts",
+		Help: "Number of alerts tracked by alerts limiter.",
+	}, func() float64 {
+		c, _ := limiter.currentStats()
+		return float64(c)
+	})
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts_size_bytes",
+		Help: "Total size of alerts tracked by alerts limiter.",
+	}, func() float64 {
+		_, s := limiter.currentStats()
+		return float64(s)
+	})
+
+	return limiter
+}
+
+func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
+	if alert == nil {
+		return nil
+	}
+
+	fp := alert.Fingerprint()
+
+	countLimit := a.limits.AlertmanagerMaxAlertsCount(a.tenant)
+	sizeLimit := a.limits.AlertmanagerMaxAlertsSizeBytes(a.tenant)
+
+	sizeDiff := alertSize(alert.Alert)
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	if !existing && countLimit > 0 && (a.count+1) > countLimit {
+		a.failureCounter.Inc()
+		return fmt.Errorf(errTooManyAlerts, countLimit)
+	}
+
+	if existing {
+		sizeDiff -= a.sizes[fp]
+	}
+
+	if sizeLimit > 0 && (a.totalSize+sizeDiff) > sizeLimit {
+		a.failureCounter.Inc()
+		return fmt.Errorf(errAlertsTooBig, sizeLimit)
+	}
+
+	return nil
+}
+
+func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
+	if alert == nil {
+		return
+	}
+
+	newSize := alertSize(alert.Alert)
+	fp := alert.Fingerprint()
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	if existing {
+		a.totalSize -= a.sizes[fp]
+	} else {
+		a.count++
+	}
+	a.sizes[fp] = newSize
+	a.totalSize += newSize
+}
+
+func (a *alertsLimiter) PostDelete(alert *types.Alert) {
+	if alert == nil {
+		return
+	}
+
+	fp := alert.Fingerprint()
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	a.totalSize -= a.sizes[fp]
+	delete(a.sizes, fp)
+	a.count--
+}
+
+func (a *alertsLimiter) currentStats() (count, totalSize int) {
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	return a.count, a.totalSize
+}
+
+func alertSize(alert model.Alert) int {
+	size := 0
+	for l, v := range alert.Labels {
+		size += len(l)
+		size += len(v)
+	}
+	for l, v := range alert.Annotations {
+		size += len(l)
+		size += len(v)
+	}
+	size += len(alert.GeneratorURL)
+	return size
+}

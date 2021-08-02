@@ -564,7 +564,7 @@ func NewStorage(t T) storage.Storage {
 	db, err := tsdb.Open(dir, nil, nil, &tsdb.Options{
 		MinBlockDuration: int64(24 * time.Hour / time.Millisecond),
 		MaxBlockDuration: int64(24 * time.Hour / time.Millisecond),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("Opening test storage failed: %s", err)
 	}

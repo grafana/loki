@@ -14,7 +14,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type (
@@ -35,9 +35,7 @@ const (
 	DeleteRequestsTableName = "delete_requests"
 )
 
-var (
-	ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
-)
+var ErrDeleteRequestNotFound = errors.New("could not find matching delete request")
 
 type DeleteRequestsStore interface {
 	AddDeleteRequest(ctx context.Context, userID string, startTime, endTime model.Time, selectors []string) error
@@ -150,7 +148,6 @@ func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, req
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userIDAndRequestID),
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +203,6 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 
 			return true
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -248,12 +244,10 @@ func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest
 	from, err := strconv.ParseInt(hexParts[1], 16, 64)
 	if err != nil {
 		return deleteRequest, err
-
 	}
 	through, err := strconv.ParseInt(hexParts[2], 16, 64)
 	if err != nil {
 		return deleteRequest, err
-
 	}
 
 	deleteRequest.CreatedAt = model.Time(createdAt)
