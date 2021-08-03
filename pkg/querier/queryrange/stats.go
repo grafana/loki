@@ -110,10 +110,11 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				data.recorded = true
 				data.statistics = statistics
 				data.result = res
-				data.params, err = paramsFromRequest(req)
-				if err != nil {
-					return nil, err
+				p, errReq := paramsFromRequest(req)
+				if errReq != nil {
+					return nil, errReq
 				}
+				data.params = p
 			}
 			return resp, err
 		})

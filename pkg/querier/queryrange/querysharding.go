@@ -169,6 +169,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		}, nil
 	case parser.ValueTypeVector:
 		return &LokiPromResponse{
+			Statistics: res.Statistics,
 			Response: &queryrange.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Data: queryrange.PrometheusData{
