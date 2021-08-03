@@ -145,7 +145,6 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
 		data.req.LogToSpan(sp)
-
 		resp, err := next.Do(ctx, data.req)
 
 		select {
@@ -169,6 +168,17 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 	if interval == 0 {
 		return h.next.Do(ctx, r)
 	}
+
+	// Align the queries time range to multiples of the interval to allow for better caching.
+	ims := interval.Milliseconds()
+	ogStart := r.GetStart()
+	ogEnd := r.GetEnd()
+	start := ogStart - (ogStart % ims)
+	end := ogEnd
+	if ogEnd%ims != 0 {
+		end = ogEnd + (ims - (ogEnd % ims))
+	}
+	r = r.WithStartEnd(start, end)
 
 	intervals := h.splitter(r, interval)
 	h.metrics.splits.Observe(float64(len(intervals)))
@@ -200,6 +210,15 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	input := make([]*lokiResult, 0, len(intervals))
 	for _, interval := range intervals {
+		// Reset the start and end for the first/last interval to the original
+		// times so that we don't receive data we didn't ask for.
+		if interval.GetStart() == start {
+			interval = interval.WithStartEnd(ogStart, interval.GetEnd())
+
+		}
+		if interval.GetEnd() == end {
+			interval = interval.WithStartEnd(interval.GetStart(), ogEnd)
+		}
 		input = append(input, &lokiResult{
 			req: interval,
 			ch:  make(chan *packedResp),
