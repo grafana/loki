@@ -340,6 +340,13 @@ numberFilter:
     | IDENTIFIER NEQ NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewFloat($3))}
     | IDENTIFIER EQ NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
+    | IDENTIFIER GT SUB NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1, mustNewNegFloat($4))}
+    | IDENTIFIER GTE SUB NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, mustNewNegFloat($4))}
+    | IDENTIFIER LT SUB NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, mustNewNegFloat($4))}
+    | IDENTIFIER LTE SUB NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, mustNewNegFloat($4))}
+    | IDENTIFIER NEQ SUB NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewNegFloat($4))}
+    | IDENTIFIER EQ SUB NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewNegFloat($4))}
+    | IDENTIFIER CMP_EQ SUB NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewNegFloat($4))}
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr

@@ -558,6 +558,10 @@ func mustNewFloat(s string) float64 {
 	return n
 }
 
+func mustNewNegFloat(s string) float64 {
+	return -mustNewFloat(s)
+}
+
 type UnwrapExpr struct {
 	identifier string
 	operation  string
