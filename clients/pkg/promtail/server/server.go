@@ -194,12 +194,12 @@ func (s *server) tail(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	targetsId, ok := rawParams["targetId"]
+	targetsID, ok := rawParams["targetID"]
 	if !ok {
 		http.Error(rw, "targetId == nil", http.StatusInternalServerError)
 		return
 	}
-	targetId := targetsId[0]
+	targetID := targetsID[0]
 
 	paths, ok := rawParams["path"]
 	if !ok {
@@ -221,7 +221,7 @@ func (s *server) tail(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	result := s.tms.Tail(targetId, path, limit)
+	result := s.tms.Tail(targetID, path, limit)
 	executeTemplate(req.Context(), rw, templateOptions{
 		Data:         result,
 		BuildVersion: version.Info(),

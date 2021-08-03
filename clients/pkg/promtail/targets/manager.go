@@ -230,9 +230,9 @@ func (td *TargetData) Id() string {
 }
 
 // ActiveTargets returns active targets per jobs
-func (tm *TargetManagers) Tail(targetId string, path string, count int) string {
+func (tm *TargetManagers) Tail(targetID string, path string, count int) string {
 	tm.tgsMtx.Lock()
-	target, ok := tm.activeTargets[targetId]
+	target, ok := tm.activeTargets[targetID]
 	tm.tgsMtx.Unlock()
 	if !ok {
 		return "target is null"
