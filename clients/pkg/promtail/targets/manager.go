@@ -1,11 +1,10 @@
 package targets
 
 import (
+	"sync"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -17,6 +16,8 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/windows"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -38,6 +39,8 @@ type targetManager interface {
 // TargetManagers manages a list of target managers.
 type TargetManagers struct {
 	targetManagers []targetManager
+	activeTargets  map[string]TargetData
+	tgsMtx         sync.Mutex
 	positions      positions.Positions
 }
 
@@ -199,12 +202,44 @@ func NewTargetManagers(
 }
 
 // ActiveTargets returns active targets per jobs
-func (tm *TargetManagers) ActiveTargets() map[string][]target.Target {
-	result := map[string][]target.Target{}
+func (tm *TargetManagers) ActiveTargets() map[string][]TargetData {
+	tm.tgsMtx.Lock()
+	defer tm.tgsMtx.Unlock()
+	tm.activeTargets = make(map[string]TargetData, 0)
+	result := map[string][]TargetData{}
 	for _, t := range tm.targetManagers {
 		for job, targets := range t.ActiveTargets() {
-			result[job] = append(result[job], targets...)
+			for _, t := range targets {
+				id := job + "_" + t.Labels().String()
+				td := TargetData{Target: t, id: id}
+				tm.activeTargets[id] = td
+				result[job] = append(result[job], td)
+			}
 		}
+	}
+	return result
+}
+
+type TargetData struct {
+	target.Target
+	id string
+}
+
+func (td *TargetData) Id() string {
+	return td.id
+}
+
+// ActiveTargets returns active targets per jobs
+func (tm *TargetManagers) Tail(targetId string, path string, count int) string {
+	tm.tgsMtx.Lock()
+	target, ok := tm.activeTargets[targetId]
+	tm.tgsMtx.Unlock()
+	if !ok {
+		return "target is null"
+	}
+	result, err := target.Tail(path, count)
+	if err != nil {
+		return err.Error()
 	}
 	return result
 }

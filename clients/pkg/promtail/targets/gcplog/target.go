@@ -153,6 +153,11 @@ func (t *GcplogTarget) Details() interface{} {
 	return nil
 }
 
+// Type implements Tail
+func (t *GcplogTarget) Tail(string, int) (string, error) {
+	return "", target.ErrUnsupportedTarget
+}
+
 func (t *GcplogTarget) Stop() error {
 	t.cancel()
 	t.wg.Wait()

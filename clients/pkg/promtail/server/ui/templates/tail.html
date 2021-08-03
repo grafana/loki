@@ -1,0 +1,11 @@
+{{define "head"}}
+    <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/css/tail.css?v={{ buildVersion }}">
+    <script src="{{ pathPrefix }}/static/js/tail.js?v={{ buildVersion }}"></script>
+{{end}}
+
+{{define "content"}}
+  <div class="container-fluid">
+    <h2 id="configuration">Tail</h2>
+    <pre id="tail_yaml">{{.}}</pre>
+  </div>
+{{end}}

@@ -1,6 +1,8 @@
 package target
 
 import (
+	"errors"
+
 	"github.com/prometheus/common/model"
 )
 
@@ -31,6 +33,8 @@ const (
 	WindowsTargetType = TargetType("WindowsEvent")
 )
 
+var ErrUnsupportedTarget = errors.New("unsupported tail target")
+
 // Target is a promtail scrape target
 type Target interface {
 	// Type of the target
@@ -43,6 +47,8 @@ type Target interface {
 	Ready() bool
 	// Details is additional information about this target specific to its type
 	Details() interface{}
+	//
+	Tail(string, int) (string, error)
 }
 
 // IsDropped tells if a target has been dropped
@@ -66,6 +72,11 @@ func NewDroppedTarget(reason string, discoveredLabels model.LabelSet) Target {
 // Type implements Target
 func (d *droppedTarget) Type() TargetType {
 	return DroppedTargetType
+}
+
+// Type implements Tail
+func (d *droppedTarget) Tail(string, int) (string, error) {
+	return "", ErrUnsupportedTarget
 }
 
 // DiscoveredLabels implements Target

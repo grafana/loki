@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"text/template"
@@ -103,6 +104,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
 	serv.HTTP.Path("/config").Handler(http.HandlerFunc(serv.config))
+	serv.HTTP.Path("/tail").Handler(http.HandlerFunc(serv.tail))
 	serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 	return serv, nil
 }
@@ -185,11 +187,55 @@ func (s *server) config(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
+func (s *server) tail(rw http.ResponseWriter, req *http.Request) {
+	rawParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	targetsId, ok := rawParams["targetId"]
+	if !ok {
+		http.Error(rw, "targetId == nil", http.StatusInternalServerError)
+		return
+	}
+	targetId := targetsId[0]
+
+	paths, ok := rawParams["path"]
+	if !ok {
+		http.Error(rw, "path == nil", http.StatusInternalServerError)
+		return
+	}
+	path := paths[0]
+
+	var limit int
+	countsStr, ok := rawParams["count"]
+	if !ok {
+		limit = 10
+	} else {
+		countStr := countsStr[0]
+		limit, err = strconv.Atoi(countStr)
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	result := s.tms.Tail(targetId, path, limit)
+	executeTemplate(req.Context(), rw, templateOptions{
+		Data:         result,
+		BuildVersion: version.Info(),
+		Name:         "tail.html",
+		PageTitle:    "Tail",
+		ExternalURL:  s.externalURL,
+	})
+}
+
 // targets serves the targets page.
 func (s *server) targets(rw http.ResponseWriter, req *http.Request) {
 	executeTemplate(req.Context(), rw, templateOptions{
 		Data: struct {
-			TargetPools map[string][]target.Target
+			TargetPools map[string][]targets.TargetData
 		}{
 			TargetPools: s.tms.ActiveTargets(),
 		},
@@ -206,7 +252,7 @@ func (s *server) targets(rw http.ResponseWriter, req *http.Request) {
 				// you can't cast with a text template in go so this is a helper
 				return details.(map[string]string)
 			},
-			"numReady": func(ts []target.Target) (readies int) {
+			"numReady": func(ts []targets.TargetData) (readies int) {
 				for _, t := range ts {
 					if t.Ready() {
 						readies++

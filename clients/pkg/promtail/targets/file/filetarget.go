@@ -1,9 +1,11 @@
 package file
 
 import (
+	"bytes"
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bmatcuk/doublestar"
@@ -126,6 +128,100 @@ func (t *FileTarget) Type() target.TargetType {
 // DiscoveredLabels implements a Target
 func (t *FileTarget) DiscoveredLabels() model.LabelSet {
 	return t.discoveredLabels
+}
+
+func (t *FileTarget) Tail(path string, count int) (string, error) {
+	return tailLog(path, count)
+}
+
+const (
+	defaultBufSize = 4096
+)
+
+func tailLog(filename string, n int) (string, error) {
+	f, err := os.Stat(filename)
+	if err != nil {
+		return "", err
+	}
+	size := f.Size()
+	var fi *os.File
+	fi, err = os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer fi.Close()
+
+	b := make([]byte, defaultBufSize)
+	sz := int64(defaultBufSize)
+	nn := n
+	bTail := bytes.NewBuffer([]byte{})
+	istart := size
+	flag := true
+
+	var lineBuilder strings.Builder
+
+	for flag {
+		if istart < defaultBufSize {
+			sz = istart
+			istart = 0
+			//flag = false
+		} else {
+			istart -= sz
+		}
+		_, err = fi.Seek(istart, os.SEEK_SET)
+		if err != nil {
+			return "", err
+		}
+		mm, err := fi.Read(b)
+		if err != nil {
+			return "", err
+		}
+		if mm > 0 {
+			j := mm
+			for i := mm - 1; i >= 0; i-- {
+				if b[i] == '\n' {
+					bLine := bytes.NewBuffer([]byte{})
+					bLine.Write(b[i+1 : j])
+					j = i
+					if bTail.Len() > 0 {
+						bLine.Write(bTail.Bytes())
+						bTail.Reset()
+					}
+
+					if (nn == n && bLine.Len() > 0) || nn < n { //skip last "\n"
+						lineBuilder.WriteString(bLine.String())
+						lineBuilder.WriteString("\n")
+						nn--
+					}
+					if nn == 0 {
+						flag = false
+						break
+					}
+				}
+			}
+			if flag && j > 0 {
+				if istart == 0 {
+					bLine := bytes.NewBuffer([]byte{})
+					bLine.Write(b[:j])
+					if bTail.Len() > 0 {
+						bLine.Write(bTail.Bytes())
+						bTail.Reset()
+					}
+					lineBuilder.WriteString(bLine.String())
+					lineBuilder.WriteString("\n")
+					flag = false
+				} else {
+					bb := make([]byte, bTail.Len())
+					copy(bb, bTail.Bytes())
+					bTail.Reset()
+					bTail.Write(b[:j])
+					bTail.Write(bb)
+				}
+			}
+		}
+	}
+
+	return lineBuilder.String(), nil
 }
 
 // Labels implements a Target

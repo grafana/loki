@@ -186,6 +186,11 @@ func (t *PushTarget) DiscoveredLabels() model.LabelSet {
 	return nil
 }
 
+// Type implements Tail
+func (t *PushTarget) Tail(string, int) (string, error) {
+	return "", target.ErrUnsupportedTarget
+}
+
 // Labels returns the set of labels that statically apply to all log entries
 // produced by the PushTarget.
 func (t *PushTarget) Labels() model.LabelSet {

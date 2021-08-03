@@ -279,6 +279,11 @@ func (t *SyslogTarget) Ready() bool {
 	return true
 }
 
+// Type implements Tail
+func (t *SyslogTarget) Tail(string, int) (string, error) {
+	return "", target.ErrUnsupportedTarget
+}
+
 // DiscoveredLabels returns the set of labels discovered by the syslog target, which
 // is always nil. Implements Target.
 func (t *SyslogTarget) DiscoveredLabels() model.LabelSet {

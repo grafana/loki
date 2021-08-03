@@ -56,6 +56,7 @@
               </span>
             </td>
             <td class="details">
+              {{$targetId := .Id}}
               {{if eq .Type "File"}}
                 {{$files := fileTargetDetails .Details}}
                 <table class="table">
@@ -68,7 +69,9 @@
                   <tbody>
                 {{range $path, $position := $files}}
                   <tr>
-                    <td>{{$path}}</td>
+                    <td>
+                        <a href="{{ pathPrefix }}/tail?targetId={{$targetId}}&path={{$path}}&count=20">{{$path}}</a>
+                    </td>
                     <td>{{$position}}</td>
                   </tr>
                 {{end}}

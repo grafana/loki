@@ -320,6 +320,11 @@ func (t *JournalTarget) Ready() bool {
 	return true
 }
 
+// Type implements Tail
+func (t *JournalTarget) Tail() (string, error) {
+	return "", target.ErrUnsupportedTarget
+}
+
 // DiscoveredLabels returns the set of labels discovered by
 // the JournalTarget, which is always nil. Implements
 // Target.

@@ -221,6 +221,11 @@ func (t *Target) Details() interface{} {
 	return map[string]string{}
 }
 
+// Type implements Tail
+func (t *Target) Tail() (string, error) {
+	return "", target.ErrUnsupportedTarget
+}
+
 func (t *Target) Stop() error {
 	close(t.done)
 	t.wg.Wait()
