@@ -91,19 +91,25 @@ func TestDeleteAddLoopkup(t *testing.T) {
 	require.Len(t, ids, 0)
 }
 
-func Test_hash(t *testing.T) {
-	ii := NewWithShards(32)
-	ii.Add(cortexpb.FromLabelsToLabelAdapters(labels.Labels{
+func Test_hash_mapping(t *testing.T) {
+	lbs := labels.Labels{
 		labels.Label{Name: "compose_project", Value: "loki-boltdb-storage-s3"},
 		labels.Label{Name: "compose_service", Value: "ingester-2"},
 		labels.Label{Name: "container_name", Value: "loki-boltdb-storage-s3_ingester-2_1"},
 		labels.Label{Name: "filename", Value: "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log"},
 		labels.Label{Name: "host", Value: "docker-desktop"},
 		labels.Label{Name: "source", Value: "stderr"},
-	}), 1)
+	}
 
-	res, err := ii.Lookup([]*labels.Matcher{{Type: labels.MatchEqual, Name: "compose_project", Value: "loki-boltdb-storage-s3"}}, &astmapper.ShardAnnotation{Shard: 9, Of: 16})
-	require.NoError(t, err)
-	require.Len(t, res, 1)
-	require.Equal(t, model.Fingerprint(1), res[0])
+	for _, shard := range []uint32{16, 32, 64, 128} {
+		t.Run(fmt.Sprintf("%d", shard), func(t *testing.T) {
+			ii := NewWithShards(shard)
+			ii.Add(cortexpb.FromLabelsToLabelAdapters(lbs), 1)
+
+			res, err := ii.Lookup([]*labels.Matcher{{Type: labels.MatchEqual, Name: "compose_project", Value: "loki-boltdb-storage-s3"}}, &astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+			require.NoError(t, err)
+			require.Len(t, res, 1)
+			require.Equal(t, model.Fingerprint(1), res[0])
+		})
+	}
 }
