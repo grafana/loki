@@ -5,7 +5,7 @@ services:
       driver: loki-compose
       options:
         loki-url: "http://localhost:8001/loki/api/v1/push"
-        loki-retries: "0"
+        loki-retries: "0" # disable retries to avoid docker deadlock. This can cause log loss, if Loki is not available.
     image: consul
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
