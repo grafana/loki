@@ -3,6 +3,7 @@ package file
 import (
 	"bytes"
 	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,7 +169,7 @@ func tailLog(filename string, n int) (string, error) {
 		} else {
 			istart -= sz
 		}
-		_, err = fi.Seek(istart, os.SEEK_SET)
+		_, err = fi.Seek(istart, io.SeekStart)
 		if err != nil {
 			return "", err
 		}
@@ -188,7 +189,7 @@ func tailLog(filename string, n int) (string, error) {
 						bTail.Reset()
 					}
 
-					if (nn == n && bLine.Len() > 0) || nn < n { //skip last "\n"
+					if (nn == n && bLine.Len() > 0) || nn < n {
 						lineBuilder.WriteString(bLine.String())
 						lineBuilder.WriteString("\n")
 						nn--
