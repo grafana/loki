@@ -225,7 +225,7 @@ type TargetData struct {
 	id string
 }
 
-func (td *TargetData) Id() string {
+func (td *TargetData) ID() string {
 	return td.id
 }
 
