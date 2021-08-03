@@ -222,7 +222,7 @@ func (t *Target) Details() interface{} {
 }
 
 // Type implements Tail
-func (t *Target) Tail() (string, error) {
+func (t *Target) Tail(path string, count int) (string, error) {
 	return "", target.ErrUnsupportedTarget
 }
 

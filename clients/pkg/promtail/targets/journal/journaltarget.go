@@ -321,7 +321,7 @@ func (t *JournalTarget) Ready() bool {
 }
 
 // Type implements Tail
-func (t *JournalTarget) Tail() (string, error) {
+func (t *JournalTarget) Tail(path string, count int) (string, error) {
 	return "", target.ErrUnsupportedTarget
 }
 
