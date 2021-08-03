@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
@@ -162,6 +163,25 @@ func sampleStreamToMatrix(streams []queryrange.SampleStream) parser.Value {
 	return xs
 }
 
+func sampleStreamToVector(streams []queryrange.SampleStream) parser.Value {
+	xs := make(promql.Vector, 0, len(streams))
+	for _, stream := range streams {
+		x := promql.Sample{}
+		x.Metric = make(labels.Labels, 0, len(stream.Labels))
+		for _, l := range stream.Labels {
+			x.Metric = append(x.Metric, labels.Label(l))
+		}
+
+		x.Point = promql.Point{
+			T: stream.Samples[0].TimestampMs,
+			V: stream.Samples[0].Value,
+		}
+
+		xs = append(xs, x)
+	}
+	return xs
+}
+
 func ResponseToResult(resp queryrange.Response) (logqlmodel.Result, error) {
 	switch r := resp.(type) {
 	case *LokiResponse:
@@ -184,7 +204,12 @@ func ResponseToResult(resp queryrange.Response) (logqlmodel.Result, error) {
 		if r.Response.Error != "" {
 			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.Response.ErrorType, r.Response.Error)
 		}
-
+		if r.Response.Data.ResultType == loghttp.ResultTypeVector {
+			return logqlmodel.Result{
+				Statistics: r.Statistics,
+				Data:       sampleStreamToVector(r.Response.Data.Result),
+			}, nil
+		}
 		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
