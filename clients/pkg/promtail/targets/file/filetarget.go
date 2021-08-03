@@ -160,6 +160,7 @@ func tailLog(filename string, n int) (string, error) {
 	flag := true
 
 	var lineBuilder strings.Builder
+	lines := make([]string, 0)
 
 	for flag {
 		if istart < defaultBufSize {
@@ -190,8 +191,7 @@ func tailLog(filename string, n int) (string, error) {
 					}
 
 					if (nn == n && bLine.Len() > 0) || nn < n {
-						lineBuilder.WriteString(bLine.String())
-						lineBuilder.WriteString("\n")
+						lines = append(lines, bLine.String())
 						nn--
 					}
 					if nn == 0 {
@@ -208,8 +208,7 @@ func tailLog(filename string, n int) (string, error) {
 						bLine.Write(bTail.Bytes())
 						bTail.Reset()
 					}
-					lineBuilder.WriteString(bLine.String())
-					lineBuilder.WriteString("\n")
+					lines = append(lines, bLine.String())
 					flag = false
 				} else {
 					bb := make([]byte, bTail.Len())
@@ -220,6 +219,12 @@ func tailLog(filename string, n int) (string, error) {
 				}
 			}
 		}
+	}
+
+	for i := 0; i < len(lines); i++ {
+		line := lines[len(lines)-i-1]
+		lineBuilder.WriteString(line)
+		lineBuilder.WriteString("\n")
 	}
 
 	return lineBuilder.String(), nil
