@@ -283,26 +283,24 @@ func Test_InstantSharding(t *testing.T) {
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
 	require.Len(t, response.(*LokiPromResponse).Response.Data.Result, 3)
 	require.ElementsMatch(t, []string{"0_of_3", "1_of_3", "2_of_3"}, shards)
-	require.Equal(t, &LokiPromResponse{Response: &queryrange.PrometheusResponse{
-		Status: "success",
-		Data: queryrange.PrometheusData{
-			ResultType: loghttp.ResultTypeVector,
-			Result: []queryrange.SampleStream{
-				{
-					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
-				},
-				{
-					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
-				},
-				{
-					Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-					Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
-				},
+	require.Equal(t, queryrange.PrometheusData{
+		ResultType: loghttp.ResultTypeVector,
+		Result: []queryrange.SampleStream{
+			{
+				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+			},
+			{
+				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
+			},
+			{
+				Labels:  []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Samples: []cortexpb.Sample{{Value: 10, TimestampMs: 10}},
 			},
 		},
-	}}, response)
+	}, response.(*LokiPromResponse).Response.Data)
+	require.Equal(t, loghttp.QueryStatusSuccess, response.(*LokiPromResponse).Response.Status)
 }
 
 func Test_SeriesShardingHandler(t *testing.T) {
