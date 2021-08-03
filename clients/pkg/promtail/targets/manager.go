@@ -205,7 +205,7 @@ func NewTargetManagers(
 func (tm *TargetManagers) ActiveTargets() map[string][]TargetData {
 	tm.tgsMtx.Lock()
 	defer tm.tgsMtx.Unlock()
-	tm.activeTargets = make(map[string]TargetData, 0)
+	tm.activeTargets = make(map[string]TargetData)
 	result := map[string][]TargetData{}
 	for _, t := range tm.targetManagers {
 		for job, targets := range t.ActiveTargets() {
