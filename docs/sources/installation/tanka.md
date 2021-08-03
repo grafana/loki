@@ -41,7 +41,7 @@ Next, replace the contents of `environments/loki/main.jsonnet` with the YAML bel
 1. Remove the object storage variables that are not relevant for your setup (e.g., remove the s3 variables if you're using gcs)
 1. Update the `container_root_path` value so it reflects your own data root for the Docker Daemon. Run `docker info | grep "Root Dir"` to get the root path.
 1. Update the `schema_config` section so that `object-store` has your choice of object storage backend (e.g., s3, gcs)
-1. Update the `from` value in the schema config. The `from` date represents the first day from which the schema config is valid. For new Loki installs, we suggest setting `from` to 14 days before today's date (e.g. if today is Jan 14 2021, set `from` to Jan 1 2021). This recommendation is based on the fact that Loki will by default accept log lines from up to 14 days in the past (controlled by the value of the "reject_old_samples_max_age" knob). 
+1. Update the `from` value in the schema config. The `from` date represents the first day from which the schema config is valid. For new Loki installs, we suggest setting `from` to 14 days before today's date (e.g. if today is Jan 15 2021, set `from` to Jan 1 2021). This recommendation is based on the fact that Loki will by default accept log lines from up to 14 days in the past (controlled by the value of the "reject_old_samples_max_age" knob). 
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
