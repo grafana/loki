@@ -117,7 +117,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: loki
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004 -querier.scheduler-address=query-scheduler:9009"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004 -querier.scheduler-address=query-scheduler:9009 -querier.frontend-address="]
     depends_on:
       - consul
       - minio
@@ -210,8 +210,11 @@ services:
   query-scheduler:
     logging:
       <<: *logging
-    image: quay.io/cortexproject/cortex:master-a4bf103
-    command: ["-config.file=/cortex/config/cortex.yaml", "-log.level=debug", "-target=query-scheduler", "-server.http-listen-port=8009", "-server.grpc-listen-port=9009"]
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18009 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-scheduler -server.http-listen-port=8009 -server.grpc-listen-port=9009 -log.level=debug"]
     depends_on:
       - consul
       - minio
@@ -223,8 +226,9 @@ services:
       - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8009:8009
+      - 18009:18009
     volumes:
-      - ./config:/cortex/config
+      - ./config:/loki/config
 
   grafana:
     logging:
@@ -244,6 +248,6 @@ services:
     logging:
       <<: *logging
     image: mingrammer/flog
-    command: ["-f", "json", "-l"]
+    command: ["-f", "json", "-l", "-s", "1s"]
     depends_on:
       - distributor

@@ -22,6 +22,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler"
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -79,6 +81,7 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
+	QueryScheduler           string = "query-scheduler"
 	All                      string = "all"
 )
 
@@ -648,6 +651,17 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	gateway := indexgateway.NewIndexGateway(shipperIndexClient.(*shipper.Shipper))
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
+}
+
+func (t *Loki) initQueryScheduler() (services.Service, error) {
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	schedulerpb.RegisterSchedulerForFrontendServer(t.Server.GRPC, s)
+	schedulerpb.RegisterSchedulerForQuerierServer(t.Server.GRPC, s)
+	return s, nil
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {

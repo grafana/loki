@@ -55,6 +55,7 @@ type Limits struct {
 	MaxConcurrentTailRequests  int            `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
 	MaxEntriesLimitPerQuery    int            `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -292,6 +293,11 @@ func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int { return 0 }
 // MaxQueryLength returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
+}
+
+// MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
+func (o *Overrides) MaxQueriersPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxQueriersPerTenant
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
