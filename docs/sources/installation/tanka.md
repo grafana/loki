@@ -9,7 +9,7 @@ deprecated. Tanka is used by Grafana Labs to run Loki in production.
 
 ## Prerequisites
 
-Install the latest version of Tanka (at least version v0.17.1) for the `tk env`
+Install the latest version of Tanka (version v0.17.1 or a more recent version) for the `tk env`
 commands. Prebuilt binaries for Tanka can be found at the [Tanka releases
 URL](https://github.com/grafana/tanka/releases).
 
@@ -26,7 +26,7 @@ tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
 
 ## Deploying
 
-Download and install the Loki and Promtail module using `jb` (with jb version >= v0.4.0):
+Download and install the Loki and Promtail module using `jb` (version v0.4.0 or a more recent version):
 
 ```bash
 go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
@@ -35,13 +35,14 @@ jb install github.com/grafana/loki/production/ksonnet/loki@main
 jb install github.com/grafana/loki/production/ksonnet/promtail@main
 ```
 
-Next, replace the contents of `environments/loki/main.jsonnet` with the YAML below, making sure to replace or modify the following:
-1. Update the `username`, `password`, and the relevant `htpasswd` contents
-1. Update the s3 or gcs variables and `boltdb_shipper_shared_store` variable based on your choice of object storage backend. See here for the full [storage_config](https://grafana.com/docs/loki/latest/configuration/#storage_config). 
-1. Remove the object storage variables that are not relevant for your setup (e.g., remove the s3 variables if you're using gcs)
-1. Update the `container_root_path` value so it reflects your own data root for the Docker Daemon. Run `docker info | grep "Root Dir"` to get the root path.
-1. Update the `schema_config` section so that `object-store` has your choice of object storage backend (e.g., s3, gcs)
-1. Update the `from` value in the schema config. The `from` date represents the first day from which the schema config is valid. For new Loki installs, we suggest setting `from` to 14 days before today's date (e.g. if today is Jan 15 2021, set `from` to Jan 1 2021). This recommendation is based on the fact that Loki will by default accept log lines from up to 14 days in the past (controlled by the value of the "reject_old_samples_max_age" knob). 
+Revise the YAML contents of `environments/loki/main.jsonnet`, updating these variables:
+
+- Update the `username`, `password`, and the relevant `htpasswd` variable values.
+- Update the S3  or GCS variable values. Update the `boltdb_shipper_shared_store` variable value to reflect your choice of object storage backend. See [storage_config](https://grafana.com/docs/loki/latest/configuration/#storage_config) for configuration details.
+- Remove from the configuration the S3 or GCS object storage variables that are not part of your setup.
+- Update the Promtail configuration `container_root_path` variable's value to reflect your root path for the Docker daemon. Run `docker info | grep "Root Dir"` to acquire your root path.
+- Update the Loki `schema_config` section so that the `object_store` value reflects your object storage backend.
+- Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to 2021-01-01. This recommendation is based on Loki's default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
@@ -67,7 +68,7 @@ loki + promtail + gateway {
     bigtable_project: 'project',
     gcs_bucket_name: 'bucket',
 
-    //Set this variable based on the object storage backend you're using (e.g., s3 or gcs)
+    //Set this variable based on the object storage backend you're using. For example, S3 or GCS.
     boltdb_shipper_shared_store: 'my-object-storage-backend-name',
 
     //Update the object_store and from fields
