@@ -38,11 +38,12 @@ jb install github.com/grafana/loki/production/ksonnet/promtail@main
 Revise the YAML contents of `environments/loki/main.jsonnet`, updating these variables:
 
 - Update the `username`, `password`, and the relevant `htpasswd` variable values.
-- Update the S3  or GCS variable values. Update the `boltdb_shipper_shared_store` variable value to reflect your choice of object storage backend. See [storage_config](https://grafana.com/docs/loki/latest/configuration/#storage_config) for configuration details.
+- Update the S3 or GCS variable values, depending on your object storage type. See [storage_config](https://grafana.com/docs/loki/latest/configuration/#storage_config) for more configuration details.
 - Remove from the configuration the S3 or GCS object storage variables that are not part of your setup.
+- Update the value of `boltdb_shipper_shared_store` to the type of object storage you are using. Options are `gcs`, `s3`, `azure`, `filesystem`. Update the `object_store` variable under the `schema_config` secton to the same value. 
 - Update the Promtail configuration `container_root_path` variable's value to reflect your root path for the Docker daemon. Run `docker info | grep "Root Dir"` to acquire your root path.
-- Update the Loki `schema_config` section so that the `object_store` value reflects your object storage backend.
 - Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to 2021-01-01. This recommendation is based on Loki's default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
+
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
@@ -54,7 +55,7 @@ loki + promtail + gateway {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
-    // S3 variables remove if not using aws
+    // S3 variables -- Remove if not using s3
     storage_backend: 's3,dynamodb',
     s3_access_key: 'key',
     s3_secret_access_key: 'secret access key',
@@ -62,14 +63,14 @@ loki + promtail + gateway {
     s3_bucket_name: 'loki-test',
     dynamodb_region: 'region',
 
-    // GCS variables remove if not using gcs
+    // GCS variables -- Remove if not using gcs
     storage_backend: 'bigtable,gcs',
     bigtable_instance: 'instance',
     bigtable_project: 'project',
     gcs_bucket_name: 'bucket',
 
-    //Set this variable based on the object storage backend you're using. For example, S3 or GCS.
-    boltdb_shipper_shared_store: 'my-object-storage-backend-name',
+    //Set this variable based on the type of object storage you're using.
+    boltdb_shipper_shared_store: 'my-object-storage-backend-type',
 
     //Update the object_store and from fields
     loki+: {
@@ -77,7 +78,7 @@ loki + promtail + gateway {
         configs: [{
           from: 'YYYY-MM-DD',
           store: 'boltdb-shipper',
-          object_store: 'my-object-storage-backend-name',
+          object_store: 'my-object-storage-backend-type',
           schema: 'v11',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
