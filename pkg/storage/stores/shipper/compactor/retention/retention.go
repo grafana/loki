@@ -175,6 +175,7 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 
 type ChunkClient interface {
 	DeleteChunk(ctx context.Context, userID, chunkID string) error
+	IsChunkNotFoundErr(err error) bool
 }
 
 type Sweeper struct {
@@ -210,7 +211,7 @@ func (s *Sweeper) Start() {
 		}
 
 		err = s.chunkClient.DeleteChunk(ctx, unsafeGetString(userID), chunkIDString)
-		if err == chunk.ErrStorageObjectNotFound {
+		if s.chunkClient.IsChunkNotFoundErr(err) {
 			status = statusNotFound
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
 			return nil

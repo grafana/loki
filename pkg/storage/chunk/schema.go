@@ -90,6 +90,8 @@ type IndexQuery struct {
 	// - If RangeValuePrefix is not nil, must read all keys with that prefix.
 	// - If RangeValueStart is not nil, must read all keys from there onwards.
 	// - If neither is set, must read all keys for that row.
+	// RangeValueStart should only be used for querying Chunk IDs.
+	// If this is going to change then please take care of func isChunksQuery in pkg/chunk/storage/caching_index_client.go which relies on it.
 	RangeValuePrefix []byte
 	RangeValueStart  []byte
 
@@ -737,10 +739,10 @@ func (v9Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName string
 	valueHash := sha256bytes(labelValue)
 	return []IndexQuery{
 		{
-			TableName:       bucket.tableName,
-			HashValue:       fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
-			RangeValueStart: rangeValuePrefix(valueHash),
-			ValueEqual:      []byte(labelValue),
+			TableName:        bucket.tableName,
+			HashValue:        fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
+			RangeValuePrefix: rangeValuePrefix(valueHash),
+			ValueEqual:       []byte(labelValue),
 		},
 	}, nil
 }
@@ -847,10 +849,10 @@ func (s v10Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName str
 	result := make([]IndexQuery, 0, s.rowShards)
 	for i := uint32(0); i < s.rowShards; i++ {
 		result = append(result, IndexQuery{
-			TableName:       bucket.tableName,
-			HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),
-			RangeValueStart: rangeValuePrefix(valueHash),
-			ValueEqual:      []byte(labelValue),
+			TableName:        bucket.tableName,
+			HashValue:        fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),
+			RangeValuePrefix: rangeValuePrefix(valueHash),
+			ValueEqual:       []byte(labelValue),
 		})
 	}
 	return result, nil

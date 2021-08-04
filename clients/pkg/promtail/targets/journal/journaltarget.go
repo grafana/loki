@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-systemd/sdjournal"
@@ -182,11 +183,16 @@ func journalTargetWithReader(
 		for {
 			err := t.r.Follow(until, ioutil.Discard)
 			if err != nil {
-				if err == sdjournal.ErrExpired || err == io.EOF {
+				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
+
+				if err == sdjournal.ErrExpired || err == syscall.EBADMSG || err == io.EOF {
+					level.Error(t.logger).Log("msg", "unable to follow journal", "err", err.Error())
 					return
 				}
-				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
 			}
+
+			// prevent tight loop
+			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 

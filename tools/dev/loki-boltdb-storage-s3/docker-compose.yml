@@ -2,7 +2,10 @@ version: '3.4'
 services:
   consul:
     logging: &logging
-      driver: json-file
+      driver: loki-compose
+      options:
+        loki-url: "http://localhost:8001/loki/api/v1/push"
+        loki-retries: "1"
     image: consul
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
@@ -239,10 +242,7 @@ services:
 
   log-gen:
     logging:
-      driver: loki-compose
-      options:
-        loki-url: "http://localhost:8001/loki/api/v1/push"
-        loki-retries: "0"
+      <<: *logging
     image: mingrammer/flog
     command: ["-f", "json", "-l"]
     depends_on:

@@ -41,6 +41,10 @@ func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkID string) erro
 	return nil
 }
 
+func (m *mockChunkClient) IsChunkNotFoundErr(err error) bool {
+	return false
+}
+
 func (m *mockChunkClient) getDeletedChunkIds() []string {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

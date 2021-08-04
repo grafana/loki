@@ -127,7 +127,7 @@ The example [docker-compose](https://github.com/grafana/loki/blob/master/cmd/doc
 ```yaml
 version: "3"
 services:
-  nginx:
+  grafana:
     image: grafana/grafana
     logging:
       driver: loki
@@ -175,7 +175,7 @@ For example the configuration below will rename the label `swarm_stack` and `swa
 ```yaml
 version: "3"
 services:
-  nginx:
+  grafana:
     image: grafana/grafana
     logging:
       driver: loki
@@ -204,7 +204,7 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-batch-size`               |    No     |         `1048576`          | The maximum size of a log batch to send.                                                                                                                                                                                                                                      |
 | `loki-min-backoff`              |    No     |          `500ms`           | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
 | `loki-max-backoff`              |    No     |            `5m`            | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                   |
-| `loki-retries`                  |    No     |            `10`            | The maximum amount of retries for a log batch.                                                                                                                                                                                                                                |
+| `loki-retries`                  |    No     |            `10`            | The maximum amount of retries for a log batch. Setting it to `0` will retry indefinitely.                                                                                                                                                                                                                                |
 | `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/master/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels, [see associated documentation](../../promtail/stages/). |
 | `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see pipeline stages](#pipeline-stages) and [associated documentation](../../promtail/stages/).                                                                                                                         |
 | `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see relabeling](#relabeling).                                                                                |

@@ -92,7 +92,8 @@ type Config struct {
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
-	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config"`
+	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
+	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 
 	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
 
@@ -115,6 +116,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
+	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 }
 
 // Validate config and returns error on failure
@@ -198,7 +200,7 @@ func NewStore(
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits, logger)
+		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits, logger, cfg.DisableBroadIndexQueries)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {
