@@ -839,43 +839,51 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 // Iterator implements Chunk.
 func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	mint, maxt := from.UnixNano(), through.UnixNano()
-	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
+	itrs := make([]iter.SampleIterator, 0, len(c.blocks)+1)
+	var o Orderable
 
-	var lastMax int64 // placeholder to check order across blocks
-	ordered := true
 	for _, b := range c.blocks {
 		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
 
-		if b.mint < lastMax {
-			ordered = false
-		}
-		lastMax = b.maxt
-		its = append(its, encBlock{c.encoding, b}.SampleIterator(ctx, extractor))
+		o.Append(b)
 	}
 
 	if !c.head.IsEmpty() {
-		from, _ := c.head.Bounds()
-		if from < lastMax {
-			ordered = false
+		hMin, hMax := c.head.Bounds()
+		if mint <= hMax && hMin <= maxt {
+			o.Append(c.head)
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
 	}
 
-	var it iter.SampleIterator
-	if ordered {
-		it = iter.NewNonOverlappingSampleIterator(its, "")
-	} else {
-		it = iter.NewHeapSampleIterator(ctx, its)
+	items, overlap := o.Items()
+
+	for _, item := range items {
+		var itr iter.SampleIterator
+		switch item := item.(type) {
+		case HeadBlock:
+			itr = item.SampleIterator(ctx, mint, maxt, extractor)
+		case block:
+			itr = encBlock{c.encoding, item}.SampleIterator(ctx, extractor)
+
+		default:
+			panic(fmt.Sprintf("unexpected Bounded type: %T", item))
+		}
+
+		itrs = append(itrs, iter.NewTimeRangedSampleIterator(
+			itr,
+			mint,
+			maxt,
+		))
 	}
 
-	return iter.NewTimeRangedSampleIterator(
-		it,
-		mint,
-		maxt,
-	)
+	if !overlap {
+		return iter.NewNonOverlappingSampleIterator(itrs, "")
+	}
+	return iter.NewHeapSampleIterator(ctx, itrs)
+
 }
 
 // Blocks implements Chunk
