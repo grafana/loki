@@ -464,7 +464,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 	}
 	for iterator.Next() {
 		next := iterator.Entry().Timestamp.UnixNano()
-		require.GreaterOrEqual(t, next, i)
+		require.True(t, next >= i, "%d should be greater or equal than %d", next, i)
 		i = next
 		ct++
 	}
@@ -609,4 +609,77 @@ func TestReorderAcrossBlocks(t *testing.T) {
 		},
 	}
 	iterEq(t, exp, itr)
+}
+
+type bounds struct {
+	mint, maxt int64
+}
+
+func (b bounds) Bounds() (int64, int64) { return b.mint, b.maxt }
+
+func TestOrderable(t *testing.T) {
+	for _, tc := range []struct {
+		desc    string
+		xs      []bounds
+		exp     []bounds
+		overlap bool
+	}{
+		{
+			desc: "asc",
+			xs: []bounds{
+				{1, 2},
+				{3, 4},
+				{5, 6},
+			},
+			exp: []bounds{
+				{1, 2},
+				{3, 4},
+				{5, 6},
+			},
+		},
+		{
+			desc: "desc",
+			xs: []bounds{
+				{5, 6},
+				{3, 4},
+				{1, 2},
+			},
+			exp: []bounds{
+				{1, 2},
+				{3, 4},
+				{5, 6},
+			},
+		},
+		{
+			desc: "overlap whole range",
+			xs: []bounds{
+				{1, 2},
+				{3, 4},
+				{5, 6},
+				{1, 6},
+			},
+			exp: []bounds{
+				{1, 2},
+				{1, 6},
+				{3, 4},
+				{5, 6},
+			},
+			overlap: true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			var o Orderable
+			for _, x := range tc.xs {
+				o.Append(x)
+			}
+
+			out, overlap := o.Items()
+			var casted []bounds
+			for _, x := range out {
+				casted = append(casted, x.(bounds))
+			}
+			require.Equal(t, tc.exp, casted)
+			require.Equal(t, tc.overlap, overlap)
+		})
+	}
 }

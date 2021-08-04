@@ -131,6 +131,8 @@ type block struct {
 	uncompressedSize int // Total uncompressed size in bytes when the chunk is cut.
 }
 
+func (b block) Bounds() (int64, int64) { return b.mint, b.maxt }
+
 // This block holds the un-compressed entries. Once it has enough data, this is
 // emptied into a block with only compressed entries.
 type headBlock struct {
@@ -770,78 +772,67 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 // Iterator implements Chunk.
 func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
-	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
-	var headIterator iter.EntryIterator
+	itrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
+	var o Orderable
 
-	var lastMax int64 // placeholder to check order across blocks
-	ordered := true
 	for _, b := range c.blocks {
-
 		// skip this block
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
 
-		if b.mint < lastMax {
-			ordered = false
-		}
-		lastMax = b.maxt
-
-		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
+		o.Append(b)
 	}
 
 	if !c.head.IsEmpty() {
-		from, _ := c.head.Bounds()
-		if from < lastMax {
-			ordered = false
+		hMin, hMax := c.head.Bounds()
+		if mint <= hMax && hMin <= maxt {
+			o.Append(c.head)
 		}
-		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
-	if direction == logproto.FORWARD {
-		// add the headblock iterator at the end.
-		if headIterator != nil {
-			blockItrs = append(blockItrs, headIterator)
+	items, overlap := o.Items()
+
+	for _, item := range items {
+		var itr iter.EntryIterator
+		switch item := item.(type) {
+		case HeadBlock:
+			// Always use logproto.FORWARD here so we can reverse the entries if needed
+			// all together.
+			itr = item.Iterator(ctx, logproto.FORWARD, mint, maxt, pipeline)
+		case block:
+			itr = encBlock{c.encoding, item}.Iterator(ctx, pipeline)
+
+		default:
+			return nil, fmt.Errorf("unexpected Bounded type: %T", item)
 		}
 
-		var it iter.EntryIterator
-		if ordered {
-			it = iter.NewNonOverlappingIterator(blockItrs, "")
-		} else {
-			it = iter.NewHeapIterator(ctx, blockItrs, direction)
-		}
-
-		return iter.NewTimeRangedIterator(
-			it,
+		itrs = append(itrs, iter.NewTimeRangedIterator(
+			itr,
 			time.Unix(0, mint),
 			time.Unix(0, maxt),
-		), nil
-	}
-	// reverse each block entries
-	for i, it := range blockItrs {
-		r, err := iter.NewEntryReversedIter(
-			iter.NewTimeRangedIterator(it,
-				time.Unix(0, mint),
-				time.Unix(0, maxt),
-			))
-		if err != nil {
-			return nil, err
-		}
-		blockItrs[i] = r
-	}
-	// except the head block which is already reversed via the heapIterator.
-	if headIterator != nil {
-		blockItrs = append(blockItrs, headIterator)
-	}
-	// then reverse all iterators.
-	for i, j := 0, len(blockItrs)-1; i < j; i, j = i+1, j-1 {
-		blockItrs[i], blockItrs[j] = blockItrs[j], blockItrs[i]
+		))
 	}
 
-	if ordered {
-		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
+	if direction == logproto.BACKWARD {
+		for i, j := 0, len(itrs)-1; i < j; i, j = i+1, j-1 {
+			itrs[i], itrs[j] = itrs[j], itrs[i]
+		}
+
+		// reverse each block entries
+		for i, it := range itrs {
+			r, err := iter.NewEntryReversedIter(it)
+			if err != nil {
+				return nil, err
+			}
+			itrs[i] = r
+		}
 	}
-	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
+
+	if !overlap {
+		return iter.NewNonOverlappingIterator(itrs, ""), nil
+	}
+	return iter.NewHeapIterator(ctx, itrs, direction), nil
 
 }
 

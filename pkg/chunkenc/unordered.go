@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
@@ -22,6 +23,10 @@ import (
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
 
+type Bounded interface {
+	Bounds() (mint, maxt int64)
+}
+
 type HeadBlock interface {
 	IsEmpty() bool
 	CheckpointTo(w io.Writer) error
@@ -30,7 +35,6 @@ type HeadBlock interface {
 	LoadBytes(b []byte) error
 	Serialise(pool WriterPool) ([]byte, error)
 	Reset()
-	Bounds() (mint, maxt int64)
 	Entries() int
 	UncompressedSize() int
 	Convert(HeadBlockFmt) (HeadBlock, error)
@@ -49,6 +53,7 @@ type HeadBlock interface {
 		extractor log.StreamSampleExtractor,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
+	Bounded
 }
 
 type unorderedHeadBlock struct {
@@ -511,4 +516,77 @@ func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
 	}
 	return decodedBlock, nil
 
+}
+
+// Orderable can accumulate over a set of Bounded and
+// determine if they're ordered without overlap
+// Not intended for reuse.
+type Orderable struct {
+	overlap bool
+	maxt    int64
+	// position is chosend via the from ts,
+	// so we must cache the through ts for O(1) lookups
+	xs []Bounded
+}
+
+func (o *Orderable) Bounds() (int64, int64) {
+	if o.Empty() {
+		return 0, 0
+	}
+	mint, _ := o.xs[0].Bounds()
+	return mint, o.maxt
+}
+
+func (o *Orderable) Empty() bool { return len(o.xs) == 0 }
+
+func (o *Orderable) Append(b Bounded) {
+	if len(o.xs) == 0 {
+		o.xs = append(o.xs, b)
+		return
+	}
+
+	from, to := o.Bounds()
+	bFrom, bTo := b.Bounds()
+	o.maxt = max(bTo, to)
+	pos := sort.Search(len(o.xs), func(i int) bool {
+		a, _ := o.xs[i].Bounds()
+		return bFrom < a
+	})
+
+	// Edge cases where the new item won't be spliced in the middle
+	if pos == len(o.xs) {
+		// The first item may have the same start as the new one
+		if from == bFrom {
+			o.overlap = true
+			o.xs = append([]Bounded{b}, o.xs...)
+		} else {
+			// Otherwise it will have the largest start value.
+			o.xs = append(o.xs, b)
+			if bFrom <= to {
+				o.overlap = true
+			}
+		}
+		return
+	}
+
+	compareFrom, _ := o.xs[pos].Bounds()
+	if bTo >= compareFrom {
+		o.overlap = true
+	}
+	res := make([]Bounded, pos, len(o.xs)+1)
+	copy(res, o.xs[:pos])
+	res = append(res, b)
+	res = append(res, o.xs[pos:]...)
+	o.xs = res
+}
+
+func (o *Orderable) Items() (items []Bounded, overlap bool) {
+	return o.xs, o.overlap
+}
+
+func max(a, b int64) int64 {
+	if b > a {
+		return b
+	}
+	return a
 }
