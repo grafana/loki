@@ -223,7 +223,7 @@ Maximum backoff time between retries
 
 ##### retries => 10
 
-Maximum number of retries to do
+Maximum number of retries to do. Setting it to `0` will retry indefinitely.
 
 #### tenant_id
 
