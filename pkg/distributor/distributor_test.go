@@ -136,30 +136,6 @@ func Test_TruncateLogLines(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
 	})
-
-	t.Run("it truncates enough to accommodate MaxLineSizeTruncateInd if it exists", func(t *testing.T) {
-		limits, ingester := setup()
-		limits.MaxLineSizeTruncateInd = "..." //nolint:goconst
-
-		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
-
-		_, err := d.Push(ctx, makeWriteRequest(1, 10))
-		require.NoError(t, err)
-		require.Equal(t, "0 ...", ingester.pushed[0].Streams[0].Entries[0].Line)
-	})
-
-	t.Run("it drops the log when MaxLineSize <= length of MaxLineSizeTruncateInd", func(t *testing.T) {
-		limits, ingester := setup()
-		limits.MaxLineSize = 2
-		limits.MaxLineSizeTruncateInd = "..." //nolint:goconst
-
-		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
-
-		_, err := d.Push(ctx, makeWriteRequest(1, 10))
-		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 2, "{foo=\"bar\"}", 10))
-	})
 }
 
 func Benchmark_SortLabelsOnPush(b *testing.B) {
@@ -216,32 +192,6 @@ func Benchmark_PushWithLineTruncation(b *testing.B) {
 	limits.IngestionRateMB = math.MaxInt32
 	limits.MaxLineSizeTruncate = true
 	limits.MaxLineSize = 50
-
-	ingester := &mockIngester{}
-	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
-	request := makeWriteRequest(100000, 100)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for n := 0; n < b.N; n++ {
-
-		_, err := d.Push(ctx, request)
-		if err != nil {
-			require.NoError(b, err)
-		}
-	}
-}
-
-func Benchmark_PushWithLineTruncationWithIndicator(b *testing.B) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-
-	limits.IngestionRateMB = math.MaxInt32
-	limits.MaxLineSizeTruncate = true
-	limits.MaxLineSize = 50
-	limits.MaxLineSizeTruncateInd = "..." //nolint:goconst
 
 	ingester := &mockIngester{}
 	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })

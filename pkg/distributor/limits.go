@@ -6,7 +6,6 @@ import "time"
 type Limits interface {
 	MaxLineSize(userID string) int
 	MaxLineSizeTruncate(userID string) bool
-	MaxLineSizeTruncateInd(userID string) string
 	EnforceMetricName(userID string) bool
 	MaxLabelNamesPerSeries(userID string) int
 	MaxLabelNameLength(userID string) int

@@ -40,7 +40,6 @@ type Limits struct {
 	EnforceMetricName      bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	MaxLineSize            flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate    bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
-	MaxLineSizeTruncateInd string           `yaml:"max_line_size_truncate_indicator" json:"max_line_size_truncate_indicator"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
@@ -91,7 +90,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB.")
 	f.Var(&l.MaxLineSize, "distributor.max-line-size", "maximum line length allowed, i.e. 100mb. Default (0) means unlimited.")
 	f.BoolVar(&l.MaxLineSizeTruncate, "distributor.max-line-size-truncate", false, "Whether to truncate lines that exceed max_line_size")
-	f.StringVar(&l.MaxLineSizeTruncateInd, "distributor.max-line-size-truncate-indicator", "", "An string appended to line that indicates it's been truncated")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -342,11 +340,6 @@ func (o *Overrides) MaxLineSize(userID string) int {
 // MaxLineSizeShouldTruncate returns whether lines longer than max should be truncated.
 func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 	return o.getOverridesForUser(userID).MaxLineSizeTruncate
-}
-
-// MaxLineSizeTruncateInd returns a string that's appended to a truncated line.
-func (o *Overrides) MaxLineSizeTruncateInd(userID string) string {
-	return o.getOverridesForUser(userID).MaxLineSizeTruncateInd
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.

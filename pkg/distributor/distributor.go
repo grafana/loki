@@ -313,16 +313,10 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 	var truncatedSamples, truncatedBytes int
 	for i, e := range stream.Entries {
 		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
-			indicator := vContext.maxLineSizeTruncateInd
-			truncateTo := maxSize - len(indicator)
-			if truncateTo <= 0 {
-				continue
-			}
-
-			stream.Entries[i].Line = e.Line[:truncateTo] + indicator
+			stream.Entries[i].Line = e.Line[:maxSize]
 
 			truncatedSamples++
-			truncatedBytes = len(e.Line) - truncateTo
+			truncatedBytes = len(e.Line) - maxSize
 		}
 	}
 
