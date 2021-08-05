@@ -1,12 +1,299 @@
 ## Main
 
-* [3627](https://github.com/grafana/loki/pull/3627) **MichelHollands**: Update vendored Cortex to 2d8477c4a325
-* [3532](https://github.com/grafana/loki/pull/3532) **MichelHollands**: Update vendored Cortex to 8a2e2c1eeb65
-* [3446](https://github.com/grafana/loki/pull/3446) **pracucci, owen-d**: Remove deprecated config `querier.split-queries-by-day` in favor of `querier.split-queries-by-interval`
-* [3586](https://github.com/grafana/loki/pull/3587) **rsteneteg** Remove filemanager targets that no longer has any tails, to allow them to be recreated with the proper path
-* [3739](https://github.com/grafana/loki/pull/3739) **rsteneteg** Allow users to run instant queries in the past using LogCLI
-* [4020](https://github.com/grafana/loki/pull/4020) **simonswine** Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. (Users only have control of the HTTP header when Loki is not frontend by an auth proxy validating the tenant IDs) (CVE-2021-36156 CVE-2021-36157)
+## 2.3.0 (2021/08/06)
 
+Release notes for 2.3.0 can be found on the [release notes page](https://grafana.com/docs/loki/latest/release-notes/v2-3/)
+
+### All Changes
+
+#### Loki
+* [4048](https://github.com/grafana/loki/pull/4048) **dannykopping**: Ruler: implementing write relabelling on recording rule samples
+* [4091](https://github.com/grafana/loki/pull/4091) **cyriltovena**: Fixes instant queries in the frontend.
+* [4087](https://github.com/grafana/loki/pull/4087) **cyriltovena**: Fixes unaligned shards between ingesters and storage.
+* [4047](https://github.com/grafana/loki/pull/4047) **cyriltovena**: Add min_sharding_lookback limits to the frontends
+* [4027](https://github.com/grafana/loki/pull/4027) **jdbaldry**: fix: Restore /config endpoint and correct handlerFunc for buildinfo
+* [4020](https://github.com/grafana/loki/pull/4020) **simonswine**: Restrict path segments in TenantIDs (CVE-2021-36156 CVE-2021-36157)
+* [4019](https://github.com/grafana/loki/pull/4019) **cyriltovena**: Improve decoding of JSON responses.
+* [4018](https://github.com/grafana/loki/pull/4018) **sandeepsukhani**: Compactor improvements
+* [4017](https://github.com/grafana/loki/pull/4017) **aknuds1**: Chore: Upgrade Prometheus and Cortex
+* [3996](https://github.com/grafana/loki/pull/3996) **owen-d**: fixes a badly referenced variable name in StepEvaluator code
+* [3995](https://github.com/grafana/loki/pull/3995) **owen-d**: Headblock interop
+* [3992](https://github.com/grafana/loki/pull/3992) **MichelHollands**: Update Cortex version
+* [3991](https://github.com/grafana/loki/pull/3991) **periklis**: Add LogQL AST walker
+* [3990](https://github.com/grafana/loki/pull/3990) **cyriltovena**: Intern label keys for LogQL parser.
+* [3986](https://github.com/grafana/loki/pull/3986) **kavirajk**: Ip matcher for LogQL
+* [3984](https://github.com/grafana/loki/pull/3984) **jeschkies**: Filter instant queries and shard them.
+* [3983](https://github.com/grafana/loki/pull/3983) **cyriltovena**: Reject labels with invalid runes when using implicit extraction parser.
+* [3981](https://github.com/grafana/loki/pull/3981) **owen-d**: fixes chunk size method in facade
+* [3979](https://github.com/grafana/loki/pull/3979) **MichelHollands**: Add a chunk filterer field to the config
+* [3977](https://github.com/grafana/loki/pull/3977) **sandeepsukhani**: add a metric for counting number of failures in opening existing active index files
+* [3976](https://github.com/grafana/loki/pull/3976) **sandeepsukhani**: fix flaky retention tests
+* [3974](https://github.com/grafana/loki/pull/3974) **owen-d**: WAL Replay counter
+* [3973](https://github.com/grafana/loki/pull/3973) **56quarters**: Use the Cortex wrapper for getting tenant ID from a context
+* [3972](https://github.com/grafana/loki/pull/3972) **jeschkies**: Return build info under `/loki/api/v1/status/buildinfo`.
+* [3970](https://github.com/grafana/loki/pull/3970) **sandeepsukhani**: log name of the file failed to open during startup by ingester
+* [3969](https://github.com/grafana/loki/pull/3969) **sandeepsukhani**: add some tests in compactor and fix a bug in IntervalHasExpiredChunks check in retention with tests
+* [3968](https://github.com/grafana/loki/pull/3968) **cyriltovena**: Improve head chunk allocations when reading samples.
+* [3967](https://github.com/grafana/loki/pull/3967) **sandeepsukhani**: fix a panic in compactor when retention is not enabled
+* [3966](https://github.com/grafana/loki/pull/3966) **sandeepsukhani**: fix panic in compactor when retention is not enabled
+* [3957](https://github.com/grafana/loki/pull/3957) **owen-d**: Unordered head block
+* [3949](https://github.com/grafana/loki/pull/3949) **cyriltovena**: Allow no overrides config for tenants.
+* [3946](https://github.com/grafana/loki/pull/3946) **cyriltovena**: Improve marker file current time metrics.
+* [3934](https://github.com/grafana/loki/pull/3934) **sandeepsukhani**: optimize table retetion
+* [3932](https://github.com/grafana/loki/pull/3932) **Timbus**: Parser: Allow literal control chars in logfmt decoder
+* [3929](https://github.com/grafana/loki/pull/3929) **sandeepsukhani**: remove boltdb files from ingesters on startup which do not have a index bucket
+* [3928](https://github.com/grafana/loki/pull/3928) **dannykopping**: Querier/Ingester: Fixing json expression parser bug
+* [3919](https://github.com/grafana/loki/pull/3919) **github-vincent-miszczak**: Add ingester.autoforget-unhealthy-timeout opt-in feature
+* [3888](https://github.com/grafana/loki/pull/3888) **kavirajk**: Make `overrides` configmap names and mount path as variables.
+* [3871](https://github.com/grafana/loki/pull/3871) **kavirajk**: Add explict syntax for using `pattern` parser
+* [3865](https://github.com/grafana/loki/pull/3865) **sandeepsukhani**: feat: index-gateway for boltdb-shipper index store
+* [3856](https://github.com/grafana/loki/pull/3856) **cyriltovena**: Shards Series API.
+* [3852](https://github.com/grafana/loki/pull/3852) **cyriltovena**: Shard ingester queries.
+* [3849](https://github.com/grafana/loki/pull/3849) **cyriltovena**: Logs ingester and store queries boundaries.
+* [3840](https://github.com/grafana/loki/pull/3840) **cyriltovena**: Add retention label to loki_distributor_bytes_received_total metrics
+** [3837](https://github.com/grafana/loki/pull/3837) **cyriltovena**: LogQL: Pattern Parser
+* [3835](https://github.com/grafana/loki/pull/3835) **sesky4**: lz4: update lz4 version to v4.1.7 to avoid possibly panic
+* [3833](https://github.com/grafana/loki/pull/3833) **cyriltovena**: Fixes a flaky retention test.
+* [3827](https://github.com/grafana/loki/pull/3827) **sandeepsukhani**: Logs deletion fixes
+* [3816](https://github.com/grafana/loki/pull/3816) **dannykopping**: Extracting queue interface
+* [3807](https://github.com/grafana/loki/pull/3807) **dannykopping**: Loki: allow for multiple targets
+* [3797](https://github.com/grafana/loki/pull/3797) **dannykopping**: Exposing remote writer for use in integration tests
+* [3792](https://github.com/grafana/loki/pull/3792) **MichelHollands**: Add a QueryFrontendTripperware module
+* [3785](https://github.com/grafana/loki/pull/3785) **sandeepsukhani**: just log a warning when a store type other than boltdb-shipper is detected when custom retention is enabled
+* [3772](https://github.com/grafana/loki/pull/3772) **sandeepsukhani**: initialize retention and deletion components only when they are enabled
+* [3771](https://github.com/grafana/loki/pull/3771) **sandeepsukhani**: revendor cortex to latest master
+* [3769](https://github.com/grafana/loki/pull/3769) **sandeepsukhani**: reduce allocs in delete requests manager by reusing slice for tracing non-deleted intervals for chunks
+* [3766](https://github.com/grafana/loki/pull/3766) **dannykopping**: Ruler: Recording Rules
+* [3763](https://github.com/grafana/loki/pull/3763) **cyriltovena**: Fixes parser labels hint for grouping.
+* [3762](https://github.com/grafana/loki/pull/3762) **cyriltovena**: Improve mark file processing.
+* [3758](https://github.com/grafana/loki/pull/3758) **owen-d**: exposes loki codec
+* [3746](https://github.com/grafana/loki/pull/3746) **sandeepsukhani**: Boltdb shipper deletion fixes
+* [3743](https://github.com/grafana/loki/pull/3743) **cyriltovena**: Replace satori.uuid with gofrs/uuid
+* [3736](https://github.com/grafana/loki/pull/3736) **cyriltovena**: Add fromJson to the template stage.
+* [3733](https://github.com/grafana/loki/pull/3733) **cyriltovena**: Fixes a goroutine leak in the store when doing cancellation.
+* [3706](https://github.com/grafana/loki/pull/3706) **cyriltovena**: Improve retention mark files.
+* [3700](https://github.com/grafana/loki/pull/3700) **slim-bean**: Loki: Add a flag for queriers to run standalone and only query store
+* [3693](https://github.com/grafana/loki/pull/3693) **cyriltovena**: Removes file sync syscall for compaction.
+* [3688](https://github.com/grafana/loki/pull/3688) **sandeepsukhani**: Logs deletion support for boltdb-shipper store
+* [3687](https://github.com/grafana/loki/pull/3687) **cyriltovena**: Use model.Duration for easy yaml/json marshalling.
+* [3686](https://github.com/grafana/loki/pull/3686) **cyriltovena**: Fixes a panic with the frontend when use with downstream URL.
+* [3677](https://github.com/grafana/loki/pull/3677) **cyriltovena**: Deprecate max_look_back_period in the chunk storage.
+* [3673](https://github.com/grafana/loki/pull/3673) **cyriltovena**: Pass in the now value to the retention.
+* [3672](https://github.com/grafana/loki/pull/3672) **cyriltovena**: Use pgzip in the compactor.
+* [3665](https://github.com/grafana/loki/pull/3665) **cyriltovena**: Trigger compaction prior retention.
+* [3664](https://github.com/grafana/loki/pull/3664) **owen-d**: revendor compatibility: various prom+k8s+cortex
+* [3643](https://github.com/grafana/loki/pull/3643) **cyriltovena**: Rejects push requests with  streams without labels.
+* [3642](https://github.com/grafana/loki/pull/3642) **cyriltovena**: Custom Retention
+* [3641](https://github.com/grafana/loki/pull/3641) **owen-d**: removes naming collision
+* [3632](https://github.com/grafana/loki/pull/3632) **kavirajk**: replace `time.Duration` -> `model.Duration` for `Limits`.
+* [3628](https://github.com/grafana/loki/pull/3628) **kavirajk**: Add json struct tags to limits.
+* [3627](https://github.com/grafana/loki/pull/3627) **MichelHollands**: Update cortex to 1.8
+* [3623](https://github.com/grafana/loki/pull/3623) **slim-bean**: Loki/Promtail: Client Refactor
+* [3619](https://github.com/grafana/loki/pull/3619) **liguozhong**: [ui] add '/config' page
+* [3618](https://github.com/grafana/loki/pull/3618) **MichelHollands**: Add interceptor override and make ingester and cfg public
+* [3605](https://github.com/grafana/loki/pull/3605) **sandeepsukhani**: cleanup boltdb files failing to open during loading tables which are possibly corrupt
+* [3603](https://github.com/grafana/loki/pull/3603) **cyriltovena**: Adds chunk filter hook for ingesters.
+* [3602](https://github.com/grafana/loki/pull/3602) **MichelHollands**: Loli: Make the store field public
+* [3595](https://github.com/grafana/loki/pull/3595) **owen-d**: locks trailers during iteration
+* [3594](https://github.com/grafana/loki/pull/3594) **owen-d**: adds distributor replication factor metric
+* [3573](https://github.com/grafana/loki/pull/3573) **cyriltovena**: Fixes a race when using specific tenant and multi-client.
+* [3569](https://github.com/grafana/loki/pull/3569) **cyriltovena**: Add a chunk filter hook in the store.
+* [3566](https://github.com/grafana/loki/pull/3566) **cyriltovena**: Properly release the ticker in Loki client.
+* [3564](https://github.com/grafana/loki/pull/3564) **cyriltovena**: Improve matchers validations.
+* [3563](https://github.com/grafana/loki/pull/3563) **sandeepsukhani**: ignore download of missing boltdb files possibly removed during compaction
+* [3562](https://github.com/grafana/loki/pull/3562) **cyriltovena**: Fixes a test from #3216.
+* [3553](https://github.com/grafana/loki/pull/3553) **cyriltovena**: Add a target to reproduce fuzz testcase
+* [3550](https://github.com/grafana/loki/pull/3550) **cyriltovena**: Fixes a bug in MatrixStepper when sharding queries.
+* [3549](https://github.com/grafana/loki/pull/3549) **MichelHollands**: LBAC changes
+* [3544](https://github.com/grafana/loki/pull/3544) **alrs**: single import of jsoniter in logql subpackages
+* [3540](https://github.com/grafana/loki/pull/3540) **cyriltovena**: Support for single step metric query.
+* [3532](https://github.com/grafana/loki/pull/3532) **MichelHollands**: Loki: Update cortex version and fix resulting changes
+* [3530](https://github.com/grafana/loki/pull/3530) **sandeepsukhani**: split series api queries by day in query-frontend
+* [3517](https://github.com/grafana/loki/pull/3517) **cyriltovena**: Fixes a race introduced by #3434.
+* [3515](https://github.com/grafana/loki/pull/3515) **cyriltovena**: Add sprig text/template functions to template stage.
+* [3509](https://github.com/grafana/loki/pull/3509) **sandeepsukhani**: fix live tailing of logs from Loki
+* [3572](https://github.com/grafana/loki/pull/3572) **slim-bean**: Loki: Distributor log message bodySize should always reflect the compressed size
+* [3496](https://github.com/grafana/loki/pull/3496) **owen-d**: reduce replay flush threshold
+* [3491](https://github.com/grafana/loki/pull/3491) **sandeepsukhani**: make prefix for keys of objects created by boltdb-shipper configurable
+* [3487](https://github.com/grafana/loki/pull/3487) **cyriltovena**: Set the byte slice cap correctly when unsafely converting string.
+* [3471](https://github.com/grafana/loki/pull/3471) **cyriltovena**: Set a max size for the logql parser to 5k.
+* [3470](https://github.com/grafana/loki/pull/3470) **cyriltovena**: Fixes Issue 28593: loki:fuzz_parse_expr: Timeout in fuzz_parse_expr.
+* [3469](https://github.com/grafana/loki/pull/3469) **cyriltovena**: Fixes out-of-memory fuzzing issue.
+* [3466](https://github.com/grafana/loki/pull/3466) **pracucci**: Upgrade Cortex
+* [3455](https://github.com/grafana/loki/pull/3455) **garrettlish**: Implement offset modifier for range vector aggregation in LogQL
+* [3434](https://github.com/grafana/loki/pull/3434) **adityacs**: support math functions in line_format and label_format
+* [3216](https://github.com/grafana/loki/pull/3216) **sandeepsukhani**: check for stream selectors to have atleast one equality matcher
+* [3050](https://github.com/grafana/loki/pull/3050) **cyriltovena**: first_over_time and last_over_time
+
+#### Docs
+* [4031](https://github.com/grafana/loki/pull/4031) **KMiller-Grafana**: Docs: add weights to YAML metadata to order the LogQL subsections
+* [4029](https://github.com/grafana/loki/pull/4029) **bearice**: Docs: Update S3 permissions list
+* [4026](https://github.com/grafana/loki/pull/4026) **KMiller-Grafana**: Docs: correct fluentbit config value for DqueSync
+* [4024](https://github.com/grafana/loki/pull/4024) **KMiller-Grafana**: Docs: fix bad links
+* [4016](https://github.com/grafana/loki/pull/4016) **lizzzcai**: <docs>:fix typo in remote debugging docs
+* [4012](https://github.com/grafana/loki/pull/4012) **KMiller-Grafana**: Revise portions of the docs LogQL section
+* [3998](https://github.com/grafana/loki/pull/3998) **owen-d**: Fixes regexReplaceAll docs
+* [3980](https://github.com/grafana/loki/pull/3980) **KMiller-Grafana**: Docs: Revise/update the overview section.
+* [3965](https://github.com/grafana/loki/pull/3965) **mamil**: fix typos
+* [3962](https://github.com/grafana/loki/pull/3962) **KMiller-Grafana**: Docs: added new target (docs-next) to the docs' Makefile.
+* [3956](https://github.com/grafana/loki/pull/3956) **sandeepsukhani**: add config and documentation about index-gateway
+* [3938](https://github.com/grafana/loki/pull/3938) **seiffert**: Doc: List 'compactor' as valid value for target option
+* [3936](https://github.com/grafana/loki/pull/3936) **lukahartwig**: Fix typo
+* [3921](https://github.com/grafana/loki/pull/3921) **KMiller-Grafana**: Docs: revise the LogCLI subsection
+* [3911](https://github.com/grafana/loki/pull/3911) **KMiller-Grafana**: Docs: Make identification of experimental items consistent and obvious
+* [3910](https://github.com/grafana/loki/pull/3910) **KMiller-Grafana**: Docs: add structure for a release notes section
+* [3909](https://github.com/grafana/loki/pull/3909) **kavirajk**: Sync `main` branch docs to `next` folder
+* [3899](https://github.com/grafana/loki/pull/3899) **KMiller-Grafana**: Docs: correct “ and ” with " and same with single quote mark.
+* [3897](https://github.com/grafana/loki/pull/3897) **kavirajk**: Update steps to release versioned docs
+* [3882](https://github.com/grafana/loki/pull/3882) **KMiller-Grafana**: Docs: improve section on building from source
+* [3876](https://github.com/grafana/loki/pull/3876) **ivanahuckova**: Documentation: Unify spelling of backtick in documentation
+* [3873](https://github.com/grafana/loki/pull/3873) **KMiller-Grafana**: Docs: remove duplicated arch info from the overview section
+* [3875](https://github.com/grafana/loki/pull/3875) **kavirajk**: Add missing `-querier.max-concurrent` config in the doc
+* [3868](https://github.com/grafana/loki/pull/3868) **sanadhis**: docs: http_path_prefix as correct item of server_config
+* [3860](https://github.com/grafana/loki/pull/3860) **KMiller-Grafana**: Docs: Correct capitalization and formatting of "Promtail"
+* [3851](https://github.com/grafana/loki/pull/3851) **dannykopping**: Ruler: documentation for recording rules
+* [3846](https://github.com/grafana/loki/pull/3846) **crockk**: Docs: Minor syntax tweaks for consistency
+* [3843](https://github.com/grafana/loki/pull/3843) **azuwis**: multiline: Add regex stage example and note
+* [3829](https://github.com/grafana/loki/pull/3829) **arempter**: Add oauth2 docs options for promtail client
+* [3828](https://github.com/grafana/loki/pull/3828) **julienduchesne**: Fix broken link in `Windows Event Log` scraping docs
+* [3826](https://github.com/grafana/loki/pull/3826) **sandeepsukhani**: docs for logs deletion feature
+* [3824](https://github.com/grafana/loki/pull/3824) **KMiller-Grafana**: Docs: add and order missing design docs
+* [3823](https://github.com/grafana/loki/pull/3823) **KMiller-Grafana**: Docs: updates
+* [3815](https://github.com/grafana/loki/pull/3815) **paketb0te**: Docs: fixed typo in "Loki compared to other log systems" (levels -> labels)
+* [3810](https://github.com/grafana/loki/pull/3810) **alegmal**: documentation:  corrected double "the the" in index.md
+* [3799](https://github.com/grafana/loki/pull/3799) **bt909**: docs: Add memached_client parameter "addresses" list
+* [3798](https://github.com/grafana/loki/pull/3798) **bt909**: docs: Change redis configuration value for enabling TLS to correct syntax
+* [3790](https://github.com/grafana/loki/pull/3790) **KMiller-Grafana**: Docs: remove unnecessary lists of sections
+* [3775](https://github.com/grafana/loki/pull/3775) **cyriltovena**: Retention doc
+* [3764](https://github.com/grafana/loki/pull/3764) **slim-bean**: Docs: fix makefile
+* [3757](https://github.com/grafana/loki/pull/3757) **fionaliao**: [docs] Remove unnecessary backtick from example
+* [3756](https://github.com/grafana/loki/pull/3756) **fredrikekre**: [docs] add LokiLogger.jl to unofficial clients.
+* [3723](https://github.com/grafana/loki/pull/3723) **oddlittlebird**: Docs: Update _index.md
+* [3720](https://github.com/grafana/loki/pull/3720) **fredrikekre**: [docs/clients] fix header for "Unofficial clients" and add a reference to said section.
+* [3715](https://github.com/grafana/loki/pull/3715) **jaddqiu**: Update troubleshooting.md
+* [3714](https://github.com/grafana/loki/pull/3714) **kavirajk**: Fluent-bit git repo link fix
+* [3713](https://github.com/grafana/loki/pull/3713) **cyriltovena**: Add a target to find dead links in our documentation.
+* [3690](https://github.com/grafana/loki/pull/3690) **atxviking**: API Documentation: Fix document links for /loki/api/v1/push example
+* [3655](https://github.com/grafana/loki/pull/3655) **trevorwhitney**: Documentation: add note about wildcard log patterns and log rotation
+* [3648](https://github.com/grafana/loki/pull/3648) **Ruppsn**: Update labels.md in Loki Docs
+* [3647](https://github.com/grafana/loki/pull/3647) **3Xpl0it3r**: fix the promtail-default-config download link in doc
+* [3644](https://github.com/grafana/loki/pull/3644) **periklis**: Add Red Hat to adopters
+* [3633](https://github.com/grafana/loki/pull/3633) **osg-grafana**: Fix wget link.
+* [3596](https://github.com/grafana/loki/pull/3596) **timazet**: documentation: typo correction
+* [3578](https://github.com/grafana/loki/pull/3578) **liguozhong**: [doc] mtric -> metric
+* [3576](https://github.com/grafana/loki/pull/3576) **sergeykranga**: Promtail documentation: fix template example for regexReplaceAll function
+* [3568](https://github.com/grafana/loki/pull/3568) **MichelHollands**: docs: some small docs fixes
+* [3559](https://github.com/grafana/loki/pull/3559) **klausenbusk**: Doc: Remove removed --ingester.recover-from-wal option and fix out-of-date defaults
+* [3555](https://github.com/grafana/loki/pull/3555) **samjewell**: LogQL Docs: Remove key-value pair missing from logfmt output
+* [3552](https://github.com/grafana/loki/pull/3552) **lkokila**: Update README.md
+* [3551](https://github.com/grafana/loki/pull/3551) **cyriltovena**: Fixes doc w/r/t grpc compression.
+* [3542](https://github.com/grafana/loki/pull/3542) **kavirajk**: Remove memberlist config from ring config.
+* [3529](https://github.com/grafana/loki/pull/3529) **Whyeasy**: Added docs for GCP internal labels.
+* [3525](https://github.com/grafana/loki/pull/3525) **robbymilo**: docs: add title to Lambda Promtail
+* [3516](https://github.com/grafana/loki/pull/3516) **cyriltovena**: Fixes broken link in the documentation.
+* [3513](https://github.com/grafana/loki/pull/3513) **owen-d**: fixes broken link
+* [3543](https://github.com/grafana/loki/pull/3543) **owen-d**: compactor docs
+* [3526](https://github.com/grafana/loki/pull/3526) **wardbekker**: Added Architecture Diagram
+* [3518](https://github.com/grafana/loki/pull/3518) **wardbekker**: fix spelling in doc
+* [3503](https://github.com/grafana/loki/pull/3503) **cyriltovena**: Update README.md
+* [3484](https://github.com/grafana/loki/pull/3484) **thomasrockhu**: Add Codecov badge to README
+* [3478](https://github.com/grafana/loki/pull/3478) **chancez**: docs/upgrading: Fix typo
+* [3477](https://github.com/grafana/loki/pull/3477) **slim-bean**: Jsonnet/Docs: update for 2.2 release
+* [3472](https://github.com/grafana/loki/pull/3472) **aronisstav**: Docs: Fix markdown for promtail's output stage
+* [3464](https://github.com/grafana/loki/pull/3464) **camilleryr**: Documentation: Update boltdb-shipper.md to fix typo
+* [3442](https://github.com/grafana/loki/pull/3442) **owen-d**: adds deprecation notice for chunk transfers
+* [3430](https://github.com/grafana/loki/pull/3430) **kavirajk**: doc(gcplog): Add note on scraping multiple GCP projects
+
+#### Promtail
+* [4011](https://github.com/grafana/loki/pull/4011) **dannykopping**: Promtail: adding pipeline stage inspector
+* [4006](https://github.com/grafana/loki/pull/4006) **dannykopping**: Promtail: output timestamp with nanosecond precision in dry-run mode
+* [3971](https://github.com/grafana/loki/pull/3971) **cyriltovena**: Fixes negative gauge in Promtail.
+* [3834](https://github.com/grafana/loki/pull/3834) **trevorwhitney**: Promtail: add consul agent service discovery
+* [3711](https://github.com/grafana/loki/pull/3711) **3Xpl0it3r**: add debug information for extracted data
+* [3683](https://github.com/grafana/loki/pull/3683) **kbudde**: promtail: added timezone to logger in dry-run mode #3679"
+* [3654](https://github.com/grafana/loki/pull/3654) **cyriltovena**: Adds the ability to provide a tripperware to Promtail client.
+* [3587](https://github.com/grafana/loki/pull/3587) **rsteneteg**: Promtail: Remove non-ready filemanager targets
+* [3501](https://github.com/grafana/loki/pull/3501) **kavirajk**: Add unique promtail_instance id to labels for gcptarget
+* [3457](https://github.com/grafana/loki/pull/3457) **nmiculinic**: Promtail: Added path information to deleted tailed file
+* [3400](https://github.com/grafana/loki/pull/3400) **adityacs**: support max_message_length configuration for syslog parser
+
+
+#### Logcli
+* [3879](https://github.com/grafana/loki/pull/3879) **vyzigold**: logcli: Add retries to unsuccessful log queries
+* [3749](https://github.com/grafana/loki/pull/3749) **dbluxo**: logcli: add support for bearer token authentication
+* [3739](https://github.com/grafana/loki/pull/3739) **rsteneteg**: correct logcli instant query timestamp param name
+* [3678](https://github.com/grafana/loki/pull/3678) **cyriltovena**: Add the ability to wrap the roundtripper of the logcli client.
+
+
+#### Build
+* [4034](https://github.com/grafana/loki/pull/4034) **aknuds1**: loki-build-image: Fix building
+* [4028](https://github.com/grafana/loki/pull/4028) **aknuds1**: loki-build-image: Upgrade golangci-lint and Go
+* [4007](https://github.com/grafana/loki/pull/4007) **dannykopping**: Adding @grafana/loki-team as default CODEOWNERS
+* [3997](https://github.com/grafana/loki/pull/3997) **owen-d**: aligns rule path in docker img with bundled config. closes #3952
+* [3950](https://github.com/grafana/loki/pull/3950) **julienduchesne**: Sign drone.yml file
+* [3944](https://github.com/grafana/loki/pull/3944) **jeschkies**: Lint script files.
+* [3941](https://github.com/grafana/loki/pull/3941) **cyriltovena**: Development Docker Compose Setup
+* [3935](https://github.com/grafana/loki/pull/3935) **ecraven**: Makefile: Only set PROMTAIL_CGO if CGO_ENABLED is not 0.
+* [3832](https://github.com/grafana/loki/pull/3832) **julienduchesne**: Add step to identify windows Drone runner
+* [3731](https://github.com/grafana/loki/pull/3731) **cyriltovena**: Fix website branch to trigger update.
+* [3708](https://github.com/grafana/loki/pull/3708) **julienduchesne**: Deploy loki with Drone plugin instead of CircleCI job
+* [3703](https://github.com/grafana/loki/pull/3703) **darkn3rd**: Update docker.md for 2.2.1
+* [3625](https://github.com/grafana/loki/pull/3625) **slim-bean**: Build: Update CI for branch rename to main
+* [3624](https://github.com/grafana/loki/pull/3624) **slim-bean**: Build: Fix drone dependencies on manifest step
+* [3615](https://github.com/grafana/loki/pull/3615) **slim-bean**: Remove codecov
+* [3481](https://github.com/grafana/loki/pull/3481) **slim-bean**: Update Go and Alpine versions
+
+
+#### Jsonnet
+* [4030](https://github.com/grafana/loki/pull/4030) **cyriltovena**: Improve the sweep lag panel in the retention dashboard.
+* [3917](https://github.com/grafana/loki/pull/3917) **jvrplmlmn**: refactor(production/ksonnet): Remove kausal from the root element
+* [3893](https://github.com/grafana/loki/pull/3893) **sandeepsukhani**: update uid of loki-deletion dashboard
+* [3891](https://github.com/grafana/loki/pull/3891) **sandeepsukhani**: add index-gateway to reads and reads-resources dashboards
+* [3877](https://github.com/grafana/loki/pull/3877) **sandeepsukhani**: Fix jsonnet for index-gateway
+* [3854](https://github.com/grafana/loki/pull/3854) **cyriltovena**: Fixes Loki reads dashboard.
+* [3848](https://github.com/grafana/loki/pull/3848) **kavirajk**: Add explicit `main` to pull loki and promtail to install it via Tanka
+* [3794](https://github.com/grafana/loki/pull/3794) **sandeepsukhani**: add a dashboard for log deletion requests in loki
+* [3697](https://github.com/grafana/loki/pull/3697) **owen-d**: better operational dashboard annotations via diff logger
+* [3658](https://github.com/grafana/loki/pull/3658) **cyriltovena**: Add a dashboard for retention to the loki-mixin.
+* [3601](https://github.com/grafana/loki/pull/3601) **owen-d**: Dashboard/fix operational vars
+* [3584](https://github.com/grafana/loki/pull/3584) **sandeepsukhani**: add loki resource usage dashboard for read and write path
+
+#### Project
+* [3963](https://github.com/grafana/loki/pull/3963) **rfratto**: Remove Robert Fratto from list of team members
+** [3926](https://github.com/grafana/loki/pull/3926) **cyriltovena**: Add Danny Kopping to the Loki Team.
+* [3732](https://github.com/grafana/loki/pull/3732) **dannykopping**: Issue Templates: Improve wording and add warnings
+* [3722](https://github.com/grafana/loki/pull/3722) **oddlittlebird**: Update CODEOWNERS
+* [3951](https://github.com/grafana/loki/pull/3951) **owen-d**: update sizing calc
+* [3931](https://github.com/grafana/loki/pull/3931) **owen-d**: Hackathon/cluster
+* [3920](https://github.com/grafana/loki/pull/3920) **owen-d**: adds replication &  deduping into cost
+** [3630](https://github.com/grafana/loki/pull/3630) **slim-bean**: Re-license to AGPLv3
+
+#### Docker-driver
+* [3814](https://github.com/grafana/loki/pull/3814) **kavirajk**: Update the docker-driver doc about default labels
+* [3727](https://github.com/grafana/loki/pull/3727) **3Xpl0it3r**: docker-driver: remove duplicated code
+** [3709](https://github.com/grafana/loki/pull/3709) **cyriltovena**: Fixes docker driver that would panic when closed.
+
+### Notes
+
+This release was created from revision 8012362674568379a3871ff8c4a2bfd1ddba7ad1 (Which was PR 3460)
+
+### Dependencies
+
+* Go Version:     1.16.2
+* Cortex Version: 485474c9afb2614fb89af3f48803c37d016bbaed
+
+## 2.2.1 (2021/04/05)
+
+2.2.1 fixes several important bugs, it is recommended everyone running 2.2.0 upgrade to 2.2.1
+
+2.2.1 also adds the `labelallow` pipeline stage in Promtail which lets an allowlist be created for what labels will be sent by Promtail to Loki.
+
+* [3468](https://github.com/grafana/loki/pull/3468) **adityacs**: Support labelallow stage in Promtail
+* [3502](https://github.com/grafana/loki/pull/3502) **cyriltovena**: Fixes a bug where unpack would mutate log line.
+* [3540](https://github.com/grafana/loki/pull/3540) **cyriltovena**: Support for single step metric query.
+* [3550](https://github.com/grafana/loki/pull/3550) **cyriltovena**: Fixes a bug in MatrixStepper when sharding queries.
+* [3566](https://github.com/grafana/loki/pull/3566) **cyriltovena**: Properly release the ticker in Loki client.
+* [3573](https://github.com/grafana/loki/pull/3573) **cyriltovena**: Fixes a race when using specific tenant and multi-client.
 
 ## 2.2.0 (2021/03/10)
 
