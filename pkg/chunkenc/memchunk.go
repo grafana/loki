@@ -703,16 +703,19 @@ func (c *MemChunk) Close() error {
 // monotonically increasing order.
 // This mutates
 func (c *MemChunk) reorder() error {
-	var lastMax int64 // placeholder to check order across blocks
-	ordered := true
+	var o Orderable
 	for _, b := range c.blocks {
-		if b.mint < lastMax {
-			ordered = false
-		}
-		lastMax = b.maxt
+		o.Append(b)
 	}
 
-	if ordered {
+	items, overlap := o.Items()
+	if !overlap {
+		// It's possible, but unlikely that the blocks are not in the correct order.
+		// Ensure that they are.
+		c.blocks = c.blocks[:0]
+		for _, b := range items {
+			c.blocks = append(c.blocks, b.(block))
+		}
 		return nil
 	}
 
@@ -724,6 +727,7 @@ func (c *MemChunk) reorder() error {
 	}
 	*c = *newC.(*MemChunk)
 	return nil
+
 }
 
 // cut a new block and add it to finished blocks.

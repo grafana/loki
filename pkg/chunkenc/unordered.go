@@ -540,14 +540,15 @@ func (o *Orderable) Bounds() (int64, int64) {
 func (o *Orderable) Empty() bool { return len(o.xs) == 0 }
 
 func (o *Orderable) Append(b Bounded) {
+	from, to := o.Bounds()
+	bFrom, bTo := b.Bounds()
+	o.maxt = max(bTo, to)
+
 	if len(o.xs) == 0 {
 		o.xs = append(o.xs, b)
 		return
 	}
 
-	from, to := o.Bounds()
-	bFrom, bTo := b.Bounds()
-	o.maxt = max(bTo, to)
 	pos := sort.Search(len(o.xs), func(i int) bool {
 		a, _ := o.xs[i].Bounds()
 		return bFrom < a

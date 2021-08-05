@@ -666,6 +666,18 @@ func TestOrderable(t *testing.T) {
 			},
 			overlap: true,
 		},
+		{
+			desc: "overlap subrange",
+			xs: []bounds{
+				{1, 5},
+				{3, 7},
+			},
+			exp: []bounds{
+				{1, 5},
+				{3, 7},
+			},
+			overlap: true,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			var o Orderable
