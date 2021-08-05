@@ -19,6 +19,33 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 -_add changes here which are unreleased_
 
+## 2.3.0
+
+### Loki
+
+#### Query restriction introduced for queries which do not have at least one equality matcher
+
+PR [3216](https://github.com/grafana/loki/pull/3216) **sandeepsukhani**: check for stream selectors to have at least one equality matcher
+
+This change now rejects any query which does not contain at least one equality matcher, an example may better illustrate:
+
+`{namespace=~".*"}`
+
+This query will now be rejected, however there are several ways to modify it for it to succeed:
+
+Add at least one equals label matcher:
+
+`{cluster="us-east-1",namespace=~".*"}`
+
+Use `.+` instead of `.*`
+
+`{namespace=~".+"}`
+
+This difference may seem subtle but if we break it down `.` matches any character, `*` matches zero or more of the preceding character and `+` matches one or more of the preceding character. The `.*` case will match empty values where `.+` will not, this is the important difference. `{namespace=""}` is an invalid request (unless you add another equals label matcher like the example above)
+
+The reasoning for this change has to do with how index lookups work in Loki, if you don't have at least one equality matcher Loki has to perform a complete index table scan which is an expensive and slow operation.
+
+
 ## 2.2.0
 
 ### Loki
