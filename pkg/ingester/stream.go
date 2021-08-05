@@ -366,7 +366,7 @@ func (s *stream) Bounds() (from, to time.Time) {
 	return from, to
 }
 
-// intChunk is a compatability type which implements chunkenc.Bounded
+// intChunk is a compatibility type which implements chunkenc.Bounded
 type intChunk chunkDesc
 
 func (c intChunk) Bounds() (int64, int64) {
