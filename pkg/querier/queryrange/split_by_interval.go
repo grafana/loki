@@ -169,18 +169,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		return h.next.Do(ctx, r)
 	}
 
-	// Align the queries time range to multiples of the interval to allow for better caching.
-	ims := interval.Milliseconds()
-	ogStart := r.GetStart()
-	ogEnd := r.GetEnd()
-	start := ogStart - (ogStart % ims)
-	end := ogEnd
-	if ogEnd%ims != 0 {
-		end = ogEnd + (ims - (ogEnd % ims))
-	}
-	r = r.WithStartEnd(start, end)
-
-	intervals := h.splitter(r, interval)
+	intervals := h.alignedIntervals(r, interval)
 	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
@@ -210,15 +199,6 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	input := make([]*lokiResult, 0, len(intervals))
 	for _, interval := range intervals {
-		// Reset the start and end for the first/last interval to the original
-		// times so that we don't receive data we didn't ask for.
-		if interval.GetStart() == start {
-			interval = interval.WithStartEnd(ogStart, interval.GetEnd())
-
-		}
-		if interval.GetEnd() == end {
-			interval = interval.WithStartEnd(interval.GetStart(), ogEnd)
-		}
 		input = append(input, &lokiResult{
 			req: interval,
 			ch:  make(chan *packedResp),
@@ -230,6 +210,34 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		return nil, err
 	}
 	return h.merger.MergeResponse(resps...)
+}
+
+func (h *splitByInterval) alignedIntervals(req queryrange.Request, interval time.Duration) []queryrange.Request {
+	// Align the queries time range to multiples of the interval to allow for better caching.
+	ims := interval.Milliseconds()
+	ogStart := req.GetStart()
+	ogEnd := req.GetEnd()
+	start := ogStart - (ogStart % ims)
+	end := ogEnd
+	if ogEnd%ims != 0 {
+		end = ogEnd + (ims - (ogEnd % ims))
+	}
+	req = req.WithStartEnd(start, end)
+
+	intervals := h.splitter(req, interval)
+	for i, interval := range intervals {
+		// Reset the start and end for the first/last interval to the original
+		// times so that we don't receive data we didn't ask for.
+		if interval.GetStart() == start {
+			intervals[i] = interval.WithStartEnd(ogStart, interval.GetEnd())
+		}
+		if interval.GetEnd() == end {
+			// When overwriting intervals[i] we have to use intervals[i].GetTime instead
+			// of interval.GetTime to get the potentially overwritten start time.
+			intervals[i] = interval.WithStartEnd(intervals[i].GetStart(), ogEnd)
+		}
+	}
+	return intervals
 }
 
 func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Request {

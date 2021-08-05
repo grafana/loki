@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -627,6 +628,185 @@ func Test_splitByInterval_Do_aligned(t *testing.T) {
 			res, err := split.Do(ctx, tt.req)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, res)
+		})
+	}
+}
+
+func Test_alignedIntervals(t *testing.T) {
+	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+		return &LokiResponse{}, nil
+	})
+
+	split := &splitByInterval{
+		next:     next,
+		limits:   l,
+		merger:   LokiCodec,
+		metrics:  nilMetrics,
+		splitter: splitByTime,
+	}
+
+	tests := []struct {
+		name     string
+		request  *LokiRequest
+		response []queryrange.Request
+	}{
+		{
+			"no_change",
+			&LokiRequest{
+				StartTs:   time.Unix(0, 0),
+				EndTs:     time.Unix(0, (1 * time.Hour).Nanoseconds()),
+				Query:     "",
+				Limit:     2,
+				Step:      1,
+				Direction: logproto.FORWARD,
+				Path:      "/api/prom/query_range",
+			},
+			[]queryrange.Request{
+				&LokiRequest{
+					StartTs:   time.Unix(0, 0),
+					EndTs:     time.Unix(0, (1 * time.Hour).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+			},
+		},
+		{
+			"align_start",
+			&LokiRequest{
+				StartTs:   time.Unix(0, (5 * time.Minute).Nanoseconds()),
+				EndTs:     time.Unix(0, (2 * time.Hour).Nanoseconds()),
+				Query:     "",
+				Limit:     2,
+				Step:      1,
+				Direction: logproto.FORWARD,
+				Path:      "/api/prom/query_range",
+			},
+			[]queryrange.Request{
+				&LokiRequest{
+					StartTs:   time.Unix(0, (5 * time.Minute).Nanoseconds()),
+					EndTs:     time.Unix(0, (1 * time.Hour).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+				&LokiRequest{
+					StartTs:   time.Unix(0, (1 * time.Hour).Nanoseconds()),
+					EndTs:     time.Unix(0, (2 * time.Hour).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+			},
+		},
+		{
+			"align_end",
+			&LokiRequest{
+				StartTs:   time.Unix(0, 0),
+				EndTs:     time.Unix(0, (115 * time.Minute).Nanoseconds()),
+				Query:     "",
+				Limit:     2,
+				Step:      1,
+				Direction: logproto.FORWARD,
+				Path:      "/api/prom/query_range",
+			},
+			[]queryrange.Request{
+				&LokiRequest{
+					StartTs:   time.Unix(0, 0),
+					EndTs:     time.Unix(0, (1 * time.Hour).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+				&LokiRequest{
+					StartTs:   time.Unix(0, (1 * time.Hour).Nanoseconds()),
+					EndTs:     time.Unix(0, (115 * time.Minute).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+			},
+		},
+		{
+			"align_both",
+			&LokiRequest{
+				StartTs:   time.Unix(0, (5 * time.Minute).Nanoseconds()),
+				EndTs:     time.Unix(0, (175 * time.Minute).Nanoseconds()),
+				Query:     "",
+				Limit:     2,
+				Step:      1,
+				Direction: logproto.FORWARD,
+				Path:      "/api/prom/query_range",
+			},
+			[]queryrange.Request{
+				&LokiRequest{
+					StartTs:   time.Unix(0, (5 * time.Minute).Nanoseconds()),
+					EndTs:     time.Unix(0, (1 * time.Hour).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+				&LokiRequest{
+					StartTs:   time.Unix(0, (1 * time.Hour).Nanoseconds()),
+					EndTs:     time.Unix(0, (2 * time.Hour).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+				&LokiRequest{
+					StartTs:   time.Unix(0, (2 * time.Hour).Nanoseconds()),
+					EndTs:     time.Unix(0, (175 * time.Minute).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+			},
+		},
+		{
+			"no_align",
+			&LokiRequest{
+				StartTs:   time.Unix(0, (5 * time.Minute).Nanoseconds()),
+				EndTs:     time.Unix(0, (55 * time.Minute).Nanoseconds()),
+				Query:     "",
+				Limit:     2,
+				Step:      1,
+				Direction: logproto.FORWARD,
+				Path:      "/api/prom/query_range",
+			},
+			[]queryrange.Request{
+				&LokiRequest{
+					StartTs:   time.Unix(0, (5 * time.Minute).Nanoseconds()),
+					EndTs:     time.Unix(0, (55 * time.Minute).Nanoseconds()),
+					Query:     "",
+					Limit:     2,
+					Step:      1,
+					Direction: logproto.FORWARD,
+					Path:      "/api/prom/query_range",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.response, split.alignedIntervals(tt.request, l.QuerySplitDuration("1")))
 		})
 	}
 }
