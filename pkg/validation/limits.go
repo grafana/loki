@@ -39,6 +39,7 @@ type Limits struct {
 	CreationGracePeriod    model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
 	EnforceMetricName      bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	MaxLineSize            flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
+	MaxLineSizeTruncate    bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
@@ -88,6 +89,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB.")
 	f.Var(&l.MaxLineSize, "distributor.max-line-size", "maximum line length allowed, i.e. 100mb. Default (0) means unlimited.")
+	f.BoolVar(&l.MaxLineSizeTruncate, "distributor.max-line-size-truncate", false, "Whether to truncate lines that exceed max_line_size")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -333,6 +335,11 @@ func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
 // MaxLineSize returns the maximum size in bytes the distributor should allow.
 func (o *Overrides) MaxLineSize(userID string) int {
 	return o.getOverridesForUser(userID).MaxLineSize.Val()
+}
+
+// MaxLineSizeShouldTruncate returns whether lines longer than max should be truncated.
+func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
+	return o.getOverridesForUser(userID).MaxLineSizeTruncate
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
