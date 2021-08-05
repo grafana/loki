@@ -63,7 +63,8 @@ type line struct {
 }
 
 type stream struct {
-	cfg *Config
+	cfg    *Config
+	tenant string
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks   []chunkDesc
@@ -109,7 +110,7 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, tenant string, fp model.Fingerprint, labels labels.Labels, metrics *ingesterMetrics) *stream {
 	return &stream{
 		cfg:          cfg,
 		fp:           fp,
@@ -117,6 +118,7 @@ func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics 
 		labelsString: labels.String(),
 		tailers:      map[uint32]*tailer{},
 		metrics:      metrics,
+		tenant:       tenant,
 	}
 }
 

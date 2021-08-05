@@ -38,6 +38,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			cfg.MaxReturnedErrors = tc.limit
 			s := newStream(
 				cfg,
+				"fake",
 				model.Fingerprint(0),
 				labels.Labels{
 					{Name: "foo", Value: "bar"},
@@ -76,6 +77,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 func TestPushDeduplication(t *testing.T) {
 	s := newStream(
 		defaultConfig(),
+		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
@@ -98,6 +100,7 @@ func TestPushDeduplication(t *testing.T) {
 func TestPushRejectOldCounter(t *testing.T) {
 	s := newStream(
 		defaultConfig(),
+		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
@@ -185,6 +188,7 @@ func TestUnorderedPush(t *testing.T) {
 	cfg.MaxChunkAge = 10 * time.Second
 	s := newStream(
 		&cfg,
+		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
@@ -260,7 +264,7 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "job", Value: "loki-dev/ingester"},
 		labels.Label{Name: "container", Value: "ingester"},
 	}
-	s := newStream(&Config{}, model.Fingerprint(0), ls, NilMetrics)
+	s := newStream(&Config{}, "fake", model.Fingerprint(0), ls, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 
