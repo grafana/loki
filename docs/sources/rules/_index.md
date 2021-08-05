@@ -70,6 +70,8 @@ groups:
 
 ## Recording Rules
 
+<span style="background-color:#f3f973;">Recording rules are an experimental feature.</span>
+
 We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules) recording rules. From Prometheus' documentation:
 
 > Recording rules allow you to precompute frequently needed or computationally expensive expressions and save their result as a new set of time series.
