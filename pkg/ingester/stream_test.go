@@ -193,9 +193,10 @@ func TestUnorderedPush(t *testing.T) {
 	)
 
 	for _, x := range []struct {
-		entries []logproto.Entry
-		err     bool
-		written int
+		cutBefore bool
+		entries   []logproto.Entry
+		err       bool
+		written   int
 	}{
 		{
 			entries: []logproto.Entry{
@@ -217,7 +218,20 @@ func TestUnorderedPush(t *testing.T) {
 			err:     true,
 			written: 2, // 1 ignored
 		},
+		// force a chunk cut and then push data overlapping with previous chunk.
+		// This ultimately ensures the iterators implementation respects unordered chunks.
+		{
+			cutBefore: true,
+			entries: []logproto.Entry{
+				{Timestamp: time.Unix(11, 0), Line: "x"},
+				{Timestamp: time.Unix(7, 0), Line: "x"},
+			},
+			written: 2,
+		},
 	} {
+		if x.cutBefore {
+			_ = s.cutChunk(context.Background())
+		}
 		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0)
 		if x.err {
 			require.NotNil(t, err)
@@ -227,17 +241,21 @@ func TestUnorderedPush(t *testing.T) {
 		require.Equal(t, x.written, written)
 	}
 
+	require.Equal(t, 2, len(s.chunks))
+
 	exp := []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "x"},
 		{Timestamp: time.Unix(2, 0), Line: "x"},
 		// duplicate was allowed here b/c it wasnt written sequentially
 		{Timestamp: time.Unix(2, 0), Line: "x"},
+		{Timestamp: time.Unix(7, 0), Line: "x"},
 		{Timestamp: time.Unix(8, 0), Line: "x"},
 		{Timestamp: time.Unix(9, 0), Line: "x"},
 		{Timestamp: time.Unix(10, 0), Line: "x"},
+		{Timestamp: time.Unix(11, 0), Line: "x"},
 	}
 
-	itr, err := s.Iterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(11, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+	itr, err := s.Iterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(12, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
 	require.Nil(t, err)
 	iterEq(t, exp, itr)
 
@@ -250,7 +268,7 @@ func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 		require.Equal(t, exp[i].Line, got.Entry().Line)
 		i++
 	}
-	require.Equal(t, i, len(exp))
+	require.Equal(t, i, len(exp), "incorrect number of entries expected")
 }
 
 func Benchmark_PushStream(b *testing.B) {
