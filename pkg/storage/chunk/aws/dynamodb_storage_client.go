@@ -570,6 +570,10 @@ func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID 
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 
+func (a dynamoDBStorageClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
 func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWriteBatch, error) {
 	dynamoDBWrites := dynamoDBWriteBatch{}
 

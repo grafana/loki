@@ -2,7 +2,6 @@ package downloads
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,6 +40,7 @@ type BoltDBIndexClient interface {
 type StorageClient interface {
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
 	List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error)
+	IsObjectNotFoundErr(err error) bool
 }
 
 // Table is a collection of multiple files created for a same table by various ingesters.
@@ -458,7 +458,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 
 	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, filePath, true)
 	if err != nil {
-		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+		if t.storageClient.IsObjectNotFoundErr(err) {
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", storageObject.Key))
 			return nil
 		}
@@ -537,7 +537,7 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 				filePath := path.Join(folderPathForTable, dbName)
 				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath, true)
 				if err != nil {
-					if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+					if t.storageClient.IsObjectNotFoundErr(err) {
 						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", object.Key))
 						err = nil
 					} else {

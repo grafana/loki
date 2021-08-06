@@ -22,6 +22,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler"
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -31,6 +33,7 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
@@ -78,6 +81,7 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
+	QueryScheduler           string = "query-scheduler"
 	All                      string = "all"
 )
 
@@ -103,6 +107,18 @@ func (t *Loki) initServer() (services.Service, error) {
 	}
 
 	s := cortex.NewServerService(t.Server, servicesToWaitFor)
+
+	// Best effort to propagate the org ID from the start.
+	t.Server.HTTPServer.Handler = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !t.Cfg.AuthEnabled {
+				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
+				return
+			}
+			_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}(t.Server.HTTPServer.Handler)
 
 	return s, nil
 }
@@ -635,6 +651,17 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	gateway := indexgateway.NewIndexGateway(shipperIndexClient.(*shipper.Shipper))
 	indexgatewaypb.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
 	return gateway, nil
+}
+
+func (t *Loki) initQueryScheduler() (services.Service, error) {
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	schedulerpb.RegisterSchedulerForFrontendServer(t.Server.GRPC, s)
+	schedulerpb.RegisterSchedulerForQuerierServer(t.Server.GRPC, s)
+	return s, nil
 }
 
 func calculateMaxLookBack(pc chunk.PeriodConfig, maxLookBackConfig, minDuration time.Duration) (time.Duration, error) {

@@ -337,7 +337,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 
 	plan, err := p.getDeletePlan(context.Background(), userID, requestID, planNo)
 	if err != nil {
-		if err == chunk.ErrStorageObjectNotFound {
+		if p.objectClient.IsObjectNotFoundErr(err) {
 			level.Info(logger).Log("msg", "plan not found, must have been executed already")
 			// this means plan was already executed and got removed. Do nothing.
 			return nil
@@ -369,7 +369,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 			err = p.chunkStore.DeleteChunk(ctx, chunkRef.From, chunkRef.Through, chunkRef.UserID,
 				chunkDetails.ID, cortexpb.FromLabelAdaptersToLabels(plan.ChunksGroup[i].Labels), partiallyDeletedInterval)
 			if err != nil {
-				if isMissingChunkErr(err) {
+				if p.isMissingChunkErr(err) {
 					level.Error(logger).Log("msg", "chunk not found for deletion. We may have already deleted it",
 						"chunk_id", chunkDetails.ID)
 					continue
@@ -727,11 +727,11 @@ func groupChunks(chunks []chunk.Chunk, deleteFrom, deleteThrough model.Time, inc
 	return chunksGroups, includedChunkIDs
 }
 
-func isMissingChunkErr(err error) bool {
-	if err == chunk.ErrStorageObjectNotFound {
+func (p *Purger) isMissingChunkErr(err error) bool {
+	if p.objectClient.IsObjectNotFoundErr(err) {
 		return true
 	}
-	if promqlStorageErr, ok := err.(promql.ErrStorage); ok && promqlStorageErr.Err == chunk.ErrStorageObjectNotFound {
+	if promqlStorageErr, ok := err.(promql.ErrStorage); ok && p.objectClient.IsObjectNotFoundErr(promqlStorageErr.Err) {
 		return true
 	}
 

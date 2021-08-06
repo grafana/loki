@@ -18,7 +18,10 @@ import (
 
 type MockStorageMode int
 
-var errPermissionDenied = errors.New("permission denied")
+var (
+	errPermissionDenied      = errors.New("permission denied")
+	errStorageObjectNotFound = errors.New("object not found in storage")
+)
 
 const (
 	MockStorageModeReadWrite = 0
@@ -377,7 +380,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 		key := chunk.ExternalKey()
 		buf, ok := m.objects[key]
 		if !ok {
-			return nil, ErrStorageObjectNotFound
+			return nil, errStorageObjectNotFound
 		}
 		if err := chunk.Decode(decodeContext, buf); err != nil {
 			return nil, err
@@ -406,7 +409,7 @@ func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 
 	buf, ok := m.objects[objectKey]
 	if !ok {
-		return nil, ErrStorageObjectNotFound
+		return nil, errStorageObjectNotFound
 	}
 
 	return ioutil.NopCloser(bytes.NewReader(buf)), nil
@@ -429,6 +432,14 @@ func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io
 	return nil
 }
 
+func (m *MockStorage) IsObjectNotFoundErr(err error) bool {
+	return errors.Is(err, errStorageObjectNotFound)
+}
+
+func (m *MockStorage) IsChunkNotFoundErr(err error) bool {
+	return m.IsObjectNotFoundErr(err)
+}
+
 func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -438,7 +449,7 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 	}
 
 	if _, ok := m.objects[objectKey]; !ok {
-		return ErrStorageObjectNotFound
+		return errStorageObjectNotFound
 	}
 
 	delete(m.objects, objectKey)

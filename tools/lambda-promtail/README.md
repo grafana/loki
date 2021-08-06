@@ -6,7 +6,7 @@ This is a sample template for lambda-promtail - Below is a brief explanation of 
 .
 ├── Makefile                    <-- Make to automate build
 ├── README.md                   <-- This instructions file
-├── hello-world                 <-- Source code for a lambda function
+├── lambda-promtail             <-- Source code for a lambda function
 │   └── main.go                 <-- Lambda function code
 └── template.yaml
 ```

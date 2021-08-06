@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"unsafe"
 )
 
 // Bytes exists to stop proto copying the byte array
@@ -36,4 +37,8 @@ func (bs *Bytes) Equal(other Bytes) bool {
 // Compare Bytes to other
 func (bs *Bytes) Compare(other Bytes) int {
 	return bytes.Compare(*bs, other)
+}
+
+func yoloString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

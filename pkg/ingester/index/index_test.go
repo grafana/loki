@@ -25,26 +25,10 @@ func Test_GetShards(t *testing.T) {
 		{16, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15}},
 
 		// idx factor a larger multiple of schema factor
-		{32, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0, 1}},
-		{32, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{8, 9}},
-		{32, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{30, 31}},
-		{64, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{60, 61, 62, 63}},
-
-		// schema factor is a larger multiple of idx factor
-		{16, &astmapper.ShardAnnotation{Shard: 0, Of: 32}, []uint32{0}},
-		{16, &astmapper.ShardAnnotation{Shard: 4, Of: 32}, []uint32{2}},
-		{16, &astmapper.ShardAnnotation{Shard: 15, Of: 32}, []uint32{7}},
-
-		// idx factor smaller but not a multiple of schema factor
-		{4, &astmapper.ShardAnnotation{Shard: 0, Of: 5}, []uint32{0}},
-		{4, &astmapper.ShardAnnotation{Shard: 1, Of: 5}, []uint32{0, 1}},
-		{4, &astmapper.ShardAnnotation{Shard: 4, Of: 5}, []uint32{3}},
-
-		// schema factor smaller but not a multiple of idx factor
-		{8, &astmapper.ShardAnnotation{Shard: 0, Of: 5}, []uint32{0, 1}},
-		{8, &astmapper.ShardAnnotation{Shard: 2, Of: 5}, []uint32{3, 4}},
-		{8, &astmapper.ShardAnnotation{Shard: 3, Of: 5}, []uint32{4, 5, 6}},
-		{8, &astmapper.ShardAnnotation{Shard: 4, Of: 5}, []uint32{6, 7}},
+		{32, &astmapper.ShardAnnotation{Shard: 0, Of: 16}, []uint32{0, 16}},
+		{32, &astmapper.ShardAnnotation{Shard: 4, Of: 16}, []uint32{4, 20}},
+		{32, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31}},
+		{64, &astmapper.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31, 47, 63}},
 	} {
 		tt := tt
 		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
@@ -95,9 +79,9 @@ func TestDeleteAddLoopkup(t *testing.T) {
 	}
 	sort.Sort(cortexpb.FromLabelAdaptersToLabels(lbs))
 
-	require.Equal(t, uint32(7), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
+	require.Equal(t, uint32(26), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
 	// make sure we consistent
-	require.Equal(t, uint32(7), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
+	require.Equal(t, uint32(26), labelsSeriesIDHash(cortexpb.FromLabelAdaptersToLabels(lbs))%32)
 	index.Add(lbs, model.Fingerprint((cortexpb.FromLabelAdaptersToLabels(lbs).Hash())))
 	index.Delete(cortexpb.FromLabelAdaptersToLabels(lbs), model.Fingerprint(cortexpb.FromLabelAdaptersToLabels(lbs).Hash()))
 	ids, err := index.Lookup([]*labels.Matcher{
@@ -105,4 +89,27 @@ func TestDeleteAddLoopkup(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 	require.Len(t, ids, 0)
+}
+
+func Test_hash_mapping(t *testing.T) {
+	lbs := labels.Labels{
+		labels.Label{Name: "compose_project", Value: "loki-boltdb-storage-s3"},
+		labels.Label{Name: "compose_service", Value: "ingester-2"},
+		labels.Label{Name: "container_name", Value: "loki-boltdb-storage-s3_ingester-2_1"},
+		labels.Label{Name: "filename", Value: "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log"},
+		labels.Label{Name: "host", Value: "docker-desktop"},
+		labels.Label{Name: "source", Value: "stderr"},
+	}
+
+	for _, shard := range []uint32{16, 32, 64, 128} {
+		t.Run(fmt.Sprintf("%d", shard), func(t *testing.T) {
+			ii := NewWithShards(shard)
+			ii.Add(cortexpb.FromLabelsToLabelAdapters(lbs), 1)
+
+			res, err := ii.Lookup([]*labels.Matcher{{Type: labels.MatchEqual, Name: "compose_project", Value: "loki-boltdb-storage-s3"}}, &astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+			require.NoError(t, err)
+			require.Len(t, res, 1)
+			require.Equal(t, model.Fingerprint(1), res[0])
+		})
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
@@ -73,8 +74,7 @@ func (s *GCSObjectClient) Stop() {
 	s.client.Close()
 }
 
-// GetObject returns a reader for the specified object key from the configured GCS bucket. If the
-// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
+// GetObject returns a reader for the specified object key from the configured GCS bucket.
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	var cancel context.CancelFunc = func() {}
 	if s.cfg.RequestTimeout > 0 {
@@ -94,9 +94,6 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
 	reader, err := s.bucket.Object(objectKey).NewReader(ctx)
 	if err != nil {
-		if err == storage.ErrObjectNotExist {
-			return nil, chunk.ErrStorageObjectNotFound
-		}
 		return nil, err
 	}
 
@@ -168,16 +165,17 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 	return storageObjects, commonPrefixes, nil
 }
 
-// DeleteObject deletes the specified object key from the configured GCS bucket. If the
-// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
+// DeleteObject deletes the specified object key from the configured GCS bucket.
 func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	err := s.bucket.Object(objectKey).Delete(ctx)
 	if err != nil {
-		if err == storage.ErrObjectNotExist {
-			return chunk.ErrStorageObjectNotFound
-		}
 		return err
 	}
 
 	return nil
+}
+
+// IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
+func (s *GCSObjectClient) IsObjectNotFoundErr(err error) bool {
+	return errors.Is(err, storage.ErrObjectNotExist)
 }

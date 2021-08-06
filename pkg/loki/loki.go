@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -72,6 +73,7 @@ type Config struct {
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 	Tracing          tracing.Config              `yaml:"tracing"`
 	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
+	QueryScheduler   scheduler.Config            `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -103,6 +105,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
+	c.QueryScheduler.RegisterFlags(f)
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -390,6 +393,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
+	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -403,6 +407,7 @@ func (t *Loki) setupModuleManager() error {
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware},
+		QueryScheduler:           {Server, Overrides},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:             {Server},
 		Compactor:                {Server, Overrides},

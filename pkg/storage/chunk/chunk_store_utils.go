@@ -252,3 +252,7 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 	}
 	return found, missing, err
 }
+
+func (c *Fetcher) IsChunkNotFoundErr(err error) bool {
+	return c.storage.IsChunkNotFoundErr(err)
+}

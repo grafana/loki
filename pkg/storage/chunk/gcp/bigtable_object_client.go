@@ -181,3 +181,7 @@ func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID 
 
 	return s.client.Open(tableName).Apply(ctx, chunkID, mut)
 }
+
+func (s *bigtableObjectClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}

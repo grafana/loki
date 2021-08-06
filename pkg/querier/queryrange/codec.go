@@ -328,6 +328,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			"query":     []string{request.Query},
 			"direction": []string{request.Direction.String()},
 			"limit":     []string{fmt.Sprintf("%d", request.Limit)},
+			"time":      []string{fmt.Sprintf("%d", request.TimeTs.UnixNano())},
 		}
 		if len(request.Shards) > 0 {
 			params["shards"] = request.Shards

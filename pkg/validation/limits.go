@@ -39,6 +39,7 @@ type Limits struct {
 	CreationGracePeriod    model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
 	EnforceMetricName      bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	MaxLineSize            flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
+	MaxLineSizeTruncate    bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
@@ -55,6 +56,7 @@ type Limits struct {
 	MaxConcurrentTailRequests  int            `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
 	MaxEntriesLimitPerQuery    int            `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -88,6 +90,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB.")
 	f.Var(&l.MaxLineSize, "distributor.max-line-size", "maximum line length allowed, i.e. 100mb. Default (0) means unlimited.")
+	f.BoolVar(&l.MaxLineSizeTruncate, "distributor.max-line-size-truncate", false, "Whether to truncate lines that exceed max_line_size")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -121,6 +124,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+
+	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 
 	_ = l.RulerEvaluationDelay.Set("0s")
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
@@ -294,6 +299,11 @@ func (o *Overrides) MaxQuerySeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
 
+// MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
+func (o *Overrides) MaxQueriersPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
@@ -333,6 +343,11 @@ func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
 // MaxLineSize returns the maximum size in bytes the distributor should allow.
 func (o *Overrides) MaxLineSize(userID string) int {
 	return o.getOverridesForUser(userID).MaxLineSize.Val()
+}
+
+// MaxLineSizeShouldTruncate returns whether lines longer than max should be truncated.
+func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
+	return o.getOverridesForUser(userID).MaxLineSizeTruncate
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.

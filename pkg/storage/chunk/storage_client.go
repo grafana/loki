@@ -8,8 +8,6 @@ import (
 )
 
 var (
-	// ErrStorageObjectNotFound when object storage does not have requested object
-	ErrStorageObjectNotFound = errors.New("object not found in storage")
 	// ErrMethodNotImplemented when any of the storage clients do not implement a method
 	ErrMethodNotImplemented = errors.New("method is not implemented")
 )
@@ -33,6 +31,7 @@ type Client interface {
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
 	DeleteChunk(ctx context.Context, userID, chunkID string) error
+	IsChunkNotFoundErr(err error) bool
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
@@ -76,6 +75,7 @@ type ObjectClient interface {
 	// Keys of returned storage objects have given prefix.
 	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
+	IsObjectNotFoundErr(err error) bool
 	Stop()
 }
 

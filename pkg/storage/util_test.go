@@ -245,6 +245,10 @@ func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, userID, chunkID s
 	return nil
 }
 
+func (m mockChunkStoreClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
 var streamsFixture = []*logproto.Stream{
 	{
 		Labels: "{foo=\"bar\"}",

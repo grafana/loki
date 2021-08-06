@@ -1798,6 +1798,10 @@ logs in Loki.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <string> | default = none ]
 
+# Truncate log lines when they exceed max_line_size.
+# CLI flag: -distributor.max-line-size-truncate
+[max_line_size_truncate: <boolean> | default = false ]
+
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
@@ -1879,6 +1883,16 @@ logs in Loki.
 # Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 1m]
+
+# Maximum number of queriers that can handle requests for a single tenant. If
+# set to 0 or value higher than number of available queriers, *all* queriers
+# will handle requests for the tenant. Each frontend (or query-scheduler, if
+# used) will select the same set of queriers for the same tenant (given that all
+# queriers are connected to all frontends / query-schedulers). This option only
+# works with queriers connecting to the query-frontend / query-scheduler, not
+# when using downstream URL.
+# CLI flag: -frontend.max-queriers-per-tenant
+[max_queriers_per_tenant: <int> | default = 0]
 ```
 
 ### grpc_client_config

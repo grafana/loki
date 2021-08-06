@@ -108,3 +108,7 @@ func (c metricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk)
 func (c metricsChunkClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
 	return c.client.DeleteChunk(ctx, userID, chunkID)
 }
+
+func (c metricsChunkClient) IsChunkNotFoundErr(err error) bool {
+	return c.client.IsChunkNotFoundErr(err)
+}
