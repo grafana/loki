@@ -221,23 +221,7 @@ func (s *stream) Push(
 
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
-			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
-			err := chunk.chunk.Close()
-			if err != nil {
-				// This should be an unlikely situation, returning an error up the stack doesn't help much here
-				// so instead log this to help debug the issue if it ever arises.
-				level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to Close chunk", "err", err)
-			}
-			chunk.closed = true
-
-			samplesPerChunk.Observe(float64(chunk.chunk.Size()))
-			blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
-			chunksCreatedTotal.Inc()
-
-			s.chunks = append(s.chunks, chunkDesc{
-				chunk: s.NewChunk(),
-			})
-			chunk = &s.chunks[len(s.chunks)-1]
+			chunk = s.cutChunk(ctx)
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
@@ -338,6 +322,27 @@ func (s *stream) Push(
 	return bytesAdded, nil
 }
 
+func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
+	// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
+	chunk := &s.chunks[len(s.chunks)-1]
+	err := chunk.chunk.Close()
+	if err != nil {
+		// This should be an unlikely situation, returning an error up the stack doesn't help much here
+		// so instead log this to help debug the issue if it ever arises.
+		level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to Close chunk", "err", err)
+	}
+	chunk.closed = true
+
+	samplesPerChunk.Observe(float64(chunk.chunk.Size()))
+	blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
+	chunksCreatedTotal.Inc()
+
+	s.chunks = append(s.chunks, chunkDesc{
+		chunk: s.NewChunk(),
+	})
+	return &s.chunks[len(s.chunks)-1]
+}
+
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters
 // cut the chunk for this stream at the same moment, so that new chunk will contain exactly the same entries.
 func (s *stream) cutChunkForSynchronization(entryTimestamp, latestTs time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
@@ -383,7 +388,23 @@ func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, fro
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
+
+	var lastMax time.Time
+	ordered := true
+
 	for _, c := range s.chunks {
+		mint, maxt := c.chunk.Bounds()
+
+		// skip this chunk
+		if through.Before(mint) || maxt.Before(from) {
+			continue
+		}
+
+		if mint.Before(lastMax) {
+			ordered = false
+		}
+		lastMax = maxt
+
 		itr, err := c.chunk.Iterator(ctx, from, through, direction, pipeline)
 		if err != nil {
 			return nil, err
@@ -400,9 +421,13 @@ func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, fro
 	}
 
 	if ingStats != nil {
-		ingStats.TotalChunksMatched += int64(len(s.chunks))
+		ingStats.TotalChunksMatched += int64(len(iterators))
 	}
-	return iter.NewNonOverlappingIterator(iterators, ""), nil
+
+	if ordered {
+		return iter.NewNonOverlappingIterator(iterators, ""), nil
+	}
+	return iter.NewHeapIterator(ctx, iterators, direction), nil
 }
 
 // Returns an SampleIterator.
@@ -410,16 +435,36 @@ func (s *stream) SampleIterator(ctx context.Context, ingStats *stats.IngesterDat
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
+
+	var lastMax time.Time
+	ordered := true
+
 	for _, c := range s.chunks {
+		mint, maxt := c.chunk.Bounds()
+
+		// skip this chunk
+		if through.Before(mint) || maxt.Before(from) {
+			continue
+		}
+
+		if mint.Before(lastMax) {
+			ordered = false
+		}
+		lastMax = maxt
+
 		if itr := c.chunk.SampleIterator(ctx, from, through, extractor); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}
 
 	if ingStats != nil {
-		ingStats.TotalChunksMatched += int64(len(s.chunks))
+		ingStats.TotalChunksMatched += int64(len(iterators))
 	}
-	return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
+
+	if ordered {
+		return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
+	}
+	return iter.NewHeapSampleIterator(ctx, iterators), nil
 }
 
 func (s *stream) addTailer(t *tailer) {
