@@ -100,7 +100,7 @@ func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runt
 		streams:     map[string]*stream{},
 		streamsByFP: map[model.Fingerprint]*stream{},
 		buf:         make([]byte, 0, 1024),
-		index:       index.New(),
+		index:       index.NewWithShards(uint32(cfg.IndexShards)),
 		instanceID:  instanceID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),

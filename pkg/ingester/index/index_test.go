@@ -71,7 +71,7 @@ func BenchmarkHash(b *testing.B) {
 }
 
 func TestDeleteAddLoopkup(t *testing.T) {
-	index := New()
+	index := NewWithShards(DefaultIndexShards)
 	lbs := []cortexpb.LabelAdapter{
 		{Name: "foo", Value: "foo"},
 		{Name: "bar", Value: "bar"},

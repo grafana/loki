@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
-const indexShards = 32
+const DefaultIndexShards = 32
 
 var ErrInvalidShardQuery = errors.New("incompatible index shard query")
 
@@ -32,11 +32,6 @@ var ErrInvalidShardQuery = errors.New("incompatible index shard query")
 type InvertedIndex struct {
 	totalShards uint32
 	shards      []*indexShard
-}
-
-// New returns a new InvertedIndex.
-func New() *InvertedIndex {
-	return NewWithShards(indexShards)
 }
 
 func NewWithShards(totalShards uint32) *InvertedIndex {

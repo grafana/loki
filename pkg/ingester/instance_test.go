@@ -26,6 +26,7 @@ func defaultConfig() *Config {
 	cfg := Config{
 		BlockSize:     512,
 		ChunkEncoding: "gzip",
+		IndexShards:   32,
 	}
 	if err := cfg.Validate(); err != nil {
 		panic(errors.Wrap(err, "error building default test config"))
