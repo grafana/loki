@@ -984,7 +984,7 @@ wal:
   [replay_memory_ceiling: <string> | default = 4GB]
 
 # Shard factor used in the ingesters for the in process reverse index.
-# This MUST be evenly divisible by ALL schema shard factors or sharded queries to the ingester will fail.
+# This MUST be evenly divisible by ALL schema shard factors or Loki will not start.
 [index_shards: <int> | default = 32]
 ```
 
