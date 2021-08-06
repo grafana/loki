@@ -117,11 +117,12 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: loki
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004 -querier.scheduler-address=query-scheduler:9009"]
     depends_on:
       - consul
       - minio
       - query-frontend
+      - query-scheduler
     environment:
       - JAEGER_AGENT_HOST=jaeger
       - JAEGER_AGENT_PORT=6831
@@ -189,10 +190,11 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: loki
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18007 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-frontend -server.http-listen-port=8007 -server.grpc-listen-port=9007 -log.level=debug"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18007 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-frontend -server.http-listen-port=8007 -server.grpc-listen-port=9007 -frontend.scheduler-address=query-scheduler:9009 -log.level=debug"]
     depends_on:
       - consul
       - minio
+      - query-scheduler
     environment:
       - JAEGER_AGENT_HOST=jaeger
       - JAEGER_AGENT_PORT=6831
@@ -202,6 +204,29 @@ services:
     ports:
       - 8007:8007
       - 18007:18007
+    volumes:
+      - ./config:/loki/config
+
+  query-scheduler:
+    logging:
+      <<: *logging
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: loki
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18009 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-scheduler -server.http-listen-port=8009 -server.grpc-listen-port=9009 -log.level=debug"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=query-scheduler
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8009:8009
+      - 18009:18009
     volumes:
       - ./config:/loki/config
 
@@ -218,3 +243,11 @@ services:
       - 3000:3000
     volumes:
       - ./config/datasource.yaml:/etc/config/grafana/provisioning/datasources/ds.yaml
+
+  log-gen:
+    logging:
+      <<: *logging
+    image: mingrammer/flog
+    command: ["-f", "json", "-l", "-s", "1s"]
+    depends_on:
+      - distributor
