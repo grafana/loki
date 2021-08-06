@@ -2,14 +2,10 @@ version: '3.4'
 services:
   consul:
     logging: &logging
-<<<<<<< HEAD
-      driver: json-file
-=======
       driver: loki-compose
       options:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
->>>>>>> grafana/main
     image: consul
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
@@ -214,16 +210,11 @@ services:
   query-scheduler:
     logging:
       <<: *logging
-<<<<<<< HEAD
-    image: quay.io/cortexproject/cortex:master-a4bf103
-    command: ["-config.file=/cortex/config/cortex.yaml", "-log.level=debug", "-target=query-scheduler", "-server.http-listen-port=8009", "-server.grpc-listen-port=9009"]
-=======
     build:
       context:    .
       dockerfile: dev.dockerfile
     image: loki
     command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18009 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=query-scheduler -server.http-listen-port=8009 -server.grpc-listen-port=9009 -log.level=debug"]
->>>>>>> grafana/main
     depends_on:
       - consul
       - minio
@@ -235,14 +226,9 @@ services:
       - JAEGER_SAMPLER_PARAM=1
     ports:
       - 8009:8009
-<<<<<<< HEAD
-    volumes:
-      - ./config:/cortex/config
-=======
       - 18009:18009
     volumes:
       - ./config:/loki/config
->>>>>>> grafana/main
 
   grafana:
     logging:
@@ -260,17 +246,8 @@ services:
 
   log-gen:
     logging:
-<<<<<<< HEAD
-      driver: loki-compose
-      options:
-        loki-url: "http://localhost:8001/loki/api/v1/push"
-        loki-retries: "0"
-    image: mingrammer/flog
-    command: ["-f", "json", "-l"]
-=======
       <<: *logging
     image: mingrammer/flog
     command: ["-f", "json", "-l", "-s", "1s"]
->>>>>>> grafana/main
     depends_on:
       - distributor
