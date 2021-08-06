@@ -74,7 +74,7 @@ func validateShard(totalShards uint32, shard *astmapper.ShardAnnotation) error {
 		return nil
 	}
 	if int(totalShards)%shard.Of != 0 || uint32(shard.Of) > totalShards {
-		return fmt.Errorf("%w index_shard:%d query_shard:%d_%d", ErrInvalidShardQuery, totalShards, shard.Of, shard.Shard)
+		return fmt.Errorf("%w index_shard:%d query_shard:%v", ErrInvalidShardQuery, totalShards, shard)
 	}
 	return nil
 }
