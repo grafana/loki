@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -63,7 +64,8 @@ type line struct {
 }
 
 type stream struct {
-	cfg *Config
+	cfg    *Config
+	tenant string
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks   []chunkDesc
@@ -109,7 +111,7 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, tenant string, fp model.Fingerprint, labels labels.Labels, metrics *ingesterMetrics) *stream {
 	return &stream{
 		cfg:          cfg,
 		fp:           fp,
@@ -117,6 +119,7 @@ func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, metrics 
 		labelsString: labels.String(),
 		tailers:      map[uint32]*tailer{},
 		metrics:      metrics,
+		tenant:       tenant,
 	}
 }
 
@@ -193,6 +196,14 @@ func (s *stream) Push(
 	var storedEntries []logproto.Entry
 	failedEntriesWithError := []entryWithError{}
 
+	var outOfOrderSamples, outOfOrderBytes int
+	defer func() {
+		if outOfOrderSamples > 0 {
+			validation.DiscardedSamples.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderSamples))
+			validation.DiscardedBytes.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderBytes))
+		}
+	}()
+
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
 	for i := range entries {
@@ -232,8 +243,14 @@ func (s *stream) Push(
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		if s.cfg.UnorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
+			outOfOrderSamples++
+			outOfOrderBytes += len(entries[i].Line)
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
+			if err == chunkenc.ErrOutOfOrder {
+				outOfOrderSamples++
+				outOfOrderBytes += len(entries[i].Line)
+			}
 		} else {
 			storedEntries = append(storedEntries, entries[i])
 			s.lastLine.ts = entries[i].Timestamp
