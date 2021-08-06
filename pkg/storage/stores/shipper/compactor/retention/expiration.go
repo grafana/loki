@@ -1,10 +1,14 @@
 package retention
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -18,8 +22,8 @@ type ExpirationChecker interface {
 }
 
 type expirationChecker struct {
-	tenantsRetention           *TenantsRetention
-	earliestRetentionStartTime model.Time
+	tenantsRetention         *TenantsRetention
+	latestRetentionStartTime model.Time
 }
 
 type Limits interface {
@@ -43,14 +47,16 @@ func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []mod
 }
 
 func (e *expirationChecker) MarkPhaseStarted() {
-	e.earliestRetentionStartTime = model.Now().Add(-findHighestRetentionPeriod(e.tenantsRetention.limits))
+	smallestRetentionPeriod := findSmallestRetentionPeriod(e.tenantsRetention.limits)
+	e.latestRetentionStartTime = model.Now().Add(-smallestRetentionPeriod)
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("smallest retention period %v", smallestRetentionPeriod))
 }
 
 func (e *expirationChecker) MarkPhaseFailed()   {}
 func (e *expirationChecker) MarkPhaseFinished() {}
 
 func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
-	return interval.Start.Before(e.earliestRetentionStartTime)
+	return interval.Start.Before(e.latestRetentionStartTime)
 }
 
 type TenantsRetention struct {
@@ -97,26 +103,26 @@ Outer:
 	return globalRetention
 }
 
-func findHighestRetentionPeriod(limits Limits) time.Duration {
+func findSmallestRetentionPeriod(limits Limits) time.Duration {
 	defaultLimits := limits.DefaultLimits()
 
-	highestRetentionPeriod := defaultLimits.RetentionPeriod
+	smallestRetentionPeriod := defaultLimits.RetentionPeriod
 	for _, streamRetention := range defaultLimits.StreamRetention {
-		if streamRetention.Period > highestRetentionPeriod {
-			highestRetentionPeriod = streamRetention.Period
+		if streamRetention.Period < smallestRetentionPeriod {
+			smallestRetentionPeriod = streamRetention.Period
 		}
 	}
 
 	limits.ForEachTenantLimit(func(userID string, limit *validation.Limits) {
-		if limit.RetentionPeriod > highestRetentionPeriod {
-			highestRetentionPeriod = limit.RetentionPeriod
+		if limit.RetentionPeriod < smallestRetentionPeriod {
+			smallestRetentionPeriod = limit.RetentionPeriod
 		}
 		for _, streamRetention := range limit.StreamRetention {
-			if streamRetention.Period > highestRetentionPeriod {
-				highestRetentionPeriod = streamRetention.Period
+			if streamRetention.Period < smallestRetentionPeriod {
+				smallestRetentionPeriod = streamRetention.Period
 			}
 		}
 	})
 
-	return time.Duration(highestRetentionPeriod)
+	return time.Duration(smallestRetentionPeriod)
 }
