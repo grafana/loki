@@ -8,11 +8,10 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
-
-func schemaConfExample(t *testing.T) {}
 
 func TestCrossComponentValidation(t *testing.T) {
 	for _, tc := range []struct {
@@ -34,14 +33,14 @@ func TestCrossComponentValidation(t *testing.T) {
 								RowShards: 0,
 								Schema:    "v6",
 								From: chunk.DayTime{
-									model.Now().Add(-48 * time.Hour),
+									Time: model.Now().Add(-48 * time.Hour),
 								},
 							},
 							{
 								RowShards: 16,
 								Schema:    "v11",
 								From: chunk.DayTime{
-									model.Now(),
+									Time: model.Now(),
 								},
 							},
 						},
@@ -63,14 +62,14 @@ func TestCrossComponentValidation(t *testing.T) {
 								RowShards: 16,
 								Schema:    "v11",
 								From: chunk.DayTime{
-									model.Now().Add(-48 * time.Hour),
+									Time: model.Now().Add(-48 * time.Hour),
 								},
 							},
 							{
 								RowShards: 17,
 								Schema:    "v11",
 								From: chunk.DayTime{
-									model.Now(),
+									Time: model.Now(),
 								},
 							},
 						},
