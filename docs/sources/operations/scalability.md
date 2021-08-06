@@ -17,6 +17,8 @@ and scaling for resource usage.
 
 The Query frontend has an in-memory queue that can be moved out into a separate process similar to the [Cortex Query Scheduler](https://cortexmetrics.io/docs/operations/scaling-query-frontend/#query-scheduler). This allows running multiple query frontends.
 
-In order to run with the Query Scheduler, the frontend needs to be passed the scheduler's address via `-frontend.scheduler-address` and the querier processes needs to be started with `-querier.scheduler-address` set to the same address. It is not valid to set `-querier.frontend-address` and `-querier.frontend-address`. Both options can also be set via the [configuration file](../configuration).
+In order to run with the Query Scheduler, the frontend needs to be passed the scheduler's address via `-frontend.scheduler-address` and the querier processes needs to be started with `-querier.scheduler-address` set to the same address. Both options can also be defined via the [configuration file](../configuration).
+
+Please note, that it is not valid to start the querier with a configured frontend and scheduler address. 
 
 The query scheduler process itself can be started via the `-target=query-scheduler` option of the Loki Docker image. For instance, `docker run grafana/loki:latest -config.file=/cortex/config/cortex.yaml -target=query-scheduler -server.http-listen-port=8009 -server.grpc-listen-port=9009` starts the query scheduler listening on ports `8009` and `9009`.
