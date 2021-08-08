@@ -36,7 +36,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 ## Upgrading
 
-* [Upgrading Loki](https://grafana.com/docs/loki/latest/operations/upgrade/)
+* [Upgrading Loki](https://grafana.com/docs/loki/latest/upgrading/)
 
 ### Documentation
 
