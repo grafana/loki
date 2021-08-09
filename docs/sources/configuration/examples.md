@@ -216,7 +216,7 @@ schema_config:
     schema: v11
     index:
       prefix: index_
-      period: 168h
+      period: 24h
 
 storage_config:
  boltdb_shipper:
