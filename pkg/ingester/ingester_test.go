@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -462,25 +463,37 @@ func TestValidate(t *testing.T) {
 			in: Config{
 				MaxChunkAge:   time.Minute,
 				ChunkEncoding: chunkenc.EncGZIP.String(),
+				IndexShards:   index.DefaultIndexShards,
 			},
 			expected: Config{
 				MaxChunkAge:    time.Minute,
 				ChunkEncoding:  chunkenc.EncGZIP.String(),
 				parsedEncoding: chunkenc.EncGZIP,
+				IndexShards:    index.DefaultIndexShards,
 			},
 		},
 		{
 			in: Config{
 				ChunkEncoding: chunkenc.EncSnappy.String(),
+				IndexShards:   index.DefaultIndexShards,
 			},
 			expected: Config{
 				ChunkEncoding:  chunkenc.EncSnappy.String(),
 				parsedEncoding: chunkenc.EncSnappy,
+				IndexShards:    index.DefaultIndexShards,
 			},
 		},
 		{
 			in: Config{
+				IndexShards:   index.DefaultIndexShards,
 				ChunkEncoding: "bad-enc",
+			},
+			err: true,
+		},
+		{
+			in: Config{
+				MaxChunkAge:   time.Minute,
+				ChunkEncoding: chunkenc.EncGZIP.String(),
 			},
 			err: true,
 		},
