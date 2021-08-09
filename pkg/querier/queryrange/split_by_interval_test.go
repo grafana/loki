@@ -44,14 +44,14 @@ func Test_splitQuery(t *testing.T) {
 		{
 			"exactly 1 interval",
 			&LokiRequest{
-				StartTs: time.Date(2019, 12, 9, 12, 1, 0, 0, time.UTC),
-				EndTs:   time.Date(2019, 12, 9, 13, 1, 0, 0, time.UTC),
+				StartTs: time.Date(2019, 12, 9, 12, 0, 0, 0, time.UTC),
+				EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 0, time.UTC),
 			},
 			time.Hour,
 			[]queryrange.Request{
 				&LokiRequest{
-					StartTs: time.Date(2019, 12, 9, 12, 1, 0, 0, time.UTC),
-					EndTs:   time.Date(2019, 12, 9, 13, 1, 0, 0, time.UTC),
+					StartTs: time.Date(2019, 12, 9, 12, 0, 0, 0, time.UTC),
+					EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 0, time.UTC),
 				},
 			},
 		},
@@ -65,10 +65,10 @@ func Test_splitQuery(t *testing.T) {
 			[]queryrange.Request{
 				&LokiRequest{
 					StartTs: time.Date(2019, 12, 9, 12, 0, 0, 1, time.UTC),
-					EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 1, time.UTC),
+					EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 0, time.UTC),
 				},
 				&LokiRequest{
-					StartTs: time.Date(2019, 12, 9, 13, 0, 0, 1, time.UTC),
+					StartTs: time.Date(2019, 12, 9, 13, 0, 0, 0, time.UTC),
 					EndTs:   time.Date(2019, 12, 9, 13, 0, 0, 2, time.UTC),
 				},
 			},
@@ -634,17 +634,17 @@ func Test_splitByInterval_Do_aligned(t *testing.T) {
 
 func Test_alignedIntervals(t *testing.T) {
 	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
-	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
-		return &LokiResponse{}, nil
-	})
+	// next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+	// 	return &LokiResponse{}, nil
+	// })
 
-	split := &splitByInterval{
-		next:     next,
-		limits:   l,
-		merger:   LokiCodec,
-		metrics:  nilMetrics,
-		splitter: splitByTime,
-	}
+	// split := &splitByInterval{
+	// 	next:     next,
+	// 	limits:   l,
+	// 	merger:   LokiCodec,
+	// 	metrics:  nilMetrics,
+	// 	splitter: splitByTime,
+	// }
 
 	tests := []struct {
 		name     string
@@ -806,7 +806,7 @@ func Test_alignedIntervals(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.response, split.alignedIntervals(tt.request, l.QuerySplitDuration("1")))
+			assert.Equal(t, tt.response, splitByTime(tt.request, l.QuerySplitDuration("1")))
 		})
 	}
 }

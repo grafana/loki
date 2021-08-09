@@ -169,7 +169,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		return h.next.Do(ctx, r)
 	}
 
-	intervals := h.alignedIntervals(r, interval)
+	intervals := h.splitter(r, interval)
 	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
@@ -212,39 +212,23 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 	return h.merger.MergeResponse(resps...)
 }
 
-func (h *splitByInterval) alignedIntervals(req queryrange.Request, interval time.Duration) []queryrange.Request {
-	// Align the queries time range to multiples of the interval to allow for better caching.
-	ims := interval.Milliseconds()
-	ogStart := req.GetStart()
-	ogEnd := req.GetEnd()
-	start := ogStart - (ogStart % ims)
-	end := ogEnd
-	if ogEnd%ims != 0 {
-		end = ogEnd + (ims - (ogEnd % ims))
-	}
-	req = req.WithStartEnd(start, end)
-
-	intervals := h.splitter(req, interval)
-	for i, interval := range intervals {
-		// Reset the start and end for the first/last interval to the original
-		// times so that we don't receive data we didn't ask for.
-		if interval.GetStart() == start {
-			intervals[i] = interval.WithStartEnd(ogStart, interval.GetEnd())
-		}
-		if interval.GetEnd() == end {
-			// When overwriting intervals[i] we have to use intervals[i].GetTime instead
-			// of interval.GetTime to get the potentially overwritten start time.
-			intervals[i] = interval.WithStartEnd(intervals[i].GetStart(), ogEnd)
-		}
-	}
-	return intervals
-}
-
 func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Request {
 	var reqs []queryrange.Request
 
 	switch r := req.(type) {
 	case *LokiRequest:
+		// Align the queries time range to multiples of the interval to allow for better caching.
+		ins := interval.Nanoseconds()
+		ogStart := r.StartTs
+		ogEnd := r.EndTs
+		start := (ogStart.UnixNano() - (ogStart.UnixNano() % ins)) / int64(time.Millisecond)
+		end := ogEnd.UnixNano()
+		if ogEnd.UnixNano()%ins != 0 {
+			end = ogEnd.UnixNano() + (ins - (ogEnd.UnixNano() % ins))
+
+		}
+		end = end / int64(time.Millisecond)
+		r = r.WithStartEnd(start, end).(*LokiRequest)
 		forInterval(interval, r.StartTs, r.EndTs, func(start, end time.Time) {
 			reqs = append(reqs, &LokiRequest{
 				Query:     r.Query,
@@ -256,6 +240,26 @@ func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Re
 				EndTs:     end,
 			})
 		})
+
+		for i, interval := range reqs {
+			// Reset the start and end for the first/last interval to the original
+			// times so that we don't receive data we didn't ask for.
+			if interval.GetStart() == start {
+				r, ok := reqs[i].(*LokiRequest)
+				if ok {
+					r.StartTs = ogStart
+				}
+				reqs[i] = r
+
+			}
+			if interval.GetEnd() == end {
+				r, ok := reqs[i].(*LokiRequest)
+				if ok {
+					r.EndTs = ogEnd
+				}
+				reqs[i] = r
+			}
+		}
 	case *LokiSeriesRequest:
 		forInterval(interval, r.StartTs, r.EndTs, func(start, end time.Time) {
 			reqs = append(reqs, &LokiSeriesRequest{
