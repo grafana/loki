@@ -3,6 +3,7 @@ package writer
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -13,26 +14,32 @@ const (
 )
 
 type Writer struct {
-	w         io.Writer
-	sent      chan time.Time
-	interval  time.Duration
-	size      int
-	prevTsLen int
-	pad       string
-	quit      chan struct{}
-	done      chan struct{}
+	w                    io.Writer
+	sent                 chan time.Time
+	interval             time.Duration
+	outOfOrderPercentage int
+	outOfOrderMin        int
+	outOfOrderMax        int
+	size                 int
+	prevTsLen            int
+	pad                  string
+	quit                 chan struct{}
+	done                 chan struct{}
 }
 
-func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval time.Duration, entrySize int) *Writer {
+func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval time.Duration, outOfOrderPercentage, outOfOrderMin, outOfOrderMax, entrySize int) *Writer {
 
 	w := &Writer{
-		w:         writer,
-		sent:      sentChan,
-		interval:  entryInterval,
-		size:      entrySize,
-		prevTsLen: 0,
-		quit:      make(chan struct{}),
-		done:      make(chan struct{}),
+		w:                    writer,
+		sent:                 sentChan,
+		interval:             entryInterval,
+		outOfOrderPercentage: outOfOrderPercentage,
+		outOfOrderMin:        outOfOrderMin,
+		outOfOrderMax:        outOfOrderMax,
+		size:                 entrySize,
+		prevTsLen:            0,
+		quit:                 make(chan struct{}),
+		done:                 make(chan struct{}),
 	}
 
 	go w.run()
@@ -58,6 +65,10 @@ func (w *Writer) run() {
 		select {
 		case <-t.C:
 			t := time.Now()
+			if i := rand.Intn(99) + 1; i <= w.outOfOrderPercentage {
+				n := rand.Intn(w.outOfOrderMax-w.outOfOrderMin) + w.outOfOrderMin
+				t = t.Add(-time.Duration(n) * time.Second)
+			}
 			ts := strconv.FormatInt(t.UnixNano(), 10)
 			tsLen := len(ts)
 
