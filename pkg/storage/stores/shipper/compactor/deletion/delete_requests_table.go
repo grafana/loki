@@ -17,12 +17,13 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 type deleteRequestsTable struct {
-	objectClient chunk.ObjectClient
-	dbPath       string
+	indexStorageClient storage.Client
+	dbPath             string
 
 	boltdbIndexClient *local.BoltIndexClient
 	db                *bbolt.DB
@@ -30,9 +31,9 @@ type deleteRequestsTable struct {
 	wg                sync.WaitGroup
 }
 
-const objectPathInStorage = DeleteRequestsTableName + "/" + DeleteRequestsTableName + ".gz"
+const deleteRequestsIndexFileName = DeleteRequestsTableName + ".gz"
 
-func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectClient) (chunk.IndexClient, error) {
+func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (chunk.IndexClient, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, DeleteRequestsTableName)
 	boltdbIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: filepath.Dir(dbPath)})
 	if err != nil {
@@ -40,10 +41,10 @@ func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectCl
 	}
 
 	table := &deleteRequestsTable{
-		objectClient:      objectClient,
-		dbPath:            dbPath,
-		boltdbIndexClient: boltdbIndexClient,
-		done:              make(chan struct{}),
+		indexStorageClient: indexStorageClient,
+		dbPath:             dbPath,
+		boltdbIndexClient:  boltdbIndexClient,
+		done:               make(chan struct{}),
 	}
 
 	err = table.init()
@@ -64,8 +65,8 @@ func (t *deleteRequestsTable) init() error {
 
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
-		err = shipper_util.GetFileFromStorage(context.Background(), t.objectClient, objectPathInStorage, t.dbPath, true)
-		if err != nil && !t.objectClient.IsObjectNotFoundErr(err) {
+		err = shipper_util.GetFileFromStorage(context.Background(), t.indexStorageClient, DeleteRequestsTableName, deleteRequestsIndexFileName, t.dbPath, true)
+		if err != nil && !t.indexStorageClient.IsObjectNotFoundErr(err) {
 			return err
 		}
 	}
@@ -139,7 +140,7 @@ func (t *deleteRequestsTable) uploadFile() error {
 		return err
 	}
 
-	return t.objectClient.PutObject(context.Background(), objectPathInStorage, f)
+	return t.indexStorageClient.PutFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName, f)
 }
 
 func (t *deleteRequestsTable) Stop() {

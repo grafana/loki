@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -28,7 +28,6 @@ import (
 const (
 	downloadTimeout     = 5 * time.Minute
 	downloadParallelism = 50
-	delimiter           = "/"
 )
 
 var bucketName = []byte("index")
@@ -38,8 +37,9 @@ type BoltDBIndexClient interface {
 }
 
 type StorageClient interface {
-	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
-	List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error)
+	ListTables(ctx context.Context) ([]string, error)
+	ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, error)
+	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
 	IsObjectNotFoundErr(err error) bool
 }
 
@@ -196,14 +196,12 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 	startTime := time.Now()
 	totalFilesSize := int64(0)
 
-	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
-	// This is due to the object stores not having a concept of directories.
-	objects, _, err := t.storageClient.List(ctx, t.name+delimiter, delimiter)
+	files, err := t.storageClient.ListFiles(ctx, t.name)
 	if err != nil {
 		return
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, objects))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, files))
 
 	folderPath, err := t.folderPathForTable(true)
 	if err != nil {
@@ -211,23 +209,16 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 	}
 
 	// download the dbs parallelly
-	err = t.doParallelDownload(ctx, objects, folderPath)
+	err = t.doParallelDownload(ctx, files, folderPath)
 	if err != nil {
 		return err
 	}
 
-	level.Debug(spanLogger).Log("total-files-downloaded", len(objects))
-
-	objects = shipper_util.RemoveDirectories(objects)
+	level.Debug(spanLogger).Log("total-files-downloaded", len(files))
 
 	// open all the downloaded dbs
-	for _, object := range objects {
-		dbName, err := getDBNameFromObjectKey(object.Key)
-		if err != nil {
-			return err
-		}
-
-		filePath := path.Join(folderPath, dbName)
+	for _, file := range files {
+		filePath := path.Join(folderPath, file.Name)
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping opening of non-existent file %s, possibly not downloaded due to it being removed during compaction.", filePath))
 			continue
@@ -245,7 +236,7 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 
 		totalFilesSize += stat.Size()
 
-		t.dbs[dbName] = boltdb
+		t.dbs[file.Name] = boltdb
 	}
 
 	duration := time.Since(startTime).Seconds()
@@ -402,37 +393,28 @@ func (t *Table) Sync(ctx context.Context) error {
 }
 
 // checkStorageForUpdates compares files from cache with storage and builds the list of files to be downloaded from storage and to be deleted from cache
-func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.StorageObject, toDelete []string, err error) {
+func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []storage.IndexFile, toDelete []string, err error) {
 	// listing tables from store
-	var objects []chunk.StorageObject
+	var files []storage.IndexFile
 
-	// The forward slash here needs to stay because we are trying to list contents of a directory without it we will get the name of the same directory back with hosted object stores.
-	// This is due to the object stores not having a concept of directories.
-	objects, _, err = t.storageClient.List(ctx, t.name+delimiter, delimiter)
+	files, err = t.storageClient.ListFiles(ctx, t.name)
 	if err != nil {
 		return
 	}
 
-	listedDBs := make(map[string]struct{}, len(objects))
+	listedDBs := make(map[string]struct{}, len(files))
 
 	t.dbsMtx.RLock()
 	defer t.dbsMtx.RUnlock()
 
-	objects = shipper_util.RemoveDirectories(objects)
-
-	for _, object := range objects {
-
-		dbName, err := getDBNameFromObjectKey(object.Key)
-		if err != nil {
-			return nil, nil, err
-		}
-		listedDBs[dbName] = struct{}{}
+	for _, file := range files {
+		listedDBs[file.Name] = struct{}{}
 
 		// Checking whether file was already downloaded, if not, download it.
 		// We do not ever upload files in the object store with the same name but different contents so we do not consider downloading modified files again.
-		_, ok := t.dbs[dbName]
+		_, ok := t.dbs[file.Name]
 		if !ok {
-			toDownload = append(toDownload, object)
+			toDownload = append(toDownload, file)
 		}
 	}
 
@@ -446,20 +428,16 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []chunk.
 }
 
 // downloadFile first downloads file to a temp location so that we can close the existing db(if already exists), replace it with new one and then reopen it.
-func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObject) error {
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading object from storage with key %s", storageObject.Key))
+func (t *Table) downloadFile(ctx context.Context, file storage.IndexFile) error {
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading object from storage with key %s", file.Name))
 
-	dbName, err := getDBNameFromObjectKey(storageObject.Key)
-	if err != nil {
-		return err
-	}
 	folderPath, _ := t.folderPathForTable(false)
-	filePath := path.Join(folderPath, dbName)
+	filePath := path.Join(folderPath, file.Name)
 
-	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, filePath, true)
+	err := shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
 	if err != nil {
 		if t.storageClient.IsObjectNotFoundErr(err) {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", storageObject.Key))
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", file.Name))
 			return nil
 		}
 		return err
@@ -473,7 +451,7 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 		return err
 	}
 
-	t.dbs[dbName] = boltdb
+	t.dbs[file.Name] = boltdb
 
 	return nil
 }
@@ -491,54 +469,31 @@ func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
 	return folderPath, nil
 }
 
-func getDBNameFromObjectKey(objectKey string) (string, error) {
-	ss := strings.Split(objectKey, delimiter)
-
-	if len(ss) != 2 {
-		return "", fmt.Errorf("invalid object key: %v", objectKey)
-	}
-	if ss[1] == "" {
-		return "", fmt.Errorf("empty db name, object key: %v", objectKey)
-	}
-	return ss[1], nil
-}
-
 // doParallelDownload downloads objects(dbs) parallelly. It is upto the caller to open the dbs after the download finishes successfully.
-func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageObject, folderPathForTable string) error {
+func (t *Table) doParallelDownload(ctx context.Context, files []storage.IndexFile, folderPathForTable string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	queue := make(chan chunk.StorageObject)
-	n := util_math.Min(len(objects), downloadParallelism)
+	queue := make(chan storage.IndexFile)
+	n := util_math.Min(len(files), downloadParallelism)
 	incomingErrors := make(chan error)
 
-	// Run n parallel goroutines fetching objects to download from the queue
+	// Run n parallel goroutines fetching files to download from the queue
 	for i := 0; i < n; i++ {
 		go func() {
 			// when there is an error, break the loop and send the error to the channel to stop the operation.
 			var err error
 			for {
-				object, ok := <-queue
+				file, ok := <-queue
 				if !ok {
 					break
 				}
 
-				// The s3 client can also return the directory itself in the ListObjects.
-				if shipper_util.IsDirectory(object.Key) {
-					continue
-				}
-
-				var dbName string
-				dbName, err = getDBNameFromObjectKey(object.Key)
-				if err != nil {
-					break
-				}
-
-				filePath := path.Join(folderPathForTable, dbName)
-				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath, true)
+				filePath := path.Join(folderPathForTable, file.Name)
+				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
 				if err != nil {
 					if t.storageClient.IsObjectNotFoundErr(err) {
-						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", object.Key))
+						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", file.Name))
 						err = nil
 					} else {
 						break
@@ -550,11 +505,11 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 		}()
 	}
 
-	// Send all the objects to download into the queue
+	// Send all the files to download into the queue
 	go func() {
-		for _, object := range objects {
+		for _, file := range files {
 			select {
-			case queue <- object:
+			case queue <- file:
 			case <-ctx.Done():
 				break
 			}

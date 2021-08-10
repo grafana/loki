@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -32,18 +33,18 @@ func newStorageClientWithFakeObjectsInList(storageClient StorageClient) StorageC
 	return storageClientWithFakeObjectsInList{storageClient}
 }
 
-func (o storageClientWithFakeObjectsInList) List(ctx context.Context, prefix string, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
-	objects, commonPrefixes, err := o.StorageClient.List(ctx, prefix, delimiter)
+func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, error) {
+	files, err := o.StorageClient.ListFiles(ctx, tableName)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	objects = append(objects, chunk.StorageObject{
-		Key:        fmt.Sprintf(prefix, "fake-object"),
+	files = append(files, storage.IndexFile{
+		Name:       "fake-object",
 		ModifiedAt: time.Now(),
 	})
 
-	return objects, commonPrefixes, nil
+	return files, nil
 }
 
 type stopFunc func()
@@ -58,7 +59,7 @@ func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, Storag
 	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 	require.NoError(t, err)
 
-	return boltDBIndexClient, fsObjectClient
+	return boltDBIndexClient, storage.NewIndexStorageClient(fsObjectClient, "")
 }
 
 func buildTestTable(t *testing.T, tableName, path string) (*Table, *local.BoltIndexClient, stopFunc) {

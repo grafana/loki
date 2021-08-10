@@ -21,9 +21,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
 const (
@@ -124,7 +124,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		return err
 	}
 
-	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, s.cfg.SharedStoreKeyPrefix)
+	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
 		uploader, err := s.getUploaderName()
@@ -138,7 +138,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, registerer)
 		if err != nil {
 			return err
 		}
@@ -153,7 +153,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			CacheTTL:          s.cfg.CacheTTL,
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, registerer)
 		if err != nil {
 			return err
 		}
