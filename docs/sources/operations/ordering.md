@@ -1,8 +1,8 @@
 ---
-title: Out of Order Writes
+title: Out of order writes
 weight: 60
 ---
-# Enabling Out of Order writes.
+# Out of order writes
 
 Enabling out of order writes involves two configuration options in Loki:
 
