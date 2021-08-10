@@ -53,6 +53,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				labels.Labels{
 					{Name: "foo", Value: "bar"},
 				},
+				true,
 				NilMetrics,
 			)
 
@@ -92,6 +93,7 @@ func TestPushDeduplication(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NilMetrics,
 	)
 
@@ -115,6 +117,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NilMetrics,
 	)
 
@@ -203,6 +206,7 @@ func TestUnorderedPush(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NilMetrics,
 	)
 
@@ -300,7 +304,7 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "job", Value: "loki-dev/ingester"},
 		labels.Label{Name: "container", Value: "ingester"},
 	}
-	s := newStream(&Config{}, "fake", model.Fingerprint(0), ls, NilMetrics)
+	s := newStream(&Config{}, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 
