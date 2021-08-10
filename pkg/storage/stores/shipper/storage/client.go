@@ -32,7 +32,7 @@ type IndexFile struct {
 	ModifiedAt time.Time
 }
 
-func NewIndexStorageClient(objectClient chunk.ObjectClient, storagePrefix string) *indexStorageClient {
+func NewIndexStorageClient(objectClient chunk.ObjectClient, storagePrefix string) Client {
 	return &indexStorageClient{objectClient: objectClient, storagePrefix: storagePrefix}
 }
 

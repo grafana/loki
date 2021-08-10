@@ -458,7 +458,7 @@ func (lt *Table) buildFileName(dbName string) string {
 
 	// if the file is a migrated one then don't add its name to the object key otherwise we would re-upload them again here with a different name.
 	if lt.name == dbName {
-		fileName = fmt.Sprintf("%s", lt.uploader)
+		fileName = lt.uploader
 	}
 
 	return fmt.Sprintf("%s.gz", fileName)

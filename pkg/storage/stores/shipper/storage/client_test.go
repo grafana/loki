@@ -75,7 +75,7 @@ func TestIndexStorageClient(t *testing.T) {
 	verifyFiles()
 
 	// add a file and verify them again
-	indexStorageClient.PutFile(context.Background(), "table2", "e", bytes.NewReader([]byte("table2"+"e")))
+	require.NoError(t, indexStorageClient.PutFile(context.Background(), "table2", "e", bytes.NewReader([]byte("table2"+"e"))))
 	tablesToSetup["table2"] = append(tablesToSetup["table2"], "e")
 	verifyFiles()
 }
