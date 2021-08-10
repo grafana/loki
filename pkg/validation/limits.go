@@ -44,7 +44,7 @@ type Limits struct {
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int  `yaml:"max_streams_per_user" json:"max_streams_per_user"`
 	MaxGlobalStreamsPerUser int  `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
-	UnorderedWrites         bool `yaml:"unordered_writes"`
+	UnorderedWrites         bool `yaml:"unordered_writes" json:"unordered_writes"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery          int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
