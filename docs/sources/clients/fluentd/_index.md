@@ -7,7 +7,7 @@ Loki has a [Fluentd](https://www.fluentd.org/) output plugin called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
 instance or [Grafana Cloud](https://grafana.com/products/cloud/).
 
-The code source of the plugin is located in our [public repository](https://github.com/grafana/loki/tree/master/cmd/fluentd).
+The code source of the plugin is located in our [public repository](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd).
 
 ## Installation
 
@@ -21,7 +21,7 @@ fluent-gem install fluent-plugin-grafana-loki
 
 ## Docker Image
 
-There is a Docker image `grafana/fluent-plugin-loki:master` which contains [default configuration files](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-loki/docker/conf). By default, fluentd containers use the configurations but you can also specify your `fluentd.conf` with `FLUENTD_CONF` environment variable.
+There is a Docker image `grafana/fluent-plugin-loki:master` which contains [default configuration files](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd/docker/conf). By default, fluentd containers use the configurations but you can also specify your `fluentd.conf` with `FLUENTD_CONF` environment variable.
 
 This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki's endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
 
@@ -180,7 +180,7 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 ### url
 
 The url of the Loki server to send logs to.  When sending data the publish path (`../api/loki/v1/push`) will automatically be appended.
-By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki][https://grafana.com/products/cloud/] service.
+By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](https://grafana.com/products/cloud/) service.
 
 #### Proxy Support
 

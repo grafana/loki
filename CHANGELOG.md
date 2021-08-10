@@ -1,6 +1,6 @@
 ## Main
 
-## 2.3.0 (2021/08/06)
+# 2.3.0 (2021/08/06)
 
 Release notes for 2.3.0 can be found on the [release notes page](https://grafana.com/docs/loki/latest/release-notes/v2-3/)
 

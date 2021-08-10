@@ -982,6 +982,10 @@ wal:
   # Maximum memory size the WAL may use during replay. After hitting this it will flush data to storage before continuing.
   # A unit suffix (KB, MB, GB) may be applied.
   [replay_memory_ceiling: <string> | default = 4GB]
+
+# Shard factor used in the ingesters for the in process reverse index.
+# This MUST be evenly divisible by ALL schema shard factors or Loki will not start.
+[index_shards: <int> | default = 32]
 ```
 
 ## consul_config
