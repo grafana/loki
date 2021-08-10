@@ -32,15 +32,22 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 * [Installing Loki](https://grafana.com/docs/loki/latest/installation/)
 * [Installing Promtail](https://grafana.com/docs/loki/latest/clients/promtail/installation/)
-* [Getting Started Guide](https://grafana.com/docs/loki/latest/getting-started/)
+* [Getting Started](https://grafana.com/docs/loki/latest/getting-started/)
 
 ## Upgrading
 
-* [Upgrading Loki](https://grafana.com/docs/loki/latest/operations/upgrade/)
+* [Upgrading Loki](https://grafana.com/docs/loki/latest/upgrading/)
 
-### Documentation
+## Documentation
 
-* [master](https://grafana.com/docs/loki/latest/)
+* [Latest release](https://grafana.com/docs/loki/latest/)
+* [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch
+
+### Documentation of old Loki versions
+
+Documentation for these old versions is not hosted;
+this old documentation is in the release branches within this Loki repository.
+
 * [v1.5.0](https://github.com/grafana/loki/tree/v1.5.0/docs/README.md)
 * [v1.4.1](https://github.com/grafana/loki/tree/v1.4.1/docs/README.md)
 * [v1.4.0](https://github.com/grafana/loki/tree/v1.4.0/docs/README.md)
@@ -51,16 +58,16 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 Commonly used sections:
 
-- [API documentation](https://grafana.com/docs/loki/latest/api/) for alternative ways of getting logs into Loki.
+- [API documentation](https://grafana.com/docs/loki/latest/api/) for getting logs into Loki.
 - [Labels](https://grafana.com/docs/loki/latest/getting-started/labels/)
-- [Operations](https://grafana.com/docs/loki/latest/operations/) for important aspects of running Loki.
-- [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which can tail your log files and push them to Loki.
-- [Pipelines](https://grafana.com/docs/loki/latest/clients/promtail/pipelines/) for detailed log processing pipeline documentation
-- [Docker Logging Driver](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a docker plugin to send logs directly to Loki from Docker containers.
-- [LogCLI](https://grafana.com/docs/loki/latest/getting-started/logcli/) on how to query your logs without Grafana.
-- [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) for monitoring your Loki installation for missing logs.
-- [Troubleshooting](https://grafana.com/docs/loki/latest/getting-started/troubleshooting/) for help around frequent error messages.
-- [Loki in Grafana](https://grafana.com/docs/loki/latest/getting-started/grafana/) for how to set up a Loki datasource in Grafana and query your logs.
+- [Operations](https://grafana.com/docs/loki/latest/operations/)
+- [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which tails log files and pushes them to Loki.
+- [Pipelines](https://grafana.com/docs/loki/latest/clients/promtail/pipelines/) details the log processing pipeline.
+- [Docker Driver Client](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a Docker plugin to send logs directly to Loki from Docker containers.
+- [LogCLI](https://grafana.com/docs/loki/latest/getting-started/logcli/) provides a command-line interface for querying logs.
+- [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) monitors your Loki installation for missing logs.
+- [Troubleshooting](https://grafana.com/docs/loki/latest/getting-started/troubleshooting/) presents help dealing with error messages.
+- [Loki in Grafana](https://grafana.com/docs/loki/latest/getting-started/grafana/) describes how to set up a Loki datasource in Grafana.
 
 ## Getting Help
 

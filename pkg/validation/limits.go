@@ -56,6 +56,7 @@ type Limits struct {
 	MaxConcurrentTailRequests  int            `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
 	MaxEntriesLimitPerQuery    int            `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -123,6 +124,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+
+	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 
 	_ = l.RulerEvaluationDelay.Set("0s")
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
@@ -294,6 +297,11 @@ func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int { return 0 }
 // MaxQueryLength returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
+}
+
+// MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
+func (o *Overrides) MaxQueriersPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxQueriersPerTenant
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the

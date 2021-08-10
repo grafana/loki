@@ -27,10 +27,10 @@ frontend:
     log_queries_longer_than: 5s
     max_outstanding_per_tenant: 512
 frontend_worker:
-    frontend_address: query-frontend:9007
     grpc_client_config:
         max_send_msg_size: 1.048576e+08
     parallelism: 6
+    scheduler_address: query-scheduler:9009
 ingester:
     chunk_block_size: 262144
     chunk_encoding: snappy

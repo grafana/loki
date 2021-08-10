@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 
-	frontend "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/felixge/fgprof"
@@ -25,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -73,6 +73,7 @@ type Config struct {
 	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 	Tracing          tracing.Config              `yaml:"tracing"`
 	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
+	QueryScheduler   scheduler.Config            `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -104,6 +105,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
+	c.QueryScheduler.RegisterFlags(f)
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -135,6 +137,9 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
+	if err := c.Worker.Validate(util_log.Logger); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid boltdb-shipper config")
 	}
@@ -148,11 +153,27 @@ func (c *Config) Validate() error {
 	if c.ChunkStoreConfig.MaxLookBackPeriod > 0 {
 		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
 	}
+
+	for i, sc := range c.SchemaConfig.Configs {
+		if sc.RowShards > 0 && c.Ingester.IndexShards%int(sc.RowShards) > 0 {
+			return fmt.Errorf(
+				"incompatible ingester index shards (%d) and period config row shard factor (%d) for period config at index (%d). The ingester factor must be evenly divisible by all period config factors",
+				c.Ingester.IndexShards,
+				sc.RowShards,
+				i,
+			)
+		}
+	}
 	return nil
 }
 
 func (c *Config) isModuleEnabled(m string) bool {
 	return util.StringsContain(c.Target, m)
+}
+
+type Frontend interface {
+	services.Service
+	CheckReady(_ context.Context) error
 }
 
 // Loki is the root datastructure for Loki.
@@ -173,7 +194,7 @@ type Loki struct {
 	ingesterQuerier          *querier.IngesterQuerier
 	Store                    storage.Store
 	tableManager             *chunk.TableManager
-	frontend                 *frontend.Frontend
+	frontend                 Frontend
 	ruler                    *cortex_ruler.Ruler
 	RulerStorage             rulestore.RuleStore
 	rulerAPI                 *cortex_ruler.API
@@ -383,6 +404,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
+	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -396,6 +418,7 @@ func (t *Loki) setupModuleManager() error {
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware},
+		QueryScheduler:           {Server, Overrides},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:             {Server},
 		Compactor:                {Server, Overrides},

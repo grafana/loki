@@ -17,13 +17,14 @@ multiline:
   firstline: <string>
 
   # The maximum wait time will be parsed as a Go duration: https://golang.org/pkg/time/#ParseDuration.
-  # If no new logs arrive within this maximum wait time the current block will be sent on.
-  # This is useful if the observed application dies with e.g. an exception. No new logs will arrive and the exception
+  # If no new logs arrive within this maximum wait time, the current block will be sent on.
+  # This is useful if the observed application dies with, for example, an exception.
+  # No new logs will arrive and the exception
   # block is sent *after* the maximum wait time expires.
   # It defaults to 3s.
   max_wait_time: <duration>
 
-  # Maximum number of lines a block can have. If the block has more lines a new block is started.
+  # Maximum number of lines a block can have. If the block has more lines, a new block is started.
   # The default is 128 lines.
   max_lines: <integer>
 ```
@@ -32,7 +33,7 @@ multiline:
 
 ### Predefined Log Format
 
-Let's say we have the following logs from a very simple [flask](https://flask.palletsprojects.com) service.
+Consider these logs from a simple [flask](https://flask.palletsprojects.com) service.
 
 ```
 [2020-12-03 11:36:20] "GET /hello HTTP/1.1" 200 -
@@ -58,7 +59,7 @@ Exception: Sorry, this route always breaks
 [2020-12-03 11:36:27] "GET /hello HTTP/1.1" 200 -
 ```
 
-We would like to collapse all lines of the traceback into one multiline block. In this example, all blocks start with a timestamp in brackets. Thus we configure a `multiline` stage with the `firstline` regular expression `^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]`. This will match the start of the traceback but not the following lines until `Exception: Sorry, this route always breaks`. These will be part of a multiline block and one log entry in Loki.
+We would like to collapse all lines of the traceback into one multiline block. In this example, all blocks start with a timestamp in brackets. Thus, we configure a `multiline` stage with the `firstline` regular expression `^\[\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}\]`. This will match the start of the traceback, but not the following lines until `Exception: Sorry, this route always breaks`. These will be part of a multiline block and one log entry in Loki.
 
 ```yaml
 - multiline:
@@ -72,7 +73,7 @@ We would like to collapse all lines of the traceback into one multiline block. I
 
 ### Custom Log Format
 
-The previous example assumed you had no control over the log format. Thus it required a more ellaborrate regular expression to match the first line. However, if you can control the log format of the system under observation we can simplify the first line matching.
+The example assumed you had no control over the log format. Thus, it required a more elaborate regular expression to match the first line. If you can control the log format of the system under observation, we can simplify the first line matching.
 
 This time we are looking at the logs of a simple [Akka HTTP service](https://doc.akka.io/docs/akka-http/current/introduction.html).
 
@@ -119,7 +120,8 @@ There is nothing special for a [Logback](http://logback.qos.ch/) configuration e
 
 ```yaml
 multiline:
-  # Identify zero-width space as first line of a multiline block. Note the string should be in single quotes.
+  # Identify zero-width space as first line of a multiline block.
+  # Note the string should be in single quotes.
   firstline: '^\x{200B}\['
 
   max_wait_time: 3s

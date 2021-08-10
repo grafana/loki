@@ -86,7 +86,7 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	}
 }
 
-func TestFindEarliestRetentionStartTime(t *testing.T) {
+func TestFindLatestRetentionStartTime(t *testing.T) {
 	const dayDuration = 24 * time.Hour
 	for _, tc := range []struct {
 		name                               string
@@ -103,25 +103,7 @@ func TestFindEarliestRetentionStartTime(t *testing.T) {
 			expectedEarliestRetentionStartTime: 7 * dayDuration,
 		},
 		{
-			name: "default retention period highest",
-			limit: fakeLimits{
-				defaultLimit: retentionLimit{
-					retentionPeriod: 7 * dayDuration,
-					streamRetention: []validation.StreamRetention{
-						{
-							Period: model.Duration(dayDuration),
-						},
-					},
-				},
-				perTenant: map[string]retentionLimit{
-					"0": {retentionPeriod: 2 * dayDuration},
-					"1": {retentionPeriod: 5 * dayDuration},
-				},
-			},
-			expectedEarliestRetentionStartTime: 7 * dayDuration,
-		},
-		{
-			name: "default stream retention period highest",
+			name: "default retention period smallest",
 			limit: fakeLimits{
 				defaultLimit: retentionLimit{
 					retentionPeriod: 7 * dayDuration,
@@ -132,14 +114,32 @@ func TestFindEarliestRetentionStartTime(t *testing.T) {
 					},
 				},
 				perTenant: map[string]retentionLimit{
-					"0": {retentionPeriod: 2 * dayDuration},
+					"0": {retentionPeriod: 12 * dayDuration},
+					"1": {retentionPeriod: 15 * dayDuration},
+				},
+			},
+			expectedEarliestRetentionStartTime: 7 * dayDuration,
+		},
+		{
+			name: "default stream retention period smallest",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 7 * dayDuration,
+					streamRetention: []validation.StreamRetention{
+						{
+							Period: model.Duration(3 * dayDuration),
+						},
+					},
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {retentionPeriod: 7 * dayDuration},
 					"1": {retentionPeriod: 5 * dayDuration},
 				},
 			},
-			expectedEarliestRetentionStartTime: 10 * dayDuration,
+			expectedEarliestRetentionStartTime: 3 * dayDuration,
 		},
 		{
-			name: "user retention retention period highest",
+			name: "user retention retention period smallest",
 			limit: fakeLimits{
 				defaultLimit: retentionLimit{
 					retentionPeriod: 7 * dayDuration,
@@ -168,10 +168,10 @@ func TestFindEarliestRetentionStartTime(t *testing.T) {
 					},
 				},
 			},
-			expectedEarliestRetentionStartTime: 20 * dayDuration,
+			expectedEarliestRetentionStartTime: 5 * dayDuration,
 		},
 		{
-			name: "user stream retention period highest",
+			name: "user stream retention period smallest",
 			limit: fakeLimits{
 				defaultLimit: retentionLimit{
 					retentionPeriod: 7 * dayDuration,
@@ -191,20 +191,20 @@ func TestFindEarliestRetentionStartTime(t *testing.T) {
 						},
 					},
 					"1": {
-						retentionPeriod: 5 * dayDuration,
+						retentionPeriod: 15 * dayDuration,
 						streamRetention: []validation.StreamRetention{
 							{
-								Period: model.Duration(25 * dayDuration),
+								Period: model.Duration(2 * dayDuration),
 							},
 						},
 					},
 				},
 			},
-			expectedEarliestRetentionStartTime: 25 * dayDuration,
+			expectedEarliestRetentionStartTime: 2 * dayDuration,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedEarliestRetentionStartTime, findHighestRetentionPeriod(tc.limit))
+			require.Equal(t, tc.expectedEarliestRetentionStartTime, findSmallestRetentionPeriod(tc.limit))
 		})
 	}
 }
@@ -219,7 +219,7 @@ func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
 		{
 			name: "not expired",
 			expirationChecker: expirationChecker{
-				earliestRetentionStartTime: model.Now().Add(-24 * time.Hour),
+				latestRetentionStartTime: model.Now().Add(-24 * time.Hour),
 			},
 			interval: model.Interval{
 				Start: model.Now().Add(-time.Hour),
@@ -229,7 +229,7 @@ func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
 		{
 			name: "partially expired",
 			expirationChecker: expirationChecker{
-				earliestRetentionStartTime: model.Now().Add(-24 * time.Hour),
+				latestRetentionStartTime: model.Now().Add(-24 * time.Hour),
 			},
 			interval: model.Interval{
 				Start: model.Now().Add(-25 * time.Hour),
@@ -240,7 +240,7 @@ func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
 		{
 			name: "fully expired",
 			expirationChecker: expirationChecker{
-				earliestRetentionStartTime: model.Now().Add(-24 * time.Hour),
+				latestRetentionStartTime: model.Now().Add(-24 * time.Hour),
 			},
 			interval: model.Interval{
 				Start: model.Now().Add(-26 * time.Hour),

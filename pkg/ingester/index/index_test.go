@@ -71,7 +71,7 @@ func BenchmarkHash(b *testing.B) {
 }
 
 func TestDeleteAddLoopkup(t *testing.T) {
-	index := New()
+	index := NewWithShards(DefaultIndexShards)
 	lbs := []cortexpb.LabelAdapter{
 		{Name: "foo", Value: "foo"},
 		{Name: "bar", Value: "bar"},
@@ -112,4 +112,47 @@ func Test_hash_mapping(t *testing.T) {
 			require.Equal(t, model.Fingerprint(1), res[0])
 		})
 	}
+}
+
+func Test_ConsistentMapping(t *testing.T) {
+	a := NewWithShards(16)
+	b := NewWithShards(32)
+
+	for i := 0; i < 100; i++ {
+		lbs := labels.Labels{
+			labels.Label{Name: "foo", Value: "bar"},
+			labels.Label{Name: "hi", Value: fmt.Sprint(i)},
+		}
+		a.Add(cortexpb.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
+		b.Add(cortexpb.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
+	}
+
+	shardMax := 8
+	for i := 0; i < shardMax; i++ {
+		shard := &astmapper.ShardAnnotation{
+			Shard: i,
+			Of:    shardMax,
+		}
+
+		aIDs, err := a.Lookup([]*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+		}, shard)
+		require.Nil(t, err)
+
+		bIDs, err := b.Lookup([]*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+		}, shard)
+		require.Nil(t, err)
+
+		sorter := func(xs []model.Fingerprint) {
+			sort.Slice(xs, func(i, j int) bool {
+				return xs[i] < xs[j]
+			})
+		}
+		sorter(aIDs)
+		sorter(bIDs)
+
+		require.Equal(t, aIDs, bIDs, "incorrect shard mapping for shard %v", shard)
+	}
+
 }
