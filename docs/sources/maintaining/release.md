@@ -107,7 +107,7 @@ Loki docs are versioned. Follow the below steps to version Loki docs for this re
 >NOTE: Here $LOCAL_LOKI_PATH is your local path where Loki is checked out with correct $VERSION
 
 1. Clone Grafana website [repo](https://github.com/grafana/website)
-1. Create new branch `git checkout -b $VERSION` (replace `$VERSION` with current release version. e.g: `v2.2.1`)
+1. Create new branch `git checkout -b $VERSION` (replace `$VERSION` with current release version. e.g: `v2.3.0`)
 1. Run `mv content/docs/loki/next content/docs/loki/next.main`
 1. Run `mkdir content/docs/loki/next`
 1. Run `cp -R $LOCAL_LOKI_PATH/docs/sources/* content/docs/loki/next`

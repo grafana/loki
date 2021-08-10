@@ -43,19 +43,6 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 * [Latest release](https://grafana.com/docs/loki/latest/)
 * [Upcoming release](https://grafana.com/docs/loki/next/), at the tip of the main branch
 
-### Documentation of old Loki versions
-
-Documentation for these old versions is not hosted;
-this old documentation is in the release branches within this Loki repository.
-
-* [v1.5.0](https://github.com/grafana/loki/tree/v1.5.0/docs/README.md)
-* [v1.4.1](https://github.com/grafana/loki/tree/v1.4.1/docs/README.md)
-* [v1.4.0](https://github.com/grafana/loki/tree/v1.4.0/docs/README.md)
-* [v1.3.0](https://github.com/grafana/loki/tree/v1.3.0/docs/README.md)
-* [v1.2.0](https://github.com/grafana/loki/tree/v1.2.0/docs/README.md)
-* [v1.1.0](https://github.com/grafana/loki/tree/v1.1.0/docs/README.md)
-* [v1.0.0](https://github.com/grafana/loki/tree/v1.0.0/docs/README.md)
-
 Commonly used sections:
 
 - [API documentation](https://grafana.com/docs/loki/latest/api/) for getting logs into Loki.
