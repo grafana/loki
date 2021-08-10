@@ -2,57 +2,50 @@
 local k = import 'ksonnet-util/kausal.libsonnet';
 
 {
-  local container = k.core.v1.container,
-
   // Override frontend and querier configuration
-  local override = {
-      frontend: {
-          scheduler_address: 'query-scheduler.%s.svc.cluster.local:9095' % $._config.namespace,
+  _config +:: {
+    loki+: if $._config.query_scheduler_enabled then {
+      frontend+: {
+        scheduler_address: 'query-scheduler.%s.svc.cluster.local:9095' % $._config.namespace,
       },
-      frontend_worker: {
-          frontend_address: '',
-          scheduler_address: 'query-scheduler.%s.svc.cluster.local:9095' % $._config.namespace,
+      frontend_worker+: {
+        frontend_address: '',
+        scheduler_address: 'query-scheduler.%s.svc.cluster.local:9095' % $._config.namespace,
       },
-  },
-  _config +: {
-      loki: std.mergePatch($._config.loki, override),
+    } else {},
   },
 
-  query_scheduler_args::
+  query_scheduler_args:: if $._config.query_scheduler_enabled then
     $._config.commonArgs {
       target: 'query-scheduler',
       'log.level': 'debug',
-    },
+    }
+  else {},
 
-  query_scheduler_container::
+  local container = k.core.v1.container,
+  query_scheduler_container:: if $._config.query_scheduler_enabled then
     container.new('query-scheduler', $._images.query_frontend) +
     container.withPorts($.util.defaultPorts) +
-    container.withArgsMixin(k.util.mapToFlags($.query_frontend_args)) +
+    container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +
-    // sharded queries may need to do a nonzero amount of aggregation on the frontend.
-    if $._config.queryFrontend.sharded_queries_enabled then
-      k.util.resourcesRequests('2', '2Gi') +
-      k.util.resourcesLimits(null, '6Gi') +
-      container.withEnvMap({
-        JAEGER_REPORTER_MAX_QUEUE_SIZE: '5000',
-      })
-    else k.util.resourcesRequests('2', '600Mi') +
-         k.util.resourcesLimits(null, '1200Mi'),
+    k.util.resourcesRequests('2', '600Mi') +
+    k.util.resourcesLimits(null, '1200Mi')
+  else {},
 
   local deployment = k.apps.v1.deployment,
-
-  query_scheduler_deployment:
-    deployment.new('query-scheduler', 1, [$.query_scheduler_container]) +
+  query_scheduler_deployment: if $._config.query_scheduler_enabled then
+    deployment.new('query-scheduler', 2, [$.query_scheduler_container]) +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
     k.util.configVolumeMount(
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    k.util.antiAffinity,
+    k.util.antiAffinity
+  else {},
 
   local service = k.core.v1.service,
-
-  query_scheduler_service:
-    k.util.serviceFor($.query_schduler_deployment)
+  query_scheduler_service: if $._config.query_scheduler_enabled then
+    k.util.serviceFor($.query_scheduler_deployment)
+  else {},
 }
