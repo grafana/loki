@@ -170,7 +170,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Deprecated: this API is no longer experimental, but we'll register it under both flags for now.
 	// TODO(owen-d, 3.0.0): remove deprecated experimental prefix
-	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
+	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api. Now available as ruler.enable-api and no longer marked as experimental. The experimental prefix will be deprecated and removed in the next major Loki release.")
 	f.BoolVar(&cfg.EnableAPI, "ruler.enable-api", false, "Enable the ruler api")
 
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
