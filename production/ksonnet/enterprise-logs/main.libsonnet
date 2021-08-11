@@ -52,7 +52,7 @@ loki {
   },
 
   _images+:: {
-    loki: 'grafana/enterprise-metrics:v1.1.0',
+    loki: 'grafana/enterprise-logs:v1.1.0',
     kubectl: 'bitnami/kubectl',
   },
 
