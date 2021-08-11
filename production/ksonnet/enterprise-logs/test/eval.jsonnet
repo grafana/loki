@@ -1,4 +1,4 @@
-(import 'main.libsonnet') {
+(import '../main.libsonnet') {
   _config+:: {
     boltdb_shipper_shared_store: self.storage_backend,
     gcs_bucket_name: 'test-gcs-bucket-name',

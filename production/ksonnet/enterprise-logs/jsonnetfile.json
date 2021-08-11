@@ -13,11 +13,11 @@
     {
       "source": {
         "git": {
-          "remote": "https://github.com/jsonnet-libs/k8s-libsonnet.git",
-          "subdir": "1.18"
+          "remote": "https://github.com/grafana/jsonnet-libs",
+          "subdir": "ksonnet-util",
         }
       },
-      "version": "main"
+      "version": "master"
     }
   ],
   "legacyImports": true
