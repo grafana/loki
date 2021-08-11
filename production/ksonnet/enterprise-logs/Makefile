@@ -32,10 +32,6 @@ test/jsonnetfile.json: ## Update the jsonnetfile used in testing.
 test/jsonnetfile.json: test/jsonnetfile.jsonnet variables.mk jsonnetfile.json
 	jsonnet --tla-str k8sVersion=$(K8S_VERSION) $< > $@
 
-test/jsonnetfile.lock.json: ## Update the locked dependency versions used in testing.
-test/jsonnetfile.lock.json: test/jsonnetfile.json
+test/jsonnetfile.lock.json test/vendor: ## Update the locked dependency versions used in testing.
+test/jsonnetfile.lock.json test/vendor: test/jsonnetfile.json
 	cd $(@D); jb update
-
-test/vendor: ## Vendor dependencies used in testing.
-test/vendor: test/jsonnetfile.lock.json
-	cd $(@D); jb install
