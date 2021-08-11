@@ -18,8 +18,8 @@ type Writer struct {
 	sent                 chan time.Time
 	interval             time.Duration
 	outOfOrderPercentage int
-	outOfOrderMin        int
-	outOfOrderMax        int
+	outOfOrderMin        time.Duration
+	outOfOrderMax        time.Duration
 	size                 int
 	prevTsLen            int
 	pad                  string
@@ -27,7 +27,7 @@ type Writer struct {
 	done                 chan struct{}
 }
 
-func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval time.Duration, outOfOrderPercentage, outOfOrderMin, outOfOrderMax, entrySize int) *Writer {
+func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval, outOfOrderMin, outOfOrderMax time.Duration, outOfOrderPercentage, entrySize int) *Writer {
 
 	w := &Writer{
 		w:                    writer,
@@ -65,8 +65,9 @@ func (w *Writer) run() {
 		select {
 		case <-t.C:
 			t := time.Now()
-			if i := rand.Intn(99) + 1; i <= w.outOfOrderPercentage {
-				n := rand.Intn(w.outOfOrderMax-w.outOfOrderMin) + w.outOfOrderMin
+			i := rand.Intn(100) + 1
+			if w.outOfOrderPercentage != 0 && i <= w.outOfOrderPercentage {
+				n := rand.Intn(int(w.outOfOrderMax.Seconds()-w.outOfOrderMin.Seconds())) + int(w.outOfOrderMin.Seconds())
 				t = t.Add(-time.Duration(n) * time.Second)
 			}
 			ts := strconv.FormatInt(t.UnixNano(), 10)
