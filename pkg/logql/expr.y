@@ -33,7 +33,6 @@ import (
   binOp                   string
   bytes                   uint64
   str                     string
-  empty                   interface{}
   number                  float64
   duration                time.Duration
   LiteralExpr             *LiteralExpr
