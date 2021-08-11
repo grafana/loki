@@ -67,14 +67,14 @@ func (a *RemoteWriteAppendable) Appender(ctx context.Context) storage.Appender {
 
 	client, err := NewRemoteWriter(a.cfg, a.userID)
 	if err != nil {
-		level.Error(a.logger).Log("msg", "error creating remote-write client; setting appender as noop", "err", err, "tenant", a.userID)
-		return &NoopAppender{}
+		level.Error(a.logger).Log("msg", "error creating remote-write client; discarding samples", "err", err, "tenant", a.userID)
+		return &DiscardingAppender{err}
 	}
 
 	queue, err := util.NewEvictingQueue(capacity, a.onEvict(a.userID, groupKey))
 	if err != nil {
-		level.Error(a.logger).Log("msg", "queue creation error; setting appender as noop", "err", err, "tenant", a.userID)
-		return &NoopAppender{}
+		level.Error(a.logger).Log("msg", "queue creation error; discarding samples", "err", err, "tenant", a.userID)
+		return &DiscardingAppender{err}
 	}
 
 	appender = &RemoteWriteAppender{
@@ -194,4 +194,20 @@ func retrieveGroupKeyFromContext(ctx context.Context) string {
 	}
 
 	return rules.GroupKey(file, name)
+}
+
+// DiscardingAppender is used when remote-write for recording rules is disabled
+type DiscardingAppender struct {
+	reason error
+}
+
+func (a DiscardingAppender) Appender(_ context.Context) storage.Appender             { return a }
+func (a DiscardingAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) { return 0, nil }
+func (a DiscardingAppender) Append(ref uint64, l labels.Labels, t int64, v float64) (uint64, error) {
+	return 0, a.reason
+}
+func (a DiscardingAppender) Commit() error   { return nil }
+func (a DiscardingAppender) Rollback() error { return nil }
+func (a DiscardingAppender) AppendExemplar(ref uint64, l labels.Labels, e exemplar.Exemplar) (uint64, error) {
+	return 0, a.reason
 }
