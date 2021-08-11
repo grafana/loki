@@ -14,7 +14,7 @@
       "source": {
         "git": {
           "remote": "https://github.com/grafana/jsonnet-libs",
-          "subdir": "ksonnet-util",
+          "subdir": "ksonnet-util"
         }
       },
       "version": "master"
