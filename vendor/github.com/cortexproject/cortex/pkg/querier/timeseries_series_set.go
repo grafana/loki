@@ -7,16 +7,16 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
-// timeSeriesSeriesSet is a wrapper around a client.TimeSeries slice to implement to SeriesSet interface
+// timeSeriesSeriesSet is a wrapper around a cortexpb.TimeSeries slice to implement to SeriesSet interface
 type timeSeriesSeriesSet struct {
-	ts []client.TimeSeries
+	ts []cortexpb.TimeSeries
 	i  int
 }
 
-func newTimeSeriesSeriesSet(series []client.TimeSeries) *timeSeriesSeriesSet {
+func newTimeSeriesSeriesSet(series []cortexpb.TimeSeries) *timeSeriesSeriesSet {
 	sort.Sort(byTimeSeriesLabels(series))
 	return &timeSeriesSeriesSet{
 		ts: series,
@@ -43,27 +43,27 @@ func (t *timeSeriesSeriesSet) Warnings() storage.Warnings { return nil }
 
 // timeseries is a type wrapper that implements the storage.Series interface
 type timeseries struct {
-	series client.TimeSeries
+	series cortexpb.TimeSeries
 }
 
-// timeSeriesSeriesIterator is a wrapper around a client.TimeSeries to implement the SeriesIterator interface
+// timeSeriesSeriesIterator is a wrapper around a cortexpb.TimeSeries to implement the SeriesIterator interface
 type timeSeriesSeriesIterator struct {
 	ts *timeseries
 	i  int
 }
 
-type byTimeSeriesLabels []client.TimeSeries
+type byTimeSeriesLabels []cortexpb.TimeSeries
 
 func (b byTimeSeriesLabels) Len() int      { return len(b) }
 func (b byTimeSeriesLabels) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 func (b byTimeSeriesLabels) Less(i, j int) bool {
-	return labels.Compare(client.FromLabelAdaptersToLabels(b[i].Labels), client.FromLabelAdaptersToLabels(b[j].Labels)) < 0
+	return labels.Compare(cortexpb.FromLabelAdaptersToLabels(b[i].Labels), cortexpb.FromLabelAdaptersToLabels(b[j].Labels)) < 0
 }
 
 // Labels implements the storage.Series interface.
 // Conversion is safe because ingester sets these by calling client.FromLabelsToLabelAdapters which guarantees labels are sorted.
 func (t *timeseries) Labels() labels.Labels {
-	return client.FromLabelAdaptersToLabels(t.series.Labels)
+	return cortexpb.FromLabelAdaptersToLabels(t.series.Labels)
 }
 
 // Iterator implements the storage.Series interface

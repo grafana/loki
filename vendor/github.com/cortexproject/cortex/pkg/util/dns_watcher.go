@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/grpc/naming"
 
+	"github.com/cortexproject/cortex/pkg/util/grpc/naming"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -21,7 +21,7 @@ type DNSNotifications interface {
 }
 
 type dnsWatcher struct {
-	watcher       naming.Watcher //nolint:staticcheck //Skipping for now. If you still see this more than likely issue https://github.com/cortexproject/cortex/issues/2015 has not yet been addressed.
+	watcher       naming.Watcher
 	notifications DNSNotifications
 }
 

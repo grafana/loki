@@ -123,10 +123,10 @@ func (cb *CachingBucket) ReaderWithExpectedErrs(expectedFunc objstore.IsOpFailur
 	return cb.WithExpectedErrs(expectedFunc)
 }
 
-func (cb *CachingBucket) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (cb *CachingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	cfgName, cfg := cb.cfg.findIterConfig(dir)
 	if cfg == nil {
-		return cb.Bucket.Iter(ctx, dir, f)
+		return cb.Bucket.Iter(ctx, dir, f, options...)
 	}
 
 	cb.operationRequests.WithLabelValues(objstore.OpIter, cfgName).Inc()
@@ -154,7 +154,7 @@ func (cb *CachingBucket) Iter(ctx context.Context, dir string, f func(string) er
 	err := cb.Bucket.Iter(ctx, dir, func(s string) error {
 		list = append(list, s)
 		return f(s)
-	})
+	}, options...)
 
 	remainingTTL := cfg.ttl - time.Since(iterTime)
 	if err == nil && remainingTTL > 0 {
@@ -224,7 +224,7 @@ func (cb *CachingBucket) Get(ctx context.Context, name string) (io.ReadCloser, e
 	hits := cfg.cache.Fetch(ctx, []string{contentKey, existsKey})
 	if hits[contentKey] != nil {
 		cb.operationHits.WithLabelValues(objstore.OpGet, cfgName).Inc()
-		return ioutil.NopCloser(bytes.NewReader(hits[contentKey])), nil
+		return objstore.NopCloserWithSize(bytes.NewBuffer(hits[contentKey])), nil
 	}
 
 	// If we know that file doesn't exist, we can return that. Useful for deletion marks.

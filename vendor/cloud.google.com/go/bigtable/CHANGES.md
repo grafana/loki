@@ -1,5 +1,10 @@
 # Changes
 
+## v1.3.0
+
+- Clients now use transport/grpc.DialPool rather than Dial.
+  - Connection pooling now does not use the deprecated (and soon to be removed) gRPC load balancer API.
+
 ## v1.2.0
 
 - Update cbt usage string.

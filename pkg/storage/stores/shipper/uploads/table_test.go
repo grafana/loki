@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -80,14 +80,27 @@ func TestLoadTable(t *testing.T) {
 		},
 	}, false)
 
+	// change a boltdb file to text file which would fail to open.
+	invalidFilePath := filepath.Join(tablePath, "invalid")
+	require.NoError(t, ioutil.WriteFile(invalidFilePath, []byte("invalid boltdb file"), 0666))
+
+	// verify that changed boltdb file can't be opened.
+	_, err = local.OpenBoltdbFile(invalidFilePath)
+	require.Error(t, err)
+
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient)
+	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
 	defer func() {
 		table.Stop()
 	}()
+
+	// verify that we still have 3 files(2 valid, 1 invalid)
+	filesInfo, err := ioutil.ReadDir(tablePath)
+	require.NoError(t, err)
+	require.Len(t, filesInfo, 3)
 
 	require.NoError(t, table.Snapshot())
 
@@ -109,7 +122,7 @@ func TestTable_Write(t *testing.T) {
 	now := time.Now()
 
 	// allow modifying last 5 shards
-	table.modifyShardsSince = now.Add(-5 * shardDBsByDuration).Unix()
+	table.modifyShardsSince = now.Add(-5 * ShardDBsByDuration).Unix()
 
 	// a couple of times for which we want to do writes to make the table create different shards
 	testCases := []struct {
@@ -120,13 +133,13 @@ func TestTable_Write(t *testing.T) {
 			writeTime: now,
 		},
 		{
-			writeTime: now.Add(-(shardDBsByDuration + 5*time.Minute)),
+			writeTime: now.Add(-(ShardDBsByDuration + 5*time.Minute)),
 		},
 		{
-			writeTime: now.Add(-(shardDBsByDuration*3 + 3*time.Minute)),
+			writeTime: now.Add(-(ShardDBsByDuration*3 + 3*time.Minute)),
 		},
 		{
-			writeTime: now.Add(-6 * shardDBsByDuration), // write with time older than table.modifyShardsSince
+			writeTime: now.Add(-6 * ShardDBsByDuration), // write with time older than table.modifyShardsSince
 			dbName:    fmt.Sprint(table.modifyShardsSince),
 		},
 	}
@@ -145,7 +158,7 @@ func TestTable_Write(t *testing.T) {
 
 			expectedDBName := tc.dbName
 			if expectedDBName == "" {
-				expectedDBName = fmt.Sprint(tc.writeTime.Truncate(shardDBsByDuration).Unix())
+				expectedDBName = fmt.Sprint(tc.writeTime.Truncate(ShardDBsByDuration).Unix())
 			}
 			db, ok := table.dbs[expectedDBName]
 			require.True(t, ok)
@@ -189,7 +202,7 @@ func TestTable_Upload(t *testing.T) {
 	// write a batch to another shard
 	batch = boltIndexClient.NewWriteBatch()
 	testutil.AddRecordsToBatch(batch, "test", 20, 10)
-	require.NoError(t, table.write(context.Background(), now.Add(shardDBsByDuration), batch.(*local.BoltWriteBatch).Writes["test"]))
+	require.NoError(t, table.write(context.Background(), now.Add(ShardDBsByDuration), batch.(*local.BoltWriteBatch).Writes["test"]))
 
 	// upload the dbs to storage
 	require.NoError(t, table.Upload(context.Background(), true))
@@ -269,7 +282,7 @@ func TestTable_Cleanup(t *testing.T) {
 	testutil.AddRecordsToDB(t, notUploaded, boltDBIndexClient, 20, 10)
 
 	// load existing dbs
-	table, err := LoadTable(indexPath, "test", storageClient, boltDBIndexClient)
+	table, err := LoadTable(indexPath, "test", storageClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.Len(t, table.dbs, 3)
 
@@ -347,8 +360,13 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 		},
 	}, false)
 
+	// create a boltdb file without bucket which should get removed
+	db, err := local.OpenBoltdbFile(filepath.Join(tablePath, "no-bucket"))
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
 	// try loading the dbs
-	dbs, err := loadBoltDBsFromDir(tablePath)
+	dbs, err := loadBoltDBsFromDir(tablePath, newMetrics(nil))
 	require.NoError(t, err)
 
 	// check that we have just 2 dbs
@@ -360,6 +378,10 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 	for _, boltdb := range dbs {
 		require.NoError(t, boltdb.Close())
 	}
+
+	filesInfo, err := ioutil.ReadDir(tablePath)
+	require.NoError(t, err)
+	require.Len(t, filesInfo, 2)
 }
 
 func TestTable_ImmutableUploads(t *testing.T) {
@@ -382,9 +404,9 @@ func TestTable_ImmutableUploads(t *testing.T) {
 
 	// some dbs to setup
 	dbNames := []int64{
-		shardCutoff.Add(-shardDBsByDuration).Unix(),    // inactive shard, should upload
+		shardCutoff.Add(-ShardDBsByDuration).Unix(),    // inactive shard, should upload
 		shardCutoff.Add(-1 * time.Minute).Unix(),       // 1 minute before shard cutoff, should upload
-		time.Now().Truncate(shardDBsByDuration).Unix(), // active shard, should not upload
+		time.Now().Truncate(ShardDBsByDuration).Unix(), // active shard, should not upload
 	}
 
 	dbs := map[string]testutil.DBRecords{}
@@ -397,7 +419,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	// setup some dbs for a table at a path.
 	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, dbs, false)
 
-	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient)
+	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -478,7 +500,7 @@ func TestTable_MultiQueries(t *testing.T) {
 	}, false)
 
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient)
+	table, err := LoadTable(tablePath, "test", nil, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 

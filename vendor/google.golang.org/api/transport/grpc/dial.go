@@ -14,6 +14,7 @@ import (
 	"log"
 	"strings"
 
+	"cloud.google.com/go/compute/metadata"
 	"go.opencensus.io/plugin/ocgrpc"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/internal"
@@ -137,7 +138,7 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 		// * The endpoint is a host:port (or dns:///host:port).
 		// * Credentials are obtained via GCE metadata server, using the default
 		//   service account.
-		if o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && isTokenSourceDirectPathCompatible(creds.TokenSource) {
+		if o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && isTokenSourceDirectPathCompatible(creds.TokenSource) && metadata.OnGCE() {
 			if !strings.HasPrefix(endpoint, "dns:///") {
 				endpoint = "dns:///" + endpoint
 			}
@@ -186,7 +187,7 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 	// point when isDirectPathEnabled will default to true, we guard it by
 	// the Directpath env var for now once we can introspect user defined
 	// dialer (https://github.com/grpc/grpc-go/issues/2795).
-	if timeoutDialerOption != nil && o.EnableDirectPath && checkDirectPathEndPoint(endpoint) {
+	if timeoutDialerOption != nil && o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && metadata.OnGCE() {
 		grpcOpts = append(grpcOpts, timeoutDialerOption)
 	}
 

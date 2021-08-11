@@ -13,20 +13,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 const (
 	// create a new db sharded by time based on when write request is received
-	shardDBsByDuration = 15 * time.Minute
+	ShardDBsByDuration = 15 * time.Minute
 
 	// a temp file is created during uploads with name of the db + tempFileSuffix
 	tempFileSuffix = ".temp"
@@ -82,8 +82,8 @@ func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexCli
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
-	dbs, err := loadBoltDBsFromDir(path)
+func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
+	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -116,10 +116,10 @@ func (lt *Table) Snapshot() error {
 	lt.dbSnapshotsMtx.Lock()
 	defer lt.dbSnapshotsMtx.Unlock()
 
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("snapshotting table %s", lt.name))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("snapshotting table %s", lt.name))
 
 	for name, db := range lt.dbs {
-		level.Debug(util.Logger).Log("msg", fmt.Sprintf("checking db %s for snapshot", name))
+		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("checking db %s for snapshot", name))
 		srcWriteCount := 0
 		err := db.View(func(tx *bbolt.Tx) error {
 			srcWriteCount = db.Stats().TxStats.Write
@@ -176,10 +176,10 @@ func (lt *Table) Snapshot() error {
 		snapshot.writesCount = srcWriteCount
 		lt.dbSnapshots[name] = snapshot
 
-		level.Debug(util.Logger).Log("msg", fmt.Sprintf("finished snaphotting db %s", name))
+		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("finished snaphotting db %s", name))
 	}
 
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("finished snapshotting table %s", lt.name))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("finished snapshotting table %s", lt.name))
 
 	return nil
 }
@@ -189,8 +189,6 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 	lt.dbSnapshotsMtx.RLock()
 	defer lt.dbSnapshotsMtx.RUnlock()
 
-	id := shipper_util.NewIndexDeduper(callback)
-
 	for _, db := range lt.dbSnapshots {
 		err := db.boltdb.View(func(tx *bbolt.Tx) error {
 			bucket := tx.Bucket(bucketName)
@@ -199,15 +197,12 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 			}
 
 			for _, query := range queries {
-				if err := lt.boltdbIndexClient.QueryWithCursor(ctx, bucket.Cursor(), query, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
-					return id.Callback(query, batch)
-				}); err != nil {
+				if err := lt.boltdbIndexClient.QueryWithCursor(ctx, bucket.Cursor(), query, callback); err != nil {
 					return err
 				}
 			}
 			return nil
 		})
-
 		if err != nil {
 			return err
 		}
@@ -245,12 +240,12 @@ func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
 	return lt.write(ctx, time.Now(), writes)
 }
 
-// write writes to a db locally. It shards the db files by truncating the passed time by shardDBsByDuration using https://golang.org/pkg/time/#Time.Truncate
+// write writes to a db locally. It shards the db files by truncating the passed time by ShardDBsByDuration using https://golang.org/pkg/time/#Time.Truncate
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
 func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
 	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
-	shard := tm.Truncate(shardDBsByDuration).Unix()
+	shard := tm.Truncate(ShardDBsByDuration).Unix()
 	if shard < lt.modifyShardsSince {
 		shard = lt.modifyShardsSince
 	}
@@ -270,7 +265,7 @@ func (lt *Table) Stop() {
 
 	for name, db := range lt.dbs {
 		if err := db.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", fmt.Errorf("failed to close file %s for table %s", name, lt.name))
+			level.Error(util_log.Logger).Log("msg", fmt.Errorf("failed to close file %s for table %s", name, lt.name))
 		}
 	}
 
@@ -337,7 +332,7 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 		return err
 	}
 
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("uploading table %s", lt.name))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("uploading table %s", lt.name))
 
 	for name, db := range lt.dbs {
 		// doing string comparison between unix timestamps in string form since they are anyways of same length
@@ -364,13 +359,13 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 		lt.dbUploadTimeMtx.Unlock()
 	}
 
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", lt.name))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", lt.name))
 
 	return nil
 }
 
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error {
-	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
+	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 
 	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, tempFileSuffix))
 	f, err := os.Create(filePath)
@@ -380,11 +375,11 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to close temp file", "path", filePath, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to close temp file", "path", filePath, "err", err)
 		}
 
 		if err := os.Remove(filePath); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to remove temp file", "path", filePath, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "path", filePath, "err", err)
 		}
 	}()
 
@@ -422,7 +417,7 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
 // This is to avoid keeping all the files forever in the ingesters.
 func (lt *Table) Cleanup(dbRetainPeriod time.Duration) error {
-	level.Info(util.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
 
 	var filesToCleanup []string
 	cutoffTime := time.Now().Add(-dbRetainPeriod)
@@ -443,14 +438,14 @@ func (lt *Table) Cleanup(dbRetainPeriod time.Duration) error {
 	lt.dbsMtx.RUnlock()
 
 	for i := range filesToCleanup {
-		level.Debug(util.Logger).Log("msg", fmt.Sprintf("removing db %s from table %s", filesToCleanup[i], lt.name))
+		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("removing db %s from table %s", filesToCleanup[i], lt.name))
 
 		if err := lt.RemoveDB(filesToCleanup[i]); err != nil {
 			return err
 		}
 
 		if err := lt.RemoveSnapshotDB(filesToCleanup[i]); err != nil {
-			level.Error(util.Logger).Log("msg", fmt.Sprintf("failed to remove snapshot db %s", filesToCleanup[i]))
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove snapshot db %s", filesToCleanup[i]))
 		}
 	}
 
@@ -469,7 +464,7 @@ func (lt *Table) buildObjectKey(dbName string) string {
 	return fmt.Sprintf("%s.gz", objectKey)
 }
 
-func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
+func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, error) {
 	dbs := map[string]*bbolt.DB{}
 	filesInfo, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -480,19 +475,37 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 		if fileInfo.IsDir() {
 			continue
 		}
+		fullPath := filepath.Join(dir, fileInfo.Name())
 
 		if strings.HasSuffix(fileInfo.Name(), tempFileSuffix) || strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
 			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
 			// Cleaning up those temp files to avoid problems.
-			if err := os.Remove(filepath.Join(dir, fileInfo.Name())); err != nil {
-				level.Error(util.Logger).Log("msg", "failed to remove temp file", "name", fileInfo.Name(), "err", err)
+			if err := os.Remove(fullPath); err != nil {
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", fullPath), "err", err)
 			}
 			continue
 		}
 
-		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(dir, fileInfo.Name()))
+		db, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
-			return nil, err
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file.", fullPath), "err", err)
+			metrics.openExistingFileFailuresTotal.Inc()
+			continue
+		}
+
+		hasBucket := false
+		_ = db.View(func(tx *bbolt.Tx) error {
+			hasBucket = tx.Bucket(bucketName) != nil
+			return nil
+		})
+
+		if !hasBucket {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("file %s has no bucket named %s, so removing it", fullPath, bucketName))
+			_ = db.Close()
+			if err := os.Remove(fullPath); err != nil {
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove file %s without bucket", fullPath), "err", err)
+			}
+			continue
 		}
 
 		dbs[fileInfo.Name()] = db
@@ -505,5 +518,5 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 func getOldestActiveShardTime() time.Time {
 	// upload files excluding active shard. It could so happen that we just started a new shard but the file for last shard is still being updated due to pending writes or pending flush to disk.
 	// To avoid uploading it, excluding previous active shard as well if it has been not more than a minute since it became inactive.
-	return time.Now().Add(-time.Minute).Truncate(shardDBsByDuration)
+	return time.Now().Add(-time.Minute).Truncate(ShardDBsByDuration)
 }

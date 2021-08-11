@@ -122,6 +122,10 @@ func (c *dumbChunk) Close() error {
 	return nil
 }
 
+func (c *dumbChunk) Rebound(start, end time.Time) (Chunk, error) {
+	return nil, nil
+}
+
 type dumbChunkIterator struct {
 	direction logproto.Direction
 	i         int

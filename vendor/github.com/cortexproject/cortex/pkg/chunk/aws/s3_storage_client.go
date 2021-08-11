@@ -27,6 +27,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -64,15 +65,15 @@ type S3Config struct {
 	S3ForcePathStyle bool
 
 	BucketNames      string
-	Endpoint         string     `yaml:"endpoint"`
-	Region           string     `yaml:"region"`
-	AccessKeyID      string     `yaml:"access_key_id"`
-	SecretAccessKey  string     `yaml:"secret_access_key"`
-	Insecure         bool       `yaml:"insecure"`
-	SSEEncryption    bool       `yaml:"sse_encryption"`
-	HTTPConfig       HTTPConfig `yaml:"http_config"`
-	SignatureVersion string     `yaml:"signature_version"`
-	SSEConfig        SSEConfig  `yaml:"sse"`
+	Endpoint         string              `yaml:"endpoint"`
+	Region           string              `yaml:"region"`
+	AccessKeyID      string              `yaml:"access_key_id"`
+	SecretAccessKey  string              `yaml:"secret_access_key"`
+	Insecure         bool                `yaml:"insecure"`
+	SSEEncryption    bool                `yaml:"sse_encryption"`
+	HTTPConfig       HTTPConfig          `yaml:"http_config"`
+	SignatureVersion string              `yaml:"signature_version"`
+	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -102,7 +103,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "", "AWS Secret Access Key")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
-	// TODO Remove in Cortex 1.9.0
+	// TODO Remove in Cortex 1.10.0
 	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
@@ -165,8 +166,8 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 
 	// deprecated, but if used it assumes SSE-S3 type
 	if cfg.SSEEncryption {
-		return NewSSEParsedConfig(SSEConfig{
-			Type: SSES3,
+		return NewSSEParsedConfig(cortex_s3.SSEConfig{
+			Type: cortex_s3.SSES3,
 		})
 	}
 

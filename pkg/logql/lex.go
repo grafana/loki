@@ -6,10 +6,13 @@ import (
 	"text/scanner"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 var tokens = map[string]int{
@@ -33,6 +36,7 @@ var tokens = map[string]int{
 	"[":            OPEN_BRACKET,
 	"]":            CLOSE_BRACKET,
 	OpLabelReplace: LABEL_REPLACE,
+	OpOffset:       OFFSET,
 
 	// binops
 	OpTypeOr:     OR,
@@ -52,13 +56,18 @@ var tokens = map[string]int{
 	OpTypeLTE:   LTE,
 
 	// parsers
-	OpParserTypeJSON:   JSON,
-	OpParserTypeRegexp: REGEXP,
-	OpParserTypeLogfmt: LOGFMT,
+	OpParserTypeJSON:    JSON,
+	OpParserTypeRegexp:  REGEXP,
+	OpParserTypeLogfmt:  LOGFMT,
+	OpParserTypeUnpack:  UNPACK,
+	OpParserTypePattern: PATTERN,
 
 	// fmt
 	OpFmtLabel: LABEL_FMT,
 	OpFmtLine:  LINE_FMT,
+
+	// filter functions
+	OpFilterIP: IP,
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
@@ -75,18 +84,21 @@ var functionTokens = map[string]int{
 	OpRangeTypeStdvar:    STDVAR_OVER_TIME,
 	OpRangeTypeStddev:    STDDEV_OVER_TIME,
 	OpRangeTypeQuantile:  QUANTILE_OVER_TIME,
+	OpRangeTypeFirst:     FIRST_OVER_TIME,
+	OpRangeTypeLast:      LAST_OVER_TIME,
 	OpRangeTypeAbsent:    ABSENT_OVER_TIME,
 
 	// vec ops
-	OpTypeSum:     SUM,
-	OpTypeAvg:     AVG,
-	OpTypeMax:     MAX,
-	OpTypeMin:     MIN,
-	OpTypeCount:   COUNT,
-	OpTypeStddev:  STDDEV,
-	OpTypeStdvar:  STDVAR,
-	OpTypeBottomK: BOTTOMK,
-	OpTypeTopK:    TOPK,
+	OpTypeSum:      SUM,
+	OpTypeAvg:      AVG,
+	OpTypeMax:      MAX,
+	OpTypeMin:      MIN,
+	OpTypeCount:    COUNT,
+	OpTypeStddev:   STDDEV,
+	OpTypeStdvar:   STDVAR,
+	OpTypeBottomK:  BOTTOMK,
+	OpTypeTopK:     TOPK,
+	OpLabelReplace: LABEL_REPLACE,
 
 	// conversion Op
 	OpConvBytes:           BYTES_CONV,
@@ -96,7 +108,8 @@ var functionTokens = map[string]int{
 
 type lexer struct {
 	scanner.Scanner
-	errs []ParseError
+	errs    []logqlmodel.ParseError
+	builder strings.Builder
 }
 
 func (l *lexer) Lex(lval *exprSymType) int {
@@ -139,7 +152,12 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	case scanner.String, scanner.RawString:
 		var err error
-		lval.str, err = strutil.Unquote(l.TokenText())
+		tokenText := l.TokenText()
+		if !utf8.ValidString(tokenText) {
+			l.Error("invalid UTF-8 rune")
+			return 0
+		}
+		lval.str, err = strutil.Unquote(tokenText)
 		if err != nil {
 			l.Error(err.Error())
 			return 0
@@ -157,10 +175,10 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	// scanning duration tokens
 	if r == '[' {
-		d := ""
+		l.builder.Reset()
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {
-			if string(r) == "]" {
-				i, err := model.ParseDuration(d)
+			if r == ']' {
+				i, err := model.ParseDuration(l.builder.String())
 				if err != nil {
 					l.Error(err.Error())
 					return 0
@@ -168,7 +186,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 				lval.duration = time.Duration(i)
 				return RANGE
 			}
-			d += string(r)
+			_, _ = l.builder.WriteRune(r)
 		}
 		l.Error("missing closing ']' in duration")
 		return 0
@@ -204,13 +222,13 @@ func (l *lexer) Lex(lval *exprSymType) int {
 }
 
 func (l *lexer) Error(msg string) {
-	l.errs = append(l.errs, newParseError(msg, l.Line, l.Column))
+	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
 }
 
 func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
-	//copy the scanner to avoid advancing it in case it's not a duration.
+	// copy the scanner to avoid advancing it in case it's not a duration.
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {
@@ -250,7 +268,7 @@ func isDurationRune(r rune) bool {
 func tryScanBytes(number string, l *scanner.Scanner) (uint64, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
-	//copy the scanner to avoid advancing it in case it's not a duration.
+	// copy the scanner to avoid advancing it in case it's not a duration.
 	s := *l
 	consumed := 0
 	for r := s.Peek(); r != scanner.EOF && !unicode.IsSpace(r); r = s.Peek() {

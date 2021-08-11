@@ -15,8 +15,19 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+)
+
+var (
+	countExtractor = func() log.StreamSampleExtractor {
+		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+		if err != nil {
+			panic(err)
+		}
+		return ex.ForStream(labels.Labels{})
+	}
 )
 
 func TestMaxReturnedStreamsErrors(t *testing.T) {
@@ -37,16 +48,18 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			cfg.MaxReturnedErrors = tc.limit
 			s := newStream(
 				cfg,
+				"fake",
 				model.Fingerprint(0),
 				labels.Labels{
 					{Name: "foo", Value: "bar"},
 				},
+				true,
 				NilMetrics,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
-			}, recordPool.GetRecord())
+			}, recordPool.GetRecord(), 0)
 			require.NoError(t, err)
 
 			newLines := make([]logproto.Entry, numLogs)
@@ -65,7 +78,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			fmt.Fprintf(&expected, "total ignored: %d out of %d", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
-			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord())
+			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0)
 			require.Error(t, err)
 			require.Equal(t, expectErr.Error(), err.Error())
 		})
@@ -75,10 +88,12 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 func TestPushDeduplication(t *testing.T) {
 	s := newStream(
 		defaultConfig(),
+		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NilMetrics,
 	)
 
@@ -86,12 +101,49 @@ func TestPushDeduplication(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord())
+	}, recordPool.GetRecord(), 0)
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
 	require.Equal(t, len("test"+"newer, better test"), written)
+}
+
+func TestPushRejectOldCounter(t *testing.T) {
+	s := newStream(
+		defaultConfig(),
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NilMetrics,
+	)
+
+	// counter should be 2 now since the first line will be deduped
+	_, err := s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
+	}, recordPool.GetRecord(), 0)
+	require.NoError(t, err)
+	require.Len(t, s.chunks, 1)
+	require.Equal(t, s.chunks[0].chunk.Size(), 2,
+		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+
+	// fail to push with a counter <= the streams internal counter
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 2)
+	require.Equal(t, ErrEntriesExist, err)
+
+	// succeed with a greater counter
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 3)
+	require.Nil(t, err)
+
 }
 
 func TestStreamIterator(t *testing.T) {
@@ -102,7 +154,9 @@ func TestStreamIterator(t *testing.T) {
 		name string
 		new  func() *chunkenc.MemChunk
 	}{
-		{"gzipChunk", func() *chunkenc.MemChunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0) }},
+		{"gzipChunk", func() *chunkenc.MemChunk {
+			return chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			var s stream
@@ -140,7 +194,107 @@ func TestStreamIterator(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestUnorderedPush(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.MaxChunkAge = 10 * time.Second
+	s := newStream(
+		&cfg,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NilMetrics,
+	)
+
+	for _, x := range []struct {
+		cutBefore bool
+		entries   []logproto.Entry
+		err       bool
+		written   int
+	}{
+		{
+			entries: []logproto.Entry{
+				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(1, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"},
+				{Timestamp: time.Unix(2, 0), Line: "x"}, // duplicate ts/line is ignored
+				{Timestamp: time.Unix(10, 0), Line: "x"},
+			},
+			written: 4, // 1 ignored
+		},
+		// highest ts is now 10, validity bound is (10-10/2) = 5
+		{
+			entries: []logproto.Entry{
+				{Timestamp: time.Unix(4, 0), Line: "x"}, // ordering err, too far
+				{Timestamp: time.Unix(8, 0), Line: "x"},
+				{Timestamp: time.Unix(9, 0), Line: "x"},
+			},
+			err:     true,
+			written: 2, // 1 ignored
+		},
+		// force a chunk cut and then push data overlapping with previous chunk.
+		// This ultimately ensures the iterators implementation respects unordered chunks.
+		{
+			cutBefore: true,
+			entries: []logproto.Entry{
+				{Timestamp: time.Unix(11, 0), Line: "x"},
+				{Timestamp: time.Unix(7, 0), Line: "x"},
+			},
+			written: 2,
+		},
+	} {
+		if x.cutBefore {
+			_ = s.cutChunk(context.Background())
+		}
+		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0)
+		if x.err {
+			require.NotNil(t, err)
+		} else {
+			require.Nil(t, err)
+		}
+		require.Equal(t, x.written, written)
+	}
+
+	require.Equal(t, 2, len(s.chunks))
+
+	exp := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "x"},
+		{Timestamp: time.Unix(2, 0), Line: "x"},
+		// duplicate was allowed here b/c it wasnt written sequentially
+		{Timestamp: time.Unix(2, 0), Line: "x"},
+		{Timestamp: time.Unix(7, 0), Line: "x"},
+		{Timestamp: time.Unix(8, 0), Line: "x"},
+		{Timestamp: time.Unix(9, 0), Line: "x"},
+		{Timestamp: time.Unix(10, 0), Line: "x"},
+		{Timestamp: time.Unix(11, 0), Line: "x"},
+	}
+
+	itr, err := s.Iterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(12, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+	require.Nil(t, err)
+	iterEq(t, exp, itr)
+
+	sItr, err := s.SampleIterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(12, 0), countExtractor())
+	require.Nil(t, err)
+	for _, x := range exp {
+		require.Equal(t, true, sItr.Next())
+		require.Equal(t, x.Timestamp, time.Unix(0, sItr.Sample().Timestamp))
+		require.Equal(t, float64(1), sItr.Sample().Value)
+	}
+	require.Equal(t, false, sItr.Next())
+}
+
+func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
+	var i int
+	for got.Next() {
+		require.Equal(t, exp[i].Timestamp, got.Entry().Timestamp, "failed on the (%d) ts", i)
+		require.Equal(t, exp[i].Line, got.Entry().Line)
+		i++
+	}
+	require.Equal(t, i, len(exp), "incorrect number of entries expected")
 }
 
 func Benchmark_PushStream(b *testing.B) {
@@ -150,7 +304,7 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "job", Value: "loki-dev/ingester"},
 		labels.Label{Name: "container", Value: "ingester"},
 	}
-	s := newStream(&Config{}, model.Fingerprint(0), ls, NilMetrics)
+	s := newStream(&Config{}, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 
@@ -165,7 +319,7 @@ func Benchmark_PushStream(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(ctx, e, rec)
+		_, err := s.Push(ctx, e, rec, 0)
 		require.NoError(b, err)
 		recordPool.PutRecord(rec)
 	}

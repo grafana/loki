@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"runtime"
 	"sync"
 
 	"github.com/golang/snappy"
@@ -12,6 +13,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 	"github.com/prometheus/prometheus/pkg/pool"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // WriterPool is a pool of io.Writer
@@ -51,6 +54,9 @@ var (
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
 	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+
+	// SamplesPool pooling array of samples [512,1024,...,16k]
+	SamplesPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]logproto.Sample, 0, size) })
 
 	// Pool of crc32 hash
 	crc32HashPool = sync.Pool{
@@ -226,6 +232,7 @@ func (pool *ZstdPool) GetReader(src io.Reader) io.Reader {
 	if err != nil {
 		panic(err)
 	}
+	runtime.SetFinalizer(reader, (*zstd.Decoder).Close)
 	return reader
 }
 

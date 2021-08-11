@@ -9,12 +9,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func Test_writeError(t *testing.T) {
@@ -26,13 +28,16 @@ func Test_writeError(t *testing.T) {
 		expectedStatus int
 	}{
 		{"cancelled", context.Canceled, ErrClientCanceled, StatusClientClosedRequest},
+		{"cancelled multi", util.MultiError{context.Canceled, context.Canceled}, ErrClientCanceled, StatusClientClosedRequest},
+		{"cancelled storage", promql.ErrStorage{Err: context.Canceled}, ErrClientCanceled, StatusClientClosedRequest},
 		{"orgid", user.ErrNoOrgID, user.ErrNoOrgID.Error(), http.StatusBadRequest},
 		{"deadline", context.DeadlineExceeded, ErrDeadlineExceeded, http.StatusGatewayTimeout},
-		{"parse error", logql.ParseError{}, "parse error : ", http.StatusBadRequest},
+		{"parse error", logqlmodel.ParseError{}, "parse error : ", http.StatusBadRequest},
 		{"httpgrpc", httpgrpc.Errorf(http.StatusBadRequest, errors.New("foo").Error()), "foo", http.StatusBadRequest},
 		{"internal", errors.New("foo"), "foo", http.StatusInternalServerError},
 		{"query error", chunk.ErrQueryMustContainMetricName, chunk.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},
 		{"wrapped query error", fmt.Errorf("wrapped: %w", chunk.ErrQueryMustContainMetricName), "wrapped: " + chunk.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},
+		{"multi mixed", util.MultiError{context.Canceled, context.DeadlineExceeded}, "2 errors: context canceled; context deadline exceeded", http.StatusInternalServerError},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()

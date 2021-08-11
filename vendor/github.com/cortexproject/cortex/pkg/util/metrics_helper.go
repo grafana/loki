@@ -11,6 +11,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+)
+
+var (
+	bytesBufferPool = sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(nil)
+		},
+	}
 )
 
 // Data for single value (counter/gauge) with labels.
@@ -343,25 +354,40 @@ func getMetricsWithLabelNames(mf *dto.MetricFamily, labelNames []string) map[str
 }
 
 func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
-	all := map[string]string{}
-	for _, lp := range m.GetLabel() {
-		all[lp.GetName()] = lp.GetValue()
-	}
-
 	result := make([]string, 0, len(labelNames))
+
 	for _, ln := range labelNames {
-		lv, ok := all[ln]
-		if !ok {
+		found := false
+
+		// Look for the label among the metric ones. We re-iterate on each metric label
+		// which is algorithmically bad, but the main assumption is that the labelNames
+		// in input are typically very few units.
+		for _, lp := range m.GetLabel() {
+			if ln != lp.GetName() {
+				continue
+			}
+
+			result = append(result, lp.GetValue())
+			found = true
+			break
+		}
+
+		if !found {
 			// required labels not found
 			return nil, false
 		}
-		result = append(result, lv)
 	}
+
 	return result, true
 }
 
 func getLabelsString(labelValues []string) string {
-	buf := bytes.Buffer{}
+	// Get a buffer from the pool, reset it and release it at the
+	// end of the function.
+	buf := bytesBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bytesBufferPool.Put(buf)
+
 	for _, v := range labelValues {
 		buf.WriteString(v)
 		buf.WriteByte(0) // separator, not used in prometheus labels
@@ -583,7 +609,7 @@ func (r *UserRegistries) RemoveUserRegistry(user string, hard bool) {
 func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
 	last, err := ur.reg.Gather()
 	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
 		return false
 	}
 
@@ -605,7 +631,7 @@ func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
 
 	ur.lastGather, err = NewMetricFamilyMap(last)
 	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
 		return false
 	}
 
@@ -656,7 +682,7 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 		}
 
 		if err != nil {
-			level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", entry.user, "err", err)
+			level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", entry.user, "err", err)
 			continue
 		}
 	}
@@ -697,4 +723,67 @@ func GetSumOfHistogramSampleCount(families []*dto.MetricFamily, metricName strin
 	}
 
 	return sum
+}
+
+// GetLables returns list of label combinations used by this collector at the time of call.
+// This can be used to find and delete unused metrics.
+func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Labels, error) {
+	ch := make(chan prometheus.Metric, 16)
+
+	go func() {
+		defer close(ch)
+		c.Collect(ch)
+	}()
+
+	errs := tsdb_errors.NewMulti()
+	var result []labels.Labels
+	dtoMetric := &dto.Metric{}
+	lbls := labels.NewBuilder(nil)
+
+nextMetric:
+	for m := range ch {
+		err := m.Write(dtoMetric)
+		if err != nil {
+			errs.Add(err)
+			// We cannot return here, to avoid blocking goroutine calling c.Collect()
+			continue
+		}
+
+		lbls.Reset(nil)
+		for _, lp := range dtoMetric.Label {
+			n := lp.GetName()
+			v := lp.GetValue()
+
+			filterValue, ok := filter[n]
+			if ok && filterValue != v {
+				continue nextMetric
+			}
+
+			lbls.Set(lp.GetName(), lp.GetValue())
+		}
+		result = append(result, lbls.Labels())
+	}
+
+	return result, errs.Err()
+}
+
+// DeleteMatchingLabels removes metric with labels matching the filter.
+func DeleteMatchingLabels(c CollectorVec, filter map[string]string) error {
+	lbls, err := GetLabels(c, filter)
+	if err != nil {
+		return err
+	}
+
+	for _, ls := range lbls {
+		c.Delete(ls.Map())
+	}
+
+	return nil
+}
+
+// CollectorVec is a collector that can delete metrics by labels.
+// Implemented by *prometheus.MetricVec (used by CounterVec, GaugeVec, SummaryVec, and HistogramVec).
+type CollectorVec interface {
+	prometheus.Collector
+	Delete(labels prometheus.Labels) bool
 }

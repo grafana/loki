@@ -28,8 +28,10 @@ var samples = []logproto.Sample{
 	{Timestamp: time.Unix(100, 1).UnixNano(), Hash: 11, Value: 1.},
 }
 
-var labelFoo, _ = promql_parser.ParseMetric("{app=\"foo\"}")
-var labelBar, _ = promql_parser.ParseMetric("{app=\"bar\"}")
+var (
+	labelFoo, _ = promql_parser.ParseMetric("{app=\"foo\"}")
+	labelBar, _ = promql_parser.ParseMetric("{app=\"bar\"}")
+)
 
 func newSampleIterator() iter.SampleIterator {
 	return iter.NewHeapSampleIterator(context.Background(), []iter.SampleIterator{
@@ -56,6 +58,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 	tests := []struct {
 		selRange        int64
 		step            int64
+		offset          int64
 		expectedVectors []promql.Vector
 		expectedTs      []time.Time
 		start, end      time.Time
@@ -63,6 +66,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		{
 			(5 * time.Second).Nanoseconds(), // no overlap
 			(30 * time.Second).Nanoseconds(),
+			0,
 			[]promql.Vector{
 				[]promql.Sample{
 					{Point: newPoint(time.Unix(10, 0), 2), Metric: labelBar},
@@ -84,6 +88,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		{
 			(35 * time.Second).Nanoseconds(), // will overlap by 5 sec
 			(30 * time.Second).Nanoseconds(),
+			0,
 			[]promql.Vector{
 				[]promql.Sample{
 					{Point: newPoint(time.Unix(10, 0), 4), Metric: labelBar},
@@ -108,6 +113,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		{
 			(30 * time.Second).Nanoseconds(), // same range
 			(30 * time.Second).Nanoseconds(),
+			0,
 			[]promql.Vector{
 				[]promql.Sample{
 					{Point: newPoint(time.Unix(10, 0), 4), Metric: labelBar},
@@ -129,6 +135,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		{
 			(50 * time.Second).Nanoseconds(), // all step are overlapping
 			(10 * time.Second).Nanoseconds(),
+			0,
 			[]promql.Vector{
 				[]promql.Sample{
 					{Point: newPoint(time.Unix(110, 0), 2), Metric: labelBar},
@@ -142,14 +149,36 @@ func Test_RangeVectorIterator(t *testing.T) {
 			[]time.Time{time.Unix(110, 0), time.Unix(120, 0)},
 			time.Unix(110, 0), time.Unix(120, 0),
 		},
+		{
+			(5 * time.Second).Nanoseconds(), // no overlap
+			(30 * time.Second).Nanoseconds(),
+			(10 * time.Second).Nanoseconds(),
+			[]promql.Vector{
+				[]promql.Sample{
+					{Point: newPoint(time.Unix(20, 0), 2), Metric: labelBar},
+					{Point: newPoint(time.Unix(20, 0), 2), Metric: labelFoo},
+				},
+				[]promql.Sample{
+					{Point: newPoint(time.Unix(50, 0), 2), Metric: labelBar},
+					{Point: newPoint(time.Unix(50, 0), 2), Metric: labelFoo},
+				},
+				{},
+				[]promql.Sample{
+					{Point: newPoint(time.Unix(110, 0), 1), Metric: labelBar},
+					{Point: newPoint(time.Unix(110, 0), 1), Metric: labelFoo},
+				},
+			},
+			[]time.Time{time.Unix(20, 0), time.Unix(50, 0), time.Unix(80, 0), time.Unix(110, 0)},
+			time.Unix(20, 0), time.Unix(110, 0),
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(
-			fmt.Sprintf("logs[%s] - step: %s", time.Duration(tt.selRange), time.Duration(tt.step)),
+			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
 			func(t *testing.T) {
 				it := newRangeVectorIterator(newfakePeekingSampleIterator(), tt.selRange,
-					tt.step, tt.start.UnixNano(), tt.end.UnixNano())
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
 
 				i := 0
 				for it.Next() {
@@ -161,5 +190,26 @@ func Test_RangeVectorIterator(t *testing.T) {
 				require.Equal(t, len(tt.expectedTs), i)
 				require.Equal(t, len(tt.expectedVectors), i)
 			})
+	}
+}
+
+func Test_RangeVectorIteratorBadLabels(t *testing.T) {
+	badIterator := iter.NewPeekingSampleIterator(
+		iter.NewSeriesIterator(logproto.Series{
+			Labels:  "{badlabels=}",
+			Samples: samples,
+		}))
+	it := newRangeVectorIterator(badIterator, (30 * time.Second).Nanoseconds(),
+		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		for it.Next() {
+		}
+	}()
+	select {
+	case <-time.After(1 * time.Second):
+		require.Fail(t, "goroutine took too long")
+	case <-ctx.Done():
 	}
 }

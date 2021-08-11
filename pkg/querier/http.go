@@ -5,20 +5,20 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util/marshal"
+	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
@@ -96,7 +96,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		0,
 		request.Direction,
 		request.Limit,
-		nil,
+		request.Shards,
 	)
 	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
@@ -136,7 +136,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// short circuit metric queries
 	if _, ok := expr.(logql.SampleExpr); ok {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logql.ValueTypeStreams), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams), w)
 		return
 	}
 
@@ -199,7 +199,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	logger := util_log.WithContext(r.Context(), util.Logger)
+	logger := util_log.WithContext(r.Context(), util_log.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
 	if err != nil {
@@ -308,7 +308,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *Querier) SeriesHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseSeriesQuery(r)
+	req, err := logql.ParseAndValidateSeriesQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -333,11 +333,11 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	query := httpRequest.Form.Get("query")
 	regexp := httpRequest.Form.Get("regexp")
 	if regexp != "" {
-		expr, err := logql.ParseLogSelector(query)
+		expr, err := logql.ParseLogSelector(query, true)
 		if err != nil {
 			return "", err
 		}
-		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, regexp)
+		newExpr, err := logql.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
 		if err != nil {
 			return "", err
 		}
@@ -347,7 +347,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 }
 
 func (q *Querier) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

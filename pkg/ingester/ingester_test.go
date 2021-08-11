@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/stretchr/testify/require"
@@ -22,10 +22,14 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestIngester(t *testing.T) {
@@ -37,7 +41,7 @@ func TestIngester(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -219,7 +223,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -258,7 +262,7 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	userid, err := user.ExtractOrgID(ctx)
+	userid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -281,6 +285,9 @@ func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, throu
 
 func (s *mockStore) GetSchemaConfigs() []chunk.PeriodConfig {
 	return nil
+}
+
+func (s *mockStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {
 }
 
 type mockQuerierServer struct {
@@ -447,7 +454,6 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-
 	for i, tc := range []struct {
 		in       Config
 		err      bool
@@ -457,25 +463,37 @@ func TestValidate(t *testing.T) {
 			in: Config{
 				MaxChunkAge:   time.Minute,
 				ChunkEncoding: chunkenc.EncGZIP.String(),
+				IndexShards:   index.DefaultIndexShards,
 			},
 			expected: Config{
 				MaxChunkAge:    time.Minute,
 				ChunkEncoding:  chunkenc.EncGZIP.String(),
 				parsedEncoding: chunkenc.EncGZIP,
+				IndexShards:    index.DefaultIndexShards,
 			},
 		},
 		{
 			in: Config{
 				ChunkEncoding: chunkenc.EncSnappy.String(),
+				IndexShards:   index.DefaultIndexShards,
 			},
 			expected: Config{
 				ChunkEncoding:  chunkenc.EncSnappy.String(),
 				parsedEncoding: chunkenc.EncSnappy,
+				IndexShards:    index.DefaultIndexShards,
 			},
 		},
 		{
 			in: Config{
+				IndexShards:   index.DefaultIndexShards,
 				ChunkEncoding: "bad-enc",
+			},
+			err: true,
+		},
+		{
+			in: Config{
+				MaxChunkAge:   time.Minute,
+				ChunkEncoding: chunkenc.EncGZIP.String(),
 			},
 			err: true,
 		},

@@ -13,7 +13,7 @@
       {
         "datasource": "$logs",
         "enable": true,
-        "expr": "{cluster=\"$cluster\", diff_namespace=\"$namespace\", container=\"kube-diff-logger\"}",
+        "expr": "{cluster=\"$cluster\", container=\"kube-diff-logger\"} | json | namespace_extracted=\"$namespace\"",
         "hide": true,
         "iconColor": "rgba(255, 96, 96, 1)",
         "name": "deployments",
@@ -2023,7 +2023,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"distributor.*\"}",
+              "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"distributor.*\"}",
               "instant": false,
               "intervalFactor": 3,
               "legendFormat": "{{pod}}",
@@ -2687,7 +2687,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"ingester.*\"}",
+              "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"ingester.*\"}",
               "instant": false,
               "intervalFactor": 3,
               "legendFormat": "{{pod}}",
@@ -3633,7 +3633,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "container_memory_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"querier.*\"}",
+              "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"querier.*\"}",
               "instant": false,
               "intervalFactor": 3,
               "legendFormat": "{{pod}}",
@@ -3946,21 +3946,21 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
+              "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le, container))",
               "intervalFactor": 1,
-              "legendFormat": ".99-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: .99-{{method}}-{{name}}",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
+              "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le, container))",
               "hide": false,
-              "legendFormat": ".9-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: .9-{{method}}-{{name}}",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
+              "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le, container))",
               "hide": false,
-              "legendFormat": ".5-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: .5-{{method}}-{{name}}",
               "refId": "C"
             }
           ],
@@ -4049,9 +4049,9 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, method, name)",
+              "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, method, name, container)",
               "intervalFactor": 1,
-              "legendFormat": "{{status_code}}-{{method}}-{{name}}",
+              "legendFormat": "{{container}}: {{status_code}}-{{method}}-{{name}}",
               "refId": "A"
             }
           ],
@@ -6588,14 +6588,14 @@
       {
         "allValue": null,
         "datasource": "$datasource",
-        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
+        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", container!=\"loki-canary\"}, cluster)",
         "hide": 0,
         "includeAll": false,
         "label": null,
         "multi": false,
         "name": "cluster",
         "options": [],
-        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
+        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", container!=\"loki-canary\"}, cluster)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -6609,14 +6609,14 @@
       {
         "allValue": null,
         "datasource": "$datasource",
-        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
+        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
         "hide": 0,
         "includeAll": false,
         "label": null,
         "multi": false,
         "name": "namespace",
         "options": [],
-        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
+        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

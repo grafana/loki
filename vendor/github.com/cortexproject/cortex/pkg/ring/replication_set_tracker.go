@@ -3,7 +3,7 @@ package ring
 type replicationSetResultTracker interface {
 	// Signals an instance has done the execution, either successful (no error)
 	// or failed (with error).
-	done(instance *IngesterDesc, err error)
+	done(instance *InstanceDesc, err error)
 
 	// Returns true if the minimum number of successful results have been received.
 	succeeded() bool
@@ -19,7 +19,7 @@ type defaultResultTracker struct {
 	maxErrors    int
 }
 
-func newDefaultResultTracker(instances []IngesterDesc, maxErrors int) *defaultResultTracker {
+func newDefaultResultTracker(instances []InstanceDesc, maxErrors int) *defaultResultTracker {
 	return &defaultResultTracker{
 		minSucceeded: len(instances) - maxErrors,
 		numSucceeded: 0,
@@ -28,7 +28,7 @@ func newDefaultResultTracker(instances []IngesterDesc, maxErrors int) *defaultRe
 	}
 }
 
-func (t *defaultResultTracker) done(_ *IngesterDesc, err error) {
+func (t *defaultResultTracker) done(_ *InstanceDesc, err error) {
 	if err == nil {
 		t.numSucceeded++
 	} else {
@@ -53,7 +53,7 @@ type zoneAwareResultTracker struct {
 	maxUnavailableZones int
 }
 
-func newZoneAwareResultTracker(instances []IngesterDesc, maxUnavailableZones int) *zoneAwareResultTracker {
+func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int) *zoneAwareResultTracker {
 	t := &zoneAwareResultTracker{
 		waitingByZone:       make(map[string]int),
 		failuresByZone:      make(map[string]int),
@@ -68,7 +68,7 @@ func newZoneAwareResultTracker(instances []IngesterDesc, maxUnavailableZones int
 	return t
 }
 
-func (t *zoneAwareResultTracker) done(instance *IngesterDesc, err error) {
+func (t *zoneAwareResultTracker) done(instance *InstanceDesc, err error) {
 	t.waitingByZone[instance.Zone]--
 
 	if err != nil {

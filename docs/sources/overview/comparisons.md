@@ -38,7 +38,7 @@ The way Loki represents logs by a set of label pairs is similar to how
 [Prometheus](https://prometheus.io) represents metrics. When deployed in an
 environment alongside Prometheus, logs from Promtail usually have the same
 labels as your applications metrics thanks to using the same service
-discovery mechanisms. Having logs and metrics with the same levels enables users
+discovery mechanisms. Having logs and metrics with the same labels enables users
 to seamlessly context switch between metrics and logs, helping with root cause
 analysis.
 

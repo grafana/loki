@@ -1,4 +1,4 @@
-// Copyright 2020 Google LLC
+// Copyright 2021 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@
 // To close the open connection, use the Close() method.
 //
 // For information about setting deadlines, reusing contexts, and more
-// please visit pkg.go.dev/cloud.google.com/go.
+// please visit https://pkg.go.dev/cloud.google.com/go.
 package longrunning // import "cloud.google.com/go/longrunning/autogen"
 
 import (
@@ -48,7 +48,7 @@ import (
 type clientHookParams struct{}
 type clientHook func(context.Context, clientHookParams) ([]option.ClientOption, error)
 
-const versionClient = "20201110"
+const versionClient = "20210602"
 
 func insertMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
 	out, _ := metadata.FromOutgoingContext(ctx)

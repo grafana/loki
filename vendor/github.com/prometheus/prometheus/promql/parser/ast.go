@@ -133,9 +133,10 @@ type SubqueryExpr struct {
 	// Offset is the offset used during the query execution
 	// which is calculated using the original offset, at modifier time,
 	// eval time, and subquery offsets in the AST tree.
-	Offset    time.Duration
-	Timestamp *int64
-	Step      time.Duration
+	Offset     time.Duration
+	Timestamp  *int64
+	StartOrEnd ItemType // Set when @ is used with start() or end()
+	Step       time.Duration
 
 	EndPos Pos
 }
@@ -191,6 +192,7 @@ type VectorSelector struct {
 	// eval time, and subquery offsets in the AST tree.
 	Offset        time.Duration
 	Timestamp     *int64
+	StartOrEnd    ItemType // Set when @ is used with start() or end()
 	LabelMatchers []*labels.Matcher
 
 	// The unexpanded seriesSet populated at query preparation time.
@@ -312,6 +314,18 @@ func Walk(v Visitor, node Node, path []Node) error {
 
 	_, err = v.Visit(nil, nil)
 	return err
+}
+
+func ExtractSelectors(expr Expr) [][]*labels.Matcher {
+	var selectors [][]*labels.Matcher
+	Inspect(expr, func(node Node, _ []Node) error {
+		vs, ok := node.(*VectorSelector)
+		if ok {
+			selectors = append(selectors, vs.LabelMatchers)
+		}
+		return nil
+	})
+	return selectors
 }
 
 type inspector func(Node, []Node) error

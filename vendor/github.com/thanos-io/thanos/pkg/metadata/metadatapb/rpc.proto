@@ -1,0 +1,56 @@
+// Copyright (c) The Thanos Authors.
+// Licensed under the Apache License 2.0.
+
+syntax = "proto3";
+package thanos;
+
+import "store/storepb/types.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "metadatapb";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+
+// Do not generate XXX fields to reduce memory footprint and opening a door
+// for zero-copy casts to/from prometheus data types.
+option (gogoproto.goproto_unkeyed_all) = false;
+option (gogoproto.goproto_unrecognized_all) = false;
+option (gogoproto.goproto_sizecache_all) = false;
+
+service Metadata {
+  rpc MetricMetadata(MetricMetadataRequest) returns (stream MetricMetadataResponse);
+}
+
+message MetricMetadataRequest {
+  string metric = 1;
+  int32 limit = 2;
+  PartialResponseStrategy partial_response_strategy = 3;
+}
+
+message MetricMetadataResponse {
+  oneof result {
+    /// A collection of metric metadata entries.
+    MetricMetadata metadata = 1;
+
+    /// warning is considered an information piece in place of series for warning purposes.
+    /// It is used to warn metadata API users about suspicious cases or partial response (if enabled).
+    string warning = 2;
+  }
+}
+
+message MetricMetadata {
+  map<string, MetricMetadataEntry> metadata = 1 [(gogoproto.nullable) = false];
+}
+
+message MetricMetadataEntry {
+  repeated Meta metas = 2  [(gogoproto.nullable) = false];
+}
+
+message Meta {
+  string type = 1 [(gogoproto.jsontag) = "type"];
+  string help = 2 [(gogoproto.jsontag) = "help"];
+  string unit = 3 [(gogoproto.jsontag) = "unit"];
+}

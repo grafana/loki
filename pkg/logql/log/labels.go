@@ -4,7 +4,11 @@ import (
 	"sort"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
+
+const MaxInternedStrings = 1024
 
 var emptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
 
@@ -62,7 +66,8 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 type BaseLabelsBuilder struct {
 	del []string
 	add []labels.Label
-	// nolint(structcheck) https://github.com/golangci/golangci-lint/issues/826
+	// nolint:structcheck
+	// https://github.com/golangci/golangci-lint/issues/826
 	err string
 
 	groups            []string
@@ -210,7 +215,7 @@ func (b *LabelsBuilder) Labels() labels.Labels {
 		if b.err == "" {
 			return b.base
 		}
-		res := append(b.base.Copy(), labels.Label{Name: ErrorLabel, Value: b.err})
+		res := append(b.base.Copy(), labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 		sort.Sort(res)
 		return res
 	}
@@ -234,7 +239,7 @@ Outer:
 	}
 	res = append(res, b.add...)
 	if b.err != "" {
-		res = append(res, labels.Label{Name: ErrorLabel, Value: b.err})
+		res = append(res, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 	}
 	sort.Sort(res)
 
@@ -365,4 +370,25 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res
 	return res
+}
+
+type internedStringSet map[string]struct {
+	s  string
+	ok bool
+}
+
+func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (string, bool) {
+	s, ok := i[string(data)]
+	if ok {
+		return s.s, s.ok
+	}
+	new, ok := createNew()
+	if len(i) >= MaxInternedStrings {
+		return new, ok
+	}
+	i[string(data)] = struct {
+		s  string
+		ok bool
+	}{s: new, ok: ok}
+	return new, ok
 }

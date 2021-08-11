@@ -13,12 +13,12 @@ import (
 
 const unsupportedErr = "unsupported range vector aggregation operation: %s"
 
-func (r rangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
+func (r RangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	return r.extractor(nil)
 }
 
 // extractor creates a SampleExtractor but allows for the grouping to be overridden.
-func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor, error) {
+func (r RangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
@@ -43,10 +43,16 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 		}
 	}
 
+	// absent_over_time cannot be grouped (yet?), so set noLabels=true
+	// to make extraction more efficient and less likely to strip per query series limits.
+	if r.operation == OpRangeTypeAbsent {
+		noLabels = true
+	}
+
 	sort.Strings(groups)
 
 	var stages []log.Stage
-	if p, ok := r.left.left.(*pipelineExpr); ok {
+	if p, ok := r.left.left.(*PipelineExpr); ok {
 		// if the expression is a pipeline then take all stages into account first.
 		st, err := p.pipeline.stages()
 		if err != nil {
@@ -83,7 +89,7 @@ func (r rangeAggregationExpr) extractor(override *grouping) (log.SampleExtractor
 	}
 }
 
-func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
+func (r RangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 	switch r.operation {
 	case OpRangeTypeRate:
 		return rateLogs(r.left.interval, r.left.unwrap != nil), nil
@@ -105,6 +111,10 @@ func (r rangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 		return stdvarOverTime, nil
 	case OpRangeTypeQuantile:
 		return quantileOverTime(*r.params), nil
+	case OpRangeTypeFirst:
+		return first, nil
+	case OpRangeTypeLast:
+		return last, nil
 	case OpRangeTypeAbsent:
 		return one, nil
 	default:
@@ -252,6 +262,20 @@ func quantile(q float64, values vectorByValueHeap) float64 {
 
 	weight := rank - math.Floor(rank)
 	return values[int(lowerIndex)].V*(1-weight) + values[int(upperIndex)].V*weight
+}
+
+func first(samples []promql.Point) float64 {
+	if len(samples) == 0 {
+		return math.NaN()
+	}
+	return samples[0].V
+}
+
+func last(samples []promql.Point) float64 {
+	if len(samples) == 0 {
+		return math.NaN()
+	}
+	return samples[len(samples)-1].V
 }
 
 func one(samples []promql.Point) float64 {

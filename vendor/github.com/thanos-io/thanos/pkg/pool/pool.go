@@ -9,15 +9,28 @@ import (
 	"github.com/pkg/errors"
 )
 
-type BytesPool interface {
+// Bytes is a pool of bytes that can be reused.
+type Bytes interface {
+	// Get returns a new byte slices that fits the given size.
 	Get(sz int) (*[]byte, error)
+	// Put returns a byte slice to the right bucket in the pool.
 	Put(b *[]byte)
 }
 
-// BucketedBytesPool is a bucketed pool for variably sized byte slices. It can be configured to not allow
+// NoopBytes is pool that always allocated required slice on heap and ignore puts.
+type NoopBytes struct{}
+
+func (p NoopBytes) Get(sz int) (*[]byte, error) {
+	b := make([]byte, 0, sz)
+	return &b, nil
+}
+
+func (p NoopBytes) Put(*[]byte) {}
+
+// BucketedBytes is a bucketed pool for variably sized byte slices. It can be configured to not allow
 // more than a maximum number of bytes being used at a given time.
 // Every byte slice obtained from the pool must be returned.
-type BucketedBytesPool struct {
+type BucketedBytes struct {
 	buckets   []sync.Pool
 	sizes     []int
 	maxTotal  uint64
@@ -27,10 +40,10 @@ type BucketedBytesPool struct {
 	new func(s int) *[]byte
 }
 
-// NewBytesPool returns a new BytesPool with size buckets for minSize to maxSize
+// NewBucketedBytes returns a new Bytes with size buckets for minSize to maxSize
 // increasing by the given factor and maximum number of used bytes.
 // No more than maxTotal bytes can be used at any given time unless maxTotal is set to 0.
-func NewBucketedBytesPool(minSize, maxSize int, factor float64, maxTotal uint64) (*BucketedBytesPool, error) {
+func NewBucketedBytes(minSize, maxSize int, factor float64, maxTotal uint64) (*BucketedBytes, error) {
 	if minSize < 1 {
 		return nil, errors.New("invalid minimum pool size")
 	}
@@ -46,7 +59,7 @@ func NewBucketedBytesPool(minSize, maxSize int, factor float64, maxTotal uint64)
 	for s := minSize; s <= maxSize; s = int(float64(s) * factor) {
 		sizes = append(sizes, s)
 	}
-	p := &BucketedBytesPool{
+	p := &BucketedBytes{
 		buckets:  make([]sync.Pool, len(sizes)),
 		sizes:    sizes,
 		maxTotal: maxTotal,
@@ -61,8 +74,8 @@ func NewBucketedBytesPool(minSize, maxSize int, factor float64, maxTotal uint64)
 // ErrPoolExhausted is returned if a pool cannot provide the request bytes.
 var ErrPoolExhausted = errors.New("pool exhausted")
 
-// Get returns a new byte slices that fits the given size.
-func (p *BucketedBytesPool) Get(sz int) (*[]byte, error) {
+// Get returns a new byte slice that fits the given size.
+func (p *BucketedBytes) Get(sz int) (*[]byte, error) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
@@ -89,7 +102,7 @@ func (p *BucketedBytesPool) Get(sz int) (*[]byte, error) {
 }
 
 // Put returns a byte slice to the right bucket in the pool.
-func (p *BucketedBytesPool) Put(b *[]byte) {
+func (p *BucketedBytes) Put(b *[]byte) {
 	if b == nil {
 		return
 	}

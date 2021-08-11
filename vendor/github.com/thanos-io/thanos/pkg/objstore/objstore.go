@@ -68,7 +68,7 @@ type BucketReader interface {
 	// Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 	// object name including the prefix of the inspected directory.
 	// Entries are passed to function in sorted order.
-	Iter(ctx context.Context, dir string, f func(string) error) error
+	Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error
 
 	// Get returns a reader for the given object name.
 	Get(ctx context.Context, name string) (io.ReadCloser, error)
@@ -95,6 +95,28 @@ type InstrumentedBucketReader interface {
 	ReaderWithExpectedErrs(IsOpFailureExpectedFunc) BucketReader
 }
 
+// IterOption configures the provided params.
+type IterOption func(params *IterParams)
+
+// WithRecursiveIter is an option that can be applied to Iter() to recursively list objects
+// in the bucket.
+func WithRecursiveIter(params *IterParams) {
+	params.Recursive = true
+}
+
+// IterParams holds the Iter() parameters and is used by objstore clients implementations.
+type IterParams struct {
+	Recursive bool
+}
+
+func ApplyIterOptions(options ...IterOption) IterParams {
+	out := IterParams{}
+	for _, opt := range options {
+		opt(&out)
+	}
+	return out
+}
+
 type ObjectAttributes struct {
 	// Size is the object size in bytes.
 	Size int64 `json:"size"`
@@ -104,6 +126,9 @@ type ObjectAttributes struct {
 }
 
 // TryToGetSize tries to get upfront size from reader.
+// Some implementations may return only size of unread data in the reader, so it's best to call this method before
+// doing any reading.
+//
 // TODO(https://github.com/thanos-io/thanos/issues/678): Remove guessing length when minio provider will support multipart upload without this.
 func TryToGetSize(r io.Reader) (int64, error) {
 	switch f := r.(type) {
@@ -115,10 +140,32 @@ func TryToGetSize(r io.Reader) (int64, error) {
 		return fileInfo.Size(), nil
 	case *bytes.Buffer:
 		return int64(f.Len()), nil
+	case *bytes.Reader:
+		// Returns length of unread data only.
+		return int64(f.Len()), nil
 	case *strings.Reader:
 		return f.Size(), nil
+	case ObjectSizer:
+		return f.ObjectSize()
 	}
 	return 0, errors.Errorf("unsupported type of io.Reader: %T", r)
+}
+
+// ObjectSizer can return size of object.
+type ObjectSizer interface {
+	// ObjectSize returns the size of the object in bytes, or error if it is not available.
+	ObjectSize() (int64, error)
+}
+
+type nopCloserWithObjectSize struct{ io.Reader }
+
+func (nopCloserWithObjectSize) Close() error                 { return nil }
+func (n nopCloserWithObjectSize) ObjectSize() (int64, error) { return TryToGetSize(n.Reader) }
+
+// NopCloserWithSize returns a ReadCloser with a no-op Close method wrapping
+// the provided Reader r. Returned ReadCloser also implements Size method.
+func NopCloserWithSize(r io.Reader) io.ReadCloser {
+	return nopCloserWithObjectSize{r}
 }
 
 // UploadDir uploads all files in srcdir to the bucket with into a top-level directory
@@ -201,7 +248,7 @@ func DownloadFile(ctx context.Context, logger log.Logger, bkt BucketReader, src,
 }
 
 // DownloadDir downloads all object found in the directory into the local directory.
-func DownloadDir(ctx context.Context, logger log.Logger, bkt BucketReader, src, dst string) error {
+func DownloadDir(ctx context.Context, logger log.Logger, bkt BucketReader, originalSrc, src, dst string, ignoredPaths ...string) error {
 	if err := os.MkdirAll(dst, 0777); err != nil {
 		return errors.Wrap(err, "create dir")
 	}
@@ -209,7 +256,13 @@ func DownloadDir(ctx context.Context, logger log.Logger, bkt BucketReader, src, 
 	var downloadedFiles []string
 	if err := bkt.Iter(ctx, src, func(name string) error {
 		if strings.HasSuffix(name, DirDelim) {
-			return DownloadDir(ctx, logger, bkt, name, filepath.Join(dst, filepath.Base(name)))
+			return DownloadDir(ctx, logger, bkt, originalSrc, name, filepath.Join(dst, filepath.Base(name)), ignoredPaths...)
+		}
+		for _, ignoredPath := range ignoredPaths {
+			if ignoredPath == strings.TrimPrefix(name, string(originalSrc)+DirDelim) {
+				level.Debug(logger).Log("msg", "not downloading again because a provided path matches this one", "file", name)
+				return nil
+			}
 		}
 		if err := DownloadFile(ctx, logger, bkt, name, dst); err != nil {
 			return err
@@ -308,11 +361,11 @@ func (b *metricBucket) ReaderWithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket
 	return b.WithExpectedErrs(fn)
 }
 
-func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string) error) error {
+func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string) error, options ...IterOption) error {
 	const op = OpIter
 	b.ops.WithLabelValues(op).Inc()
 
-	err := b.bkt.Iter(ctx, dir, f)
+	err := b.bkt.Iter(ctx, dir, f, options...)
 	if err != nil {
 		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()

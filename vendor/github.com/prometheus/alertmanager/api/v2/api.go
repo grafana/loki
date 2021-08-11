@@ -52,7 +52,7 @@ import (
 
 // API represents an Alertmanager API v2
 type API struct {
-	peer           *cluster.Peer
+	peer           cluster.ClusterPeer
 	silences       *silence.Silences
 	alerts         provider.Alerts
 	alertGroups    groupsFn
@@ -83,7 +83,7 @@ func NewAPI(
 	gf groupsFn,
 	sf getAlertStatusFn,
 	silences *silence.Silences,
-	peer *cluster.Peer,
+	peer cluster.ClusterPeer,
 	l log.Logger,
 	r prometheus.Registerer,
 ) (*API, error) {
@@ -179,8 +179,9 @@ func (api *API) getStatusHandler(params general_ops.GetStatusParams) middleware.
 		peers := []*open_api_models.PeerStatus{}
 		for _, n := range api.peer.Peers() {
 			address := n.Address()
+			name := n.Name()
 			peers = append(peers, &open_api_models.PeerStatus{
-				Name:    &n.Name,
+				Name:    &name,
 				Address: &address,
 			})
 		}
@@ -269,7 +270,7 @@ func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Re
 			continue
 		}
 
-		alert := alertToOpenAPIAlert(a, api.getAlertStatus(a.Fingerprint()), receivers)
+		alert := AlertToOpenAPIAlert(a, api.getAlertStatus(a.Fingerprint()), receivers)
 
 		res = append(res, alert)
 	}
@@ -289,7 +290,7 @@ func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Re
 func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.Responder {
 	logger := api.requestLogger(params.HTTPRequest)
 
-	alerts := openAPIAlertsToAlerts(params.Alerts)
+	alerts := OpenAPIAlertsToAlerts(params.Alerts)
 	now := time.Now()
 
 	api.mtx.RLock()
@@ -388,7 +389,7 @@ func (api *API) getAlertGroupsHandler(params alertgroup_ops.GetAlertGroupsParams
 	for _, alertGroup := range alertGroups {
 		ag := &open_api_models.AlertGroup{
 			Receiver: &open_api_models.Receiver{Name: &alertGroup.Receiver},
-			Labels:   modelLabelSetToAPILabelSet(alertGroup.Labels),
+			Labels:   ModelLabelSetToAPILabelSet(alertGroup.Labels),
 			Alerts:   make([]*open_api_models.GettableAlert, 0, len(alertGroup.Alerts)),
 		}
 
@@ -396,7 +397,7 @@ func (api *API) getAlertGroupsHandler(params alertgroup_ops.GetAlertGroupsParams
 			fp := alert.Fingerprint()
 			receivers := allReceivers[fp]
 			status := api.getAlertStatus(fp)
-			apiAlert := alertToOpenAPIAlert(alert, status, receivers)
+			apiAlert := AlertToOpenAPIAlert(alert, status, receivers)
 			ag.Alerts = append(ag.Alerts, apiAlert)
 		}
 		res = append(res, ag)
@@ -433,89 +434,12 @@ func (api *API) alertFilter(matchers []*labels.Matcher, silenced, inhibited, act
 	}
 }
 
-func alertToOpenAPIAlert(alert *types.Alert, status types.AlertStatus, receivers []string) *open_api_models.GettableAlert {
-	startsAt := strfmt.DateTime(alert.StartsAt)
-	updatedAt := strfmt.DateTime(alert.UpdatedAt)
-	endsAt := strfmt.DateTime(alert.EndsAt)
-
-	apiReceivers := make([]*open_api_models.Receiver, 0, len(receivers))
-	for i := range receivers {
-		apiReceivers = append(apiReceivers, &open_api_models.Receiver{Name: &receivers[i]})
-	}
-
-	fp := alert.Fingerprint().String()
-	state := string(status.State)
-	aa := &open_api_models.GettableAlert{
-		Alert: open_api_models.Alert{
-			GeneratorURL: strfmt.URI(alert.GeneratorURL),
-			Labels:       modelLabelSetToAPILabelSet(alert.Labels),
-		},
-		Annotations: modelLabelSetToAPILabelSet(alert.Annotations),
-		StartsAt:    &startsAt,
-		UpdatedAt:   &updatedAt,
-		EndsAt:      &endsAt,
-		Fingerprint: &fp,
-		Receivers:   apiReceivers,
-		Status: &open_api_models.AlertStatus{
-			State:       &state,
-			SilencedBy:  status.SilencedBy,
-			InhibitedBy: status.InhibitedBy,
-		},
-	}
-
-	if aa.Status.SilencedBy == nil {
-		aa.Status.SilencedBy = []string{}
-	}
-
-	if aa.Status.InhibitedBy == nil {
-		aa.Status.InhibitedBy = []string{}
-	}
-
-	return aa
-}
-
-func openAPIAlertsToAlerts(apiAlerts open_api_models.PostableAlerts) []*types.Alert {
-	alerts := []*types.Alert{}
-	for _, apiAlert := range apiAlerts {
-		alert := types.Alert{
-			Alert: prometheus_model.Alert{
-				Labels:       apiLabelSetToModelLabelSet(apiAlert.Labels),
-				Annotations:  apiLabelSetToModelLabelSet(apiAlert.Annotations),
-				StartsAt:     time.Time(apiAlert.StartsAt),
-				EndsAt:       time.Time(apiAlert.EndsAt),
-				GeneratorURL: string(apiAlert.GeneratorURL),
-			},
-		}
-		alerts = append(alerts, &alert)
-	}
-
-	return alerts
-}
-
 func removeEmptyLabels(ls prometheus_model.LabelSet) {
 	for k, v := range ls {
 		if string(v) == "" {
 			delete(ls, k)
 		}
 	}
-}
-
-func modelLabelSetToAPILabelSet(modelLabelSet prometheus_model.LabelSet) open_api_models.LabelSet {
-	apiLabelSet := open_api_models.LabelSet{}
-	for key, value := range modelLabelSet {
-		apiLabelSet[string(key)] = string(value)
-	}
-
-	return apiLabelSet
-}
-
-func apiLabelSetToModelLabelSet(apiLabelSet open_api_models.LabelSet) prometheus_model.LabelSet {
-	modelLabelSet := prometheus_model.LabelSet{}
-	for key, value := range apiLabelSet {
-		modelLabelSet[prometheus_model.LabelName(key)] = prometheus_model.LabelValue(value)
-	}
-
-	return modelLabelSet
 }
 
 func receiversMatchFilter(receivers []string, filter *regexp.Regexp) bool {
@@ -584,18 +508,18 @@ func (api *API) getSilencesHandler(params silence_ops.GetSilencesParams) middlew
 
 	sils := open_api_models.GettableSilences{}
 	for _, ps := range psils {
-		silence, err := gettableSilenceFromProto(ps)
+		if !CheckSilenceMatchesFilterLabels(ps, matchers) {
+			continue
+		}
+		silence, err := GettableSilenceFromProto(ps)
 		if err != nil {
 			level.Error(logger).Log("msg", "Failed to unmarshal silence from proto", "err", err)
 			return silence_ops.NewGetSilencesInternalServerError().WithPayload(err.Error())
 		}
-		if !gettableSilenceMatchesFilterLabels(silence, matchers) {
-			continue
-		}
 		sils = append(sils, &silence)
 	}
 
-	sortSilences(sils)
+	SortSilences(sils)
 
 	return silence_ops.NewGetSilencesOK().WithPayload(sils)
 }
@@ -608,12 +532,12 @@ var (
 	}
 )
 
-// sortSilences sorts first according to the state "active, pending, expired"
+// SortSilences sorts first according to the state "active, pending, expired"
 // then by end time or start time depending on the state.
 // active silences should show the next to expire first
 // pending silences are ordered based on which one starts next
 // expired are ordered based on which one expired most recently
-func sortSilences(sils open_api_models.GettableSilences) {
+func SortSilences(sils open_api_models.GettableSilences) {
 	sort.Slice(sils, func(i, j int) bool {
 		state1 := types.SilenceState(*sils[i].Status.State)
 		state2 := types.SilenceState(*sils[j].Status.State)
@@ -638,13 +562,31 @@ func sortSilences(sils open_api_models.GettableSilences) {
 	})
 }
 
-func gettableSilenceMatchesFilterLabels(s open_api_models.GettableSilence, matchers []*labels.Matcher) bool {
-	sms := make(map[string]string)
-	for _, m := range s.Matchers {
-		sms[*m.Name] = *m.Value
+// CheckSilenceMatchesFilterLabels returns true if
+// a given silence matches a list of matchers.
+// A silence matches a filter (list of matchers) if
+// for all matchers in the filter, there exists a matcher in the silence
+// such that their names, types, and values are equivalent.
+func CheckSilenceMatchesFilterLabels(s *silencepb.Silence, matchers []*labels.Matcher) bool {
+	for _, matcher := range matchers {
+		found := false
+		for _, m := range s.Matchers {
+			if matcher.Name == m.Name &&
+				(matcher.Type == labels.MatchEqual && m.Type == silencepb.Matcher_EQUAL ||
+					matcher.Type == labels.MatchRegexp && m.Type == silencepb.Matcher_REGEXP ||
+					matcher.Type == labels.MatchNotEqual && m.Type == silencepb.Matcher_NOT_EQUAL ||
+					matcher.Type == labels.MatchNotRegexp && m.Type == silencepb.Matcher_NOT_REGEXP) &&
+				matcher.Value == m.Pattern {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
 	}
 
-	return matchFilterLabels(matchers, sms)
+	return true
 }
 
 func (api *API) getSilenceHandler(params silence_ops.GetSilenceParams) middleware.Responder {
@@ -661,7 +603,7 @@ func (api *API) getSilenceHandler(params silence_ops.GetSilenceParams) middlewar
 		return silence_ops.NewGetSilenceNotFound()
 	}
 
-	sil, err := gettableSilenceFromProto(sils[0])
+	sil, err := GettableSilenceFromProto(sils[0])
 	if err != nil {
 		level.Error(logger).Log("msg", "Failed to convert unmarshal from proto", "err", err)
 		return silence_ops.NewGetSilenceInternalServerError().WithPayload(err.Error())
@@ -681,54 +623,10 @@ func (api *API) deleteSilenceHandler(params silence_ops.DeleteSilenceParams) mid
 	return silence_ops.NewDeleteSilenceOK()
 }
 
-func gettableSilenceFromProto(s *silencepb.Silence) (open_api_models.GettableSilence, error) {
-	start := strfmt.DateTime(s.StartsAt)
-	end := strfmt.DateTime(s.EndsAt)
-	updated := strfmt.DateTime(s.UpdatedAt)
-	state := string(types.CalcSilenceState(s.StartsAt, s.EndsAt))
-	sil := open_api_models.GettableSilence{
-		Silence: open_api_models.Silence{
-			StartsAt:  &start,
-			EndsAt:    &end,
-			Comment:   &s.Comment,
-			CreatedBy: &s.CreatedBy,
-		},
-		ID:        &s.Id,
-		UpdatedAt: &updated,
-		Status: &open_api_models.SilenceStatus{
-			State: &state,
-		},
-	}
-
-	for _, m := range s.Matchers {
-		matcher := &open_api_models.Matcher{
-			Name:  &m.Name,
-			Value: &m.Pattern,
-		}
-		switch m.Type {
-		case silencepb.Matcher_EQUAL:
-			f := false
-			matcher.IsRegex = &f
-		case silencepb.Matcher_REGEXP:
-			t := true
-			matcher.IsRegex = &t
-		default:
-			return sil, fmt.Errorf(
-				"unknown matcher type for matcher '%v' in silence '%v'",
-				m.Name,
-				s.Id,
-			)
-		}
-		sil.Matchers = append(sil.Matchers, matcher)
-	}
-
-	return sil, nil
-}
-
 func (api *API) postSilencesHandler(params silence_ops.PostSilencesParams) middleware.Responder {
 	logger := api.requestLogger(params.HTTPRequest)
 
-	sil, err := postableSilenceToProto(params.Silence)
+	sil, err := PostableSilenceToProto(params.Silence)
 	if err != nil {
 		level.Error(logger).Log("msg", "Failed to marshal silence to proto", "err", err)
 		return silence_ops.NewPostSilencesBadRequest().WithPayload(
@@ -760,28 +658,6 @@ func (api *API) postSilencesHandler(params silence_ops.PostSilencesParams) middl
 	return silence_ops.NewPostSilencesOK().WithPayload(&silence_ops.PostSilencesOKBody{
 		SilenceID: sid,
 	})
-}
-
-func postableSilenceToProto(s *open_api_models.PostableSilence) (*silencepb.Silence, error) {
-	sil := &silencepb.Silence{
-		Id:        s.ID,
-		StartsAt:  time.Time(*s.StartsAt),
-		EndsAt:    time.Time(*s.EndsAt),
-		Comment:   *s.Comment,
-		CreatedBy: *s.CreatedBy,
-	}
-	for _, m := range s.Matchers {
-		matcher := &silencepb.Matcher{
-			Name:    *m.Name,
-			Pattern: *m.Value,
-			Type:    silencepb.Matcher_EQUAL,
-		}
-		if *m.IsRegex {
-			matcher.Type = silencepb.Matcher_REGEXP
-		}
-		sil.Matchers = append(sil.Matchers, matcher)
-	}
-	return sil, nil
 }
 
 func parseFilter(filter []string) ([]*labels.Matcher, error) {

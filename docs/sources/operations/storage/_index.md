@@ -1,5 +1,6 @@
 ---
 title: Storage
+weight: 40
 ---
 # Loki Storage
 
@@ -22,6 +23,7 @@ For more information:
 
 1. [Table Manager](table-manager/)
 1. [Retention](retention/)
+1. [Logs Deletion](logs-deletion/)
 
 ## Supported Stores
 
@@ -48,6 +50,7 @@ The following are supported for the chunks:
 
 When using S3 as object storage, the following permissions are needed:
 
+- `s3:ListObjects`
 - `s3:ListBucket`
 - `s3:PutObject`
 - `s3:GetObject`

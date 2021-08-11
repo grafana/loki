@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -882,7 +882,7 @@ func (v10Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.Shard
 		s := strings.Split(query.HashValue, ":")[0]
 		n, err := strconv.Atoi(s)
 		if err != nil {
-			level.Error(util.Logger).Log(
+			level.Error(util_log.Logger).Log(
 				"msg",
 				"Unable to determine shard from IndexQuery",
 				"HashValue",

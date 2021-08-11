@@ -22,7 +22,7 @@ package alert
 import (
 	"net/http"
 
-	middleware "github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/runtime/middleware"
 )
 
 // PostAlertsHandlerFunc turns a function with the right signature into a post alerts handler

@@ -32,6 +32,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type ctxKey int
+
 const (
 	// DirDelim is the delimiter used to model a directory structure in an object store bucket.
 	DirDelim = "/"
@@ -44,6 +46,13 @@ const (
 
 	// SSES3 is the name of the SSE-S3 method for objstore encryption.
 	SSES3 = "SSE-S3"
+
+	// sseConfigKey is the context key to override SSE config. This feature is used by downstream
+	// projects (eg. Cortex) to inject custom SSE config on a per-request basis. Future work or
+	// refactoring can introduce breaking changes as far as the functionality is preserved.
+	// NOTE: we're using a context value only because it's a very specific S3 option. If SSE will
+	// be available to wider set of backends we should probably add a variadic option to Get() and Upload().
+	sseConfigKey = ctxKey(0)
 )
 
 var DefaultConfig = Config{
@@ -51,10 +60,13 @@ var DefaultConfig = Config{
 	HTTPConfig: HTTPConfig{
 		IdleConnTimeout:       model.Duration(90 * time.Second),
 		ResponseHeaderTimeout: model.Duration(2 * time.Minute),
+		TLSHandshakeTimeout:   model.Duration(10 * time.Second),
+		ExpectContinueTimeout: model.Duration(1 * time.Second),
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		MaxConnsPerHost:       0,
 	},
-	// Minimum file size after which an HTTP multipart request should be used to upload objects to storage.
-	// Set to 128 MiB as in the minio client.
-	PartSize: 1024 * 1024 * 128,
+	PartSize: 1024 * 1024 * 64, // 64MB.
 }
 
 // Config stores the configuration for s3 bucket.
@@ -71,6 +83,7 @@ type Config struct {
 	TraceConfig        TraceConfig       `yaml:"trace"`
 	ListObjectsVersion string            `yaml:"list_objects_version"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
+	// NOTE we need to make sure this number does not produce more parts than 10 000.
 	PartSize  uint64    `yaml:"part_size"`
 	SSEConfig SSEConfig `yaml:"sse_config"`
 }
@@ -94,6 +107,12 @@ type HTTPConfig struct {
 	ResponseHeaderTimeout model.Duration `yaml:"response_header_timeout"`
 	InsecureSkipVerify    bool           `yaml:"insecure_skip_verify"`
 
+	TLSHandshakeTimeout   model.Duration `yaml:"tls_handshake_timeout"`
+	ExpectContinueTimeout model.Duration `yaml:"expect_continue_timeout"`
+	MaxIdleConns          int            `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int            `yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost       int            `yaml:"max_conns_per_host"`
+
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
 }
@@ -111,11 +130,12 @@ func DefaultTransport(config Config) *http.Transport {
 			DualStack: true,
 		}).DialContext,
 
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
+		MaxIdleConns:          config.HTTPConfig.MaxIdleConns,
+		MaxIdleConnsPerHost:   config.HTTPConfig.MaxIdleConnsPerHost,
 		IdleConnTimeout:       time.Duration(config.HTTPConfig.IdleConnTimeout),
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+		MaxConnsPerHost:       config.HTTPConfig.MaxConnsPerHost,
+		TLSHandshakeTimeout:   time.Duration(config.HTTPConfig.TLSHandshakeTimeout),
+		ExpectContinueTimeout: time.Duration(config.HTTPConfig.ExpectContinueTimeout),
 		// A custom ResponseHeaderTimeout was introduced
 		// to cover cases where the tcp connection works but
 		// the server never answers. Defaults to 2 minutes.
@@ -135,7 +155,7 @@ type Bucket struct {
 	logger          log.Logger
 	name            string
 	client          *minio.Client
-	sse             encrypt.ServerSide
+	defaultSSE      encrypt.ServerSide
 	putUserMetadata map[string]string
 	partSize        uint64
 	listObjectsV1   bool
@@ -274,7 +294,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		logger:          logger,
 		name:            config.Bucket,
 		client:          client,
-		sse:             sse,
+		defaultSSE:      sse,
 		putUserMetadata: config.PutUserMetadata,
 		partSize:        config.PartSize,
 		listObjectsV1:   config.ListObjectsVersion == "v1",
@@ -324,7 +344,7 @@ func ValidateForTests(conf Config) error {
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
@@ -333,7 +353,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) err
 
 	opts := minio.ListObjectsOptions{
 		Prefix:    dir,
-		Recursive: false,
+		Recursive: objstore.ApplyIterOptions(options...).Recursive,
 		UseV1:     b.listObjectsV1,
 	}
 
@@ -359,7 +379,12 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) err
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	opts := &minio.GetObjectOptions{ServerSideEncryption: b.sse}
+	sse, err := b.getServerSideEncryption(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := &minio.GetObjectOptions{ServerSideEncryption: sse}
 	if length != -1 {
 		if err := opts.SetRange(off, off+length-1); err != nil {
 			return nil, err
@@ -411,6 +436,11 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
+	sse, err := b.getServerSideEncryption(ctx)
+	if err != nil {
+		return err
+	}
+
 	// TODO(https://github.com/thanos-io/thanos/issues/678): Remove guessing length when minio provider will support multipart upload without this.
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
@@ -418,7 +448,6 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		size = -1
 	}
 
-	// partSize cannot be larger than object size.
 	partSize := b.partSize
 	if size < int64(partSize) {
 		partSize = 0
@@ -431,7 +460,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		size,
 		minio.PutObjectOptions{
 			PartSize:             partSize,
-			ServerSideEncryption: b.sse,
+			ServerSideEncryption: sse,
 			UserMetadata:         b.putUserMetadata,
 		},
 	); err != nil {
@@ -461,10 +490,22 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *Bucket) IsObjNotFoundErr(err error) bool {
-	return minio.ToErrorResponse(err).Code == "NoSuchKey"
+	return minio.ToErrorResponse(errors.Cause(err)).Code == "NoSuchKey"
 }
 
 func (b *Bucket) Close() error { return nil }
+
+// getServerSideEncryption returns the SSE to use.
+func (b *Bucket) getServerSideEncryption(ctx context.Context) (encrypt.ServerSide, error) {
+	if value := ctx.Value(sseConfigKey); value != nil {
+		if sse, ok := value.(encrypt.ServerSide); ok {
+			return sse, nil
+		}
+		return nil, errors.New("invalid SSE config override provided in the context")
+	}
+
+	return b.defaultSSE, nil
+}
 
 func configFromEnv() Config {
 	c := Config{
@@ -539,4 +580,10 @@ func NewTestBucketFromConfig(t testing.TB, location string, c Config, reuseBucke
 			t.Logf("deleting bucket %s failed: %s", bktToCreate, err)
 		}
 	}, nil
+}
+
+// ContextWithSSEConfig returns a context with a  custom SSE config set. The returned context should be
+// provided to S3 objstore client functions to override the default SSE config.
+func ContextWithSSEConfig(ctx context.Context, value encrypt.ServerSide) context.Context {
+	return context.WithValue(ctx, sseConfigKey, value)
 }

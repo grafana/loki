@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 /*
@@ -44,7 +46,6 @@ func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *S
 		metrics:        metrics,
 		limits:         limits,
 	}
-
 }
 
 // Query constructs a Query
@@ -80,6 +81,8 @@ func (d DownstreamLogSelectorExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.LogSelectorExpr.String(), d.shard)
 }
 
+func (d DownstreamSampleExpr) Walk(f WalkFn) { f(d) }
+
 // ConcatSampleExpr is an expr for concatenating multiple SampleExpr
 // Contract: The embedded SampleExprs within a linked list of ConcatSampleExprs must be of the
 // same structure. This makes special implementations of SampleExpr.Associative() unnecessary.
@@ -94,6 +97,11 @@ func (c ConcatSampleExpr) String() string {
 	}
 
 	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.String())
+}
+
+func (c ConcatSampleExpr) Walk(f WalkFn) {
+	f(c)
+	f(c.next)
 }
 
 // ConcatLogSelectorExpr is an expr for concatenating multiple LogSelectorExpr
@@ -150,7 +158,7 @@ type DownstreamQuery struct {
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
-	Downstream(context.Context, []DownstreamQuery) ([]Result, error)
+	Downstream(context.Context, []DownstreamQuery) ([]logqlmodel.Result, error)
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -160,7 +168,7 @@ type DownstreamEvaluator struct {
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
-func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]Result, error) {
+func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries)
 	if err != nil {
 		return nil, err
@@ -168,12 +176,11 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 	for _, res := range results {
 		if err := stats.JoinResults(ctx, res.Statistics); err != nil {
-			level.Warn(util.Logger).Log("msg", "unable to merge downstream results", "err", err)
+			level.Warn(util_log.Logger).Log("msg", "unable to merge downstream results", "err", err)
 		}
 	}
 
 	return results, nil
-
 }
 
 type errorQuerier struct{}
@@ -181,6 +188,7 @@ type errorQuerier struct{}
 func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	return nil, errors.New("Unimplemented")
 }
+
 func (errorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, errors.New("Unimplemented")
 }
@@ -241,7 +249,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		for i, res := range results {
 			stepper, err := ResultStepEvaluator(res, params)
 			if err != nil {
-				level.Warn(util.Logger).Log(
+				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract StepEvaluator",
 					"err", err,
 					"expr", queries[i].Expr.String(),
@@ -276,7 +284,6 @@ func (ev *DownstreamEvaluator) Iterator(
 			Params: params,
 			Shards: shards,
 		}})
-
 		if err != nil {
 			return nil, err
 		}
@@ -306,7 +313,7 @@ func (ev *DownstreamEvaluator) Iterator(
 		for i, res := range results {
 			iter, err := ResultIterator(res, params)
 			if err != nil {
-				level.Warn(util.Logger).Log(
+				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract Iterator",
 					"err", err,
 					"expr", queries[i].Expr.String(),
@@ -326,14 +333,13 @@ func (ev *DownstreamEvaluator) Iterator(
 // Contract: They must be of identical start, end, and step values.
 func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 	return newStepEvaluator(
-		func() (done bool, ts int64, vec promql.Vector) {
+		func() (ok bool, ts int64, vec promql.Vector) {
 			var cur promql.Vector
 			for _, eval := range evaluators {
-				done, ts, cur = eval.Next()
+				ok, ts, cur = eval.Next()
 				vec = append(vec, cur...)
 			}
-			return done, ts, vec
-
+			return ok, ts, vec
 		},
 		func() (lastErr error) {
 			for _, eval := range evaluators {
@@ -356,14 +362,14 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 			case 1:
 				return errs[0]
 			default:
-				return fmt.Errorf("Multiple errors: %+v", errs)
+				return util.MultiError(errs)
 			}
 		},
 	)
 }
 
 // ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
-func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
+func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (
 		start = params.Start()
 		end   = params.End()
@@ -388,11 +394,10 @@ func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
 }
 
 // ResultIterator coerces a downstream streams result into an iter.EntryIterator
-func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
-	streams, ok := res.Data.(Streams)
+func ResultIterator(res logqlmodel.Result, params Params) (iter.EntryIterator, error) {
+	streams, ok := res.Data.(logqlmodel.Streams)
 	if !ok {
-		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), ValueTypeStreams)
+		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), logqlmodel.ValueTypeStreams)
 	}
 	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
-
 }

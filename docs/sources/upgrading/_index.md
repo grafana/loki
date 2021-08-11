@@ -17,7 +17,81 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ## Master / Unreleased
 
-_add changes here which are unreleased_
+-_add changes here which are unreleased_
+
+## 2.3.0
+
+### Loki
+
+#### Query restriction introduced for queries which do not have at least one equality matcher
+
+PR [3216](https://github.com/grafana/loki/pull/3216) **sandeepsukhani**: check for stream selectors to have at least one equality matcher
+
+This change now rejects any query which does not contain at least one equality matcher, an example may better illustrate:
+
+`{namespace=~".*"}`
+
+This query will now be rejected, however there are several ways to modify it for it to succeed:
+
+Add at least one equals label matcher:
+
+`{cluster="us-east-1",namespace=~".*"}`
+
+Use `.+` instead of `.*`
+
+`{namespace=~".+"}`
+
+This difference may seem subtle but if we break it down `.` matches any character, `*` matches zero or more of the preceding character and `+` matches one or more of the preceding character. The `.*` case will match empty values where `.+` will not, this is the important difference. `{namespace=""}` is an invalid request (unless you add another equals label matcher like the example above)
+
+The reasoning for this change has to do with how index lookups work in Loki, if you don't have at least one equality matcher Loki has to perform a complete index table scan which is an expensive and slow operation.
+
+
+## 2.2.0
+
+### Loki
+
+**Be sure to upgrade to 2.0 or 2.1 BEFORE upgrading to 2.2**
+
+In Loki 2.2 we changed the internal version of our chunk format from v2 to v3, this is a transparent change and is only relevant if you every try to _downgrade_ a Loki installation. We incorporated the code to read v3 chunks in 2.0.1 and 2.1, as well as 2.2 and any future releases.
+
+**If you upgrade to 2.2+ any chunks created can only be read by 2.0.1, 2.1 and 2.2+**
+
+This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrading to 2.2 so that if you need to rollback for any reason you can do so easily.
+
+**Note:** 2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
+
+### Loki Config
+
+**Read this if you use the query-frontend and have `sharded_queries_enabled: true`**
+
+We discovered query scheduling related to sharded queries over long time ranges could lead to unfair work scheduling by one single query in the per tenant work queue. 
+
+The `max_query_parallelism` setting is designed to limit how many split and sharded units of 'work' for a single query are allowed to be put into the per tenant work queue at one time. The previous behavior would split the query by time using the `split_queries_by_interval` and compare this value to `max_query_parallelism` when filling the queue, however with sharding enabled, every split was then sharded into 16 additional units of work after the `max_query_parallelism` limit was applied.
+
+In 2.2 we changed this behavior to apply the `max_query_parallelism` after splitting _and_ sharding a query resulting a more fair and expected queue scheduling per query.
+
+**What this means** Loki will be putting much less work into the work queue per query if you are using the query frontend and have sharding_queries_enabled (which you should).  **You may need to increase your `max_query_parallelism` setting if you are noticing slower query performance** In practice, you may not see a difference unless you were running a cluster with a LOT of queriers or queriers with a very high `parallelism` frontend_worker setting.
+
+You could consider multiplying your current `max_query_parallelism` setting by 16 to obtain the previous behavior, though in practice we suspect few people would really want it this high unless you have a significant querier worker pool.
+
+**Also be aware to make sure `max_outstanding_per_tenant` is always greater than `max_query_parallelism` or large queries will automatically fail with a 429 back to the user.**
+
+
+
+### Promtail 
+
+For 2.0 we eliminated the long deprecated `entry_parser` configuration in Promtail configs, however in doing so we introduced a very confusing and erroneous default behavior:
+
+If you did not specify a `pipeline_stages` entry you would be provided with a default which included the `docker` pipeline stage.  This can lead to some very confusing results.
+
+In [3404](https://github.com/grafana/loki/pull/3404), we corrected this behavior
+
+**If you are using docker, and any of your `scrape_configs` are missing a `pipeline_stages` definition**, you should add the following to obtain the correct behaviour:
+
+```yaml
+pipeline_stages:
+  - docker: {}
+```
 
 ## 2.1.0
 
@@ -166,7 +240,7 @@ There are 2 significant changes warranting the backup of this data because they 
 * A compactor is included which will take existing index files and compact them to one per day and remove non compacted files
 * All index files are now gzipped before uploading
 
-The second part is important because 1.6.0 does not understand how to read the gzipped files, so any new files uploaded or any files compacted become unreadable to 1.6.0 or ealier.
+The second part is important because 1.6.0 does not understand how to read the gzipped files, so any new files uploaded or any files compacted become unreadable to 1.6.0 or earlier.
 
 _THIS BEING SAID_ we are not expecting problems, our testing so far has not uncovered any problems, but some extra precaution might save data loss in unforeseen circumstances!
 
@@ -264,7 +338,7 @@ This will only affect reads(queries) and not writes and only for the duration of
 
 ### IMPORTANT: Scrape config changes to both Helm and Ksonnet will affect labels created by Promtail
 
-PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the promtail scrape config:
+PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the Promtail scrape config:
 
 ````
 This is triggered by https://github.com/grafana/jsonnet-libs/pull/261
@@ -315,7 +389,7 @@ schema_config:
         prefix: index_
         period: 24h   <--- This must be 24h
 ```
-If you are not on `schema: v11` this would be a good oportunity to make that change _in the new schema config_ also.
+If you are not on `schema: v11` this would be a good opportunity to make that change _in the new schema config_ also.
 
 **NOTE** If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
 
@@ -498,7 +572,7 @@ table_manager:
 
 ### Promtail Config Changes
 
-The underlying backoff library used in promtail had a config change which wasn't originally noted in the release notes:
+The underlying backoff library used in Promtail had a config change which wasn't originally noted in the release notes:
 
 If you get this error:
 

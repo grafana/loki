@@ -20,10 +20,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 
@@ -63,10 +64,10 @@ type IndexReader interface {
 	Symbols() index.StringIter
 
 	// SortedLabelValues returns sorted possible label values.
-	SortedLabelValues(name string) ([]string, error)
+	SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error)
 
 	// LabelValues returns possible label values which may not be sorted.
-	LabelValues(name string) ([]string, error)
+	LabelValues(name string, matchers ...*labels.Matcher) ([]string, error)
 
 	// Postings returns the postings list iterator for the label pairs.
 	// The Postings here contain the offsets to the series inside the index.
@@ -84,7 +85,16 @@ type IndexReader interface {
 	Series(ref uint64, lset *labels.Labels, chks *[]chunks.Meta) error
 
 	// LabelNames returns all the unique label names present in the index in sorted order.
-	LabelNames() ([]string, error)
+	LabelNames(matchers ...*labels.Matcher) ([]string, error)
+
+	// LabelValueFor returns label value for the given label name in the series referred to by ID.
+	// If the series couldn't be found or the series doesn't have the requested label a
+	// storage.ErrNotFound is returned as error.
+	LabelValueFor(id uint64, label string) (string, error)
+
+	// LabelNamesFor returns all the label names for the series referred to by IDs.
+	// The names returned are sorted.
+	LabelNamesFor(ids ...uint64) ([]string, error)
 
 	// Close releases the underlying resources of the reader.
 	Close() error
@@ -415,14 +425,37 @@ func (r blockIndexReader) Symbols() index.StringIter {
 	return r.ir.Symbols()
 }
 
-func (r blockIndexReader) SortedLabelValues(name string) ([]string, error) {
-	st, err := r.ir.SortedLabelValues(name)
+func (r blockIndexReader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+	var st []string
+	var err error
+
+	if len(matchers) == 0 {
+		st, err = r.ir.SortedLabelValues(name)
+	} else {
+		st, err = r.LabelValues(name, matchers...)
+		if err == nil {
+			sort.Strings(st)
+		}
+	}
+
 	return st, errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
 }
 
-func (r blockIndexReader) LabelValues(name string) ([]string, error) {
-	st, err := r.ir.LabelValues(name)
-	return st, errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
+func (r blockIndexReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+	if len(matchers) == 0 {
+		st, err := r.ir.LabelValues(name)
+		return st, errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
+	}
+
+	return labelValuesWithMatchers(r.ir, name, matchers...)
+}
+
+func (r blockIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+	if len(matchers) == 0 {
+		return r.b.LabelNames()
+	}
+
+	return labelNamesWithMatchers(r.ir, matchers...)
 }
 
 func (r blockIndexReader) Postings(name string, values ...string) (index.Postings, error) {
@@ -444,13 +477,20 @@ func (r blockIndexReader) Series(ref uint64, lset *labels.Labels, chks *[]chunks
 	return nil
 }
 
-func (r blockIndexReader) LabelNames() ([]string, error) {
-	return r.b.LabelNames()
-}
-
 func (r blockIndexReader) Close() error {
 	r.b.pendingReaders.Done()
 	return nil
+}
+
+// LabelValueFor returns label value for the given label name in the series referred to by ID.
+func (r blockIndexReader) LabelValueFor(id uint64, label string) (string, error) {
+	return r.ir.LabelValueFor(id, label)
+}
+
+// LabelNamesFor returns all the label names for the series referred to by IDs.
+// The names returned are sorted.
+func (r blockIndexReader) LabelNamesFor(ids ...uint64) ([]string, error) {
+	return r.ir.LabelNamesFor(ids...)
 }
 
 type blockTombstoneReader struct {
@@ -543,7 +583,9 @@ Outer:
 
 // CleanTombstones will remove the tombstones and rewrite the block (only if there are any tombstones).
 // If there was a rewrite, then it returns the ULID of the new block written, else nil.
-func (pb *Block) CleanTombstones(dest string, c Compactor) (*ulid.ULID, error) {
+// If the resultant block is empty (tombstones covered the whole block), then it deletes the new block and return nil UID.
+// It returns a boolean indicating if the parent block can be deleted safely of not.
+func (pb *Block) CleanTombstones(dest string, c Compactor) (*ulid.ULID, bool, error) {
 	numStones := 0
 
 	if err := pb.tombstones.Iter(func(id uint64, ivs tombstones.Intervals) error {
@@ -554,15 +596,16 @@ func (pb *Block) CleanTombstones(dest string, c Compactor) (*ulid.ULID, error) {
 		panic(err)
 	}
 	if numStones == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	meta := pb.Meta()
 	uid, err := c.Write(dest, pb, pb.meta.MinTime, pb.meta.MaxTime, &meta)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return &uid, nil
+
+	return &uid, true, nil
 }
 
 // Snapshot creates snapshot of the block into dir.

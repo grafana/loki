@@ -22,7 +22,7 @@ func TestShardedStringer(t *testing.T) {
 						Shard: 0,
 						Of:    2,
 					},
-					LogSelectorExpr: &matchersExpr{
+					LogSelectorExpr: &MatchersExpr{
 						matchers: []*labels.Matcher{
 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 						},
@@ -34,7 +34,7 @@ func TestShardedStringer(t *testing.T) {
 							Shard: 1,
 							Of:    2,
 						},
-						LogSelectorExpr: &matchersExpr{
+						LogSelectorExpr: &MatchersExpr{
 							matchers: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 							},
@@ -61,10 +61,10 @@ func TestMapSampleExpr(t *testing.T) {
 		out SampleExpr
 	}{
 		{
-			in: &rangeAggregationExpr{
+			in: &RangeAggregationExpr{
 				operation: OpRangeTypeRate,
-				left: &logRange{
-					left: &matchersExpr{
+				left: &LogRange{
+					left: &MatchersExpr{
 						matchers: []*labels.Matcher{
 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 						},
@@ -78,10 +78,10 @@ func TestMapSampleExpr(t *testing.T) {
 						Shard: 0,
 						Of:    2,
 					},
-					SampleExpr: &rangeAggregationExpr{
+					SampleExpr: &RangeAggregationExpr{
 						operation: OpRangeTypeRate,
-						left: &logRange{
-							left: &matchersExpr{
+						left: &LogRange{
+							left: &MatchersExpr{
 								matchers: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
@@ -96,10 +96,10 @@ func TestMapSampleExpr(t *testing.T) {
 							Shard: 1,
 							Of:    2,
 						},
-						SampleExpr: &rangeAggregationExpr{
+						SampleExpr: &RangeAggregationExpr{
 							operation: OpRangeTypeRate,
-							left: &logRange{
-								left: &matchersExpr{
+							left: &LogRange{
+								left: &MatchersExpr{
 									matchers: []*labels.Matcher{
 										mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 									},
@@ -222,7 +222,7 @@ func TestMapping(t *testing.T) {
 						Shard: 0,
 						Of:    2,
 					},
-					LogSelectorExpr: &matchersExpr{
+					LogSelectorExpr: &MatchersExpr{
 						matchers: []*labels.Matcher{
 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 						},
@@ -234,7 +234,7 @@ func TestMapping(t *testing.T) {
 							Shard: 1,
 							Of:    2,
 						},
-						LogSelectorExpr: &matchersExpr{
+						LogSelectorExpr: &MatchersExpr{
 							matchers: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 							},
@@ -255,7 +255,7 @@ func TestMapping(t *testing.T) {
 					LogSelectorExpr: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
-							newLineFilterExpr(nil, labels.MatchEqual, "error"),
+							newLineFilterExpr(labels.MatchEqual, "", "error"),
 						},
 					),
 				},
@@ -268,7 +268,7 @@ func TestMapping(t *testing.T) {
 						LogSelectorExpr: newPipelineExpr(
 							newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 							MultiStageExpr{
-								newLineFilterExpr(nil, labels.MatchEqual, "error"),
+								newLineFilterExpr(labels.MatchEqual, "", "error"),
 							},
 						),
 					},
@@ -284,10 +284,10 @@ func TestMapping(t *testing.T) {
 						Shard: 0,
 						Of:    2,
 					},
-					SampleExpr: &rangeAggregationExpr{
+					SampleExpr: &RangeAggregationExpr{
 						operation: OpRangeTypeRate,
-						left: &logRange{
-							left: &matchersExpr{
+						left: &LogRange{
+							left: &MatchersExpr{
 								matchers: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
@@ -302,10 +302,10 @@ func TestMapping(t *testing.T) {
 							Shard: 1,
 							Of:    2,
 						},
-						SampleExpr: &rangeAggregationExpr{
+						SampleExpr: &RangeAggregationExpr{
 							operation: OpRangeTypeRate,
-							left: &logRange{
-								left: &matchersExpr{
+							left: &LogRange{
+								left: &MatchersExpr{
 									matchers: []*labels.Matcher{
 										mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 									},
@@ -326,10 +326,10 @@ func TestMapping(t *testing.T) {
 						Shard: 0,
 						Of:    2,
 					},
-					SampleExpr: &rangeAggregationExpr{
+					SampleExpr: &RangeAggregationExpr{
 						operation: OpRangeTypeCount,
-						left: &logRange{
-							left: &matchersExpr{
+						left: &LogRange{
+							left: &MatchersExpr{
 								matchers: []*labels.Matcher{
 									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 								},
@@ -344,10 +344,10 @@ func TestMapping(t *testing.T) {
 							Shard: 1,
 							Of:    2,
 						},
-						SampleExpr: &rangeAggregationExpr{
+						SampleExpr: &RangeAggregationExpr{
 							operation: OpRangeTypeCount,
-							left: &logRange{
-								left: &matchersExpr{
+							left: &LogRange{
+								left: &MatchersExpr{
 									matchers: []*labels.Matcher{
 										mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 									},
@@ -362,7 +362,7 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `sum(rate({foo="bar"}[5m]))`,
-			expr: &vectorAggregationExpr{
+			expr: &VectorAggregationExpr{
 				grouping:  &grouping{},
 				operation: OpTypeSum,
 				left: &ConcatSampleExpr{
@@ -371,13 +371,13 @@ func TestMapping(t *testing.T) {
 							Shard: 0,
 							Of:    2,
 						},
-						SampleExpr: &vectorAggregationExpr{
+						SampleExpr: &VectorAggregationExpr{
 							grouping:  &grouping{},
 							operation: OpTypeSum,
-							left: &rangeAggregationExpr{
+							left: &RangeAggregationExpr{
 								operation: OpRangeTypeRate,
-								left: &logRange{
-									left: &matchersExpr{
+								left: &LogRange{
+									left: &MatchersExpr{
 										matchers: []*labels.Matcher{
 											mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 										},
@@ -393,13 +393,13 @@ func TestMapping(t *testing.T) {
 								Shard: 1,
 								Of:    2,
 							},
-							SampleExpr: &vectorAggregationExpr{
+							SampleExpr: &VectorAggregationExpr{
 								grouping:  &grouping{},
 								operation: OpTypeSum,
-								left: &rangeAggregationExpr{
+								left: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -416,7 +416,7 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `topk(3, rate({foo="bar"}[5m]))`,
-			expr: &vectorAggregationExpr{
+			expr: &VectorAggregationExpr{
 				grouping:  &grouping{},
 				params:    3,
 				operation: OpTypeTopK,
@@ -426,10 +426,10 @@ func TestMapping(t *testing.T) {
 							Shard: 0,
 							Of:    2,
 						},
-						SampleExpr: &rangeAggregationExpr{
+						SampleExpr: &RangeAggregationExpr{
 							operation: OpRangeTypeRate,
-							left: &logRange{
-								left: &matchersExpr{
+							left: &LogRange{
+								left: &MatchersExpr{
 									matchers: []*labels.Matcher{
 										mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 									},
@@ -444,10 +444,10 @@ func TestMapping(t *testing.T) {
 								Shard: 1,
 								Of:    2,
 							},
-							SampleExpr: &rangeAggregationExpr{
+							SampleExpr: &RangeAggregationExpr{
 								operation: OpRangeTypeRate,
-								left: &logRange{
-									left: &matchersExpr{
+								left: &LogRange{
+									left: &MatchersExpr{
 										matchers: []*labels.Matcher{
 											mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 										},
@@ -463,7 +463,7 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `max without (env) (rate({foo="bar"}[5m]))`,
-			expr: &vectorAggregationExpr{
+			expr: &VectorAggregationExpr{
 				grouping: &grouping{
 					without: true,
 					groups:  []string{"env"},
@@ -475,10 +475,10 @@ func TestMapping(t *testing.T) {
 							Shard: 0,
 							Of:    2,
 						},
-						SampleExpr: &rangeAggregationExpr{
+						SampleExpr: &RangeAggregationExpr{
 							operation: OpRangeTypeRate,
-							left: &logRange{
-								left: &matchersExpr{
+							left: &LogRange{
+								left: &MatchersExpr{
 									matchers: []*labels.Matcher{
 										mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 									},
@@ -493,10 +493,10 @@ func TestMapping(t *testing.T) {
 								Shard: 1,
 								Of:    2,
 							},
-							SampleExpr: &rangeAggregationExpr{
+							SampleExpr: &RangeAggregationExpr{
 								operation: OpRangeTypeRate,
-								left: &logRange{
-									left: &matchersExpr{
+								left: &LogRange{
+									left: &MatchersExpr{
 										matchers: []*labels.Matcher{
 											mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 										},
@@ -512,7 +512,7 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `count(rate({foo="bar"}[5m]))`,
-			expr: &vectorAggregationExpr{
+			expr: &VectorAggregationExpr{
 				operation: OpTypeSum,
 				grouping:  &grouping{},
 				left: &ConcatSampleExpr{
@@ -521,13 +521,13 @@ func TestMapping(t *testing.T) {
 							Shard: 0,
 							Of:    2,
 						},
-						SampleExpr: &vectorAggregationExpr{
+						SampleExpr: &VectorAggregationExpr{
 							grouping:  &grouping{},
 							operation: OpTypeCount,
-							left: &rangeAggregationExpr{
+							left: &RangeAggregationExpr{
 								operation: OpRangeTypeRate,
-								left: &logRange{
-									left: &matchersExpr{
+								left: &LogRange{
+									left: &MatchersExpr{
 										matchers: []*labels.Matcher{
 											mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 										},
@@ -543,13 +543,13 @@ func TestMapping(t *testing.T) {
 								Shard: 1,
 								Of:    2,
 							},
-							SampleExpr: &vectorAggregationExpr{
+							SampleExpr: &VectorAggregationExpr{
 								grouping:  &grouping{},
 								operation: OpTypeCount,
-								left: &rangeAggregationExpr{
+								left: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -566,9 +566,9 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `avg(rate({foo="bar"}[5m]))`,
-			expr: &binOpExpr{
+			expr: &BinOpExpr{
 				op: OpTypeDiv,
-				SampleExpr: &vectorAggregationExpr{
+				SampleExpr: &VectorAggregationExpr{
 					grouping:  &grouping{},
 					operation: OpTypeSum,
 					left: &ConcatSampleExpr{
@@ -577,13 +577,13 @@ func TestMapping(t *testing.T) {
 								Shard: 0,
 								Of:    2,
 							},
-							SampleExpr: &vectorAggregationExpr{
+							SampleExpr: &VectorAggregationExpr{
 								grouping:  &grouping{},
 								operation: OpTypeSum,
-								left: &rangeAggregationExpr{
+								left: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -599,13 +599,13 @@ func TestMapping(t *testing.T) {
 									Shard: 1,
 									Of:    2,
 								},
-								SampleExpr: &vectorAggregationExpr{
+								SampleExpr: &VectorAggregationExpr{
 									grouping:  &grouping{},
 									operation: OpTypeSum,
-									left: &rangeAggregationExpr{
+									left: &RangeAggregationExpr{
 										operation: OpRangeTypeRate,
-										left: &logRange{
-											left: &matchersExpr{
+										left: &LogRange{
+											left: &MatchersExpr{
 												matchers: []*labels.Matcher{
 													mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 												},
@@ -619,7 +619,7 @@ func TestMapping(t *testing.T) {
 						},
 					},
 				},
-				RHS: &vectorAggregationExpr{
+				RHS: &VectorAggregationExpr{
 					operation: OpTypeSum,
 					grouping:  &grouping{},
 					left: &ConcatSampleExpr{
@@ -628,13 +628,13 @@ func TestMapping(t *testing.T) {
 								Shard: 0,
 								Of:    2,
 							},
-							SampleExpr: &vectorAggregationExpr{
+							SampleExpr: &VectorAggregationExpr{
 								grouping:  &grouping{},
 								operation: OpTypeCount,
-								left: &rangeAggregationExpr{
+								left: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -650,13 +650,13 @@ func TestMapping(t *testing.T) {
 									Shard: 1,
 									Of:    2,
 								},
-								SampleExpr: &vectorAggregationExpr{
+								SampleExpr: &VectorAggregationExpr{
 									grouping:  &grouping{},
 									operation: OpTypeCount,
-									left: &rangeAggregationExpr{
+									left: &RangeAggregationExpr{
 										operation: OpRangeTypeRate,
-										left: &logRange{
-											left: &matchersExpr{
+										left: &LogRange{
+											left: &MatchersExpr{
 												matchers: []*labels.Matcher{
 													mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 												},
@@ -674,10 +674,10 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `1 + sum by (cluster) (rate({foo="bar"}[5m]))`,
-			expr: &binOpExpr{
+			expr: &BinOpExpr{
 				op:         OpTypeAdd,
-				SampleExpr: &literalExpr{value: 1},
-				RHS: &vectorAggregationExpr{
+				SampleExpr: &LiteralExpr{value: 1},
+				RHS: &VectorAggregationExpr{
 					grouping: &grouping{
 						groups: []string{"cluster"},
 					},
@@ -688,15 +688,15 @@ func TestMapping(t *testing.T) {
 								Shard: 0,
 								Of:    2,
 							},
-							SampleExpr: &vectorAggregationExpr{
+							SampleExpr: &VectorAggregationExpr{
 								grouping: &grouping{
 									groups: []string{"cluster"},
 								},
 								operation: OpTypeSum,
-								left: &rangeAggregationExpr{
+								left: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -712,15 +712,15 @@ func TestMapping(t *testing.T) {
 									Shard: 1,
 									Of:    2,
 								},
-								SampleExpr: &vectorAggregationExpr{
+								SampleExpr: &VectorAggregationExpr{
 									grouping: &grouping{
 										groups: []string{"cluster"},
 									},
 									operation: OpTypeSum,
-									left: &rangeAggregationExpr{
+									left: &RangeAggregationExpr{
 										operation: OpRangeTypeRate,
-										left: &logRange{
-											left: &matchersExpr{
+										left: &LogRange{
+											left: &MatchersExpr{
 												matchers: []*labels.Matcher{
 													mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 												},
@@ -739,10 +739,10 @@ func TestMapping(t *testing.T) {
 		// sum(max) should not shard the maxes
 		{
 			in: `sum(max(rate({foo="bar"}[5m])))`,
-			expr: &vectorAggregationExpr{
+			expr: &VectorAggregationExpr{
 				grouping:  &grouping{},
 				operation: OpTypeSum,
-				left: &vectorAggregationExpr{
+				left: &VectorAggregationExpr{
 					grouping:  &grouping{},
 					operation: OpTypeMax,
 					left: &ConcatSampleExpr{
@@ -751,10 +751,10 @@ func TestMapping(t *testing.T) {
 								Shard: 0,
 								Of:    2,
 							},
-							SampleExpr: &rangeAggregationExpr{
+							SampleExpr: &RangeAggregationExpr{
 								operation: OpRangeTypeRate,
-								left: &logRange{
-									left: &matchersExpr{
+								left: &LogRange{
+									left: &MatchersExpr{
 										matchers: []*labels.Matcher{
 											mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 										},
@@ -769,10 +769,10 @@ func TestMapping(t *testing.T) {
 									Shard: 1,
 									Of:    2,
 								},
-								SampleExpr: &rangeAggregationExpr{
+								SampleExpr: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -790,10 +790,10 @@ func TestMapping(t *testing.T) {
 		// max(count) should shard the count, but not the max
 		{
 			in: `max(count(rate({foo="bar"}[5m])))`,
-			expr: &vectorAggregationExpr{
+			expr: &VectorAggregationExpr{
 				grouping:  &grouping{},
 				operation: OpTypeMax,
-				left: &vectorAggregationExpr{
+				left: &VectorAggregationExpr{
 					operation: OpTypeSum,
 					grouping:  &grouping{},
 					left: &ConcatSampleExpr{
@@ -802,13 +802,13 @@ func TestMapping(t *testing.T) {
 								Shard: 0,
 								Of:    2,
 							},
-							SampleExpr: &vectorAggregationExpr{
+							SampleExpr: &VectorAggregationExpr{
 								grouping:  &grouping{},
 								operation: OpTypeCount,
-								left: &rangeAggregationExpr{
+								left: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -824,13 +824,13 @@ func TestMapping(t *testing.T) {
 									Shard: 1,
 									Of:    2,
 								},
-								SampleExpr: &vectorAggregationExpr{
+								SampleExpr: &VectorAggregationExpr{
 									grouping:  &grouping{},
 									operation: OpTypeCount,
-									left: &rangeAggregationExpr{
+									left: &RangeAggregationExpr{
 										operation: OpRangeTypeRate,
-										left: &logRange{
-											left: &matchersExpr{
+										left: &LogRange{
+											left: &MatchersExpr{
 												matchers: []*labels.Matcher{
 													mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 												},
@@ -848,12 +848,12 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `max(sum by (cluster) (rate({foo="bar"}[5m]))) / count(rate({foo="bar"}[5m]))`,
-			expr: &binOpExpr{
+			expr: &BinOpExpr{
 				op: OpTypeDiv,
-				SampleExpr: &vectorAggregationExpr{
+				SampleExpr: &VectorAggregationExpr{
 					operation: OpTypeMax,
 					grouping:  &grouping{},
-					left: &vectorAggregationExpr{
+					left: &VectorAggregationExpr{
 						grouping: &grouping{
 							groups: []string{"cluster"},
 						},
@@ -864,15 +864,15 @@ func TestMapping(t *testing.T) {
 									Shard: 0,
 									Of:    2,
 								},
-								SampleExpr: &vectorAggregationExpr{
+								SampleExpr: &VectorAggregationExpr{
 									grouping: &grouping{
 										groups: []string{"cluster"},
 									},
 									operation: OpTypeSum,
-									left: &rangeAggregationExpr{
+									left: &RangeAggregationExpr{
 										operation: OpRangeTypeRate,
-										left: &logRange{
-											left: &matchersExpr{
+										left: &LogRange{
+											left: &MatchersExpr{
 												matchers: []*labels.Matcher{
 													mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 												},
@@ -888,15 +888,15 @@ func TestMapping(t *testing.T) {
 										Shard: 1,
 										Of:    2,
 									},
-									SampleExpr: &vectorAggregationExpr{
+									SampleExpr: &VectorAggregationExpr{
 										grouping: &grouping{
 											groups: []string{"cluster"},
 										},
 										operation: OpTypeSum,
-										left: &rangeAggregationExpr{
+										left: &RangeAggregationExpr{
 											operation: OpRangeTypeRate,
-											left: &logRange{
-												left: &matchersExpr{
+											left: &LogRange{
+												left: &MatchersExpr{
 													matchers: []*labels.Matcher{
 														mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 													},
@@ -911,7 +911,7 @@ func TestMapping(t *testing.T) {
 						},
 					},
 				},
-				RHS: &vectorAggregationExpr{
+				RHS: &VectorAggregationExpr{
 					operation: OpTypeSum,
 					grouping:  &grouping{},
 					left: &ConcatSampleExpr{
@@ -920,13 +920,13 @@ func TestMapping(t *testing.T) {
 								Shard: 0,
 								Of:    2,
 							},
-							SampleExpr: &vectorAggregationExpr{
+							SampleExpr: &VectorAggregationExpr{
 								grouping:  &grouping{},
 								operation: OpTypeCount,
-								left: &rangeAggregationExpr{
+								left: &RangeAggregationExpr{
 									operation: OpRangeTypeRate,
-									left: &logRange{
-										left: &matchersExpr{
+									left: &LogRange{
+										left: &MatchersExpr{
 											matchers: []*labels.Matcher{
 												mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 											},
@@ -942,13 +942,13 @@ func TestMapping(t *testing.T) {
 									Shard: 1,
 									Of:    2,
 								},
-								SampleExpr: &vectorAggregationExpr{
+								SampleExpr: &VectorAggregationExpr{
 									grouping:  &grouping{},
 									operation: OpTypeCount,
-									left: &rangeAggregationExpr{
+									left: &RangeAggregationExpr{
 										operation: OpRangeTypeRate,
-										left: &logRange{
-											left: &matchersExpr{
+										left: &LogRange{
+											left: &MatchersExpr{
 												matchers: []*labels.Matcher{
 													mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 												},

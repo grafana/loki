@@ -10,7 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/go-kit/kit/log/level"
@@ -30,6 +30,7 @@ func TestTransferOut(t *testing.T) {
 	f := newTestIngesterFactory(t)
 
 	ing := f.getIngester(time.Duration(0), t)
+	ing.cfg.UnorderedWrites = false // enforce ordered writes on old testware (transfers are deprecated).
 
 	// Push some data into our original ingester
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -204,7 +205,7 @@ func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption)
 		c.i.stopIncomingRequests() // used to be called from lifecycler, now it must be called *before* stopping lifecyler. (ingester does this on shutdown)
 		err := services.StopAndAwaitTerminated(context.Background(), c.i.lifecycler)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+			level.Error(util_log.Logger).Log("msg", "lifecycler failed", "err", err)
 		}
 	}()
 

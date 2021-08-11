@@ -63,16 +63,14 @@ func (p *parserHint) NoLabels() bool {
 
 // newParserHint creates a new parser hint using the list of labels that are seen and required in a query.
 func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *parserHint {
-	if len(groups) > 0 {
-		requiredLabelNames = append(requiredLabelNames, groups...)
-	}
-	if metricLabelName != "" {
-		requiredLabelNames = append(requiredLabelNames, metricLabelName)
-	}
-	requiredLabelNames = uniqueString(requiredLabelNames)
+	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
+	hints = appendLabelHints(hints, requiredLabelNames...)
+	hints = appendLabelHints(hints, groups...)
+	hints = appendLabelHints(hints, metricLabelName)
+	hints = uniqueString(hints)
 	if noLabels {
-		if len(requiredLabelNames) > 0 {
-			return &parserHint{requiredLabels: requiredLabelNames}
+		if len(hints) > 0 {
+			return &parserHint{requiredLabels: hints}
 		}
 		return &parserHint{noLabels: true}
 	}
@@ -82,5 +80,22 @@ func newParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	if without || len(groups) == 0 {
 		return noParserHints
 	}
-	return &parserHint{requiredLabels: requiredLabelNames}
+	return &parserHint{requiredLabels: hints}
+}
+
+// appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
+// If a parsed label collides with a stream label we add the `_extracted` suffix to it, however hints
+// are used by the parsers before we know they will collide with a stream label and hence before the
+// _extracted suffix is added. Therefore we must strip the _extracted suffix from any required labels
+// that were parsed from somewhere in the query, say in a filter or an aggregation clause.
+// Because it's possible for a valid json or logfmt key to already end with _extracted, we'll just
+// leave the existing entry ending with _extracted but also add a version with the suffix removed.
+func appendLabelHints(dst []string, src ...string) []string {
+	for _, l := range src {
+		dst = append(dst, l)
+		if strings.HasSuffix(l, duplicateSuffix) {
+			dst = append(dst, strings.TrimSuffix(l, duplicateSuffix))
+		}
+	}
+	return dst
 }

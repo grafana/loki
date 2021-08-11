@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -42,20 +42,24 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
-	next    queryrange.Handler
-	limits  Limits
-	merger  queryrange.Merger
-	metrics *SplitByMetrics
+	next     queryrange.Handler
+	limits   Limits
+	merger   queryrange.Merger
+	metrics  *SplitByMetrics
+	splitter Splitter
 }
 
+type Splitter func(req queryrange.Request, interval time.Duration) []queryrange.Request
+
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger, metrics *SplitByMetrics) queryrange.Middleware {
+func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger, splitter Splitter, metrics *SplitByMetrics) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return &splitByInterval{
-			next:    next,
-			limits:  limits,
-			merger:  merger,
-			metrics: metrics,
+			next:     next,
+			limits:   limits,
+			merger:   merger,
+			metrics:  metrics,
+			splitter: splitter,
 		}
 	})
 }
@@ -131,14 +135,12 @@ func (h *splitByInterval) Process(
 			}
 
 		}
-
 	}
 
 	return responses, nil
 }
 
 func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrange.Handler) {
-
 	for data := range ch {
 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
@@ -157,8 +159,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 }
 
 func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
-
-	userid, err := user.ExtractOrgID(ctx)
+	userid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -169,7 +170,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		return h.next.Do(ctx, r)
 	}
 
-	intervals := splitByTime(r, interval)
+	intervals := h.splitter(r, interval)
 	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
@@ -179,7 +180,6 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
-
 	}
 
 	var limit int64
@@ -236,6 +236,7 @@ func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Re
 				Path:    r.Path,
 				StartTs: start,
 				EndTs:   end,
+				Shards:  r.Shards,
 			})
 		})
 	case *LokiLabelNamesRequest:
@@ -250,7 +251,6 @@ func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Re
 		return nil
 	}
 	return reqs
-
 }
 
 func forInterval(interval time.Duration, start, end time.Time, callback func(start, end time.Time)) {
@@ -261,4 +261,38 @@ func forInterval(interval time.Duration, start, end time.Time, callback func(sta
 		}
 		callback(start, newEnd)
 	}
+}
+
+func splitMetricByTime(r queryrange.Request, interval time.Duration) []queryrange.Request {
+	var reqs []queryrange.Request
+	lokiReq := r.(*LokiRequest)
+	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
+		end := nextIntervalBoundary(start, r.GetStep(), interval)
+		if end.Add(time.Duration(r.GetStep())*time.Millisecond).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*time.Millisecond) == lokiReq.EndTs {
+			end = lokiReq.EndTs
+		}
+		reqs = append(reqs, &LokiRequest{
+			Query:     lokiReq.Query,
+			Limit:     lokiReq.Limit,
+			Step:      lokiReq.Step,
+			Direction: lokiReq.Direction,
+			Path:      lokiReq.Path,
+			StartTs:   start,
+			EndTs:     end,
+		})
+	}
+	return reqs
+}
+
+// Round up to the step before the next interval boundary.
+func nextIntervalBoundary(t time.Time, step int64, interval time.Duration) time.Time {
+	stepNs := step * 1e6
+	nsPerInterval := interval.Nanoseconds()
+	startOfNextInterval := ((t.UnixNano() / nsPerInterval) + 1) * nsPerInterval
+	// ensure that target is a multiple of steps away from the start time
+	target := startOfNextInterval - ((startOfNextInterval - t.UnixNano()) % stepNs)
+	if target == startOfNextInterval {
+		target -= stepNs
+	}
+	return time.Unix(0, target)
 }

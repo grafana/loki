@@ -276,7 +276,7 @@ func (p *untypedParamBinder) setFieldValue(target reflect.Value, defaultValue in
 	}
 
 	if (!hasKey || (!p.parameter.AllowEmptyValue && data == "")) && p.parameter.Required && p.parameter.Default == nil {
-		return errors.Required(p.Name, p.parameter.In)
+		return errors.Required(p.Name, p.parameter.In, data)
 	}
 
 	ok, err := p.tryUnmarshaler(target, defaultValue, data)
@@ -451,7 +451,7 @@ func (p *untypedParamBinder) readFormattedSliceFieldValue(data string, target re
 func (p *untypedParamBinder) setSliceFieldValue(target reflect.Value, defaultValue interface{}, data []string, hasKey bool) error {
 	sz := len(data)
 	if (!hasKey || (!p.parameter.AllowEmptyValue && (sz == 0 || (sz == 1 && data[0] == "")))) && p.parameter.Required && defaultValue == nil {
-		return errors.Required(p.Name, p.parameter.In)
+		return errors.Required(p.Name, p.parameter.In, data)
 	}
 
 	defVal := reflect.Zero(target.Type())

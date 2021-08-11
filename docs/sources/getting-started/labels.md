@@ -34,7 +34,7 @@ scrape_configs:
 This config will tail one file and assign one label: `job=syslog`. You could query it like this:
 
 ```
-{job=”syslog”}
+{job="syslog"}
 ```
 
 This will create one stream in Loki.
@@ -51,7 +51,7 @@ scrape_configs:
      labels:
       job: syslog
       __path__: /var/log/syslog
- - job_name: system
+ - job_name: apache
    pipeline_stages:
    static_configs:
    - targets:
@@ -67,9 +67,9 @@ We can query these streams in a few ways:
 
 
 ```
-{job=”apache”} <- show me logs where the job label is apache
-{job=”syslog”} <- show me logs where the job label is syslog
-{job=~”apache|syslog”} <- show me logs where the job is apache **OR** syslog
+{job="apache"} <- show me logs where the job label is apache
+{job="syslog"} <- show me logs where the job label is syslog
+{job=~"apache|syslog"} <- show me logs where the job is apache **OR** syslog
 ```
 
 In that last example, we used a regex label matcher to log streams that use the job label with two values. Now consider how an additional label could also be used:
@@ -85,7 +85,7 @@ scrape_configs:
       job: syslog
       env: dev
       __path__: /var/log/syslog
- - job_name: system
+ - job_name: apache
    pipeline_stages:
    static_configs:
    - targets:
@@ -99,7 +99,7 @@ scrape_configs:
 Now instead of a regex, we could do this:
 
 ```
-{env=”dev”} <- will return all logs with env=dev, in this case this includes both log streams
+{env="dev"} <- will return all logs with env=dev, in this case this includes both log streams
 ```
 
 Hopefully now you are starting to see the power of labels. By using a single label, you can query many streams. By combining several different labels, you can create very flexible log queries.
@@ -137,8 +137,9 @@ This regex matches every component of the log line and extracts the value of eac
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 
-action (e.g. action=”GET”, action=”POST”)
-status_code (e.g. status_code=”200”, status_code=”400”)
+action (for example, `action="GET"`, `action="POST"`)
+
+status_code (for example, `status_code="200"`, `status_code="400"`)
 
 And now let's walk through a few example lines:
 
@@ -152,15 +153,15 @@ And now let's walk through a few example lines:
 In Loki the following streams would be created:
 
 ```
-{job=”apache”,env=”dev”,action=”GET”,status_code=”200”} 11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
-{job=”apache”,env=”dev”,action=”POST”,status_code=”200”} 11.11.11.12 - frank [25/Jan/2000:14:00:02 -0500] "POST /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
-{job=”apache”,env=”dev”,action=”GET”,status_code=”400”} 11.11.11.13 - frank [25/Jan/2000:14:00:03 -0500] "GET /1986.js HTTP/1.1" 400 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
-{job=”apache”,env=”dev”,action=”POST”,status_code=”400”} 11.11.11.14 - frank [25/Jan/2000:14:00:04 -0500] "POST /1986.js HTTP/1.1" 400 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+{job="apache",env="dev",action="GET",status_code="200"} 11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+{job="apache",env="dev",action="POST",status_code="200"} 11.11.11.12 - frank [25/Jan/2000:14:00:02 -0500] "POST /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+{job="apache",env="dev",action="GET",status_code="400"} 11.11.11.13 - frank [25/Jan/2000:14:00:03 -0500] "GET /1986.js HTTP/1.1" 400 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+{job="apache",env="dev",action="POST",status_code="400"} 11.11.11.14 - frank [25/Jan/2000:14:00:04 -0500] "POST /1986.js HTTP/1.1" 400 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
 ```
 
 Those four log lines would become four separate streams and start filling four separate chunks.
 
-Any additional log lines that match those combinations of label/values would be added to the existing stream. If another unique combination of labels comes in (e.g. status_code=”500”) another new stream is created.
+Any additional log lines that match those combinations of label/values would be added to the existing stream. If another unique combination of labels comes in (for example, `status_code="500"`) another new stream is created.
 
 Imagine now if you set a label for `ip`. Not only does every request from a user become a unique stream. Every request with a different action or status_code from the same user will get its own stream.
 
@@ -191,7 +192,7 @@ Loki will effectively keep your static costs as low as possible (index size and 
 To see how this works, let's look back at our example of querying your access log data for a specific IP address. We don't want to use a label to store the IP. Instead we use a [filter expression](../../logql#filter-expression) to query for it:
 
 ```
-{job=”apache”} |= “11.11.11.11”
+{job="apache"} |= "11.11.11.11"
 ```
 
 Behind the scenes, Loki will break up that query into smaller pieces (shards), and open up each chunk for the streams matched by the labels and start looking for this IP address.

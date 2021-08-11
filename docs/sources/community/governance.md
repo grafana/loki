@@ -49,12 +49,12 @@ The current team members are:
 
 - Aditya C S - [adityacs](https://github.com/adityacs)
 - Cyril Tovena - [cyriltovena](https://github.com/cyriltovena) ([Grafana Labs](https://grafana.com/))
+- Danny Kopping - [dannykopping](https://github.com/dannykopping) ([Grafana Labs](https://grafana.com/))
 - David Kaltschmidt - [davkal](https://github.com/davkal) ([Grafana Labs](https://grafana.com/))
 - Edward Welch - [slim-bean](https://github.com/slim-bean) ([Grafana Labs](https://grafana.com/))
 - Goutham Veeramachaneni - [gouthamve](https://github.com/gouthamve) ([Grafana Labs](https://grafana.com/))
 - Joe Elliott - [joe-elliott](https://github.com/joe-elliott) ([Grafana Labs](https://grafana.com/))
 - Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
-- Robert Fratto - [rfratto](https://github.com/rfratto) ([Grafana Labs](https://grafana.com/))
 - Sandeep Sukhani - [sandeepsukhani](https://github.com/sandeepsukhani) ([Grafana Labs](https://grafana.com/))
 - Tom Braack - [sh0rez](https://github.com/sh0rez) ([Grafana Labs](https://grafana.com/))
 - Tom Wilkie - [tomwilkie](https://github.com/tomwilkie) ([Grafana Labs](https://grafana.com/))

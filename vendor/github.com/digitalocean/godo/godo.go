@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.54.0"
+	libraryVersion = "1.62.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -79,6 +80,9 @@ type Client struct {
 
 	// Optional function called after every successful request made to the DO APIs
 	onRequestCompleted RequestCompletionCallback
+
+	// Optional extra HTTP headers to set on every request to the API.
+	headers map[string]string
 }
 
 // RequestCompletionCallback defines the type of the request callback function
@@ -165,8 +169,9 @@ func addOptions(s string, opt interface{}) (string, error) {
 // NewFromToken returns a new DigitalOcean API client with the given API
 // token.
 func NewFromToken(token string) *Client {
+	cleanToken := strings.Trim(strings.TrimSpace(token), "'")
 	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: cleanToken})
 	return NewClient(oauth2.NewClient(ctx, ts))
 }
 
@@ -215,6 +220,8 @@ func NewClient(httpClient *http.Client) *Client {
 	c.VPCs = &VPCsServiceOp{client: c}
 	c.OneClick = &OneClickServiceOp{client: c}
 
+	c.headers = make(map[string]string)
+
 	return c
 }
 
@@ -254,6 +261,17 @@ func SetUserAgent(ua string) ClientOpt {
 	}
 }
 
+// SetRequestHeaders sets optional HTTP headers on the client that are
+// sent on each HTTP request.
+func SetRequestHeaders(headers map[string]string) ClientOpt {
+	return func(c *Client) error {
+		for k, v := range headers {
+			c.headers[k] = v
+		}
+		return nil
+	}
+}
+
 // NewRequest creates an API request. A relative URL can be provided in urlStr, which will be resolved to the
 // BaseURL of the Client. Relative URLS should always be specified without a preceding slash. If specified, the
 // value pointed to by body is JSON encoded and included in as the request body.
@@ -263,22 +281,37 @@ func (c *Client) NewRequest(ctx context.Context, method, urlStr string, body int
 		return nil, err
 	}
 
-	buf := new(bytes.Buffer)
-	if body != nil {
-		err = json.NewEncoder(buf).Encode(body)
+	var req *http.Request
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		req, err = http.NewRequest(method, u.String(), nil)
 		if err != nil {
 			return nil, err
 		}
+
+	default:
+		buf := new(bytes.Buffer)
+		if body != nil {
+			err = json.NewEncoder(buf).Encode(body)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		req, err = http.NewRequest(method, u.String(), buf)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", mediaType)
 	}
 
-	req, err := http.NewRequest(method, u.String(), buf)
-	if err != nil {
-		return nil, err
+	for k, v := range c.headers {
+		req.Header.Add(k, v)
 	}
 
-	req.Header.Add("Content-Type", mediaType)
-	req.Header.Add("Accept", mediaType)
-	req.Header.Add("User-Agent", c.UserAgent)
+	req.Header.Set("Accept", mediaType)
+	req.Header.Set("User-Agent", c.UserAgent)
+
 	return req, nil
 }
 
@@ -400,6 +433,7 @@ func (r *ErrorResponse) Error() string {
 // CheckResponse checks the API response for errors, and returns them if present. A response is considered an
 // error if it has a status code outside the 200 range. API error responses are expected to have either no response
 // body, or a JSON response body that maps to ErrorResponse. Any other response body will be silently ignored.
+// If the API error response does not include the request ID in its body, the one from its header will be used.
 func CheckResponse(r *http.Response) error {
 	if c := r.StatusCode; c >= 200 && c <= 299 {
 		return nil
@@ -412,6 +446,10 @@ func CheckResponse(r *http.Response) error {
 		if err != nil {
 			errorResponse.Message = string(data)
 		}
+	}
+
+	if errorResponse.RequestID == "" {
+		errorResponse.RequestID = r.Header.Get("x-request-id")
 	}
 
 	return errorResponse

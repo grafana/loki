@@ -12,34 +12,33 @@ import (
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/validation"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
-
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
+
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 const (
 	numSeries        = 10
 	samplesPerSeries = 100
 )
-
-func init() {
-	// util.Logger = log.NewLogfmtLogger(os.Stdout)
-}
 
 func TestChunkFlushingIdle(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
@@ -66,6 +65,7 @@ func TestChunkFlushingShutdown(t *testing.T) {
 type fullWAL struct{}
 
 func (fullWAL) Log(_ *WALRecord) error { return &os.PathError{Err: syscall.ENOSPC} }
+func (fullWAL) Start()                 {}
 func (fullWAL) Stop() error            { return nil }
 
 func Benchmark_FlushLoop(b *testing.B) {
@@ -121,7 +121,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 	for i := range res {
 		res[i] = &chunkDesc{
 			closed: true,
-			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 		}
 		fillChunk(t, res[i].chunk)
 		require.NoError(t, res[i].chunk.Close())
@@ -260,7 +260,7 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, store, limits, nil)
+	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -289,6 +289,9 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
 	cfg.LifecyclerConfig.MinReadyDuration = 0
+	cfg.BlockSize = 256 * 1024
+	cfg.TargetChunkSize = 1500 * 1024
+	cfg.UnorderedWrites = true
 	return cfg
 }
 
@@ -298,7 +301,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	if s.onPut != nil {
 		return s.onPut(ctx, chunks)
 	}
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -341,6 +344,8 @@ func (s *testStore) GetSchemaConfigs() []chunk.PeriodConfig {
 }
 
 func (s *testStore) Stop() {}
+
+func (s *testStore) SetChunkFilterer(_ storage.RequestChunkFilterer) {}
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}

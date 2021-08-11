@@ -69,7 +69,7 @@ The command removes all the Kubernetes components associated with the chart and 
 
 The following tables lists the configurable parameters of the Fluent Bit chart and their default values.
 
-For more details, read the [Fluent Bit documentation](../../../cmd/fluent-bit/README.md)
+For more details, read the [Fluent Bit documentation](../../../clients/cmd/fluent-bit/README.md)
 
 | Parameter                | Description                                                                                        | Default                          |
 |--------------------------|----------------------------------------------------------------------------------------------------|----------------------------------|
@@ -90,7 +90,7 @@ For more details, read the [Fluent Bit documentation](../../../cmd/fluent-bit/RE
 | `config.removeKeys`      | The list of key to remove from each record                                                         | `[removeKeys,stream]`            |
 | `config.labels`          | A set of labels to send for every log                                                              | `'{job="fluent-bit"}'`           |
 | `config.autoKubernetesLabels` | If set to true, it will add all Kubernetes labels to Loki labels                                   | `false`                          |
-| `config.labelMap`        | Mapping of labels from a record. See [Fluent Bit documentation](../../../cmd/fluent-bit/README.md) |                                  |
+| `config.labelMap`        | Mapping of labels from a record. See [Fluent Bit documentation](../../../clients/cmd/fluent-bit/README.md) |                                  |
 | `config.parsers`         | Definition of extras fluent bit parsers. See [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/filter/parser). The format is a sequence of mappings where each key is the same as the one in the [PARSER] section of parsers.conf file       | `[]`                            |
 | `config.extraOutputs`    | Definition of extras fluent bit outputs. See [Official Fluent Bit documentation](https://docs.fluentbit.io/manual/pipeline/outputs/). The format is a sequence of mappings where each key is the same as the one in the [OUTPUT]                                | `[]`                            |
 | `affinity`               | [affinity][affinity] settings for pod assignment                                                   | `{}`                             |

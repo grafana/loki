@@ -58,13 +58,13 @@ func (l LazyQuerier) Select(selectSorted bool, params *storage.SelectHints, matc
 }
 
 // LabelValues implements Storage.Querier
-func (l LazyQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	return l.next.LabelValues(name)
+func (l LazyQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return l.next.LabelValues(name, matchers...)
 }
 
 // LabelNames implements Storage.Querier
-func (l LazyQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	return l.next.LabelNames()
+func (l LazyQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return l.next.LabelNames(matchers...)
 }
 
 // Close implements Storage.Querier

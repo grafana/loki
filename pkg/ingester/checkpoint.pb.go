@@ -6,14 +6,15 @@ package ingester
 import (
 	bytes "bytes"
 	fmt "fmt"
-	_ "github.com/cortexproject/cortex/pkg/ingester/client"
-	github_com_cortexproject_cortex_pkg_ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	_ "github.com/cortexproject/cortex/pkg/cortexpb"
+	github_com_cortexproject_cortex_pkg_cortexpb "github.com/cortexproject/cortex/pkg/cortexpb"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 	time "time"
@@ -29,7 +30,7 @@ var _ = time.Kitchen
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // Chunk is a {de,}serializable intermediate type for chunkDesc which allows
 // efficient loading/unloading to disk during WAL checkpoint recovery.
@@ -59,7 +60,7 @@ func (m *Chunk) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Chunk.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -138,9 +139,18 @@ func (m *Chunk) GetHead() []byte {
 type Series struct {
 	UserID string `protobuf:"bytes,1,opt,name=userID,proto3" json:"userID,omitempty"`
 	// post mapped fingerprint is necessary because subsequent wal writes will reference it.
-	Fingerprint uint64                                                             `protobuf:"varint,2,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
-	Labels      []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter `protobuf:"bytes,3,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter" json:"labels"`
-	Chunks      []Chunk                                                            `protobuf:"bytes,4,rep,name=chunks,proto3" json:"chunks"`
+	Fingerprint uint64                                                      `protobuf:"varint,2,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	Labels      []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter `protobuf:"bytes,3,rep,name=labels,proto3,customtype=github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter" json:"labels"`
+	Chunks      []Chunk                                                     `protobuf:"bytes,4,rep,name=chunks,proto3" json:"chunks"`
+	// most recently pushed timestamp.
+	To time.Time `protobuf:"bytes,5,opt,name=to,proto3,stdtime" json:"to"`
+	// most recently pushed line.
+	LastLine string `protobuf:"bytes,6,opt,name=lastLine,proto3" json:"lastLine,omitempty"`
+	// highest counter value for pushes to this stream.
+	// Used to skip already applied entries during WAL replay.
+	EntryCt int64 `protobuf:"varint,7,opt,name=entryCt,proto3" json:"entryCt,omitempty"`
+	// highest timestamp pushed to this stream.
+	HighestTs time.Time `protobuf:"bytes,8,opt,name=highestTs,proto3,stdtime" json:"highestTs"`
 }
 
 func (m *Series) Reset()      { *m = Series{} }
@@ -156,7 +166,7 @@ func (m *Series) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Series.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -196,6 +206,34 @@ func (m *Series) GetChunks() []Chunk {
 	return nil
 }
 
+func (m *Series) GetTo() time.Time {
+	if m != nil {
+		return m.To
+	}
+	return time.Time{}
+}
+
+func (m *Series) GetLastLine() string {
+	if m != nil {
+		return m.LastLine
+	}
+	return ""
+}
+
+func (m *Series) GetEntryCt() int64 {
+	if m != nil {
+		return m.EntryCt
+	}
+	return 0
+}
+
+func (m *Series) GetHighestTs() time.Time {
+	if m != nil {
+		return m.HighestTs
+	}
+	return time.Time{}
+}
+
 func init() {
 	proto.RegisterType((*Chunk)(nil), "loki_ingester.Chunk")
 	proto.RegisterType((*Series)(nil), "loki_ingester.Series")
@@ -204,37 +242,40 @@ func init() {
 func init() { proto.RegisterFile("pkg/ingester/checkpoint.proto", fileDescriptor_00f4b7152db9bdb5) }
 
 var fileDescriptor_00f4b7152db9bdb5 = []byte{
-	// 473 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x52, 0xb1, 0x8e, 0xd3, 0x40,
-	0x10, 0xf5, 0x26, 0x3e, 0x93, 0xdb, 0x40, 0xc1, 0x0a, 0xa1, 0x55, 0x24, 0x36, 0xd6, 0x55, 0x69,
-	0xb0, 0xa5, 0x40, 0x41, 0x85, 0x38, 0x83, 0x10, 0x48, 0x14, 0xc8, 0x40, 0x43, 0x83, 0x1c, 0x7b,
-	0x62, 0x9b, 0x38, 0x5e, 0x6b, 0x77, 0x2d, 0x41, 0xc7, 0x27, 0xdc, 0x67, 0xf0, 0x29, 0x57, 0xa6,
-	0x3c, 0x81, 0x74, 0x10, 0xa7, 0x41, 0xa2, 0xb9, 0x4f, 0x40, 0xbb, 0xb6, 0x75, 0xb9, 0x32, 0x74,
-	0xf3, 0xde, 0xcc, 0x7b, 0x33, 0xbb, 0x33, 0xf8, 0x41, 0xb5, 0x4a, 0xfd, 0xbc, 0x4c, 0x41, 0x2a,
-	0x10, 0x7e, 0x9c, 0x41, 0xbc, 0xaa, 0x78, 0x5e, 0x2a, 0xaf, 0x12, 0x5c, 0x71, 0x72, 0xa7, 0xe0,
-	0xab, 0xfc, 0x53, 0x9f, 0x9f, 0x4c, 0x53, 0xce, 0xd3, 0x02, 0x7c, 0x93, 0x5c, 0xd4, 0x4b, 0x5f,
-	0xe5, 0x6b, 0x90, 0x2a, 0x5a, 0x57, 0x6d, 0xfd, 0xe4, 0x61, 0x9a, 0xab, 0xac, 0x5e, 0x78, 0x31,
-	0x5f, 0xfb, 0x29, 0x4f, 0xf9, 0x75, 0xa5, 0x46, 0x06, 0x98, 0xa8, 0x2b, 0x7f, 0xb6, 0x57, 0x1e,
-	0x73, 0xa1, 0xe0, 0x4b, 0x25, 0xf8, 0x67, 0x88, 0x55, 0x87, 0xfc, 0x9b, 0xd3, 0x15, 0x39, 0x94,
-	0x7d, 0xaa, 0x75, 0x38, 0xf9, 0x39, 0xc0, 0x47, 0xcf, 0xb3, 0xba, 0x5c, 0x91, 0x27, 0xd8, 0x5e,
-	0x0a, 0xbe, 0xa6, 0xc8, 0x45, 0xb3, 0xf1, 0x7c, 0xe2, 0xb5, 0xa3, 0x7a, 0xfd, 0x00, 0xde, 0xfb,
-	0x7e, 0xd4, 0x60, 0x74, 0x7e, 0x39, 0xb5, 0xce, 0x7e, 0x4d, 0x51, 0x68, 0x14, 0xe4, 0x31, 0x1e,
-	0x28, 0x4e, 0x07, 0x07, 0xe8, 0x06, 0x8a, 0x93, 0x00, 0x1f, 0x2f, 0x8b, 0x5a, 0x66, 0x90, 0x9c,
-	0x2a, 0x3a, 0x3c, 0x40, 0x7c, 0x2d, 0x23, 0x2f, 0xf1, 0xb8, 0x88, 0xa4, 0xfa, 0x50, 0x25, 0x91,
-	0x82, 0x84, 0xda, 0x07, 0xb8, 0xec, 0x0b, 0xc9, 0x7d, 0xec, 0xc4, 0x05, 0x97, 0x90, 0xd0, 0x23,
-	0x17, 0xcd, 0x46, 0x61, 0x87, 0x34, 0x2f, 0xbf, 0x96, 0x31, 0x24, 0xd4, 0x69, 0xf9, 0x16, 0x11,
-	0x82, 0xed, 0x24, 0x52, 0x11, 0xbd, 0xe5, 0xa2, 0xd9, 0xed, 0xd0, 0xc4, 0x9a, 0xcb, 0x20, 0x4a,
-	0xe8, 0xa8, 0xe5, 0x74, 0x7c, 0xf2, 0x17, 0x61, 0xe7, 0x1d, 0x88, 0x1c, 0xa4, 0xb6, 0xaa, 0x25,
-	0x88, 0xd7, 0x2f, 0xcc, 0x07, 0x1f, 0x87, 0x1d, 0x22, 0x2e, 0x1e, 0x2f, 0xf5, 0x86, 0x44, 0x25,
-	0xf2, 0x52, 0x99, 0x5f, 0xb4, 0xc3, 0x7d, 0x8a, 0x48, 0xec, 0x14, 0xd1, 0x02, 0x0a, 0x49, 0x87,
-	0xee, 0x70, 0x36, 0x9e, 0xdf, 0xf5, 0xba, 0x0d, 0xbe, 0xd1, 0xec, 0xdb, 0x28, 0x17, 0xc1, 0x2b,
-	0xfd, 0xac, 0x1f, 0x97, 0xd3, 0xff, 0xb9, 0x87, 0xd6, 0xe6, 0x34, 0x89, 0x2a, 0x05, 0x22, 0xec,
-	0x5a, 0x91, 0x39, 0x76, 0x62, 0x7d, 0x16, 0x92, 0xda, 0xa6, 0xe9, 0x3d, 0xef, 0xc6, 0x25, 0x7b,
-	0xe6, 0x66, 0x02, 0x5b, 0xf7, 0x0d, 0xbb, 0xca, 0xe0, 0xe9, 0x66, 0xcb, 0xac, 0x8b, 0x2d, 0xb3,
-	0xae, 0xb6, 0x0c, 0x7d, 0x6b, 0x18, 0xfa, 0xde, 0x30, 0x74, 0xde, 0x30, 0xb4, 0x69, 0x18, 0xfa,
-	0xdd, 0x30, 0xf4, 0xa7, 0x61, 0xd6, 0x55, 0xc3, 0xd0, 0xd9, 0x8e, 0x59, 0x9b, 0x1d, 0xb3, 0x2e,
-	0x76, 0xcc, 0xfa, 0x38, 0xea, 0x3d, 0x17, 0x8e, 0x59, 0xd8, 0xa3, 0x7f, 0x01, 0x00, 0x00, 0xff,
-	0xff, 0xba, 0x57, 0x6a, 0x42, 0x54, 0x03, 0x00, 0x00,
+	// 520 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x52, 0xb1, 0x8e, 0xd3, 0x40,
+	0x10, 0xf5, 0x26, 0x8e, 0x2f, 0xd9, 0x40, 0xb3, 0x20, 0xb4, 0x8a, 0xc4, 0x26, 0xba, 0x2a, 0x0d,
+	0xb6, 0x14, 0x28, 0xa0, 0x41, 0x4a, 0x0e, 0x21, 0x21, 0x5d, 0x81, 0xcc, 0xd1, 0xd0, 0x20, 0xc7,
+	0x9e, 0xd8, 0x26, 0x8e, 0xd7, 0xda, 0xdd, 0x48, 0x5c, 0xc7, 0x27, 0x5c, 0xc5, 0x37, 0xf0, 0x29,
+	0x57, 0xa6, 0x3c, 0x81, 0x74, 0x10, 0xa7, 0xa1, 0xbc, 0x4f, 0x40, 0xbb, 0xb6, 0xef, 0x42, 0x77,
+	0xe9, 0xe6, 0xbd, 0x99, 0xe7, 0x19, 0xbf, 0x7d, 0xf8, 0x69, 0xb1, 0x8c, 0xbd, 0x34, 0x8f, 0x41,
+	0x2a, 0x10, 0x5e, 0x98, 0x40, 0xb8, 0x2c, 0x78, 0x9a, 0x2b, 0xb7, 0x10, 0x5c, 0x71, 0xf2, 0x30,
+	0xe3, 0xcb, 0xf4, 0x73, 0xd3, 0x1f, 0x0c, 0x63, 0xce, 0xe3, 0x0c, 0x3c, 0xd3, 0x9c, 0xaf, 0x17,
+	0x9e, 0x4a, 0x57, 0x20, 0x55, 0xb0, 0x2a, 0xaa, 0xf9, 0xc1, 0xb3, 0x38, 0x55, 0xc9, 0x7a, 0xee,
+	0x86, 0x7c, 0xe5, 0xc5, 0x3c, 0xe6, 0x77, 0x93, 0x1a, 0x19, 0x60, 0xaa, 0x7a, 0xfc, 0xd5, 0xde,
+	0x78, 0xc8, 0x85, 0x82, 0xaf, 0x85, 0xe0, 0x5f, 0x20, 0x54, 0x35, 0xf2, 0xf4, 0x75, 0x75, 0x63,
+	0x5e, 0x17, 0x95, 0xf4, 0xf8, 0x57, 0x0b, 0x77, 0x4e, 0x92, 0x75, 0xbe, 0x24, 0x2f, 0xb1, 0xbd,
+	0x10, 0x7c, 0x45, 0xd1, 0x08, 0x8d, 0xfb, 0x93, 0x81, 0x5b, 0xdd, 0xe8, 0x36, 0x9b, 0xdd, 0xb3,
+	0xe6, 0xc6, 0x59, 0xf7, 0xf2, 0x7a, 0x68, 0x5d, 0xfc, 0x1e, 0x22, 0xdf, 0x28, 0xc8, 0x0b, 0xdc,
+	0x52, 0x9c, 0xb6, 0x0e, 0xd0, 0xb5, 0x14, 0x27, 0x33, 0xdc, 0x5b, 0x64, 0x6b, 0x99, 0x40, 0x34,
+	0x55, 0xb4, 0x7d, 0x80, 0xf8, 0x4e, 0x46, 0xde, 0xe2, 0x7e, 0x16, 0x48, 0xf5, 0xb1, 0x88, 0x02,
+	0x05, 0x11, 0xb5, 0x0f, 0xf8, 0xca, 0xbe, 0x90, 0x3c, 0xc1, 0x4e, 0x98, 0x71, 0x09, 0x11, 0xed,
+	0x8c, 0xd0, 0xb8, 0xeb, 0xd7, 0x48, 0xf3, 0xf2, 0x3c, 0x0f, 0x21, 0xa2, 0x4e, 0xc5, 0x57, 0x88,
+	0x10, 0x6c, 0x47, 0x81, 0x0a, 0xe8, 0xd1, 0x08, 0x8d, 0x1f, 0xf8, 0xa6, 0xd6, 0x5c, 0x02, 0x41,
+	0x44, 0xbb, 0x15, 0xa7, 0xeb, 0xe3, 0xef, 0x6d, 0xec, 0x7c, 0x00, 0x91, 0x82, 0xd4, 0x9f, 0x5a,
+	0x4b, 0x10, 0xef, 0xde, 0x18, 0x83, 0x7b, 0x7e, 0x8d, 0xc8, 0x08, 0xf7, 0x17, 0x3a, 0x18, 0xa2,
+	0x10, 0x69, 0xae, 0x8c, 0x8b, 0xb6, 0xbf, 0x4f, 0x91, 0x1c, 0x3b, 0x59, 0x30, 0x87, 0x4c, 0xd2,
+	0xf6, 0xa8, 0x3d, 0xee, 0x4f, 0x1e, 0xb9, 0xcd, 0x53, 0xba, 0xa7, 0x9a, 0x7f, 0x1f, 0xa4, 0x62,
+	0x36, 0xd5, 0x3f, 0xf6, 0xf3, 0x7a, 0x78, 0x50, 0x14, 0x2a, 0xfd, 0x34, 0x0a, 0x0a, 0x05, 0xc2,
+	0xaf, 0xb7, 0x90, 0x09, 0x76, 0x42, 0x9d, 0x08, 0x49, 0x6d, 0xb3, 0xef, 0xb1, 0xfb, 0x5f, 0x7a,
+	0x5d, 0x13, 0x97, 0x99, 0xad, 0x17, 0xfa, 0xf5, 0x64, 0x1d, 0x81, 0xce, 0x81, 0x11, 0x18, 0xe0,
+	0xae, 0x7e, 0x85, 0xd3, 0x34, 0x07, 0x63, 0x70, 0xcf, 0xbf, 0xc5, 0x84, 0xe2, 0x23, 0xc8, 0x95,
+	0x38, 0x3f, 0x51, 0xc6, 0xe5, 0xb6, 0xdf, 0x40, 0x1d, 0x9c, 0x24, 0x8d, 0x13, 0x90, 0xea, 0x4c,
+	0x1a, 0xb7, 0xef, 0x1d, 0x9c, 0x5b, 0xd9, 0xec, 0xf5, 0x66, 0xcb, 0xac, 0xab, 0x2d, 0xb3, 0x6e,
+	0xb6, 0x0c, 0x7d, 0x2b, 0x19, 0xfa, 0x51, 0x32, 0x74, 0x59, 0x32, 0xb4, 0x29, 0x19, 0xfa, 0x53,
+	0x32, 0xf4, 0xb7, 0x64, 0xd6, 0x4d, 0xc9, 0xd0, 0xc5, 0x8e, 0x59, 0x9b, 0x1d, 0xb3, 0xae, 0x76,
+	0xcc, 0xfa, 0xd4, 0x6d, 0x3c, 0x98, 0x3b, 0x66, 0xd1, 0xf3, 0x7f, 0x01, 0x00, 0x00, 0xff, 0xff,
+	0x38, 0x4d, 0x9b, 0xd7, 0xf8, 0x03, 0x00, 0x00,
 }
 
 func (this *Chunk) Equal(that interface{}) bool {
@@ -323,6 +364,18 @@ func (this *Series) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if !this.To.Equal(that1.To) {
+		return false
+	}
+	if this.LastLine != that1.LastLine {
+		return false
+	}
+	if this.EntryCt != that1.EntryCt {
+		return false
+	}
+	if !this.HighestTs.Equal(that1.HighestTs) {
+		return false
+	}
 	return true
 }
 func (this *Chunk) GoString() string {
@@ -346,7 +399,7 @@ func (this *Series) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 8)
+	s := make([]string, 0, 12)
 	s = append(s, "&ingester.Series{")
 	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
 	s = append(s, "Fingerprint: "+fmt.Sprintf("%#v", this.Fingerprint)+",\n")
@@ -358,6 +411,10 @@ func (this *Series) GoString() string {
 		}
 		s = append(s, "Chunks: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
+	s = append(s, "To: "+fmt.Sprintf("%#v", this.To)+",\n")
+	s = append(s, "LastLine: "+fmt.Sprintf("%#v", this.LastLine)+",\n")
+	s = append(s, "EntryCt: "+fmt.Sprintf("%#v", this.EntryCt)+",\n")
+	s = append(s, "HighestTs: "+fmt.Sprintf("%#v", this.HighestTs)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -372,7 +429,7 @@ func valueToGoStringCheckpoint(v interface{}, typ string) string {
 func (m *Chunk) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -380,81 +437,88 @@ func (m *Chunk) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Chunk) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.From)))
-	n1, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.From, dAtA[i:])
-	if err != nil {
-		return 0, err
+	if len(m.Head) > 0 {
+		i -= len(m.Head)
+		copy(dAtA[i:], m.Head)
+		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Head)))
+		i--
+		dAtA[i] = 0x42
 	}
-	i += n1
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.To)))
-	n2, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n2
-	dAtA[i] = 0x1a
-	i++
-	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.FlushedAt)))
-	n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.FlushedAt, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n3
-	dAtA[i] = 0x22
-	i++
-	i = encodeVarintCheckpoint(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.LastUpdated)))
-	n4, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LastUpdated, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n4
-	if m.Closed {
-		dAtA[i] = 0x28
-		i++
-		if m.Closed {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i++
+	if len(m.Data) > 0 {
+		i -= len(m.Data)
+		copy(dAtA[i:], m.Data)
+		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Data)))
+		i--
+		dAtA[i] = 0x3a
 	}
 	if m.Synced {
-		dAtA[i] = 0x30
-		i++
+		i--
 		if m.Synced {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
 		}
-		i++
+		i--
+		dAtA[i] = 0x30
 	}
-	if len(m.Data) > 0 {
-		dAtA[i] = 0x3a
-		i++
-		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Data)))
-		i += copy(dAtA[i:], m.Data)
+	if m.Closed {
+		i--
+		if m.Closed {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
 	}
-	if len(m.Head) > 0 {
-		dAtA[i] = 0x42
-		i++
-		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.Head)))
-		i += copy(dAtA[i:], m.Head)
+	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LastUpdated, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.LastUpdated):])
+	if err1 != nil {
+		return 0, err1
 	}
-	return i, nil
+	i -= n1
+	i = encodeVarintCheckpoint(dAtA, i, uint64(n1))
+	i--
+	dAtA[i] = 0x22
+	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.FlushedAt, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.FlushedAt):])
+	if err2 != nil {
+		return 0, err2
+	}
+	i -= n2
+	i = encodeVarintCheckpoint(dAtA, i, uint64(n2))
+	i--
+	dAtA[i] = 0x1a
+	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.To):])
+	if err3 != nil {
+		return 0, err3
+	}
+	i -= n3
+	i = encodeVarintCheckpoint(dAtA, i, uint64(n3))
+	i--
+	dAtA[i] = 0x12
+	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.From, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.From):])
+	if err4 != nil {
+		return 0, err4
+	}
+	i -= n4
+	i = encodeVarintCheckpoint(dAtA, i, uint64(n4))
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
 }
 
 func (m *Series) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -462,56 +526,96 @@ func (m *Series) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Series) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.UserID) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.UserID)))
-		i += copy(dAtA[i:], m.UserID)
+	n5, err5 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.HighestTs, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.HighestTs):])
+	if err5 != nil {
+		return 0, err5
 	}
-	if m.Fingerprint != 0 {
-		dAtA[i] = 0x10
-		i++
-		i = encodeVarintCheckpoint(dAtA, i, uint64(m.Fingerprint))
+	i -= n5
+	i = encodeVarintCheckpoint(dAtA, i, uint64(n5))
+	i--
+	dAtA[i] = 0x42
+	if m.EntryCt != 0 {
+		i = encodeVarintCheckpoint(dAtA, i, uint64(m.EntryCt))
+		i--
+		dAtA[i] = 0x38
+	}
+	if len(m.LastLine) > 0 {
+		i -= len(m.LastLine)
+		copy(dAtA[i:], m.LastLine)
+		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.LastLine)))
+		i--
+		dAtA[i] = 0x32
+	}
+	n6, err6 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.To):])
+	if err6 != nil {
+		return 0, err6
+	}
+	i -= n6
+	i = encodeVarintCheckpoint(dAtA, i, uint64(n6))
+	i--
+	dAtA[i] = 0x2a
+	if len(m.Chunks) > 0 {
+		for iNdEx := len(m.Chunks) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Chunks[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintCheckpoint(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
 	}
 	if len(m.Labels) > 0 {
-		for _, msg := range m.Labels {
+		for iNdEx := len(m.Labels) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Labels[iNdEx].Size()
+				i -= size
+				if _, err := m.Labels[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintCheckpoint(dAtA, i, uint64(size))
+			}
+			i--
 			dAtA[i] = 0x1a
-			i++
-			i = encodeVarintCheckpoint(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
 		}
 	}
-	if len(m.Chunks) > 0 {
-		for _, msg := range m.Chunks {
-			dAtA[i] = 0x22
-			i++
-			i = encodeVarintCheckpoint(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
+	if m.Fingerprint != 0 {
+		i = encodeVarintCheckpoint(dAtA, i, uint64(m.Fingerprint))
+		i--
+		dAtA[i] = 0x10
 	}
-	return i, nil
+	if len(m.UserID) > 0 {
+		i -= len(m.UserID)
+		copy(dAtA[i:], m.UserID)
+		i = encodeVarintCheckpoint(dAtA, i, uint64(len(m.UserID)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintCheckpoint(dAtA []byte, offset int, v uint64) int {
+	offset -= sovCheckpoint(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *Chunk) Size() (n int) {
 	if m == nil {
@@ -569,18 +673,22 @@ func (m *Series) Size() (n int) {
 			n += 1 + l + sovCheckpoint(uint64(l))
 		}
 	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.To)
+	n += 1 + l + sovCheckpoint(uint64(l))
+	l = len(m.LastLine)
+	if l > 0 {
+		n += 1 + l + sovCheckpoint(uint64(l))
+	}
+	if m.EntryCt != 0 {
+		n += 1 + sovCheckpoint(uint64(m.EntryCt))
+	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.HighestTs)
+	n += 1 + l + sovCheckpoint(uint64(l))
 	return n
 }
 
 func sovCheckpoint(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozCheckpoint(x uint64) (n int) {
 	return sovCheckpoint(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -590,10 +698,10 @@ func (this *Chunk) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&Chunk{`,
-		`From:` + strings.Replace(strings.Replace(this.From.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`To:` + strings.Replace(strings.Replace(this.To.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`FlushedAt:` + strings.Replace(strings.Replace(this.FlushedAt.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`LastUpdated:` + strings.Replace(strings.Replace(this.LastUpdated.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`From:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.From), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`To:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.To), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`FlushedAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.FlushedAt), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`LastUpdated:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.LastUpdated), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Closed:` + fmt.Sprintf("%v", this.Closed) + `,`,
 		`Synced:` + fmt.Sprintf("%v", this.Synced) + `,`,
 		`Data:` + fmt.Sprintf("%v", this.Data) + `,`,
@@ -606,11 +714,20 @@ func (this *Series) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForChunks := "[]Chunk{"
+	for _, f := range this.Chunks {
+		repeatedStringForChunks += strings.Replace(strings.Replace(f.String(), "Chunk", "Chunk", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForChunks += "}"
 	s := strings.Join([]string{`&Series{`,
 		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
 		`Fingerprint:` + fmt.Sprintf("%v", this.Fingerprint) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Chunks:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Chunks), "Chunk", "Chunk", 1), `&`, ``, 1) + `,`,
+		`Chunks:` + repeatedStringForChunks + `,`,
+		`To:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.To), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`LastLine:` + fmt.Sprintf("%v", this.LastLine) + `,`,
+		`EntryCt:` + fmt.Sprintf("%v", this.EntryCt) + `,`,
+		`HighestTs:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.HighestTs), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1025,7 +1142,7 @@ func (m *Series) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = append(m.Labels, github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter{})
+			m.Labels = append(m.Labels, github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{})
 			if err := m.Labels[len(m.Labels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1061,6 +1178,123 @@ func (m *Series) Unmarshal(dAtA []byte) error {
 			}
 			m.Chunks = append(m.Chunks, Chunk{})
 			if err := m.Chunks[len(m.Chunks)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field To", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCheckpoint
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthCheckpoint
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthCheckpoint
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.To, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastLine", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCheckpoint
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthCheckpoint
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthCheckpoint
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastLine = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EntryCt", wireType)
+			}
+			m.EntryCt = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCheckpoint
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EntryCt |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HighestTs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCheckpoint
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthCheckpoint
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthCheckpoint
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.HighestTs, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

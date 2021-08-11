@@ -12,22 +12,22 @@ import (
 	"sync"
 	"time"
 
-	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/tenant"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	gokit "github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type syncRange struct {
@@ -36,7 +36,6 @@ type syncRange struct {
 }
 
 func main() {
-
 	var defaultsConfig loki.Config
 
 	from := flag.String("from", "", "Start Time RFC339Nano 2006-01-02T15:04:05.999999999Z07:00")
@@ -80,20 +79,19 @@ func main() {
 		log.Println("Failed to create limit overrides:", err)
 		os.Exit(1)
 	}
-	lg := gokit.NewLogfmtLogger(gokit.NewSyncWriter(os.Stdout))
-	err = sourceConfig.Validate(lg)
+	err = sourceConfig.Validate()
 	if err != nil {
 		log.Println("Failed to validate source store config:", err)
 		os.Exit(1)
 	}
-	err = destConfig.Validate(lg)
+	err = destConfig.Validate()
 	if err != nil {
 		log.Println("Failed to validate dest store config:", err)
 		os.Exit(1)
 	}
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	sourceStore, err := cortex_storage.NewStore(sourceConfig.StorageConfig.Config, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, cortex_util.Logger)
+	sourceStore, err := chunk_storage.NewStore(sourceConfig.StorageConfig.Config, sourceConfig.ChunkStoreConfig.StoreConfig, sourceConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
@@ -106,7 +104,7 @@ func main() {
 
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	destStore, err := cortex_storage.NewStore(destConfig.StorageConfig.Config, destConfig.ChunkStoreConfig, destConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, cortex_util.Logger)
+	destStore, err := chunk_storage.NewStore(destConfig.StorageConfig.Config, destConfig.ChunkStoreConfig.StoreConfig, destConfig.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
 		os.Exit(1)
@@ -137,7 +135,7 @@ func main() {
 	ctx := context.Background()
 	// This is a little weird but it was the easiest way to guarantee the userID is in the right format
 	ctx = user.InjectOrgID(ctx, *source)
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -177,7 +175,7 @@ func main() {
 	errorChan := make(chan error)
 	statsChan := make(chan stats)
 
-	//Start the parallel processors
+	// Start the parallel processors
 	var wg sync.WaitGroup
 	cancelContext, cancelFunc := context.WithCancel(ctx)
 	for i := 0; i < *parallel; i++ {
@@ -197,7 +195,7 @@ func main() {
 			syncChan <- syncRanges[i]
 			i++
 		}
-		//Everything processed, exit
+		// Everything processed, exit
 		cancelFunc()
 	}()
 
@@ -231,16 +229,15 @@ func main() {
 	for {
 		time.Sleep(100 * time.Second)
 	}
-
 }
 
 func calcSyncRanges(from, to int64, shardBy int64) []*syncRange {
-	//Calculate the sync ranges
+	// Calculate the sync ranges
 	syncRanges := []*syncRange{}
-	//diff := to - from
-	//shards := diff / shardBy
+	// diff := to - from
+	// shards := diff / shardBy
 	currentFrom := from
-	//currentTo := from
+	// currentTo := from
 	currentTo := from + shardBy
 	for currentFrom < to && currentTo <= to {
 		s := &syncRange{
@@ -288,7 +285,6 @@ func newChunkMover(ctx context.Context, source, dest storage.Store, sourceUser, 
 }
 
 func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <-chan *syncRange, errCh chan<- error, statsCh chan<- stats) {
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -308,7 +304,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			for i, f := range fetchers {
 				log.Printf("%v Processing Schema %v which contains %v chunks\n", threadID, i, len(schemaGroups[i]))
 
-				//Slice up into batches
+				// Slice up into batches
 				for j := 0; j < len(schemaGroups[i]); j += m.batch {
 					k := j + m.batch
 					if k > len(schemaGroups[i]) {
@@ -396,9 +392,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 }
 
 func mustParse(t string) time.Time {
-
 	ret, err := time.Parse(time.RFC3339Nano, t)
-
 	if err != nil {
 		log.Fatalf("Unable to parse time %v", err)
 	}

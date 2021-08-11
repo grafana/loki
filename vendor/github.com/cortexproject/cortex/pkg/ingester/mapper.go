@@ -6,11 +6,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.
@@ -30,14 +29,17 @@ type fpMapper struct {
 	mappings fpMappings
 
 	fpToSeries *seriesMap
+
+	logger log.Logger
 }
 
 // newFPMapper loads the collision map from the persistence and
 // returns an fpMapper ready to use.
-func newFPMapper(fpToSeries *seriesMap) *fpMapper {
+func newFPMapper(fpToSeries *seriesMap, logger log.Logger) *fpMapper {
 	return &fpMapper{
 		fpToSeries: fpToSeries,
 		mappings:   map[model.Fingerprint]map[string]model.Fingerprint{},
+		logger:     logger,
 	}
 }
 
@@ -105,7 +107,7 @@ func (m *fpMapper) maybeAddMapping(
 		// A new mapping has to be created.
 		mappedFP = m.nextMappedFP()
 		mappedFPs[ms] = mappedFP
-		level.Debug(util.Logger).Log(
+		level.Debug(m.logger).Log(
 			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
@@ -119,7 +121,7 @@ func (m *fpMapper) maybeAddMapping(
 	m.mtx.Lock()
 	m.mappings[fp] = mappedFPs
 	m.mtx.Unlock()
-	level.Debug(util.Logger).Log(
+	level.Debug(m.logger).Log(
 		"msg", "fingerprint collision detected, mapping to new fingerprint",
 		"old_fp", fp,
 		"new_fp", mappedFP,

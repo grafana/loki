@@ -8,11 +8,11 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message Desc {
-	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
+	map<string,InstanceDesc> ingesters = 1 [(gogoproto.nullable) = false];
 	reserved 2;
 }
 
-message IngesterDesc {
+message InstanceDesc {
 	reserved 4, 5; // old, deprecated fields
 
 	string addr = 1;
@@ -21,7 +21,7 @@ message IngesterDesc {
 	// by this instance.
 	int64 timestamp = 2;
 
-	IngesterState state = 3;
+	InstanceState state = 3;
 	repeated uint32 tokens = 6;
 	string zone = 7;
 
@@ -41,7 +41,7 @@ message IngesterDesc {
 	int64 registered_timestamp = 8;
 }
 
-enum IngesterState {
+enum InstanceState {
 	ACTIVE = 0;
 	LEAVING = 1;
 
@@ -49,6 +49,6 @@ enum IngesterState {
 	JOINING = 3;
 
 	// This state is only used by gossiping code to distribute information about
-	// ingesters that have been removed from the ring. Ring users should not use it directly.
+	// instances that have been removed from the ring. Ring users should not use it directly.
 	LEFT = 4;
 }

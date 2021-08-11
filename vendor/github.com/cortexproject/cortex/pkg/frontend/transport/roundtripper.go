@@ -36,9 +36,10 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 	}
 
 	httpResp := &http.Response{
-		StatusCode: int(resp.Code),
-		Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
-		Header:     http.Header{},
+		StatusCode:    int(resp.Code),
+		Body:          ioutil.NopCloser(bytes.NewReader(resp.Body)),
+		Header:        http.Header{},
+		ContentLength: int64(len(resp.Body)),
 	}
 	for _, h := range resp.Headers {
 		httpResp.Header[h.Key] = h.Values

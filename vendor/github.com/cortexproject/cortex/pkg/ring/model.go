@@ -12,8 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
-// ByAddr is a sortable list of IngesterDesc.
-type ByAddr []IngesterDesc
+// ByAddr is a sortable list of InstanceDesc.
+type ByAddr []InstanceDesc
 
 func (ts ByAddr) Len() int           { return len(ts) }
 func (ts ByAddr) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
@@ -32,15 +32,15 @@ func GetCodec() codec.Codec {
 // NewDesc returns an empty ring.Desc
 func NewDesc() *Desc {
 	return &Desc{
-		Ingesters: map[string]IngesterDesc{},
+		Ingesters: map[string]InstanceDesc{},
 	}
 }
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState, registeredAt time.Time) IngesterDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time) InstanceDesc {
 	if d.Ingesters == nil {
-		d.Ingesters = map[string]IngesterDesc{}
+		d.Ingesters = map[string]InstanceDesc{}
 	}
 
 	registeredTimestamp := int64(0)
@@ -48,7 +48,7 @@ func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state Ingeste
 		registeredTimestamp = registeredAt.Unix()
 	}
 
-	ingester := IngesterDesc{
+	ingester := InstanceDesc{
 		Addr:                addr,
 		Timestamp:           time.Now().Unix(),
 		RegisteredTimestamp: registeredTimestamp,
@@ -87,8 +87,8 @@ func (d *Desc) ClaimTokens(from, to string) Tokens {
 }
 
 // FindIngestersByState returns the list of ingesters in the given state
-func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
-	var result []IngesterDesc
+func (d *Desc) FindIngestersByState(state InstanceState) []InstanceDesc {
+	var result []InstanceDesc
 	for _, ing := range d.Ingesters {
 		if ing.State == state {
 			result = append(result, ing)
@@ -101,7 +101,7 @@ func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
 func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 	numTokens := 0
 	for id, ingester := range d.Ingesters {
-		if now.Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
+		if !ingester.IsHeartbeatHealthy(heartbeatTimeout, now) {
 			return fmt.Errorf("instance %s past heartbeat timeout", id)
 		} else if ingester.State != ACTIVE {
 			return fmt.Errorf("instance %s in state %v", id, ingester.State)
@@ -125,7 +125,7 @@ func (d *Desc) TokensFor(id string) (myTokens, allTokens Tokens) {
 
 // GetRegisteredAt returns the timestamp when the instance has been registered to the ring
 // or a zero value if unknown.
-func (i *IngesterDesc) GetRegisteredAt() time.Time {
+func (i *InstanceDesc) GetRegisteredAt() time.Time {
 	if i == nil || i.RegisteredTimestamp == 0 {
 		return time.Time{}
 	}
@@ -133,10 +133,19 @@ func (i *IngesterDesc) GetRegisteredAt() time.Time {
 	return time.Unix(i.RegisteredTimestamp, 0)
 }
 
-func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
+func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
 	healthy := op.IsInstanceInStateHealthy(i.State)
 
-	return healthy && now.Unix()-i.Timestamp <= heartbeatTimeout.Milliseconds()/1000
+	return healthy && i.IsHeartbeatHealthy(heartbeatTimeout, now)
+}
+
+// IsHeartbeatHealthy returns whether the heartbeat timestamp for the ingester is within the
+// specified timeout period. A timeout of zero disables the timeout; the heartbeat is ignored.
+func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, now time.Time) bool {
+	if heartbeatTimeout == 0 {
+		return true
+	}
+	return now.Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
@@ -245,8 +254,8 @@ func (d *Desc) MergeContent() []string {
 // buildNormalizedIngestersMap will do the following:
 // - sorts tokens and removes duplicates (only within single ingester)
 // - it doesn't modify input ring
-func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
-	out := map[string]IngesterDesc{}
+func buildNormalizedIngestersMap(inputRing *Desc) map[string]InstanceDesc {
+	out := map[string]InstanceDesc{}
 
 	// Make sure LEFT ingesters have no tokens
 	for n, ing := range inputRing.Ingesters {
@@ -284,7 +293,7 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 	return out
 }
 
-func conflictingTokensExist(normalizedIngesters map[string]IngesterDesc) bool {
+func conflictingTokensExist(normalizedIngesters map[string]InstanceDesc) bool {
 	count := 0
 	for _, ing := range normalizedIngesters {
 		count += len(ing.Tokens)
@@ -309,7 +318,7 @@ func conflictingTokensExist(normalizedIngesters map[string]IngesterDesc) bool {
 // 2) otherwise node names are compared, and node with "lower" name wins the token
 //
 // Modifies ingesters map with updated tokens.
-func resolveConflicts(normalizedIngesters map[string]IngesterDesc) {
+func resolveConflicts(normalizedIngesters map[string]InstanceDesc) {
 	size := 0
 	for _, ing := range normalizedIngesters {
 		size += len(ing.Tokens)
@@ -374,15 +383,24 @@ func resolveConflicts(normalizedIngesters map[string]IngesterDesc) {
 }
 
 // RemoveTombstones removes LEFT ingesters older than given time limit. If time limit is zero, remove all LEFT ingesters.
-func (d *Desc) RemoveTombstones(limit time.Time) {
-	removed := 0
+func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 	for n, ing := range d.Ingesters {
-		if ing.State == LEFT && (limit.IsZero() || time.Unix(ing.Timestamp, 0).Before(limit)) {
-			// remove it
-			delete(d.Ingesters, n)
-			removed++
+		if ing.State == LEFT {
+			if limit.IsZero() || time.Unix(ing.Timestamp, 0).Before(limit) {
+				// remove it
+				delete(d.Ingesters, n)
+				removed++
+			} else {
+				total++
+			}
 		}
 	}
+	return
+}
+
+// Clone returns a deep copy of the ring state.
+func (d *Desc) Clone() memberlist.Mergeable {
+	return proto.Clone(d).(*Desc)
 }
 
 func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
@@ -406,7 +424,13 @@ func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
 func (d *Desc) GetTokens() []uint32 {
 	instances := make([][]uint32, 0, len(d.Ingesters))
 	for _, instance := range d.Ingesters {
-		instances = append(instances, instance.Tokens)
+		// Tokens may not be sorted for an older version of Cortex which, so we enforce sorting here.
+		tokens := instance.Tokens
+		if !sort.IsSorted(Tokens(tokens)) {
+			sort.Sort(Tokens(tokens))
+		}
+
+		instances = append(instances, tokens)
 	}
 
 	return MergeTokens(instances)
@@ -417,7 +441,13 @@ func (d *Desc) GetTokens() []uint32 {
 func (d *Desc) getTokensByZone() map[string][]uint32 {
 	zones := map[string][][]uint32{}
 	for _, instance := range d.Ingesters {
-		zones[instance.Zone] = append(zones[instance.Zone], instance.Tokens)
+		// Tokens may not be sorted for an older version of Cortex which, so we enforce sorting here.
+		tokens := instance.Tokens
+		if !sort.IsSorted(Tokens(tokens)) {
+			sort.Sort(Tokens(tokens))
+		}
+
+		zones[instance.Zone] = append(zones[instance.Zone], tokens)
 	}
 
 	// Merge tokens per zone.

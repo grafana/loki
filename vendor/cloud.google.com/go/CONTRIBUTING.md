@@ -69,7 +69,7 @@ these projects as "general project" and "Firestore project".
 
 After creating each project, you must [create a service account](https://developers.google.com/identity/protocols/OAuth2ServiceAccount#creatinganaccount)
 for each project. Ensure the project-level **Owner**
-[IAM role](console.cloud.google.com/iam-admin/iam/project) role is added to
+[IAM role](https://console.cloud.google.com/iam-admin/iam/project) role is added to
 each service account. During the creation of the service account, you should
 download the JSON credential file for use later.
 
@@ -129,10 +129,16 @@ project's service account.
 (e.g. doorway-cliff-677) for the Firestore project.
 - `GCLOUD_TESTS_GOLANG_FIRESTORE_KEY`: The path to the JSON key file of the
 Firestore project's service account.
+- `GCLOUD_TESTS_API_KEY`: API key for using the Translate API created above.
+
+As part of the setup that follows, the following variables will be configured:
+
 - `GCLOUD_TESTS_GOLANG_KEYRING`: The full name of the keyring for the tests,
 in the form
 "projects/P/locations/L/keyRings/R". The creation of this is described below.
-- `GCLOUD_TESTS_API_KEY`: API key for using the Translate API.
+- `GCLOUD_TESTS_BIGTABLE_KEYRING`: The full name of the keyring for the bigtable tests,
+in the form
+"projects/P/locations/L/keyRings/R". The creation of this is described below. Expected to be single region.
 - `GCLOUD_TESTS_GOLANG_ZONE`: Compute Engine zone.
 
 Install the [gcloud command-line tool][gcloudcli] to your machine and use it to
@@ -159,7 +165,7 @@ $ gsutil acl ch -g cloud-logs@google.com:O gs://$GCLOUD_TESTS_GOLANG_PROJECT_ID
 # Creates a PubSub topic for integration tests of storage notifications.
 $ gcloud beta pubsub topics create go-storage-notification-test
 # Next, go to the Pub/Sub dashboard in GCP console. Authorize the user
-# "service-<numberic project id>@gs-project-accounts.iam.gserviceaccount.com"
+# "service-<numeric project id>@gs-project-accounts.iam.gserviceaccount.com"
 # as a publisher to that topic.
 
 # Creates a Spanner instance for the spanner integration tests.
@@ -169,6 +175,7 @@ $ gcloud beta spanner instances create go-integration-test --config regional-us-
 
 $ export MY_KEYRING=some-keyring-name
 $ export MY_LOCATION=global
+$ export MY_SINGLE_LOCATION=us-central1
 # Creates a KMS keyring, in the same location as the default location for your
 # project's buckets.
 $ gcloud kms keyrings create $MY_KEYRING --location $MY_LOCATION
@@ -178,7 +185,50 @@ $ gcloud kms keys create key2 --keyring $MY_KEYRING --location $MY_LOCATION --pu
 # Sets the GCLOUD_TESTS_GOLANG_KEYRING environment variable.
 $ export GCLOUD_TESTS_GOLANG_KEYRING=projects/$GCLOUD_TESTS_GOLANG_PROJECT_ID/locations/$MY_LOCATION/keyRings/$MY_KEYRING
 # Authorizes Google Cloud Storage to encrypt and decrypt using key1.
-gsutil kms authorize -p $GCLOUD_TESTS_GOLANG_PROJECT_ID -k $GCLOUD_TESTS_GOLANG_KEYRING/cryptoKeys/key1
+$ gsutil kms authorize -p $GCLOUD_TESTS_GOLANG_PROJECT_ID -k $GCLOUD_TESTS_GOLANG_KEYRING/cryptoKeys/key1
+
+# Create KMS Key in one region for Bigtable
+$ gcloud kms keys create key1 --keyring $MY_KEYRING --location $MY_SINGLE_LOCATION --purpose encryption
+# Sets the GCLOUD_TESTS_BIGTABLE_KEYRING environment variable.
+$ export GCLOUD_TESTS_BIGTABLE_KEYRING=projects/$GCLOUD_TESTS_GOLANG_PROJECT_ID/locations/$MY_SINGLE_LOCATION/keyRings/$MY_KEYRING
+# Authorizes Google Cloud Bigtable to encrypt and decrypt using key1
+$ gcloud kms keys add-iam-policy-binding key1 \
+    --keyring $MY_KEYRING \
+    --location $MY_SINGLE_LOCATION \
+    --role roles/cloudkms.cryptoKeyEncrypterDecrypter \
+    --member "${GCLOUD_TESTS_GOLANG_PROJECT_ID}@${GCLOUD_TESTS_GOLANG_PROJECT_ID}.iam.gserviceaccount.com" \
+    --project $GCLOUD_TESTS_GOLANG_PROJECT_ID
+```
+
+It may be useful to add exports to your shell initialization for future use.
+For instance, in `.zshrc`:
+
+```sh
+#### START GO SDK Test Variables
+# Developers Console project's ID (e.g. bamboo-shift-455) for the general project.
+export GCLOUD_TESTS_GOLANG_PROJECT_ID=your-project
+
+# The path to the JSON key file of the general project's service account.
+export GCLOUD_TESTS_GOLANG_KEY=~/directory/your-project-abcd1234.json
+
+# Developers Console project's ID (e.g. doorway-cliff-677) for the Firestore project.
+export GCLOUD_TESTS_GOLANG_FIRESTORE_PROJECT_ID=your-firestore-project
+
+# The path to the JSON key file of the Firestore project's service account.
+export GCLOUD_TESTS_GOLANG_FIRESTORE_KEY=~/directory/your-firestore-project-abcd1234.json
+
+# The full name of the keyring for the tests, in the form "projects/P/locations/L/keyRings/R".
+# The creation of this is described below.
+export MY_KEYRING=my-golang-sdk-test
+export MY_LOCATION=global
+export GCLOUD_TESTS_GOLANG_KEYRING=projects/$GCLOUD_TESTS_GOLANG_PROJECT_ID/locations/$MY_LOCATION/keyRings/$MY_KEYRING
+
+# API key for using the Translate API.
+export GCLOUD_TESTS_API_KEY=abcdefghijk123456789
+
+# Compute Engine zone. (https://cloud.google.com/compute/docs/regions-zones)
+export GCLOUD_TESTS_GOLANG_ZONE=your-chosen-region
+#### END GO SDK Test Variables
 ```
 
 #### Running
@@ -187,7 +237,15 @@ Once you've done the necessary setup, you can run the integration tests by
 running:
 
 ``` sh
-$ go test -v cloud.google.com/go/...
+$ go test -v ./...
+```
+
+Note that the above command will not run the tests in other modules. To run
+tests on other modules, first navigate to the appropriate
+subdirectory. For instance, to run only the tests for datastore:
+``` sh
+$ cd datastore
+$ go test -v ./...
 ```
 
 #### Replay
@@ -253,8 +311,8 @@ Instances of abusive, harassing, or otherwise unacceptable behavior
 may be reported by opening an issue
 or contacting one or more of the project maintainers.
 
-This Code of Conduct is adapted from the [Contributor Covenant](http://contributor-covenant.org), version 1.2.0,
-available at [http://contributor-covenant.org/version/1/2/0/](http://contributor-covenant.org/version/1/2/0/)
+This Code of Conduct is adapted from the [Contributor Covenant](https://contributor-covenant.org), version 1.2.0,
+available at [https://contributor-covenant.org/version/1/2/0/](https://contributor-covenant.org/version/1/2/0/)
 
 [gcloudcli]: https://developers.google.com/cloud/sdk/gcloud/
 [indvcla]: https://developers.google.com/open-source/cla/individual

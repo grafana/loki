@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,15 +22,14 @@ const (
 
 // ShardingMetrics is the metrics wrapper used in shard mapping
 type ShardingMetrics struct {
-	shards      *prometheus.CounterVec // sharded queries total, partitioned by (streams/metric)
+	Shards      *prometheus.CounterVec // sharded queries total, partitioned by (streams/metric)
+	ShardFactor prometheus.Histogram   // per request shard factor
 	parsed      *prometheus.CounterVec // parsed ASTs total, partitioned by (success/failure/noop)
-	shardFactor prometheus.Histogram   // per request shard factor
 }
 
 func NewShardingMetrics(registerer prometheus.Registerer) *ShardingMetrics {
-
 	return &ShardingMetrics{
-		shards: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Shards: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "query_frontend_shards_total",
 		}, []string{"type"}),
@@ -38,7 +37,7 @@ func NewShardingMetrics(registerer prometheus.Registerer) *ShardingMetrics {
 			Namespace: "loki",
 			Name:      "query_frontend_sharding_parsed_queries_total",
 		}, []string{"type"}),
-		shardFactor: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		ShardFactor: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
 			Name:      "query_frontend_shard_factor",
 			Help:      "Number of shards per request",
@@ -67,14 +66,14 @@ type shardRecorder struct {
 // Add increments both the shard count and tracks it for the eventual histogram entry.
 func (r *shardRecorder) Add(x int, key string) {
 	r.total += x
-	r.shards.WithLabelValues(key).Add(float64(x))
+	r.Shards.WithLabelValues(key).Add(float64(x))
 }
 
 // Finish idemptotently records a histogram entry with the total shard factor.
 func (r *shardRecorder) Finish() {
 	if !r.done {
 		r.done = true
-		r.shardFactor.Observe(float64(r.total))
+		r.ShardFactor.Observe(float64(r.total))
 	}
 }
 
@@ -127,17 +126,17 @@ func (m ShardMapper) Parse(query string) (noop bool, expr Expr, err error) {
 
 func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
 	switch e := expr.(type) {
-	case *literalExpr:
+	case *LiteralExpr:
 		return e, nil
-	case *matchersExpr, *pipelineExpr:
+	case *MatchersExpr, *PipelineExpr:
 		return m.mapLogSelectorExpr(e.(LogSelectorExpr), r), nil
-	case *vectorAggregationExpr:
+	case *VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, r)
-	case *labelReplaceExpr:
+	case *LabelReplaceExpr:
 		return m.mapLabelReplaceExpr(e, r)
-	case *rangeAggregationExpr:
+	case *RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r), nil
-	case *binOpExpr:
+	case *BinOpExpr:
 		lhsMapped, err := m.Map(e.SampleExpr, r)
 		if err != nil {
 			return nil, err
@@ -202,8 +201,7 @@ func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *shardRecorder) SampleExpr
 
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
-func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *shardRecorder) (SampleExpr, error) {
-
+func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *shardRecorder) (SampleExpr, error) {
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
 	if !expr.Shardable() {
@@ -216,7 +214,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 			return nil, badASTMapping("SampleExpr", subMapped)
 		}
 
-		return &vectorAggregationExpr{
+		return &VectorAggregationExpr{
 			left:      sampleExpr,
 			grouping:  expr.grouping,
 			params:    expr.params,
@@ -228,7 +226,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 	switch expr.operation {
 	case OpTypeSum:
 		// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
-		return &vectorAggregationExpr{
+		return &VectorAggregationExpr{
 			left:      m.mapSampleExpr(expr, r),
 			grouping:  expr.grouping,
 			params:    expr.params,
@@ -237,7 +235,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 
 	case OpTypeAvg:
 		// avg(x) -> sum(x)/count(x)
-		lhs, err := m.mapVectorAggregationExpr(&vectorAggregationExpr{
+		lhs, err := m.mapVectorAggregationExpr(&VectorAggregationExpr{
 			left:      expr.left,
 			grouping:  expr.grouping,
 			operation: OpTypeSum,
@@ -245,7 +243,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 		if err != nil {
 			return nil, err
 		}
-		rhs, err := m.mapVectorAggregationExpr(&vectorAggregationExpr{
+		rhs, err := m.mapVectorAggregationExpr(&VectorAggregationExpr{
 			left:      expr.left,
 			grouping:  expr.grouping,
 			operation: OpTypeCount,
@@ -254,7 +252,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 			return nil, err
 		}
 
-		return &binOpExpr{
+		return &BinOpExpr{
 			SampleExpr: lhs,
 			RHS:        rhs,
 			op:         OpTypeDiv,
@@ -263,7 +261,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 	case OpTypeCount:
 		// count(x) -> sum(count(x, shard=1) ++ count(x, shard=2)...)
 		sharded := m.mapSampleExpr(expr, r)
-		return &vectorAggregationExpr{
+		return &VectorAggregationExpr{
 			left:      sharded,
 			grouping:  expr.grouping,
 			operation: OpTypeSum,
@@ -271,7 +269,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 	default:
 		// this should not be reachable. If an operation is shardable it should
 		// have an optimization listed.
-		level.Warn(util.Logger).Log(
+		level.Warn(util_log.Logger).Log(
 			"msg", "unexpected operation which appears shardable, ignoring",
 			"operation", expr.operation,
 		)
@@ -279,7 +277,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *sh
 	}
 }
 
-func (m ShardMapper) mapLabelReplaceExpr(expr *labelReplaceExpr, r *shardRecorder) (SampleExpr, error) {
+func (m ShardMapper) mapLabelReplaceExpr(expr *LabelReplaceExpr, r *shardRecorder) (SampleExpr, error) {
 	subMapped, err := m.Map(expr.left, r)
 	if err != nil {
 		return nil, err
@@ -289,7 +287,7 @@ func (m ShardMapper) mapLabelReplaceExpr(expr *labelReplaceExpr, r *shardRecorde
 	return &cpy, nil
 }
 
-func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr, r *shardRecorder) SampleExpr {
+func (m ShardMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr, r *shardRecorder) SampleExpr {
 	if hasLabelModifier(expr) {
 		// if an expr can modify labels this means multiple shards can returns the same labelset.
 		// When this happens the merge strategy needs to be different than a simple concatenation.
@@ -310,13 +308,13 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr, r *shar
 
 // hasLabelModifier tells if an expression contains pipelines that can modify stream labels
 // parsers introduce new labels but does not alter original one for instance.
-func hasLabelModifier(expr *rangeAggregationExpr) bool {
+func hasLabelModifier(expr *RangeAggregationExpr) bool {
 	switch ex := expr.left.left.(type) {
-	case *matchersExpr:
+	case *MatchersExpr:
 		return false
-	case *pipelineExpr:
+	case *PipelineExpr:
 		for _, p := range ex.pipeline {
-			if _, ok := p.(*labelFmtExpr); ok {
+			if _, ok := p.(*LabelFmtExpr); ok {
 				return true
 			}
 		}

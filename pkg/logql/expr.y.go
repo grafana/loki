@@ -23,7 +23,7 @@ type exprSymType struct {
 	Grouping              *grouping
 	Labels                []string
 	LogExpr               LogSelectorExpr
-	LogRangeExpr          *logRange
+	LogRangeExpr          *LogRange
 	Matcher               *labels.Matcher
 	Matchers              []*labels.Matcher
 	RangeAggregationExpr  SampleExpr
@@ -33,6 +33,7 @@ type exprSymType struct {
 	VectorAggregationExpr SampleExpr
 	MetricExpr            SampleExpr
 	VectorOp              string
+	FilterOp              string
 	BinOpExpr             SampleExpr
 	LabelReplaceExpr      SampleExpr
 	binOp                 string
@@ -41,10 +42,11 @@ type exprSymType struct {
 	empty                 interface{}
 	number                float64
 	duration              time.Duration
-	LiteralExpr           *literalExpr
+	LiteralExpr           *LiteralExpr
 	BinOpModifier         BinOpOptions
-	LabelParser           *labelParserExpr
-	LineFilters           *lineFilterExpr
+	LabelParser           *LabelParserExpr
+	LineFilters           *LineFilterExpr
+	LineFilter            *LineFilterExpr
 	PipelineExpr          MultiStageExpr
 	PipelineStage         StageExpr
 	BytesFilter           log.LabelFilterer
@@ -52,12 +54,17 @@ type exprSymType struct {
 	DurationFilter        log.LabelFilterer
 	LabelFilter           log.LabelFilterer
 	UnitFilter            log.LabelFilterer
+	IPLabelFilter         log.LabelFilterer
+	LineFormatExpr        *LineFmtExpr
+	LabelFormatExpr       *LabelFmtExpr
 	SignedNumber          string
-	LineFormatExpr        *lineFmtExpr
-	LabelFormatExpr       *labelFmtExpr
 	LabelFormat           log.LabelFmt
 	LabelsFormat          []log.LabelFmt
-	UnwrapExpr            *unwrapExpr
+	JSONExpressionParser  *JSONExpressionParser
+	JSONExpression        log.JSONExpression
+	JSONExpressionList    []log.JSONExpression
+	UnwrapExpr            *UnwrapExpr
+	OffsetExpr            *OffsetExpr
 }
 
 const BYTES = 57346
@@ -114,23 +121,29 @@ const QUANTILE_OVER_TIME = 57396
 const BYTES_CONV = 57397
 const DURATION_CONV = 57398
 const DURATION_SECONDS_CONV = 57399
-const ABSENT_OVER_TIME = 57400
-const LABEL_REPLACE = 57401
-const OR = 57402
-const AND = 57403
-const UNLESS = 57404
-const CMP_EQ = 57405
-const NEQ = 57406
-const LT = 57407
-const LTE = 57408
-const GT = 57409
-const GTE = 57410
-const ADD = 57411
-const SUB = 57412
-const MUL = 57413
-const DIV = 57414
-const MOD = 57415
-const POW = 57416
+const FIRST_OVER_TIME = 57400
+const LAST_OVER_TIME = 57401
+const ABSENT_OVER_TIME = 57402
+const LABEL_REPLACE = 57403
+const UNPACK = 57404
+const OFFSET = 57405
+const PATTERN = 57406
+const IP = 57407
+const OR = 57408
+const AND = 57409
+const UNLESS = 57410
+const CMP_EQ = 57411
+const NEQ = 57412
+const LT = 57413
+const LTE = 57414
+const GT = 57415
+const GTE = 57416
+const ADD = 57417
+const SUB = 57418
+const MUL = 57419
+const DIV = 57420
+const MOD = 57421
+const POW = 57422
 
 var exprToknames = [...]string{
 	"$end",
@@ -190,8 +203,14 @@ var exprToknames = [...]string{
 	"BYTES_CONV",
 	"DURATION_CONV",
 	"DURATION_SECONDS_CONV",
+	"FIRST_OVER_TIME",
+	"LAST_OVER_TIME",
 	"ABSENT_OVER_TIME",
 	"LABEL_REPLACE",
+	"UNPACK",
+	"OFFSET",
+	"PATTERN",
+	"IP",
 	"OR",
 	"AND",
 	"UNLESS",
@@ -215,7 +234,7 @@ const exprEofCode = 1
 const exprErrCode = 2
 const exprInitialStackSize = 16
 
-//line pkg/logql/expr.y:370
+//line pkg/logql/expr.y:430
 
 //line yacctab:1
 var exprExca = [...]int{
@@ -226,191 +245,214 @@ var exprExca = [...]int{
 
 const exprPrivate = 57344
 
-const exprLast = 431
+const exprLast = 471
 
 var exprAct = [...]int{
-	74, 177, 4, 159, 56, 57, 105, 186, 151, 65,
-	49, 5, 44, 45, 46, 47, 48, 49, 227, 70,
-	125, 46, 47, 48, 49, 247, 81, 15, 41, 42,
-	43, 50, 51, 54, 55, 52, 53, 44, 45, 46,
-	47, 48, 49, 42, 43, 50, 51, 54, 55, 52,
-	53, 44, 45, 46, 47, 48, 49, 161, 123, 124,
-	224, 38, 96, 202, 224, 170, 38, 201, 99, 12,
-	199, 60, 169, 38, 198, 264, 129, 128, 217, 278,
-	134, 38, 216, 262, 127, 50, 51, 54, 55, 52,
-	53, 44, 45, 46, 47, 48, 49, 63, 223, 214,
-	126, 130, 38, 213, 61, 62, 188, 63, 167, 162,
-	165, 166, 163, 164, 61, 62, 248, 156, 67, 2,
-	173, 75, 76, 39, 40, 190, 168, 179, 39, 40,
-	97, 274, 178, 224, 184, 39, 40, 59, 173, 188,
-	180, 189, 244, 39, 40, 269, 236, 64, 257, 181,
-	211, 238, 208, 38, 210, 38, 207, 64, 187, 185,
-	231, 192, 193, 194, 39, 40, 250, 251, 252, 205,
-	120, 234, 38, 204, 73, 219, 75, 76, 221, 182,
-	226, 222, 229, 232, 96, 230, 233, 127, 99, 200,
-	203, 206, 209, 212, 215, 218, 220, 173, 116, 135,
-	240, 136, 137, 138, 139, 140, 141, 142, 143, 144,
-	145, 146, 147, 148, 149, 39, 40, 39, 40, 174,
-	236, 121, 123, 124, 245, 237, 115, 133, 96, 111,
-	132, 111, 256, 246, 39, 40, 96, 131, 258, 225,
-	38, 77, 12, 153, 63, 261, 72, 108, 12, 108,
-	128, 61, 62, 276, 255, 263, 6, 273, 268, 260,
-	17, 18, 29, 30, 32, 33, 31, 34, 35, 36,
-	37, 19, 20, 122, 179, 247, 235, 196, 191, 183,
-	175, 21, 22, 23, 24, 25, 26, 27, 63, 197,
-	267, 28, 16, 176, 64, 61, 62, 272, 63, 225,
-	266, 111, 39, 40, 63, 61, 62, 265, 228, 176,
-	224, 61, 62, 253, 63, 153, 223, 79, 118, 108,
-	195, 61, 62, 80, 78, 111, 3, 111, 179, 242,
-	243, 254, 117, 66, 179, 119, 277, 275, 64, 153,
-	270, 153, 239, 108, 179, 108, 241, 172, 64, 160,
-	271, 224, 171, 170, 64, 169, 154, 152, 157, 155,
-	150, 114, 69, 259, 64, 71, 82, 83, 84, 85,
-	86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
-	154, 152, 111, 152, 71, 160, 106, 158, 101, 111,
-	100, 58, 112, 107, 113, 98, 11, 10, 9, 14,
-	108, 8, 249, 13, 7, 68, 1, 108, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 102, 104,
-	103, 0, 109, 110, 227, 102, 104, 103, 0, 109,
-	110,
+	239, 190, 77, 4, 171, 59, 159, 5, 164, 199,
+	68, 111, 51, 58, 121, 134, 46, 47, 48, 49,
+	50, 51, 242, 66, 73, 48, 49, 50, 51, 234,
+	64, 65, 40, 233, 15, 299, 247, 70, 2, 43,
+	44, 45, 52, 53, 56, 57, 54, 55, 46, 47,
+	48, 49, 50, 51, 242, 130, 132, 133, 118, 244,
+	299, 84, 78, 79, 99, 319, 231, 277, 103, 40,
+	230, 228, 161, 123, 40, 227, 115, 210, 62, 67,
+	138, 186, 302, 136, 143, 44, 45, 52, 53, 56,
+	57, 54, 55, 46, 47, 48, 49, 50, 51, 256,
+	41, 42, 244, 269, 258, 219, 277, 183, 40, 218,
+	135, 139, 215, 131, 182, 40, 214, 314, 307, 162,
+	160, 144, 168, 145, 146, 147, 148, 149, 150, 151,
+	152, 153, 154, 155, 156, 157, 158, 41, 42, 100,
+	181, 244, 41, 42, 197, 193, 76, 296, 78, 79,
+	191, 306, 202, 194, 52, 53, 56, 57, 54, 55,
+	46, 47, 48, 49, 50, 51, 217, 205, 206, 207,
+	173, 132, 133, 213, 118, 198, 41, 42, 225, 186,
+	256, 40, 224, 41, 42, 257, 40, 278, 161, 304,
+	237, 240, 115, 246, 12, 249, 136, 99, 252, 103,
+	253, 251, 137, 241, 238, 287, 118, 250, 216, 220,
+	223, 226, 229, 232, 235, 222, 262, 260, 40, 221,
+	161, 268, 243, 201, 115, 243, 201, 179, 174, 177,
+	178, 175, 176, 254, 195, 162, 160, 280, 281, 282,
+	284, 270, 203, 272, 274, 200, 276, 99, 186, 41,
+	42, 275, 286, 271, 41, 42, 99, 244, 66, 288,
+	244, 118, 118, 12, 125, 64, 65, 124, 160, 245,
+	187, 137, 293, 294, 66, 161, 267, 99, 295, 115,
+	115, 64, 65, 317, 297, 298, 41, 42, 192, 266,
+	303, 180, 142, 245, 141, 40, 140, 80, 66, 309,
+	75, 310, 311, 12, 192, 64, 65, 242, 285, 313,
+	290, 6, 255, 315, 67, 17, 18, 31, 32, 34,
+	35, 33, 36, 37, 38, 39, 19, 20, 192, 211,
+	67, 208, 204, 196, 188, 129, 21, 22, 23, 24,
+	25, 26, 27, 212, 66, 189, 28, 29, 30, 16,
+	66, 64, 65, 209, 67, 312, 189, 64, 65, 66,
+	248, 66, 127, 41, 42, 301, 64, 65, 64, 65,
+	300, 283, 118, 273, 192, 82, 126, 264, 265, 128,
+	192, 81, 318, 118, 308, 3, 316, 305, 292, 61,
+	115, 192, 69, 291, 263, 261, 259, 172, 83, 236,
+	67, 115, 185, 184, 183, 182, 67, 169, 106, 108,
+	107, 167, 116, 117, 247, 67, 166, 67, 289, 106,
+	108, 107, 72, 116, 117, 74, 165, 74, 172, 109,
+	112, 110, 113, 163, 102, 170, 105, 104, 60, 119,
+	109, 114, 110, 85, 86, 87, 88, 89, 90, 91,
+	92, 93, 94, 95, 96, 97, 98, 120, 101, 11,
+	10, 9, 122, 14, 8, 279, 13, 7, 71, 63,
+	1,
 }
 
 var exprPact = [...]int{
-	233, -1000, -32, -1000, -1000, 93, 233, -1000, -1000, -1000,
-	-1000, -1000, 360, 223, 151, -1000, 218, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 317,
-	310, -14, -14, -14, -14, -14, -14, -14, -14, -14,
-	-14, -14, -14, -14, -14, -14, 93, -1000, 274, 384,
-	355, -1000, -1000, -1000, -1000, 202, 174, -32, 316, 154,
-	-1000, 209, 54, 233, 214, 207, 204, 233, -1000, -1000,
-	233, -1000, 233, 233, 233, 233, 233, 233, 233, 233,
-	233, 233, 233, 233, 233, 233, -1000, 354, -1000, 320,
-	-1000, -1000, -1000, -1000, 353, -1000, -1000, -1000, 226, 352,
-	380, 45, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 379,
-	-1000, 349, 347, 346, 341, 195, 261, 300, 227, 155,
-	260, 233, 134, 101, 259, -18, 22, 22, -50, -50,
-	-64, -64, -64, -64, -57, -57, -57, -57, -57, -57,
-	-1000, 320, 226, 226, 226, -1000, 296, -1000, 258, -1000,
-	277, 66, 59, 165, 148, 146, 95, 74, -1000, -1000,
-	-1000, -1000, -1000, -1000, 96, 227, 83, 89, 290, 377,
-	284, 136, 96, 233, 147, 257, 201, -1000, -1000, 127,
-	-1000, 336, 224, 320, 322, -1000, 344, 324, -1000, -1000,
+	288, -1000, -27, -1000, -1000, 345, 288, -1000, -1000, -1000,
+	-1000, -1000, 420, 277, 123, -1000, 274, -1000, -1000, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	118, 20, 83, -1000, 226, -1000, 16, 111, 304, 307,
-	230, -1000, -1000, 124, -1000, 233, 358, -1000, -1000, 240,
-	-1000, -1000, -1000, -1000, 96, 20, 320, -1000, -1000, 60,
-	-1000, -1000, -1000, 31, 298, 291, 266, 96, 121, -1000,
-	334, -1000, 345, 20, -29, -1000, -1000, 288, -1000, -1000,
-	238, 107, -1000, 331, -1000, 234, 330, 55, -1000,
+	-1000, 374, 368, 21, 21, 21, 21, 21, 21, 21,
+	21, 21, 21, 21, 21, 21, 21, 21, 345, -1000,
+	9, 378, -1000, 8, -1000, -1000, -1000, -1000, 243, 240,
+	-27, 360, 319, -1000, 43, 179, 288, 273, 271, 269,
+	288, -1000, -1000, 288, -1000, 288, 288, 288, 288, 288,
+	288, 288, 288, 288, 288, 288, 288, 288, 288, -1000,
+	-1000, -1000, -1000, 169, -1000, -1000, 421, -1000, 410, -1000,
+	405, -1000, -1000, -1000, -1000, 257, 401, 423, 158, -1000,
+	-1000, -1000, 268, -1000, -1000, -1000, -1000, -1000, 422, -1000,
+	399, 398, 397, 396, 246, 315, 347, 248, 210, 314,
+	288, 221, 218, 313, 18, 85, 85, -52, -52, -68,
+	-68, -68, -68, -59, -59, -59, -59, -59, -59, 169,
+	257, 257, 257, 312, -1000, 341, -1000, -1000, 53, -1000,
+	310, -1000, 331, 108, 101, 211, 174, 67, 62, 25,
+	393, -1000, -1000, -1000, -1000, -1000, -1000, 37, 248, 244,
+	213, 260, 367, 336, 177, 37, 288, 209, 293, 161,
+	-1000, -1000, 80, -1000, 390, 256, 169, 201, 421, 389,
+	-1000, 392, 372, 266, -1000, -1000, -1000, 253, -1000, -1000,
+	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	-1000, -1000, -1000, -1000, -1000, -1000, 197, -1000, 79, 330,
+	15, 330, 365, -41, 257, -41, 97, 182, 362, 216,
+	284, -1000, -1000, 181, -1000, 288, 413, -1000, -1000, 291,
+	-1000, -1000, -1000, -1000, -1000, -1000, 387, 382, -1000, 37,
+	15, 330, 15, -1000, -1000, 169, -1000, -41, -1000, 124,
+	-1000, -1000, -1000, -9, 361, 356, 58, 37, 165, -1000,
+	381, 127, 94, -1000, 15, -1000, 379, 16, 15, -11,
+	-41, -41, 346, -1000, -1000, 290, -1000, -1000, 93, 15,
+	-1000, -1000, -41, 380, -1000, -1000, 264, 376, 41, -1000,
 }
 
 var exprPgo = [...]int{
-	0, 406, 118, 71, 0, 7, 326, 2, 20, 6,
-	405, 404, 403, 402, 11, 401, 399, 398, 397, 396,
-	323, 395, 4, 5, 394, 393, 392, 8, 391, 390,
-	388, 3, 387, 1, 386, 27,
+	0, 470, 37, 469, 2, 9, 385, 3, 15, 11,
+	468, 467, 466, 465, 7, 464, 463, 462, 461, 460,
+	459, 398, 458, 13, 5, 457, 441, 439, 6, 438,
+	78, 437, 436, 4, 435, 434, 8, 433, 1, 432,
+	430, 0, 34,
 }
 
 var exprR1 = [...]int{
 	0, 1, 2, 2, 7, 7, 7, 7, 7, 7,
 	6, 6, 6, 8, 8, 8, 8, 8, 8, 8,
-	8, 8, 8, 8, 8, 8, 8, 33, 33, 33,
-	13, 13, 13, 11, 11, 11, 11, 15, 15, 15,
-	15, 15, 15, 19, 3, 3, 3, 3, 14, 14,
-	14, 10, 10, 9, 9, 9, 9, 22, 22, 23,
-	23, 23, 23, 23, 28, 28, 21, 21, 21, 29,
-	31, 31, 32, 32, 32, 30, 27, 27, 27, 27,
-	27, 27, 27, 27, 34, 34, 26, 26, 26, 26,
-	26, 26, 26, 24, 24, 24, 24, 24, 24, 24,
-	25, 25, 25, 25, 25, 25, 25, 17, 17, 17,
-	17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
-	17, 17, 20, 20, 18, 35, 35, 35, 16, 16,
-	16, 16, 16, 16, 16, 16, 16, 12, 12, 12,
-	12, 12, 12, 12, 12, 12, 12, 12, 12, 5,
-	5, 4, 4, 4, 4,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 38,
+	38, 38, 13, 13, 13, 11, 11, 11, 11, 15,
+	15, 15, 15, 15, 15, 20, 3, 3, 3, 3,
+	14, 14, 14, 10, 10, 9, 9, 9, 9, 23,
+	23, 24, 24, 24, 24, 24, 24, 17, 30, 30,
+	29, 29, 22, 22, 22, 22, 22, 35, 31, 33,
+	33, 34, 34, 34, 32, 28, 28, 28, 28, 28,
+	28, 28, 28, 28, 36, 37, 37, 40, 40, 39,
+	39, 27, 27, 27, 27, 27, 27, 27, 25, 25,
+	25, 25, 25, 25, 25, 26, 26, 26, 26, 26,
+	26, 26, 18, 18, 18, 18, 18, 18, 18, 18,
+	18, 18, 18, 18, 18, 18, 18, 21, 21, 19,
+	42, 42, 42, 16, 16, 16, 16, 16, 16, 16,
+	16, 16, 12, 12, 12, 12, 12, 12, 12, 12,
+	12, 12, 12, 12, 12, 12, 41, 5, 5, 4,
+	4, 4, 4,
 }
 
 var exprR2 = [...]int{
 	0, 1, 1, 1, 1, 1, 1, 1, 1, 3,
-	1, 2, 3, 2, 4, 3, 5, 3, 5, 3,
-	5, 4, 6, 3, 4, 3, 2, 3, 6, 3,
-	1, 1, 1, 4, 6, 5, 7, 4, 5, 5,
-	6, 7, 7, 12, 1, 1, 1, 1, 3, 3,
-	3, 1, 3, 3, 3, 3, 3, 1, 2, 1,
-	2, 2, 2, 2, 2, 3, 1, 1, 2, 2,
-	3, 3, 1, 3, 3, 2, 1, 1, 1, 3,
-	2, 3, 3, 3, 1, 1, 3, 3, 3, 3,
+	1, 2, 3, 2, 3, 4, 5, 3, 4, 5,
+	6, 3, 4, 5, 6, 3, 4, 5, 6, 4,
+	5, 6, 7, 3, 4, 4, 5, 3, 2, 3,
+	6, 3, 1, 1, 1, 4, 6, 5, 7, 4,
+	5, 5, 6, 7, 7, 12, 1, 1, 1, 1,
+	3, 3, 3, 1, 3, 3, 3, 3, 3, 1,
+	2, 1, 2, 2, 2, 2, 2, 1, 2, 5,
+	1, 2, 1, 1, 2, 1, 2, 2, 2, 3,
+	3, 1, 3, 3, 2, 1, 1, 1, 1, 3,
+	2, 3, 3, 3, 3, 1, 3, 6, 6, 1,
+	1, 3, 3, 3, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 4, 4, 4,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 0, 1, 1, 1, 2, 2, 1, 1,
+	3, 3, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 0, 1, 1,
+	1, 2, 2, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	3, 4, 4, 3, 3,
+	1, 1, 1, 1, 1, 1, 2, 1, 3, 4,
+	4, 3, 3,
 }
 
 var exprChk = [...]int{
-	-1000, -1, -2, -6, -7, -14, 23, -11, -15, -17,
-	-18, -19, 15, -12, -16, -35, 59, 27, 28, 38,
-	39, 48, 49, 50, 51, 52, 53, 54, 58, 29,
-	30, 33, 31, 32, 34, 35, 36, 37, 7, 69,
-	70, 60, 61, 62, 69, 70, 71, 72, 73, 74,
-	63, 64, 67, 68, 65, 66, -22, -23, -28, 44,
-	-3, 21, 22, 14, 64, -7, -6, -2, -10, 2,
-	-9, 5, 23, 23, -4, 25, 26, 23, 7, 7,
-	-20, 40, -20, -20, -20, -20, -20, -20, -20, -20,
-	-20, -20, -20, -20, -20, -20, -23, -3, -21, -27,
-	-29, -30, 41, 43, 42, -9, -34, -25, 23, 45,
-	46, 5, -26, -24, 6, 24, 24, 16, 2, 19,
-	16, 12, 64, 13, 14, -8, -35, -14, 23, -7,
-	-35, 23, 23, 23, -7, -2, -2, -2, -2, -2,
-	-2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-	6, -27, 61, 19, 60, 6, -27, 6, -32, -31,
-	5, 12, 64, 67, 68, 65, 66, 63, -9, 6,
-	6, 6, 6, 2, 24, 19, 9, -33, -22, 44,
-	-14, -8, 24, 19, -7, -35, -5, 24, 5, -5,
-	24, 19, -27, -27, -27, 24, 19, 12, 8, 4,
-	-35, 8, 4, -35, 8, 4, -35, 8, 4, -35,
-	8, 4, -35, 8, 4, -35, 8, 4, -35, -4,
-	-8, -33, -22, 9, 44, 9, -33, 47, 24, -33,
-	-22, 24, -4, -7, 24, 19, 19, 24, 24, 6,
-	-31, 2, 5, 6, 24, -33, -27, 9, 5, -13,
-	55, 56, 57, 9, 24, 24, -33, 24, -7, 5,
-	19, -4, 23, -33, 44, 9, 9, 24, -4, 24,
-	6, 5, 9, 19, 24, 6, 19, 6, 24,
+	-1000, -1, -2, -6, -7, -14, 23, -11, -15, -18,
+	-19, -20, 15, -12, -16, -42, 61, 27, 28, 38,
+	39, 48, 49, 50, 51, 52, 53, 54, 58, 59,
+	60, 29, 30, 33, 31, 32, 34, 35, 36, 37,
+	7, 75, 76, 66, 67, 68, 75, 76, 77, 78,
+	79, 80, 69, 70, 73, 74, 71, 72, -23, -24,
+	-29, 44, -30, -3, 21, 22, 14, 70, -7, -6,
+	-2, -10, 2, -9, 5, 23, 23, -4, 25, 26,
+	23, 7, 7, -21, 40, -21, -21, -21, -21, -21,
+	-21, -21, -21, -21, -21, -21, -21, -21, -21, -24,
+	-30, -22, -35, -28, -31, -32, 41, 43, 42, 62,
+	64, -9, -40, -39, -26, 23, 45, 46, 5, -27,
+	-25, 6, -17, 65, 24, 24, 16, 2, 19, 16,
+	12, 70, 13, 14, -8, -42, -14, 23, -7, -42,
+	23, 23, 23, -7, -2, -2, -2, -2, -2, -2,
+	-2, -2, -2, -2, -2, -2, -2, -2, -2, -28,
+	67, 19, 66, -37, -36, 5, 6, 6, -28, 6,
+	-34, -33, 5, 12, 70, 73, 74, 71, 72, 69,
+	23, -9, 6, 6, 6, 6, 2, 24, 19, 9,
+	-38, -23, 44, -14, -8, 24, 19, -7, -42, -5,
+	24, 5, -5, 24, 19, -28, -28, -28, 19, 12,
+	24, 19, 12, 65, 8, 4, -42, 65, 8, 4,
+	-42, 8, 4, -42, 8, 4, -42, 8, 4, -42,
+	8, 4, -42, 8, 4, -42, 6, -4, -8, -41,
+	-38, -23, 63, 9, 44, 9, -38, 47, 24, -38,
+	-23, 24, -4, -7, 24, 19, 19, 24, 24, 6,
+	-36, 6, -33, 2, 5, 6, 23, 23, 24, 24,
+	-38, -23, -38, 8, -41, -28, -41, 9, 5, -13,
+	55, 56, 57, 9, 24, 24, -38, 24, -7, 5,
+	19, 6, 6, -4, -38, -41, 23, -41, -38, 44,
+	9, 9, 24, -4, 24, 6, 24, 24, 5, -38,
+	-41, -41, 9, 19, 24, -41, 6, 19, 6, 24,
 }
 
 var exprDef = [...]int{
 	0, -2, 1, 2, 3, 10, 0, 4, 5, 6,
-	7, 8, 0, 0, 0, 124, 0, 137, 138, 139,
-	140, 141, 142, 143, 144, 145, 146, 147, 148, 128,
-	129, 130, 131, 132, 133, 134, 135, 136, 125, 0,
-	0, 122, 122, 122, 122, 122, 122, 122, 122, 122,
-	122, 122, 122, 122, 122, 122, 11, 57, 59, 0,
-	0, 44, 45, 46, 47, 3, 2, 0, 0, 0,
-	51, 0, 0, 0, 0, 0, 0, 0, 126, 127,
-	0, 123, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 58, 0, 60, 61,
-	62, 63, 66, 67, 0, 76, 77, 78, 0, 0,
-	0, 0, 84, 85, 64, 9, 12, 48, 49, 0,
-	50, 0, 0, 0, 0, 0, 0, 0, 0, 3,
-	124, 0, 0, 0, 3, 107, 108, 109, 110, 111,
-	112, 113, 114, 115, 116, 117, 118, 119, 120, 121,
-	65, 80, 0, 0, 0, 68, 0, 69, 75, 72,
-	0, 0, 0, 0, 0, 0, 0, 0, 52, 53,
-	54, 55, 56, 26, 33, 0, 13, 0, 0, 0,
-	0, 0, 37, 0, 3, 124, 0, 153, 149, 0,
-	154, 0, 81, 82, 83, 79, 0, 0, 91, 98,
-	105, 90, 97, 104, 86, 93, 100, 87, 94, 101,
-	88, 95, 102, 89, 96, 103, 92, 99, 106, 35,
-	0, 15, 23, 17, 0, 19, 0, 0, 0, 0,
-	0, 25, 39, 3, 38, 0, 0, 151, 152, 0,
-	73, 74, 70, 71, 34, 24, 29, 21, 27, 0,
-	30, 31, 32, 14, 0, 0, 0, 40, 3, 150,
-	0, 36, 0, 16, 0, 18, 20, 0, 41, 42,
-	0, 0, 22, 0, 28, 0, 0, 0, 43,
+	7, 8, 0, 0, 0, 149, 0, 162, 163, 164,
+	165, 166, 167, 168, 169, 170, 171, 172, 173, 174,
+	175, 153, 154, 155, 156, 157, 158, 159, 160, 161,
+	150, 0, 0, 147, 147, 147, 147, 147, 147, 147,
+	147, 147, 147, 147, 147, 147, 147, 147, 11, 69,
+	71, 0, 80, 0, 56, 57, 58, 59, 3, 2,
+	0, 0, 0, 63, 0, 0, 0, 0, 0, 0,
+	0, 151, 152, 0, 148, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 70,
+	81, 72, 73, 74, 75, 76, 82, 83, 0, 85,
+	0, 95, 96, 97, 98, 0, 0, 0, 0, 109,
+	110, 78, 0, 77, 9, 12, 60, 61, 0, 62,
+	0, 0, 0, 0, 0, 0, 0, 0, 3, 149,
+	0, 0, 0, 3, 132, 133, 134, 135, 136, 137,
+	138, 139, 140, 141, 142, 143, 144, 145, 146, 100,
+	0, 0, 0, 87, 105, 0, 84, 86, 0, 88,
+	94, 91, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 64, 65, 66, 67, 68, 38, 45, 0, 13,
+	0, 0, 0, 0, 0, 49, 0, 3, 149, 0,
+	181, 177, 0, 182, 0, 101, 102, 103, 0, 0,
+	99, 0, 0, 0, 116, 123, 130, 0, 115, 122,
+	129, 111, 118, 125, 112, 119, 126, 113, 120, 127,
+	114, 121, 128, 117, 124, 131, 0, 47, 0, 14,
+	17, 33, 0, 21, 0, 25, 0, 0, 0, 0,
+	0, 37, 51, 3, 50, 0, 0, 179, 180, 0,
+	106, 104, 92, 93, 89, 90, 0, 0, 79, 46,
+	18, 34, 35, 176, 22, 41, 26, 29, 39, 0,
+	42, 43, 44, 15, 0, 0, 0, 52, 3, 178,
+	0, 0, 0, 48, 36, 30, 0, 16, 19, 0,
+	23, 27, 0, 53, 54, 0, 107, 108, 0, 20,
+	24, 28, 31, 0, 40, 32, 0, 0, 0, 55,
 }
 
 var exprTok1 = [...]int{
@@ -425,7 +467,7 @@ var exprTok2 = [...]int{
 	42, 43, 44, 45, 46, 47, 48, 49, 50, 51,
 	52, 53, 54, 55, 56, 57, 58, 59, 60, 61,
 	62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
-	72, 73, 74,
+	72, 73, 74, 75, 76, 77, 78, 79, 80,
 }
 
 var exprTok3 = [...]int{
@@ -771,912 +813,1080 @@ exprdefault:
 
 	case 1:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:114
+//line pkg/logql/expr.y:128
 		{
 			exprlex.(*parser).expr = exprDollar[1].Expr
 		}
 	case 2:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:117
+//line pkg/logql/expr.y:131
 		{
 			exprVAL.Expr = exprDollar[1].LogExpr
 		}
 	case 3:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:118
+//line pkg/logql/expr.y:132
 		{
 			exprVAL.Expr = exprDollar[1].MetricExpr
 		}
 	case 4:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:122
+//line pkg/logql/expr.y:136
 		{
 			exprVAL.MetricExpr = exprDollar[1].RangeAggregationExpr
 		}
 	case 5:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:123
+//line pkg/logql/expr.y:137
 		{
 			exprVAL.MetricExpr = exprDollar[1].VectorAggregationExpr
 		}
 	case 6:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:124
+//line pkg/logql/expr.y:138
 		{
 			exprVAL.MetricExpr = exprDollar[1].BinOpExpr
 		}
 	case 7:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:125
+//line pkg/logql/expr.y:139
 		{
 			exprVAL.MetricExpr = exprDollar[1].LiteralExpr
 		}
 	case 8:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:126
+//line pkg/logql/expr.y:140
 		{
 			exprVAL.MetricExpr = exprDollar[1].LabelReplaceExpr
 		}
 	case 9:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:127
+//line pkg/logql/expr.y:141
 		{
 			exprVAL.MetricExpr = exprDollar[2].MetricExpr
 		}
 	case 10:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:131
+//line pkg/logql/expr.y:145
 		{
 			exprVAL.LogExpr = newMatcherExpr(exprDollar[1].Selector)
 		}
 	case 11:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:132
+//line pkg/logql/expr.y:146
 		{
 			exprVAL.LogExpr = newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr)
 		}
 	case 12:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:133
+//line pkg/logql/expr.y:147
 		{
 			exprVAL.LogExpr = exprDollar[2].LogExpr
 		}
 	case 13:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:137
+//line pkg/logql/expr.y:151
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, nil)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, nil, nil)
 		}
 	case 14:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:138
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:152
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, nil)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, nil, exprDollar[3].OffsetExpr)
 		}
 	case 15:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:139
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:153
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, exprDollar[3].UnwrapExpr)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, nil, nil)
 		}
 	case 16:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
-//line pkg/logql/expr.y:140
+//line pkg/logql/expr.y:154
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, exprDollar[5].UnwrapExpr)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, nil, exprDollar[5].OffsetExpr)
 		}
 	case 17:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:141
+//line pkg/logql/expr.y:155
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].duration, exprDollar[2].UnwrapExpr)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, exprDollar[3].UnwrapExpr, nil)
 		}
 	case 18:
-		exprDollar = exprS[exprpt-5 : exprpt+1]
-//line pkg/logql/expr.y:142
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:156
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[5].duration, exprDollar[3].UnwrapExpr)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, exprDollar[4].UnwrapExpr, exprDollar[3].OffsetExpr)
 		}
 	case 19:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:143
+		exprDollar = exprS[exprpt-5 : exprpt+1]
+//line pkg/logql/expr.y:157
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[3].duration, nil)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, exprDollar[5].UnwrapExpr, nil)
 		}
 	case 20:
-		exprDollar = exprS[exprpt-5 : exprpt+1]
-//line pkg/logql/expr.y:144
+		exprDollar = exprS[exprpt-6 : exprpt+1]
+//line pkg/logql/expr.y:158
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[5].duration, nil)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, exprDollar[6].UnwrapExpr, exprDollar[5].OffsetExpr)
 		}
 	case 21:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:145
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:159
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[4].duration, exprDollar[3].UnwrapExpr)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].duration, exprDollar[2].UnwrapExpr, nil)
 		}
 	case 22:
-		exprDollar = exprS[exprpt-6 : exprpt+1]
-//line pkg/logql/expr.y:146
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:160
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[6].duration, exprDollar[4].UnwrapExpr)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].duration, exprDollar[2].UnwrapExpr, exprDollar[4].OffsetExpr)
 		}
 	case 23:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:147
+		exprDollar = exprS[exprpt-5 : exprpt+1]
+//line pkg/logql/expr.y:161
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, nil)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[5].duration, exprDollar[3].UnwrapExpr, nil)
 		}
 	case 24:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:148
+		exprDollar = exprS[exprpt-6 : exprpt+1]
+//line pkg/logql/expr.y:162
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, exprDollar[4].UnwrapExpr)
+			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[5].duration, exprDollar[3].UnwrapExpr, exprDollar[6].OffsetExpr)
 		}
 	case 25:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:149
+//line pkg/logql/expr.y:163
 		{
-			exprVAL.LogRangeExpr = exprDollar[2].LogRangeExpr
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[3].duration, nil, nil)
+		}
+	case 26:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:164
+		{
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[3].duration, nil, exprDollar[4].OffsetExpr)
 		}
 	case 27:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:154
+		exprDollar = exprS[exprpt-5 : exprpt+1]
+//line pkg/logql/expr.y:165
 		{
-			exprVAL.UnwrapExpr = newUnwrapExpr(exprDollar[3].str, "")
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[5].duration, nil, nil)
 		}
 	case 28:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
-//line pkg/logql/expr.y:155
-		{
-			exprVAL.UnwrapExpr = newUnwrapExpr(exprDollar[5].str, exprDollar[3].ConvOp)
-		}
-	case 29:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:156
-		{
-			exprVAL.UnwrapExpr = exprDollar[1].UnwrapExpr.addPostFilter(exprDollar[3].LabelFilter)
-		}
-	case 30:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:160
-		{
-			exprVAL.ConvOp = OpConvBytes
-		}
-	case 31:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:161
-		{
-			exprVAL.ConvOp = OpConvDuration
-		}
-	case 32:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:162
-		{
-			exprVAL.ConvOp = OpConvDurationSeconds
-		}
-	case 33:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
 //line pkg/logql/expr.y:166
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, nil, nil)
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[5].duration, nil, exprDollar[6].OffsetExpr)
 		}
-	case 34:
-		exprDollar = exprS[exprpt-6 : exprpt+1]
+	case 29:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
 //line pkg/logql/expr.y:167
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, nil, &exprDollar[3].SignedNumber)
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[4].duration, exprDollar[3].UnwrapExpr, nil)
 		}
-	case 35:
+	case 30:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 //line pkg/logql/expr.y:168
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[5].Grouping, nil)
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[4].duration, exprDollar[3].UnwrapExpr, exprDollar[5].OffsetExpr)
 		}
-	case 36:
-		exprDollar = exprS[exprpt-7 : exprpt+1]
+	case 31:
+		exprDollar = exprS[exprpt-6 : exprpt+1]
 //line pkg/logql/expr.y:169
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[7].Grouping, &exprDollar[3].SignedNumber)
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[6].duration, exprDollar[4].UnwrapExpr, nil)
 		}
-	case 37:
+	case 32:
+		exprDollar = exprS[exprpt-7 : exprpt+1]
+//line pkg/logql/expr.y:170
+		{
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[6].duration, exprDollar[4].UnwrapExpr, exprDollar[7].OffsetExpr)
+		}
+	case 33:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:171
+		{
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, nil, nil)
+		}
+	case 34:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:172
+		{
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[4].PipelineExpr), exprDollar[2].duration, nil, exprDollar[3].OffsetExpr)
+		}
+	case 35:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:173
+		{
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, exprDollar[4].UnwrapExpr, nil)
+		}
+	case 36:
+		exprDollar = exprS[exprpt-5 : exprpt+1]
 //line pkg/logql/expr.y:174
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, nil, nil)
+			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[4].PipelineExpr), exprDollar[2].duration, exprDollar[5].UnwrapExpr, exprDollar[3].OffsetExpr)
 		}
-	case 38:
-		exprDollar = exprS[exprpt-5 : exprpt+1]
+	case 37:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:175
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[4].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, nil)
+			exprVAL.LogRangeExpr = exprDollar[2].LogRangeExpr
 		}
 	case 39:
-		exprDollar = exprS[exprpt-5 : exprpt+1]
-//line pkg/logql/expr.y:176
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:180
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, exprDollar[5].Grouping, nil)
+			exprVAL.UnwrapExpr = newUnwrapExpr(exprDollar[3].str, "")
 		}
 	case 40:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
-//line pkg/logql/expr.y:178
+//line pkg/logql/expr.y:181
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, nil, &exprDollar[3].SignedNumber)
+			exprVAL.UnwrapExpr = newUnwrapExpr(exprDollar[5].str, exprDollar[3].ConvOp)
 		}
 	case 41:
-		exprDollar = exprS[exprpt-7 : exprpt+1]
-//line pkg/logql/expr.y:179
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:182
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, exprDollar[7].Grouping, &exprDollar[3].SignedNumber)
+			exprVAL.UnwrapExpr = exprDollar[1].UnwrapExpr.addPostFilter(exprDollar[3].LabelFilter)
 		}
 	case 42:
-		exprDollar = exprS[exprpt-7 : exprpt+1]
-//line pkg/logql/expr.y:180
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:186
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[6].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, &exprDollar[4].SignedNumber)
+			exprVAL.ConvOp = OpConvBytes
 		}
 	case 43:
-		exprDollar = exprS[exprpt-12 : exprpt+1]
-//line pkg/logql/expr.y:185
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:187
 		{
-			exprVAL.LabelReplaceExpr = mustNewLabelReplaceExpr(exprDollar[3].MetricExpr, exprDollar[5].str, exprDollar[7].str, exprDollar[9].str, exprDollar[11].str)
+			exprVAL.ConvOp = OpConvDuration
 		}
 	case 44:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:189
+//line pkg/logql/expr.y:188
+		{
+			exprVAL.ConvOp = OpConvDurationSeconds
+		}
+	case 45:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:192
+		{
+			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, nil, nil)
+		}
+	case 46:
+		exprDollar = exprS[exprpt-6 : exprpt+1]
+//line pkg/logql/expr.y:193
+		{
+			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, nil, &exprDollar[3].SignedNumber)
+		}
+	case 47:
+		exprDollar = exprS[exprpt-5 : exprpt+1]
+//line pkg/logql/expr.y:194
+		{
+			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[5].Grouping, nil)
+		}
+	case 48:
+		exprDollar = exprS[exprpt-7 : exprpt+1]
+//line pkg/logql/expr.y:195
+		{
+			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[7].Grouping, &exprDollar[3].SignedNumber)
+		}
+	case 49:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:200
+		{
+			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, nil, nil)
+		}
+	case 50:
+		exprDollar = exprS[exprpt-5 : exprpt+1]
+//line pkg/logql/expr.y:201
+		{
+			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[4].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, nil)
+		}
+	case 51:
+		exprDollar = exprS[exprpt-5 : exprpt+1]
+//line pkg/logql/expr.y:202
+		{
+			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, exprDollar[5].Grouping, nil)
+		}
+	case 52:
+		exprDollar = exprS[exprpt-6 : exprpt+1]
+//line pkg/logql/expr.y:204
+		{
+			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, nil, &exprDollar[3].SignedNumber)
+		}
+	case 53:
+		exprDollar = exprS[exprpt-7 : exprpt+1]
+//line pkg/logql/expr.y:205
+		{
+			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, exprDollar[7].Grouping, &exprDollar[3].SignedNumber)
+		}
+	case 54:
+		exprDollar = exprS[exprpt-7 : exprpt+1]
+//line pkg/logql/expr.y:206
+		{
+			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[6].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, &exprDollar[4].SignedNumber)
+		}
+	case 55:
+		exprDollar = exprS[exprpt-12 : exprpt+1]
+//line pkg/logql/expr.y:211
+		{
+			exprVAL.LabelReplaceExpr = mustNewLabelReplaceExpr(exprDollar[3].MetricExpr, exprDollar[5].str, exprDollar[7].str, exprDollar[9].str, exprDollar[11].str)
+		}
+	case 56:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:215
 		{
 			exprVAL.Filter = labels.MatchRegexp
 		}
-	case 45:
+	case 57:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:190
+//line pkg/logql/expr.y:216
 		{
 			exprVAL.Filter = labels.MatchEqual
 		}
-	case 46:
+	case 58:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:191
+//line pkg/logql/expr.y:217
 		{
 			exprVAL.Filter = labels.MatchNotRegexp
 		}
-	case 47:
+	case 59:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:192
+//line pkg/logql/expr.y:218
 		{
 			exprVAL.Filter = labels.MatchNotEqual
 		}
-	case 48:
+	case 60:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:196
+//line pkg/logql/expr.y:222
 		{
 			exprVAL.Selector = exprDollar[2].Matchers
 		}
-	case 49:
+	case 61:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:197
+//line pkg/logql/expr.y:223
 		{
 			exprVAL.Selector = exprDollar[2].Matchers
 		}
-	case 50:
+	case 62:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:198
+//line pkg/logql/expr.y:224
 		{
 		}
-	case 51:
+	case 63:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:202
+//line pkg/logql/expr.y:228
 		{
 			exprVAL.Matchers = []*labels.Matcher{exprDollar[1].Matcher}
 		}
-	case 52:
+	case 64:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:203
+//line pkg/logql/expr.y:229
 		{
 			exprVAL.Matchers = append(exprDollar[1].Matchers, exprDollar[3].Matcher)
 		}
-	case 53:
+	case 65:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:207
+//line pkg/logql/expr.y:233
 		{
 			exprVAL.Matcher = mustNewMatcher(labels.MatchEqual, exprDollar[1].str, exprDollar[3].str)
 		}
-	case 54:
+	case 66:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:208
+//line pkg/logql/expr.y:234
 		{
 			exprVAL.Matcher = mustNewMatcher(labels.MatchNotEqual, exprDollar[1].str, exprDollar[3].str)
 		}
-	case 55:
+	case 67:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:209
+//line pkg/logql/expr.y:235
 		{
 			exprVAL.Matcher = mustNewMatcher(labels.MatchRegexp, exprDollar[1].str, exprDollar[3].str)
 		}
-	case 56:
+	case 68:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:210
+//line pkg/logql/expr.y:236
 		{
 			exprVAL.Matcher = mustNewMatcher(labels.MatchNotRegexp, exprDollar[1].str, exprDollar[3].str)
 		}
-	case 57:
+	case 69:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:214
+//line pkg/logql/expr.y:240
 		{
 			exprVAL.PipelineExpr = MultiStageExpr{exprDollar[1].PipelineStage}
 		}
-	case 58:
+	case 70:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:215
+//line pkg/logql/expr.y:241
 		{
 			exprVAL.PipelineExpr = append(exprDollar[1].PipelineExpr, exprDollar[2].PipelineStage)
 		}
-	case 59:
+	case 71:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:219
+//line pkg/logql/expr.y:245
 		{
 			exprVAL.PipelineStage = exprDollar[1].LineFilters
 		}
-	case 60:
+	case 72:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:220
+//line pkg/logql/expr.y:246
 		{
 			exprVAL.PipelineStage = exprDollar[2].LabelParser
 		}
-	case 61:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:221
-		{
-			exprVAL.PipelineStage = &labelFilterExpr{LabelFilterer: exprDollar[2].LabelFilter}
-		}
-	case 62:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:222
-		{
-			exprVAL.PipelineStage = exprDollar[2].LineFormatExpr
-		}
-	case 63:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:223
-		{
-			exprVAL.PipelineStage = exprDollar[2].LabelFormatExpr
-		}
-	case 64:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:227
-		{
-			exprVAL.LineFilters = newLineFilterExpr(nil, exprDollar[1].Filter, exprDollar[2].str)
-		}
-	case 65:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:228
-		{
-			exprVAL.LineFilters = newLineFilterExpr(exprDollar[1].LineFilters, exprDollar[2].Filter, exprDollar[3].str)
-		}
-	case 66:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:231
-		{
-			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeJSON, "")
-		}
-	case 67:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:232
-		{
-			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeLogfmt, "")
-		}
-	case 68:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:233
-		{
-			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeRegexp, exprDollar[2].str)
-		}
-	case 69:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:236
-		{
-			exprVAL.LineFormatExpr = newLineFmtExpr(exprDollar[2].str)
-		}
-	case 70:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:239
-		{
-			exprVAL.LabelFormat = log.NewRenameLabelFmt(exprDollar[1].str, exprDollar[3].str)
-		}
-	case 71:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:240
-		{
-			exprVAL.LabelFormat = log.NewTemplateLabelFmt(exprDollar[1].str, exprDollar[3].str)
-		}
-	case 72:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:244
-		{
-			exprVAL.LabelsFormat = []log.LabelFmt{exprDollar[1].LabelFormat}
-		}
 	case 73:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:245
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:247
 		{
-			exprVAL.LabelsFormat = append(exprDollar[1].LabelsFormat, exprDollar[3].LabelFormat)
+			exprVAL.PipelineStage = exprDollar[2].JSONExpressionParser
+		}
+	case 74:
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:248
+		{
+			exprVAL.PipelineStage = &LabelFilterExpr{LabelFilterer: exprDollar[2].LabelFilter}
 		}
 	case 75:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 //line pkg/logql/expr.y:249
 		{
-			exprVAL.LabelFormatExpr = newLabelFmtExpr(exprDollar[2].LabelsFormat)
+			exprVAL.PipelineStage = exprDollar[2].LineFormatExpr
 		}
 	case 76:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:252
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:250
 		{
-			exprVAL.LabelFilter = log.NewStringLabelFilter(exprDollar[1].Matcher)
+			exprVAL.PipelineStage = exprDollar[2].LabelFormatExpr
 		}
 	case 77:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:253
-		{
-			exprVAL.LabelFilter = exprDollar[1].UnitFilter
-		}
-	case 78:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
 //line pkg/logql/expr.y:254
 		{
-			exprVAL.LabelFilter = exprDollar[1].NumberFilter
+			exprVAL.FilterOp = OpFilterIP
 		}
-	case 79:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:255
-		{
-			exprVAL.LabelFilter = exprDollar[2].LabelFilter
-		}
-	case 80:
+	case 78:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:256
-		{
-			exprVAL.LabelFilter = log.NewAndLabelFilter(exprDollar[1].LabelFilter, exprDollar[2].LabelFilter)
-		}
-	case 81:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:257
-		{
-			exprVAL.LabelFilter = log.NewAndLabelFilter(exprDollar[1].LabelFilter, exprDollar[3].LabelFilter)
-		}
-	case 82:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:258
 		{
-			exprVAL.LabelFilter = log.NewAndLabelFilter(exprDollar[1].LabelFilter, exprDollar[3].LabelFilter)
+			exprVAL.LineFilter = newLineFilterExpr(exprDollar[1].Filter, "", exprDollar[2].str)
 		}
-	case 83:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
+	case 79:
+		exprDollar = exprS[exprpt-5 : exprpt+1]
 //line pkg/logql/expr.y:259
 		{
-			exprVAL.LabelFilter = log.NewOrLabelFilter(exprDollar[1].LabelFilter, exprDollar[3].LabelFilter)
+			exprVAL.LineFilter = newLineFilterExpr(exprDollar[1].Filter, exprDollar[2].FilterOp, exprDollar[4].str)
 		}
-	case 84:
+	case 80:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 //line pkg/logql/expr.y:263
 		{
-			exprVAL.UnitFilter = exprDollar[1].DurationFilter
+			exprVAL.LineFilters = exprDollar[1].LineFilter
+		}
+	case 81:
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:264
+		{
+			exprVAL.LineFilters = newNestedLineFilterExpr(exprDollar[1].LineFilters, exprDollar[2].LineFilter)
+		}
+	case 82:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:268
+		{
+			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeJSON, "")
+		}
+	case 83:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:269
+		{
+			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeLogfmt, "")
+		}
+	case 84:
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:270
+		{
+			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeRegexp, exprDollar[2].str)
 		}
 	case 85:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:264
+//line pkg/logql/expr.y:271
 		{
-			exprVAL.UnitFilter = exprDollar[1].BytesFilter
+			exprVAL.LabelParser = newLabelParserExpr(OpParserTypeUnpack, "")
 		}
 	case 86:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:267
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:272
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.LabelParser = newLabelParserExpr(OpParserTypePattern, exprDollar[2].str)
 		}
 	case 87:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:268
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:276
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.JSONExpressionParser = newJSONExpressionParser(exprDollar[2].JSONExpressionList)
 		}
 	case 88:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:269
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:278
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.LineFormatExpr = newLineFmtExpr(exprDollar[2].str)
 		}
 	case 89:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:270
+//line pkg/logql/expr.y:281
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.LabelFormat = log.NewRenameLabelFmt(exprDollar[1].str, exprDollar[3].str)
 		}
 	case 90:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:271
+//line pkg/logql/expr.y:282
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.LabelFormat = log.NewTemplateLabelFmt(exprDollar[1].str, exprDollar[3].str)
 		}
 	case 91:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:272
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:286
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].duration)
+			exprVAL.LabelsFormat = []log.LabelFmt{exprDollar[1].LabelFormat}
 		}
 	case 92:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:273
+//line pkg/logql/expr.y:287
 		{
-			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].duration)
-		}
-	case 93:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:277
-		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.LabelsFormat = append(exprDollar[1].LabelsFormat, exprDollar[3].LabelFormat)
 		}
 	case 94:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:278
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:291
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.LabelFormatExpr = newLabelFmtExpr(exprDollar[2].LabelsFormat)
 		}
 	case 95:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:279
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:294
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.LabelFilter = log.NewStringLabelFilter(exprDollar[1].Matcher)
 		}
 	case 96:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:280
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:295
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.LabelFilter = exprDollar[1].IPLabelFilter
 		}
 	case 97:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:281
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:296
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.LabelFilter = exprDollar[1].UnitFilter
 		}
 	case 98:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:282
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:297
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.LabelFilter = exprDollar[1].NumberFilter
 		}
 	case 99:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:283
+//line pkg/logql/expr.y:298
 		{
-			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].bytes)
+			exprVAL.LabelFilter = exprDollar[2].LabelFilter
 		}
 	case 100:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:287
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:299
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+			exprVAL.LabelFilter = log.NewAndLabelFilter(exprDollar[1].LabelFilter, exprDollar[2].LabelFilter)
 		}
 	case 101:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:288
+//line pkg/logql/expr.y:300
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+			exprVAL.LabelFilter = log.NewAndLabelFilter(exprDollar[1].LabelFilter, exprDollar[3].LabelFilter)
 		}
 	case 102:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:289
+//line pkg/logql/expr.y:301
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+			exprVAL.LabelFilter = log.NewAndLabelFilter(exprDollar[1].LabelFilter, exprDollar[3].LabelFilter)
 		}
 	case 103:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:290
+//line pkg/logql/expr.y:302
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+			exprVAL.LabelFilter = log.NewOrLabelFilter(exprDollar[1].LabelFilter, exprDollar[3].LabelFilter)
 		}
 	case 104:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:291
+//line pkg/logql/expr.y:306
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+			exprVAL.JSONExpression = log.NewJSONExpr(exprDollar[1].str, exprDollar[3].str)
 		}
 	case 105:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:292
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:309
 		{
-			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+			exprVAL.JSONExpressionList = []log.JSONExpression{exprDollar[1].JSONExpression}
 		}
 	case 106:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:293
+//line pkg/logql/expr.y:310
+		{
+			exprVAL.JSONExpressionList = append(exprDollar[1].JSONExpressionList, exprDollar[3].JSONExpression)
+		}
+	case 107:
+		exprDollar = exprS[exprpt-6 : exprpt+1]
+//line pkg/logql/expr.y:314
+		{
+			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[5].str, exprDollar[1].str, log.LabelFilterEqual)
+		}
+	case 108:
+		exprDollar = exprS[exprpt-6 : exprpt+1]
+//line pkg/logql/expr.y:315
+		{
+			exprVAL.IPLabelFilter = log.NewIPLabelFilter(exprDollar[5].str, exprDollar[1].str, log.LabelFilterNotEqual)
+		}
+	case 109:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:319
+		{
+			exprVAL.UnitFilter = exprDollar[1].DurationFilter
+		}
+	case 110:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:320
+		{
+			exprVAL.UnitFilter = exprDollar[1].BytesFilter
+		}
+	case 111:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:323
+		{
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].duration)
+		}
+	case 112:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:324
+		{
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
+		}
+	case 113:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:325
+		{
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].duration)
+		}
+	case 114:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:326
+		{
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].duration)
+		}
+	case 115:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:327
+		{
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].duration)
+		}
+	case 116:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:328
+		{
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].duration)
+		}
+	case 117:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:329
+		{
+			exprVAL.DurationFilter = log.NewDurationLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].duration)
+		}
+	case 118:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:333
+		{
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, exprDollar[3].bytes)
+		}
+	case 119:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:334
+		{
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
+		}
+	case 120:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:335
+		{
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, exprDollar[3].bytes)
+		}
+	case 121:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:336
+		{
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, exprDollar[3].bytes)
+		}
+	case 122:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:337
+		{
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, exprDollar[3].bytes)
+		}
+	case 123:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:338
+		{
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].bytes)
+		}
+	case 124:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:339
+		{
+			exprVAL.BytesFilter = log.NewBytesLabelFilter(log.LabelFilterEqual, exprDollar[1].str, exprDollar[3].bytes)
+		}
+	case 125:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:343
+		{
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+		}
+	case 126:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:344
+		{
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+		}
+	case 127:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:345
+		{
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThan, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+		}
+	case 128:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:346
+		{
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+		}
+	case 129:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:347
+		{
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterNotEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+		}
+	case 130:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:348
 		{
 			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
 		}
-	case 107:
+	case 131:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:349
+		{
+			exprVAL.NumberFilter = log.NewNumericLabelFilter(log.LabelFilterEqual, exprDollar[1].str, mustNewFloat(exprDollar[3].SignedNumber))
+		}
+	case 132:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:299
+//line pkg/logql/expr.y:355
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("or", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 108:
+	case 133:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:300
+//line pkg/logql/expr.y:356
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("and", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 109:
+	case 134:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:301
+//line pkg/logql/expr.y:357
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("unless", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 110:
+	case 135:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:302
+//line pkg/logql/expr.y:358
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("+", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 111:
+	case 136:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:303
+//line pkg/logql/expr.y:359
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("-", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 112:
+	case 137:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:304
+//line pkg/logql/expr.y:360
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("*", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 113:
+	case 138:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:305
+//line pkg/logql/expr.y:361
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("/", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 114:
+	case 139:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:306
+//line pkg/logql/expr.y:362
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("%", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 115:
+	case 140:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:307
+//line pkg/logql/expr.y:363
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("^", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 116:
+	case 141:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:308
+//line pkg/logql/expr.y:364
 		{
 			exprVAL.BinOpExpr = mustNewBinOpExpr("==", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 117:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:309
-		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("!=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
-		}
-	case 118:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:310
-		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr(">", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
-		}
-	case 119:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:311
-		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr(">=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
-		}
-	case 120:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:312
-		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("<", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
-		}
-	case 121:
-		exprDollar = exprS[exprpt-4 : exprpt+1]
-//line pkg/logql/expr.y:313
-		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("<=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
-		}
-	case 122:
-		exprDollar = exprS[exprpt-0 : exprpt+1]
-//line pkg/logql/expr.y:317
-		{
-			exprVAL.BinOpModifier = BinOpOptions{}
-		}
-	case 123:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:318
-		{
-			exprVAL.BinOpModifier = BinOpOptions{ReturnBool: true}
-		}
-	case 124:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:322
-		{
-			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[1].SignedNumber, false)
-		}
-	case 125:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:326
-		{
-			exprVAL.SignedNumber = fmt.Sprintf("%v", exprDollar[1].number)
-		}
-	case 126:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:327
-		{
-			exprVAL.SignedNumber = fmt.Sprintf("%v", exprDollar[2].number)
-		}
-	case 127:
-		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:328
-		{
-			exprVAL.SignedNumber = fmt.Sprintf("%v", -exprDollar[2].number)
-		}
-	case 128:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:332
-		{
-			exprVAL.VectorOp = OpTypeSum
-		}
-	case 129:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:333
-		{
-			exprVAL.VectorOp = OpTypeAvg
-		}
-	case 130:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:334
-		{
-			exprVAL.VectorOp = OpTypeCount
-		}
-	case 131:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:335
-		{
-			exprVAL.VectorOp = OpTypeMax
-		}
-	case 132:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:336
-		{
-			exprVAL.VectorOp = OpTypeMin
-		}
-	case 133:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:337
-		{
-			exprVAL.VectorOp = OpTypeStddev
-		}
-	case 134:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:338
-		{
-			exprVAL.VectorOp = OpTypeStdvar
-		}
-	case 135:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:339
-		{
-			exprVAL.VectorOp = OpTypeBottomK
-		}
-	case 136:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:340
-		{
-			exprVAL.VectorOp = OpTypeTopK
-		}
-	case 137:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:344
-		{
-			exprVAL.RangeOp = OpRangeTypeCount
-		}
-	case 138:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:345
-		{
-			exprVAL.RangeOp = OpRangeTypeRate
-		}
-	case 139:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:346
-		{
-			exprVAL.RangeOp = OpRangeTypeBytes
-		}
-	case 140:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:347
-		{
-			exprVAL.RangeOp = OpRangeTypeBytesRate
-		}
-	case 141:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:348
-		{
-			exprVAL.RangeOp = OpRangeTypeAvg
-		}
 	case 142:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:349
-		{
-			exprVAL.RangeOp = OpRangeTypeSum
-		}
-	case 143:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:350
-		{
-			exprVAL.RangeOp = OpRangeTypeMin
-		}
-	case 144:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:351
-		{
-			exprVAL.RangeOp = OpRangeTypeMax
-		}
-	case 145:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:352
-		{
-			exprVAL.RangeOp = OpRangeTypeStdvar
-		}
-	case 146:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:353
-		{
-			exprVAL.RangeOp = OpRangeTypeStddev
-		}
-	case 147:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:354
-		{
-			exprVAL.RangeOp = OpRangeTypeQuantile
-		}
-	case 148:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:355
-		{
-			exprVAL.RangeOp = OpRangeTypeAbsent
-		}
-	case 149:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:360
-		{
-			exprVAL.Labels = []string{exprDollar[1].str}
-		}
-	case 150:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:361
-		{
-			exprVAL.Labels = append(exprDollar[1].Labels, exprDollar[3].str)
-		}
-	case 151:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 //line pkg/logql/expr.y:365
 		{
-			exprVAL.Grouping = &grouping{without: false, groups: exprDollar[3].Labels}
+			exprVAL.BinOpExpr = mustNewBinOpExpr("!=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
-	case 152:
+	case 143:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 //line pkg/logql/expr.y:366
 		{
-			exprVAL.Grouping = &grouping{without: true, groups: exprDollar[3].Labels}
+			exprVAL.BinOpExpr = mustNewBinOpExpr(">", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+		}
+	case 144:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:367
+		{
+			exprVAL.BinOpExpr = mustNewBinOpExpr(">=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+		}
+	case 145:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:368
+		{
+			exprVAL.BinOpExpr = mustNewBinOpExpr("<", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+		}
+	case 146:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:369
+		{
+			exprVAL.BinOpExpr = mustNewBinOpExpr("<=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+		}
+	case 147:
+		exprDollar = exprS[exprpt-0 : exprpt+1]
+//line pkg/logql/expr.y:373
+		{
+			exprVAL.BinOpModifier = BinOpOptions{}
+		}
+	case 148:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:374
+		{
+			exprVAL.BinOpModifier = BinOpOptions{ReturnBool: true}
+		}
+	case 149:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:378
+		{
+			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[1].SignedNumber, false)
+		}
+	case 150:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:382
+		{
+			exprVAL.SignedNumber = fmt.Sprintf("%v", exprDollar[1].number)
+		}
+	case 151:
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:383
+		{
+			exprVAL.SignedNumber = fmt.Sprintf("%v", exprDollar[2].number)
+		}
+	case 152:
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:384
+		{
+			exprVAL.SignedNumber = fmt.Sprintf("%v", -exprDollar[2].number)
 		}
 	case 153:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:388
+		{
+			exprVAL.VectorOp = OpTypeSum
+		}
+	case 154:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:389
+		{
+			exprVAL.VectorOp = OpTypeAvg
+		}
+	case 155:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:390
+		{
+			exprVAL.VectorOp = OpTypeCount
+		}
+	case 156:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:391
+		{
+			exprVAL.VectorOp = OpTypeMax
+		}
+	case 157:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:392
+		{
+			exprVAL.VectorOp = OpTypeMin
+		}
+	case 158:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:393
+		{
+			exprVAL.VectorOp = OpTypeStddev
+		}
+	case 159:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:394
+		{
+			exprVAL.VectorOp = OpTypeStdvar
+		}
+	case 160:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:395
+		{
+			exprVAL.VectorOp = OpTypeBottomK
+		}
+	case 161:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:396
+		{
+			exprVAL.VectorOp = OpTypeTopK
+		}
+	case 162:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:400
+		{
+			exprVAL.RangeOp = OpRangeTypeCount
+		}
+	case 163:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:401
+		{
+			exprVAL.RangeOp = OpRangeTypeRate
+		}
+	case 164:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:402
+		{
+			exprVAL.RangeOp = OpRangeTypeBytes
+		}
+	case 165:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:403
+		{
+			exprVAL.RangeOp = OpRangeTypeBytesRate
+		}
+	case 166:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:404
+		{
+			exprVAL.RangeOp = OpRangeTypeAvg
+		}
+	case 167:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:405
+		{
+			exprVAL.RangeOp = OpRangeTypeSum
+		}
+	case 168:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:406
+		{
+			exprVAL.RangeOp = OpRangeTypeMin
+		}
+	case 169:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:407
+		{
+			exprVAL.RangeOp = OpRangeTypeMax
+		}
+	case 170:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:408
+		{
+			exprVAL.RangeOp = OpRangeTypeStdvar
+		}
+	case 171:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:409
+		{
+			exprVAL.RangeOp = OpRangeTypeStddev
+		}
+	case 172:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:410
+		{
+			exprVAL.RangeOp = OpRangeTypeQuantile
+		}
+	case 173:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:411
+		{
+			exprVAL.RangeOp = OpRangeTypeFirst
+		}
+	case 174:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:412
+		{
+			exprVAL.RangeOp = OpRangeTypeLast
+		}
+	case 175:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:413
+		{
+			exprVAL.RangeOp = OpRangeTypeAbsent
+		}
+	case 176:
+		exprDollar = exprS[exprpt-2 : exprpt+1]
+//line pkg/logql/expr.y:417
+		{
+			exprVAL.OffsetExpr = newOffsetExpr(exprDollar[2].duration)
+		}
+	case 177:
+		exprDollar = exprS[exprpt-1 : exprpt+1]
+//line pkg/logql/expr.y:420
+		{
+			exprVAL.Labels = []string{exprDollar[1].str}
+		}
+	case 178:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:367
+//line pkg/logql/expr.y:421
+		{
+			exprVAL.Labels = append(exprDollar[1].Labels, exprDollar[3].str)
+		}
+	case 179:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:425
+		{
+			exprVAL.Grouping = &grouping{without: false, groups: exprDollar[3].Labels}
+		}
+	case 180:
+		exprDollar = exprS[exprpt-4 : exprpt+1]
+//line pkg/logql/expr.y:426
+		{
+			exprVAL.Grouping = &grouping{without: true, groups: exprDollar[3].Labels}
+		}
+	case 181:
+		exprDollar = exprS[exprpt-3 : exprpt+1]
+//line pkg/logql/expr.y:427
 		{
 			exprVAL.Grouping = &grouping{without: false, groups: nil}
 		}
-	case 154:
+	case 182:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:368
+//line pkg/logql/expr.y:428
 		{
 			exprVAL.Grouping = &grouping{without: true, groups: nil}
 		}

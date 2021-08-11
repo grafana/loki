@@ -12,10 +12,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 type ctxKeyType string
@@ -23,27 +25,31 @@ type ctxKeyType string
 const ctxKey ctxKeyType = "stats"
 
 var (
-	defaultMetricRecorder = metricRecorderFn(func(ctx context.Context, p logql.Params, status string, stats stats.Result) {
-		logql.RecordMetrics(ctx, p, status, stats)
+	defaultMetricRecorder = metricRecorderFn(func(data *queryData) {
+		logql.RecordMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
 	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
 )
 
 type metricRecorder interface {
-	Record(ctx context.Context, p logql.Params, status string, stats stats.Result)
+	Record(data *queryData)
 }
 
-type metricRecorderFn func(ctx context.Context, p logql.Params, status string, stats stats.Result)
+type metricRecorderFn func(data *queryData)
 
-func (m metricRecorderFn) Record(ctx context.Context, p logql.Params, status string, stats stats.Result) {
-	m(ctx, p, status, stats)
+func (m metricRecorderFn) Record(data *queryData) {
+	m(data)
 }
 
 type queryData struct {
+	ctx        context.Context
 	params     logql.Params
 	statistics *stats.Result
-	recorded   bool
+	result     promql_parser.Value
+	status     string
+
+	recorded bool
 }
 
 func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
@@ -62,12 +68,9 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 				if data.statistics == nil {
 					data.statistics = &stats.Result{}
 				}
-				recorder.Record(
-					r.Context(),
-					data.params,
-					strconv.Itoa(interceptor.statusCode),
-					*data.statistics,
-				)
+				data.ctx = r.Context()
+				data.status = strconv.Itoa(interceptor.statusCode)
+				recorder.Record(data)
 			}
 		})
 	})
@@ -85,10 +88,12 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 
 			// collect stats and status
 			var statistics *stats.Result
+			var res promql_parser.Value
 			if resp != nil {
 				switch r := resp.(type) {
 				case *LokiResponse:
 					statistics = &r.Statistics
+					res = logqlmodel.Streams(r.Data.Result)
 				case *LokiPromResponse:
 					statistics = &r.Statistics
 				default:
@@ -104,7 +109,12 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 			if data, ok := ctxValue.(*queryData); ok {
 				data.recorded = true
 				data.statistics = statistics
-				data.params = paramsFromRequest(req)
+				data.result = res
+				p, errReq := paramsFromRequest(req)
+				if errReq != nil {
+					return nil, errReq
+				}
+				data.params = p
 			}
 			return resp, err
 		})

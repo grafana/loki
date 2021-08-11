@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type InstrumentationServer struct {
@@ -44,7 +44,7 @@ func (s *InstrumentationServer) Start() error {
 
 	go func() {
 		if err := s.srv.Serve(listener); err != nil {
-			level.Error(util.Logger).Log("msg", "metrics server terminated", "err", err)
+			level.Error(util_log.Logger).Log("msg", "metrics server terminated", "err", err)
 		}
 	}()
 

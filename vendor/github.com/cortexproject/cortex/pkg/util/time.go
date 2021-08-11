@@ -48,6 +48,7 @@ func ParseTime(s string) (int64, error) {
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
 }
 
+// DurationWithJitter returns random duration from "input - input*variance" to "input + input*variance" interval.
 func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration {
 	// No duration? No jitter.
 	if input == 0 {
@@ -58,4 +59,28 @@ func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration
 	jitter := rand.Int63n(variance*2) - variance
 
 	return input + time.Duration(jitter)
+}
+
+// DurationWithPositiveJitter returns random duration from "input" to "input + input*variance" interval.
+func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.Duration {
+	// No duration? No jitter.
+	if input == 0 {
+		return 0
+	}
+
+	variance := int64(float64(input) * variancePerc)
+	jitter := rand.Int63n(variance)
+
+	return input + time.Duration(jitter)
+}
+
+// NewDisableableTicker essentially wraps NewTicker but allows the ticker to be disabled by passing
+// zero duration as the interval. Returns a function for stopping the ticker, and the ticker channel.
+func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
+	if interval == 0 {
+		return func() {}, nil
+	}
+
+	tick := time.NewTicker(interval)
+	return func() { tick.Stop() }, tick.C
 }

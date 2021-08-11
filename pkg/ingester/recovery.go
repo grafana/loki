@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -70,7 +70,7 @@ func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
 		return nil, nil, err
 	}
 	if idx < 0 {
-		level.Info(util.Logger).Log("msg", "no checkpoint found, treating as no-op")
+		level.Info(util_log.Logger).Log("msg", "no checkpoint found, treating as no-op")
 		var reader NoopWALReader
 		return reader, reader, nil
 	}
@@ -115,7 +115,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
-			Labels: client.FromLabelAdaptersToLabels(series.Labels).String(),
+			Labels: cortexpb.FromLabelAdaptersToLabels(series.Labels).String(),
 		}, true, nil)
 
 		if err != nil {
@@ -123,6 +123,10 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		}
 
 		bytesAdded, entriesAdded, err := stream.setChunks(series.Chunks)
+		stream.lastLine.ts = series.To
+		stream.lastLine.content = series.LastLine
+		stream.entryCt = series.EntryCt
+		stream.highestTs = series.HighestTs
 
 		if err != nil {
 			return err
@@ -188,13 +192,23 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, _ := s.(*stream).Push(context.Background(), entries.Entries, nil)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter)
 		r.ing.replayController.Add(int64(bytesAdded))
+		if err != nil && err == ErrEntriesExist {
+			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
+		}
 		return nil
 	})
 }
 
 func (r *ingesterRecoverer) Close() {
+	// reset all the incrementing stream counters after a successful WAL replay.
+	for _, inst := range r.ing.getInstances() {
+		inst.forAllStreams(context.Background(), func(s *stream) error {
+			s.resetCounter()
+			return nil
+		})
+	}
 	close(r.done)
 }
 

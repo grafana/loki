@@ -18,32 +18,6 @@ More detailed information can be found on the [operations page]({{< relref "../o
 
 Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
 
-- [Storage](#storage)
-  - [Implementations - Chunks](#implementations---chunks)
-    - [Cassandra](#cassandra)
-    - [GCS](#gcs)
-    - [File System](#file-system)
-    - [S3](#s3)
-    - [Notable Mentions](#notable-mentions)
-  - [Implementations - Index](#implementations---index)
-    - [Single Store (boltdb-shipper) - Recommended for 2.0 and newer](#single-store)
-    - [Cassandra](#cassandra-1)
-    - [BigTable](#bigtable)
-    - [DynamoDB](#dynamodb)
-      - [Rate Limiting](#rate-limiting)
-    - [BoltDB](#boltdb)
-  - [Schema Configs](#schema-configs)
-  - [Table Manager](#table-manager)
-    - [Provisioning](#provisioning)
-  - [Upgrading Schemas](#upgrading-schemas)
-  - [Retention](#retention)
-  - [Examples](#examples)
-    - [Single machine/local development (boltdb+filesystem)](#single-machinelocal-development-boltdbfilesystem)
-    - [GCP deployment (GCS Single Store)](#gcp-deployment-gcs-single-store)
-    - [AWS deployment (S3+DynamoDB)](#aws-deployment-s3dynamodb)
-    - [On prem deployment (Cassandra+Cassandra)](#on-prem-deployment-cassandracassandra)
-    - [On prem deployment (MinIO Single Store)](#on-prem-deployment-minio-single-store)
-
 ## Implementations - Chunks
 
 ### Cassandra
@@ -76,7 +50,7 @@ As of 2.0, this is the recommended index storage type, performance is comparable
 
 ### Cassandra
 
-Cassandra can also be utilized for the index store and aside from the experimental [boltdb-shipper](../operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
+Cassandra can also be utilized for the index store and aside from the [boltdb-shipper](../operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
 
 ### BigTable
 
@@ -92,7 +66,7 @@ DynamoDB is susceptible to rate limiting, particularly due to overconsuming what
 
 ### BoltDB
 
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. There is also an experimental mode, the [boltdb-shipper](../operations/storage/boltdb-shipper/), which aims to support clustered deployments using `boltdb` as an index.
+BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](../operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
 
 ## Schema Configs
 

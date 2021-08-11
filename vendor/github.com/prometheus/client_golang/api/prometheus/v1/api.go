@@ -123,6 +123,7 @@ const (
 	epAlertManagers   = apiPrefix + "/alertmanagers"
 	epQuery           = apiPrefix + "/query"
 	epQueryRange      = apiPrefix + "/query_range"
+	epQueryExemplars  = apiPrefix + "/query_exemplars"
 	epLabels          = apiPrefix + "/labels"
 	epLabelValues     = apiPrefix + "/label/:name/values"
 	epSeries          = apiPrefix + "/series"
@@ -135,6 +136,7 @@ const (
 	epCleanTombstones = apiPrefix + "/admin/tsdb/clean_tombstones"
 	epConfig          = apiPrefix + "/status/config"
 	epFlags           = apiPrefix + "/status/flags"
+	epBuildinfo       = apiPrefix + "/status/buildinfo"
 	epRuntimeinfo     = apiPrefix + "/status/runtimeinfo"
 	epTSDB            = apiPrefix + "/status/tsdb"
 )
@@ -230,14 +232,18 @@ type API interface {
 	DeleteSeries(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) error
 	// Flags returns the flag values that Prometheus was launched with.
 	Flags(ctx context.Context) (FlagsResult, error)
-	// LabelNames returns all the unique label names present in the block in sorted order.
-	LabelNames(ctx context.Context, startTime time.Time, endTime time.Time) ([]string, Warnings, error)
-	// LabelValues performs a query for the values of the given label.
-	LabelValues(ctx context.Context, label string, startTime time.Time, endTime time.Time) (model.LabelValues, Warnings, error)
+	// LabelNames returns the unique label names present in the block in sorted order by given time range and matchers.
+	LabelNames(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) ([]string, Warnings, error)
+	// LabelValues performs a query for the values of the given label, time range and matchers.
+	LabelValues(ctx context.Context, label string, matches []string, startTime time.Time, endTime time.Time) (model.LabelValues, Warnings, error)
 	// Query performs a query for the given time.
 	Query(ctx context.Context, query string, ts time.Time) (model.Value, Warnings, error)
 	// QueryRange performs a query for the given range.
 	QueryRange(ctx context.Context, query string, r Range) (model.Value, Warnings, error)
+	// QueryExemplars performs a query for exemplars by the given query and time range.
+	QueryExemplars(ctx context.Context, query string, startTime time.Time, endTime time.Time) ([]ExemplarQueryResult, error)
+	// Buildinfo returns various build information properties about the Prometheus server
+	Buildinfo(ctx context.Context) (BuildinfoResult, error)
 	// Runtimeinfo returns the various runtime information properties about the Prometheus server.
 	Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error)
 	// Series finds series by label matchers.
@@ -280,6 +286,16 @@ type ConfigResult struct {
 
 // FlagsResult contains the result from querying the flag endpoint.
 type FlagsResult map[string]string
+
+// BuildinfoResult contains the results from querying the buildinfo endpoint.
+type BuildinfoResult struct {
+	Version   string `json:"version"`
+	Revision  string `json:"revision"`
+	Branch    string `json:"branch"`
+	BuildUser string `json:"buildUser"`
+	BuildDate string `json:"buildDate"`
+	GoVersion string `json:"goVersion"`
+}
 
 // RuntimeinfoResult contains the result from querying the runtimeinfo endpoint.
 type RuntimeinfoResult struct {
@@ -331,23 +347,28 @@ type Rules []interface{}
 
 // AlertingRule models a alerting rule.
 type AlertingRule struct {
-	Name        string         `json:"name"`
-	Query       string         `json:"query"`
-	Duration    float64        `json:"duration"`
-	Labels      model.LabelSet `json:"labels"`
-	Annotations model.LabelSet `json:"annotations"`
-	Alerts      []*Alert       `json:"alerts"`
-	Health      RuleHealth     `json:"health"`
-	LastError   string         `json:"lastError,omitempty"`
+	Name           string         `json:"name"`
+	Query          string         `json:"query"`
+	Duration       float64        `json:"duration"`
+	Labels         model.LabelSet `json:"labels"`
+	Annotations    model.LabelSet `json:"annotations"`
+	Alerts         []*Alert       `json:"alerts"`
+	Health         RuleHealth     `json:"health"`
+	LastError      string         `json:"lastError,omitempty"`
+	EvaluationTime float64        `json:"evaluationTime"`
+	LastEvaluation time.Time      `json:"lastEvaluation"`
+	State          string         `json:"state"`
 }
 
 // RecordingRule models a recording rule.
 type RecordingRule struct {
-	Name      string         `json:"name"`
-	Query     string         `json:"query"`
-	Labels    model.LabelSet `json:"labels,omitempty"`
-	Health    RuleHealth     `json:"health"`
-	LastError string         `json:"lastError,omitempty"`
+	Name           string         `json:"name"`
+	Query          string         `json:"query"`
+	Labels         model.LabelSet `json:"labels,omitempty"`
+	Health         RuleHealth     `json:"health"`
+	LastError      string         `json:"lastError,omitempty"`
+	EvaluationTime float64        `json:"evaluationTime"`
+	LastEvaluation time.Time      `json:"lastEvaluation"`
 }
 
 // Alert models an active alert.
@@ -367,12 +388,15 @@ type TargetsResult struct {
 
 // ActiveTarget models an active Prometheus scrape target.
 type ActiveTarget struct {
-	DiscoveredLabels map[string]string `json:"discoveredLabels"`
-	Labels           model.LabelSet    `json:"labels"`
-	ScrapeURL        string            `json:"scrapeUrl"`
-	LastError        string            `json:"lastError"`
-	LastScrape       time.Time         `json:"lastScrape"`
-	Health           HealthStatus      `json:"health"`
+	DiscoveredLabels   map[string]string `json:"discoveredLabels"`
+	Labels             model.LabelSet    `json:"labels"`
+	ScrapePool         string            `json:"scrapePool"`
+	ScrapeURL          string            `json:"scrapeUrl"`
+	GlobalURL          string            `json:"globalUrl"`
+	LastError          string            `json:"lastError"`
+	LastScrape         time.Time         `json:"lastScrape"`
+	LastScrapeDuration float64           `json:"lastScrapeDuration"`
+	Health             HealthStatus      `json:"health"`
 }
 
 // DroppedTarget models a dropped Prometheus scrape target.
@@ -467,14 +491,17 @@ func (r *AlertingRule) UnmarshalJSON(b []byte) error {
 	}
 
 	rule := struct {
-		Name        string         `json:"name"`
-		Query       string         `json:"query"`
-		Duration    float64        `json:"duration"`
-		Labels      model.LabelSet `json:"labels"`
-		Annotations model.LabelSet `json:"annotations"`
-		Alerts      []*Alert       `json:"alerts"`
-		Health      RuleHealth     `json:"health"`
-		LastError   string         `json:"lastError,omitempty"`
+		Name           string         `json:"name"`
+		Query          string         `json:"query"`
+		Duration       float64        `json:"duration"`
+		Labels         model.LabelSet `json:"labels"`
+		Annotations    model.LabelSet `json:"annotations"`
+		Alerts         []*Alert       `json:"alerts"`
+		Health         RuleHealth     `json:"health"`
+		LastError      string         `json:"lastError,omitempty"`
+		EvaluationTime float64        `json:"evaluationTime"`
+		LastEvaluation time.Time      `json:"lastEvaluation"`
+		State          string         `json:"state"`
 	}{}
 	if err := json.Unmarshal(b, &rule); err != nil {
 		return err
@@ -487,6 +514,9 @@ func (r *AlertingRule) UnmarshalJSON(b []byte) error {
 	r.Duration = rule.Duration
 	r.Labels = rule.Labels
 	r.LastError = rule.LastError
+	r.EvaluationTime = rule.EvaluationTime
+	r.LastEvaluation = rule.LastEvaluation
+	r.State = rule.State
 
 	return nil
 }
@@ -506,11 +536,13 @@ func (r *RecordingRule) UnmarshalJSON(b []byte) error {
 	}
 
 	rule := struct {
-		Name      string         `json:"name"`
-		Query     string         `json:"query"`
-		Labels    model.LabelSet `json:"labels,omitempty"`
-		Health    RuleHealth     `json:"health"`
-		LastError string         `json:"lastError,omitempty"`
+		Name           string         `json:"name"`
+		Query          string         `json:"query"`
+		Labels         model.LabelSet `json:"labels,omitempty"`
+		Health         RuleHealth     `json:"health"`
+		LastError      string         `json:"lastError,omitempty"`
+		EvaluationTime float64        `json:"evaluationTime"`
+		LastEvaluation time.Time      `json:"lastEvaluation"`
 	}{}
 	if err := json.Unmarshal(b, &rule); err != nil {
 		return err
@@ -520,6 +552,8 @@ func (r *RecordingRule) UnmarshalJSON(b []byte) error {
 	r.Name = rule.Name
 	r.LastError = rule.LastError
 	r.Query = rule.Query
+	r.EvaluationTime = rule.EvaluationTime
+	r.LastEvaluation = rule.LastEvaluation
 
 	return nil
 }
@@ -555,6 +589,18 @@ func (qr *queryResult) UnmarshalJSON(b []byte) error {
 		err = fmt.Errorf("unexpected value type %q", v.Type)
 	}
 	return err
+}
+
+// Exemplar is additional information associated with a time series.
+type Exemplar struct {
+	Labels    model.LabelSet    `json:"labels"`
+	Value     model.SampleValue `json:"value"`
+	Timestamp model.Time        `json:"timestamp"`
+}
+
+type ExemplarQueryResult struct {
+	SeriesLabels model.LabelSet `json:"seriesLabels"`
+	Exemplars    []Exemplar     `json:"exemplars"`
 }
 
 // NewAPI returns a new API for the client.
@@ -674,6 +720,23 @@ func (h *httpAPI) Flags(ctx context.Context) (FlagsResult, error) {
 	return res, json.Unmarshal(body, &res)
 }
 
+func (h *httpAPI) Buildinfo(ctx context.Context) (BuildinfoResult, error) {
+	u := h.client.URL(epBuildinfo, nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return BuildinfoResult{}, err
+	}
+
+	_, body, _, err := h.client.Do(ctx, req)
+	if err != nil {
+		return BuildinfoResult{}, err
+	}
+
+	var res BuildinfoResult
+	return res, json.Unmarshal(body, &res)
+}
+
 func (h *httpAPI) Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error) {
 	u := h.client.URL(epRuntimeinfo, nil)
 
@@ -691,11 +754,14 @@ func (h *httpAPI) Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error) {
 	return res, json.Unmarshal(body, &res)
 }
 
-func (h *httpAPI) LabelNames(ctx context.Context, startTime time.Time, endTime time.Time) ([]string, Warnings, error) {
+func (h *httpAPI) LabelNames(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) ([]string, Warnings, error) {
 	u := h.client.URL(epLabels, nil)
 	q := u.Query()
 	q.Set("start", formatTime(startTime))
 	q.Set("end", formatTime(endTime))
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
 
 	u.RawQuery = q.Encode()
 
@@ -711,11 +777,14 @@ func (h *httpAPI) LabelNames(ctx context.Context, startTime time.Time, endTime t
 	return labelNames, w, json.Unmarshal(body, &labelNames)
 }
 
-func (h *httpAPI) LabelValues(ctx context.Context, label string, startTime time.Time, endTime time.Time) (model.LabelValues, Warnings, error) {
+func (h *httpAPI) LabelValues(ctx context.Context, label string, matches []string, startTime time.Time, endTime time.Time) (model.LabelValues, Warnings, error) {
 	u := h.client.URL(epLabelValues, map[string]string{"name": label})
 	q := u.Query()
 	q.Set("start", formatTime(startTime))
 	q.Set("end", formatTime(endTime))
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
 
 	u.RawQuery = q.Encode()
 
@@ -913,7 +982,29 @@ func (h *httpAPI) TSDB(ctx context.Context) (TSDBResult, error) {
 
 	var res TSDBResult
 	return res, json.Unmarshal(body, &res)
+}
 
+func (h *httpAPI) QueryExemplars(ctx context.Context, query string, startTime time.Time, endTime time.Time) ([]ExemplarQueryResult, error) {
+	u := h.client.URL(epQueryExemplars, nil)
+	q := u.Query()
+
+	q.Set("query", query)
+	q.Set("start", formatTime(startTime))
+	q.Set("end", formatTime(endTime))
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	_, body, _, err := h.client.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []ExemplarQueryResult
+	return res, json.Unmarshal(body, &res)
 }
 
 // Warnings is an array of non critical errors

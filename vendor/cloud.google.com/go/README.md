@@ -1,6 +1,6 @@
 # Google Cloud Client Libraries for Go
 
-[![GoDoc](https://godoc.org/cloud.google.com/go?status.svg)](https://pkg.go.dev/cloud.google.com/go)
+[![Go Reference](https://pkg.go.dev/badge/cloud.google.com/go.svg)](https://pkg.go.dev/cloud.google.com/go)
 
 Go packages for [Google Cloud Platform](https://cloud.google.com) services.
 
@@ -24,8 +24,6 @@ To install the packages on your system, *do not clone the repo*. Instead:
 
 **NOTE:** Some of these packages are under development, and may occasionally
 make backwards-incompatible changes.
-
-**NOTE:** Github repo is a mirror of [https://code.googlesource.com/gocloud](https://code.googlesource.com/gocloud).
 
 ## Supported APIs
 
@@ -56,6 +54,7 @@ make backwards-incompatible changes.
 | [Monitoring][cloud-monitoring]                  | stable | [`cloud.google.com/go/monitoring/apiv3`](https://pkg.go.dev/cloud.google.com/go/monitoring/apiv3)                             |
 | [OS Login][cloud-oslogin]                       | stable | [`cloud.google.com/go/oslogin/apiv1`](https://pkg.go.dev/cloud.google.com/go/oslogin/apiv1)                                   |
 | [Pub/Sub][cloud-pubsub]                         | stable | [`cloud.google.com/go/pubsub`](https://pkg.go.dev/cloud.google.com/go/pubsub)                                                 |
+| [Pub/Sub Lite][cloud-pubsublite]                | beta   | [`cloud.google.com/go/pubsublite`](https://pkg.go.dev/cloud.google.com/go/pubsublite)                                                 |
 | [Phishing Protection][cloud-phishingprotection] | alpha  | [`cloud.google.com/go/phishingprotection/apiv1beta1`](https://pkg.go.dev/cloud.google.com/go/phishingprotection/apiv1beta1)   |
 | [reCAPTCHA Enterprise][cloud-recaptcha]         | alpha  | [`cloud.google.com/go/recaptchaenterprise/apiv1beta1`](https://pkg.go.dev/cloud.google.com/go/recaptchaenterprise/apiv1beta1) |
 | [Recommender][cloud-recommender]                | beta   | [`cloud.google.com/go/recommender/apiv1beta1`](https://pkg.go.dev/cloud.google.com/go/recommender/apiv1beta1)                 |
@@ -152,6 +151,7 @@ for more information.
 [cloud-irm]: https://cloud.google.com/incident-response/docs/concepts
 [cloud-kms]: https://cloud.google.com/kms/
 [cloud-pubsub]: https://cloud.google.com/pubsub/
+[cloud-pubsublite]: https://cloud.google.com/pubsub/lite
 [cloud-storage]: https://cloud.google.com/storage/
 [cloud-language]: https://cloud.google.com/natural-language
 [cloud-logging]: https://cloud.google.com/logging/
@@ -175,3 +175,11 @@ for more information.
 [cloud-video]: https://cloud.google.com/video-intelligence/
 [cloud-vision]: https://cloud.google.com/vision
 [cloud-webrisk]: https://cloud.google.com/web-risk/
+
+## Links
+
+- [Go on Google Cloud](https://cloud.google.com/go/home)
+- [Getting started with Go on Google Cloud](https://cloud.google.com/go/getting-started)
+- [App Engine Quickstart](https://cloud.google.com/appengine/docs/standard/go/quickstart)
+- [Cloud Functions Quickstart](https://cloud.google.com/functions/docs/quickstart-go)
+- [Cloud Run Quickstart](https://cloud.google.com/run/docs/quickstarts/build-and-deploy#go)

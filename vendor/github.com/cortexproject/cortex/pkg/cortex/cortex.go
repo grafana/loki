@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -21,6 +22,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -31,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
@@ -44,7 +47,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -59,6 +62,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	errInvalidHTTPPrefix = errors.New("HTTP prefix should be empty or start with /")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -96,7 +103,7 @@ type Config struct {
 	ChunkStore       chunk.StoreConfig               `yaml:"chunk_store"`
 	Schema           chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
 	LimitsConfig     validation.Limits               `yaml:"limits"`
-	Prealloc         client.PreallocConfig           `yaml:"prealloc" doc:"hidden"`
+	Prealloc         cortexpb.PreallocConfig         `yaml:"prealloc" doc:"hidden"`
 	Worker           querier_worker.Config           `yaml:"frontend_worker"`
 	Frontend         frontend.CombinedFrontendConfig `yaml:"frontend"`
 	QueryRange       queryrange.Config               `yaml:"query_range"`
@@ -108,12 +115,14 @@ type Config struct {
 	PurgerConfig     purger.Config                   `yaml:"purger"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
-	Ruler          ruler.Config                               `yaml:"ruler"`
-	Configs        configs.Config                             `yaml:"configs"`
-	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
-	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
-	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
-	QueryScheduler scheduler.Config                           `yaml:"query_scheduler"`
+	Ruler               ruler.Config                               `yaml:"ruler"`
+	RulerStorage        rulestore.Config                           `yaml:"ruler_storage"`
+	Configs             configs.Config                             `yaml:"configs"`
+	Alertmanager        alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
+	AlertmanagerStorage alertstore.Config                          `yaml:"alertmanager_storage"`
+	RuntimeConfig       runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
+	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -133,7 +142,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
 	c.API.RegisterFlags(f)
-	c.Server.RegisterFlags(f)
+	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -156,10 +165,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TenantFederation.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
+	c.RulerStorage.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
+	c.AlertmanagerStorage.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
-	c.MemberlistKV.RegisterFlags(f, "")
+	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 
 	// These don't seem to have a home.
@@ -173,6 +184,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return err
 	}
 
+	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
+		return errInvalidHTTPPrefix
+	}
+
 	if err := c.Schema.Validate(); err != nil {
 		return errors.Wrap(err, "invalid schema config")
 	}
@@ -184,6 +199,9 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.ChunkStore.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
+	}
+	if err := c.RulerStorage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid rulestore config")
 	}
 	if err := c.Ruler.Validate(c.LimitsConfig, log); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
@@ -206,7 +224,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Worker.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid frontend_worker config")
 	}
-	if err := c.QueryRange.Validate(log); err != nil {
+	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
@@ -218,7 +236,10 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Compactor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.Alertmanager.Validate(); err != nil {
+	if err := c.AlertmanagerStorage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid alertmanager storage config")
+	}
+	if err := c.Alertmanager.Validate(c.AlertmanagerStorage); err != nil {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
@@ -260,6 +281,27 @@ func (c *Config) validateYAMLEmptyNodes() error {
 	return nil
 }
 
+func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+
+	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
+	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
+	c.Server.RegisterFlags(throwaway)
+
+	throwaway.VisitAll(func(f *flag.Flag) {
+		// Ignore errors when setting new values. We have a test to verify that it works.
+		switch f.Name {
+		case "server.grpc.keepalive.min-time-between-pings":
+			_ = f.Value.Set("10s")
+
+		case "server.grpc.keepalive.ping-without-stream-allowed":
+			_ = f.Value.Set("true")
+		}
+
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
+}
+
 // Cortex is the root datastructure for Cortex.
 type Cortex struct {
 	Cfg Config
@@ -271,6 +313,7 @@ type Cortex struct {
 	API                      *api.API
 	Server                   *server.Server
 	Ring                     *ring.Ring
+	TenantLimits             validation.TenantLimits
 	Overrides                *validation.Overrides
 	Distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
@@ -283,11 +326,12 @@ type Cortex struct {
 	Purger                   *purger.Purger
 	TombstonesLoader         *purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
+	ExemplarQueryable        prom_storage.ExemplarQueryable
 	QuerierEngine            *promql.Engine
 	QueryFrontendTripperware queryrange.Tripperware
 
 	Ruler        *ruler.Ruler
-	RulerStorage rules.RuleStore
+	RulerStorage rulestore.RuleStore
 	ConfigAPI    *configAPI.API
 	ConfigDB     db.DB
 	Alertmanager *alertmanager.MultitenantAlertmanager
@@ -323,8 +367,10 @@ func New(cfg Config) (*Cortex, error) {
 			"/grpc.health.v1.Health/Check",
 			"/cortex.Ingester/TransferChunks",
 			"/frontend.Frontend/Process",
+			"/frontend.Frontend/NotifyClientShutdown",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
+			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 		})
 
 	cortex := &Cortex{

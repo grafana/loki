@@ -14,17 +14,17 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	lstore "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -74,7 +74,7 @@ func getStore() (lstore.Store, error) {
 		&validation.Overrides{},
 		prometheus.DefaultRegisterer,
 		nil,
-		cortex_util.Logger,
+		util_log.Logger,
 	)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,6 @@ func getStore() (lstore.Store, error) {
 }
 
 func fillStore() error {
-
 	store, err := getStore()
 	if err != nil {
 		return err
@@ -108,7 +107,7 @@ func fillStore() error {
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.Fingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, 262144, 1572864)
+			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, chunkenc.UnorderedHeadBlockFmt, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),
@@ -131,10 +130,9 @@ func fillStore() error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, 262144, 1572864)
+					chunkEnc = chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, chunkenc.UnorderedHeadBlockFmt, 262144, 1572864)
 				}
 			}
-
 		}(i)
 
 	}

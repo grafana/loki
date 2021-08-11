@@ -2,11 +2,29 @@ package util
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// LogError logs any error returned by f; useful when deferring Close etc.
+func LogError(message string, f func() error) {
+	if err := f(); err != nil {
+		level.Error(log.Logger).Log("message", message, "error", err)
+	}
+}
+
+// LogError logs any error returned by f; useful when deferring Close etc.
+func LogErrorWithContext(ctx context.Context, message string, f func() error) {
+	if err := f(); err != nil {
+		level.Error(log.WithContext(ctx, log.Logger)).Log("message", message, "error", err)
+	}
+}
 
 // The MultiError type implements the error interface, and contains the
 // Errors used to construct it.
@@ -48,6 +66,16 @@ func (es MultiError) Err() error {
 		return nil
 	}
 	return es
+}
+
+// Is tells if all errors are the same as the target error.
+func (es MultiError) Is(target error) bool {
+	for _, err := range es {
+		if !errors.Is(err, target) {
+			return false
+		}
+	}
+	return true
 }
 
 // IsConnCanceled returns true, if error is from a closed gRPC connection.

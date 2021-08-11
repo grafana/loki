@@ -16,11 +16,13 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
+
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	loki_util "github.com/grafana/loki/pkg/util"
 )
 
@@ -133,7 +135,7 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 	}
 
 	i.flushQueuesDone.Wait()
-
+	level.Debug(util_log.Logger).Log("msg", "flush queues have drained")
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
@@ -201,7 +203,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
-		level.Debug(util.Logger).Log("msg", "Ingester.flushLoop() exited")
+		level.Debug(util_log.Logger).Log("msg", "Ingester.flushLoop() exited")
 		i.flushQueuesDone.Done()
 	}()
 
@@ -212,11 +214,11 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		level.Debug(util.Logger).Log("msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
+		level.Debug(util_log.Logger).Log("msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			level.Error(util_log.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
+			level.Error(util_log.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation
@@ -334,7 +336,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}

@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql/unmarshal"
+	"github.com/grafana/loki/pkg/util/unmarshal"
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs

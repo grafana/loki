@@ -11,6 +11,7 @@ import (
 const (
 	databaseBasePath           = "/v2/databases"
 	databaseSinglePath         = databaseBasePath + "/%s"
+	databaseCAPath             = databaseBasePath + "/%s/ca"
 	databaseResizePath         = databaseBasePath + "/%s/resize"
 	databaseMigratePath        = databaseBasePath + "/%s/migrate"
 	databaseMaintenancePath    = databaseBasePath + "/%s/maintenance"
@@ -91,6 +92,7 @@ const (
 type DatabasesService interface {
 	List(context.Context, *ListOptions) ([]Database, *Response, error)
 	Get(context.Context, string) (*Database, *Response, error)
+	GetCA(context.Context, string) (*DatabaseCA, *Response, error)
 	Create(context.Context, *DatabaseCreateRequest) (*Database, *Response, error)
 	Delete(context.Context, string) (*Response, error)
 	Resize(context.Context, string, *DatabaseResizeRequest) (*Response, error)
@@ -154,6 +156,11 @@ type Database struct {
 	Tags               []string                   `json:"tags,omitempty"`
 }
 
+// DatabaseCA represents a database ca.
+type DatabaseCA struct {
+	Certificate []byte `json:"certificate"`
+}
+
 // DatabaseConnection represents a database connection
 type DatabaseConnection struct {
 	URI      string `json:"uri,omitempty"`
@@ -193,16 +200,23 @@ type DatabaseBackup struct {
 	SizeGigabytes float64   `json:"size_gigabytes,omitempty"`
 }
 
+// DatabaseBackupRestore contains information needed to restore a backup.
+type DatabaseBackupRestore struct {
+	DatabaseName    string `json:"database_name,omitempty"`
+	BackupCreatedAt string `json:"backup_created_at,omitempty"`
+}
+
 // DatabaseCreateRequest represents a request to create a database cluster
 type DatabaseCreateRequest struct {
-	Name               string   `json:"name,omitempty"`
-	EngineSlug         string   `json:"engine,omitempty"`
-	Version            string   `json:"version,omitempty"`
-	SizeSlug           string   `json:"size,omitempty"`
-	Region             string   `json:"region,omitempty"`
-	NumNodes           int      `json:"num_nodes,omitempty"`
-	PrivateNetworkUUID string   `json:"private_network_uuid"`
-	Tags               []string `json:"tags,omitempty"`
+	Name               string                 `json:"name,omitempty"`
+	EngineSlug         string                 `json:"engine,omitempty"`
+	Version            string                 `json:"version,omitempty"`
+	SizeSlug           string                 `json:"size,omitempty"`
+	Region             string                 `json:"region,omitempty"`
+	NumNodes           int                    `json:"num_nodes,omitempty"`
+	PrivateNetworkUUID string                 `json:"private_network_uuid"`
+	Tags               []string               `json:"tags,omitempty"`
+	BackupRestore      *DatabaseBackupRestore `json:"backup_restore,omitempty"`
 }
 
 // DatabaseResizeRequest can be used to initiate a database resize operation.
@@ -326,6 +340,10 @@ type databaseRoot struct {
 	Database *Database `json:"database"`
 }
 
+type databaseCARoot struct {
+	CA *DatabaseCA `json:"ca"`
+}
+
 type databaseBackupsRoot struct {
 	Backups []DatabaseBackup `json:"backups"`
 }
@@ -395,6 +413,21 @@ func (svc *DatabasesServiceOp) Get(ctx context.Context, databaseID string) (*Dat
 		return nil, resp, err
 	}
 	return root.Database, resp, nil
+}
+
+// GetCA retrieves the CA of a database cluster.
+func (svc *DatabasesServiceOp) GetCA(ctx context.Context, databaseID string) (*DatabaseCA, *Response, error) {
+	path := fmt.Sprintf(databaseCAPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseCARoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.CA, resp, nil
 }
 
 // Create creates a database cluster

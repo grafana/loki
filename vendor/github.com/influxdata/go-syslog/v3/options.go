@@ -17,3 +17,11 @@ func WithBestEffort() ParserOption {
 		return p
 	}
 }
+
+// WithMaxMessageLength sets the length of the buffer for octect parsing.
+func WithMaxMessageLength(length int) ParserOption {
+	return func(p Parser) Parser {
+		p.WithMaxMessageLength(length)
+		return p
+	}
+}

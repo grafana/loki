@@ -58,6 +58,7 @@ type BasicService struct {
 	state       State
 	failureCase error
 	listeners   []chan func(l Listener)
+	serviceName string
 
 	// closed when state reaches Running, Terminated or Failed state
 	runningWaitersCh chan struct{}
@@ -86,6 +87,28 @@ func NewBasicService(start StartingFn, run RunningFn, stop StoppingFn) *BasicSer
 		runningWaitersCh:    make(chan struct{}),
 		terminatedWaitersCh: make(chan struct{}),
 	}
+}
+
+// WithName sets service name, if service is still in New state, and returns service to allow
+// usage like NewBasicService(...).WithName("service name").
+func (b *BasicService) WithName(name string) *BasicService {
+	// Hold lock to make sure state doesn't change while setting service name.
+	b.stateMu.Lock()
+	defer b.stateMu.Unlock()
+
+	if b.state != New {
+		return b
+	}
+
+	b.serviceName = name
+	return b
+}
+
+func (b *BasicService) ServiceName() string {
+	b.stateMu.RLock()
+	defer b.stateMu.RUnlock()
+
+	return b.serviceName
 }
 
 // StartAsync is part of Service interface.

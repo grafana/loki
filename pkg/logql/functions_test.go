@@ -11,12 +11,15 @@ func Test_Extractor(t *testing.T) {
 	for _, tc := range []string{
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
+		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 30s )`,
 		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
 		`sum(count_over_time({job="mysql"}[5m]))`,
 		`sum(count_over_time({job="mysql"} | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
+		`sum(count_over_time({job="mysql"} | pattern "<foo> bar <buzz>" [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
+		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m] offset 1h))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`topk by (name)(10,sum(rate({region="us-east1"}[5m])))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
@@ -71,6 +74,20 @@ func Test_Extractor(t *testing.T) {
 					)
 				/
 					count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
+				),
+				"foo",
+				"$1",
+				"service",
+				"(.*):.*"
+			)
+			`,
+		`label_replace(
+				sum by (job) (
+					sum_over_time(
+						{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m] offset 1h
+					)
+				/
+					count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m] offset 1h)
 				),
 				"foo",
 				"$1",

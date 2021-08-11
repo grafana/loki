@@ -55,6 +55,8 @@ processes with the following limitations:
 
 ## Components
 
+![components_diagram](loki_architecture_components.svg)
+
 ### Distributor
 
 The **distributor** service is responsible for handling incoming streams by
@@ -63,6 +65,8 @@ distributor receives a set of streams, each stream is validated for correctness
 and to ensure that it is within the configured tenant (or global) limits. Valid
 chunks are then split into batches and sent to multiple [ingesters](#ingester)
 in parallel.
+
+For more information, see the [Distributor](./distributor) page.
 
 #### Hashing
 
@@ -99,7 +103,7 @@ Since all distributors share access to the same hash ring, write requests can be
 sent to any distributor.
 
 To ensure consistent query results, Loki uses
-[Dynamo-style](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf)
+[Dynamo-style](https://www.cs.princeton.edu/courses/archive/fall15/cos518/studpres/dynamo.pdf)
 quorum consistency on reads and writes. This means that the distributor will wait
 for a positive response of at least one half plus one of the ingesters to send
 the sample to before responding to the client that initiated the send.
@@ -114,6 +118,7 @@ Ingesters contain a _lifecycler_ which manages the lifecycle of an ingester in
 the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
 `ACTIVE`, `LEAVING`, or `UNHEALTHY`:
 
+**Deprecated: the WAL (write ahead log) supersedes this feature**
 1. `PENDING` is an Ingester's state when it is waiting for a handoff from
    another ingester that is `LEAVING`.
 
@@ -154,12 +159,37 @@ if any write failed to one of the replicas, multiple differing chunk objects
 will be created in the backing store. See [Querier](#querier) for how data is
 deduplicated.
 
-The ingesters validate timestamps for each log line received maintains a
-strict ordering. See the [Loki
-Overview](../overview#timestamp-ordering) for detailed documentation on
-the rules of timestamp order.
+#### Timestamp Ordering
 
-#### Handoff
+The ingester validates that ingested log lines are not out of order. When an
+ingester receives a log line that doesn't follow the expected order, the line
+is rejected and an error is returned to the user. 
+
+The ingester validates that ingested log lines are received in
+timestamp-ascending order (i.e., each log has a timestamp that occurs at a later
+time than the log before it). When the ingester receives a log that does not
+follow this order, the log line is rejected and an error is returned.
+
+Logs from each unique set of labels are built up into "chunks" in memory and
+then flushed to the backing storage backend.
+
+If an ingester process crashes or exits abruptly, all the data that has not yet
+been flushed could be lost. Loki is usually configured with a [Write Ahead Log](../operations/storage/wal) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
+
+In general, all lines pushed to Loki for a given stream (unique combination of
+labels) must have a newer timestamp than the line received before it. There are,
+however, two cases for handling logs for the same stream with identical
+nanosecond timestamps:
+
+1. If the incoming line exactly matches the previously received line (matching
+   both the previous timestamp and log text), the incoming line will be treated
+   as an exact duplicate and ignored.
+
+2. If the incoming line has the same timestamp as the previous line but
+   different content, the log line is accepted. This means it is possible to
+   have two different log lines for the same timestamp.
+
+#### Handoff - Deprecated in favor of the [WAL](../operations/storage/wal)
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
 it will wait to see if a new ingester tries to enter before flushing and will
@@ -173,6 +203,13 @@ set of tokens.
 
 This process is used to avoid flushing all chunks when shutting down, which is a
 slow process.
+
+#### Filesystem Support
+
+While ingesters do support writing to the filesystem through BoltDB, this only
+works in single-process mode as [queriers](#querier) need access to the same
+back-end store and BoltDB only allows one process to have a lock on the DB at a
+given time.
 
 ### Query frontend
 
@@ -207,7 +244,7 @@ Caching log (filter, regexp) queries are under active development.
 ### Querier
 
 The **querier** service handles queries using the [LogQL](../logql/) query
-language, fetching logs both from the ingesters and long-term storage.
+language, fetching logs both from the ingesters and from long-term storage.
 
 Queriers query all ingesters for in-memory data before falling back to
 running the same query against the backend store. Because of the replication

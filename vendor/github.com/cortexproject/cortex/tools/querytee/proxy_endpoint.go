@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type ResponsesComparator interface {
@@ -127,7 +127,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 		result := comparisonSuccess
 		err := p.compareResponses(expectedResponse, actualResponse)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "response comparison failed", "route-name", p.routeName,
+			level.Error(util_log.Logger).Log("msg", "response comparison failed", "route-name", p.routeName,
 				"query", r.URL.RawQuery, "err", err)
 			result = comparisonFailed
 		}

@@ -88,7 +88,7 @@ func newTransport(ctx context.Context, base http.RoundTripper, settings *interna
 		}
 
 		ts := creds.TokenSource
-		if settings.TokenSource != nil {
+		if settings.ImpersonationConfig == nil && settings.TokenSource != nil {
 			ts = settings.TokenSource
 		}
 		trans = &oauth2.Transport{
@@ -174,6 +174,10 @@ func defaultBaseTransport(ctx context.Context, clientCertSource cert.Source) htt
 			GetClientCertificate: clientCertSource,
 		}
 	}
+
+	// If possible, configure http2 transport in order to use ReadIdleTimeout
+	// setting. This can only be done in Go 1.16 and up.
+	configureHTTP2(trans)
 
 	return trans
 }

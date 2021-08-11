@@ -47,6 +47,11 @@ func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component st
 	if err := yaml.Unmarshal(conf, &gc); err != nil {
 		return nil, err
 	}
+
+	return NewBucketWithConfig(ctx, logger, gc, component)
+}
+
+func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string) (*Bucket, error) {
 	if gc.Bucket == "" {
 		return nil, errors.New("missing Google Cloud Storage bucket name for stored blocks")
 	}
@@ -86,15 +91,22 @@ func (b *Bucket) Name() string {
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, DirDelim) + DirDelim
 	}
+
+	// If recursive iteration is enabled we should pass an empty delimiter.
+	delimiter := DirDelim
+	if objstore.ApplyIterOptions(options...).Recursive {
+		delimiter = ""
+	}
+
 	it := b.bkt.Objects(ctx, &storage.Query{
 		Prefix:    dir,
-		Delimiter: DirDelim,
+		Delimiter: delimiter,
 	})
 	for {
 		select {
@@ -171,7 +183,7 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *Bucket) IsObjNotFoundErr(err error) bool {
-	return err == storage.ErrObjectNotExist
+	return errors.Is(err, storage.ErrObjectNotExist)
 }
 
 func (b *Bucket) Close() error {

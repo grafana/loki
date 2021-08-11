@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
@@ -51,46 +51,93 @@ func Test_Encoding_Series(t *testing.T) {
 }
 
 func Test_Encoding_Entries(t *testing.T) {
-	record := &WALRecord{
-		entryIndexMap: make(map[uint64]int),
-		UserID:        "123",
-		RefEntries: []RefEntries{
-			{
-				Ref: 456,
-				Entries: []logproto.Entry{
+	for _, tc := range []struct {
+		desc    string
+		rec     *WALRecord
+		version RecordType
+	}{
+		{
+			desc: "v1",
+			rec: &WALRecord{
+				entryIndexMap: make(map[uint64]int),
+				UserID:        "123",
+				RefEntries: []RefEntries{
 					{
-						Timestamp: time.Unix(1000, 0),
-						Line:      "first",
+						Ref: 456,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(1000, 0),
+								Line:      "first",
+							},
+							{
+								Timestamp: time.Unix(2000, 0),
+								Line:      "second",
+							},
+						},
 					},
 					{
-						Timestamp: time.Unix(2000, 0),
-						Line:      "second",
+						Ref: 789,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(3000, 0),
+								Line:      "third",
+							},
+							{
+								Timestamp: time.Unix(4000, 0),
+								Line:      "fourth",
+							},
+						},
 					},
 				},
 			},
-			{
-				Ref: 789,
-				Entries: []logproto.Entry{
-					{
-						Timestamp: time.Unix(3000, 0),
-						Line:      "third",
-					},
-					{
-						Timestamp: time.Unix(4000, 0),
-						Line:      "fourth",
-					},
-				},
-			},
+			version: WALRecordEntriesV1,
 		},
+		{
+			desc: "v2",
+			rec: &WALRecord{
+				entryIndexMap: make(map[uint64]int),
+				UserID:        "123",
+				RefEntries: []RefEntries{
+					{
+						Ref:     456,
+						Counter: 1, // v2 uses counter for WAL replay
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(1000, 0),
+								Line:      "first",
+							},
+							{
+								Timestamp: time.Unix(2000, 0),
+								Line:      "second",
+							},
+						},
+					},
+					{
+						Ref:     789,
+						Counter: 2, // v2 uses counter for WAL replay
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(3000, 0),
+								Line:      "third",
+							},
+							{
+								Timestamp: time.Unix(4000, 0),
+								Line:      "fourth",
+							},
+						},
+					},
+				},
+			},
+			version: WALRecordEntriesV2,
+		},
+	} {
+		decoded := recordPool.GetRecord()
+		buf := tc.rec.encodeEntries(tc.version, nil)
+		err := decodeWALRecord(buf, decoded)
+		require.Nil(t, err)
+		require.Equal(t, tc.rec, decoded)
+
 	}
-
-	buf := record.encodeEntries(nil)
-
-	decoded := recordPool.GetRecord()
-
-	err := decodeWALRecord(buf, decoded)
-	require.Nil(t, err)
-	require.Equal(t, record, decoded)
 }
 
 func Benchmark_EncodeEntries(b *testing.B) {
@@ -121,7 +168,7 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	defer recordPool.PutBytes(buf)
 
 	for n := 0; n < b.N; n++ {
-		record.encodeEntries(buf)
+		record.encodeEntries(CurrentEntriesRec, buf)
 	}
 }
 
@@ -148,7 +195,7 @@ func Benchmark_DecodeWAL(b *testing.B) {
 		},
 	}
 
-	buf := record.encodeEntries(nil)
+	buf := record.encodeEntries(CurrentEntriesRec, nil)
 	rec := recordPool.GetRecord()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -183,53 +230,87 @@ func dummyConf() *Config {
 }
 
 func Test_EncodingChunks(t *testing.T) {
-	conf := dummyConf()
-	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
-	fillChunk(t, c)
+	for _, f := range chunkenc.HeadBlockFmts {
+		for _, close := range []bool{true, false} {
+			for _, tc := range []struct {
+				desc string
+				conf Config
+			}{
+				{
+					// mostly for historical parity
+					desc: "dummyConf",
+					conf: *dummyConf(),
+				},
+				{
+					desc: "default",
+					conf: defaultIngesterTestConfig(t),
+				},
+			} {
 
-	from := []chunkDesc{
-		{
-			chunk: c,
-		},
-		// test non zero values
-		{
-			chunk:       c,
-			closed:      true,
-			synced:      true,
-			flushed:     time.Unix(1, 0),
-			lastUpdated: time.Unix(0, 1),
-		},
-	}
-	there, err := toWireChunks(from, nil)
-	require.Nil(t, err)
-	chunks := make([]Chunk, 0, len(there))
-	for _, c := range there {
-		chunks = append(chunks, c.Chunk)
-	}
-	backAgain, err := fromWireChunks(conf, chunks)
-	require.Nil(t, err)
+				t.Run(fmt.Sprintf("%v-%v-%s", f, close, tc.desc), func(t *testing.T) {
+					conf := tc.conf
+					c := chunkenc.NewMemChunk(chunkenc.EncGZIP, f, conf.BlockSize, conf.TargetChunkSize)
+					fillChunk(t, c)
+					if close {
+						require.Nil(t, c.Close())
+					}
 
-	for i, to := range backAgain {
-		// test the encoding directly as the substructure may change.
-		// for instance the uncompressed size for each block is not included in the encoded version.
-		enc, err := to.chunk.Bytes()
-		require.Nil(t, err)
-		to.chunk = nil
+					from := []chunkDesc{
+						{
+							chunk: c,
+						},
+						// test non zero values
+						{
+							chunk:       c,
+							closed:      true,
+							synced:      true,
+							flushed:     time.Unix(1, 0),
+							lastUpdated: time.Unix(0, 1),
+						},
+					}
+					there, err := toWireChunks(from, nil)
+					require.Nil(t, err)
+					chunks := make([]Chunk, 0, len(there))
+					for _, c := range there {
+						chunks = append(chunks, c.Chunk)
 
-		matched := from[i]
-		exp, err := matched.chunk.Bytes()
-		require.Nil(t, err)
-		matched.chunk = nil
+						// Ensure closed head chunks are empty
+						if close {
+							require.Equal(t, 0, len(c.Head))
+						} else {
+							require.Greater(t, len(c.Head), 0)
+						}
+					}
 
-		require.Equal(t, exp, enc)
-		require.Equal(t, matched, to)
+					backAgain, err := fromWireChunks(&conf, chunks)
+					require.Nil(t, err)
 
+					for i, to := range backAgain {
+						// test the encoding directly as the substructure may change.
+						// for instance the uncompressed size for each block is not included in the encoded version.
+						enc, err := to.chunk.Bytes()
+						require.Nil(t, err)
+						to.chunk = nil
+
+						matched := from[i]
+						exp, err := matched.chunk.Bytes()
+						require.Nil(t, err)
+						matched.chunk = nil
+
+						require.Equal(t, exp, enc)
+						require.Equal(t, matched, to)
+
+					}
+
+				})
+			}
+		}
 	}
 }
 
 func Test_EncodingCheckpoint(t *testing.T) {
 	conf := dummyConf()
-	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, conf.BlockSize, conf.TargetChunkSize)
+	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
 	require.Nil(t, c.Append(&logproto.Entry{
 		Timestamp: time.Unix(1, 0),
 		Line:      "hi there",
@@ -242,7 +323,9 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	s := &Series{
 		UserID:      "fake",
 		Fingerprint: 123,
-		Labels:      client.FromLabelsToLabelAdapters(ls),
+		Labels:      cortexpb.FromLabelsToLabelAdapters(ls),
+		To:          time.Unix(10, 0),
+		LastLine:    "lastLine",
 		Chunks: []Chunk{
 			{
 				From:        from,
@@ -275,12 +358,17 @@ func Test_EncodingCheckpoint(t *testing.T) {
 	outChunks := out.Chunks
 	out.Chunks = nil
 
+	zero := time.Unix(0, 0)
+
+	require.Equal(t, true, s.To.Equal(out.To))
+	s.To = zero
+	out.To = zero
+
 	require.Equal(t, s, out)
 	require.Equal(t, len(sChunks), len(outChunks))
 	for i, exp := range sChunks {
 
 		got := outChunks[i]
-		zero := time.Unix(0, 0)
 		// Issues diffing zero-value time.Locations against nil ones.
 		// Check/override them individually so that other fields get tested in an extensible manner.
 		require.Equal(t, true, exp.From.Equal(got.From))

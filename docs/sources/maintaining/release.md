@@ -99,3 +99,21 @@ Once the previous two steps are completed, you can publish your draft!
 1. Optionally, have other team members review the release draft so you feel
    comfortable with it.
 1. Publish the release!
+
+## Versioning Loki docs on Grafana Website
+
+Loki docs are versioned. Follow the below steps to version Loki docs for this release.
+
+>NOTE: Here $LOCAL_LOKI_PATH is your local path where Loki is checked out with correct $VERSION
+
+1. Clone Grafana website [repo](https://github.com/grafana/website)
+1. Create new branch `git checkout -b $VERSION` (replace `$VERSION` with current release version. e.g: `v2.3.0`)
+1. Run `mv content/docs/loki/next content/docs/loki/next.main`
+1. Run `mkdir content/docs/loki/next`
+1. Run `cp -R $LOCAL_LOKI_PATH/docs/sources/* content/docs/loki/next`
+1. Run `scripts/docs-release.sh loki latest next`
+1. Run `scripts/docs-release.sh loki $VERSION latest`
+1. Run `mv content/docs/loki/next.main content/docs/loki/next`
+1. Update `version_latest` to `$VERSION` in `content/docs/loki/_index.md`
+1. Docs will be generated for this release.
+1. Create PR and Merge it after approval.

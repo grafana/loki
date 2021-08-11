@@ -7,12 +7,12 @@ version: 2
   <<: *tags
   branches: { ignore: "/.*/" }
 
-.tag-or-master: &tag-or-master
-  branches: { only: master }
+.tag-or-main: &tag-or-main
+  branches: { only: main }
   <<: *tags
 
-.no-master: &no-master # contrary to tags, the branches must be excluded
-  branches: { ignore: master }
+.no-main: &no-main # contrary to tags, the branches must be excluded
+  branches: { ignore: main }
 
 workflows:
   version: 2
@@ -27,10 +27,10 @@ workflows:
 
       - build/docker-driver:
           requires: [test]
-          filters: { <<: *no-master }
+          filters: { <<: *no-main }
       - publish/docker-driver:
           requires: [test]
-          filters: { <<: *tag-or-master }
+          filters: { <<: *tag-or-main }
 
       - publish/binaries:
           requires: [test]
@@ -40,7 +40,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.12.0
+    - image: grafana/loki-build-image:0.13.0
   working_directory: /src/loki
 
 jobs:
@@ -48,13 +48,6 @@ jobs:
     <<: *defaults
     steps:
       - checkout
-      - run:
-          name: Unit Tests
-          command: make BUILD_IN_CONTAINER=false test
-      - run:
-          name: Upload Codecov
-          command: |
-            bash <(curl -s https://codecov.io/bash)
 
   # Promtail
   build/promtail-windows:

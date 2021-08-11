@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -98,29 +99,22 @@ func (p *ReaderPool) Close() {
 }
 
 func (p *ReaderPool) closeIdleReaders() {
-	for _, r := range p.getIdleReaders() {
-		// Closing an already closed reader is a no-op, so we close it and just update
-		// the last timestamp on success. If it will be still be idle the next time this
-		// function is called, we'll try to close it again and will just be a no-op.
-		//
-		// Due to concurrency, the current implementation may close a reader which was
-		// use between when the list of idle readers has been computed and now. This is
-		// an edge case we're willing to accept, to not further complicate the logic.
-		if err := r.unload(); err != nil {
+	idleTimeoutAgo := time.Now().Add(-p.lazyReaderIdleTimeout).UnixNano()
+
+	for _, r := range p.getIdleReadersSince(idleTimeoutAgo) {
+		if err := r.unloadIfIdleSince(idleTimeoutAgo); err != nil && !errors.Is(err, errNotIdle) {
 			level.Warn(p.logger).Log("msg", "failed to close idle index-header reader", "err", err)
 		}
 	}
 }
 
-func (p *ReaderPool) getIdleReaders() []*LazyBinaryReader {
+func (p *ReaderPool) getIdleReadersSince(ts int64) []*LazyBinaryReader {
 	p.lazyReadersMx.Lock()
 	defer p.lazyReadersMx.Unlock()
 
 	var idle []*LazyBinaryReader
-	threshold := time.Now().Add(-p.lazyReaderIdleTimeout).UnixNano()
-
 	for r := range p.lazyReaders {
-		if r.lastUsedAt() < threshold {
+		if r.isIdleSince(ts) {
 			idle = append(idle, r)
 		}
 	}

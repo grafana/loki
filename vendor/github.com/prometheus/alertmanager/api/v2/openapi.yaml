@@ -392,6 +392,9 @@ definitions:
         type: string
       isRegex:
         type: boolean
+      isEqual:
+        type: boolean
+        default: true
     required:
       - name
       - value

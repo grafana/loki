@@ -111,6 +111,7 @@ type Chunk interface {
 	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
 	// Returns the list of blocks in the chunks.
 	Blocks(mintT, maxtT time.Time) []Block
+	// Size returns the number of entries in a chunk
 	Size() int
 	Bytes() ([]byte, error)
 	BytesWith([]byte) ([]byte, error) // uses provided []byte for buffer instantiation
@@ -121,6 +122,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() Encoding
+	Rebound(start, end time.Time) (Chunk, error)
 }
 
 // Block is a chunk block.

@@ -772,10 +772,7 @@ func (m *SeriesRequestHints) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthHints
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthHints
 			}
 			if (iNdEx + skippy) > l {
@@ -859,10 +856,7 @@ func (m *SeriesResponseHints) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthHints
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthHints
 			}
 			if (iNdEx + skippy) > l {
@@ -944,10 +938,7 @@ func (m *Block) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthHints
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthHints
 			}
 			if (iNdEx + skippy) > l {
@@ -1031,10 +1022,7 @@ func (m *LabelNamesRequestHints) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthHints
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthHints
 			}
 			if (iNdEx + skippy) > l {
@@ -1118,10 +1106,7 @@ func (m *LabelNamesResponseHints) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthHints
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthHints
 			}
 			if (iNdEx + skippy) > l {
@@ -1205,10 +1190,7 @@ func (m *LabelValuesRequestHints) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthHints
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthHints
 			}
 			if (iNdEx + skippy) > l {
@@ -1292,10 +1274,7 @@ func (m *LabelValuesResponseHints) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthHints
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthHints
 			}
 			if (iNdEx + skippy) > l {

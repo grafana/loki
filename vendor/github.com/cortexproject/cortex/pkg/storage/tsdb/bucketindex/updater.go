@@ -33,9 +33,9 @@ type Updater struct {
 	logger log.Logger
 }
 
-func NewUpdater(bkt objstore.Bucket, userID string, logger log.Logger) *Updater {
+func NewUpdater(bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *Updater {
 	return &Updater{
-		bkt:    bucket.NewUserBucketClient(userID, bkt),
+		bkt:    bucket.NewUserBucketClient(userID, bkt, cfgProvider),
 		logger: util_log.WithUserID(userID, logger),
 	}
 }

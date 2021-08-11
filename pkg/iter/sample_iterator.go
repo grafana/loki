@@ -3,12 +3,11 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	"io"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // SampleIterator iterates over samples in time-order.
@@ -154,7 +153,6 @@ type heapSampleIterator struct {
 // NewHeapSampleIterator returns a new iterator which uses a heap to merge together
 // entries for multiple iterators.
 func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
-
 	return &heapSampleIterator{
 		stats:  stats.GetChunkData(ctx),
 		is:     is,
@@ -196,7 +194,7 @@ func (i *heapSampleIterator) requeue(ei SampleIterator, advanced bool) {
 	if err := ei.Error(); err != nil {
 		i.errs = append(i.errs, err)
 	}
-	helpers.LogError("closing iterator", ei.Close)
+	util.LogError("closing iterator", ei.Close)
 }
 
 type sampletuple struct {
@@ -268,7 +266,7 @@ func (i *heapSampleIterator) Error() error {
 	case 1:
 		return i.errs[0]
 	default:
-		return fmt.Errorf("Multiple errors: %+v", i.errs)
+		return util.MultiError(i.errs)
 	}
 }
 
@@ -343,6 +341,32 @@ type seriesIterator struct {
 	i       int
 	samples []logproto.Sample
 	labels  string
+}
+
+type withCloseSampleIterator struct {
+	closeFn func() error
+	SampleIterator
+}
+
+func (w *withCloseSampleIterator) Close() error {
+	var errs []error
+	if err := w.SampleIterator.Close(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := w.closeFn(); err != nil {
+		errs = append(errs, err)
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return util.MultiError(errs)
+}
+
+func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIterator {
+	return &withCloseSampleIterator{
+		closeFn:        closeFn,
+		SampleIterator: it,
+	}
 }
 
 // NewMultiSeriesIterator returns an iterator over multiple logproto.Series

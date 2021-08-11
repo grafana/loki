@@ -69,7 +69,7 @@ func GetInstancePort(configPort, listenPort int) int {
 
 // WaitInstanceState waits until the input instanceID is registered within the
 // ring matching the provided state. A timeout should be provided within the context.
-func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state IngesterState) error {
+func WaitInstanceState(ctx context.Context, r ReadRing, instanceID string, state InstanceState) error {
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
@@ -122,8 +122,8 @@ func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability,
 }
 
 // MakeBuffersForGet returns buffers to use with Ring.Get().
-func MakeBuffersForGet() (bufDescs []IngesterDesc, bufHosts, bufZones []string) {
-	bufDescs = make([]IngesterDesc, 0, GetBufferSize)
+func MakeBuffersForGet() (bufDescs []InstanceDesc, bufHosts, bufZones []string) {
+	bufDescs = make([]InstanceDesc, 0, GetBufferSize)
 	bufHosts = make([]string, 0, GetBufferSize)
 	bufZones = make([]string, 0, GetBufferSize)
 	return

@@ -48,6 +48,7 @@ type BucketScanBlocksFinder struct {
 	services.Service
 
 	cfg             BucketScanBlocksFinderConfig
+	cfgProvider     bucket.TenantConfigProvider
 	logger          log.Logger
 	bucketClient    objstore.Bucket
 	fetchersMetrics *storegateway.MetadataFetcherMetrics
@@ -68,9 +69,10 @@ type BucketScanBlocksFinder struct {
 	scanLastSuccess prometheus.Gauge
 }
 
-func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
+func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
 	d := &BucketScanBlocksFinder{
 		cfg:               cfg,
+		cfgProvider:       cfgProvider,
 		logger:            logger,
 		bucketClient:      bucketClient,
 		fetchers:          make(map[string]userFetcher),
@@ -363,7 +365,7 @@ func (d *BucketScanBlocksFinder) getOrCreateMetaFetcher(userID string) (block.Me
 
 func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	userLogger := util_log.WithUserID(userID, d.logger)
-	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient)
+	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient, d.cfgProvider)
 	userReg := prometheus.NewRegistry()
 
 	// The following filters have been intentionally omitted:

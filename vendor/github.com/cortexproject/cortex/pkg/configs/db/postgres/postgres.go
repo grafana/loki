@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/go-kit/kit/log/level"
@@ -18,8 +19,6 @@ import (
 	"github.com/lib/pq"
 	_ "github.com/lib/pq" // Import the postgres sql driver
 	"github.com/pkg/errors"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -60,7 +59,7 @@ func dbWait(db *sql.DB) error {
 		if err == nil {
 			return nil
 		}
-		level.Warn(util.Logger).Log("msg", "db connection not established, retrying...", "err", err)
+		level.Warn(util_log.Logger).Log("msg", "db connection not established, retrying...", "err", err)
 		time.Sleep(time.Second << uint(tries))
 	}
 	return errors.Wrapf(err, "db connection not established after %s", dbTimeout)
@@ -88,13 +87,13 @@ func New(uri, migrationsDir string) (DB, error) {
 			return DB{}, errors.Wrap(err, "database migrations initialization failed")
 		}
 
-		level.Info(util.Logger).Log("msg", "running database migrations...")
+		level.Info(util_log.Logger).Log("msg", "running database migrations...")
 
 		if err := m.Up(); err != nil {
 			if err != migrate.ErrNoChange {
 				return DB{}, errors.Wrap(err, "database migrations failed")
 			}
-			level.Debug(util.Logger).Log("msg", "no change in schema, error (ignored)", "err", err)
+			level.Debug(util_log.Logger).Log("msg", "no change in schema, error (ignored)", "err", err)
 		}
 	}
 
@@ -354,7 +353,7 @@ func (d DB) Transaction(f func(DB) error) error {
 	if err != nil {
 		// Rollback error is ignored as we already have one in progress
 		if err2 := tx.Rollback(); err2 != nil {
-			level.Warn(util.Logger).Log("msg", "transaction rollback error (ignored)", "err", err2)
+			level.Warn(util_log.Logger).Log("msg", "transaction rollback error (ignored)", "err", err2)
 		}
 		return err
 	}

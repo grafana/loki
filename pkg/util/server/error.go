@@ -5,11 +5,12 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request
@@ -22,16 +23,20 @@ const (
 
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
-	var queryErr chunk.QueryError
+	var (
+		queryErr chunk.QueryError
+		promErr  promql.ErrStorage
+	)
 
 	switch {
-	case errors.Is(err, context.Canceled):
+	case errors.Is(err, context.Canceled) ||
+		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
 		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
 	case errors.Is(err, context.DeadlineExceeded):
 		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
 	case errors.As(err, &queryErr):
 		http.Error(w, err.Error(), http.StatusBadRequest)
-	case errors.Is(err, logql.ErrLimit) || errors.Is(err, logql.ErrParse) || errors.Is(err, logql.ErrPipeline):
+	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, user.ErrNoOrgID):
 		http.Error(w, err.Error(), http.StatusBadRequest)

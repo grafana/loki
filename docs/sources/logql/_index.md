@@ -4,125 +4,194 @@ weight: 700
 ---
 # LogQL: Log Query Language
 
-Loki comes with its own PromQL-inspired language for queries called *LogQL*.
-LogQL can be considered a distributed `grep` that aggregates log sources.
+LogQL is Loki's PromQL-inspired query language.
+Queries act as if they are a distributed `grep` to aggregate log sources.
 LogQL uses labels and operators for filtering.
 
 There are two types of LogQL queries:
 
 - *Log queries* return the contents of log lines.
-- *Metric queries* extend log queries and calculate sample values based on the content of logs from a log query.
+- *Metric queries* extend log queries to calculate values
+based on query results.
 
 ## Log Queries
 
-A basic log query consists of two parts:
+All LogQL queries contain a **log stream selector**.
 
-- **log stream selector**
-- **log pipeline**
-
-Due to Loki's design, all LogQL queries must contain a **log stream selector**.
+![parts of a query](query_components.png)
 
 The log stream selector determines how many log streams (unique sources of log content, such as files) will be searched.
 A more granular log stream selector then reduces the number of searched streams to a manageable volume.
 This means that the labels passed to the log stream selector will affect the relative performance of the query's execution.
 
-**Optionally** the log stream selector can be followed by a **log pipeline**. A log pipeline is a set of stage expressions chained together and applied to the selected log streams. Each expressions can filter out, parse and mutate log lines and their respective labels.
+Optionally, the log stream selector can be followed by a **log pipeline**. A log pipeline is a set of stage expressions that are chained together and applied to the selected log streams. Each expression can filter out, parse, or mutate log lines and their respective labels.
 
 The following example shows a full log query in action:
 
 ```logql
-{container="query-frontend",namespace="tempo-dev"} |= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500
+{container="query-frontend",namespace="loki-dev"} |= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500
 ```
 
 The query is composed of:
 
-- a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev`namespace.
+- a log stream selector `{container="query-frontend",namespace="loki-dev"}` which targets the `query-frontend` container  in the `loki-dev` namespace.
 - a log pipeline `|= "metrics.go" | logfmt | duration > 10s and throughput_mb < 500` which will filter out log that contains the word `metrics.go`, then parses each log line to extract more labels and filter with them.
 
-> To avoid escaping special characters you can use the `` ` ``(back-tick) instead of `"` when quoting strings.
+> To avoid escaping special characters you can use the `` ` ``(backtick) instead of `"` when quoting strings.
 For example `` `\w+` `` is the same as `"\\w+"`.
 This is specially useful when writing a regular expression which contains multiple backslashes that require escaping.
 
 ### Log Stream Selector
 
-The log stream selector determines which log streams should be included in your query results.
-The stream selector is comprised of one or more key-value pairs, where each key is a **log label** and each value is that **label's value**.
+The stream selector determines which log streams to include in a query's results.
+The stream selector is specified by one or more comma-separated key-value pairs. Each key is a log label and each value is that label's value.
+Curly braces (`{` and `}`) delimit the stream selector. 
 
-The log stream selector is written by wrapping the key-value pairs in a pair of curly braces:
+Consider this stream selector:
 
 ```logql
 {app="mysql",name="mysql-backup"}
 ```
 
-In this example, all log streams that have a label of `app` whose value is `mysql` _and_ a label of `name` whose value is `mysql-backup` will be included in the query results.
-Note that this will match any log stream whose labels _at least_ contain `mysql-backup` for their name label;
-if there are multiple streams that contain that label, logs from all of the matching streams will be shown in the results.
+All log streams that have both a label of `app` whose value is `mysql`
+and a label of `name` whose value is `mysql-backup` will be included in
+the query results.
+A stream may contain other pairs of labels and values,
+but only the specified pairs within the stream selector are used to determine
+which streams will be included within the query results.
+
+The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki log stream selectors.
 
 The `=` operator after the label name is a **label matching operator**.
 The following label matching operators are supported:
 
-- `=`: exactly equal.
-- `!=`: not equal.
-- `=~`: regex matches.
-- `!~`: regex does not match.
+- `=`: exactly equal
+- `!=`: not equal
+- `=~`: regex matches
+- `!~`: regex does not match
 
-Examples:
+Regex log stream examples:
 
-- `{name=~"mysql.+"}`
-- `{name!~"mysql.+"}`
-- `` {name!~`mysql-\d+`} ``
+- `{name =~ "mysql.+"}`
+- `{name !~ "mysql.+"}`
+- `` {name !~ `mysql-\d+`} ``
 
-The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki log stream selectors.
+**Note:** The `=~` regex operator is fully anchored, meaning regex must match against the *entire* string, including newlines. The regex `.` character does not match newlines by default. If you want the regex dot character to match newlines you can use the single-line flag, like so: `(?s)search_term.+` matches `search_term\n`.
 
 ### Log Pipeline
 
 A log pipeline can be appended to a log stream selector to further process and filter log streams. It usually is composed of one or multiple expressions, each expressions is executed in sequence for each log line. If an expression filters out a log line, the pipeline will stop at this point and start processing the next line.
 
-Some expressions can mutate the log content and respective labels (e.g `| line_format "{{.status_code}}"`), which will be then available for further filtering and processing following expressions or metric queries.
+Some expressions can mutate the log content and respective labels.
+For example,
+
+```
+| line_format "{{.status_code}}"`)
+```
+
+will be available for further filtering and processing following expressions or metric queries.
 
 A log pipeline can be composed of:
 
-- [Line Filter Expression](#line-filter-expression).
+- [Line Filter Expression](#line-filter-expression)
 - [Parser Expression](#parser-expression)
 - [Label Filter Expression](#label-filter-expression)
 - [Line Format Expression](#line-format-expression)
 - [Labels Format Expression](#labels-format-expression)
-- [Unwrap Expression](#unwrapped-range-aggregations)
-
-The [unwrap Expression](#unwrapped-range-aggregations) is a special expression that should only be used within metric queries.
+- [Unwrap Expression](#unwrapped-range-aggregations). An unwrapped expression is only used within metric queries.
 
 #### Line Filter Expression
 
-The line filter expression is used to do a distributed `grep` over the aggregated logs from the matching log streams.
+The line filter expression does a distributed `grep`
+over the aggregated logs from the matching log streams.
+It searches the contents of the log line,
+discarding those lines that do not match the case sensitive expression.
 
-After writing the log stream selector, the resulting set of logs can be further filtered with a search expression.
-The search expression can be just text or regex:
+Each line filter expression has a **filter operator**
+followed by text or a regular expression.
+These filter operators are supported:
 
-- `{job="mysql"} |= "error"`
-- `{name="kafka"} |~ "tsdb-ops.*io:2003"`
-- `` {name="cassandra"} |~  `error=\w+` ``
-- `{instance=~"kafka-[23]",name="kafka"} != "kafka.server:type=ReplicaManager"`
+- `|=`: Log line contains string
+- `!=`: Log line does not contain string
+- `|~`: Log line contains a match to the regular expression
+- `!~`: Log line does not contain a match to the regular expression
 
-In the previous examples, `|=`, `|~`, and `!=` act as **filter operators**.
-The following filter operators are supported:
+Line filter expression examples:
 
-- `|=`: Log line contains string.
-- `!=`: Log line does not contain string.
-- `|~`: Log line matches regular expression.
-- `!~`: Log line does not match regular expression.
+- Keep log lines that have the substring "error":
 
-Filter operators can be chained and will sequentially filter down the expression - resulting log lines must satisfy _every_ filter:
+    ```
+    |= "error"
+    ```
+
+    A complete query using this example:
+
+    ```
+    {job="mysql"} |= "error"
+    ```
+
+- Discard log lines that have the substring "kafka.server:type=ReplicaManager":
+
+    ```
+    != "kafka.server:type=ReplicaManager"
+    ```
+
+    A complete query using this example:
+
+    ```
+    {instance=~"kafka-[23]",name="kafka"} != "kafka.server:type=ReplicaManager"
+    ```
+
+- Keep log lines that contain a substring that starts with `tsdb-ops` and ends with `io:2003`. A complete query with a regular expression:
+
+    ```
+    {name="kafka"} |~ "tsdb-ops.*io:2003"
+    ```
+
+- Keep log lines that contain a substring that starts with `error=`,
+and is followed by 1 or more word characters. A complete query with a regular expression:
+
+    ```
+    {name="cassandra"} |~  `error=\w+` 
+    ```
+
+Filter operators can be chained.
+Filters are applied sequentially.
+Query results will have satisfied every filter.
+This complete query example will give results that include the string `error`,
+and do not include the string `timeout`.
 
 ```logql
 {job="mysql"} |= "error" != "timeout"
 ```
 
 When using `|~` and `!~`, Go (as in [Golang](https://golang.org/)) [RE2 syntax](https://github.com/google/re2/wiki/Syntax) regex may be used.
-The matching is case-sensitive by default and can be switched to case-insensitive prefixing the regex with `(?i)`.
+The matching is case-sensitive by default.
+Switch to case-insensitive matching by prefixing the regular expression
+with `(?i)`.
 
-While line filter expressions could be placed anywhere in a pipeline, it is almost always better to have them at the beginning. This ways it will improve the performance of the query doing further processing only when a line matches.
+While line filter expressions could be placed anywhere within a log pipeline,
+it is almost always better to have them at the beginning.
+Placing them at the beginning improves the performance of the query,
+as it only does further processing when a line matches.
+For example,
+ while the results will be the same,
+the query specified with
 
-For example, while the result will be the same, the following query `{job="mysql"} |= "error" | json | line_format "{{.err}}"` will always run faster than  `{job="mysql"} | json | line_format "{{.message}}" |= "error"`. Line filter expressions are the fastest way to filter logs after log stream selectors.
+```
+{job="mysql"} |= "error" | json | line_format "{{.err}}"
+```
+
+will always run faster than
+
+```
+{job="mysql"} | json | line_format "{{.message}}" |= "error"
+```
+
+Line filter expressions are the fastest way to filter logs once the
+log stream selectors have been applied.
+
+Line filter expressions have support matching IP addresses. See [Matching IP addresses](ip/) for details.
 
 #### Parser Expression
 
@@ -143,49 +212,116 @@ In case of errors, for instance if the line is not in the expected format, the l
 
 If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However if an extracted key appears twice, only the latest label value will be kept.
 
-We support currently support json, logfmt and regexp parsers.
+Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regexp) and [unpack](#unpack) parsers.
 
-The **json** parsers take no parameters and can be added using the expression `| json` in your pipeline. It will extract all json properties as labels if the log line is a valid json document. Nested properties are flattened into label keys using the `_` separator. **Arrays are skipped**.
+It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
+Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers](#multiple-parsers).
 
-For example the json parsers will extract from the following document:
+##### JSON
 
-```json
-{
-	"protocol": "HTTP/2.0",
-	"servers": ["129.0.1.1","10.2.1.3"],
-	"request": {
-		"time": "6.032",
-		"method": "GET",
-		"host": "foo.grafana.net",
-		"size": "55",
-	},
-	"response": {
-		"status": 401,
-		"size": "228",
-		"latency_seconds": "6.031"
-	}
-}
-```
+The **json** parser operates in two modes:
 
-The following list of labels:
+1. **without** parameters:
 
-```kv
-"protocol" => "HTTP/2.0"
-"request_time" => "6.032"
-"request_method" => "GET"
-"request_host" => "foo.grafana.net"
-"request_size" => "55"
-"response_status" => "401"
-"response_size" => "228"
-"response_size" => "228"
-```
+   Adding `| json` to your pipeline will extract all json properties as labels if the log line is a valid json document.
+   Nested properties are flattened into label keys using the `_` separator.
+
+   Note: **Arrays are skipped**.
+
+   For example the json parsers will extract from the following document:
+
+   ```json
+   {
+       "protocol": "HTTP/2.0",
+       "servers": ["129.0.1.1","10.2.1.3"],
+       "request": {
+           "time": "6.032",
+           "method": "GET",
+           "host": "foo.grafana.net",
+           "size": "55",
+           "headers": {
+             "Accept": "*/*",
+             "User-Agent": "curl/7.68.0"
+           }
+       },
+       "response": {
+           "status": 401,
+           "size": "228",
+           "latency_seconds": "6.031"
+       }
+   }
+   ```
+
+   The following list of labels:
+
+   ```kv
+   "protocol" => "HTTP/2.0"
+   "request_time" => "6.032"
+   "request_method" => "GET"
+   "request_host" => "foo.grafana.net"
+   "request_size" => "55"
+   "response_status" => "401"
+   "response_size" => "228"
+   "response_size" => "228"
+   ```
+
+2. **with** parameters:
+
+   Using `| json label="expression", another="expression"` in your pipeline will extract only the
+   specified json fields to labels. You can specify one or more expressions in this way, the same
+   as [`label_format`](#labels-format-expression); all expressions must be quoted.
+
+   Currently, we only support field access (`my.field`, `my["field"]`) and array access (`list[0]`), and any combination
+   of these in any level of nesting (`my.list[0]["field"]`).
+
+   For example, `| json first_server="servers[0]", ua="request.headers[\"User-Agent\"]` will extract from the following document:
+
+    ```json
+    {
+        "protocol": "HTTP/2.0",
+        "servers": ["129.0.1.1","10.2.1.3"],
+        "request": {
+            "time": "6.032",
+            "method": "GET",
+            "host": "foo.grafana.net",
+            "size": "55",
+            "headers": {
+              "Accept": "*/*",
+              "User-Agent": "curl/7.68.0"
+            }
+        },
+        "response": {
+            "status": 401,
+            "size": "228",
+            "latency_seconds": "6.031"
+        }
+    }
+    ```
+
+   The following list of labels:
+
+    ```kv
+    "first_server" => "129.0.1.1"
+    "ua" => "curl/7.68.0"
+    ```
+
+   If an array or an object returned by an expression, it will be assigned to the label in json format.
+
+   For example, `| json server_list="servers", headers="request.headers` will extract:
+
+   ```kv
+   "server_list" => `["129.0.1.1","10.2.1.3"]`
+   "headers" => `{"Accept": "*/*", "User-Agent": "curl/7.68.0"}`
+   ```
+
+##### logfmt
 
 The **logfmt** parser can be added using the `| logfmt` and will extract all keys and values from the [logfmt](https://brandur.org/logfmt) formatted log line.
 
 For example the following log line:
 
 ```logfmt
-at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" connect=4ms service=8ms status=200
+at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
 ```
 
 will get those labels extracted:
@@ -199,6 +335,64 @@ will get those labels extracted:
 "service" => "8ms"
 "status" => "200"
 ```
+
+##### Pattern
+
+<span style="background-color:#f3f973;">The pattern parser is a beta feature.</span>
+
+The pattern parser allows the explicit extraction of fields from log lines by defining a pattern expression (`| pattern "<pattern-expression>"`). The expression matches the structure of a log line.
+
+Consider this NGINX log line.
+
+```log
+0.191.12.2 - - [10/Jun/2021:09:14:29 +0000] "GET /api/plugins/versioncheck HTTP/1.1" 200 2 "-" "Go-http-client/2.0" "13.76.247.102, 34.120.177.193" "TLSv1.2" "US" ""
+```
+
+This log line can be parsed with the expression
+
+`<ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>`
+
+to extract these fields:
+
+```kv
+"ip" => "0.191.12.2"
+"method" => "GET"
+"uri" => "/api/plugins/versioncheck"
+"status" => "200"
+"size" => "2"
+"agent" => "Go-http-client/2.0"
+```
+
+A pattern expression is composed of captures and literals.
+
+A capture is a field name delimited by the `<` and `>` characters. `<example>` defines the field name `example`.
+An unnamed capture appears as `<_>`. The unnamed capture skips matched content.
+
+Captures are matched from the line beginning or the previous set of literals, to the line end or the next set of literals.
+If a capture is not matched, the pattern parser will stop.
+
+Literals can be any sequence of UTF-8 characters, including whitespace characters.
+
+By default, a pattern expression is anchored at the start of the log line. If the expression start with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression to anchor the expression at the start.
+
+Consider the log line
+
+```log
+level=debug ts=2021-06-10T09:24:13.472094048Z caller=logging.go:66 traceID=0568b66ad2d9294c msg="POST /loki/api/v1/push (204) 16.652862ms"
+```
+
+To match `msg="`, use the expression:
+
+```pattern
+<_> msg="<method> <path> (<status>) <latency>"
+```
+
+A pattern expression is invalid if
+
+- It does not contain any named capture.
+- It contains two consecutive captures not separated by whitespace characters.
+
+##### regexp
 
 Unlike the logfmt and json, which extract implicitly all values and takes no parameters, the **regexp** parser takes a single parameter `| regexp "<re>"` which is the regular expression using the [Golang](https://golang.org/) [RE2 syntax](https://github.com/google/re2/wiki/Syntax).
 
@@ -219,11 +413,28 @@ those labels:
 "duration" => "1.5s"
 ```
 
-It's easier to use the predefined parsers like `json` and `logfmt` when you can, falling back to `regexp` when the log lines have unusual structure. Multiple parsers can be used during the same log pipeline which is useful when you want to parse complex logs. ([see examples](#multiple-parsers))
+##### unpack
+
+The `unpack` parser will parse a json log line, and unpack all embedded labels via the [`pack`](../clients/promtail/stages/pack/) stage.
+**A special property `_entry` will also be used to replace the original log line**.
+
+For example, using `| unpack` with the following log line:
+
+```json
+{
+  "container": "myapp",
+  "pod": "pod-3223f",
+  "_entry": "original log message"
+}
+```
+
+allows to extract the `container` and `pod` labels and the `original log message` as the new log line.
+
+> You can combine `unpack` with `json` parser (or any other parsers) if the original embedded log line is specific format.
 
 #### Label Filter Expression
 
-Label filter expression allows filtering log line using their original and extracted labels. It can contains multiple predicates.
+Label filter expression allows filtering log line using their original and extracted labels. It can contain multiple predicates.
 
 A predicate contains a **label identifier**, an **operation** and a **value** to compare the label with.
 
@@ -280,6 +491,8 @@ It will evaluate first `duration >= 20ms or method="GET"`. To evaluate first `me
 
 > Label filter expressions are the only expression allowed after the [unwrap expression](#unwrapped-range-aggregations). This is mainly to allow filtering errors from the metric extraction (see [errors](#pipeline-errors)).
 
+Label filter expressions have support matching IP addresses. See [Matching IP addresses](ip/) for details.
+
 #### Line Format Expression
 
 The line format expression can rewrite the log line content by using the [text/template](https://golang.org/pkg/text/template/) format.
@@ -295,11 +508,21 @@ Will extract and rewrite the log line to only contains the query and the duratio
 
 You can use double quoted string for the template or backticks `` `{{.label_name}}` `` to avoid the need to escape special characters.
 
+`line_format` also supports `math` functions. Example:
+
+If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(ms), we can divide the duration by `1000` to get the value in seconds.
+
+```logql
+{container="frontend"} | logfmt | line_format "{{.ip}} {{.status}} {{div .duration 1000}}"
+```
+
+The above query will give us the `line` as `1.1.1.1 200 3`
+
 See [template functions](template_functions/) to learn about available functions in the template format.
 
 #### Labels Format Expression
 
-The `| label_format` expression can renamed, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
+The `| label_format` expression can rename, modify or add labels. It takes as parameter a comma separated list of equality operations, enabling multiple operations at once.
 
 When both side are label identifiers, for example `dst=src`, the operation will rename the `src` label into `dst`.
 
@@ -332,7 +555,7 @@ level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d
 You can use multiple parsers (logfmt and regexp) like this.
 
 ```logql
-{job="cortex-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"`
+{job="cortex-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"
 ```
 
 This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
@@ -368,24 +591,32 @@ The result would be:
 
 ## Metric Queries
 
-LogQL also supports wrapping a log query with functions that allow for creating metrics out of the logs.
+LogQL supports applying a function to log query results.
+This powerful feature creates metrics from logs.
 
 Metric queries can be used to calculate things such as the rate of error messages, or the top N log sources with the most amount of logs over the last 3 hours.
 
-Combined with log [parsers](#parser-expression), metrics queries can also be used to calculate metrics from a sample value within the log line such latency or request size.
-Furthermore all labels, including extracted ones, will be available for aggregations and generation of new series.
+Combined with log parsers, metrics queries can also be used to calculate metrics from a sample value within the log line, such as latency or request size.
+All labels, including extracted ones, will be available for aggregations and generation of new series.
 
 ### Range Vector aggregation
 
-LogQL shares the same [range vector](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors) concept from Prometheus, except the selected range of samples is a range of selected log or label values.
+LogQL shares the [range vector](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors) concept of Prometheus.
+In Loki, the selected range of samples is a range of selected log or label values.
 
-Loki supports two types of range aggregations. Log range and unwrapped range aggregations.
+The aggregation is applied over a time duration.
+Loki defines [Time Durations](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-durations) with the same syntax as Prometheus.
+
+Loki supports two types of range vector aggregations: log range aggregations and unwrapped range aggregations.
 
 #### Log Range Aggregations
 
-A log range is a log query (with or without a log pipeline) followed by the range notation e.g [1m]. It should be noted that the range notation `[5m]` can be placed at end of the log pipeline or right after the log stream matcher.
+A log range aggregation is a query followed by a duration.
+A function is applied to aggregate the query over the duration.
+The duration can be placed 
+after the log stream selector or at end of the log pipeline.
 
-The first type uses log entries to compute values and supported functions for operating over are:
+The functions:
 
 - `rate(log-range)`: calculates the number of entries per second
 - `count_over_time(log-range)`: counts the entries for each log stream within the given range.
@@ -393,24 +624,24 @@ The first type uses log entries to compute values and supported functions for op
 - `bytes_over_time(log-range)`: counts the amount of bytes used by each log stream for a given range.
 - `absent_over_time(log-range)`: returns an empty vector if the range vector passed to it has any elements and a 1-element vector with the value 1 if the range vector passed to it has no elements. (`absent_over_time` is useful for alerting on when no time series and logs stream exist for label combination for a certain amount of time.)
 
-##### Log  Examples
+Examples:
 
-```logql
-count_over_time({job="mysql"}[5m])
-```
+- Count all the log lines within the last five minutes for the MySQL job.
 
-This example counts all the log lines within the last five minutes for the MySQL job.
+    ```logql
+    count_over_time({job="mysql"}[5m])
+    ```
 
-```logql
-sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
-```
+- This aggregation includes filters and parsers.
+    It returns the per-second rate of all non-timeout errors within the last minutes per host for the MySQL job and only includes errors whose duration is above ten seconds.
 
-This example demonstrates a LogQL aggregation which includes filters and parsers.
-It returns the per-second rate of all non-timeout errors within the last minutes per host for the MySQL job and only includes errors whose duration is above ten seconds.
+    ```logql
+    sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
+    ```
 
 #### Unwrapped Range Aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be use within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](#pipeline-errors).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
@@ -428,6 +659,8 @@ Supported function for operating over unwrapped ranges are:
 - `avg_over_time(unwrapped-range)`: the average value of all points in the specified interval.
 - `max_over_time(unwrapped-range)`: the maximum value of all points in the specified interval.
 - `min_over_time(unwrapped-range)`: the minimum value of all points in the specified interval
+- `first_over_time(unwrapped-range)`: the first value of all points in the specified interval
+- `last_over_time(unwrapped-range)`: the last value of all points in the specified interval
 - `stdvar_over_time(unwrapped-range)`: the population standard variance of the values in the specified interval.
 - `stddev_over_time(unwrapped-range)`: the population standard deviation of the values in the specified interval.
 - `quantile_over_time(scalar,unwrapped-range)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.

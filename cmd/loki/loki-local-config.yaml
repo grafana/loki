@@ -2,12 +2,12 @@ auth_enabled: false
 
 server:
   http_listen_port: 3100
+  grpc_listen_port: 9096
 
 ingester:
   wal:
     enabled: true
     dir: /tmp/wal
-    recover: true
   lifecycler:
     address: 127.0.0.1
     ring:

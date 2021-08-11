@@ -41,8 +41,8 @@ func (m *ClientMock) Name() string {
 }
 
 // Iter mocks objstore.Bucket.Iter()
-func (m *ClientMock) Iter(ctx context.Context, dir string, f func(string) error) error {
-	args := m.Called(ctx, dir, f)
+func (m *ClientMock) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	args := m.Called(ctx, dir, f, options)
 	return args.Error(0)
 }
 
@@ -54,7 +54,7 @@ func (m *ClientMock) MockIter(prefix string, objects []string, err error) {
 // MockIterWithCallback is a convenient method to mock Iter() and get a callback called when the Iter
 // API is called.
 func (m *ClientMock) MockIterWithCallback(prefix string, objects []string, err error, cb func()) {
-	m.On("Iter", mock.Anything, prefix, mock.Anything).Return(err).Run(func(args mock.Arguments) {
+	m.On("Iter", mock.Anything, prefix, mock.Anything, mock.Anything).Return(err).Run(func(args mock.Arguments) {
 		if cb != nil {
 			cb()
 		}

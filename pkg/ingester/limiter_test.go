@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {

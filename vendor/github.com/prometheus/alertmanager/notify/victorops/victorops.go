@@ -41,8 +41,8 @@ type Notifier struct {
 }
 
 // New returns a new VictorOps notifier.
-func New(c *config.VictorOpsConfig, t *template.Template, l log.Logger) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "victorops", false, false)
+func New(c *config.VictorOpsConfig, t *template.Template, l log.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "victorops", append(httpOpts, commoncfg.WithHTTP2Disabled())...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +72,9 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		apiURL = n.conf.APIURL.Copy()
 	)
 	apiURL.Path += fmt.Sprintf("%s/%s", n.conf.APIKey, tmpl(n.conf.RoutingKey))
+	if err != nil {
+		return false, fmt.Errorf("templating error: %s", err)
+	}
 
 	buf, err := n.createVictorOpsPayload(ctx, as...)
 	if err != nil {

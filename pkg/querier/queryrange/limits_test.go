@@ -8,17 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 func TestLimits(t *testing.T) {
@@ -30,14 +31,6 @@ func TestLimits(t *testing.T) {
 	require.Equal(t, l.QuerySplitDuration("b"), time.Duration(0))
 
 	wrapped := WithDefaultLimits(l, queryrange.Config{
-		SplitQueriesByDay: true,
-	})
-
-	require.Equal(t, wrapped.QuerySplitDuration("a"), time.Minute)
-	require.Equal(t, wrapped.QuerySplitDuration("b"), 24*time.Hour)
-
-	wrapped = WithDefaultLimits(l, queryrange.Config{
-		SplitQueriesByDay:      true, // should be overridden by SplitQueriesByInterval
 		SplitQueriesByInterval: time.Hour,
 	})
 
@@ -61,8 +54,8 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
 	cfg.SplitQueriesByInterval = time.Hour
 	cfg.CacheResults = false
-	// split in 6 with 4 in // max.
-	tpw, stopper, err := NewTripperware(cfg, util.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, 0, nil)
+	// split in 7 with 2 in // max.
+	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -71,7 +64,7 @@ func Test_seriesLimiter(t *testing.T) {
 	lreq := &LokiRequest{
 		Query:     `rate({app="foo"} |= "foo"[1m])`,
 		Limit:     1000,
-		Step:      30000, //30sec
+		Step:      30000, // 30sec
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
@@ -79,7 +72,7 @@ func Test_seriesLimiter(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -95,7 +88,7 @@ func Test_seriesLimiter(t *testing.T) {
 
 	_, err = tpw(rt).RoundTrip(req)
 	require.NoError(t, err)
-	require.Equal(t, 6, *count)
+	require.Equal(t, 7, *count)
 
 	// 2 series should not be allowed.
 	c := new(int)
@@ -108,13 +101,13 @@ func Test_seriesLimiter(t *testing.T) {
 		}()
 		// first time returns  a single series
 		if *c == 0 {
-			if err := marshal.WriteQueryResponseJSON(logql.Result{Data: matrix}, rw); err != nil {
+			if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: matrix}, rw); err != nil {
 				panic(err)
 			}
 			return
 		}
 		// second time returns a different series.
-		if err := marshal.WriteQueryResponseJSON(logql.Result{
+		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{
 			Data: promql.Matrix{
 				{
 					Points: []promql.Point{
@@ -144,4 +137,72 @@ func Test_seriesLimiter(t *testing.T) {
 	_, err = tpw(rt).RoundTrip(req)
 	require.Error(t, err)
 	require.LessOrEqual(t, *c, 4)
+}
+
+func Test_MaxQueryParallelism(t *testing.T) {
+	maxQueryParallelism := 2
+	f, err := newfakeRoundTripper()
+	require.Nil(t, err)
+	var count atomic.Int32
+	var max atomic.Int32
+	f.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		cur := count.Inc()
+		if cur > max.Load() {
+			max.Store(cur)
+		}
+		defer count.Dec()
+		// simulate some work
+		time.Sleep(20 * time.Millisecond)
+	}))
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
+	require.Nil(t, err)
+
+	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+				var wg sync.WaitGroup
+				for i := 0; i < 10; i++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						_, _ = next.Do(c, &LokiRequest{})
+					}()
+				}
+				wg.Wait()
+				return nil, nil
+			})
+		}),
+	).RoundTrip(r)
+	maxFound := int(max.Load())
+	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
+}
+
+func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
+	maxQueryParallelism := 2
+	f, err := newfakeRoundTripper()
+	require.Nil(t, err)
+
+	f.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// simulate some work
+		time.Sleep(20 * time.Millisecond)
+	}))
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
+	require.Nil(t, err)
+
+	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+		queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+			return queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+				for i := 0; i < 10; i++ {
+					go func() {
+						_, _ = next.Do(c, &LokiRequest{})
+					}()
+				}
+				return nil, nil
+			})
+		}),
+	).RoundTrip(r)
 }

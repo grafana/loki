@@ -9,7 +9,7 @@ import (
 // StepEvaluator evaluate a single step of a query.
 type StepEvaluator interface {
 	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
-	Next() (bool, int64, promql.Vector)
+	Next() (ok bool, ts int64, vec promql.Vector)
 	// Close all resources used.
 	Close() error
 	// Reports any error

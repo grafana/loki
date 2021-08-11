@@ -9,8 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -21,7 +20,9 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // small util for ensuring data exists as we expect
@@ -49,7 +50,6 @@ func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 	ingesterConfig.MaxTransferRetries = 0
 	ingesterConfig.WAL.Enabled = true
 	ingesterConfig.WAL.Dir = walDir
-	ingesterConfig.WAL.Recover = true
 	ingesterConfig.WAL.CheckpointDuration = time.Second
 
 	return ingesterConfig
@@ -71,7 +71,7 @@ func TestIngesterWAL(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -114,7 +114,7 @@ func TestIngesterWAL(t *testing.T) {
 	expectCheckpoint(t, walDir, false, time.Second)
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -128,7 +128,7 @@ func TestIngesterWAL(t *testing.T) {
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -153,7 +153,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -199,7 +199,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -242,7 +242,6 @@ func TestUnflushedChunks(t *testing.T) {
 }
 
 func TestIngesterWALBackpressureSegments(t *testing.T) {
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
@@ -259,7 +258,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -280,14 +279,13 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 	expectCheckpoint(t, walDir, false, time.Second)
 
 	// restart the ingester, ensuring we replayed from WAL.
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 }
 
 func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
 	require.Nil(t, err)
 	defer os.RemoveAll(walDir)
@@ -304,7 +302,7 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -325,7 +323,7 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// restart the ingester, ensuring we can replay from the checkpoint as well.
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -353,7 +351,6 @@ func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Du
 			return
 		}
 	}
-
 }
 
 // mkPush makes approximately totalSize bytes of log lines across min(500, totalSize) streams
@@ -456,7 +453,7 @@ func Test_SeriesIterator(t *testing.T) {
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
 	for i := 0; i < 3; i++ {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, noopWAL{}, NilMetrics, nil)
+		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream2}}))
 		instances = append(instances, inst)
@@ -471,12 +468,12 @@ func Test_SeriesIterator(t *testing.T) {
 		for j := 0; j < 2; j++ {
 			iter.Next()
 			assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
-			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, 0, 0)
+			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, chunkenc.UnorderedHeadBlockFmt, 0, 0)
 			require.NoError(t, err)
 			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
 			require.NoError(t, err)
 			stream := logproto.Stream{
-				Labels: cortex_client.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
+				Labels: cortexpb.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
 			}
 			for it.Next() {
 				stream.Entries = append(stream.Entries, it.Entry())
@@ -506,7 +503,7 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, noopWAL{}, NilMetrics, nil)
+		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, nil, noopWAL{}, NilMetrics, nil, nil)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{
@@ -552,7 +549,7 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 		require.NoError(b, writer.Write(&Series{
 			UserID:      "foo",
 			Fingerprint: lbs.Hash(),
-			Labels:      cortex_client.FromLabelsToLabelAdapters(lbs),
+			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),
 			Chunks:      chunks,
 		}))
 	}
@@ -564,7 +561,7 @@ func buildChunks(t testing.TB, size int) []Chunk {
 
 	for i := 0; i < size; i++ {
 		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
-		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 1500*1024)
+		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
 		fillChunk(t, c)
 		descs = append(descs, chunkDesc{
 			chunk: c,

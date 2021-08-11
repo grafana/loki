@@ -3,17 +3,6 @@ title: Examples
 ---
 # Loki Configuration Examples
 
-- [Loki Configuration Examples](#loki-configuration-examples)
-  - [Complete Local config](#complete-local-config)
-  - [Google Cloud Storage](#google-cloud-storage)
-  - [Cassandra Index](#cassandra-index)
-  - [AWS](#aws)
-    - [S3-compatible APIs](#s3-compatible-apis)
-    - [S3 Expanded Config](#s3-expanded-config)
-  - [Almost zero dependencies setup](#almost-zero-dependencies-setup)
-  - [schema_config](#schema_config)
-  - [Query Frontend](#query-frontend)
-
 ## Complete Local config
 
 ```yaml
@@ -227,13 +216,12 @@ schema_config:
     schema: v11
     index:
       prefix: index_
-      period: 168h
+      period: 24h
 
 storage_config:
  boltdb_shipper:
    active_index_directory: /loki/index
    cache_location: /loki/index_cache
-   resync_interval: 5s
    shared_store: s3
 
  aws:
@@ -245,6 +233,10 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
+compactor:
+  working_directory: /data/compactor
+  shared_store: s3
+  compaction_interval: 5m
 ```
 
 ## schema_config
@@ -271,7 +263,3 @@ configs:
         period: 168h
         prefix: index_
 ```
-
-## Query Frontend
-
-[example configuration](../query-frontend/)

@@ -1,5 +1,52 @@
 # Change Log
 
+## [v1.62.0] - 2021-06-07
+
+- #454 - @house-lee - add with_droplet_agent option to create requests
+
+## [v1.61.0] - 2021-05-12
+
+- #452 - @caiofilipini - Add support for DOKS clusters as peers in Firewall rules
+- #448 - @andrewsomething - flip: Set omitempty for Region in FloatingIPCreateRequest.
+- #451 - @andrewsomething - CheckResponse: Add RequestID from header to ErrorResponse when missing from body.
+- #450 - @nanzhong - dbaas: handle ca certificates as base64 encoded
+- #449 - @nanzhong - dbaas: add support for getting cluster CA
+- #446 - @kamaln7 - app spec: update cors policy
+
+## [v1.60.0] - 2021-04-04
+
+- #443 - @andrewsomething - apps: Support pagination.
+- #442 - @andrewsomething - dbaas: Support restoring from a backup.
+- #441 - @andrewsomething - k8s: Add URN method to KubernetesCluster.
+
+## [v1.59.0] - 2021-03-29
+
+- #439 - @andrewsomething - vpcs: Support listing members of a VPC.
+- #438 - @andrewsomething - Add Go 1.16.x to the testing matrix.
+
+## [v1.58.0] - 2021-02-17
+
+- #436 - @MorrisLaw - kubernetes: add name field to associated resources
+- #434 - @andrewsomething - sizes: Add description field.
+- #433 - @andrewsomething - Deprecate Name field in godo.DropletCreateVolume
+
+## [v1.57.0] - 2021-01-15
+
+- #429 - @varshavaradarajan - kubernetes: support optional cascading deletes for clusters
+- #430 - @jonfriesen - apps: updates apps.gen.go for gitlab addition
+- #431 - @nicktate - apps: update proto to support dockerhub registry type
+
+## [v1.56.0] - 2021-01-08
+
+- #422 - @kamaln7 - apps: add ProposeApp method
+
+## [v1.55.0] - 2021-01-07
+
+- #425 - @adamwg - registry: Support the storage usage indicator
+- #423 - @ChiefMateStarbuck - Updated README example
+- #421 - @andrewsomething - Add some basic input cleaning to NewFromToken
+- #420 - @bentranter - Don't set "Content-Type" header on GET requests
+
 ## [v1.54.0] - 2020-11-24
 
 - #417 - @waynr - registry: add support for garbage collection types

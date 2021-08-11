@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -32,7 +32,7 @@ func writeMessage(w http.ResponseWriter, message string) {
 	}{Message: message})
 
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "unable to serve store gateway ring page", "err", err)
+		level.Error(util_log.Logger).Log("msg", "unable to serve store gateway ring page", "err", err)
 	}
 }
 

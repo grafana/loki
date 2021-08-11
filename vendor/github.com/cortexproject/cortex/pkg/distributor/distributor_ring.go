@@ -9,8 +9,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -36,14 +36,14 @@ type RingConfig struct {
 func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
+		level.Error(util_log.Logger).Log("msg", "failed to get hostname", "err", err)
 		os.Exit(1)
 	}
 
 	// Ring flags
 	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ring.", "collectors/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
-	f.DurationVar(&cfg.HeartbeatTimeout, "distributor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which distributors are considered unhealthy within the ring.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
+	f.DurationVar(&cfg.HeartbeatTimeout, "distributor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which distributors are considered unhealthy within the ring. 0 = never (timeout disabled).")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -85,4 +85,15 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	lc.FinalSleep = 0
 
 	return lc
+}
+
+func (cfg *RingConfig) ToRingConfig() ring.Config {
+	rc := ring.Config{}
+	flagext.DefaultValues(&rc)
+
+	rc.KVStore = cfg.KVStore
+	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
+	rc.ReplicationFactor = 1
+
+	return rc
 }

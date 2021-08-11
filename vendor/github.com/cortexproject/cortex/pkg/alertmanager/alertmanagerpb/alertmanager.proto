@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package alertmanagerpb;
+import "gogoproto/gogo.proto";
+
+option go_package = "alertmanagerpb";
+
+import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+import "github.com/prometheus/alertmanager/cluster/clusterpb/cluster.proto";
+
+// Alertmanager interface exposed to the Alertmanager Distributor and other Alertmanagers
+service Alertmanager {
+  rpc HandleRequest(httpgrpc.HTTPRequest) returns(httpgrpc.HTTPResponse) {};
+  rpc UpdateState(clusterpb.Part) returns (UpdateStateResponse) {};
+  rpc ReadState(ReadStateRequest) returns (ReadStateResponse) {};
+}
+enum UpdateStateStatus {
+  OK = 0;
+  MERGE_ERROR = 2;
+  USER_NOT_FOUND = 3;
+}
+
+message UpdateStateResponse {
+  UpdateStateStatus status = 1;
+  string error = 2;
+}
+
+message ReadStateRequest {
+}
+
+enum ReadStateStatus {
+  READ_UNSPECIFIED = 0;
+  READ_OK = 1;
+  READ_ERROR = 2;
+  READ_USER_NOT_FOUND = 3;
+}
+
+message ReadStateResponse {
+  // Alertmanager (clusterpb) types do not have Equal methods.
+  option (gogoproto.equal) = false;
+
+  ReadStateStatus status = 1;
+  string error = 2;
+  clusterpb.FullState state = 3;
+}
+

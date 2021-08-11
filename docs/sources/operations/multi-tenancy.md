@@ -1,5 +1,6 @@
 ---
 title: Multi-tenancy
+weight: 50
 ---
 # Loki Multi-Tenancy
 

@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package cortexpb;
+
+option go_package = "cortexpb";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message WriteRequest {
+  repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "PreallocTimeseries"];
+  enum SourceEnum {
+    API = 0;
+    RULE = 1;
+  }
+  SourceEnum Source = 2;
+  repeated MetricMetadata metadata = 3 [(gogoproto.nullable) = true];
+
+  bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
+}
+
+message WriteResponse {}
+
+message TimeSeries {
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+  // Sorted by time, oldest sample first.
+  repeated Sample samples = 2 [(gogoproto.nullable) = false];
+  repeated Exemplar exemplars = 3 [(gogoproto.nullable) = false];
+}
+
+message LabelPair {
+  bytes name  = 1;
+  bytes value = 2;
+}
+
+message Sample {
+  double value       = 1;
+  int64 timestamp_ms = 2;
+}
+
+message MetricMetadata {
+  enum MetricType {
+    UNKNOWN        = 0;
+    COUNTER        = 1;
+    GAUGE          = 2;
+    HISTOGRAM      = 3;
+    GAUGEHISTOGRAM = 4;
+    SUMMARY        = 5;
+    INFO           = 6;
+    STATESET       = 7;
+  }
+
+  MetricType type = 1;
+  string metric_family_name = 2;
+  string help = 4;
+  string unit = 5;
+}
+
+message Metric {
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+}
+
+message Exemplar {
+  // Exemplar labels, different than series labels
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+  double value = 2;
+  int64 timestamp_ms = 3;
+}

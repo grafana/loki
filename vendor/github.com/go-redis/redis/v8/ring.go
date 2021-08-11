@@ -13,7 +13,6 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/dgryski/go-rendezvous"
-
 	"github.com/go-redis/redis/v8/internal"
 	"github.com/go-redis/redis/v8/internal/hashtag"
 	"github.com/go-redis/redis/v8/internal/pool"

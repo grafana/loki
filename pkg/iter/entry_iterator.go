@@ -3,14 +3,13 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // EntryIterator iterates over entries in time-order.
@@ -202,7 +201,7 @@ func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
 	if err := ei.Error(); err != nil {
 		i.errs = append(i.errs, err)
 	}
-	helpers.LogError("closing iterator", ei.Close)
+	util.LogError("closing iterator", ei.Close)
 }
 
 func (i *heapIterator) Push(ei EntryIterator) {
@@ -285,7 +284,7 @@ func (i *heapIterator) Error() error {
 	case 1:
 		return i.errs[0]
 	default:
-		return fmt.Errorf("Multiple errors: %+v", i.errs)
+		return util.MultiError(i.errs)
 	}
 }
 
@@ -443,6 +442,7 @@ type timeRangedIterator struct {
 }
 
 // NewTimeRangedIterator returns an iterator which filters entries by time range.
+// Note: Only works with iterators that go forwards.
 func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator {
 	return &timeRangedIterator{
 		EntryIterator: it,
@@ -502,7 +502,6 @@ func NewReversedIter(it EntryIterator, limit uint32, preload bool) (EntryIterato
 		entriesWithLabels: make([]entryWithLabels, 0, 1024),
 		limit:             limit,
 	}, it.Error()
-
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +577,6 @@ func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
 		iter: it,
 		buf:  entryBufferPool.Get().(*entryBuffer),
 	}, it.Error()
-
 	if err != nil {
 		return nil, err
 	}

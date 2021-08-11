@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,7 +26,6 @@ const defaultCeiling = 4 << 30 // 4GB
 type WALConfig struct {
 	Enabled             bool             `yaml:"enabled"`
 	Dir                 string           `yaml:"dir"`
-	Recover             bool             `yaml:"recover"`
 	CheckpointDuration  time.Duration    `yaml:"checkpoint_duration"`
 	FlushOnShutdown     bool             `yaml:"flush_on_shutdown"`
 	ReplayMemoryCeiling flagext.ByteSize `yaml:"replay_memory_ceiling"`
@@ -43,7 +42,6 @@ func (cfg *WALConfig) Validate() error {
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Dir, "ingester.wal-dir", "wal", "Directory to store the WAL and/or recover from WAL.")
 	f.BoolVar(&cfg.Enabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
-	f.BoolVar(&cfg.Recover, "ingester.recover-from-wal", false, "Recover data from existing WAL irrespective of WAL enabled/disabled.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 5*time.Minute, "Interval at which checkpoints should be created.")
 	f.BoolVar(&cfg.FlushOnShutdown, "ingester.flush-on-shutdown", false, "When WAL is enabled, should chunks be flushed to long-term storage on shutdown.")
 
@@ -54,6 +52,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
 type WAL interface {
+	Start()
 	// Log marshalls the records and writes it into the WAL.
 	Log(*WALRecord) error
 	// Stop stops all the WAL operations.
@@ -62,6 +61,7 @@ type WAL interface {
 
 type noopWAL struct{}
 
+func (noopWAL) Start()               {}
 func (noopWAL) Log(*WALRecord) error { return nil }
 func (noopWAL) Stop() error          { return nil }
 
@@ -81,7 +81,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wal.NewSize(util.Logger, registerer, cfg.Dir, walSegmentSize, false)
+	tsdbWAL, err := wal.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}
@@ -94,9 +94,12 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		seriesIter: seriesIter,
 	}
 
+	return w, nil
+}
+
+func (w *walWrapper) Start() {
 	w.wait.Add(1)
 	go w.run()
-	return w, nil
 }
 
 func (w *walWrapper) Log(record *WALRecord) error {
@@ -123,7 +126,7 @@ func (w *walWrapper) Log(record *WALRecord) error {
 			buf = buf[:0]
 		}
 		if len(record.RefEntries) > 0 {
-			buf = record.encodeEntries(buf)
+			buf = record.encodeEntries(CurrentEntriesRec, buf)
 			if err := w.wal.Log(buf); err != nil {
 				return err
 			}
@@ -138,7 +141,7 @@ func (w *walWrapper) Stop() error {
 	close(w.quit)
 	w.wait.Wait()
 	err := w.wal.Close()
-	level.Info(util.Logger).Log("msg", "stopped", "component", "wal")
+	level.Info(util_log.Logger).Log("msg", "stopped", "component", "wal")
 	return err
 }
 
@@ -150,7 +153,7 @@ func (w *walWrapper) checkpointWriter() *WALCheckpointWriter {
 }
 
 func (w *walWrapper) run() {
-	level.Info(util.Logger).Log("msg", "started", "component", "wal")
+	level.Info(util_log.Logger).Log("msg", "started", "component", "wal")
 	defer w.wait.Done()
 
 	checkpointer := NewCheckpointer(

@@ -11,7 +11,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Relative to user-specific prefix.
@@ -36,15 +37,16 @@ func TenantDeletionMarkExists(ctx context.Context, bkt objstore.BucketReader, us
 	return bkt.Exists(ctx, markerFile)
 }
 
-// Uploads deletion mark to the tenant "directory".
-func WriteTenantDeletionMark(ctx context.Context, bkt objstore.Bucket, userID string, mark *TenantDeletionMark) error {
+// Uploads deletion mark to the tenant location in the bucket.
+func WriteTenantDeletionMark(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, mark *TenantDeletionMark) error {
+	bkt = bucket.NewUserBucketClient(userID, bkt, cfgProvider)
+
 	data, err := json.Marshal(mark)
 	if err != nil {
 		return errors.Wrap(err, "serialize tenant deletion mark")
 	}
 
-	markerFile := path.Join(userID, TenantDeletionMarkPath)
-	return errors.Wrap(bkt.Upload(ctx, markerFile, bytes.NewReader(data)), "upload tenant deletion mark")
+	return errors.Wrap(bkt.Upload(ctx, TenantDeletionMarkPath, bytes.NewReader(data)), "upload tenant deletion mark")
 }
 
 // Returns tenant deletion mark for given user, if it exists. If it doesn't exist, returns nil mark, and no error.
@@ -65,7 +67,7 @@ func ReadTenantDeletionMark(ctx context.Context, bkt objstore.BucketReader, user
 
 	// Close reader before dealing with decode error.
 	if closeErr := r.Close(); closeErr != nil {
-		level.Warn(util.Logger).Log("msg", "failed to close bucket reader", "err", closeErr)
+		level.Warn(util_log.Logger).Log("msg", "failed to close bucket reader", "err", closeErr)
 	}
 
 	if err != nil {

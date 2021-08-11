@@ -100,7 +100,7 @@ type enqueueResult struct {
 	cancelCh chan<- uint64 // Channel that can be used for request cancellation. If nil, cancellation is not possible.
 }
 
-// New creates a new frontend.
+// NewFrontend creates a new frontend.
 func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 

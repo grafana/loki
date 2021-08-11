@@ -19,13 +19,15 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
 	testSize        = int64(300)
 	ErrMock         = errors.New("mock error")
-	ErrMockMultiple = errors.New("Multiple errors: [mock error mock error]")
+	ErrMockMultiple = util.MultiError{ErrMock, ErrMock}
 )
 
 func TestEngine_LogsInstantQuery(t *testing.T) {
@@ -51,7 +53,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
 			},
-			Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
 			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(30, 0), logproto.BACKWARD, 30,
@@ -61,7 +63,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
-			Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
@@ -104,6 +106,26 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+		},
+		{
+			`first_over_time({app="foo"} |~".+bar" | unwrap foo [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `first_over_time({app="foo"}|~".+bar"| unwrap foo [1m])`}},
+			},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+		},
+		{
+			`count_over_time({app="foo"} |~".+bar" [1m] offset 30s)`, time.Unix(90, 0), logproto.BACKWARD, 10,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m] offset 30s)`}},
+			},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 90 * 1000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 		{
 			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.BACKWARD, 10,
@@ -229,6 +251,34 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				},
 				promql.Sample{
 					Point: promql.Point{T: 60 * 1000, V: 6},
+					Metric: labels.Labels{
+						labels.Label{Name: "app", Value: "foo"},
+						labels.Label{Name: "namespace", Value: "a"},
+					},
+				},
+			},
+		},
+		{
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace,app)`, time.Unix(90, 0), logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, factor(10, identity), `{app="foo", namespace="a"}`),
+					newSeries(testSize, factor(10, identity), `{app="bar", namespace="b"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) `}},
+			},
+			promql.Vector{
+				promql.Sample{
+					Point: promql.Point{T: 90 * 1000, V: 6},
+					Metric: labels.Labels{
+						labels.Label{Name: "app", Value: "bar"},
+						labels.Label{Name: "namespace", Value: "b"},
+					},
+				},
+				promql.Sample{
+					Point: promql.Point{T: 90 * 1000, V: 6},
 					Metric: labels.Labels{
 						labels.Label{Name: "app", Value: "foo"},
 						labels.Label{Name: "namespace", Value: "a"},
@@ -601,7 +651,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
 			},
-			Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
 			`{app="food"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.FORWARD, 10,
@@ -611,7 +661,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
 			},
-			Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
 		},
 		{
 			`{app="fed"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.BACKWARD, 10,
@@ -621,7 +671,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
 			},
-			Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
 		},
 		{
 			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.BACKWARD, 30,
@@ -631,7 +681,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
-			Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
 		{
 			`{app="barf"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), 0, 3 * time.Second, logproto.BACKWARD, 30,
@@ -641,7 +691,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			[]SelectLogParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
 			},
-			Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
+			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
 		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
@@ -711,6 +761,33 @@ func TestEngine_RangeQuery(t *testing.T) {
 						{T: 540 * 1000, V: 30},
 						{T: 570 * 1000, V: 30},
 						{T: 600 * 1000, V: 30},
+					},
+				},
+			},
+		},
+		{
+			`last_over_time(({app="foo"} |~".+bar" | unwrap foo)[5m])`, time.Unix(5*60, 0), time.Unix(5*120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*120, 0), Selector: `last_over_time({app="foo"}|~".+bar"| unwrap foo[5m])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{
+						{T: 300 * 1000, V: 1},
+						{T: 330 * 1000, V: 1},
+						{T: 360 * 1000, V: 1},
+						{T: 390 * 1000, V: 1},
+						{T: 420 * 1000, V: 1},
+						{T: 450 * 1000, V: 1},
+						{T: 480 * 1000, V: 1},
+						{T: 510 * 1000, V: 1},
+						{T: 540 * 1000, V: 1},
+						{T: 570 * 1000, V: 1},
+						{T: 600 * 1000, V: 1},
 					},
 				},
 			},
@@ -1874,7 +1951,7 @@ func TestEngine_MaxSeries(t *testing.T) {
 		_, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 		if test.expectLimitErr {
 			require.NotNil(t, err)
-			require.True(t, errors.Is(err, ErrLimit))
+			require.True(t, errors.Is(err, logqlmodel.ErrLimit))
 			return
 		}
 		require.Nil(t, err)

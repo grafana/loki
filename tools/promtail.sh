@@ -6,8 +6,9 @@ INSTANCEURL="${3:-}"
 NAMESPACE="${4:-default}"
 CONTAINERROOT="${5:-/var/lib/docker}"
 PARSER="${6:-- docker:}"
+VERSION="${PROMTAIL_VERSION:-2.3.0}"
 
-if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" -o -z "$CONTAINERROOT" -o -z "$PARSER" ]; then
+if [ -z "${INSTANCEID}" ] || [ -z "${APIKEY}" ] || [ -z "${INSTANCEURL}" ] || [ -z "${NAMESPACE}" ] || [ -z "${CONTAINERROOT}" ] || [ -z "${PARSER}" ]; then
     echo "usage: $0 <instanceId> <apiKey> <url> [<namespace>[<container_root_path>[<parser>]]]"
     exit 1
 fi
@@ -52,8 +53,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -99,8 +98,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -152,8 +149,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -207,8 +202,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -255,8 +248,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -291,7 +282,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        image: grafana/promtail:latest
+        image: grafana/promtail:<version>
         imagePullPolicy: Always
         name: promtail
         readinessProbe:
@@ -369,10 +360,11 @@ subjects:
 YAML
 )
 
-echo "$TEMPLATE" | sed \
+echo "${TEMPLATE}" | sed \
   -e "s#<instanceId>#${INSTANCEID}#" \
   -e "s#<apiKey>#${APIKEY}#" \
   -e "s#<instanceUrl>#${INSTANCEURL}#" \
   -e "s#<namespace>#${NAMESPACE}#" \
   -e "s#<container_root_path>#${CONTAINERROOT}#" \
-  -e "s#<parser>#${PARSER}#"
+  -e "s#<parser>#${PARSER}#" \
+  -e "s#<version>#${VERSION}#"

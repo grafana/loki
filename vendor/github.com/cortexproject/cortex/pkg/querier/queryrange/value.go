@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
@@ -23,7 +23,7 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	case promql.Scalar:
 		return []SampleStream{
 			{
-				Samples: []client.Sample{
+				Samples: []cortexpb.Sample{
 					{
 						Value:       v.V,
 						TimestampMs: v.T,
@@ -57,20 +57,20 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	return nil, errors.Errorf("Unexpected value type: [%s]", res.Value.Type())
 }
 
-func mapLabels(ls labels.Labels) []client.LabelAdapter {
-	result := make([]client.LabelAdapter, 0, len(ls))
+func mapLabels(ls labels.Labels) []cortexpb.LabelAdapter {
+	result := make([]cortexpb.LabelAdapter, 0, len(ls))
 	for _, l := range ls {
-		result = append(result, client.LabelAdapter(l))
+		result = append(result, cortexpb.LabelAdapter(l))
 	}
 
 	return result
 }
 
-func mapPoints(pts ...promql.Point) []client.Sample {
-	result := make([]client.Sample, 0, len(pts))
+func mapPoints(pts ...promql.Point) []cortexpb.Sample {
+	result := make([]cortexpb.Sample, 0, len(pts))
 
 	for _, pt := range pts {
-		result = append(result, client.Sample{
+		result = append(result, cortexpb.Sample{
 			Value:       pt.V,
 			TimestampMs: pt.T,
 		})
