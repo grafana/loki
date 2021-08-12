@@ -15,7 +15,7 @@
 
 // Query scheduler support
 // must be mixed in after frontend and querier so it can override their configuration.
-(import 'query-scheduler.libsonnet') + 
+(import 'query-scheduler.libsonnet') +
 
 // Supporting services
 (import 'memcached.libsonnet') +
