@@ -14,7 +14,14 @@ local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet'
       subject = k.rbac.v1.subject,
       statefulSet = k.apps.v1.statefulSet;
 local loki = import 'github.com/grafana/loki/production/ksonnet/loki/loki.libsonnet';
-local util = (import 'github.com/grafana/jsonnet-libs/ksonnet-util/util.libsonnet').withK(k);
+local util = (import 'github.com/grafana/jsonnet-libs/ksonnet-util/util.libsonnet').withK(k) {
+  withNonRootSecurityContext(uid, fsGroup=null)::
+    { spec+: { template+: { spec+: { securityContext: {
+      fsGroup: if fsGroup == null then uid else fsGroup,
+      runAsNonRoot: true,
+      runAsUser: uid,
+    } } } } },
+};
 
 loki {
   _config+:: {
@@ -80,20 +87,23 @@ loki {
     + deployment.spec.selector.withMatchLabelsMixin({ name: 'admin-api' })
     + deployment.spec.template.metadata.withLabelsMixin({ name: 'admin-api', gossip_ring_member: 'true' })
     + deployment.spec.template.spec.withTerminationGracePeriodSeconds(15)
-    + deployment.spec.template.spec.securityContext.withFsGroup(10001)
     + util.configVolumeMount('loki', '/etc/loki/config')
-    + util.secretVolumeMount('gel-license', '/etc/gel-license/'),
+    + util.secretVolumeMount('gel-license', '/etc/gel-license/')
+    + util.withNonRootSecurityContext(uid=10001),
   admin_api_service:
     util.serviceFor(self.admin_api_deployment),
 
   compactor_data_pvc+: { spec+: { storageClassName:: null } },
+  compactor_statefulset+: util.withNonRootSecurityContext(10001),
+
   // Remove consul in favor of memberlist.
   consul_config_map:: {},
   consul_deployment:: null,
   consul_service:: null,
 
   distributor_deployment+:
-    deployment.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' }),
+    deployment.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' })
+    + util.withNonRootSecurityContext(uid=10001),
 
   gateway_args:: self._config.commonArgs {
     'bootstrap.license.path': '/etc/gel-license/license.jwt',
@@ -116,19 +126,26 @@ loki {
     deployment.new(name='gateway', replicas=3, containers=[self.gateway_container])
     + deployment.spec.template.spec.withTerminationGracePeriodSeconds(15)
     + deployment.spec.template.spec.securityContext.withFsGroup(10001)
+    + deployment.spec.template.spec.securityContext.withRunAsNonRoot(true)
+    + deployment.spec.template.spec.securityContext.withRunAsUser(10001)
     + util.configVolumeMount('loki', '/etc/loki/config')
-    + util.secretVolumeMount('gel-license', '/etc/gel-license/'),
-
+    + util.withNonRootSecurityContext(uid=10001),
+  // Remove the htpasswd Secret used by the OSS Loki NGINX gateway.
+  gateway_secret:: null,
   gateway_service:
     util.serviceFor(self.gateway_deployment),
 
   ingester_data_pvc+: { spec+: { storageClassName:: null } },
   ingester_statefulset+:
-    statefulSet.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' }),
+    statefulSet.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' })
+    + util.withNonRootSecurityContext(uid=10001),
 
   querier_data_pvc+: { spec+: { storageClassName:: null } },
   querier_statefulset+:
-    statefulSet.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' }),
+    statefulSet.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' })
+    + util.withNonRootSecurityContext(uid=10001),
+
+  table_manager_deployment+: util.withNonRootSecurityContext(uid=10001),
 
   tokengen_args:: self._config.commonArgs {
     target: 'tokengen',
@@ -144,7 +161,6 @@ loki {
     ])
     + container.resources.withLimits({ memory: '4Gi' })
     + container.resources.withRequests({ cpu: '500m', memory: '500Mi' }),
-
   tokengen_create_secret_container::
     container.new('create-secret', self._images.kubectl)
     + container.withCommand([
@@ -152,9 +168,7 @@ loki {
       '-euc',
       'kubectl create secret generic gel-admin-token --from-file=token=/shared/admin-token --from-literal=grafana-token="self.base64 <(echo :self.cat /shared/admin-token)))"',
     ])
-    + container.withVolumeMounts([{ mountPath: '/shared', name: 'shared' }])
-    + container.securityContext.withRunAsUser(10001),
-
+    + container.withVolumeMounts([{ mountPath: '/shared', name: 'shared' }]),
   tokengen_job:
     job.new('tokengen')
     + job.spec.withCompletions(1)
@@ -167,11 +181,10 @@ loki {
     + job.spec.template.spec.withVolumes([
       { name: 'config', configMap: { name: 'loki' } },
       { name: 'shared', emptyDir: {} },
-    ]),
-
+    ])
+    + util.withNonRootSecurityContext(uid=10001),
   tokengen_service_account:
     serviceAccount.new('tokengen'),
-
   tokengen_cluster_role:
     clusterRole.new('tokengen')
     + clusterRole.withRules([
@@ -179,7 +192,6 @@ loki {
       + policyRule.withResources(['secrets'])
       + policyRule.withVerbs(['create']),
     ]),
-
   tokengen_cluster_role_binding:
     clusterRoleBinding.new()
     + clusterRoleBinding.metadata.withName('tokengen')
