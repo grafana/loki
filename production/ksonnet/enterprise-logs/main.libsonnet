@@ -72,7 +72,6 @@ loki {
     + deployment.spec.selector.withMatchLabelsMixin({ name: 'admin-api' })
     + deployment.spec.template.metadata.withLabelsMixin({ name: 'admin-api', gossip_ring_member: 'true' })
     + deployment.spec.template.spec.withTerminationGracePeriodSeconds(15)
-    // Mount filesystems as the "loki" user id.
     + deployment.spec.template.spec.securityContext.withFsGroup(10001)
     + util.configVolumeMount('loki', '/etc/loki/config')
     + util.secretVolumeMount('gel-license', '/etc/gel-license/'),
@@ -107,7 +106,6 @@ loki {
   gateway_deployment:
     deployment.new(name='gateway', replicas=3, containers=[self.gateway_container])
     + deployment.spec.template.spec.withTerminationGracePeriodSeconds(15)
-    // Mount filesystems as the "loki" user id.
     + deployment.spec.template.spec.securityContext.withFsGroup(10001)
     + util.configVolumeMount('loki', '/etc/loki/config')
     + util.secretVolumeMount('gel-license', '/etc/gel-license/'),
@@ -144,7 +142,6 @@ loki {
       'kubectl create secret generic gel-admin-token --from-file=token=/shared/admin-token --from-literal=grafana-token="self.base64 <(echo :self.cat /shared/admin-token)))"',
     ])
     + container.withVolumeMounts([{ mountPath: '/shared', name: 'shared' }])
-    // Run as "loki" user.
     + container.securityContext.withRunAsUser(10001),
 
   tokengen_job:
