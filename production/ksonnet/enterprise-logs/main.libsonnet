@@ -10,7 +10,6 @@ local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet'
       pvc = k.core.v1.persistentVolumeClaim,
       service = k.core.v1.service,
       serviceAccount = k.core.v1.serviceAccount,
-      servicePort = k.core.v1.servicePort,
       subject = k.rbac.v1.subject,
       statefulSet = k.apps.v1.statefulSet;
 local loki = import 'github.com/grafana/loki/production/ksonnet/loki/loki.libsonnet';
@@ -213,10 +212,7 @@ loki {
     service.new(
       name='gossip-ring',
       selector={ gossip_ring_member: 'true' },
-      ports=[
-        servicePort.newNamed('gossip-ring', 7946, 7946)
-        + servicePort.withProtocol('TCP'),
-      ],
+      ports=[{ name: 'gossip-ring', port: 7946, protocol: 'TCP', targetPort: 7946 }],
     )
     + service.spec.withClusterIp('None')
     + service.spec.withPublishNotReadyAddresses(true),
