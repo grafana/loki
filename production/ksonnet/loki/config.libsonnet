@@ -147,10 +147,8 @@
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
-        max_outstanding_per_tenant: if $._config.queryFrontend.sharded_queries_enabled then 1024 else 256,
       },
       frontend_worker: {
-        frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
         // Limit to N/2 worker threads per frontend, as we have two frontends.
         parallelism: std.floor($._config.querier.concurrency / $._config.queryFrontend.replicas),
         grpc_client_config: {
