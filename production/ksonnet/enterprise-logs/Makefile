@@ -18,7 +18,7 @@ jsonnetfile.lock.json: jsonnetfile.json
 	jb update
 
 test/.eval: ## Evaluate the library Jsonnet.
-test/.eval: test/eval.jsonnet main.libsonnet test/lib/k.libsonnet vendor test/vendor
+test/.eval: test/eval.jsonnet main.libsonnet test/lib/k.libsonnet test/vendor
 	cd $(@D); tmp=$$(mktemp); if tk eval $(<F) | tee $${tmp}; then mv $${tmp} $(@F); fi
 
 test/lib:
