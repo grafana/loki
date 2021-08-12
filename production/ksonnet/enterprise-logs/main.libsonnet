@@ -49,6 +49,14 @@ loki {
         join_members: ['gossip-ring'],
       },
     },
+
+    ingester_pvc_size: '50Gi',
+    stateful_ingesters: true,
+
+    querier_pvc_size: '50Gi',
+    stateful_queriers: true,
+
+    compactor_pvc_size: '50Gi',
   },
 
   _images+:: {
@@ -78,6 +86,7 @@ loki {
   admin_api_service:
     util.serviceFor(self.admin_api_deployment),
 
+  compactor_data_pvc+: { spec+: { storageClassName:: null } },
   // Remove consul in favor of memberlist.
   consul_config_map:: {},
   consul_deployment:: null,
@@ -113,9 +122,11 @@ loki {
   gateway_service:
     util.serviceFor(self.gateway_deployment),
 
+  ingester_data_pvc+: { spec+: { storageClassName:: null } },
   ingester_statefulset+:
     statefulSet.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' }),
 
+  querier_data_pvc+: { spec+: { storageClassName:: null } },
   querier_statefulset+:
     statefulSet.spec.template.metadata.withLabelsMixin({ gossip_ring_member: 'true' }),
 
