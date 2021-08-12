@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/validation"
 
+	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,7 +47,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/tracing"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 // Config is the root config for Loki.
@@ -223,17 +223,19 @@ func New(cfg Config) (*Loki, error) {
 }
 
 func (t *Loki) setupAuthMiddleware() {
-	t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
-	t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
-	if t.Cfg.AuthEnabled {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
-		t.HTTPAuthMiddleware = middleware.AuthenticateUser
-	} else {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
-		t.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
-	}
+	// Don't check auth header on TransferChunks, as we weren't originally
+	// sending it and this could cause transfers to fail on update.
+	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
+		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
+		[]string{
+			"/grpc.health.v1.Health/Check",
+			"/logproto.Ingester/TransferChunks",
+			"/frontend.Frontend/Process",
+			"/frontend.Frontend/NotifyClientShutdown",
+			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
+			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
+			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
+		})
 }
 
 var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
