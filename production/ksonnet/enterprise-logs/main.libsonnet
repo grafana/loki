@@ -52,6 +52,10 @@ loki {
         },
       },
       memberlist: {
+        retransmit_factor: 2,
+        gossip_interval: '5s',
+        stream_timeout: '5s',
+        abort_if_cluster_join_fails: false,
         bind_port: 7946,
         join_members: ['gossip-ring'],
       },
