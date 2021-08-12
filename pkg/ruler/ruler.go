@@ -16,6 +16,8 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 			cfg,
 			engine,
 			limits,
+			logger,
+			reg,
 		),
 		prometheus.DefaultRegisterer,
 		logger,

@@ -4,16 +4,22 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	c "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -28,9 +34,14 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/ruler/prom"
+	"github.com/grafana/loki/pkg/ruler/prom/instance"
 )
 
 var ErrRemoteWriteDisabled = errors.New("remote-write disabled")
+
+const Name = "bob"
+const Name2 = "bobby"
 
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
@@ -90,13 +101,85 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 	return ValidateGroups(grp)
 }
 
+type storageRegistry struct {
+	sync.RWMutex
+
+	agents map[string]*prom.Agent
+}
+
+func newStorageRegistry() *storageRegistry {
+	return &storageRegistry{agents: make(map[string]*prom.Agent)}
+}
+
+
+func (r *storageRegistry) Set(tenant string, agent *prom.Agent) {
+	r.Lock()
+	defer r.Unlock()
+	r.agents[tenant] = agent
+}
+
+func (r *storageRegistry) Get(tenant string) (storage.Storage) {
+	r.RLock()
+	defer r.RUnlock()
+
+	if val, found := r.agents[tenant]; !found || val == nil {
+		// TODO error handling
+		return nil
+	}
+
+	inst, err := r.agents[tenant].InstanceManager().GetInstance(tenant)
+	if err != nil {
+		// TODO error handling
+		return nil
+	}
+
+	i, ok := inst.(*instance.Instance)
+	if !ok {
+		// TODO error handling
+		return nil
+	}
+
+	return i.Storage()
+}
+
+func (r *storageRegistry) Appender(ctx context.Context) storage.Appender {
+	tenant, _ := user.ExtractOrgID(ctx)
+
+	inst := r.Get(tenant)
+	if inst == nil {
+		return notReadyAppender{}
+	}
+
+	return inst.Appender(ctx)
+}
+
+
+type notReadyAppender struct{}
+
+func (n notReadyAppender) Append(ref uint64, l labels.Labels, t int64, v float64) (uint64, error) {
+	return 0, tsdb.ErrNotReady
+}
+
+func (n notReadyAppender) AppendExemplar(ref uint64, l labels.Labels, e exemplar.Exemplar) (uint64, error) {
+	return 0, tsdb.ErrNotReady
+}
+
+func (n notReadyAppender) Commit() error { return tsdb.ErrNotReady }
+
+func (n notReadyAppender) Rollback() error { return tsdb.ErrNotReady }
+
 func MemstoreTenantManager(
 	cfg Config,
 	engine *logql.Engine,
 	overrides RulesLimits,
+	logger log.Logger,
+	reg prometheus.Registerer,
 ) ruler.ManagerFactory {
 	var msMetrics *memstoreMetrics
 	var rwMetrics *remoteWriteMetrics
+
+	// this need to be multi-tenant
+	rs := newStorageRegistry()
 
 	return ruler.ManagerFactory(func(
 		ctx context.Context,
@@ -121,8 +204,10 @@ func MemstoreTenantManager(
 		queryFunc := engineQueryFunc(engine, overrides, userID)
 		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
+		setupStorage(rs, userID, reg, logger)
+
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      newAppendable(cfg, overrides, logger, userID, rwMetrics),
+			Appendable:      rs, //newAppendable(cfg, overrides, logger, userID, rwMetrics),
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
@@ -141,6 +226,52 @@ func MemstoreTenantManager(
 
 		return mgr
 	})
+}
+
+func setupStorage(st *storageRegistry, tenant string, reg prometheus.Registerer, logger log.Logger) {
+	promCfg := prom.DefaultConfig
+
+	var u url.URL
+	uu, err := u.Parse("http://localhost:9090/api/v1/write")
+	if err != nil {
+		panic(err)
+	}
+
+	def := config.DefaultRemoteWriteConfig
+	def.URL = &c.URL{uu}
+	def.Name = "something"
+	def.Headers = map[string]string{
+		"X-Scope-OrgId": tenant,
+	}
+
+	promCfg.WALDir = "scratch/wal"
+	promCfg.Global = instance.GlobalConfig{
+		RemoteWrite: []*config.RemoteWriteConfig{&def},
+	}
+
+	c := instance.DefaultConfig
+	c.Name = tenant
+	promCfg.Configs = []instance.Config{c}
+
+	if err := promCfg.ApplyDefaults(); err != nil {
+		panic(err)
+	}
+
+	agent, err := prom.New(reg, promCfg, logger)
+	if err != nil {
+		panic(err)
+	}
+
+	// Go through each component and update it.
+	if err := agent.ApplyConfig(promCfg); err != nil {
+		level.Error(logger).Log("msg", "failed to update prometheus", "err", err)
+	}
+
+	//if err := agent.InstanceManager().ApplyConfig(promCfg); err != nil {
+	//	level.Error(logger).Log("msg", "failed to update prometheus", "err", err)
+	//}
+
+	st.Set(tenant, agent)
 }
 
 func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string, metrics *remoteWriteMetrics) storage.Appendable {
