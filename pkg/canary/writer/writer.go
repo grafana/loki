@@ -65,8 +65,7 @@ func (w *Writer) run() {
 		select {
 		case <-t.C:
 			t := time.Now()
-			i := rand.Intn(100) + 1
-			if w.outOfOrderPercentage != 0 && i <= w.outOfOrderPercentage {
+			if i := rand.Intn(100); i < w.outOfOrderPercentage {
 				n := rand.Intn(int(w.outOfOrderMax.Seconds()-w.outOfOrderMin.Seconds())) + int(w.outOfOrderMin.Seconds())
 				t = t.Add(-time.Duration(n) * time.Second)
 			}
