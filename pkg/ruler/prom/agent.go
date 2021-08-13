@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/ruler/prom/instance"
+	"github.com/grafana/loki/pkg/ruler/prom/wal"
 	"github.com/grafana/loki/pkg/ruler/util"
 )
 
@@ -152,17 +153,14 @@ func (a *Agent) newInstance(c instance.Config) (instance.ManagedInstance, error)
 	a.mut.RLock()
 	defer a.mut.RUnlock()
 
-	// Controls the label
-	instanceLabel := "instance_name"
-	if a.cfg.InstanceMode == instance.ModeShared {
-		instanceLabel = "instance_group_name"
-	}
-
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{
-		instanceLabel: c.Name,
+		"tenant": c.Tenant,
 	}, a.reg)
 
-	return a.instanceFactory(reg, c, a.cfg.WALDir, a.logger)
+	// create metrics here and pass down
+	metrics := wal.NewStorageMetrics(reg)
+
+	return a.instanceFactory(reg, c, metrics, a.cfg.WALDir, a.logger)
 }
 
 // Validate will validate the incoming Config and mutate it to apply defaults.
@@ -179,7 +177,6 @@ func (a *Agent) Validate(c *instance.Config) error {
 // ApplyConfig applies config changes to the Agent.
 func (a *Agent) ApplyConfig(cfg Config) error {
 	a.mut.Lock()
-	defer a.mut.Unlock()
 
 	if util.CompareYAML(a.cfg, cfg) {
 		return nil
@@ -208,6 +205,9 @@ func (a *Agent) ApplyConfig(cfg Config) error {
 		cfg.WALCleanupAge,
 		cfg.WALCleanupPeriod,
 	)
+
+	// BasicManager and ModalManager share the same agent mutex... unlock first.
+	a.mut.Unlock()
 
 	a.bm.UpdateManagerConfig(instance.BasicManagerConfig{
 		InstanceRestartBackoff: cfg.InstanceRestartBackoff,
@@ -295,8 +295,8 @@ func (a *Agent) Stop() {
 	a.stopped = true
 }
 
-type instanceFactory = func(reg prometheus.Registerer, cfg instance.Config, walDir string, logger log.Logger) (instance.ManagedInstance, error)
+type instanceFactory = func(reg prometheus.Registerer, cfg instance.Config, metrics *wal.StorageMetrics, walDir string, logger log.Logger) (instance.ManagedInstance, error)
 
-func defaultInstanceFactory(reg prometheus.Registerer, cfg instance.Config, walDir string, logger log.Logger) (instance.ManagedInstance, error) {
-	return instance.New(reg, cfg, walDir, logger)
+func defaultInstanceFactory(reg prometheus.Registerer, cfg instance.Config, metrics *wal.StorageMetrics, walDir string, logger log.Logger) (instance.ManagedInstance, error) {
+	return instance.New(reg, cfg, metrics, walDir, logger)
 }

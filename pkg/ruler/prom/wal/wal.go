@@ -27,80 +27,6 @@ import (
 // storage has already been closed.
 var ErrWALClosed = fmt.Errorf("WAL storage closed")
 
-type storageMetrics struct {
-	r prometheus.Registerer
-
-	numActiveSeries        prometheus.Gauge
-	numDeletedSeries       prometheus.Gauge
-	totalCreatedSeries     prometheus.Counter
-	totalRemovedSeries     prometheus.Counter
-	totalAppendedSamples   prometheus.Counter
-	totalAppendedExemplars prometheus.Counter
-}
-
-func newStorageMetrics(r prometheus.Registerer) *storageMetrics {
-	m := storageMetrics{r: r}
-	m.numActiveSeries = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "agent_wal_storage_active_series",
-		Help: "Current number of active series being tracked by the WAL storage",
-	})
-
-	m.numDeletedSeries = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "agent_wal_storage_deleted_series",
-		Help: "Current number of series marked for deletion from memory",
-	})
-
-	m.totalCreatedSeries = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "agent_wal_storage_created_series_total",
-		Help: "Total number of created series appended to the WAL",
-	})
-
-	m.totalRemovedSeries = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "agent_wal_storage_removed_series_total",
-		Help: "Total number of created series removed from the WAL",
-	})
-
-	m.totalAppendedSamples = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "agent_wal_samples_appended_total",
-		Help: "Total number of samples appended to the WAL",
-	})
-
-	m.totalAppendedExemplars = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "agent_wal_exemplars_appended_total",
-		Help: "Total number of exemplars appended to the WAL",
-	})
-
-	if r != nil {
-		r.MustRegister(
-			m.numActiveSeries,
-			m.numDeletedSeries,
-			m.totalCreatedSeries,
-			m.totalRemovedSeries,
-			m.totalAppendedSamples,
-			m.totalAppendedExemplars,
-		)
-	}
-
-	return &m
-}
-
-func (m *storageMetrics) Unregister() {
-	if m.r == nil {
-		return
-	}
-	cs := []prometheus.Collector{
-		m.numActiveSeries,
-		m.numDeletedSeries,
-		m.totalCreatedSeries,
-		m.totalRemovedSeries,
-		m.totalAppendedSamples,
-		m.totalAppendedExemplars,
-	}
-	for _, c := range cs {
-		m.r.Unregister(c)
-	}
-}
-
 // Storage implements storage.Storage, and just writes to the WAL.
 type Storage struct {
 	// Embed Queryable/ChunkQueryable for compatibility, but don't actually implement it.
@@ -127,11 +53,11 @@ type Storage struct {
 	deletedMtx sync.Mutex
 	deleted    map[uint64]int // Deleted series, and what WAL segment they must be kept until.
 
-	metrics *storageMetrics
+	metrics *StorageMetrics
 }
 
 // NewStorage makes a new Storage.
-func NewStorage(logger log.Logger, registerer prometheus.Registerer, path string) (*Storage, error) {
+func NewStorage(logger log.Logger, metrics *StorageMetrics, registerer prometheus.Registerer, path string) (*Storage, error) {
 	w, err := wal.NewSize(logger, registerer, SubDirectory(path), wal.DefaultSegmentSize, true)
 	if err != nil {
 		return nil, err
@@ -143,7 +69,7 @@ func NewStorage(logger log.Logger, registerer prometheus.Registerer, path string
 		logger:  logger,
 		deleted: map[uint64]int{},
 		series:  newStripeSeries(),
-		metrics: newStorageMetrics(registerer),
+		metrics: metrics,
 		ref:     atomic.NewUint64(0),
 	}
 
@@ -308,8 +234,8 @@ func (w *Storage) loadWAL(r *wal.Reader) (err error) {
 					series := &memSeries{ref: s.Ref, lset: s.Labels, lastTs: 0}
 					w.series.set(s.Labels.Hash(), series)
 
-					w.metrics.numActiveSeries.Inc()
-					w.metrics.totalCreatedSeries.Inc()
+					w.metrics.NumActiveSeries.Inc()
+					w.metrics.TotalCreatedSeries.Inc()
 
 					if biggestRef <= s.Ref {
 						biggestRef = s.Ref
@@ -439,10 +365,10 @@ func (w *Storage) Truncate(mint int64) error {
 	for ref, segment := range w.deleted {
 		if segment < first {
 			delete(w.deleted, ref)
-			w.metrics.totalRemovedSeries.Inc()
+			w.metrics.TotalRemovedSeries.Inc()
 		}
 	}
-	w.metrics.numDeletedSeries.Set(float64(len(w.deleted)))
+	w.metrics.NumDeletedSeries.Set(float64(len(w.deleted)))
 	w.deletedMtx.Unlock()
 
 	if err := wal.DeleteCheckpoints(w.wal.Dir(), last); err != nil {
@@ -460,7 +386,7 @@ func (w *Storage) Truncate(mint int64) error {
 // gc removes data before the minimum timestamp from the head.
 func (w *Storage) gc(mint int64) {
 	deleted := w.series.gc(mint)
-	w.metrics.numActiveSeries.Sub(float64(len(deleted)))
+	w.metrics.NumActiveSeries.Sub(float64(len(deleted)))
 
 	_, last, _ := wal.Segments(w.wal.Dir())
 	w.deletedMtx.Lock()
@@ -478,7 +404,7 @@ func (w *Storage) gc(mint int64) {
 		w.deleted[ref] = last
 	}
 
-	w.metrics.numDeletedSeries.Set(float64(len(w.deleted)))
+	w.metrics.NumDeletedSeries.Set(float64(len(w.deleted)))
 }
 
 // WriteStalenessMarkers appends a staleness sample for all active series.
@@ -586,8 +512,8 @@ func (a *appender) Append(ref uint64, l labels.Labels, t int64, v float64) (uint
 				Labels: l,
 			})
 
-			a.w.metrics.numActiveSeries.Inc()
-			a.w.metrics.totalCreatedSeries.Inc()
+			a.w.metrics.NumActiveSeries.Inc()
+			a.w.metrics.TotalCreatedSeries.Inc()
 		}
 	}
 
@@ -604,7 +530,7 @@ func (a *appender) Append(ref uint64, l labels.Labels, t int64, v float64) (uint
 		V:   v,
 	})
 
-	a.w.metrics.totalAppendedSamples.Inc()
+	a.w.metrics.TotalAppendedSamples.Inc()
 	return series.ref, nil
 }
 

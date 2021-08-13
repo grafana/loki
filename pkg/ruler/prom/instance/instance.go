@@ -59,6 +59,7 @@ var (
 // Config is a specific agent that runs within the overall Prometheus
 // agent. It has its own set of scrape_configs and remote_write rules.
 type Config struct {
+	Tenant                   string
 	Name                     string                      `yaml:"name,omitempty"`
 	HostFilter               bool                        `yaml:"host_filter,omitempty"`
 	HostFilterRelabelConfigs []*relabel.Config           `yaml:"host_filter_relabel_configs,omitempty"`
@@ -249,13 +250,13 @@ type Instance struct {
 
 // New creates a new Instance with a directory for storing the WAL. The instance
 // will not start until Run is called on the instance.
-func New(reg prometheus.Registerer, cfg Config, walDir string, logger log.Logger) (*Instance, error) {
+func New(reg prometheus.Registerer, cfg Config, metrics *wal.StorageMetrics, walDir string, logger log.Logger) (*Instance, error) {
 	logger = log.With(logger, "instance", cfg.Name)
 
 	instWALDir := filepath.Join(walDir, cfg.Name)
 
 	newWal := func(reg prometheus.Registerer) (walStorage, error) {
-		return wal.NewStorage(logger, reg, instWALDir)
+		return wal.NewStorage(logger, metrics, reg, instWALDir)
 	}
 
 	return newInstance(cfg, reg, logger, newWal)
@@ -705,6 +706,7 @@ func (i *Instance) getRemoteWriteTimestamp() int64 {
 		lbls[idx] = i.cfg.RemoteWrite[idx].Name
 	}
 
+	// TODO: does this work?
 	vals, err := i.vc.GetValues("remote_name", lbls...)
 	if err != nil {
 		level.Error(i.logger).Log("msg", "could not get remote write timestamps", "err", err)

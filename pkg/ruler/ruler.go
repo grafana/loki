@@ -19,7 +19,7 @@ func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logge
 			logger,
 			reg,
 		),
-		prometheus.DefaultRegisterer,
+		reg,
 		logger,
 	)
 	if err != nil {
