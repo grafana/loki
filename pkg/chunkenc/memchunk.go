@@ -15,7 +15,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 

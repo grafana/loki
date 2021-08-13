@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/sdjournal"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

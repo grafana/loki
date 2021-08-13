@@ -31,7 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"

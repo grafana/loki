@@ -11,7 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
 

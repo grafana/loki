@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/go-logfmt/logfmt"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -18,6 +18,8 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -255,7 +257,7 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 
 func newLogger(logLevel logging.Level) log.Logger {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
-	logger = level.NewFilter(logger, logLevel.Gokit)
+	logger = level.NewFilter(logger, util.LogFilter(logLevel.String()))
 	logger = log.With(logger, "caller", log.Caller(3))
 	return logger
 }

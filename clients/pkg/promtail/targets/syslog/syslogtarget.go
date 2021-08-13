@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/influxdata/go-syslog/v3"
 	"github.com/influxdata/go-syslog/v3/rfc5424"
 	"github.com/mwitkow/go-conntrack"

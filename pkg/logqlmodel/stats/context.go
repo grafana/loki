@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 )
 
 type ctxKeyType string

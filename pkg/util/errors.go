@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

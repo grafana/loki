@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/config"

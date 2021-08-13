@@ -8,7 +8,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"

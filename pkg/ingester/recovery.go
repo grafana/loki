@@ -7,7 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"

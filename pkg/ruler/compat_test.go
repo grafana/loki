@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/require"
 

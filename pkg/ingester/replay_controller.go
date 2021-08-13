@@ -5,7 +5,7 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
 )
 

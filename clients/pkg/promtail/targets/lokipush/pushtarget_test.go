@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"

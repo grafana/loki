@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/pkg/errors"
