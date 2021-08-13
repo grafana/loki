@@ -172,7 +172,7 @@ loki {
       'kubectl create secret generic gel-admin-token --from-file=token=/shared/admin-token --from-literal=grafana-token="self.base64 <(echo :self.cat /shared/admin-token)))"',
     ])
     + container.withVolumeMounts([{ mountPath: '/shared', name: 'shared' }]),
-  tokengen_job:
+  tokengen_job::
     job.new('tokengen')
     + job.spec.withCompletions(1)
     + job.spec.withParallelism(1)
