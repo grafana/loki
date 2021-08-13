@@ -17,14 +17,18 @@ jsonnetfile.lock.json: ## Update the locked dependency versions for the library.
 jsonnetfile.lock.json: jsonnetfile.json
 	jb update
 
-test/.eval: ## Evaluate the library Jsonnet.
+test: ## Evaluate the library Jsonnet.
+test: test/.eval
+	:
+
+test/.eval: # Cache testing results.
 test/.eval: test/eval.jsonnet main.libsonnet test/lib/k.libsonnet test/vendor
 	cd $(@D); tmp=$$(mktemp); if tk eval $(<F) | tee $${tmp}; then mv $${tmp} $(@F); fi
 
 test/lib:
 	mkdir -p $@
 
-test/lib/k.libsonnet: ## Install implicit k.libsonnet dependency used in testing.
+test/lib/k.libsonnet: # Install implicit k.libsonnet dependency used in testing.
 test/lib/k.libsonnet: test/lib
 	printf "(import 'github.com/jsonnet-libs/k8s-libsonnet/%s/main.libsonnet')" $(K8S_VERSION) > $@
 
