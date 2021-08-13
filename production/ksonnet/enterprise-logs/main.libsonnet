@@ -1,4 +1,5 @@
 // TODO(jdb): Use cluster_dns_suffix to configure absolute domain names so as to avoid excessive lookups.
+// TODO(jdb): Introduce utility functions for mapping over all containers, all microservices (modules), all apps, etc..
 local k = import 'github.com/grafana/jsonnet-libs/ksonnet-util/kausal.libsonnet',
       clusterRole = k.rbac.v1.clusterRole,
       clusterRoleBinding = k.rbac.v1.clusterRoleBinding,
