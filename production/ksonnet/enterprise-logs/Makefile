@@ -39,3 +39,12 @@ test/jsonnetfile.json: test/jsonnetfile.jsonnet variables.mk jsonnetfile.json
 test/jsonnetfile.lock.json test/vendor: ## Update the locked dependency versions used in testing.
 test/jsonnetfile.lock.json test/vendor: test/jsonnetfile.json
 	cd $(@D); jb update
+
+.PHONY: k3d-cluster-create
+k3d-cluster-create: ## Create a development k3d cluster.
+	./scripts/k3d-cluster create
+
+.PHONY: k3d-cluster-create
+k3d-cluster-delete: ## Delete a development k3d cluster.
+k3d-cluster-delete:
+	./scripts/k3d-cluster delete
