@@ -19,6 +19,7 @@ type ExpirationChecker interface {
 	MarkPhaseStarted()
 	MarkPhaseFailed()
 	MarkPhaseFinished()
+	DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool
 }
 
 type expirationChecker struct {
@@ -44,6 +45,15 @@ func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []mod
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
 	return now.Sub(ref.Through) > period, nil
+}
+
+// DropFromIndex tells if it is okay to drop the chunk entry from index table.
+// We check if tableEndTime is out of retention period, calculated using the labels from the chunk.
+// If the tableEndTime is out of retention then we can drop the chunk entry without removing the chunk from the store.
+func (e *expirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+	userID := unsafeGetString(ref.UserID)
+	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+	return now.Sub(tableEndTime) > period
 }
 
 func (e *expirationChecker) MarkPhaseStarted() {

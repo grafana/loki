@@ -207,7 +207,7 @@ func Test_EmptyTable(t *testing.T) {
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
 		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 		require.NoError(t, err)
-		empty, err := markforDelete(context.Background(), noopWriter{}, it, noopCleaner{},
+		empty, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 		require.NoError(t, err)
 		require.True(t, empty)
@@ -406,4 +406,59 @@ func TestChunkRewriter(t *testing.T) {
 			store.Stop()
 		})
 	}
+}
+
+func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
+	schema := allSchemas[2]
+	store := newTestStore(t)
+	now := model.Now()
+	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
+	retentionPeriod := now.Sub(todaysTableInterval.Start) / 2
+
+	// chunks in retention
+	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, now)
+	c2 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start.Add(-7*24*time.Hour), now)
+
+	// chunks out of retention
+	c3 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, now.Add(-retentionPeriod))
+	c4 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "3"}}, todaysTableInterval.Start.Add(-12*time.Hour), todaysTableInterval.Start.Add(-10*time.Hour))
+	c5 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "4"}}, todaysTableInterval.Start, now.Add(-retentionPeriod))
+
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
+		c1, c2, c3, c4, c5,
+	}))
+
+	store.Stop()
+
+	tables := store.indexTables()
+	require.Len(t, tables, 8)
+
+	for i, table := range tables {
+		err := table.DB.Update(func(tx *bbolt.Tx) error {
+			it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
+			require.NoError(t, err)
+			empty, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
+				NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
+			require.NoError(t, err)
+			if i == 7 {
+				require.False(t, empty)
+			} else {
+				require.True(t, empty, "table %s must be empty", table.name)
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		require.NoError(t, table.Close())
+	}
+
+	store.open()
+
+	// verify the chunks which were not supposed to be deleted are still there
+	require.True(t, store.HasChunk(c1))
+	require.True(t, store.HasChunk(c2))
+
+	// verify the chunks which were supposed to be deleted are gone
+	require.False(t, store.HasChunk(c3))
+	require.False(t, store.HasChunk(c4))
+	require.False(t, store.HasChunk(c5))
 }

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"sync"
 	"time"
 
@@ -198,7 +197,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 		return err
 	}
 
-	interval := extractIntervalFromTableName(tableName)
+	interval := retention.ExtractIntervalFromTableName(tableName)
 	intervalHasExpiredChunks := false
 	if c.cfg.RetentionEnabled {
 		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
@@ -338,17 +337,6 @@ func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bo
 	return e.retentionExpiryChecker.IntervalHasExpiredChunks(interval) || e.deletionExpiryChecker.IntervalHasExpiredChunks(interval)
 }
 
-func extractIntervalFromTableName(tableName string) model.Interval {
-	interval := model.Interval{
-		Start: 0,
-		End:   model.Now(),
-	}
-	tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
-	if err != nil {
-		return interval
-	}
-
-	interval.Start = model.TimeFromUnix(tableNumber * 86400)
-	interval.End = interval.Start.Add(24 * time.Hour)
-	return interval
+func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
 }

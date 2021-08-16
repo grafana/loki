@@ -104,7 +104,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 			return err
 		}
 
-		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration, chunkRewriter)
+		empty, err = markforDelete(ctx, tableName, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration, chunkRewriter)
 		if err != nil {
 			return err
 		}
@@ -129,15 +129,19 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 	return empty, markerWriter.Count(), nil
 }
 
-func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, error) {
+func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, error) {
 	seriesMap := newUserSeriesMap()
+	// tableInterval holds the interval for which the table is expected to have the chunks indexed
+	tableInterval := ExtractIntervalFromTableName(tableName)
 	empty := true
 	now := model.Now()
+
 	for chunkIt.Next() {
 		if chunkIt.Err() != nil {
 			return false, chunkIt.Err()
 		}
 		c := chunkIt.Entry()
+		// see if the chunk is deleted completely or partially
 		if expired, nonDeletedIntervals := expiration.Expired(c, now); expired {
 			if len(nonDeletedIntervals) == 0 {
 				seriesMap.Add(c.SeriesID, c.UserID)
@@ -160,6 +164,20 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 			}
 			continue
 		}
+
+		// The chunk is not deleted, now see if we can drop its index entry based on end time from tableInterval.
+		// If chunk end time is after the end time of tableInterval, it means the chunk would also be indexed in the next table.
+		// We would now check if the end time of the tableInterval is out of retention period so that
+		// we can drop the chunk entry from this table without removing the chunk from the store.
+		if c.Through.After(tableInterval.End) {
+			if expiration.DropFromIndex(c, tableInterval.End, now) {
+				if err := chunkIt.Delete(); err != nil {
+					return false, err
+				}
+				continue
+			}
+		}
+
 		empty = false
 	}
 	if empty {
