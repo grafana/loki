@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -192,4 +193,33 @@ func TestReadSampleBatch(t *testing.T) {
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
+}
+
+type CloseTestingSmplIterator struct {
+	closed atomic.Bool
+	s      logproto.Sample
+}
+
+func (i *CloseTestingSmplIterator) Next() bool              { return true }
+func (i *CloseTestingSmplIterator) Sample() logproto.Sample { return i.s }
+func (i *CloseTestingSmplIterator) Labels() string          { return "" }
+func (i *CloseTestingSmplIterator) Error() error            { return nil }
+func (i *CloseTestingSmplIterator) Close() error {
+	i.closed.Store(true)
+	return nil
+}
+
+func TestNonOverlappingSampleClose(t *testing.T) {
+	a, b := &CloseTestingSmplIterator{}, &CloseTestingSmplIterator{}
+	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b}, "")
+
+	// Ensure both itr.cur and itr.iterators are non nil
+	itr.Next()
+
+	require.NotNil(t, itr.(*nonOverlappingSampleIterator).curr)
+
+	itr.Close()
+
+	require.Equal(t, true, a.closed.Load())
+	require.Equal(t, true, b.closed.Load())
 }

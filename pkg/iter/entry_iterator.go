@@ -429,6 +429,9 @@ func (i *nonOverlappingIterator) Error() error {
 }
 
 func (i *nonOverlappingIterator) Close() error {
+	if i.curr != nil {
+		i.curr.Close()
+	}
 	for _, iter := range i.iterators {
 		iter.Close()
 	}

@@ -461,6 +461,9 @@ func (i *nonOverlappingSampleIterator) Error() error {
 }
 
 func (i *nonOverlappingSampleIterator) Close() error {
+	if i.curr != nil {
+		i.curr.Close()
+	}
 	for _, iter := range i.iterators {
 		iter.Close()
 	}
