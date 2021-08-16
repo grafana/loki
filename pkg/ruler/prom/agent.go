@@ -179,6 +179,7 @@ func (a *Agent) ApplyConfig(cfg Config) error {
 	a.mut.Lock()
 
 	if util.CompareYAML(a.cfg, cfg) {
+		a.mut.Unlock()
 		return nil
 	}
 

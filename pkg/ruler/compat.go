@@ -192,6 +192,7 @@ func MemstoreTenantManager(
 
 	agent, err := prom.New(reg, promCfg, logger)
 	if err != nil {
+		// TODO don't panic
 		panic(err)
 	}
 
@@ -201,7 +202,7 @@ func MemstoreTenantManager(
 		panic(err)
 	}
 
-	return ruler.ManagerFactory(func(
+	return func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
@@ -239,19 +240,16 @@ func MemstoreTenantManager(
 			GroupLoader:     GroupLoader{},
 		})
 
-		// without this, we get some lock contention... why?
-		//if userID == "12345" {
-		setupStorage(agent, userID, logger)
-		//}
+		setupStorage(agent, userID, overrides, logger)
 
 		// initialize memStore, bound to the manager's alerting rules
 		memStore.Start(mgr)
 
 		return mgr
-	})
+	}
 }
 
-func setupStorage(agent *prom.Agent, tenant string, logger log.Logger) {
+func setupStorage(agent *prom.Agent, tenant string, overrides RulesLimits, logger log.Logger) {
 	conf := instance.DefaultConfig
 	conf.Name = tenant
 	conf.Tenant = tenant
@@ -262,19 +260,33 @@ func setupStorage(agent *prom.Agent, tenant string, logger log.Logger) {
 		panic(err)
 	}
 
-	def := config.DefaultRemoteWriteConfig
-	def.QueueConfig.MaxSamplesPerSend = 10
-	def.QueueConfig.Capacity = 10
-	def.URL = &c.URL{uu}
-	def.Name = "something"
-	def.Headers = map[string]string{
+	rwConf := config.DefaultRemoteWriteConfig
+	rwConf.QueueConfig.MaxSamplesPerSend = 1000
+	rwConf.QueueConfig.Capacity = overrides.RulerRemoteWriteQueueCapacity(tenant)
+	rwConf.QueueConfig.RetryOnRateLimit = true
+	//def.QueueConfig.MinShards = 10
+	//def.RemoteTimeout = model.Duration(30*time.Nanosecond)
+	//def.QueueConfig.BatchSendDeadline = model.Duration(10*time.Millisecond)
+	rwConf.URL = &c.URL{uu}
+	rwConf.Name = "something"
+	rwConf.Headers = map[string]string{
 		"X-Scope-OrgId": tenant,
 	}
 
-	conf.RemoteWrite = []*config.RemoteWriteConfig{&def}
+	conf.RemoteWrite = []*config.RemoteWriteConfig{&rwConf}
 	cfg := agent.Config()
 
-	cfg.Configs = append(cfg.Configs, conf)
+	var currConfigs []instance.Config
+	for _, c := range cfg.Configs {
+		// remove old config, if present
+		if c.Name == tenant {
+			continue
+		}
+
+		currConfigs = append(currConfigs, c)
+	}
+
+	cfg.Configs = append(currConfigs, conf)
 
 	// Go through each component and update it.
 	if err := agent.ApplyConfig(cfg); err != nil {
