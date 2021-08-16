@@ -104,7 +104,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 			return err
 		}
 
-		empty, err = markforDelete(ctx, tableName, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration, chunkRewriter)
+		empty, err = markforDelete(ctx, tableName, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg, tableName), t.expiration, chunkRewriter)
 		if err != nil {
 			return err
 		}
@@ -141,18 +141,20 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 			return false, chunkIt.Err()
 		}
 		c := chunkIt.Entry()
+		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
+
 		// see if the chunk is deleted completely or partially
 		if expired, nonDeletedIntervals := expiration.Expired(c, now); expired {
-			if len(nonDeletedIntervals) == 0 {
-				seriesMap.Add(c.SeriesID, c.UserID)
-			} else {
+			if len(nonDeletedIntervals) > 0 {
 				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
 				if err != nil {
 					return false, err
 				}
 
-				if !wroteChunks {
-					seriesMap.Add(c.SeriesID, c.UserID)
+				if wroteChunks {
+					// we have re-written chunk to the storage so the table won't be empty and the series are still being referred.
+					empty = false
+					seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
 				}
 			}
 
@@ -179,6 +181,7 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 		}
 
 		empty = false
+		seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
 	}
 	if empty {
 		return true, nil
@@ -186,8 +189,13 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 	if ctx.Err() != nil {
 		return false, ctx.Err()
 	}
-	return false, seriesMap.ForEach(func(seriesID, userID []byte) error {
-		return seriesCleaner.Cleanup(seriesID, userID)
+
+	return false, seriesMap.ForEach(func(info userSeriesInfo) error {
+		if !info.isDeleted {
+			return nil
+		}
+
+		return seriesCleaner.Cleanup(info.UserID(), info.lbls)
 	})
 }
 

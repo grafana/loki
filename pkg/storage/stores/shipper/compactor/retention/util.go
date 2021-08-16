@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"strconv"
 	"time"
 	"unsafe"
@@ -15,14 +14,6 @@ import (
 // unsafeGetString is like yolostring but with a meaningful name
 func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
-}
-
-func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
 }
 
 func copyFile(src, dst string) (int64, error) {
