@@ -40,7 +40,7 @@ type StorageClient interface {
 	ListTables(ctx context.Context) ([]string, error)
 	ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, error)
 	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
-	IsObjectNotFoundErr(err error) bool
+	IsFileNotFoundErr(err error) bool
 }
 
 // Table is a collection of multiple files created for a same table by various ingesters.
@@ -436,7 +436,7 @@ func (t *Table) downloadFile(ctx context.Context, file storage.IndexFile) error 
 
 	err := shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
 	if err != nil {
-		if t.storageClient.IsObjectNotFoundErr(err) {
+		if t.storageClient.IsFileNotFoundErr(err) {
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", file.Name))
 			return nil
 		}
@@ -492,7 +492,7 @@ func (t *Table) doParallelDownload(ctx context.Context, files []storage.IndexFil
 				filePath := path.Join(folderPathForTable, file.Name)
 				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
 				if err != nil {
-					if t.storageClient.IsObjectNotFoundErr(err) {
+					if t.storageClient.IsFileNotFoundErr(err) {
 						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", file.Name))
 						err = nil
 					} else {

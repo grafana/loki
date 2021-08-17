@@ -12,13 +12,14 @@ import (
 
 const delimiter = "/"
 
+// Client is used to manage boltdb index files in object storage, when using boltdb-shipper.
 type Client interface {
 	ListTables(ctx context.Context) ([]string, error)
 	ListFiles(ctx context.Context, tableName string) ([]IndexFile, error)
 	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
 	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
 	DeleteFile(ctx context.Context, tableName, fileName string) error
-	IsObjectNotFoundErr(err error) bool
+	IsFileNotFoundErr(err error) bool
 	Stop()
 }
 
@@ -51,7 +52,8 @@ func (s *indexStorageClient) ListTables(ctx context.Context) ([]string, error) {
 }
 
 func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string) ([]IndexFile, error) {
-	// The forward slash here needs to stay because we are trying to list contents of a directory without which we will get the name of the same directory back with hosted object stores.
+	// The forward slash here needs to stay because we are trying to list contents of a directory without which
+	// we will get the name of the same directory back with hosted object stores.
 	// This is due to the object stores not having a concept of directories.
 	objects, _, err := s.objectClient.List(ctx, s.storagePrefix+tableName+delimiter, delimiter)
 	if err != nil {
@@ -85,7 +87,7 @@ func (s *indexStorageClient) DeleteFile(ctx context.Context, tableName, fileName
 	return s.objectClient.DeleteObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
 }
 
-func (s *indexStorageClient) IsObjectNotFoundErr(err error) bool {
+func (s *indexStorageClient) IsFileNotFoundErr(err error) bool {
 	return s.objectClient.IsObjectNotFoundErr(err)
 }
 
