@@ -141,6 +141,8 @@
         grpc_server_max_recv_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_send_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_concurrent_streams: 1000,
+        grpc_server_ping_without_stream_allowed: true,  // https://github.com/grafana/cortex-jsonnet/pull/233
+        grpc_server_min_time_between_pings: '10s',  // https://github.com/grafana/cortex-jsonnet/pull/233
         http_server_write_timeout: '1m',
         http_listen_port: $._config.http_listen_port,
       },
