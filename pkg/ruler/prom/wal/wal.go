@@ -53,11 +53,11 @@ type Storage struct {
 	deletedMtx sync.Mutex
 	deleted    map[uint64]int // Deleted series, and what WAL segment they must be kept until.
 
-	metrics *StorageMetrics
+	metrics *Metrics
 }
 
 // NewStorage makes a new Storage.
-func NewStorage(logger log.Logger, metrics *StorageMetrics, registerer prometheus.Registerer, path string) (*Storage, error) {
+func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string) (*Storage, error) {
 	w, err := wal.NewSize(logger, registerer, SubDirectory(path), wal.DefaultSegmentSize, true)
 	if err != nil {
 		return nil, err
@@ -88,10 +88,15 @@ func NewStorage(logger log.Logger, metrics *StorageMetrics, registerer prometheu
 	}
 
 	if err := storage.replayWAL(); err != nil {
+		metrics.TotalCorruptions.Inc()
+
 		level.Warn(storage.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
 		if err := w.Repair(err); err != nil {
+			metrics.TotalFailedRepairs.Inc()
 			return nil, errors.Wrap(err, "repair corrupted WAL")
 		}
+
+		metrics.TotalSucceededRepairs.Inc()
 	}
 
 	return storage, nil

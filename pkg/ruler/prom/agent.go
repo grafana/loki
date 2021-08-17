@@ -158,7 +158,7 @@ func (a *Agent) newInstance(c instance.Config) (instance.ManagedInstance, error)
 	}, a.reg)
 
 	// create metrics here and pass down
-	metrics := wal.NewStorageMetrics(reg)
+	metrics := wal.NewMetrics(reg)
 
 	return a.instanceFactory(reg, c, metrics, a.cfg.WALDir, a.logger)
 }
@@ -296,8 +296,8 @@ func (a *Agent) Stop() {
 	a.stopped = true
 }
 
-type instanceFactory = func(reg prometheus.Registerer, cfg instance.Config, metrics *wal.StorageMetrics, walDir string, logger log.Logger) (instance.ManagedInstance, error)
+type instanceFactory = func(reg prometheus.Registerer, cfg instance.Config, metrics *wal.Metrics, walDir string, logger log.Logger) (instance.ManagedInstance, error)
 
-func defaultInstanceFactory(reg prometheus.Registerer, cfg instance.Config, metrics *wal.StorageMetrics, walDir string, logger log.Logger) (instance.ManagedInstance, error) {
+func defaultInstanceFactory(reg prometheus.Registerer, cfg instance.Config, metrics *wal.Metrics, walDir string, logger log.Logger) (instance.ManagedInstance, error) {
 	return instance.New(reg, cfg, metrics, walDir, logger)
 }

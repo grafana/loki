@@ -261,6 +261,7 @@ func setupStorage(agent *prom.Agent, tenant string, overrides RulesLimits, logge
 	}
 
 	rwConf := config.DefaultRemoteWriteConfig
+	rwConf.Name = tenant
 	rwConf.QueueConfig.MaxSamplesPerSend = 1000
 	rwConf.QueueConfig.Capacity = overrides.RulerRemoteWriteQueueCapacity(tenant)
 	rwConf.QueueConfig.RetryOnRateLimit = true
