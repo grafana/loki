@@ -327,22 +327,6 @@ func groupConfigs(groupName string, grouped groupedConfigs) (Config, error) {
 	combined.Name = groupName
 	combined.ScrapeConfigs = []*config.ScrapeConfig{}
 
-	// Assign all remote_write configs in the group a consistent set of remote_names.
-	// If the grouped configs are coming from the scraping service, defaults will have
-	// been applied and the remote names will be prefixed with the old instance config name.
-	for _, rwc := range combined.RemoteWrite {
-		// Blank out the existing name before getting the hash so it is doesn't take into
-		// account any existing name.
-		rwc.Name = ""
-
-		hash, err := getHash(rwc)
-		if err != nil {
-			return Config{}, err
-		}
-
-		rwc.Name = groupName[:6] + "-" + hash[:6]
-	}
-
 	// Combine all the scrape configs. It's possible that two different ungrouped
 	// configs had a matching job name, but this will be detected and rejected
 	// (as it should be) when the underlying Manager eventually validates the

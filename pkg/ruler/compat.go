@@ -269,7 +269,7 @@ func setupStorage(agent *prom.Agent, tenant string, overrides RulesLimits, logge
 	//def.RemoteTimeout = model.Duration(30*time.Nanosecond)
 	//def.QueueConfig.BatchSendDeadline = model.Duration(10*time.Millisecond)
 	rwConf.URL = &c.URL{uu}
-	rwConf.Name = "something"
+	rwConf.Name = tenant
 	rwConf.Headers = map[string]string{
 		"X-Scope-OrgId": tenant,
 	}

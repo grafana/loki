@@ -156,8 +156,6 @@ func (c *Config) ApplyDefaults(global GlobalConfig) error {
 		jobNames[sc.JobName] = struct{}{}
 	}
 
-	rwNames := map[string]struct{}{}
-
 	// If the instance remote write is not filled in, then apply the prometheus write config
 	if len(c.RemoteWrite) == 0 {
 		c.RemoteWrite = c.global.RemoteWrite
@@ -166,33 +164,7 @@ func (c *Config) ApplyDefaults(global GlobalConfig) error {
 		if cfg == nil {
 			return fmt.Errorf("empty or null remote write config section")
 		}
-
-		// Typically Prometheus ignores empty names here, but we need to assign a
-		// unique name to the config so we can pull metrics from it when running
-		// an instance.
-		var generatedName bool
-		if cfg.Name == "" {
-			hash, err := getHash(cfg)
-			if err != nil {
-				return err
-			}
-
-			// We have to add the name of the instance to ensure that generated metrics
-			// are unique across multiple agent instances. The remote write queues currently
-			// globally register their metrics so we can't inject labels here.
-			cfg.Name = c.Name + "-" + hash[:6]
-			generatedName = true
-		}
-
-		if _, exists := rwNames[cfg.Name]; exists {
-			if generatedName {
-				return fmt.Errorf("found two identical remote_write configs")
-			}
-			return fmt.Errorf("found duplicate remote write configs with name %q", cfg.Name)
-		}
-		rwNames[cfg.Name] = struct{}{}
 	}
-
 	return nil
 }
 
