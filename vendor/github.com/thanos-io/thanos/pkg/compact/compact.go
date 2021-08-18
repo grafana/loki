@@ -41,6 +41,12 @@ const (
 	ResolutionLevel1h  = ResolutionLevel(downsample.ResLevel2)
 )
 
+const (
+	// DedupAlgorithmPenalty is the penalty based compactor series merge algorithm.
+	// This is the same as the online deduplication of querier except counter reset handling.
+	DedupAlgorithmPenalty = "penalty"
+)
+
 // Syncer synchronizes block metas from a bucket into a local directory.
 // It sorts them into compaction groups based on equal label sets.
 type Syncer struct {
@@ -65,7 +71,7 @@ type syncerMetrics struct {
 	blocksMarkedForDeletion   prometheus.Counter
 }
 
-func newSyncerMetrics(reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) *syncerMetrics {
+func newSyncerMetrics(reg prometheus.Registerer, blocksMarkedForDeletion, garbageCollectedBlocks prometheus.Counter) *syncerMetrics {
 	var m syncerMetrics
 
 	m.garbageCollectedBlocks = garbageCollectedBlocks
@@ -90,7 +96,7 @@ func newSyncerMetrics(reg prometheus.Registerer, blocksMarkedForDeletion prometh
 
 // NewMetaSyncer returns a new Syncer for the given Bucket and directory.
 // Blocks must be at least as old as the sync delay for being considered.
-func NewMetaSyncer(logger log.Logger, reg prometheus.Registerer, bkt objstore.Bucket, fetcher block.MetadataFetcher, duplicateBlocksFilter *block.DeduplicateFilter, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter, blockSyncConcurrency int) (*Syncer, error) {
+func NewMetaSyncer(logger log.Logger, reg prometheus.Registerer, bkt objstore.Bucket, fetcher block.MetadataFetcher, duplicateBlocksFilter *block.DeduplicateFilter, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, blocksMarkedForDeletion, garbageCollectedBlocks prometheus.Counter, blockSyncConcurrency int) (*Syncer, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -501,7 +507,7 @@ func (cg *Group) Compact(ctx context.Context, dir string, planner Planner, comp 
 		}
 	}()
 
-	if err := os.MkdirAll(subDir, 0777); err != nil {
+	if err := os.MkdirAll(subDir, 0750); err != nil {
 		return false, ulid.ULID{}, errors.Wrap(err, "create compaction group dir")
 	}
 

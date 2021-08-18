@@ -8,14 +8,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
-
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
@@ -31,7 +30,7 @@ type autoscale interface {
 
 type callManager struct {
 	limiter       *rate.Limiter
-	backoffConfig util.BackoffConfig
+	backoffConfig backoff.Config
 }
 
 type dynamoTableClient struct {
@@ -81,7 +80,7 @@ func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Contex
 		_ = d.limiter.Wait(ctx)
 	}
 
-	backoff := util.NewBackoff(ctx, d.backoffConfig)
+	backoff := backoff.New(ctx, d.backoffConfig)
 	for backoff.Ongoing() {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {

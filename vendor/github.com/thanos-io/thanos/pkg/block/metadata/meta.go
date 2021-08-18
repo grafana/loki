@@ -19,12 +19,14 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
-	"github.com/thanos-io/thanos/pkg/runutil"
 	"gopkg.in/yaml.v3"
+
+	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
 type SourceType string
@@ -95,6 +97,8 @@ type Rewrite struct {
 	Sources []ulid.ULID `json:"sources,omitempty"`
 	// Deletions if applied (in order).
 	DeletionsApplied []DeletionRequest `json:"deletions_applied,omitempty"`
+	// Relabels if applied.
+	RelabelsApplied []*relabel.Config `json:"relabels_applied,omitempty"`
 }
 
 type Matchers []*labels.Matcher
@@ -110,6 +114,7 @@ func (m *Matchers) UnmarshalYAML(value *yaml.Node) (err error) {
 type DeletionRequest struct {
 	Matchers  Matchers             `json:"matchers" yaml:"matchers"`
 	Intervals tombstones.Intervals `json:"intervals,omitempty" yaml:"intervals,omitempty"`
+	RequestID string               `json:"request_id,omitempty" yaml:"request_id,omitempty"`
 }
 
 type File struct {
@@ -197,7 +202,7 @@ func renameFile(logger log.Logger, from, to string) error {
 
 // ReadFromDir reads the given meta from <dir>/meta.json.
 func ReadFromDir(dir string) (*Meta, error) {
-	f, err := os.Open(filepath.Join(dir, MetaFilename))
+	f, err := os.Open(filepath.Join(dir, filepath.Clean(MetaFilename)))
 	if err != nil {
 		return nil, err
 	}

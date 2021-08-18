@@ -78,7 +78,7 @@ func NewDiskWriter(ctx context.Context, logger log.Logger, bDir string) (_ *Disk
 	if err = os.RemoveAll(bTmp); err != nil {
 		return nil, err
 	}
-	if err = os.MkdirAll(bTmp, 0777); err != nil {
+	if err = os.MkdirAll(bTmp, 0750); err != nil {
 		return nil, err
 	}
 

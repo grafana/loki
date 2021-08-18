@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/backoff"
 	json "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -59,7 +59,7 @@ type Reader struct {
 	sValue       string
 	lName        string
 	lVal         string
-	backoff      *util.Backoff
+	backoff      *backoff.Backoff
 	nextQuery    time.Time
 	backoffMtx   sync.RWMutex
 	interval     time.Duration
@@ -92,12 +92,12 @@ func NewReader(writer io.Writer,
 	}
 
 	next := time.Now()
-	bkcfg := util.BackoffConfig{
+	bkcfg := backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Minute,
 		MaxRetries: 0,
 	}
-	bkoff := util.NewBackoff(context.Background(), bkcfg)
+	bkoff := backoff.New(context.Background(), bkcfg)
 
 	rd := Reader{
 		header:       h,
@@ -438,7 +438,7 @@ func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	return &t, nil
 }
 
-func nextBackoff(w io.Writer, statusCode int, backoff *util.Backoff) time.Time {
+func nextBackoff(w io.Writer, statusCode int, backoff *backoff.Backoff) time.Time {
 	// Be way more conservative with an http 429 and wait 5 minutes before trying again.
 	var next time.Time
 	if statusCode == http.StatusTooManyRequests {

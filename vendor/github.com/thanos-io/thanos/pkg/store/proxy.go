@@ -629,6 +629,7 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 				PartialResponseDisabled: r.PartialResponseDisabled,
 				Start:                   r.Start,
 				End:                     r.End,
+				Matchers:                r.Matchers,
 			})
 			if err != nil {
 				err = errors.Wrapf(err, "fetch label values from store %s", st)

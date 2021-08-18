@@ -285,7 +285,7 @@ func (cb *CachingBucket) Attributes(ctx context.Context, name string) (objstore.
 	return cb.cachedAttributes(ctx, name, cfgName, cfg.cache, cfg.ttl)
 }
 
-func (cb *CachingBucket) cachedAttributes(ctx context.Context, name string, cfgName string, cache cache.Cache, ttl time.Duration) (objstore.ObjectAttributes, error) {
+func (cb *CachingBucket) cachedAttributes(ctx context.Context, name, cfgName string, cache cache.Cache, ttl time.Duration) (objstore.ObjectAttributes, error) {
 	key := cachingKeyAttributes(name)
 
 	cb.operationRequests.WithLabelValues(objstore.OpAttributes, cfgName).Inc()
@@ -486,7 +486,7 @@ func cachingKeyAttributes(name string) string {
 	return fmt.Sprintf("attrs:%s", name)
 }
 
-func cachingKeyObjectSubrange(name string, start int64, end int64) string {
+func cachingKeyObjectSubrange(name string, start, end int64) string {
 	return fmt.Sprintf("subrange:%s:%d:%d", name, start, end)
 }
 

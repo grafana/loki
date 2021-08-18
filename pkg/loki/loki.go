@@ -371,7 +371,7 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 }
 
 func (t *Loki) setupModuleManager() error {
-	mm := modules.NewManager()
+	mm := modules.NewManager(util_log.Logger)
 
 	mm.RegisterModule(Server, t.initServer)
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)

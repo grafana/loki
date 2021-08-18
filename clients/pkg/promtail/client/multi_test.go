@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
@@ -14,6 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -123,9 +123,9 @@ func TestMultiClient_Handle(t *testing.T) {
 func TestMultiClient_Handle_Race(t *testing.T) {
 	u := flagext.URLValue{}
 	require.NoError(t, u.Set("http://localhost"))
-	c1, err := New(nil, Config{URL: u, BackoffConfig: util.BackoffConfig{MaxRetries: 1}, Timeout: time.Microsecond}, log.NewNopLogger())
+	c1, err := New(nil, Config{URL: u, BackoffConfig: backoff.Config{MaxRetries: 1}, Timeout: time.Microsecond}, log.NewNopLogger())
 	require.NoError(t, err)
-	c2, err := New(nil, Config{URL: u, BackoffConfig: util.BackoffConfig{MaxRetries: 1}, Timeout: time.Microsecond}, log.NewNopLogger())
+	c2, err := New(nil, Config{URL: u, BackoffConfig: backoff.Config{MaxRetries: 1}, Timeout: time.Microsecond}, log.NewNopLogger())
 	require.NoError(t, err)
 	clients := []Client{c1, c2}
 	m := &MultiClient{

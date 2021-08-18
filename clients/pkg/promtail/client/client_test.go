@@ -16,13 +16,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-
 	"github.com/grafana/loki/pkg/logproto"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
@@ -260,7 +260,7 @@ func TestClient_Handle(t *testing.T) {
 				BatchWait:      testData.clientBatchWait,
 				BatchSize:      testData.clientBatchSize,
 				Client:         config.HTTPClientConfig{},
-				BackoffConfig:  util.BackoffConfig{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: testData.clientMaxRetries},
+				BackoffConfig:  backoff.Config{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: testData.clientMaxRetries},
 				ExternalLabels: lokiflag.LabelSet{},
 				Timeout:        1 * time.Second,
 				TenantID:       testData.clientTenantID,
@@ -392,7 +392,7 @@ func TestClient_StopNow(t *testing.T) {
 				BatchWait:      c.clientBatchWait,
 				BatchSize:      c.clientBatchSize,
 				Client:         config.HTTPClientConfig{},
-				BackoffConfig:  util.BackoffConfig{MinBackoff: 5 * time.Second, MaxBackoff: 10 * time.Second, MaxRetries: c.clientMaxRetries},
+				BackoffConfig:  backoff.Config{MinBackoff: 5 * time.Second, MaxBackoff: 10 * time.Second, MaxRetries: c.clientMaxRetries},
 				ExternalLabels: lokiflag.LabelSet{},
 				Timeout:        1 * time.Second,
 				TenantID:       c.clientTenantID,

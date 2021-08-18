@@ -274,7 +274,7 @@ func (x *AlertState) UnmarshalJSON(entry []byte) error {
 		return errors.Wrapf(err, "alertState: unquote %v", string(entry))
 	}
 
-	if len(fieldStr) == 0 {
+	if fieldStr == "" {
 		return errors.New("empty alertState")
 	}
 
