@@ -29,7 +29,7 @@ type Limiter struct {
 	disabled bool
 }
 
-func (l *Limiter) Disable() {
+func (l *Limiter) DisableForWALReplay() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.disabled = true
@@ -48,6 +48,15 @@ func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor 
 		ring:              ring,
 		replicationFactor: replicationFactor,
 	}
+}
+
+func (l *Limiter) UnorderedWrites(userID string) bool {
+	// WAL replay should not discard previously ack'd writes,
+	// so allow out of order writes while the limiter is disabled.
+	if l.disabled {
+		return true
+	}
+	return l.limits.UnorderedWrites(userID)
 }
 
 // AssertMaxStreamsPerUser ensures limit has not been reached compared to the current
