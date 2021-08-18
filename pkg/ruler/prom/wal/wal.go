@@ -87,17 +87,21 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 		}
 	}
 
+	start := time.Now()
 	if err := storage.replayWAL(); err != nil {
 		metrics.TotalCorruptions.Inc()
 
 		level.Warn(storage.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
 		if err := w.Repair(err); err != nil {
 			metrics.TotalFailedRepairs.Inc()
+			metrics.ReplayDuration.Observe(time.Since(start).Seconds())
 			return nil, errors.Wrap(err, "repair corrupted WAL")
 		}
 
 		metrics.TotalSucceededRepairs.Inc()
 	}
+
+	metrics.ReplayDuration.Observe(time.Since(start).Seconds())
 
 	return storage, nil
 }

@@ -153,9 +153,9 @@ func (a *Agent) newInstance(c instance.Config) (instance.ManagedInstance, error)
 	a.mut.RLock()
 	defer a.mut.RUnlock()
 
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{
+	reg := prometheus.WrapRegistererWithPrefix("loki_ruler_wal_", prometheus.WrapRegistererWith(prometheus.Labels{
 		"tenant": c.Tenant,
-	}, a.reg)
+	}, a.reg))
 
 	// create metrics here and pass down
 	metrics := wal.NewMetrics(reg)

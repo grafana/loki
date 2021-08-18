@@ -678,7 +678,6 @@ func (i *Instance) getRemoteWriteTimestamp() int64 {
 		lbls[idx] = i.cfg.RemoteWrite[idx].Name
 	}
 
-	// TODO: does this work?
 	vals, err := i.vc.GetValues("remote_name", lbls...)
 	if err != nil {
 		level.Error(i.logger).Log("msg", "could not get remote write timestamps", "err", err)
