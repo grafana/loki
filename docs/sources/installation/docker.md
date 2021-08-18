@@ -20,7 +20,7 @@ Copy and paste the commands below into your command line.
 ```bash
 wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
 docker run -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:2.3.0 -config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
 docker run -v $(pwd):/mnt/config -v /var/log:/var/log grafana/promtail:2.3.0 -config.file=/mnt/config/promtail-config.yaml
 ```
 
@@ -38,7 +38,7 @@ Copy and paste the commands below into your terminal. Note that you will need to
 cd "<local-path>"
 wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
 docker run -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:2.3.0 --config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
 docker run -v <local-path>:/mnt/config -v /var/log:/var/log grafana/promtail:2.3.0 --config.file=/mnt/config/promtail-config.yaml
 ```
 
