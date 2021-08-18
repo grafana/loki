@@ -294,8 +294,8 @@ func TestUnorderedPush(t *testing.T) {
 
 func TestPushRateLimit(t *testing.T) {
 	l := validation.Limits{
-		MaxLocalStreamRateMB:      1000,
-		MaxLocalStreamBurstRateMB: 2000,
+		MaxLocalStreamRateBytes:      1000,
+		MaxLocalStreamBurstRateBytes: 2000,
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)

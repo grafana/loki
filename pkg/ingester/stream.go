@@ -230,8 +230,13 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {
-			fmt.Println("failed on line: ", entries[i].Line)
-			return 0, httpgrpc.Errorf(http.StatusTooManyRequests, StreamRateLimitMsg, int(s.limiter.Limit(now, s.tenant)))
+			validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(len(entries) - i))
+			rateLimitesBytes := 0
+			for j := range entries[i:] {
+				rateLimitesBytes += len(entries[j].Line)
+			}
+			validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitesBytes))
+			return 0, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamRateLimitErrorMsg, int(s.limiter.Limit(now, s.tenant)), len(entries)-i, rateLimitesBytes)
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
