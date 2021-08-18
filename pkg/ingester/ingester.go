@@ -320,6 +320,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WAL.Enabled {
 		start := time.Now()
 
+		// Ignore retain period during wal replay.
 		oldRetain := i.cfg.RetainPeriod
 		i.cfg.RetainPeriod = 0
 
@@ -335,14 +336,15 @@ func (i *Ingester) starting(ctx context.Context) error {
 			var once sync.Once
 			return func() {
 				once.Do(func() {
-					elapsed := time.Since(start)
-					level.Info(util_log.Logger).Log("msg", "recovery finished", "time", elapsed.String())
-					i.metrics.walReplayActive.Set(0)
-					i.metrics.walReplayDuration.Set(elapsed.Seconds())
 					level.Info(util_log.Logger).Log("msg", "closing recoverer")
 					recoverer.Close()
-					i.cfg.RetainPeriod = oldRetain
 
+					elapsed := time.Since(start)
+
+					i.metrics.walReplayActive.Set(0)
+					i.metrics.walReplayDuration.Set(elapsed.Seconds())
+					i.cfg.RetainPeriod = oldRetain
+					level.Info(util_log.Logger).Log("msg", "WAL recovery finished", "time", elapsed.String())
 				})
 			}
 		}()
