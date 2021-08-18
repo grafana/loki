@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -48,6 +49,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			cfg.MaxReturnedErrors = tc.limit
 			s := newStream(
 				cfg,
+				&validation.Overrides{},
 				"fake",
 				model.Fingerprint(0),
 				labels.Labels{
@@ -88,6 +90,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 func TestPushDeduplication(t *testing.T) {
 	s := newStream(
 		defaultConfig(),
+		&validation.Overrides{},
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -112,6 +115,7 @@ func TestPushDeduplication(t *testing.T) {
 func TestPushRejectOldCounter(t *testing.T) {
 	s := newStream(
 		defaultConfig(),
+		&validation.Overrides{},
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -201,6 +205,7 @@ func TestUnorderedPush(t *testing.T) {
 	cfg.MaxChunkAge = 10 * time.Second
 	s := newStream(
 		&cfg,
+		&validation.Overrides{},
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -287,6 +292,54 @@ func TestUnorderedPush(t *testing.T) {
 	require.Equal(t, false, sItr.Next())
 }
 
+func TestPushRateLimit(t *testing.T) {
+	l := validation.Limits{
+		MaxLocalStreamRateMB:      1000,
+		MaxLocalStreamBurstRateMB: 2000,
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	// limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+
+	// i := newInstance(defaultConfig(), *l, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, nil, &OnceSwitch{}, nil)
+
+	s := newStream(
+		defaultConfig(),
+		limits,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NilMetrics,
+	)
+
+	// counter should be 2 now since the first line will be deduped
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
+	}, recordPool.GetRecord(), 0)
+	require.Equal(t, err, httpgrpc.Errorf(http.StatusTooManyRequests, StreamRateLimitMsg, 10))
+	// require.Len(t, s.chunks, 1)
+	// require.Equal(t, s.chunks[0].chunk.Size(), 2,
+	// 	"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+
+	// // fail to push with a counter <= the streams internal counter
+	// _, err = s.Push(context.Background(), []logproto.Entry{
+	// 	{Timestamp: time.Unix(1, 0), Line: "test"},
+	// }, recordPool.GetRecord(), 2)
+	// require.Equal(t, ErrEntriesExist, err)
+
+	// // succeed with a greater counter
+	// _, err = s.Push(context.Background(), []logproto.Entry{
+	// 	{Timestamp: time.Unix(1, 0), Line: "test"},
+	// }, recordPool.GetRecord(), 3)
+	// require.Nil(t, err)
+
+}
+
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
@@ -304,7 +357,7 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "job", Value: "loki-dev/ingester"},
 		labels.Label{Name: "container", Value: "ingester"},
 	}
-	s := newStream(&Config{}, "fake", model.Fingerprint(0), ls, true, NilMetrics)
+	s := newStream(&Config{}, &validation.Overrides{}, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 

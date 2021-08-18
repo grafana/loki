@@ -5,6 +5,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -124,4 +125,22 @@ func (l *Limiter) minNonZero(first, second int) int {
 	}
 
 	return first
+}
+
+type localStrategy struct {
+	limits *validation.Overrides
+}
+
+func newLocalStreamRateStrategy(limits *validation.Overrides) limiter.RateLimiterStrategy {
+	return &localStrategy{
+		limits: limits,
+	}
+}
+
+func (s *localStrategy) Limit(userID string) float64 {
+	return s.limits.MaxLocalStreamRateMB(userID)
+}
+
+func (s *localStrategy) Burst(userID string) int {
+	return s.limits.MaxLocalStreamBurstRateMB(userID)
 }

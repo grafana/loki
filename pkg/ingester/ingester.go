@@ -137,6 +137,7 @@ type Ingester struct {
 	cfg           Config
 	clientConfig  client.Config
 	tenantConfigs *runtime.TenantConfigs
+	limits        *validation.Overrides
 
 	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
 	instancesMtx sync.RWMutex
@@ -195,6 +196,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		cfg:                   cfg,
 		clientConfig:          clientConfig,
 		tenantConfigs:         configs,
+		limits:                limits,
 		instances:             map[string]*instance{},
 		store:                 store,
 		periodicConfigs:       store.GetSchemaConfigs(),
@@ -514,7 +516,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(&i.cfg, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
+		inst = newInstance(&i.cfg, i.limits, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter)
 		i.instances[instanceID] = inst
 	}
 	return inst

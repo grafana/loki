@@ -42,9 +42,11 @@ type Limits struct {
 	MaxLineSizeTruncate    bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 
 	// Ingester enforced limits.
-	MaxLocalStreamsPerUser  int  `yaml:"max_streams_per_user" json:"max_streams_per_user"`
-	MaxGlobalStreamsPerUser int  `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
-	UnorderedWrites         bool `yaml:"unordered_writes" json:"unordered_writes"`
+	MaxLocalStreamsPerUser    int     `yaml:"max_streams_per_user" json:"max_streams_per_user"`
+	MaxGlobalStreamsPerUser   int     `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
+	UnorderedWrites           bool    `yaml:"unordered_writes" json:"unordered_writes"`
+	MaxLocalStreamRateMB      float64 `yaml:"max_stream_rate_mb" json:"max_stream_rate_mb"`
+	MaxLocalStreamBurstRateMB float64 `yaml:"max_stream_burst_rate_mb" json:"max_stream_burst_rate_mb"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery          int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
@@ -107,6 +109,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 0, "Maximum number of active streams per user, across the cluster. 0 to disable.")
 	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", false, "(Experimental) Allow out of order writes.")
+	f.Float64Var(&l.MaxLocalStreamRateMB, "ingester.max-stream-rate-mb", 10e6, "Maximum bytes per second rate per active stream.")
+	f.Float64Var(&l.MaxLocalStreamBurstRateMB, "ingester.max-stream-rate-mb", 20e6, "Maximum burst bytes per second rate per active stream.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 
@@ -404,6 +408,14 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 
 func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
+}
+
+func (o *Overrides) MaxLocalStreamRateMB(userID string) float64 {
+	return o.getOverridesForUser(userID).MaxLocalStreamRateMB
+}
+
+func (o *Overrides) MaxLocalStreamBurstRateMB(userID string) int {
+	return int(o.getOverridesForUser(userID).MaxLocalStreamRateMB)
 }
 
 func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -49,7 +50,8 @@ var (
 )
 
 var (
-	ErrEntriesExist = errors.New("duplicate push - entries already exist")
+	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
+	StreamRateLimitMsg = "stream rate limit of %s exceeded"
 )
 
 func init() {
@@ -64,8 +66,9 @@ type line struct {
 }
 
 type stream struct {
-	cfg    *Config
-	tenant string
+	limiter *limiter.RateLimiter
+	cfg     *Config
+	tenant  string
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks   []chunkDesc
@@ -113,8 +116,9 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, limits *validation.Overrides, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
 	return &stream{
+		limiter:         limiter.NewRateLimiter(newLocalStreamRateStrategy(limits), 10*time.Second),
 		cfg:             cfg,
 		fp:              fp,
 		labels:          labels,
@@ -221,6 +225,13 @@ func (s *stream) Push(
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx)
+		}
+
+		// Check if this this should be rate limited.
+		now := time.Now()
+		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {
+			fmt.Println("failed on line: ", entries[i].Line)
+			return 0, httpgrpc.Errorf(http.StatusTooManyRequests, StreamRateLimitMsg, int(s.limiter.Limit(now, s.tenant)))
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
