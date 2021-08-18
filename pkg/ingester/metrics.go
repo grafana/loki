@@ -14,6 +14,7 @@ type ingesterMetrics struct {
 	checkpointLoggedBytesTotal prometheus.Counter
 
 	walDiskFullFailures prometheus.Counter
+	walReplayActive     prometheus.Gauge
 	walReplayDuration   prometheus.Gauge
 	walCorruptionsTotal *prometheus.CounterVec
 	walLoggedBytesTotal prometheus.Counter
@@ -51,6 +52,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		walDiskFullFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_disk_full_failures_total",
 			Help: "Total number of wal write failures due to full disk.",
+		}),
+		walReplayActive: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_wal_replay_active",
+			Help: "Whether the WAL is replaying",
 		}),
 		walReplayDuration: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_ingester_wal_replay_duration_seconds",
