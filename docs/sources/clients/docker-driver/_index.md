@@ -57,3 +57,35 @@ To cleanly uninstall the plugin, disable and remove it:
 docker plugin disable loki --force
 docker plugin rm loki
 ```
+
+# Know Issues
+
+The driver keeps all logs in memory and will drop log entries in case Loki is not reachable and the `max_retries` are exceeded. This can be avoided by setting `max_retries` to zero and thus trying forever until Loki is reachable again. However, this setting might have undesired consequences. The Docker daemon will wait for the Loki driver to process all logs of a container until it's removed. So it might wait forever and the container is stuck.
+
+In order to avoid this situation it's recommended to use [Promtail](../promtail) instead with the following configuration.
+
+```yaml
+server:
+  disable: true
+
+positions:
+  filename: loki-positions.yml
+
+clients:
+  - url: ${LOKI_ENDPOINT}
+    basic_auth:
+      username: ${LOKI_USER}
+      password: ${LOKI_PASSOWORD}
+
+scrape_configs:
+  - job_name: system 
+    pipeline_stages:
+      - docker: {}
+    static_configs:
+      - labels:
+          job: docker
+          __path__: /var/lib/docker/containers/*/*-json.log
+
+```
+
+This will enable Promtail to tail *all* Docker container logs and publish them to Loki.
