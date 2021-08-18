@@ -1817,7 +1817,7 @@ logs in Loki.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 0]
 
-# Whether out of order writes are be accepted.
+# When true, out of order writes are accepted.
 # CLI flag: -ingester.unordered-writes
 [unordered_writes: <bool> | default = false]
 
