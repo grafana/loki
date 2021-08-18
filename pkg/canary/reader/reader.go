@@ -53,6 +53,7 @@ type Reader struct {
 	addr         string
 	user         string
 	pass         string
+	tenantID     string
 	queryTimeout time.Duration
 	sName        string
 	sValue       string
@@ -76,6 +77,7 @@ func NewReader(writer io.Writer,
 	address string,
 	user string,
 	pass string,
+	tenantID string,
 	queryTimeout time.Duration,
 	labelName string,
 	labelVal string,
@@ -85,6 +87,8 @@ func NewReader(writer io.Writer,
 	h := http.Header{}
 	if user != "" {
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
+	} else if tenantID != "" {
+		h = http.Header{"X-Scope-OrgID": {tenantID}}
 	}
 
 	next := time.Now()
@@ -101,6 +105,7 @@ func NewReader(writer io.Writer,
 		addr:         address,
 		user:         user,
 		pass:         pass,
+		tenantID:     tenantID,
 		queryTimeout: queryTimeout,
 		sName:        streamName,
 		sValue:       streamValue,
@@ -174,7 +179,11 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		return 0, err
 	}
 
-	req.SetBasicAuth(r.user, r.pass)
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	} else if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -260,7 +269,11 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		return nil, err
 	}
 
-	req.SetBasicAuth(r.user, r.pass)
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	} else if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)

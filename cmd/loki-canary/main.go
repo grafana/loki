@@ -37,8 +37,9 @@ func main() {
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
 	tls := flag.Bool("tls", false, "Does the loki connection use TLS?")
-	user := flag.String("user", "", "Loki username")
-	pass := flag.String("pass", "", "Loki password")
+	user := flag.String("user", "", "Loki username. Must not be set with tenant-id flag.")
+	pass := flag.String("pass", "", "Loki password. Must not be set with tenant-id flag.")
+	tenantID := flag.String("tenant-id", "", "Tenant id to be set in X-Scope-OrgID header. Must not be set with user/pass flags.")
 	queryTimeout := flag.Duration("query-timeout", 10*time.Second, "How long to wait for a query response from Loki")
 
 	interval := flag.Duration("interval", 1000*time.Millisecond, "Duration between log entries")
@@ -84,7 +85,7 @@ func main() {
 		defer c.lock.Unlock()
 
 		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *size)
-		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
+		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
 		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *spotCheckWait, *metricTestInterval, *metricTestQueryRange, *interval, *buckets, sentChan, receivedChan, c.reader, true)
 	}
 
