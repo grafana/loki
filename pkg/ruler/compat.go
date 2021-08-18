@@ -221,6 +221,8 @@ func MemstoreTenantManager(
 			rwMetrics = newRemoteWriteMetrics(registerer)
 		}
 
+		setupStorage(agent, userID, overrides, logger)
+
 		logger = log.With(logger, "user", userID)
 		queryFunc := engineQueryFunc(engine, overrides, userID)
 		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
@@ -239,8 +241,6 @@ func MemstoreTenantManager(
 			ResendDelay:     cfg.ResendDelay,
 			GroupLoader:     GroupLoader{},
 		})
-
-		setupStorage(agent, userID, overrides, logger)
 
 		// initialize memStore, bound to the manager's alerting rules
 		memStore.Start(mgr)
