@@ -24,6 +24,7 @@ type Limiter struct {
 	limits            *validation.Overrides
 	ring              RingCount
 	replicationFactor int
+	metrics           *ingesterMetrics
 
 	mtx      sync.RWMutex
 	disabled bool
@@ -33,20 +34,23 @@ func (l *Limiter) DisableForWALReplay() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.disabled = true
+	l.metrics.limiterEnabled.Set(0)
 }
 
 func (l *Limiter) Enable() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.disabled = false
+	l.metrics.limiterEnabled.Set(1)
 }
 
 // NewLimiter makes a new limiter
-func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor int) *Limiter {
+func NewLimiter(limits *validation.Overrides, metrics *ingesterMetrics, ring RingCount, replicationFactor int) *Limiter {
 	return &Limiter{
 		limits:            limits,
 		ring:              ring,
 		replicationFactor: replicationFactor,
+		metrics:           metrics,
 	}
 }
 

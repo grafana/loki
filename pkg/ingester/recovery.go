@@ -227,7 +227,7 @@ func (r *ingesterRecoverer) Close() {
 			// configuration disables them, convert all streams/head blocks
 			// to ensure unordered writes are disabled after the replay,
 			// but without dropping any previously accepted data.
-			isAllowed := r.ing.limiter.limits.UnorderedWrites(s.tenant)
+			isAllowed := r.ing.limiter.UnorderedWrites(s.tenant)
 			old := s.unorderedWrites
 			s.unorderedWrites = isAllowed
 

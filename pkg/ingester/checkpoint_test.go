@@ -450,7 +450,7 @@ func Test_SeriesIterator(t *testing.T) {
 		IngestionBurstSizeMB:   1e4,
 	}, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := 0; i < 3; i++ {
 		inst := newInstance(defaultConfig(), fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
@@ -500,7 +500,7 @@ func Benchmark_SeriesIterator(b *testing.B) {
 		IngestionBurstSizeMB:   1e4,
 	}, nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
 		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, nil, noopWAL{}, NilMetrics, nil, nil)
@@ -574,4 +574,108 @@ func buildChunks(t testing.TB, size int) []Chunk {
 		chks[i] = there[i].Chunk
 	}
 	return chks
+}
+
+func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
+	for _, waitForCheckpoint := range []bool{false, true} {
+		t.Run(fmt.Sprintf("checkpoint-%v", waitForCheckpoint), func(t *testing.T) {
+			walDir, err := ioutil.TempDir(os.TempDir(), "loki-wal")
+			require.Nil(t, err)
+			defer os.RemoveAll(walDir)
+
+			ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+			// First launch the ingester with unordered writes enabled
+			dft := defaultLimitsTestConfig()
+			dft.UnorderedWrites = true
+			limits, err := validation.NewOverrides(dft, nil)
+			require.NoError(t, err)
+
+			newStore := func() *mockStore {
+				return &mockStore{
+					chunks: map[string][]chunk.Chunk{},
+				}
+			}
+
+			i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+			require.NoError(t, err)
+			require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			req := logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{foo="bar",bar="baz1"}`,
+					},
+					{
+						Labels: `{foo="bar",bar="baz2"}`,
+					},
+				},
+			}
+
+			start := time.Now()
+			steps := 10
+			end := start.Add(time.Second * time.Duration(steps))
+
+			// Write data out of order
+			for i := steps - 1; i >= 0; i-- {
+				req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+					Timestamp: start.Add(time.Duration(i) * time.Second),
+					Line:      fmt.Sprintf("line %d", i),
+				})
+				req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+					Timestamp: start.Add(time.Duration(i) * time.Second),
+					Line:      fmt.Sprintf("line %d", i),
+				})
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			_, err = i.Push(ctx, &req)
+			require.NoError(t, err)
+
+			if waitForCheckpoint {
+				// Ensure we have checkpointed now
+				expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*2) // give a bit of buffer
+
+				// Add some more data after the checkpoint
+				tmp := end
+				end = end.Add(time.Second * time.Duration(steps))
+				req.Streams[0].Entries = nil
+				req.Streams[1].Entries = nil
+				// Write data out of order again
+				for i := steps - 1; i >= 0; i-- {
+					req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+						Timestamp: tmp.Add(time.Duration(i) * time.Second),
+						Line:      fmt.Sprintf("line %d", steps+i),
+					})
+					req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+						Timestamp: tmp.Add(time.Duration(i) * time.Second),
+						Line:      fmt.Sprintf("line %d", steps+i),
+					})
+				}
+
+				_, err = i.Push(ctx, &req)
+				require.NoError(t, err)
+			}
+
+			ensureIngesterData(ctx, t, start, end, i)
+
+			require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+			// Now disable unordered writes
+			limitCfg := defaultLimitsTestConfig()
+			limitCfg.UnorderedWrites = false
+			limits, err = validation.NewOverrides(limitCfg, nil)
+			require.NoError(t, err)
+
+			// restart the ingester
+			i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+			require.NoError(t, err)
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+			require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+			// ensure we've recovered data from wal segments
+			ensureIngesterData(ctx, t, start, end, i)
+		})
+	}
 }

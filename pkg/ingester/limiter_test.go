@@ -108,7 +108,7 @@ func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor)
+			limiter := NewLimiter(limits, NilMetrics, ring, testData.ringReplicationFactor)
 			actual := limiter.AssertMaxStreamsPerUser("test", testData.streams)
 
 			assert.Equal(t, testData.expected, actual)
@@ -155,7 +155,7 @@ func TestLimiter_minNonZero(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			limiter := NewLimiter(nil, nil, 0)
+			limiter := NewLimiter(nil, NilMetrics, nil, 0)
 			assert.Equal(t, testData.expected, limiter.minNonZero(testData.first, testData.second))
 		})
 	}
