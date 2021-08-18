@@ -372,7 +372,6 @@ results_cache:
 
 The `ruler_config` configures the Loki ruler.
 
-<span style="background-color:#f3f973;">The Ruler API is experimental.</span>
 
 ```yaml
 # URL of alerts return path.
@@ -753,7 +752,7 @@ ring:
 [flush_period: <duration> | default = 1m]
 
 # Enable the Ruler API.
-# CLI flag: -experimental.ruler.enable-api
+# CLI flag: -ruler.enable-api
 [enable_api: <boolean> | default = false]
 ```
 
