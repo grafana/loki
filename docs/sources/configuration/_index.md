@@ -1817,6 +1817,10 @@ logs in Loki.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 0]
 
+# When true, out of order writes are accepted.
+# CLI flag: -ingester.unordered-writes
+[unordered_writes: <bool> | default = false]
+
 # Maximum number of chunks that can be fetched by a single query.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
