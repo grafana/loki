@@ -161,11 +161,7 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	hbType := chunkenc.OrderedHeadBlockFmt
-	if s.unorderedWrites {
-		hbType = chunkenc.UnorderedHeadBlockFmt
-	}
-	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, hbType, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, headBlockType(s.unorderedWrites), s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
 func (s *stream) Push(
@@ -479,4 +475,11 @@ func (s *stream) addTailer(t *tailer) {
 
 func (s *stream) resetCounter() {
 	s.entryCt = 0
+}
+
+func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {
+	if unorderedWrites {
+		return chunkenc.UnorderedHeadBlockFmt
+	}
+	return chunkenc.OrderedHeadBlockFmt
 }

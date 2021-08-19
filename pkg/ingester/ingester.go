@@ -82,8 +82,6 @@ type Config struct {
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
 
-	UnorderedWrites bool `yaml:"unordered_writes_enabled"`
-
 	IndexShards int `yaml:"index_shards"`
 }
 
@@ -107,7 +105,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper index and filesystem object store. -1 for infinite.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Enable to remove unhealthy ingesters from the ring after `ring.kvstore.heartbeat_timeout`")
-	f.BoolVar(&cfg.UnorderedWrites, "ingester.unordered-writes-enabled", false, "(Experimental) Allow out of order writes.")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 }
 
@@ -231,7 +228,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
-	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
+	i.limiter = NewLimiter(limits, metrics, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 
@@ -328,9 +325,9 @@ func (i *Ingester) starting(ctx context.Context) error {
 			i.cfg.RetainPeriod = old
 		}()
 
-		// Disable the in process stream limit checks while replaying the WAL
-		i.limiter.Disable()
-		defer i.limiter.Enable()
+		// Disable the in process stream limit checks while replaying the WAL.
+		// It is re-enabled in the recover's Close() method.
+		i.limiter.DisableForWALReplay()
 
 		recoverer := newIngesterRecoverer(i)
 		defer recoverer.Close()
@@ -381,6 +378,8 @@ func (i *Ingester) starting(ctx context.Context) error {
 			"errors", segmentRecoveryErr != nil,
 		)
 
+		level.Info(util_log.Logger).Log("msg", "closing recoverer")
+		recoverer.Close()
 		elapsed := time.Since(start)
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 		level.Info(util_log.Logger).Log("msg", "recovery finished", "time", elapsed.String())

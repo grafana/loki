@@ -291,7 +291,6 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.LifecyclerConfig.MinReadyDuration = 0
 	cfg.BlockSize = 256 * 1024
 	cfg.TargetChunkSize = 1500 * 1024
-	cfg.UnorderedWrites = true
 	return cfg
 }
 

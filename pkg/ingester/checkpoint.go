@@ -100,10 +100,10 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 			lastUpdated: c.LastUpdated,
 		}
 
-		hbType := chunkenc.OrderedHeadBlockFmt
-		if conf.UnorderedWrites {
-			hbType = chunkenc.UnorderedHeadBlockFmt
-		}
+		// Always use Unordered headblocks during replay
+		// to ensure Loki can effectively replay an unordered-friendly
+		// WAL into a new configuration that disables unordered writes.
+		hbType := chunkenc.UnorderedHeadBlockFmt
 		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, hbType, conf.BlockSize, conf.TargetChunkSize)
 		if err != nil {
 			return nil, err
