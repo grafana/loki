@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+
 	"github.com/grafana/loki/pkg/validation"
 )
 
