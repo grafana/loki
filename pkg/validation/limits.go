@@ -49,8 +49,8 @@ type Limits struct {
 	MaxLocalStreamsPerUser       int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
 	MaxGlobalStreamsPerUser      int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 	UnorderedWrites              bool             `yaml:"unordered_writes" json:"unordered_writes"`
-	MaxLocalStreamRateBytes      flagext.ByteSize `yaml:"max_stream_rate_mb" json:"max_stream_rate_bytes"`
-	MaxLocalStreamBurstRateBytes flagext.ByteSize `yaml:"max_stream_burst_rate_mb" json:"max_stream_burst_rate_bytes"`
+	MaxLocalStreamRateBytes      flagext.ByteSize `yaml:"max_stream_rate_bytes" json:"max_stream_rate_bytes"`
+	MaxLocalStreamBurstRateBytes flagext.ByteSize `yaml:"max_stream_burst_rate_bytes" json:"max_stream_burst_rate_bytes"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery          int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
