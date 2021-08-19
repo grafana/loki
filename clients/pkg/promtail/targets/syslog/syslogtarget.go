@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/influxdata/go-syslog/v3"
 	"github.com/influxdata/go-syslog/v3/rfc5424"
 	"github.com/mwitkow/go-conntrack"
@@ -105,7 +105,7 @@ func (t *SyslogTarget) acceptConnections() {
 
 	l := log.With(t.logger, "address", t.listener.Addr().String())
 
-	backoff := util.NewBackoff(t.ctx, util.BackoffConfig{
+	backoff := backoff.New(t.ctx, backoff.Config{
 		MinBackoff: 5 * time.Millisecond,
 		MaxBackoff: 1 * time.Second,
 	})

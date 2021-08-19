@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"golang.org/x/time/rate"
@@ -60,7 +61,7 @@ type DynamoDBConfig struct {
 	Metrics                MetricsAutoScalingConfig `yaml:"metrics"`
 	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
 	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
-	BackoffConfig          util.BackoffConfig       `yaml:"backoff_config"`
+	BackoffConfig          backoff.Config           `yaml:"backoff_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -177,7 +178,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
-	backoff := util.NewBackoff(ctx, a.cfg.BackoffConfig)
+	backoff := backoff.New(ctx, a.cfg.BackoffConfig)
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBWriteBatch{}
@@ -433,7 +434,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 	result := []chunk.Chunk{}
 	unprocessed := dynamoDBReadRequest{}
-	backoff := util.NewBackoff(ctx, a.cfg.BackoffConfig)
+	backoff := backoff.New(ctx, a.cfg.BackoffConfig)
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBReadRequest{}

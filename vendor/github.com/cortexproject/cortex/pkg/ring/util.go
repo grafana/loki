@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
+
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -70,7 +72,7 @@ func GetInstancePort(configPort, listenPort int) int {
 // WaitInstanceState waits until the input instanceID is registered within the
 // ring matching the provided state. A timeout should be provided within the context.
 func WaitInstanceState(ctx context.Context, r ReadRing, instanceID string, state InstanceState) error {
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
 		MaxRetries: 0,

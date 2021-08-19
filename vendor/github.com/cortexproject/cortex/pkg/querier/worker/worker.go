@@ -208,6 +208,8 @@ func (w *querierWorker) AddressRemoved(address string) {
 	w.mu.Lock()
 	p := w.managers[address]
 	delete(w.managers, address)
+	// Called with lock.
+	w.resetConcurrency()
 	w.mu.Unlock()
 
 	if p != nil {

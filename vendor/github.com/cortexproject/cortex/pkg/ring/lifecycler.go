@@ -576,7 +576,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
-		// If the ingester failed to clean it's ring entry up in can leave it's state in LEAVING.
+		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
+		// OR unregister_on_shutdown=false
 		// Move it into ACTIVE to ensure the ingester joins the ring.
 		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
 			instanceDesc.State = ACTIVE
@@ -588,6 +589,17 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.setTokens(tokens)
 
 		level.Info(log.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
+
+		// Update the ring if the instance has been changed and the heartbeat is disabled.
+		// We dont need to update KV here when heartbeat is enabled as this info will eventually be update on KV
+		// on the next heartbeat
+		if i.cfg.HeartbeatPeriod == 0 && !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
+			// Update timestamp to give gossiping client a chance register ring change.
+			instanceDesc.Timestamp = time.Now().Unix()
+			ringDesc.Ingesters[i.ID] = instanceDesc
+			return ringDesc, true, nil
+		}
+
 		// we haven't modified the ring, don't try to store it.
 		return nil, true, nil
 	})

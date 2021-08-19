@@ -310,11 +310,6 @@ func (noopCache) FetchMultiSeries(_ context.Context, _ ulid.ULID, ids []uint64) 
 	return map[uint64][]byte{}, ids
 }
 
-type noopGate struct{}
-
-func (noopGate) Start(context.Context) error { return nil }
-func (noopGate) Done()                       {}
-
 // BucketStoreOption are functions that configure BucketStore.
 type BucketStoreOption func(s *BucketStore)
 
@@ -394,7 +389,7 @@ func NewBucketStore(
 		blocks:                      map[ulid.ULID]*bucketBlock{},
 		blockSets:                   map[uint64]*bucketBlockSet{},
 		blockSyncConcurrency:        blockSyncConcurrency,
-		queryGate:                   noopGate{},
+		queryGate:                   gate.NewNoop(),
 		chunksLimiterFactory:        chunksLimiterFactory,
 		seriesLimiterFactory:        seriesLimiterFactory,
 		partitioner:                 partitioner,
@@ -411,7 +406,7 @@ func NewBucketStore(
 	s.indexReaderPool = indexheader.NewReaderPool(s.logger, lazyIndexReaderEnabled, lazyIndexReaderIdleTimeout, extprom.WrapRegistererWithPrefix("thanos_bucket_store_", s.reg))
 	s.metrics = newBucketStoreMetrics(s.reg) // TODO(metalmatze): Might be possible via Option too
 
-	if err := os.MkdirAll(dir, 0777); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, errors.Wrap(err, "create dir")
 	}
 
