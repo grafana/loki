@@ -41,7 +41,7 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(defaultConfig(), &validation.Overrides{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, nil, &OnceSwitch{}, nil)
+	i := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, nil, &OnceSwitch{}, nil)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -68,7 +68,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance(defaultConfig(), &validation.Overrides{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	inst := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 
 	const (
 		concurrent          = 10
@@ -126,7 +126,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance(defaultConfig(), &validation.Overrides{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	inst := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 	lbls := makeRandomLabels()
 
 	tt := time.Now()
@@ -166,7 +166,7 @@ func Test_SeriesQuery(t *testing.T) {
 	cfg.SyncPeriod = 1 * time.Minute
 	cfg.SyncMinUtilization = 0.20
 
-	instance := newInstance(cfg, &validation.Overrides{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	instance := newInstance(cfg, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 
 	currentTime := time.Now()
 
@@ -178,7 +178,7 @@ func Test_SeriesQuery(t *testing.T) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(cfg, &validation.Overrides{}, "fake", 0, nil, true, NilMetrics).NewChunk()
+		chunk := newStream(cfg, newLocalStreamRateStrategy(&validation.Overrides{}), "fake", 0, nil, true, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -276,7 +276,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i := newInstance(&Config{}, &validation.Overrides{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	i := newInstance(&Config{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
@@ -318,7 +318,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	ctx := context.Background()
 
-	inst := newInstance(&Config{}, &validation.Overrides{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
+	inst := newInstance(&Config{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
@@ -334,7 +334,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	lbs := makeRandomLabels()
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(nil, &validation.Overrides{}, "fake", 0, lbs, true, NilMetrics))
+			inst.addTailersToNewStream(newStream(nil, newLocalStreamRateStrategy(&validation.Overrides{}), "fake", 0, lbs, true, NilMetrics))
 		}
 	})
 }
@@ -368,7 +368,7 @@ func Test_Iterator(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	overrides, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
-	instance := newInstance(&ingesterConfig, &validation.Overrides{}, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
+	instance := newInstance(&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
 	ctx := context.TODO()
 	direction := logproto.BACKWARD
 	limit := uint32(2)
@@ -450,7 +450,7 @@ func Test_ChunkFilter(t *testing.T) {
 	overrides, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 	instance := newInstance(
-		&ingesterConfig, &validation.Overrides{}, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, &testFilter{})
+		&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, &testFilter{})
 	ctx := context.TODO()
 	direction := logproto.BACKWARD
 	limit := uint32(2)

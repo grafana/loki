@@ -63,7 +63,6 @@ var (
 
 type instance struct {
 	cfg        *Config
-	limits     *validation.Overrides
 	streamsMtx sync.RWMutex
 
 	buf         []byte // buffer used to compute fps.
@@ -95,10 +94,9 @@ type instance struct {
 	chunkFilter storage.RequestChunkFilterer
 }
 
-func newInstance(cfg *Config, limits *validation.Overrides, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter storage.RequestChunkFilterer) *instance {
+func newInstance(cfg *Config, instanceID string, limiter *Limiter, configs *runtime.TenantConfigs, wal WAL, metrics *ingesterMetrics, flushOnShutdownSwitch *OnceSwitch, chunkFilter storage.RequestChunkFilterer) *instance {
 	i := &instance{
 		cfg:         cfg,
-		limits:      limits,
 		streams:     map[string]*stream{},
 		streamsByFP: map[model.Fingerprint]*stream{},
 		buf:         make([]byte, 0, 1024),
@@ -134,7 +132,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	if !ok {
 
 		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(ls), fp)
-		stream = newStream(i.cfg, i.limits, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+		stream = newStream(i.cfg, newLocalStreamRateStrategy(i.limiter.limits), i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
 		i.streamsByFP[fp] = stream
 		i.streams[stream.labelsString] = stream
 		i.streamsCreatedTotal.Inc()
@@ -245,7 +243,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
-	stream = newStream(i.cfg, i.limits, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
+	stream = newStream(i.cfg, newLocalStreamRateStrategy(i.limiter.limits), i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
 	i.streams[pushReqStream.Labels] = stream
 	i.streamsByFP[fp] = stream
 
