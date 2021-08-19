@@ -37,7 +37,12 @@ func defaultConfig() *Config {
 var NilMetrics = newIngesterMetrics(nil)
 
 func TestLabelsCollisions(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       10000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -64,7 +69,12 @@ func TestLabelsCollisions(t *testing.T) {
 }
 
 func TestConcurrentPushes(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       100000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -115,7 +125,12 @@ func TestConcurrentPushes(t *testing.T) {
 }
 
 func TestSyncPeriod(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       1000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -157,7 +172,12 @@ func TestSyncPeriod(t *testing.T) {
 }
 
 func Test_SeriesQuery(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       1000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -178,7 +198,7 @@ func Test_SeriesQuery(t *testing.T) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(cfg, newLocalStreamRateStrategy(&validation.Overrides{}), "fake", 0, nil, true, NilMetrics).NewChunk()
+		chunk := newStream(cfg, newLocalStreamRateStrategy(limiter), "fake", 0, nil, true, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -272,7 +292,12 @@ func makeRandomLabels() labels.Labels {
 }
 
 func Benchmark_PushInstance(b *testing.B) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       1000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -312,7 +337,12 @@ func Benchmark_PushInstance(b *testing.B) {
 }
 
 func Benchmark_instance_addNewTailer(b *testing.B) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 100000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       100000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -334,7 +364,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	lbs := makeRandomLabels()
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(nil, newLocalStreamRateStrategy(&validation.Overrides{}), "fake", 0, lbs, true, NilMetrics))
+			inst.addTailersToNewStream(newStream(nil, newLocalStreamRateStrategy(limiter), "fake", 0, lbs, true, NilMetrics))
 		}
 	})
 }

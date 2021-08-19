@@ -5,7 +5,8 @@ import (
 	"math"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util/limiter"
+	cortex_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -129,19 +130,26 @@ func (l *Limiter) minNonZero(first, second int) int {
 }
 
 type localStrategy struct {
-	limits *validation.Overrides
+	limiter *Limiter
 }
 
-func newLocalStreamRateStrategy(limits *validation.Overrides) limiter.RateLimiterStrategy {
+func newLocalStreamRateStrategy(l *Limiter) cortex_limiter.RateLimiterStrategy {
 	return &localStrategy{
-		limits: limits,
+		limiter: l,
 	}
 }
 
 func (s *localStrategy) Limit(userID string) float64 {
-	return float64(s.limits.MaxLocalStreamRateBytes(userID))
+	if s.limiter.disabled {
+		return float64(rate.Inf) // or 0 if that's what we're supposed to do
+	}
+	return float64(s.limiter.limits.MaxLocalStreamRateBytes(userID))
 }
 
 func (s *localStrategy) Burst(userID string) int {
-	return s.limits.MaxLocalStreamBurstRateBytes(userID)
+	if s.limiter.disabled {
+		// Burst is ignored when limit = rate.Inf
+		return 0
+	}
+	return s.limiter.limits.MaxLocalStreamBurstRateBytes(userID)
 }

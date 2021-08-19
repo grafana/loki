@@ -309,11 +309,9 @@ func (s *stream) Push(
 
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder || lastEntryWithErr.e != ErrStreamRateLimit {
+		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && lastEntryWithErr.e != ErrStreamRateLimit {
 			return bytesAdded, lastEntryWithErr.e
-
 		}
-
 		var statusCode int
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			statusCode = http.StatusBadRequest

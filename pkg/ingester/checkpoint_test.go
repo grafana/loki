@@ -443,11 +443,12 @@ var (
 
 func Test_SeriesIterator(t *testing.T) {
 	var instances []*instance
-
 	limits, err := validation.NewOverrides(validation.Limits{
-		MaxLocalStreamsPerUser: 1000,
-		IngestionRateMB:        1e4,
-		IngestionBurstSizeMB:   1e4,
+		MaxLocalStreamsPerUser:       1000,
+		IngestionRateMB:              1e4,
+		IngestionBurstSizeMB:         1e4,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
 	}, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
