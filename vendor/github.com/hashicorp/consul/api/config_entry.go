@@ -21,8 +21,10 @@ const (
 	IngressGateway     string = "ingress-gateway"
 	TerminatingGateway string = "terminating-gateway"
 	ServiceIntentions  string = "service-intentions"
+	MeshConfig         string = "mesh"
 
 	ProxyConfigGlobal string = "global"
+	MeshConfigMesh    string = "mesh"
 )
 
 type ConfigEntry interface {
@@ -46,8 +48,8 @@ const (
 	// should be direct and not flow through a mesh gateway.
 	MeshGatewayModeNone MeshGatewayMode = "none"
 
-	// MeshGatewayModeLocal represents that the Upstrea Connect connections
-	// should be made to a mesh gateway in the local datacenter. This is
+	// MeshGatewayModeLocal represents that the Upstream Connect connections
+	// should be made to a mesh gateway in the local datacenter.
 	MeshGatewayModeLocal MeshGatewayMode = "local"
 
 	// MeshGatewayModeRemote represents that the Upstream Connect connections
@@ -60,6 +62,33 @@ const (
 type MeshGatewayConfig struct {
 	// Mode is the mode that should be used for the upstream connection.
 	Mode MeshGatewayMode `json:",omitempty"`
+}
+
+type ProxyMode string
+
+const (
+	// ProxyModeDefault represents no specific mode and should
+	// be used to indicate that a different layer of the configuration
+	// chain should take precedence
+	ProxyModeDefault ProxyMode = ""
+
+	// ProxyModeTransparent represents that inbound and outbound application
+	// traffic is being captured and redirected through the proxy.
+	ProxyModeTransparent ProxyMode = "transparent"
+
+	// ProxyModeDirect represents that the proxy's listeners must be dialed directly
+	// by the local application and other proxies.
+	ProxyModeDirect ProxyMode = "direct"
+)
+
+type TransparentProxyConfig struct {
+	// The port of the listener where outbound application traffic is being redirected to.
+	OutboundListenerPort int `json:",omitempty" alias:"outbound_listener_port"`
+
+	// DialedDirectly indicates whether transparent proxies can dial this proxy instance directly.
+	// The discovery chain is not considered when dialing a service instance directly.
+	// This setting is useful when addressing stateful services, such as a database cluster with a leader node.
+	DialedDirectly bool `json:",omitempty" alias:"dialed_directly"`
 }
 
 // ExposeConfig describes HTTP paths to expose through Envoy outside of Connect.
@@ -91,14 +120,100 @@ type ExposePath struct {
 	ParsedFromCheck bool
 }
 
+type UpstreamConfiguration struct {
+	// Overrides is a slice of per-service configuration. The name field is
+	// required.
+	Overrides []*UpstreamConfig `json:",omitempty"`
+
+	// Defaults contains default configuration for all upstreams of a given
+	// service. The name field must be empty.
+	Defaults *UpstreamConfig `json:",omitempty"`
+}
+
+type UpstreamConfig struct {
+	// Name is only accepted within a service-defaults config entry.
+	Name string `json:",omitempty"`
+	// Namespace is only accepted within a service-defaults config entry.
+	Namespace string `json:",omitempty"`
+
+	// EnvoyListenerJSON is a complete override ("escape hatch") for the upstream's
+	// listener.
+	//
+	// Note: This escape hatch is NOT compatible with the discovery chain and
+	// will be ignored if a discovery chain is active.
+	EnvoyListenerJSON string `json:",omitempty" alias:"envoy_listener_json"`
+
+	// EnvoyClusterJSON is a complete override ("escape hatch") for the upstream's
+	// cluster. The Connect client TLS certificate and context will be injected
+	// overriding any TLS settings present.
+	//
+	// Note: This escape hatch is NOT compatible with the discovery chain and
+	// will be ignored if a discovery chain is active.
+	EnvoyClusterJSON string `json:",omitempty" alias:"envoy_cluster_json"`
+
+	// Protocol describes the upstream's service protocol. Valid values are "tcp",
+	// "http" and "grpc". Anything else is treated as tcp. The enables protocol
+	// aware features like per-request metrics and connection pooling, tracing,
+	// routing etc.
+	Protocol string `json:",omitempty"`
+
+	// ConnectTimeoutMs is the number of milliseconds to timeout making a new
+	// connection to this upstream. Defaults to 5000 (5 seconds) if not set.
+	ConnectTimeoutMs int `json:",omitempty" alias:"connect_timeout_ms"`
+
+	// Limits are the set of limits that are applied to the proxy for a specific upstream of a
+	// service instance.
+	Limits *UpstreamLimits `json:",omitempty"`
+
+	// PassiveHealthCheck configuration determines how upstream proxy instances will
+	// be monitored for removal from the load balancing pool.
+	PassiveHealthCheck *PassiveHealthCheck `json:",omitempty" alias:"passive_health_check"`
+
+	// MeshGatewayConfig controls how Mesh Gateways are configured and used
+	MeshGateway MeshGatewayConfig `json:",omitempty" alias:"mesh_gateway" `
+}
+
+type PassiveHealthCheck struct {
+	// Interval between health check analysis sweeps. Each sweep may remove
+	// hosts or return hosts to the pool.
+	Interval time.Duration `json:",omitempty"`
+
+	// MaxFailures is the count of consecutive failures that results in a host
+	// being removed from the pool.
+	MaxFailures uint32 `alias:"max_failures"`
+}
+
+// UpstreamLimits describes the limits that are associated with a specific
+// upstream of a service instance.
+type UpstreamLimits struct {
+	// MaxConnections is the maximum number of connections the local proxy can
+	// make to the upstream service.
+	MaxConnections *int `alias:"max_connections"`
+
+	// MaxPendingRequests is the maximum number of requests that will be queued
+	// waiting for an available connection. This is mostly applicable to HTTP/1.1
+	// clusters since all HTTP/2 requests are streamed over a single
+	// connection.
+	MaxPendingRequests *int `alias:"max_pending_requests"`
+
+	// MaxConcurrentRequests is the maximum number of in-flight requests that will be allowed
+	// to the upstream cluster at a point in time. This is mostly applicable to HTTP/2
+	// clusters since all HTTP/1.1 requests are limited by MaxConnections.
+	MaxConcurrentRequests *int `alias:"max_concurrent_requests"`
+}
+
 type ServiceConfigEntry struct {
-	Kind        string
-	Name        string
-	Namespace   string            `json:",omitempty"`
-	Protocol    string            `json:",omitempty"`
-	MeshGateway MeshGatewayConfig `json:",omitempty" alias:"mesh_gateway"`
-	Expose      ExposeConfig      `json:",omitempty"`
-	ExternalSNI string            `json:",omitempty" alias:"external_sni"`
+	Kind             string
+	Name             string
+	Namespace        string                  `json:",omitempty"`
+	Protocol         string                  `json:",omitempty"`
+	Mode             ProxyMode               `json:",omitempty"`
+	TransparentProxy *TransparentProxyConfig `json:",omitempty" alias:"transparent_proxy"`
+	MeshGateway      MeshGatewayConfig       `json:",omitempty" alias:"mesh_gateway"`
+	Expose           ExposeConfig            `json:",omitempty"`
+	ExternalSNI      string                  `json:",omitempty" alias:"external_sni"`
+	UpstreamConfig   *UpstreamConfiguration  `json:",omitempty" alias:"upstream_config"`
+
 	Meta        map[string]string `json:",omitempty"`
 	CreateIndex uint64
 	ModifyIndex uint64
@@ -129,15 +244,17 @@ func (s *ServiceConfigEntry) GetModifyIndex() uint64 {
 }
 
 type ProxyConfigEntry struct {
-	Kind        string
-	Name        string
-	Namespace   string                 `json:",omitempty"`
-	Config      map[string]interface{} `json:",omitempty"`
-	MeshGateway MeshGatewayConfig      `json:",omitempty" alias:"mesh_gateway"`
-	Expose      ExposeConfig           `json:",omitempty"`
-	Meta        map[string]string      `json:",omitempty"`
-	CreateIndex uint64
-	ModifyIndex uint64
+	Kind             string
+	Name             string
+	Namespace        string                  `json:",omitempty"`
+	Mode             ProxyMode               `json:",omitempty"`
+	TransparentProxy *TransparentProxyConfig `json:",omitempty" alias:"transparent_proxy"`
+	Config           map[string]interface{}  `json:",omitempty"`
+	MeshGateway      MeshGatewayConfig       `json:",omitempty" alias:"mesh_gateway"`
+	Expose           ExposeConfig            `json:",omitempty"`
+	Meta             map[string]string       `json:",omitempty"`
+	CreateIndex      uint64
+	ModifyIndex      uint64
 }
 
 func (p *ProxyConfigEntry) GetKind() string {
@@ -182,6 +299,8 @@ func makeConfigEntry(kind, name string) (ConfigEntry, error) {
 		return &TerminatingGatewayConfigEntry{Kind: kind, Name: name}, nil
 	case ServiceIntentions:
 		return &ServiceIntentionsConfigEntry{Kind: kind, Name: name}, nil
+	case MeshConfig:
+		return &MeshConfigEntry{}, nil
 	default:
 		return nil, fmt.Errorf("invalid config entry kind: %s", kind)
 	}
@@ -288,7 +407,7 @@ func (conf *ConfigEntries) Get(kind string, name string, q *QueryOptions) (Confi
 		return nil, nil, err
 	}
 
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -313,7 +432,7 @@ func (conf *ConfigEntries) List(kind string, q *QueryOptions) ([]ConfigEntry, *Q
 		return nil, nil, err
 	}
 
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -351,7 +470,7 @@ func (conf *ConfigEntries) set(entry ConfigEntry, params map[string]string, w *W
 	if err != nil {
 		return false, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, resp.Body); err != nil {
@@ -374,7 +493,7 @@ func (conf *ConfigEntries) Delete(kind string, name string, w *WriteOptions) (*W
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	closeResponseBody(resp)
 	wm := &WriteMeta{RequestTime: rtt}
 	return wm, nil
 }

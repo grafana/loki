@@ -21,7 +21,7 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cortexproject/cortex v1.10.1-0.20210818115638-df9af3a99954
+	github.com/cortexproject/cortex v1.10.1-0.20210819151536-bcf15611345d
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.7+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
@@ -40,15 +40,15 @@ require (
 	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/protobuf v1.5.2
-	github.com/golang/snappy v0.0.3
+	github.com/golang/snappy v0.0.4
 	github.com/google/go-cmp v0.5.6
-	github.com/gorilla/mux v1.7.3
+	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/grafana/dskit v0.0.0-20210817085554-1b69d2de136f
-	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
+	github.com/grafana/dskit v0.0.0-20210819132858-471020752967
+	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20191002090509-6af20e3a5340 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
-	github.com/hashicorp/consul/api v1.8.1
+	github.com/hashicorp/consul/api v1.9.1
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hpcloud/tail v1.0.0
 	github.com/imdario/mergo v0.3.11
@@ -80,21 +80,21 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.7.0
-	github.com/thanos-io/thanos v0.19.1-0.20210729154440-aa148f8fdb28
+	github.com/thanos-io/thanos v0.22.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/weaveworks/common v0.0.0-20210506120931-f2676019da11
-	go.etcd.io/bbolt v1.3.5
+	github.com/weaveworks/common v0.0.0-20210722103813-e649eff5ab4a
+	go.etcd.io/bbolt v1.3.6
 	go.uber.org/atomic v1.9.0
 	go.uber.org/goleak v1.1.10
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
 	golang.org/x/net v0.0.0-20210610132358-84b48f89b13b
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1
+	golang.org/x/sys v0.0.0-20210616094352-59db8d763f22
 	golang.org/x/time v0.0.0-20210611083556-38a9dc6acbc6
-	google.golang.org/api v0.48.0
-	google.golang.org/grpc v1.38.0
+	google.golang.org/api v0.50.0
+	google.golang.org/grpc v1.39.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/yaml.v2 v2.4.0

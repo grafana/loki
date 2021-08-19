@@ -31,6 +31,15 @@ import (
 	"github.com/weaveworks/common/signals"
 )
 
+// Listen on the named network
+const (
+	// DefaultNetwork  the host resolves to multiple IP addresses,
+	// Dial will try each IP address in order until one succeeds
+	DefaultNetwork = "tcp"
+	// NetworkTCPV4 for IPV4 only
+	NetworkTCPV4 = "tcp4"
+)
+
 // SignalHandler used by Server.
 type SignalHandler interface {
 	// Starts the signals handler. This method is blocking, and returns only after signal is received,
@@ -44,9 +53,11 @@ type SignalHandler interface {
 // Config for a Server
 type Config struct {
 	MetricsNamespace  string `yaml:"-"`
+	HTTPListenNetwork string `yaml:"http_listen_network"`
 	HTTPListenAddress string `yaml:"http_listen_address"`
 	HTTPListenPort    int    `yaml:"http_listen_port"`
 	HTTPConnLimit     int    `yaml:"http_listen_conn_limit"`
+	GRPCListenNetwork string `yaml:"grpc_listen_network"`
 	GRPCListenAddress string `yaml:"grpc_listen_address"`
 	GRPCListenPort    int    `yaml:"grpc_listen_port"`
 	GRPCConnLimit     int    `yaml:"grpc_listen_conn_limit"`
@@ -98,6 +109,7 @@ var infinty = time.Duration(math.MaxInt64)
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.HTTPListenAddress, "server.http-listen-address", "", "HTTP server listen address.")
+	f.StringVar(&cfg.HTTPListenNetwork, "server.http-listen-network", DefaultNetwork, "HTTP server listen network, default tcp")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSCertPath, "server.http-tls-cert-path", "", "HTTP server cert path.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSKeyPath, "server.http-tls-key-path", "", "HTTP server key path.")
 	f.StringVar(&cfg.HTTPTLSConfig.ClientAuth, "server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
@@ -108,6 +120,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.GRPCTLSConfig.ClientCAs, "server.grpc-tls-ca-path", "", "GRPC TLS Client CA path.")
 	f.IntVar(&cfg.HTTPListenPort, "server.http-listen-port", 80, "HTTP server listen port.")
 	f.IntVar(&cfg.HTTPConnLimit, "server.http-conn-limit", 0, "Maximum number of simultaneous http connections, <=0 to disable")
+	f.StringVar(&cfg.GRPCListenNetwork, "server.grpc-listen-network", DefaultNetwork, "gRPC server listen network")
 	f.StringVar(&cfg.GRPCListenAddress, "server.grpc-listen-address", "", "gRPC server listen address.")
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.IntVar(&cfg.GRPCConnLimit, "server.grpc-conn-limit", 0, "Maximum number of simultaneous grpc connections, <=0 to disable")
@@ -159,7 +172,7 @@ func New(cfg Config) (*Server, error) {
 	prometheus.MustRegister(tcpConnections)
 
 	// Setup listeners first, so we can fail early if the port is in use.
-	httpListener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.HTTPListenAddress, cfg.HTTPListenPort))
+	httpListener, err := net.Listen(cfg.HTTPListenNetwork, fmt.Sprintf("%s:%d", cfg.HTTPListenAddress, cfg.HTTPListenPort))
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +182,7 @@ func New(cfg Config) (*Server, error) {
 		httpListener = netutil.LimitListener(httpListener, cfg.HTTPConnLimit)
 	}
 
-	grpcListener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GRPCListenAddress, cfg.GRPCListenPort))
+	grpcListener, err := net.Listen(cfg.HTTPListenNetwork, fmt.Sprintf("%s:%d", cfg.GRPCListenAddress, cfg.GRPCListenPort))
 	if err != nil {
 		return nil, err
 	}

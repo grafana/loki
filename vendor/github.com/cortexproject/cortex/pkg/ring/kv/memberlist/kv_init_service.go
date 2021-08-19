@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/hashicorp/memberlist"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // This service initialized memberlist.KV on first call to GetMemberlistKV, and starts it. On stop,

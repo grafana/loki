@@ -12,7 +12,7 @@ To install the packages on your system, *do not clone the repo*. Instead:
 
 1. Change to your project directory:
 
-   ```
+   ```bash
    cd /my/cloud/project
    ```
 1. Get the package you want to use. Some products have their own module, so it's
@@ -54,7 +54,7 @@ make backwards-incompatible changes.
 | [Monitoring][cloud-monitoring]                  | stable | [`cloud.google.com/go/monitoring/apiv3`](https://pkg.go.dev/cloud.google.com/go/monitoring/apiv3)                             |
 | [OS Login][cloud-oslogin]                       | stable | [`cloud.google.com/go/oslogin/apiv1`](https://pkg.go.dev/cloud.google.com/go/oslogin/apiv1)                                   |
 | [Pub/Sub][cloud-pubsub]                         | stable | [`cloud.google.com/go/pubsub`](https://pkg.go.dev/cloud.google.com/go/pubsub)                                                 |
-| [Pub/Sub Lite][cloud-pubsublite]                | beta   | [`cloud.google.com/go/pubsublite`](https://pkg.go.dev/cloud.google.com/go/pubsublite)                                                 |
+| [Pub/Sub Lite][cloud-pubsublite]                | stable | [`cloud.google.com/go/pubsublite`](https://pkg.go.dev/cloud.google.com/go/pubsublite)                                                 |
 | [Phishing Protection][cloud-phishingprotection] | alpha  | [`cloud.google.com/go/phishingprotection/apiv1beta1`](https://pkg.go.dev/cloud.google.com/go/phishingprotection/apiv1beta1)   |
 | [reCAPTCHA Enterprise][cloud-recaptcha]         | alpha  | [`cloud.google.com/go/recaptchaenterprise/apiv1beta1`](https://pkg.go.dev/cloud.google.com/go/recaptchaenterprise/apiv1beta1) |
 | [Recommender][cloud-recommender]                | beta   | [`cloud.google.com/go/recommender/apiv1beta1`](https://pkg.go.dev/cloud.google.com/go/recommender/apiv1beta1)                 |
