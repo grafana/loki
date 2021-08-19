@@ -7,12 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/grafana/dskit/services"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"

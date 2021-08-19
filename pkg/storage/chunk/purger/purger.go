@@ -9,9 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,10 +22,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
