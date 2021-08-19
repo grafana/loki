@@ -116,7 +116,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxLocalStreamRateBytes.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.MaxLocalStreamRateBytes, "ingester.max-stream-rate-bytes", "Maximum bytes per second rate per active stream.")
 	_ = l.MaxLocalStreamBurstRateBytes.Set(strconv.Itoa(defaultPerStreamBurstLimit))
-	f.Var(&l.MaxLocalStreamBurstRateBytes, "ingester.max-stream-rate-bytes", "Maximum burst bytes per second rate per active stream.")
+	f.Var(&l.MaxLocalStreamBurstRateBytes, "ingester.max-stream-burst-bytes", "Maximum burst bytes per second rate per active stream.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 

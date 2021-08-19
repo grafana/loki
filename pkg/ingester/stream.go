@@ -52,7 +52,6 @@ var (
 var (
 	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
 	ErrStreamRateLimit = errors.New("stream rate limit exceeded")
-	StreamRateLimitMsg = "stream rate limit of %s exceeded"
 )
 
 func init() {
@@ -232,7 +231,6 @@ func (s *stream) Push(
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx)
 		}
-
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {

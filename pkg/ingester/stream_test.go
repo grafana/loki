@@ -294,8 +294,8 @@ func TestUnorderedPush(t *testing.T) {
 
 func TestPushRateLimit(t *testing.T) {
 	l := validation.Limits{
-		MaxLocalStreamRateBytes:      1000,
-		MaxLocalStreamBurstRateBytes: 2000,
+		MaxLocalStreamRateBytes:      10,
+		MaxLocalStreamBurstRateBytes: 10,
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
@@ -317,27 +317,10 @@ func TestPushRateLimit(t *testing.T) {
 
 	// counter should be 2 now since the first line will be deduped
 	_, err = s.Push(context.Background(), []logproto.Entry{
-		{Timestamp: time.Unix(1, 0), Line: "test"},
-		{Timestamp: time.Unix(1, 0), Line: "test"},
-		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
 	}, recordPool.GetRecord(), 0)
-	require.Equal(t, err, httpgrpc.Errorf(http.StatusTooManyRequests, StreamRateLimitMsg, 10))
-	// require.Len(t, s.chunks, 1)
-	// require.Equal(t, s.chunks[0].chunk.Size(), 2,
-	// 	"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
-
-	// // fail to push with a counter <= the streams internal counter
-	// _, err = s.Push(context.Background(), []logproto.Entry{
-	// 	{Timestamp: time.Unix(1, 0), Line: "test"},
-	// }, recordPool.GetRecord(), 2)
-	// require.Equal(t, ErrEntriesExist, err)
-
-	// // succeed with a greater counter
-	// _, err = s.Push(context.Background(), []logproto.Entry{
-	// 	{Timestamp: time.Unix(1, 0), Line: "test"},
-	// }, recordPool.GetRecord(), 3)
-	// require.Nil(t, err)
-
+	require.Equal(t, ErrStreamRateLimit, err)
 }
 
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
