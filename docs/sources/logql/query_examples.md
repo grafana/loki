@@ -34,8 +34,8 @@ Some useful query examples here.
     ```logql
     {job="security"} 
         |~ "Invalid user.*"
-        |regexp "(^(?P<user>\\S+ {1,2}){8})"
-        |regexp "(^(?P<ip>\\S+ {1,2}){10})"
+        | regexp "(^(?P<user>\\S+ {1,2}){8})"
+        | regexp "(^(?P<ip>\\S+ {1,2}){10})"
         | line_format "IP = {{.ip}}\tUSER = {{.user}}"
     ```
    
