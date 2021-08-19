@@ -44,7 +44,7 @@ Some useful query examples here.
     ```logql
     {job="security"}
         != "grafana_com"
-        |~ "session opened"
+        |= "session opened"
         != "sudo: "
         |regexp "(^(?P<user>\\S+ {1,2}){11})"
         | line_format "USER = {{.user}}"
