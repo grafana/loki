@@ -650,7 +650,7 @@ func Test_DryRun(t *testing.T) {
 	require.Error(t, err)
 
 	// Set the minimum config needed to start a server. We need to do this since we
-	// aren't doing any CLI parsing ala RegisterFlags and thus don't get the defaults
+	// aren't doing any CLI parsing ala RegisterFlags and thus don't get the defaults.
 	// Required because a hardcoded value became a configuration setting in this commit
 	// https://github.com/weaveworks/common/commit/c44eeb028a671c5931b047976f9a0171910571ce
 	serverCfg := server.Config{
