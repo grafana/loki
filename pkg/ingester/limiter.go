@@ -138,9 +138,9 @@ func newLocalStreamRateStrategy(limits *validation.Overrides) limiter.RateLimite
 }
 
 func (s *localStrategy) Limit(userID string) float64 {
-	return float64(s.limits.MaxLocalStreamRateMB(userID))
+	return float64(s.limits.MaxLocalStreamRateBytes(userID))
 }
 
 func (s *localStrategy) Burst(userID string) int {
-	return s.limits.MaxLocalStreamBurstRateMB(userID)
+	return s.limits.MaxLocalStreamBurstRateBytes(userID)
 }

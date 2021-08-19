@@ -51,6 +51,7 @@ var (
 
 var (
 	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
+	ErrStreamRateLimit = errors.New("stream rate limit exceeded")
 	StreamRateLimitMsg = "stream rate limit of %s exceeded"
 )
 
@@ -200,10 +201,15 @@ func (s *stream) Push(
 	failedEntriesWithError := []entryWithError{}
 
 	var outOfOrderSamples, outOfOrderBytes int
+	var rateLimitedSamples, rateLimitedBytes int
 	defer func() {
 		if outOfOrderSamples > 0 {
 			validation.DiscardedSamples.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderSamples))
 			validation.DiscardedBytes.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderBytes))
+		}
+		if rateLimitedSamples > 0 {
+			validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
+			validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedBytes))
 		}
 	}()
 
@@ -230,13 +236,10 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {
-			validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(len(entries) - i))
-			rateLimitesBytes := 0
-			for j := range entries[i:] {
-				rateLimitesBytes += len(entries[j].Line)
-			}
-			validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitesBytes))
-			return 0, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamRateLimitErrorMsg, int(s.limiter.Limit(now, s.tenant)), len(entries)-i, rateLimitesBytes)
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
+			rateLimitedSamples++
+			rateLimitedBytes += len(entries[i].Line)
+			continue
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
@@ -308,27 +311,36 @@ func (s *stream) Push(
 
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
-			// return bad http status request response with all failed entries
-			buf := bytes.Buffer{}
-			streamName := s.labelsString
+		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder || lastEntryWithErr.e != ErrStreamRateLimit {
+			return bytesAdded, lastEntryWithErr.e
 
-			limitedFailedEntries := failedEntriesWithError
-			if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
-				limitedFailedEntries = limitedFailedEntries[:maxIgnore]
-			}
-
-			for _, entryWithError := range limitedFailedEntries {
-				fmt.Fprintf(&buf,
-					"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-					entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
-			}
-
-			fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
-
-			return bytesAdded, httpgrpc.Errorf(http.StatusBadRequest, buf.String())
 		}
-		return bytesAdded, lastEntryWithErr.e
+
+		var statusCode int
+		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
+			statusCode = http.StatusBadRequest
+		}
+		if lastEntryWithErr.e == ErrStreamRateLimit {
+			statusCode = http.StatusTooManyRequests
+		}
+		// return a http status 4xx request response with all failed entries
+		buf := bytes.Buffer{}
+		streamName := s.labelsString
+
+		limitedFailedEntries := failedEntriesWithError
+		if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
+			limitedFailedEntries = limitedFailedEntries[:maxIgnore]
+		}
+
+		for _, entryWithError := range limitedFailedEntries {
+			fmt.Fprintf(&buf,
+				"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
+				entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+		}
+
+		fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
+
+		return bytesAdded, httpgrpc.Errorf(statusCode, buf.String())
 	}
 
 	if len(s.chunks) != prevNumChunks {

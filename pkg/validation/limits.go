@@ -3,6 +3,7 @@ package validation
 import (
 	"flag"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -20,6 +21,9 @@ const (
 	GlobalIngestionRateStrategy = "global"
 
 	bytesInMB = 1048576
+
+	defaultPerStreamRateLimit  = 1 << 20 // 1MB
+	defaultPerStreamBurstLimit = 2 * defaultPerStreamRateLimit
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -109,9 +113,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 0, "Maximum number of active streams per user, across the cluster. 0 to disable.")
 	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", false, "(Experimental) Allow out of order writes.")
-	_ = l.MaxLocalStreamRateBytes.Set("10000")
+	_ = l.MaxLocalStreamRateBytes.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.MaxLocalStreamRateBytes, "ingester.max-stream-rate-bytes", "Maximum bytes per second rate per active stream.")
-	_ = l.MaxLocalStreamBurstRateBytes.Set("20000")
+	_ = l.MaxLocalStreamBurstRateBytes.Set(strconv.Itoa(defaultPerStreamBurstLimit))
 	f.Var(&l.MaxLocalStreamBurstRateBytes, "ingester.max-stream-rate-bytes", "Maximum burst bytes per second rate per active stream.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
@@ -412,12 +416,12 @@ func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
 }
 
-func (o *Overrides) MaxLocalStreamRateMB(userID string) int {
+func (o *Overrides) MaxLocalStreamRateBytes(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamRateBytes.Val()
 }
 
-func (o *Overrides) MaxLocalStreamBurstRateMB(userID string) int {
-	return int(o.getOverridesForUser(userID).MaxLocalStreamBurstRateBytes)
+func (o *Overrides) MaxLocalStreamBurstRateBytes(userID string) int {
+	return o.getOverridesForUser(userID).MaxLocalStreamBurstRateBytes.Val()
 }
 
 func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
