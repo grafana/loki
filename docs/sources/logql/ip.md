@@ -30,7 +30,7 @@ also matches example IP addresses such as 93.180.71.3. A better choice uses a re
 The LogQL support for matching IP addresses handles both IPv4 and IPv6 single addresses, as well as ranges within IP addresses
 and CIDR patterns.
 
-Match IP addresses wtih the syntax: `ip("<pattern>")`.
+Match IP addresses with the syntax: `ip("<pattern>")`.
 The `<pattern>` can be:
 
 -  A single IP address. Examples: `ip("192.0.2.0")`, `ip("::1")`
