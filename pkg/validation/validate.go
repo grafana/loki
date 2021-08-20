@@ -25,7 +25,7 @@ const (
 	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased"
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
-	StreamRateLimit = "per_stream_rate_limt"
+	StreamRateLimit = "per_stream_rate_limit"
 	OutOfOrder      = "out_of_order"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
