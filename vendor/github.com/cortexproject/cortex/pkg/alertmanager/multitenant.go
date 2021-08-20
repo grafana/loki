@@ -250,6 +250,10 @@ type MultitenantAlertmanager struct {
 	distributor    *Distributor
 	grpcServer     *server.Server
 
+	// Last ring state. This variable is not protected with a mutex because it's always
+	// accessed by a single goroutine at a time.
+	ringLastState ring.ReplicationSet
+
 	// Subservices manager (ring, lifecycler)
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -488,6 +492,10 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	}
 
 	if am.cfg.ShardingEnabled {
+		// Store the ring state after the initial Alertmanager configs sync has been done and before we do change
+		// our state in the ring.
+		am.ringLastState, _ = am.ring.GetAllHealthy(RingOp)
+
 		// Make sure that all the alertmanagers we were initially configured with have
 		// fetched state from the replicas, before advertising as ACTIVE. This will
 		// reduce the possibility that we lose state when new instances join/leave.
@@ -631,10 +639,8 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 	defer tick.Stop()
 
 	var ringTickerChan <-chan time.Time
-	var ringLastState ring.ReplicationSet
 
 	if am.cfg.ShardingEnabled {
-		ringLastState, _ = am.ring.GetAllHealthy(RingOp)
 		ringTicker := time.NewTicker(util.DurationWithJitter(am.cfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -656,8 +662,8 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 			// replication set which we use to compare with the previous state.
 			currRingState, _ := am.ring.GetAllHealthy(RingOp)
 
-			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
-				ringLastState = currRingState
+			if ring.HasReplicationSetChanged(am.ringLastState, currRingState) {
+				am.ringLastState = currRingState
 				if err := am.loadAndSyncConfigs(ctx, reasonRingChange); err != nil {
 					level.Warn(am.logger).Log("msg", "error while synchronizing alertmanager configs", "err", err)
 				}

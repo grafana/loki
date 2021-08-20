@@ -11,7 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
-
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
@@ -31,7 +31,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 		Directory: objectStorePath,
 	})
 	require.NoError(t, err)
-	indexClient, err := newDeleteRequestsTable(workingDir, objectClient)
+	indexClient, err := newDeleteRequestsTable(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
 
 	// see if delete requests db was created
@@ -49,7 +49,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 
 	// upload the file to the storage
 	require.NoError(t, testDeleteRequestsTable.uploadFile())
-	storageFilePath := filepath.Join(objectStorePath, objectPathInStorage)
+	storageFilePath := filepath.Join(objectStorePath, DeleteRequestsTableName+"/"+DeleteRequestsTableName+".gz")
 	require.FileExists(t, storageFilePath)
 
 	// validate records in the storage db
@@ -70,7 +70,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	require.NoError(t, err)
 
 	// re-create table to see if the db gets downloaded locally since it does not exist anymore
-	indexClient, err = newDeleteRequestsTable(workingDir, objectClient)
+	indexClient, err = newDeleteRequestsTable(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
 	defer indexClient.Stop()
 

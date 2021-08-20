@@ -26,8 +26,8 @@ import (
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -176,16 +176,12 @@ func (c *Client) ExternalLabels(ctx context.Context, base *url.URL) (labels.Labe
 	if err := json.Unmarshal(body, &d); err != nil {
 		return nil, errors.Wrapf(err, "unmarshal response: %v", string(body))
 	}
-	var cfg struct {
-		Global struct {
-			ExternalLabels map[string]string `yaml:"external_labels"`
-		} `yaml:"global"`
-	}
+	var cfg config.Config
 	if err := yaml.Unmarshal([]byte(d.Data.YAML), &cfg); err != nil {
 		return nil, errors.Wrapf(err, "parse Prometheus config: %v", d.Data.YAML)
 	}
 
-	lset := labels.FromMap(cfg.Global.ExternalLabels)
+	lset := cfg.GlobalConfig.ExternalLabels
 	sort.Sort(lset)
 	return lset, nil
 }
@@ -466,10 +462,10 @@ func (c *Client) PromqlQueryInstant(ctx context.Context, base *url.URL, query st
 	vec := make(promql.Vector, 0, len(vectorResult))
 
 	for _, e := range vectorResult {
-		lset := make(promlabels.Labels, 0, len(e.Metric))
+		lset := make(labels.Labels, 0, len(e.Metric))
 
 		for k, v := range e.Metric {
-			lset = append(lset, promlabels.Label{
+			lset = append(lset, labels.Label{
 				Name:  string(k),
 				Value: string(v),
 			})
@@ -607,6 +603,39 @@ func (c *Client) AlertmanagerAlerts(ctx context.Context, base *url.URL) ([]*mode
 		return v.Data[i].Labels.Before(v.Data[j].Labels)
 	})
 	return v.Data, nil
+}
+
+// BuildVersion returns Prometheus version from /api/v1/status/buildinfo Prometheus endpoint.
+// For Prometheus versions < 2.14.0 it returns "0" as Prometheus version.
+func (c *Client) BuildVersion(ctx context.Context, base *url.URL) (string, error) {
+	u := *base
+	u.Path = path.Join(u.Path, "/api/v1/status/buildinfo")
+
+	level.Debug(c.logger).Log("msg", "build version", "url", u.String())
+
+	span, ctx := tracing.StartSpan(ctx, "/prom_buildversion HTTP[client]")
+	defer span.Finish()
+
+	// We get status code 404 for prometheus versions lower than 2.14.0
+	body, code, err := c.req2xx(ctx, &u, http.MethodGet)
+	if err != nil {
+		if code == http.StatusNotFound {
+			return "0", nil
+		}
+		return "", err
+	}
+
+	var b struct {
+		Data struct {
+			Version string `json:"version"`
+		} `json:"data"`
+	}
+
+	if err = json.Unmarshal(body, &b); err != nil {
+		return "", errors.Wrap(err, "unmarshal build info API response")
+	}
+
+	return b.Data.Version, nil
 }
 
 func formatTime(t time.Time) string {

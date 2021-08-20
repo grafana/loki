@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  cat <<EOF
+Create or delete a dev k3d cluster
+
+Usage:
+  $0 create
+  $0 delete
+EOF
+fi
+
+CLUSTER_NAME=enterprise-logs
+
+case $1 in
+  create)
+    shift
+    # Make creation idempotent.
+    if k3d cluster list "${CLUSTER_NAME}" &>/dev/null; then
+      exit 0
+    fi
+    k3d cluster create "${CLUSTER_NAME}"
+
+    echo -n 'creating'
+    set +e
+    while ! k3d kubeconfig get "${CLUSTER_NAME}" &>/dev/null; do
+      sleep 1
+      echo -n '.'
+    done
+    set -e
+    echo 'done'
+
+    kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+    kubectl patch storageclass local-path -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+    kubectl config use-context k3d-"${CLUSTER_NAME}"
+    sleep 10 # Lazy sleep instead of checking for readiness of API server to handle all resources.
+    ;;
+  delete)
+    k3d cluster delete "${CLUSTER_NAME}"
+    shift
+    ;;
+esac

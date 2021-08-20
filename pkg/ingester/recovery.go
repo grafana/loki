@@ -99,6 +99,7 @@ type ingesterRecoverer struct {
 }
 
 func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
+
 	return &ingesterRecoverer{
 		ing:  i,
 		done: make(chan struct{}),
@@ -127,6 +128,9 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		stream.lastLine.content = series.LastLine
 		stream.entryCt = series.EntryCt
 		stream.highestTs = series.HighestTs
+		// Always set during replay, then reset to desired value afterward.
+		// This allows replaying unordered WALs into ordered configurations.
+		stream.unorderedWrites = true
 
 		if err != nil {
 			return err
@@ -202,14 +206,46 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 }
 
 func (r *ingesterRecoverer) Close() {
-	// reset all the incrementing stream counters after a successful WAL replay.
+	// Ensure this is only run once.
+	select {
+	case <-r.done:
+		return
+	default:
+	}
+
+	close(r.done)
+
+	// Enable the limiter here to accurately reflect tenant limits after recovery.
+	r.ing.limiter.Enable()
+
 	for _, inst := range r.ing.getInstances() {
 		inst.forAllStreams(context.Background(), func(s *stream) error {
+			// reset all the incrementing stream counters after a successful WAL replay.
 			s.resetCounter()
+
+			// If we've replayed a WAL with unordered writes, but the new
+			// configuration disables them, convert all streams/head blocks
+			// to ensure unordered writes are disabled after the replay,
+			// but without dropping any previously accepted data.
+			isAllowed := r.ing.limiter.UnorderedWrites(s.tenant)
+			old := s.unorderedWrites
+			s.unorderedWrites = isAllowed
+
+			if !isAllowed && old {
+
+				s.chunkMtx.Lock()
+				defer s.chunkMtx.Unlock()
+				if len(s.chunks) > 0 {
+					err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 			return nil
 		})
 	}
-	close(r.done)
 }
 
 func (r *ingesterRecoverer) Done() <-chan struct{} {

@@ -145,7 +145,7 @@ func (b *Bucket) GetRange(_ context.Context, name string, off, length int64) (io
 		return nil, errors.Wrapf(err, "stat %s", file)
 	}
 
-	f, err := os.OpenFile(file, os.O_RDONLY, 0666)
+	f, err := os.OpenFile(filepath.Clean(file), os.O_RDONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func (b *Bucket) Upload(_ context.Context, name string, r io.Reader) (err error)
 }
 
 func isDirEmpty(name string) (ok bool, err error) {
-	f, err := os.Open(name)
+	f, err := os.Open(filepath.Clean(name))
 	if err != nil {
 		return false, err
 	}

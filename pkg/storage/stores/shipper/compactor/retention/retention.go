@@ -104,7 +104,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 			return err
 		}
 
-		empty, err = markforDelete(ctx, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg), t.expiration, chunkRewriter)
+		empty, err = markforDelete(ctx, tableName, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg, tableName), t.expiration, chunkRewriter)
 		if err != nil {
 			return err
 		}
@@ -129,38 +129,65 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 	return empty, markerWriter.Count(), nil
 }
 
-func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, error) {
+func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, error) {
 	seriesMap := newUserSeriesMap()
+	// tableInterval holds the interval for which the table is expected to have the chunks indexed
+	tableInterval := ExtractIntervalFromTableName(tableName)
 	empty := true
 	now := model.Now()
+
 	for chunkIt.Next() {
 		if chunkIt.Err() != nil {
 			return false, chunkIt.Err()
 		}
 		c := chunkIt.Entry()
+		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
+
+		// see if the chunk is deleted completely or partially
 		if expired, nonDeletedIntervals := expiration.Expired(c, now); expired {
-			if len(nonDeletedIntervals) == 0 {
-				seriesMap.Add(c.SeriesID, c.UserID)
-			} else {
+			if len(nonDeletedIntervals) > 0 {
 				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
 				if err != nil {
 					return false, err
 				}
 
-				if !wroteChunks {
-					seriesMap.Add(c.SeriesID, c.UserID)
+				if wroteChunks {
+					// we have re-written chunk to the storage so the table won't be empty and the series are still being referred.
+					empty = false
+					seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
 				}
 			}
 
 			if err := chunkIt.Delete(); err != nil {
 				return false, err
 			}
-			if err := marker.Put(c.ChunkID); err != nil {
-				return false, err
+
+			// Mark the chunk for deletion only if it is completely deleted, or this is the last table that the chunk is index in.
+			// For a partially deleted chunk, if we delete the source chunk before all the tables which index it are processed then
+			// the retention would fail because it would fail to find it in the storage.
+			if len(nonDeletedIntervals) == 0 || c.Through <= tableInterval.End {
+				if err := marker.Put(c.ChunkID); err != nil {
+					return false, err
+				}
 			}
 			continue
 		}
+
+		// The chunk is not deleted, now see if we can drop its index entry based on end time from tableInterval.
+		// If chunk end time is after the end time of tableInterval, it means the chunk would also be indexed in the next table.
+		// We would now check if the end time of the tableInterval is out of retention period so that
+		// we can drop the chunk entry from this table without removing the chunk from the store.
+		if c.Through.After(tableInterval.End) {
+			if expiration.DropFromIndex(c, tableInterval.End, now) {
+				if err := chunkIt.Delete(); err != nil {
+					return false, err
+				}
+				continue
+			}
+		}
+
 		empty = false
+		seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
 	}
 	if empty {
 		return true, nil
@@ -168,8 +195,13 @@ func markforDelete(ctx context.Context, marker MarkerStorageWriter, chunkIt Chun
 	if ctx.Err() != nil {
 		return false, ctx.Err()
 	}
-	return false, seriesMap.ForEach(func(seriesID, userID []byte) error {
-		return seriesCleaner.Cleanup(seriesID, userID)
+
+	return false, seriesMap.ForEach(func(info userSeriesInfo) error {
+		if !info.isDeleted {
+			return nil
+		}
+
+		return seriesCleaner.Cleanup(info.UserID(), info.lbls)
 	})
 }
 

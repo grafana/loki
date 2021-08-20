@@ -214,3 +214,7 @@ func (d *DeleteRequestsManager) IntervalHasExpiredChunks(interval model.Interval
 
 	return false
 }
+
+func (d *DeleteRequestsManager) DropFromIndex(_ retention.ChunkEntry, _ model.Time, _ model.Time) bool {
+	return false
+}

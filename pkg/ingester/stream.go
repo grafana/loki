@@ -95,6 +95,8 @@ type stream struct {
 	// errors were used to detect this, but this counter has been
 	// introduced to facilitate removing the ordering constraint.
 	entryCt int64
+
+	unorderedWrites bool
 }
 
 type chunkDesc struct {
@@ -111,15 +113,16 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, tenant string, fp model.Fingerprint, labels labels.Labels, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
 	return &stream{
-		cfg:          cfg,
-		fp:           fp,
-		labels:       labels,
-		labelsString: labels.String(),
-		tailers:      map[uint32]*tailer{},
-		metrics:      metrics,
-		tenant:       tenant,
+		cfg:             cfg,
+		fp:              fp,
+		labels:          labels,
+		labelsString:    labels.String(),
+		tailers:         map[uint32]*tailer{},
+		metrics:         metrics,
+		tenant:          tenant,
+		unorderedWrites: unorderedWrites,
 	}
 }
 
@@ -158,11 +161,7 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	hbType := chunkenc.OrderedHeadBlockFmt
-	if s.cfg.UnorderedWrites {
-		hbType = chunkenc.UnorderedHeadBlockFmt
-	}
-	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, hbType, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, headBlockType(s.unorderedWrites), s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
 func (s *stream) Push(
@@ -225,7 +224,7 @@ func (s *stream) Push(
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		if s.cfg.UnorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
+		if s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
@@ -476,4 +475,11 @@ func (s *stream) addTailer(t *tailer) {
 
 func (s *stream) resetCounter() {
 	s.entryCt = 0
+}
+
+func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {
+	if unorderedWrites {
+		return chunkenc.UnorderedHeadBlockFmt
+	}
+	return chunkenc.OrderedHeadBlockFmt
 }

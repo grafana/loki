@@ -1,11 +1,9 @@
 package retention
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"go.etcd.io/bbolt"
 
@@ -91,93 +89,60 @@ func (b *chunkIndexIterator) Next() bool {
 }
 
 type SeriesCleaner interface {
-	Cleanup(seriesID []byte, userID []byte) error
+	Cleanup(userID []byte, lbls labels.Labels) error
 }
 
 type seriesCleaner struct {
-	bucketTimestamps []string
-	shards           map[uint32]string
-	cursor           *bbolt.Cursor
-	config           chunk.PeriodConfig
+	tableInterval model.Interval
+	shards        map[uint32]string
+	bucket        *bbolt.Bucket
+	config        chunk.PeriodConfig
+	schema        chunk.SeriesStoreSchema
 
 	buf []byte
 }
 
-func newSeriesCleaner(bucket *bbolt.Bucket, config chunk.PeriodConfig) *seriesCleaner {
-	var (
-		fromDay          = config.From.Time.Unix() / int64(config.IndexTables.Period/time.Second)
-		throughDay       = config.From.Add(config.IndexTables.Period).Unix() / int64(config.IndexTables.Period/time.Second)
-		bucketTimestamps = []string{}
-	)
-	for i := fromDay; i <= throughDay; i++ {
-		bucketTimestamps = append(bucketTimestamps, fmt.Sprintf("d%d", i))
-	}
+func newSeriesCleaner(bucket *bbolt.Bucket, config chunk.PeriodConfig, tableName string) *seriesCleaner {
+	baseSchema, _ := config.CreateSchema()
+	schema := baseSchema.(chunk.SeriesStoreSchema)
 	var shards map[uint32]string
+
 	if config.RowShards != 0 {
 		shards = map[uint32]string{}
 		for s := uint32(0); s <= config.RowShards; s++ {
 			shards[s] = fmt.Sprintf("%02d", s)
 		}
 	}
+
 	return &seriesCleaner{
-		bucketTimestamps: bucketTimestamps,
-		cursor:           bucket.Cursor(),
-		buf:              make([]byte, 0, 1024),
-		config:           config,
-		shards:           shards,
+		tableInterval: ExtractIntervalFromTableName(tableName),
+		schema:        schema,
+		bucket:        bucket,
+		buf:           make([]byte, 0, 1024),
+		config:        config,
+		shards:        shards,
 	}
 }
 
-func (s *seriesCleaner) Cleanup(seriesID []byte, userID []byte) error {
-	for _, timestamp := range s.bucketTimestamps {
-		// build the chunk ref prefix
-		s.buf = s.buf[:0]
-		if s.config.Schema != "v9" {
-			shard := binary.BigEndian.Uint32(seriesID) % s.config.RowShards
-			s.buf = append(s.buf, unsafeGetBytes(s.shards[shard])...)
-			s.buf = append(s.buf, ':')
-		}
-		s.buf = append(s.buf, userID...)
-		s.buf = append(s.buf, ':')
-		s.buf = append(s.buf, unsafeGetBytes(timestamp)...)
-		s.buf = append(s.buf, ':')
-		s.buf = append(s.buf, seriesID...)
+func (s *seriesCleaner) Cleanup(userID []byte, lbls labels.Labels) error {
+	_, indexEntries, err := s.schema.GetCacheKeysAndLabelWriteEntries(s.tableInterval.Start, s.tableInterval.End, string(userID), logMetricName, lbls, "")
+	if err != nil {
+		return err
+	}
 
-		if key, _ := s.cursor.Seek(s.buf); key != nil && bytes.HasPrefix(key, s.buf) {
-			// this series still have chunk entries we can't cleanup
-			continue
-		}
-		// we don't have any chunk ref for that series let's delete all label index entries
-		s.buf = s.buf[:0]
-		if s.config.Schema != "v9" {
-			shard := binary.BigEndian.Uint32(seriesID) % s.config.RowShards
-			s.buf = append(s.buf, unsafeGetBytes(s.shards[shard])...)
-			s.buf = append(s.buf, ':')
-		}
-		s.buf = append(s.buf, userID...)
-		s.buf = append(s.buf, ':')
-		s.buf = append(s.buf, unsafeGetBytes(timestamp)...)
-		s.buf = append(s.buf, ':')
-		s.buf = append(s.buf, unsafeGetBytes(logMetricName)...)
+	for i := range indexEntries {
+		for _, indexEntry := range indexEntries[i] {
+			key := make([]byte, 0, len(indexEntry.HashValue)+len(separator)+len(indexEntry.RangeValue))
+			key = append(key, []byte(indexEntry.HashValue)...)
+			key = append(key, []byte(separator)...)
+			key = append(key, indexEntry.RangeValue...)
 
-		// delete all seriesRangeKeyV1 and labelSeriesRangeKeyV1 via prefix
-		// todo(cyriltovena) we might be able to encode index key instead of parsing all label entries for faster delete.
-		for key, _ := s.cursor.Seek(s.buf); key != nil && bytes.HasPrefix(key, s.buf); key, _ = s.cursor.Next() {
-
-			parsedSeriesID, ok, err := parseLabelIndexSeriesID(decodeKey(key))
+			err := s.bucket.Delete(key)
 			if err != nil {
-				return err
-			}
-			if !ok {
-				continue
-			}
-			if !bytes.Equal(seriesID, parsedSeriesID) {
-				continue
-			}
-			if err := s.cursor.Delete(); err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }

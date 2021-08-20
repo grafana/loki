@@ -7,7 +7,7 @@ Loki has a [Fluentd](https://www.fluentd.org/) output plugin called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
 instance or [Grafana Cloud](https://grafana.com/products/cloud/).
 
-The code source of the plugin is located in our [public repository](https://github.com/grafana/loki/tree/master/cmd/fluentd).
+The plugin source code is in the [fluentd directory of the repository](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd).
 
 ## Installation
 
@@ -21,11 +21,11 @@ fluent-gem install fluent-plugin-grafana-loki
 
 ## Docker Image
 
-There is a Docker image `grafana/fluent-plugin-loki:master` which contains [default configuration files](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-loki/docker/conf). By default, fluentd containers use the configurations but you can also specify your `fluentd.conf` with `FLUENTD_CONF` environment variable.
+The Docker image `grafana/fluent-plugin-loki:master` contains [default configuration files](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd/docker/conf). By default, fluentd containers use that default configuration. You can instead specify your `fluentd.conf` configuration file with a `FLUENTD_CONF` environment variable.
 
 This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki's endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
 
-This image will start an instance of Fluentd to forward incoming logs to the specified Loki url. As an alternate, containerized applications can also use [docker driver plugin](../docker-driver/) to ship logs without needing Fluentd.
+This image will start an instance of Fluentd to forward incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin](../docker-driver/) to ship logs without needing Fluentd.
 
 ### Example
 
@@ -64,9 +64,9 @@ services:
 
 ## Usage
 
-**Note**: use either `<label>...</label>` or `extra_labels` to set at least one label!
+**Note**: use either `<label>...</label>` or `extra_labels` to set at least one label.
 
-In your Fluentd configuration, use `@type loki`. Additional configuration is optional, default values would look like this:
+In your Fluentd configuration, use `@type loki`. Additional configuration is optional. Default values would look like this:
 
 ```conf
 <match **>
@@ -177,16 +177,16 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 
 ## Configuration
 
-### url
+### `url`
 
-The url of the Loki server to send logs to.  When sending data the publish path (`../api/loki/v1/push`) will automatically be appended.
-By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki][https://grafana.com/products/cloud/] service.
+The URL of the Loki server to send logs to.  When sending data, the publish path (`../api/loki/v1/push`) will automatically be appended.
+By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](https://grafana.com/products/cloud/) service.
 
 #### Proxy Support
 
 Starting with version 0.8.0, this gem uses [excon, which supports proxy with environment variables](https://github.com/excon/excon#proxy-support).
 
-### username / password
+### `username` / `password`
 
 Specify a username and password if the Loki server requires authentication.
 If using the GrafanaLab's hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
@@ -211,7 +211,7 @@ The tenant field also supports placeholders, so it can dynamically change based 
 </match>
 ```
 
-### client certificate verification
+### Client certificate verification
 
 Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
 
@@ -245,7 +245,7 @@ A flag to disable a server certificate verification. By default the `insecure_tl
 </match>
 ```
 
-### output format
+### Output format
 
 Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
 

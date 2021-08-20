@@ -14,12 +14,12 @@ import (
 
 	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/clients/pkg/logentry/metric"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
@@ -301,7 +301,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	bufBytes := float64(len(buf))
 	c.metrics.encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 
-	backoff := util.NewBackoff(c.ctx, c.cfg.BackoffConfig)
+	backoff := backoff.New(c.ctx, c.cfg.BackoffConfig)
 	var status int
 	for {
 		start := time.Now()

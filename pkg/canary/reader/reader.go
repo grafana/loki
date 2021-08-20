@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/backoff"
 	json "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -53,12 +53,13 @@ type Reader struct {
 	addr         string
 	user         string
 	pass         string
+	tenantID     string
 	queryTimeout time.Duration
 	sName        string
 	sValue       string
 	lName        string
 	lVal         string
-	backoff      *util.Backoff
+	backoff      *backoff.Backoff
 	nextQuery    time.Time
 	backoffMtx   sync.RWMutex
 	interval     time.Duration
@@ -76,6 +77,7 @@ func NewReader(writer io.Writer,
 	address string,
 	user string,
 	pass string,
+	tenantID string,
 	queryTimeout time.Duration,
 	labelName string,
 	labelVal string,
@@ -85,15 +87,17 @@ func NewReader(writer io.Writer,
 	h := http.Header{}
 	if user != "" {
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
+	} else if tenantID != "" {
+		h = http.Header{"X-Scope-OrgID": {tenantID}}
 	}
 
 	next := time.Now()
-	bkcfg := util.BackoffConfig{
+	bkcfg := backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Minute,
 		MaxRetries: 0,
 	}
-	bkoff := util.NewBackoff(context.Background(), bkcfg)
+	bkoff := backoff.New(context.Background(), bkcfg)
 
 	rd := Reader{
 		header:       h,
@@ -101,6 +105,7 @@ func NewReader(writer io.Writer,
 		addr:         address,
 		user:         user,
 		pass:         pass,
+		tenantID:     tenantID,
 		queryTimeout: queryTimeout,
 		sName:        streamName,
 		sValue:       streamValue,
@@ -174,7 +179,11 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		return 0, err
 	}
 
-	req.SetBasicAuth(r.user, r.pass)
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	} else if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -260,7 +269,11 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		return nil, err
 	}
 
-	req.SetBasicAuth(r.user, r.pass)
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	} else if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -431,7 +444,7 @@ func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	return &t, nil
 }
 
-func nextBackoff(w io.Writer, statusCode int, backoff *util.Backoff) time.Time {
+func nextBackoff(w io.Writer, statusCode int, backoff *backoff.Backoff) time.Time {
 	// Be way more conservative with an http 429 and wait 5 minutes before trying again.
 	var next time.Time
 	if statusCode == http.StatusTooManyRequests {

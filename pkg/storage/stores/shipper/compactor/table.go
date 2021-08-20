@@ -15,10 +15,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -37,11 +36,11 @@ type indexEntry struct {
 }
 
 type table struct {
-	name             string
-	workingDirectory string
-	storageClient    chunk.ObjectClient
-	applyRetention   bool
-	tableMarker      retention.TableMarker
+	name               string
+	workingDirectory   string
+	indexStorageClient storage.Client
+	applyRetention     bool
+	tableMarker        retention.TableMarker
 
 	compactedDB *bbolt.DB
 	logger      log.Logger
@@ -50,20 +49,20 @@ type table struct {
 	quit chan struct{}
 }
 
-func newTable(ctx context.Context, workingDirectory string, objectClient chunk.ObjectClient, applyRetention bool, tableMarker retention.TableMarker) (*table, error) {
+func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client, applyRetention bool, tableMarker retention.TableMarker) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
 		return nil, err
 	}
 
 	table := table{
-		ctx:              ctx,
-		name:             filepath.Base(workingDirectory),
-		workingDirectory: workingDirectory,
-		storageClient:    objectClient,
-		quit:             make(chan struct{}),
-		applyRetention:   applyRetention,
-		tableMarker:      tableMarker,
+		ctx:                ctx,
+		name:               filepath.Base(workingDirectory),
+		workingDirectory:   workingDirectory,
+		indexStorageClient: indexStorageClient,
+		quit:               make(chan struct{}),
+		applyRetention:     applyRetention,
+		tableMarker:        tableMarker,
 	}
 	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
@@ -71,12 +70,12 @@ func newTable(ctx context.Context, workingDirectory string, objectClient chunk.O
 }
 
 func (t *table) compact(tableHasExpiredStreams bool) error {
-	objects, err := util.ListDirectory(t.ctx, t.name, t.storageClient)
+	indexFiles, err := t.indexStorageClient.ListFiles(t.ctx, t.name)
 	if err != nil {
 		return err
 	}
 
-	level.Info(t.logger).Log("msg", "listed files", "count", len(objects))
+	level.Info(t.logger).Log("msg", "listed files", "count", len(indexFiles))
 
 	defer func() {
 		err := t.cleanup()
@@ -88,11 +87,11 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 	applyRetention := t.applyRetention && tableHasExpiredStreams
 
 	if !applyRetention {
-		if len(objects) < compactMinDBs {
-			level.Info(t.logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
+		if len(indexFiles) < compactMinDBs {
+			level.Info(t.logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(indexFiles)))
 			return nil
 		}
-		if err := t.compactFiles(objects); err != nil {
+		if err := t.compactFiles(indexFiles); err != nil {
 			return err
 		}
 		// upload the compacted db
@@ -102,7 +101,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		}
 
 		// remove source files from storage which were compacted
-		err = t.removeObjectsFromStorage(objects)
+		err = t.removeFilesFromStorage(indexFiles)
 		if err != nil {
 			return err
 		}
@@ -110,17 +109,17 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 	}
 
 	var compacted bool
-	if len(objects) > 1 {
-		if err := t.compactFiles(objects); err != nil {
+	if len(indexFiles) > 1 {
+		if err := t.compactFiles(indexFiles); err != nil {
 			return err
 		}
 		compacted = true
 	}
 
-	if len(objects) == 1 {
+	if len(indexFiles) == 1 {
 		// download the db
 		downloadAt := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
-		err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[0].Key, downloadAt, false)
+		err = shipper_util.GetFileFromStorage(t.ctx, t.indexStorageClient, t.name, indexFiles[0].Name, downloadAt, false)
 		if err != nil {
 			return err
 		}
@@ -141,7 +140,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 	}
 
 	if empty {
-		return t.removeObjectsFromStorage(objects)
+		return t.removeFilesFromStorage(indexFiles)
 	}
 
 	if markCount == 0 && !compacted {
@@ -154,22 +153,19 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		return err
 	}
 
-	return t.removeObjectsFromStorage(objects)
+	return t.removeFilesFromStorage(indexFiles)
 }
 
-func (t *table) compactFiles(objects []chunk.StorageObject) error {
+func (t *table) compactFiles(files []storage.IndexFile) error {
 	var err error
 	level.Info(t.logger).Log("msg", "starting compaction of dbs")
 
 	compactedDBName := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
-	seedFileIdx, err := findSeedObjectIdx(objects)
-	if err != nil {
-		return err
-	}
+	seedFileIdx := findSeedFileIdx(files)
 
-	level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", objects[seedFileIdx].Key))
+	level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", files[seedFileIdx].Name))
 
-	err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[seedFileIdx].Key, compactedDBName, false)
+	err = shipper_util.GetFileFromStorage(t.ctx, t.indexStorageClient, t.name, files[seedFileIdx].Name, compactedDBName, false)
 	if err != nil {
 		return err
 	}
@@ -180,8 +176,8 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 	}
 
 	errChan := make(chan error)
-	readObjectChan := make(chan string)
-	n := util_math.Min(len(objects), readDBsParallelism)
+	readFileChan := make(chan string)
+	n := util_math.Min(len(files), readDBsParallelism)
 
 	// read files in parallel
 	for i := 0; i < n; i++ {
@@ -193,32 +189,21 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 
 			for {
 				select {
-				case objectKey, ok := <-readObjectChan:
+				case fileName, ok := <-readFileChan:
 					if !ok {
 						return
 					}
 
-					// The s3 client can also return the directory itself in the ListObjects.
-					if shipper_util.IsDirectory(objectKey) {
-						continue
-					}
+					downloadAt := filepath.Join(t.workingDirectory, fileName)
 
-					var dbName string
-					dbName, err = shipper_util.GetDBNameFromObjectKey(objectKey)
-					if err != nil {
-						return
-					}
-
-					downloadAt := filepath.Join(t.workingDirectory, dbName)
-
-					err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objectKey, downloadAt, false)
+					err = shipper_util.GetFileFromStorage(t.ctx, t.indexStorageClient, t.name, fileName, downloadAt, false)
 					if err != nil {
 						return
 					}
 
 					err = t.readFile(downloadAt)
 					if err != nil {
-						level.Error(t.logger).Log("msg", fmt.Sprintf("error reading file %s", objectKey), "err", err)
+						level.Error(t.logger).Log("msg", fmt.Sprintf("error reading file %s", fileName), "err", err)
 						return
 					}
 				case <-t.quit:
@@ -230,15 +215,15 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 		}()
 	}
 
-	// send all files to readObjectChan
+	// send all files to readFileChan
 	go func() {
-		for i, object := range objects {
+		for i, file := range files {
 			// skip seed file
 			if i == seedFileIdx {
 				continue
 			}
 			select {
-			case readObjectChan <- object.Key:
+			case readFileChan <- file.Name:
 			case <-t.quit:
 				break
 			case <-t.ctx.Done():
@@ -246,9 +231,9 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 			}
 		}
 
-		level.Debug(t.logger).Log("msg", "closing readObjectChan")
+		level.Debug(t.logger).Log("msg", "closing readFileChan")
 
-		close(readObjectChan)
+		close(readFileChan)
 	}()
 
 	var firstErr error
@@ -403,18 +388,18 @@ func (t *table) upload() error {
 		}
 	}()
 
-	objectKey := fmt.Sprintf("%s.gz", shipper_util.BuildObjectKey(t.name, uploaderName, fmt.Sprint(time.Now().Unix())))
-	level.Info(t.logger).Log("msg", "uploading the compacted file", "objectKey", objectKey)
+	fileName := fmt.Sprintf("%s.gz", shipper_util.BuildIndexFileName(t.name, uploaderName, fmt.Sprint(time.Now().Unix())))
+	level.Info(t.logger).Log("msg", "uploading the compacted file", "fileName", fileName)
 
-	return t.storageClient.PutObject(t.ctx, objectKey, compressedDB)
+	return t.indexStorageClient.PutFile(t.ctx, t.name, fileName, compressedDB)
 }
 
-// removeObjectsFromStorage deletes objects from storage.
-func (t *table) removeObjectsFromStorage(objects []chunk.StorageObject) error {
-	level.Info(t.logger).Log("msg", "removing source db files from storage", "count", len(objects))
+// removeFilesFromStorage deletes index files from storage.
+func (t *table) removeFilesFromStorage(files []storage.IndexFile) error {
+	level.Info(t.logger).Log("msg", "removing source db files from storage", "count", len(files))
 
-	for _, object := range objects {
-		err := t.storageClient.DeleteObject(t.ctx, object.Key)
+	for _, file := range files {
+		err := t.indexStorageClient.DeleteFile(t.ctx, t.name, file.Name)
 		if err != nil {
 			return err
 		}
@@ -437,21 +422,16 @@ func openBoltdbFileWithNoSync(path string) (*bbolt.DB, error) {
 	return boltdb, nil
 }
 
-// findSeedObjectIdx returns index of object to use as seed which would then get index from all the files written to.
+// findSeedFileIdx returns index of file to use as seed which would then get index from all the files written to.
 // It tries to find previously compacted file(which has uploaderName) which would be the biggest file.
 // In a large cluster, using previously compacted file as seed would significantly reduce compaction time.
 // If it can't find a previously compacted file, it would just use the first file from the list of files.
-func findSeedObjectIdx(objects []chunk.StorageObject) (int, error) {
-	for i, object := range objects {
-		dbName, err := shipper_util.GetDBNameFromObjectKey(object.Key)
-		if err != nil {
-			return 0, err
-		}
-
-		if strings.HasPrefix(dbName, uploaderName) {
-			return i, nil
+func findSeedFileIdx(files []storage.IndexFile) int {
+	for i, file := range files {
+		if strings.HasPrefix(file.Name, uploaderName) {
+			return i
 		}
 	}
 
-	return 0, nil
+	return 0
 }

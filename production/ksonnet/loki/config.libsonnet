@@ -13,6 +13,7 @@
     using_boltdb_shipper: true,
 
     wal_enabled: false,
+    query_scheduler_enabled: false,
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
     stateful_ingesters: false,
@@ -140,18 +141,17 @@
         grpc_server_max_recv_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_send_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_concurrent_streams: 1000,
+        grpc_server_ping_without_stream_allowed: true,  // https://github.com/grafana/cortex-jsonnet/pull/233
+        grpc_server_min_time_between_pings: '10s',  // https://github.com/grafana/cortex-jsonnet/pull/233
         http_server_write_timeout: '1m',
         http_listen_port: $._config.http_listen_port,
       },
       frontend: {
         compress_responses: true,
         log_queries_longer_than: '5s',
-        max_outstanding_per_tenant: if $._config.queryFrontend.sharded_queries_enabled then 1024 else 256,
       },
       frontend_worker: {
-        frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
-        // Limit to N/2 worker threads per frontend, as we have two frontends.
-        parallelism: std.floor($._config.querier.concurrency / $._config.queryFrontend.replicas),
+        match_max_concurrent: true,
         grpc_client_config: {
           max_send_msg_size: $._config.grpc_server_max_msg_size,
         },
@@ -177,6 +177,7 @@
         parallelise_shardable_queries: true,
       } else {},
       querier: {
+        max_concurrent: $._config.querier.concurrency,
         query_ingesters_within: '2h',  // twice the max-chunk age (1h default) for safety buffer
       },
       limits_config: {
