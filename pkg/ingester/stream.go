@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -49,7 +50,8 @@ var (
 )
 
 var (
-	ErrEntriesExist = errors.New("duplicate push - entries already exist")
+	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
+	ErrStreamRateLimit = errors.New("stream rate limit exceeded")
 )
 
 func init() {
@@ -64,8 +66,9 @@ type line struct {
 }
 
 type stream struct {
-	cfg    *Config
-	tenant string
+	limiter *limiter.RateLimiter
+	cfg     *Config
+	tenant  string
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks   []chunkDesc
@@ -113,8 +116,9 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, limits limiter.RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
 	return &stream{
+		limiter:         limiter.NewRateLimiter(limits, 10*time.Second),
 		cfg:             cfg,
 		fp:              fp,
 		labels:          labels,
@@ -196,10 +200,15 @@ func (s *stream) Push(
 	failedEntriesWithError := []entryWithError{}
 
 	var outOfOrderSamples, outOfOrderBytes int
+	var rateLimitedSamples, rateLimitedBytes int
 	defer func() {
 		if outOfOrderSamples > 0 {
 			validation.DiscardedSamples.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderSamples))
 			validation.DiscardedBytes.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderBytes))
+		}
+		if rateLimitedSamples > 0 {
+			validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
+			validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedBytes))
 		}
 	}()
 
@@ -221,6 +230,14 @@ func (s *stream) Push(
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx)
+		}
+		// Check if this this should be rate limited.
+		now := time.Now()
+		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
+			rateLimitedSamples++
+			rateLimitedBytes += len(entries[i].Line)
+			continue
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
@@ -292,27 +309,34 @@ func (s *stream) Push(
 
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
-			// return bad http status request response with all failed entries
-			buf := bytes.Buffer{}
-			streamName := s.labelsString
-
-			limitedFailedEntries := failedEntriesWithError
-			if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
-				limitedFailedEntries = limitedFailedEntries[:maxIgnore]
-			}
-
-			for _, entryWithError := range limitedFailedEntries {
-				fmt.Fprintf(&buf,
-					"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-					entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
-			}
-
-			fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
-
-			return bytesAdded, httpgrpc.Errorf(http.StatusBadRequest, buf.String())
+		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && lastEntryWithErr.e != ErrStreamRateLimit {
+			return bytesAdded, lastEntryWithErr.e
 		}
-		return bytesAdded, lastEntryWithErr.e
+		var statusCode int
+		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
+			statusCode = http.StatusBadRequest
+		}
+		if lastEntryWithErr.e == ErrStreamRateLimit {
+			statusCode = http.StatusTooManyRequests
+		}
+		// Return a http status 4xx request response with all failed entries.
+		buf := bytes.Buffer{}
+		streamName := s.labelsString
+
+		limitedFailedEntries := failedEntriesWithError
+		if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
+			limitedFailedEntries = limitedFailedEntries[:maxIgnore]
+		}
+
+		for _, entryWithError := range limitedFailedEntries {
+			fmt.Fprintf(&buf,
+				"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
+				entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+		}
+
+		fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
+
+		return bytesAdded, httpgrpc.Errorf(statusCode, buf.String())
 	}
 
 	if len(s.chunks) != prevNumChunks {
