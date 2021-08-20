@@ -43,6 +43,10 @@ func main() {
 	queryTimeout := flag.Duration("query-timeout", 10*time.Second, "How long to wait for a query response from Loki")
 
 	interval := flag.Duration("interval", 1000*time.Millisecond, "Duration between log entries")
+	outOfOrderPercentage := flag.Int("out-of-order-percentage", 0, "Percentage (0-100) of log entries that should be sent out of order.")
+	outOfOrderMin := flag.Duration("out-of-order-min", 30*time.Second, "Minimum amount of time to go back for out of order entries (in seconds).")
+	outOfOrderMax := flag.Duration("out-of-order-max", 60*time.Second, "Maximum amount of time to go back for out of order entries (in seconds).")
+
 	size := flag.Int("size", 100, "Size in bytes of each log line")
 	wait := flag.Duration("wait", 60*time.Second, "Duration to wait for log entries on websocket before querying loki for them")
 	maxWait := flag.Duration("max-wait", 5*time.Minute, "Duration to keep querying Loki for missing websocket entries before reporting them missing")
@@ -74,6 +78,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *outOfOrderPercentage < 0 || *outOfOrderPercentage > 100 {
+		_, _ = fmt.Fprintf(os.Stderr, "Out of order percentage must be between 0 and 100\n")
+		os.Exit(1)
+	}
+
 	sentChan := make(chan time.Time)
 	receivedChan := make(chan time.Time)
 
@@ -84,7 +93,7 @@ func main() {
 		c.lock.Lock()
 		defer c.lock.Unlock()
 
-		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *size)
+		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size)
 		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval)
 		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *spotCheckWait, *metricTestInterval, *metricTestQueryRange, *interval, *buckets, sentChan, receivedChan, c.reader, true)
 	}
