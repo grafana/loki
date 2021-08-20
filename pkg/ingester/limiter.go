@@ -5,6 +5,9 @@ import (
 	"math"
 	"sync"
 
+	cortex_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
+	"golang.org/x/time/rate"
+
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -24,30 +27,43 @@ type Limiter struct {
 	limits            *validation.Overrides
 	ring              RingCount
 	replicationFactor int
+	metrics           *ingesterMetrics
 
 	mtx      sync.RWMutex
 	disabled bool
 }
 
-func (l *Limiter) Disable() {
+func (l *Limiter) DisableForWALReplay() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.disabled = true
+	l.metrics.limiterEnabled.Set(0)
 }
 
 func (l *Limiter) Enable() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.disabled = false
+	l.metrics.limiterEnabled.Set(1)
 }
 
 // NewLimiter makes a new limiter
-func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor int) *Limiter {
+func NewLimiter(limits *validation.Overrides, metrics *ingesterMetrics, ring RingCount, replicationFactor int) *Limiter {
 	return &Limiter{
 		limits:            limits,
 		ring:              ring,
 		replicationFactor: replicationFactor,
+		metrics:           metrics,
 	}
+}
+
+func (l *Limiter) UnorderedWrites(userID string) bool {
+	// WAL replay should not discard previously ack'd writes,
+	// so allow out of order writes while the limiter is disabled.
+	if l.disabled {
+		return true
+	}
+	return l.limits.UnorderedWrites(userID)
 }
 
 // AssertMaxStreamsPerUser ensures limit has not been reached compared to the current
@@ -111,4 +127,29 @@ func (l *Limiter) minNonZero(first, second int) int {
 	}
 
 	return first
+}
+
+type localStrategy struct {
+	limiter *Limiter
+}
+
+func newLocalStreamRateStrategy(l *Limiter) cortex_limiter.RateLimiterStrategy {
+	return &localStrategy{
+		limiter: l,
+	}
+}
+
+func (s *localStrategy) Limit(userID string) float64 {
+	if s.limiter.disabled {
+		return float64(rate.Inf)
+	}
+	return float64(s.limiter.limits.MaxLocalStreamRateBytes(userID))
+}
+
+func (s *localStrategy) Burst(userID string) int {
+	if s.limiter.disabled {
+		// Burst is ignored when limit = rate.Inf
+		return 0
+	}
+	return s.limiter.limits.MaxLocalStreamBurstRateBytes(userID)
 }

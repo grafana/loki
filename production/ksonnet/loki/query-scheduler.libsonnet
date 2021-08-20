@@ -34,7 +34,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   local container = k.core.v1.container,
   query_scheduler_container:: if $._config.query_scheduler_enabled then
-    container.new('query-scheduler', $._images.query_frontend) +
+    container.new('query-scheduler', $._images.query_scheduler) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +

@@ -186,18 +186,17 @@ func (c *Comparator) Stop() {
 	}
 }
 
-func (c *Comparator) entrySent(time time.Time) {
+func (c *Comparator) entrySent(ts time.Time) {
 	c.entMtx.Lock()
-	c.entries = append(c.entries, &time)
+	c.entries = append(c.entries, &ts)
 	totalEntries.Inc()
 	c.entMtx.Unlock()
 	//If this entry equals or exceeds the spot check interval from the last entry in the spot check array, add it.
 	c.spotEntMtx.Lock()
-	if len(c.spotCheck) == 0 || time.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
-		c.spotCheck = append(c.spotCheck, &time)
+	if len(c.spotCheck) == 0 || ts.Sub(*c.spotCheck[len(c.spotCheck)-1]) >= c.spotCheckInterval {
+		c.spotCheck = append(c.spotCheck, &ts)
 	}
 	c.spotEntMtx.Unlock()
-
 }
 
 // entryReceived removes the received entry from the buffer if it exists, reports on out of order entries received
@@ -292,6 +291,7 @@ func (c *Comparator) run() {
 	}
 }
 
+// check that the expected # of log lines have been written to Loki
 func (c *Comparator) metricTest(currTime time.Time) {
 	// Always make sure to set the running state back to false
 	defer func() {
@@ -319,6 +319,10 @@ func (c *Comparator) metricTest(currTime time.Time) {
 	metricTestActual.Set(actualCount)
 }
 
+// spotCheck is used to ensure that log data is actually available after being flushed from the
+// ingesters in memory storage and  persisted to disk/blob storage, which the tail check cannot confirm.
+// It keeps a sampled slice of log lines written by the canary and checks for them periodically until
+// it decides they are too old to continue checking for.
 func (c *Comparator) spotCheckEntries(currTime time.Time) {
 	// Always make sure to set the running state back to false
 	defer func() {

@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/backoff"
 	json "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -53,12 +53,13 @@ type Reader struct {
 	addr         string
 	user         string
 	pass         string
+	tenantID     string
 	queryTimeout time.Duration
 	sName        string
 	sValue       string
 	lName        string
 	lVal         string
-	backoff      *util.Backoff
+	backoff      *backoff.Backoff
 	nextQuery    time.Time
 	backoffMtx   sync.RWMutex
 	interval     time.Duration
@@ -76,6 +77,7 @@ func NewReader(writer io.Writer,
 	address string,
 	user string,
 	pass string,
+	tenantID string,
 	queryTimeout time.Duration,
 	labelName string,
 	labelVal string,
@@ -85,15 +87,17 @@ func NewReader(writer io.Writer,
 	h := http.Header{}
 	if user != "" {
 		h = http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+pass))}}
+	} else if tenantID != "" {
+		h = http.Header{"X-Scope-OrgID": {tenantID}}
 	}
 
 	next := time.Now()
-	bkcfg := util.BackoffConfig{
+	bkcfg := backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Minute,
 		MaxRetries: 0,
 	}
-	bkoff := util.NewBackoff(context.Background(), bkcfg)
+	bkoff := backoff.New(context.Background(), bkcfg)
 
 	rd := Reader{
 		header:       h,
@@ -101,6 +105,7 @@ func NewReader(writer io.Writer,
 		addr:         address,
 		user:         user,
 		pass:         pass,
+		tenantID:     tenantID,
 		queryTimeout: queryTimeout,
 		sName:        streamName,
 		sValue:       streamValue,
@@ -174,7 +179,11 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 		return 0, err
 	}
 
-	req.SetBasicAuth(r.user, r.pass)
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	} else if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -209,14 +218,14 @@ func (r *Reader) QueryCountOverTime(queryRange string) (float64, error) {
 	ret := 0.0
 	switch value.Type() {
 	case loghttp.ResultTypeVector:
-		samples := value.(loghttp.Vector)
-		if len(samples) > 1 {
-			return 0, fmt.Errorf("expected only a single result in the metric test query vector, instead received %v", len(samples))
+		series := value.(loghttp.Vector)
+		if len(series) > 1 {
+			return 0, fmt.Errorf("expected only a single series result in the metric test query vector, instead received %v", len(series))
 		}
-		if len(samples) == 0 {
+		if len(series) == 0 {
 			return 0, fmt.Errorf("expected to receive one sample in the result vector, received 0")
 		}
-		ret = float64(samples[0].Value)
+		ret = float64(series[0].Value)
 	default:
 		return 0, fmt.Errorf("unexpected result type, expected a Vector result instead received %v", value.Type())
 	}
@@ -260,7 +269,11 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		return nil, err
 	}
 
-	req.SetBasicAuth(r.user, r.pass)
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	} else if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -312,11 +325,12 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	return tss, nil
 }
 
+// run uses the established websocket connection to tail logs from Loki and
 func (r *Reader) run() {
 	r.closeAndReconnect()
 
 	tailResponse := &loghttp.TailResponse{}
-	lastMessage := time.Now()
+	lastMessageTs := time.Now()
 
 	for {
 		if r.shuttingDown {
@@ -331,6 +345,8 @@ func (r *Reader) run() {
 		// Set a read timeout of 10x the interval we expect to see messages
 		// Ignore the error as it will get caught when we call ReadJSON
 		_ = r.conn.SetReadDeadline(time.Now().Add(10 * r.interval))
+		// I assume this is a blocking call that either reads from the websocket connection
+		// or times out based on the above SetReadDeadline call.
 		err := unmarshal.ReadTailResponseJSON(tailResponse, r.conn)
 		if err != nil {
 			fmt.Fprintf(r.w, "error reading websocket, will retry in 10 seconds: %s\n", err)
@@ -342,7 +358,7 @@ func (r *Reader) run() {
 		}
 		// If there were streams update last message timestamp
 		if len(tailResponse.Streams) > 0 {
-			lastMessage = time.Now()
+			lastMessageTs = time.Now()
 		}
 		for _, stream := range tailResponse.Streams {
 			for _, entry := range stream.Entries {
@@ -356,7 +372,7 @@ func (r *Reader) run() {
 		}
 		// Ping messages can reset the read deadline so also make sure we are receiving regular messages.
 		// We use the same 10x interval to make sure we are getting recent messages
-		if time.Since(lastMessage).Milliseconds() > 10*r.interval.Milliseconds() {
+		if time.Since(lastMessageTs).Milliseconds() > 10*r.interval.Milliseconds() {
 			fmt.Fprintf(r.w, "Have not received a canary message from loki on the websocket in %vms, "+
 				"sleeping 10s and reconnecting\n", 10*r.interval.Milliseconds())
 			<-time.After(10 * time.Second)
@@ -366,6 +382,9 @@ func (r *Reader) run() {
 	}
 }
 
+// closeAndReconnect establishes a web socket connection to Loki and sets up a tail query
+// with the stream and label selectors which can be used check if all logs generated by the
+// canary have been received by Loki.
 func (r *Reader) closeAndReconnect() {
 	if r.shuttingDown {
 		return
@@ -425,7 +444,7 @@ func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	return &t, nil
 }
 
-func nextBackoff(w io.Writer, statusCode int, backoff *util.Backoff) time.Time {
+func nextBackoff(w io.Writer, statusCode int, backoff *backoff.Backoff) time.Time {
 	// Be way more conservative with an http 429 and wait 5 minutes before trying again.
 	var next time.Time
 	if statusCode == http.StatusTooManyRequests {

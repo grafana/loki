@@ -8,7 +8,6 @@ import (
 	"path"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,9 +34,9 @@ type Config struct {
 }
 
 type TableManager struct {
-	cfg             Config
-	boltIndexClient BoltDBIndexClient
-	storageClient   StorageClient
+	cfg                Config
+	boltIndexClient    BoltDBIndexClient
+	indexStorageClient StorageClient
 
 	tables    map[string]*Table
 	tablesMtx sync.RWMutex
@@ -48,20 +47,20 @@ type TableManager struct {
 	wg     sync.WaitGroup
 }
 
-func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
+func NewTableManager(cfg Config, boltIndexClient BoltDBIndexClient, indexStorageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
 	if err := chunk_util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &TableManager{
-		cfg:             cfg,
-		boltIndexClient: boltIndexClient,
-		storageClient:   storageClient,
-		tables:          make(map[string]*Table),
-		metrics:         newMetrics(registerer),
-		ctx:             ctx,
-		cancel:          cancel,
+		cfg:                cfg,
+		boltIndexClient:    boltIndexClient,
+		indexStorageClient: indexStorageClient,
+		tables:             make(map[string]*Table),
+		metrics:            newMetrics(registerer),
+		ctx:                ctx,
+		cancel:             cancel,
 	}
 
 	// load the existing tables first.
@@ -181,7 +180,7 @@ func (tm *TableManager) getOrCreateTable(spanCtx context.Context, tableName stri
 			// table not found, creating one.
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
 
-			table = NewTable(spanCtx, tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+			table = NewTable(spanCtx, tableName, tm.cfg.CacheDir, tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 			tm.tables[tableName] = table
 		}
 		tm.tablesMtx.Unlock()
@@ -251,13 +250,13 @@ func (tm *TableManager) ensureQueryReadiness() error {
 		return nil
 	}
 
-	_, tablesInStorage, err := tm.storageClient.List(context.Background(), "", delimiter)
+	tableNames, err := tm.indexStorageClient.ListTables(context.Background())
 	if err != nil {
 		return err
 	}
 
 	// get the names of tables required for being query ready.
-	tableNames, err := tm.tablesRequiredForQueryReadiness(tablesInStorage)
+	tableNames, err = tm.tablesRequiredForQueryReadiness(tableNames)
 	if err != nil {
 		return err
 	}
@@ -276,7 +275,7 @@ func (tm *TableManager) ensureQueryReadiness() error {
 
 		level.Info(util_log.Logger).Log("msg", "table required for query readiness does not exist locally, downloading it", "table-name", tableName)
 		// table doesn't exist, download it.
-		table, err := LoadTable(tm.ctx, tableName, tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+		table, err := LoadTable(tm.ctx, tableName, tm.cfg.CacheDir, tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
 			return err
 		}
@@ -298,7 +297,7 @@ func (tm *TableManager) queryReadyTableNumbersRange() (int64, int64) {
 
 // tablesRequiredForQueryReadiness returns the names of tables required to be downloaded for being query ready as per configured QueryReadyNumDays.
 // It only considers daily tables for simplicity and we anyways have made it mandatory to have daily tables with boltdb-shipper.
-func (tm *TableManager) tablesRequiredForQueryReadiness(tablesInStorage []chunk.StorageCommonPrefix) ([]string, error) {
+func (tm *TableManager) tablesRequiredForQueryReadiness(tablesInStorage []string) ([]string, error) {
 	// regex for finding daily tables which have a 5 digit number at the end.
 	re, err := regexp.Compile(`.+[0-9]{5}$`)
 	if err != nil {
@@ -308,9 +307,7 @@ func (tm *TableManager) tablesRequiredForQueryReadiness(tablesInStorage []chunk.
 	minTableNumber, maxTableNumber := tm.queryReadyTableNumbersRange()
 	var requiredTableNames []string
 
-	for _, tableNameWithSep := range tablesInStorage {
-		// tableNames come with a delimiter(separator) because they are directories not objects so removing the delimiter.
-		tableName := strings.TrimSuffix(string(tableNameWithSep), delimiter)
+	for _, tableName := range tablesInStorage {
 		if !re.MatchString(tableName) {
 			continue
 		}
@@ -342,7 +339,7 @@ func (tm *TableManager) loadLocalTables() error {
 
 		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("loading local table %s", fileInfo.Name()))
 
-		table, err := LoadTable(tm.ctx, fileInfo.Name(), tm.cfg.CacheDir, tm.storageClient, tm.boltIndexClient, tm.metrics)
+		table, err := LoadTable(tm.ctx, fileInfo.Name(), tm.cfg.CacheDir, tm.indexStorageClient, tm.boltIndexClient, tm.metrics)
 		if err != nil {
 			return err
 		}

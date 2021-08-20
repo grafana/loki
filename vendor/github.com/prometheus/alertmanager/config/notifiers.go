@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/sigv4"
 
 	commoncfg "github.com/prometheus/common/config"
 )
@@ -126,6 +127,15 @@ var (
 		Retry:    duration(1 * time.Minute),
 		Expire:   duration(1 * time.Hour),
 		HTML:     false,
+	}
+
+	// DefaultSNSConfig defines default values for SNS configurations.
+	DefaultSNSConfig = SNSConfig{
+		NotifierConfig: NotifierConfig{
+			VSendResolved: true,
+		},
+		Subject: `{{ template "sns.default.subject" . }}`,
+		Message: `{{ template "sns.default.message" . }}`,
 	}
 )
 
@@ -576,6 +586,37 @@ func (c *PushoverConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	}
 	if c.Token == "" {
 		return fmt.Errorf("missing token in Pushover config")
+	}
+	return nil
+}
+
+type SNSConfig struct {
+	NotifierConfig `yaml:",inline" json:",inline"`
+
+	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
+
+	APIUrl      string            `yaml:"api_url,omitempty" json:"api_url,omitempty"`
+	Sigv4       sigv4.SigV4Config `yaml:"sigv4" json:"sigv4"`
+	TopicARN    string            `yaml:"topic_arn,omitempty" json:"topic_arn,omitempty"`
+	PhoneNumber string            `yaml:"phone_number,omitempty" json:"phone_number,omitempty"`
+	TargetARN   string            `yaml:"target_arn,omitempty" json:"target_arn,omitempty"`
+	Subject     string            `yaml:"subject,omitempty" json:"subject,omitempty"`
+	Message     string            `yaml:"message,omitempty" json:"message,omitempty"`
+	Attributes  map[string]string `yaml:"attributes,omitempty" json:"attributes,omitempty"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *SNSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultSNSConfig
+	type plain SNSConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	if (c.TargetARN == "") != (c.TopicARN == "") != (c.PhoneNumber == "") {
+		return fmt.Errorf("must provide either a Target ARN, Topic ARN, or Phone Number for SNS config")
+	}
+	if (c.Sigv4.AccessKey == "") != (c.Sigv4.SecretKey == "") {
+		return fmt.Errorf("must provide a AWS SigV4 Access key and Secret Key if credentials are specified in the SNS config")
 	}
 	return nil
 }

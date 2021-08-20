@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -30,7 +30,7 @@ var (
 	// ErrNotFound is returned by ConsulClient.Get.
 	ErrNotFound = fmt.Errorf("Not found")
 
-	backoffConfig = util.BackoffConfig{
+	backoffConfig = backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	}
@@ -203,7 +203,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 // into. This function blocks until the context is cancelled or f returns false.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	var (
-		backoff = util.NewBackoff(ctx, backoffConfig)
+		backoff = backoff.New(ctx, backoffConfig)
 		index   = uint64(0)
 		limiter = c.createRateLimiter()
 	)
@@ -264,7 +264,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 // Values in Consul are assumed to be JSON. This function blocks until the context is cancelled.
 func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
 	var (
-		backoff = util.NewBackoff(ctx, backoffConfig)
+		backoff = backoff.New(ctx, backoffConfig)
 		index   = uint64(0)
 		limiter = c.createRateLimiter()
 	)

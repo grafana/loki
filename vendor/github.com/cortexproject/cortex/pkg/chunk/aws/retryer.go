@@ -5,23 +5,22 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/grafana/dskit/backoff"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Map Cortex Backoff into AWS Retryer interface
 type retryer struct {
-	*util.Backoff
+	*backoff.Backoff
 	maxRetries int
 }
 
 var _ request.Retryer = &retryer{}
 
-func newRetryer(ctx context.Context, cfg util.BackoffConfig) *retryer {
+func newRetryer(ctx context.Context, cfg backoff.Config) *retryer {
 	return &retryer{
-		Backoff:    util.NewBackoff(ctx, cfg),
+		Backoff:    backoff.New(ctx, cfg),
 		maxRetries: cfg.MaxRetries,
 	}
 }

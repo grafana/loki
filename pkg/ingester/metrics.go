@@ -14,6 +14,7 @@ type ingesterMetrics struct {
 	checkpointLoggedBytesTotal prometheus.Counter
 
 	walDiskFullFailures prometheus.Counter
+	walReplayActive     prometheus.Gauge
 	walReplayDuration   prometheus.Gauge
 	walCorruptionsTotal *prometheus.CounterVec
 	walLoggedBytesTotal prometheus.Counter
@@ -26,6 +27,8 @@ type ingesterMetrics struct {
 	recoveredBytesTotal   prometheus.Counter
 	recoveryBytesInUse    prometheus.Gauge
 	recoveryIsFlushing    prometheus.Gauge
+
+	limiterEnabled prometheus.Gauge
 
 	autoForgetUnhealthyIngestersTotal prometheus.Counter
 }
@@ -49,6 +52,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		walDiskFullFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_disk_full_failures_total",
 			Help: "Total number of wal write failures due to full disk.",
+		}),
+		walReplayActive: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_wal_replay_active",
+			Help: "Whether the WAL is replaying",
 		}),
 		walReplayDuration: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_ingester_wal_replay_duration_seconds",
@@ -118,6 +125,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		recoveryIsFlushing: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_ingester_wal_replay_flushing",
 			Help: "Whether the wal replay is in a flushing phase due to backpressure",
+		}),
+		limiterEnabled: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_limiter_enabled",
+			Help: "Whether the ingester's limiter is enabled",
 		}),
 		autoForgetUnhealthyIngestersTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_autoforget_unhealthy_ingesters_total",

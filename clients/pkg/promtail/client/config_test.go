@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/backoff"
 	"github.com/stretchr/testify/require"
 
 	"gopkg.in/yaml.v2"
@@ -43,7 +43,7 @@ func Test_Config(t *testing.T) {
 				URL: flagext.URLValue{
 					URL: u,
 				},
-				BackoffConfig: util.BackoffConfig{
+				BackoffConfig: backoff.Config{
 					MaxBackoff: MaxBackoff,
 					MaxRetries: MaxRetries,
 					MinBackoff: MinBackoff,
@@ -59,7 +59,7 @@ func Test_Config(t *testing.T) {
 				URL: flagext.URLValue{
 					URL: u,
 				},
-				BackoffConfig: util.BackoffConfig{
+				BackoffConfig: backoff.Config{
 					MaxBackoff: 1 * time.Minute,
 					MaxRetries: 20,
 					MinBackoff: 5 * time.Second,

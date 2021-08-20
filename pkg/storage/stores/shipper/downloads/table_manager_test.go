@@ -18,7 +18,7 @@ import (
 )
 
 func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) {
-	boltDBIndexClient, fsObjectClient := buildTestClients(t, path)
+	boltDBIndexClient, indexStorageClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
 	cfg := Config{
@@ -26,7 +26,7 @@ func buildTestTableManager(t *testing.T, path string) (*TableManager, stopFunc) 
 		SyncInterval: time.Hour,
 		CacheTTL:     time.Hour,
 	}
-	tableManager, err := NewTableManager(cfg, boltDBIndexClient, fsObjectClient, nil)
+	tableManager, err := NewTableManager(cfg, boltDBIndexClient, indexStorageClient, nil)
 	require.NoError(t, err)
 
 	return tableManager, func() {
@@ -177,7 +177,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				testutil.SetupDBTablesAtPath(t, name, objectStoragePath, dbs, true)
 			}
 
-			boltDBIndexClient, fsObjectClient := buildTestClients(t, tempDir)
+			boltDBIndexClient, indexStorageClient := buildTestClients(t, tempDir)
 			cachePath := filepath.Join(tempDir, cacheDirName)
 			require.NoError(t, util.EnsureDirectory(cachePath))
 
@@ -188,13 +188,13 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				QueryReadyNumDays: tc.queryReadyNumDaysCfg,
 			}
 			tableManager := &TableManager{
-				cfg:             cfg,
-				boltIndexClient: boltDBIndexClient,
-				storageClient:   fsObjectClient,
-				tables:          make(map[string]*Table),
-				metrics:         newMetrics(nil),
-				ctx:             context.Background(),
-				cancel:          func() {},
+				cfg:                cfg,
+				boltIndexClient:    boltDBIndexClient,
+				indexStorageClient: indexStorageClient,
+				tables:             make(map[string]*Table),
+				metrics:            newMetrics(nil),
+				ctx:                context.Background(),
+				cancel:             func() {},
 			}
 
 			defer func() {
@@ -215,21 +215,21 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 
 func TestTableManager_tablesRequiredForQueryReadiness(t *testing.T) {
 	numDailyTablesInStorage := 10
-	var tablesInStorage []chunk.StorageCommonPrefix
+	var tablesInStorage []string
 	// tables with daily table number
 	activeDailyTableNumber := getActiveTableNumber()
 	for i := 0; i < numDailyTablesInStorage; i++ {
-		tablesInStorage = append(tablesInStorage, chunk.StorageCommonPrefix(fmt.Sprintf("table_%d/", activeDailyTableNumber-int64(i))))
+		tablesInStorage = append(tablesInStorage, fmt.Sprintf("table_%d", activeDailyTableNumber-int64(i)))
 	}
 
 	// tables with weekly table number
 	activeWeeklyTableNumber := time.Now().Unix() / int64((durationDay*7)/time.Second)
 	for i := 0; i < 10; i++ {
-		tablesInStorage = append(tablesInStorage, chunk.StorageCommonPrefix(fmt.Sprintf("table_%d/", activeWeeklyTableNumber-int64(i))))
+		tablesInStorage = append(tablesInStorage, fmt.Sprintf("table_%d", activeWeeklyTableNumber-int64(i)))
 	}
 
 	// tables without a table number
-	tablesInStorage = append(tablesInStorage, "foo/", "bar/")
+	tablesInStorage = append(tablesInStorage, "foo", "bar")
 
 	for i, tc := range []int{
 		0, 5, 10, 20,

@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/model"
-
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/backoff"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -77,7 +76,7 @@ func Test_parseConfig(t *testing.T) {
 					BatchWait:      mustParseDuration("30s"),
 					Timeout:        mustParseDuration("1s"),
 					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"app": "foo"}},
-					BackoffConfig:  util.BackoffConfig{MinBackoff: mustParseDuration("1ms"), MaxBackoff: mustParseDuration("5m"), MaxRetries: 10},
+					BackoffConfig:  backoff.Config{MinBackoff: mustParseDuration("1ms"), MaxBackoff: mustParseDuration("5m"), MaxRetries: 10},
 				},
 				logLevel:      mustParseLogLevel("warn"),
 				labelKeys:     []string{"foo", "bar"},
@@ -111,7 +110,7 @@ func Test_parseConfig(t *testing.T) {
 					BatchWait:      mustParseDuration("30s"),
 					Timeout:        mustParseDuration("1s"),
 					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"app": "foo"}},
-					BackoffConfig:  util.BackoffConfig{MinBackoff: mustParseDuration("1ms"), MaxBackoff: mustParseDuration("5m"), MaxRetries: 10},
+					BackoffConfig:  backoff.Config{MinBackoff: mustParseDuration("1ms"), MaxBackoff: mustParseDuration("5m"), MaxRetries: 10},
 				},
 				logLevel:      mustParseLogLevel("warn"),
 				labelKeys:     nil,

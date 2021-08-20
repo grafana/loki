@@ -16,8 +16,8 @@ type Logger interface {
 var ErrMissingValue = errors.New("(MISSING)")
 
 // With returns a new contextual logger with keyvals prepended to those passed
-// to calls to Log. If logger is also a contextual logger created by With or
-// WithPrefix, keyvals is appended to the existing context.
+// to calls to Log. If logger is also a contextual logger created by With,
+// WithPrefix, or WithSuffix, keyvals is appended to the existing context.
 //
 // The returned Logger replaces all value elements (odd indexes) containing a
 // Valuer with their generated value for each call to its Log method.
@@ -36,14 +36,16 @@ func With(logger Logger, keyvals ...interface{}) Logger {
 		// backing array is created if the slice must grow in Log or With.
 		// Using the extra capacity without copying risks a data race that
 		// would violate the Logger interface contract.
-		keyvals:   kvs[:len(kvs):len(kvs)],
-		hasValuer: l.hasValuer || containsValuer(keyvals),
+		keyvals:    kvs[:len(kvs):len(kvs)],
+		hasValuer:  l.hasValuer || containsValuer(keyvals),
+		sKeyvals:   l.sKeyvals,
+		sHasValuer: l.sHasValuer,
 	}
 }
 
 // WithPrefix returns a new contextual logger with keyvals prepended to those
 // passed to calls to Log. If logger is also a contextual logger created by
-// With or WithPrefix, keyvals is prepended to the existing context.
+// With, WithPrefix, or WithSuffix, keyvals is prepended to the existing context.
 //
 // The returned Logger replaces all value elements (odd indexes) containing a
 // Valuer with their generated value for each call to its Log method.
@@ -67,16 +69,52 @@ func WithPrefix(logger Logger, keyvals ...interface{}) Logger {
 	}
 	kvs = append(kvs, l.keyvals...)
 	return &context{
-		logger:    l.logger,
-		keyvals:   kvs,
-		hasValuer: l.hasValuer || containsValuer(keyvals),
+		logger:     l.logger,
+		keyvals:    kvs,
+		hasValuer:  l.hasValuer || containsValuer(keyvals),
+		sKeyvals:   l.sKeyvals,
+		sHasValuer: l.sHasValuer,
 	}
 }
 
-// context is the Logger implementation returned by With and WithPrefix. It
-// wraps a Logger and holds keyvals that it includes in all log events. Its
-// Log method calls bindValues to generate values for each Valuer in the
-// context keyvals.
+// WithSuffix returns a new contextual logger with keyvals appended to those
+// passed to calls to Log. If logger is also a contextual logger created by
+// With, WithPrefix, or WithSuffix, keyvals is appended to the existing context.
+//
+// The returned Logger replaces all value elements (odd indexes) containing a
+// Valuer with their generated value for each call to its Log method.
+func WithSuffix(logger Logger, keyvals ...interface{}) Logger {
+	if len(keyvals) == 0 {
+		return logger
+	}
+	l := newContext(logger)
+	// Limiting the capacity of the stored keyvals ensures that a new
+	// backing array is created if the slice must grow in Log or With.
+	// Using the extra capacity without copying risks a data race that
+	// would violate the Logger interface contract.
+	n := len(l.sKeyvals) + len(keyvals)
+	if len(keyvals)%2 != 0 {
+		n++
+	}
+	kvs := make([]interface{}, 0, n)
+	kvs = append(kvs, keyvals...)
+	if len(kvs)%2 != 0 {
+		kvs = append(kvs, ErrMissingValue)
+	}
+	kvs = append(l.sKeyvals, kvs...)
+	return &context{
+		logger:     l.logger,
+		keyvals:    l.keyvals,
+		hasValuer:  l.hasValuer,
+		sKeyvals:   kvs,
+		sHasValuer: l.sHasValuer || containsValuer(keyvals),
+	}
+}
+
+// context is the Logger implementation returned by With, WithPrefix, and
+// WithSuffix. It wraps a Logger and holds keyvals that it includes in all
+// log events. Its Log method calls bindValues to generate values for each
+// Valuer in the context keyvals.
 //
 // A context must always have the same number of stack frames between calls to
 // its Log method and the eventual binding of Valuers to their value. This
@@ -89,13 +127,15 @@ func WithPrefix(logger Logger, keyvals ...interface{}) Logger {
 //
 //    1. newContext avoids introducing an additional layer when asked to
 //       wrap another context.
-//    2. With and WithPrefix avoid introducing an additional layer by
-//       returning a newly constructed context with a merged keyvals rather
-//       than simply wrapping the existing context.
+//    2. With, WithPrefix, and WithSuffix avoid introducing an additional
+//       layer by returning a newly constructed context with a merged keyvals
+//       rather than simply wrapping the existing context.
 type context struct {
-	logger    Logger
-	keyvals   []interface{}
-	hasValuer bool
+	logger     Logger
+	keyvals    []interface{}
+	sKeyvals   []interface{} // suffixes
+	hasValuer  bool
+	sHasValuer bool
 }
 
 func newContext(logger Logger) *context {
@@ -119,7 +159,11 @@ func (l *context) Log(keyvals ...interface{}) error {
 		if len(keyvals) == 0 {
 			kvs = append([]interface{}{}, l.keyvals...)
 		}
-		bindValues(kvs[:len(l.keyvals)])
+		bindValues(kvs[:(len(l.keyvals))])
+	}
+	kvs = append(kvs, l.sKeyvals...)
+	if l.sHasValuer {
+		bindValues(kvs[len(kvs) - len(l.sKeyvals):])
 	}
 	return l.logger.Log(kvs...)
 }

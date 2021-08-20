@@ -372,7 +372,6 @@ results_cache:
 
 The `ruler_config` configures the Loki ruler.
 
-<span style="background-color:#f3f973;">The Ruler API is experimental.</span>
 
 ```yaml
 # URL of alerts return path.
@@ -753,7 +752,7 @@ ring:
 [flush_period: <duration> | default = 1m]
 
 # Enable the Ruler API.
-# CLI flag: -experimental.ruler.enable-api
+# CLI flag: -ruler.enable-api
 [enable_api: <boolean> | default = false]
 ```
 
@@ -1816,6 +1815,10 @@ logs in Loki.
 # ingesters, and is kept updated whenever the number of ingesters change.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 0]
+
+# When true, out of order writes are accepted.
+# CLI flag: -ingester.unordered-writes
+[unordered_writes: <bool> | default = false]
 
 # Maximum number of chunks that can be fetched by a single query.
 # CLI flag: -store.query-chunk-limit
