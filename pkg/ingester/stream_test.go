@@ -329,7 +329,7 @@ func TestPushRateLimit(t *testing.T) {
 		NilMetrics,
 	)
 
-	// counter should be 2 now since the first line will be deduped
+	// Counter should be 2 now since the first line will be deduped.
 	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},

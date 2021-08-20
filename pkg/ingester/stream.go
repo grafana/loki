@@ -319,7 +319,7 @@ func (s *stream) Push(
 		if lastEntryWithErr.e == ErrStreamRateLimit {
 			statusCode = http.StatusTooManyRequests
 		}
-		// return a http status 4xx request response with all failed entries
+		// Return a http status 4xx request response with all failed entries.
 		buf := bytes.Buffer{}
 		streamName := s.labelsString
 

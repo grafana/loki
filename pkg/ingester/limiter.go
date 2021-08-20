@@ -141,7 +141,7 @@ func newLocalStreamRateStrategy(l *Limiter) cortex_limiter.RateLimiterStrategy {
 
 func (s *localStrategy) Limit(userID string) float64 {
 	if s.limiter.disabled {
-		return float64(rate.Inf) // or 0 if that's what we're supposed to do
+		return float64(rate.Inf)
 	}
 	return float64(s.limiter.limits.MaxLocalStreamRateBytes(userID))
 }
