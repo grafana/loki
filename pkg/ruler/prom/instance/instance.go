@@ -1,16 +1,12 @@
-// Package instance provides a mini Prometheus scraper and remote_writer.
+// Package instance provides a mini Prometheus remote_writer.
 package instance
 
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -33,12 +29,11 @@ import (
 )
 
 func init() {
-	remote.UserAgent = fmt.Sprintf("GrafanaAgent/%s", build.Version)
+	remote.UserAgent = fmt.Sprintf("LokiRulerWAL/%s", build.Version)
 }
 
 var (
 	remoteWriteMetricName = "queue_highest_sent_timestamp_seconds"
-	managerMtx            sync.Mutex
 )
 
 // Default configuration values
@@ -474,31 +469,6 @@ type walStorage interface {
 	Truncate(mint int64) error
 
 	Close() error
-}
-
-// Hostname retrieves the hostname identifying the machine the process is
-// running on. It will return the value of $HOSTNAME, if defined, and fall
-// back to Go's os.Hostname.
-func Hostname() (string, error) {
-	hostname := os.Getenv("HOSTNAME")
-	if hostname != "" {
-		return hostname, nil
-	}
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		return "", fmt.Errorf("failed to get hostname: %w", err)
-	}
-	return hostname, nil
-}
-
-func getHash(data interface{}) (string, error) {
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-	hash := md5.Sum(bytes)
-	return hex.EncodeToString(hash[:]), nil
 }
 
 // MetricValueCollector wraps around a Gatherer and provides utilities for
