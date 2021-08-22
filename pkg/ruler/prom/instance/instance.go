@@ -49,7 +49,6 @@ var (
 		MaxWALTime:           4 * time.Hour,
 		RemoteFlushDeadline:  1 * time.Minute,
 		WriteStaleOnShutdown: false,
-		global:               DefaultGlobalConfig,
 	}
 )
 
@@ -70,8 +69,6 @@ type Config struct {
 
 	RemoteFlushDeadline  time.Duration `yaml:"remote_flush_deadline,omitempty"`
 	WriteStaleOnShutdown bool          `yaml:"write_stale_on_shutdown,omitempty"`
-
-	global GlobalConfig `yaml:"-"`
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
@@ -106,9 +103,7 @@ func (c Config) MarshalYAML() (interface{}, error) {
 // also validates the config.
 //
 // The value for global will saved.
-func (c *Config) ApplyDefaults(global GlobalConfig) error {
-	c.global = global
-
+func (c *Config) ApplyDefaults() error {
 	switch {
 	case c.Name == "":
 		return errors.New("missing instance name")
@@ -120,41 +115,6 @@ func (c *Config) ApplyDefaults(global GlobalConfig) error {
 		return errors.New("min_wal_time must be less than max_wal_time")
 	}
 
-	jobNames := map[string]struct{}{}
-	for _, sc := range c.ScrapeConfigs {
-		if sc == nil {
-			return fmt.Errorf("empty or null scrape config section")
-		}
-
-		// First set the correct scrape interval, then check that the timeout
-		// (inferred or explicit) is not greater than that.
-		if sc.ScrapeInterval == 0 {
-			sc.ScrapeInterval = c.global.Prometheus.ScrapeInterval
-		}
-		if sc.ScrapeTimeout > sc.ScrapeInterval {
-			return fmt.Errorf("scrape timeout greater than scrape interval for scrape config with job name %q", sc.JobName)
-		}
-		if time.Duration(sc.ScrapeInterval) > c.WALTruncateFrequency {
-			return fmt.Errorf("scrape interval greater than wal_truncate_frequency for scrape config with job name %q", sc.JobName)
-		}
-		if sc.ScrapeTimeout == 0 {
-			if c.global.Prometheus.ScrapeTimeout > sc.ScrapeInterval {
-				sc.ScrapeTimeout = sc.ScrapeInterval
-			} else {
-				sc.ScrapeTimeout = c.global.Prometheus.ScrapeTimeout
-			}
-		}
-
-		if _, exists := jobNames[sc.JobName]; exists {
-			return fmt.Errorf("found multiple scrape configs with job name %q", sc.JobName)
-		}
-		jobNames[sc.JobName] = struct{}{}
-	}
-
-	// If the instance remote write is not filled in, then apply the prometheus write config
-	if len(c.RemoteWrite) == 0 {
-		c.RemoteWrite = c.global.RemoteWrite
-	}
 	for _, cfg := range c.RemoteWrite {
 		if cfg == nil {
 			return fmt.Errorf("empty or null remote write config section")
@@ -173,7 +133,6 @@ func (c *Config) Clone() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	cp.global = c.global
 
 	// Some tests will trip up on this; the marshal/unmarshal cycle might set
 	// an empty slice to nil. Set it back to an empty slice if we detect this
@@ -332,7 +291,6 @@ func (i *Instance) initialize(ctx context.Context, reg prometheus.Registerer, cf
 	remoteLogger := log.With(i.logger, "component", "remote")
 	i.remoteStore = remote.NewStorage(remoteLogger, reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{})
 	err = i.remoteStore.ApplyConfig(&config.Config{
-		GlobalConfig:       cfg.global.Prometheus,
 		RemoteWriteConfigs: cfg.RemoteWrite,
 	})
 	if err != nil {
@@ -395,7 +353,6 @@ func (i *Instance) Update(c Config) (err error) {
 	i.cfg = c
 
 	err = i.remoteStore.ApplyConfig(&config.Config{
-		GlobalConfig:       c.global.Prometheus,
 		RemoteWriteConfigs: c.RemoteWrite,
 	})
 	if err != nil {
