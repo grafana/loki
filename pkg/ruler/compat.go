@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/ruler/prom"
 	"github.com/grafana/loki/pkg/ruler/prom/instance"
+	"github.com/grafana/loki/pkg/ruler/prom/wal"
 )
 
 var ErrRemoteWriteDisabled = errors.New("remote-write disabled")
@@ -105,7 +106,7 @@ type storageRegistry struct {
 	sync.RWMutex
 
 	logger log.Logger
-	agent *prom.Agent
+	manager instance.Manager
 }
 
 func newStorageRegistry(logger log.Logger) *storageRegistry {
@@ -113,22 +114,22 @@ func newStorageRegistry(logger log.Logger) *storageRegistry {
 }
 
 
-func (r *storageRegistry) Set(agent *prom.Agent) {
+func (r *storageRegistry) Set(manager instance.Manager) {
 	r.Lock()
 	defer r.Unlock()
-	r.agent = agent
+	r.manager = manager
 }
 
 func (r *storageRegistry) Get(tenant string) storage.Storage {
 	r.RLock()
 	defer r.RUnlock()
 
-	if r.agent == nil {
+	if r.manager == nil {
 		// TODO error handling
 		return nil
 	}
 
-	inst, err := r.agent.InstanceManager().GetInstance(tenant)
+	inst, err := r.manager.GetInstance(tenant)
 	if err != nil {
 		// TODO error handling
 		return nil
@@ -172,7 +173,35 @@ func (n notReadyAppender) Commit() error { return errNotReady }
 
 func (n notReadyAppender) Rollback() error { return errNotReady }
 
-var promCfg = prom.DefaultConfig
+//// DefaultConfig is the default settings for the Prometheus-lite client.
+//var DefaultConfig = Config{
+//	Global:                 instance.DefaultGlobalConfig,
+//	InstanceRestartBackoff: instance.DefaultBasicManagerConfig.InstanceRestartBackoff,
+//	WALCleanupAge:          DefaultCleanupAge,
+//	WALCleanupPeriod:       DefaultCleanupPeriod,
+//}
+
+//var promCfg = prom.DefaultConfig
+
+var instances []instance.ManagedInstance
+var metrics *wal.Metrics
+
+type TenantWALManager struct {
+	logger log.Logger
+	reg prometheus.Registerer
+}
+
+func (t *TenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
+	reg := prometheus.WrapRegistererWithPrefix("loki_ruler_wal_", prometheus.WrapRegistererWith(prometheus.Labels{
+		"tenant": c.Tenant,
+	}, t.reg))
+
+	// TODO create new metrics each time? (probably yes, but do they clash when registering?)
+	// TODO how will unregistering work when a rule group is removed?
+
+	// create metrics here and pass down
+	return instance.New(reg, c, wal.NewMetrics(reg), "scratch/wal", t.logger)
+}
 
 func MemstoreTenantManager(
 	cfg Config,
@@ -182,25 +211,42 @@ func MemstoreTenantManager(
 	reg prometheus.Registerer,
 ) ruler.ManagerFactory {
 	var msMetrics *memstoreMetrics
-	var rwMetrics *remoteWriteMetrics
 
 	// this need to be multi-tenant
 	rs := newStorageRegistry(log.With(logger, "storage", "registry"))
 
-	promCfg.WALDir = "scratch/wal"
-	promCfg.Global = instance.GlobalConfig{}
+	metrics = wal.NewMetrics(reg)
 
-	agent, err := prom.New(reg, promCfg, logger)
-	if err != nil {
-		// TODO don't panic
-		panic(err)
+	//promCfg.WALDir = "scratch/wal"
+	//promCfg.WALCleanupAge = 1*time.Minute
+	//promCfg.WALCleanupPeriod = 30*time.Second
+	//promCfg.Global = instance.GlobalConfig{}
+
+	man := &TenantWALManager{
+		reg: reg,
+		logger: log.With(logger, "manager", "tenant-wal"),
 	}
 
-	rs.Set(agent)
+	manager := instance.NewBasicManager(instance.BasicManagerConfig{}, log.With(logger, "manager", "tenant-wal"), man.newInstance)
+	//
+	//agent, err := prom.New(reg, promCfg, logger)
+	//if err != nil {
+	//	// TODO don't panic
+	//	panic(err)
+	//}
 
-	if err := promCfg.ApplyDefaults(); err != nil {
-		panic(err)
-	}
+	rs.Set(manager)
+	//
+	//if err := promCfg.ApplyDefaults(); err != nil {
+	//	panic(err)
+	//}
+
+	// TODO(dannyk): consider wrapping registerer here to avoid conflict
+	//// We'll ignore the passed registerer and use the default registerer to avoid prefix issues and other weirdness.
+	//// This closure prevents re-registering.
+	//registerer := prometheus.DefaultRegisterer
+
+	msMetrics = newMemstoreMetrics(reg)
 
 	return func(
 		ctx context.Context,
@@ -209,19 +255,7 @@ func MemstoreTenantManager(
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-		// We'll ignore the passed registerer and use the default registerer to avoid prefix issues and other weirdness.
-		// This closure prevents re-registering.
-		registerer := prometheus.DefaultRegisterer
-
-		if msMetrics == nil {
-			msMetrics = newMemstoreMetrics(registerer)
-		}
-
-		if rwMetrics == nil {
-			rwMetrics = newRemoteWriteMetrics(registerer)
-		}
-
-		setupStorage(agent, userID, overrides, logger)
+		setupStorage(manager, userID, overrides, logger)
 
 		logger = log.With(logger, "user", userID)
 		queryFunc := engineQueryFunc(engine, overrides, userID)
@@ -249,10 +283,22 @@ func MemstoreTenantManager(
 	}
 }
 
-func setupStorage(agent *prom.Agent, tenant string, overrides RulesLimits, logger log.Logger) {
+func setupStorage(manager instance.Manager, tenant string, overrides RulesLimits, logger log.Logger) {
+	// TODO: enable and refactor
+	//if _, err := manager.GetInstance(tenant); err == nil {
+	//	if err := manager.DeleteConfig(tenant); err != nil {
+	//		level.Warn(logger).Log("msg", "tenant WAL does not exist", "tenant", tenant, "err", err)
+	//	}
+	//}
+
 	conf := instance.DefaultConfig
 	conf.Name = tenant
 	conf.Tenant = tenant
+	// set this explicitly since it'll be going away soon - NOT CONFIGURABLE
+	conf.WriteStaleOnShutdown = false
+	//conf.WALTruncateFrequency = 30*time.Second
+	//conf.MinWALTime = 5*time.Second
+	//conf.MaxWALTime = 1*time.Minute
 
 	var u url.URL
 	uu, err := u.Parse("http://localhost:9090/api/v1/write")
@@ -275,24 +321,31 @@ func setupStorage(agent *prom.Agent, tenant string, overrides RulesLimits, logge
 	}
 
 	conf.RemoteWrite = []*config.RemoteWriteConfig{&rwConf}
-	cfg := agent.Config()
+	//cfg := agent.Config()
+	//
+	//var currConfigs []instance.Config
+	//for _, c := range cfg.Configs {
+	//	// remove old config, if present
+	//	if c.Name == tenant {
+	//		continue
+	//	}
+	//
+	//	currConfigs = append(currConfigs, c)
+	//}
+	//
+	//cfg.Configs = append(currConfigs, conf)
+	//
+	//inst, err := instance.New(reg, conf, metrics, "scratch/wal", log.With(logger, "component", "tenant-wal"))
+	//if err != nil {
+	//	// TODO: don't panic
+	//	panic(err)
+	//}
+	//
+	//instances = append(instances, inst)
 
-	var currConfigs []instance.Config
-	for _, c := range cfg.Configs {
-		// remove old config, if present
-		if c.Name == tenant {
-			continue
-		}
-
-		currConfigs = append(currConfigs, c)
-	}
-
-	cfg.Configs = append(currConfigs, conf)
-
-	// Go through each component and update it.
-	if err := agent.ApplyConfig(cfg); err != nil {
-		level.Error(logger).Log("msg", "failed to update prometheus", "err", err)
-		return
+	if err = manager.ApplyConfig(conf); err != nil {
+		// TODO: don't panic
+		panic(err)
 	}
 }
 
