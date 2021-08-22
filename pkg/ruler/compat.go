@@ -32,7 +32,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/prom"
 	"github.com/grafana/loki/pkg/ruler/prom/instance"
 	"github.com/grafana/loki/pkg/ruler/prom/wal"
 )

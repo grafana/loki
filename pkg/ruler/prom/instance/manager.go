@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -62,7 +61,6 @@ type Manager interface {
 type ManagedInstance interface {
 	Run(ctx context.Context) error
 	Update(c Config) error
-	TargetsActive() map[string][]*scrape.Target
 	StorageDirectory() string
 	Appender(ctx context.Context) storage.Appender
 }

@@ -21,8 +21,6 @@ import (
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/discovery"
-	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
@@ -46,7 +44,6 @@ var (
 // Default configuration values
 var (
 	DefaultConfig = Config{
-		HostFilter:           false,
 		WALTruncateFrequency: 60 * time.Minute,
 		MinWALTime:           5 * time.Minute,
 		MaxWALTime:           4 * time.Hour,
@@ -61,8 +58,6 @@ var (
 type Config struct {
 	Tenant                   string
 	Name                     string                      `yaml:"name,omitempty"`
-	HostFilter               bool                        `yaml:"host_filter,omitempty"`
-	HostFilterRelabelConfigs []*relabel.Config           `yaml:"host_filter_relabel_configs,omitempty"`
 	ScrapeConfigs            []*config.ScrapeConfig      `yaml:"scrape_configs,omitempty"`
 	RemoteWrite              []*config.RemoteWriteConfig `yaml:"remote_write,omitempty"`
 
@@ -205,12 +200,8 @@ type Instance struct {
 	mut                sync.Mutex
 	cfg                Config
 	wal                walStorage
-	discovery          *discoveryService
-	readyScrapeManager *readyScrapeManager
 	remoteStore        *remote.Storage
 	storage            storage.Storage
-
-	hostFilter *HostFilter
 
 	logger log.Logger
 
@@ -237,21 +228,13 @@ func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, walDir str
 func newInstance(cfg Config, reg prometheus.Registerer, logger log.Logger, newWal walStorageFactory) (*Instance, error) {
 	vc := NewMetricValueCollector(prometheus.DefaultGatherer, remoteWriteMetricName)
 
-	hostname, err := Hostname()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hostname: %w", err)
-	}
-
 	i := &Instance{
 		cfg:        cfg,
 		logger:     logger,
 		vc:         vc,
-		hostFilter: NewHostFilter(hostname, cfg.HostFilterRelabelConfigs),
 
 		reg:    reg,
 		newWal: newWal,
-
-		readyScrapeManager: &readyScrapeManager{},
 	}
 
 	return i, nil
@@ -300,10 +283,6 @@ func (i *Instance) Run(ctx context.Context) error {
 	rg := runGroupWithContext(ctx)
 
 	{
-		// Target Discovery
-		rg.Add(i.discovery.Run, i.discovery.Stop)
-	}
-	{
 		// Truncation loop
 		ctx, contextCancel := context.WithCancel(context.Background())
 		defer contextCancel()
@@ -319,45 +298,6 @@ func (i *Instance) Run(ctx context.Context) error {
 			},
 		)
 	}
-	{
-		sm, err := i.readyScrapeManager.Get()
-		if err != nil {
-			level.Error(i.logger).Log("msg", "failed to get scrape manager")
-			return err
-		}
-
-		// Scrape manager
-		rg.Add(
-			func() error {
-				err := sm.Run(i.discovery.SyncCh())
-				level.Info(i.logger).Log("msg", "scrape manager stopped")
-				return err
-			},
-			func(err error) {
-				// The scrape manager is closed first to allow us to write staleness
-				// markers without receiving new samples from scraping in the meantime.
-				level.Info(i.logger).Log("msg", "stopping scrape manager...")
-				sm.Stop()
-
-				// On a graceful shutdown, write staleness markers. If something went
-				// wrong, then the instance will be relaunched.
-				if err == nil && cfg.WriteStaleOnShutdown {
-					level.Info(i.logger).Log("msg", "writing staleness markers...")
-					err := i.wal.WriteStalenessMarkers(i.getRemoteWriteTimestamp)
-					if err != nil {
-						level.Error(i.logger).Log("msg", "error writing staleness markers", "err", err)
-					}
-				}
-
-				// Closing the storage closes both the WAL storage and remote wrte
-				// storage.
-				level.Info(i.logger).Log("msg", "closing storage...")
-				if err := i.storage.Close(); err != nil {
-					level.Error(i.logger).Log("msg", "error stopping storage", "err", err)
-				}
-			},
-		)
-	}
 
 	level.Debug(i.logger).Log("msg", "running instance", "name", cfg.Name)
 	err := rg.Run()
@@ -365,6 +305,12 @@ func (i *Instance) Run(ctx context.Context) error {
 		level.Error(i.logger).Log("msg", "agent instance stopped with error", "err", err)
 	}
 	return err
+}
+
+type noopScrapeManager struct {}
+
+func (n noopScrapeManager) Get() (*scrape.Manager, error) {
+	return nil, nil
 }
 
 // initialize sets up the various Prometheus components with their initial
@@ -375,10 +321,6 @@ func (i *Instance) initialize(ctx context.Context, reg prometheus.Registerer, cf
 	i.mut.Lock()
 	defer i.mut.Unlock()
 
-	if cfg.HostFilter {
-		i.hostFilter.PatchSD(cfg.ScrapeConfigs)
-	}
-
 	var err error
 
 	i.wal, err = i.newWal(reg)
@@ -386,16 +328,9 @@ func (i *Instance) initialize(ctx context.Context, reg prometheus.Registerer, cf
 		return fmt.Errorf("error creating WAL: %w", err)
 	}
 
-	i.discovery, err = i.newDiscoveryManager(ctx, cfg)
-	if err != nil {
-		return fmt.Errorf("error creating discovery manager: %w", err)
-	}
-
-	i.readyScrapeManager = &readyScrapeManager{}
-
 	// Setup the remote storage
 	remoteLogger := log.With(i.logger, "component", "remote")
-	i.remoteStore = remote.NewStorage(remoteLogger, reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, i.readyScrapeManager)
+	i.remoteStore = remote.NewStorage(remoteLogger, reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{})
 	err = i.remoteStore.ApplyConfig(&config.Config{
 		GlobalConfig:       cfg.global.Prometheus,
 		RemoteWriteConfigs: cfg.RemoteWrite,
@@ -405,17 +340,6 @@ func (i *Instance) initialize(ctx context.Context, reg prometheus.Registerer, cf
 	}
 
 	i.storage = storage.NewFanout(i.logger, i.wal, i.remoteStore)
-
-	scrapeManager := newScrapeManager(log.With(i.logger, "component", "scrape manager"), i.storage)
-	err = scrapeManager.ApplyConfig(&config.Config{
-		GlobalConfig:  cfg.global.Prometheus,
-		ScrapeConfigs: cfg.ScrapeConfigs,
-	})
-	if err != nil {
-		return fmt.Errorf("failed applying config to scrape manager: %w", err)
-	}
-
-	i.readyScrapeManager.Set(scrapeManager)
 
 	return nil
 }
@@ -434,8 +358,6 @@ func (i *Instance) Update(c Config) (err error) {
 	// completions sake.
 	case i.cfg.Name != c.Name:
 		err = errImmutableField{Field: "name"}
-	case i.cfg.HostFilter != c.HostFilter:
-		err = errImmutableField{Field: "host_filter"}
 	case i.cfg.WALTruncateFrequency != c.WALTruncateFrequency:
 		err = errImmutableField{Field: "wal_truncate_frequency"}
 	case i.cfg.RemoteFlushDeadline != c.RemoteFlushDeadline:
@@ -448,7 +370,7 @@ func (i *Instance) Update(c Config) (err error) {
 	}
 
 	// Check to see if the components exist yet.
-	if i.discovery == nil || i.remoteStore == nil || i.readyScrapeManager == nil {
+	if i.remoteStore == nil {
 		return ErrInvalidUpdate{
 			Inner: fmt.Errorf("cannot dynamically update because instance is not running"),
 		}
@@ -472,13 +394,6 @@ func (i *Instance) Update(c Config) (err error) {
 	}()
 	i.cfg = c
 
-	i.hostFilter.SetRelabels(c.HostFilterRelabelConfigs)
-	if c.HostFilter {
-		// N.B.: only call PatchSD if HostFilter is enabled since it
-		// mutates what targets will be discovered.
-		i.hostFilter.PatchSD(c.ScrapeConfigs)
-	}
-
 	err = i.remoteStore.ApplyConfig(&config.Config{
 		GlobalConfig:       c.global.Prometheus,
 		RemoteWriteConfigs: c.RemoteWrite,
@@ -487,48 +402,7 @@ func (i *Instance) Update(c Config) (err error) {
 		return fmt.Errorf("error applying new remote_write configs: %w", err)
 	}
 
-	sm, err := i.readyScrapeManager.Get()
-	if err != nil {
-		return fmt.Errorf("couldn't get scrape manager to apply new scrape configs: %w", err)
-	}
-	err = sm.ApplyConfig(&config.Config{
-		GlobalConfig:  c.global.Prometheus,
-		ScrapeConfigs: c.ScrapeConfigs,
-	})
-	if err != nil {
-		return fmt.Errorf("error applying updated configs to scrape manager: %w", err)
-	}
-
-	sdConfigs := map[string]discovery.Configs{}
-	for _, v := range c.ScrapeConfigs {
-		sdConfigs[v.JobName] = v.ServiceDiscoveryConfigs
-	}
-	err = i.discovery.Manager.ApplyConfig(sdConfigs)
-	if err != nil {
-		return fmt.Errorf("failed applying configs to discovery manager: %w", err)
-	}
-
 	return nil
-}
-
-// TargetsActive returns the set of active targets from the scrape manager. Returns nil
-// if the scrape manager is not ready yet.
-func (i *Instance) TargetsActive() map[string][]*scrape.Target {
-	i.mut.Lock()
-	defer i.mut.Unlock()
-
-	if i.readyScrapeManager == nil {
-		return nil
-	}
-
-	mgr, err := i.readyScrapeManager.Get()
-	if err == ErrNotReady {
-		return nil
-	} else if err != nil {
-		level.Error(i.logger).Log("msg", "failed to get scrape manager when collecting active targets", "err", err)
-		return nil
-	}
-	return mgr.TargetsActive()
 }
 
 // StorageDirectory returns the directory where this Instance is writing series
@@ -540,79 +414,6 @@ func (i *Instance) StorageDirectory() string {
 // Appender returns a storage.Appender from the instance's WAL
 func (i *Instance) Appender(ctx context.Context) storage.Appender {
 	return i.wal.Appender(ctx)
-}
-
-type discoveryService struct {
-	Manager *discovery.Manager
-
-	RunFunc    func() error
-	StopFunc   func(err error)
-	SyncChFunc func() GroupChannel
-}
-
-func (s *discoveryService) Run() error           { return s.RunFunc() }
-func (s *discoveryService) Stop(err error)       { s.StopFunc(err) }
-func (s *discoveryService) SyncCh() GroupChannel { return s.SyncChFunc() }
-
-// newDiscoveryManager returns an implementation of a runnable service
-// that outputs discovered targets to a channel. The implementation
-// uses the Prometheus Discovery Manager. Targets will be filtered
-// if the instance is configured to perform host filtering.
-func (i *Instance) newDiscoveryManager(ctx context.Context, cfg *Config) (*discoveryService, error) {
-	ctx, cancel := context.WithCancel(ctx)
-
-	logger := log.With(i.logger, "component", "discovery manager")
-	manager := discovery.NewManager(ctx, logger, discovery.Name("scrape"))
-
-	// TODO(rfratto): refactor this to a function?
-	// TODO(rfratto): ensure job name name is unique
-	c := map[string]discovery.Configs{}
-	for _, v := range cfg.ScrapeConfigs {
-		c[v.JobName] = v.ServiceDiscoveryConfigs
-	}
-	err := manager.ApplyConfig(c)
-	if err != nil {
-		cancel()
-		level.Error(i.logger).Log("msg", "failed applying config to discovery manager", "err", err)
-		return nil, fmt.Errorf("failed applying config to discovery manager: %w", err)
-	}
-
-	rg := runGroupWithContext(ctx)
-
-	// Run the manager
-	rg.Add(func() error {
-		err := manager.Run()
-		level.Info(i.logger).Log("msg", "discovery manager stopped")
-		return err
-	}, func(err error) {
-		level.Info(i.logger).Log("msg", "stopping discovery manager...")
-		cancel()
-	})
-
-	syncChFunc := manager.SyncCh
-
-	// If host filtering is enabled, run it and use its channel for discovered
-	// targets.
-	if cfg.HostFilter {
-		rg.Add(func() error {
-			i.hostFilter.Run(manager.SyncCh())
-			level.Info(i.logger).Log("msg", "host filterer stopped")
-			return nil
-		}, func(_ error) {
-			level.Info(i.logger).Log("msg", "stopping host filterer...")
-			i.hostFilter.Stop()
-		})
-
-		syncChFunc = i.hostFilter.SyncCh
-	}
-
-	return &discoveryService{
-		Manager: manager,
-
-		RunFunc:    rg.Run,
-		StopFunc:   rg.Stop,
-		SyncChFunc: syncChFunc,
-	}, nil
 }
 
 func (i *Instance) truncateLoop(ctx context.Context, wal walStorage, cfg *Config) {
@@ -816,14 +617,6 @@ func (vc *MetricValueCollector) GetValues(label string, labelValues ...string) (
 	return vals, nil
 }
 
-func newScrapeManager(logger log.Logger, app storage.Appendable) *scrape.Manager {
-	// scrape.NewManager modifies a global variable in Prometheus. To avoid a
-	// data race of modifying that global, we lock a mutex here briefly.
-	managerMtx.Lock()
-	defer managerMtx.Unlock()
-	return scrape.NewManager(logger, app)
-}
-
 type runGroupContext struct {
 	cancel context.CancelFunc
 
@@ -853,33 +646,3 @@ func (rg *runGroupContext) Add(execute func() error, interrupt func(error)) {
 
 func (rg *runGroupContext) Run() error   { return rg.g.Run() }
 func (rg *runGroupContext) Stop(_ error) { rg.cancel() }
-
-// ErrNotReady is returned when the scrape manager is used but has not been
-// initialized yet.
-var ErrNotReady = errors.New("Scrape manager not ready")
-
-// readyScrapeManager allows a scrape manager to be retrieved. Even if it's set at a later point in time.
-type readyScrapeManager struct {
-	mtx sync.RWMutex
-	m   *scrape.Manager
-}
-
-// Set the scrape manager.
-func (rm *readyScrapeManager) Set(m *scrape.Manager) {
-	rm.mtx.Lock()
-	defer rm.mtx.Unlock()
-
-	rm.m = m
-}
-
-// Get the scrape manager. If is not ready, return an error.
-func (rm *readyScrapeManager) Get() (*scrape.Manager, error) {
-	rm.mtx.RLock()
-	defer rm.mtx.RUnlock()
-
-	if rm.m != nil {
-		return rm.m, nil
-	}
-
-	return nil, ErrNotReady
-}
