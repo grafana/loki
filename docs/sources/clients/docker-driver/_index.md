@@ -73,9 +73,12 @@ positions:
 
 clients:
   - url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+    # If using basic auth, configures the username and password sent.
     basic_auth:
-      username: ${LOKI_USER}
-      password: ${LOKI_PASSOWORD}
+      # The username to use for basic auth
+      username: <string>
+      # The password to use for basic auth
+      password: <string>
 
 scrape_configs:
   - job_name: system 
