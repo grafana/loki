@@ -72,7 +72,7 @@ positions:
   filename: loki-positions.yml
 
 clients:
-  - url: ${LOKI_ENDPOINT}
+  - url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
     basic_auth:
       username: ${LOKI_USER}
       password: ${LOKI_PASSOWORD}
