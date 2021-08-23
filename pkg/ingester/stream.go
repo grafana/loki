@@ -49,9 +49,21 @@ var (
 )
 
 var (
-	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
-	ErrStreamRateLimit = errors.New("stream rate limit exceeded")
+	ErrEntriesExist = errors.New("duplicate push - entries already exist")
 )
+
+type ErrStreamRateLimit struct {
+	rateLimit float64
+	labels    string
+	bytes     int
+}
+
+func (e *ErrStreamRateLimit) Error() string {
+	return fmt.Sprintf("Per stream rate limit exceeded (limit: %f bytes/sec) while attempting to ingest for stream '%s'  totaling '%d' bytes, consider splitting a stream via additional labels or contact your Loki administrator to see if the limt can be increased",
+		e.rateLimit,
+		e.labels,
+		e.bytes)
+}
 
 func init() {
 	prometheus.MustRegister(chunksCreatedTotal)
@@ -240,7 +252,7 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &ErrStreamRateLimit{float64(s.limiter.lim.Limit()), s.labelsString, len(entries[i].Line)}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
 			continue
@@ -315,14 +327,15 @@ func (s *stream) Push(
 
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && lastEntryWithErr.e != ErrStreamRateLimit {
+		_, ok := lastEntryWithErr.e.(*ErrStreamRateLimit)
+		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && ok {
 			return bytesAdded, lastEntryWithErr.e
 		}
 		var statusCode int
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			statusCode = http.StatusBadRequest
 		}
-		if lastEntryWithErr.e == ErrStreamRateLimit {
+		if _, ok := lastEntryWithErr.e.(*ErrStreamRateLimit); ok {
 			statusCode = http.StatusTooManyRequests
 		}
 		// Return a http status 4xx request response with all failed entries.
