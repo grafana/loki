@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -239,7 +240,7 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: float64(s.limiter.lim.Limit()), Labels: s.labelsString, Bytes: len(entries[i].Line)}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(s.limiter.lim.Limit()), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
 			continue

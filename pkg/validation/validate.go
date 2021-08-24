@@ -3,6 +3,7 @@ package validation
 import (
 	"fmt"
 
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -50,16 +51,16 @@ const (
 )
 
 type ErrStreamRateLimit struct {
-	RateLimit float64
+	RateLimit flagext.ByteSize
 	Labels    string
-	Bytes     int
+	Bytes     flagext.ByteSize
 }
 
 func (e *ErrStreamRateLimit) Error() string {
-	return fmt.Sprintf("Per stream rate limit exceeded (limit: %f bytes/sec) while attempting to ingest for stream '%s'  totaling '%d' bytes, consider splitting a stream via additional labels or contact your Loki administrator to see if the limt can be increased",
-		e.RateLimit,
+	return fmt.Sprintf("Per stream rate limit exceeded (limit: %s/sec) while attempting to ingest for stream '%s' totaling %s, consider splitting a stream via additional labels or contact your Loki administrator to see if the limt can be increased",
+		e.RateLimit.String(),
 		e.Labels,
-		e.Bytes)
+		e.Bytes.String())
 }
 
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
