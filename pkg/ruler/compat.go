@@ -106,12 +106,16 @@ type storageRegistry struct {
 
 	logger log.Logger
 	manager instance.Manager
+
+	appenderReady *prometheus.GaugeVec
 }
 
-func newStorageRegistry(logger log.Logger) *storageRegistry {
-	return &storageRegistry{logger: logger}
+func newStorageRegistry(logger log.Logger, appenderReady *prometheus.GaugeVec) *storageRegistry {
+	return &storageRegistry{
+		logger: logger,
+		appenderReady: appenderReady,
+	}
 }
-
 
 func (r *storageRegistry) Set(manager instance.Manager) {
 	r.Lock()
@@ -123,23 +127,29 @@ func (r *storageRegistry) Get(tenant string) storage.Storage {
 	r.RLock()
 	defer r.RUnlock()
 
+	ready := r.appenderReady.WithLabelValues(tenant)
+
 	if r.manager == nil {
 		// TODO error handling
+		ready.Set(0)
 		return nil
 	}
 
 	inst, err := r.manager.GetInstance(tenant)
 	if err != nil {
 		// TODO error handling
+		ready.Set(0)
 		return nil
 	}
 
 	i, ok := inst.(*instance.Instance)
 	if !ok {
 		// TODO error handling
+		ready.Set(0)
 		return nil
 	}
 
+	ready.Set(1)
 	return i.Storage()
 }
 
@@ -172,18 +182,9 @@ func (n notReadyAppender) Commit() error { return errNotReady }
 
 func (n notReadyAppender) Rollback() error { return errNotReady }
 
-//// DefaultConfig is the default settings for the Prometheus-lite client.
-//var DefaultConfig = Config{
-//	Global:                 instance.DefaultGlobalConfig,
-//	InstanceRestartBackoff: instance.DefaultBasicManagerConfig.InstanceRestartBackoff,
-//	WALCleanupAge:          DefaultCleanupAge,
-//	WALCleanupPeriod:       DefaultCleanupPeriod,
-//}
-
-//var promCfg = prom.DefaultConfig
-
 var instances []instance.ManagedInstance
-var metrics *wal.Metrics
+
+const MetricsPrefix = "loki_ruler_wal_"
 
 type TenantWALManager struct {
 	logger log.Logger
@@ -191,9 +192,9 @@ type TenantWALManager struct {
 }
 
 func (t *TenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
-	reg := prometheus.WrapRegistererWithPrefix("loki_ruler_wal_", prometheus.WrapRegistererWith(prometheus.Labels{
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{
 		"tenant": c.Tenant,
-	}, t.reg))
+	}, t.reg)
 
 	// TODO create new metrics each time? (probably yes, but do they clash when registering?)
 	// TODO how will unregistering work when a rule group is removed?
@@ -211,10 +212,19 @@ func MemstoreTenantManager(
 ) ruler.ManagerFactory {
 	var msMetrics *memstoreMetrics
 
-	// this need to be multi-tenant
-	rs := newStorageRegistry(log.With(logger, "storage", "registry"))
+	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
 
-	metrics = wal.NewMetrics(reg)
+	appenderReady := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "appender_ready",
+	}, []string{"tenant"})
+
+	reg.MustRegister(appenderReady)
+
+	// this need to be multi-tenant
+	rs := newStorageRegistry(log.With(logger, "storage", "registry"), appenderReady)
+
+	instMetrics := instance.NewMetrics(reg)
+	msMetrics = newMemstoreMetrics(reg)
 
 	//promCfg.WALDir = "scratch/wal"
 	//promCfg.WALCleanupAge = 1*time.Minute
@@ -226,26 +236,11 @@ func MemstoreTenantManager(
 		logger: log.With(logger, "manager", "tenant-wal"),
 	}
 
-	manager := instance.NewBasicManager(instance.BasicManagerConfig{}, log.With(logger, "manager", "tenant-wal"), man.newInstance)
-	//
-	//agent, err := prom.New(reg, promCfg, logger)
-	//if err != nil {
-	//	// TODO don't panic
-	//	panic(err)
-	//}
+	manager := instance.NewBasicManager(instance.BasicManagerConfig{
+		InstanceRestartBackoff: time.Second,
+	}, instMetrics, log.With(logger, "manager", "tenant-wal"), man.newInstance)
 
 	rs.Set(manager)
-	//
-	//if err := promCfg.ApplyDefaults(); err != nil {
-	//	panic(err)
-	//}
-
-	// TODO(dannyk): consider wrapping registerer here to avoid conflict
-	//// We'll ignore the passed registerer and use the default registerer to avoid prefix issues and other weirdness.
-	//// This closure prevents re-registering.
-	//registerer := prometheus.DefaultRegisterer
-
-	msMetrics = newMemstoreMetrics(reg)
 
 	return func(
 		ctx context.Context,
@@ -306,6 +301,7 @@ func setupStorage(manager instance.Manager, tenant string, overrides RulesLimits
 	}
 
 	rwConf := config.DefaultRemoteWriteConfig
+	rwConf.MetadataConfig.Send = false
 	rwConf.Name = tenant
 	rwConf.QueueConfig.MaxSamplesPerSend = 1000
 	rwConf.QueueConfig.Capacity = overrides.RulerRemoteWriteQueueCapacity(tenant)

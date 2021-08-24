@@ -9,22 +9,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/storage"
 )
 
 var (
-	instanceAbnormalExits = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "agent_prometheus_instance_abnormal_exits_total",
-		Help: "Total number of times a Prometheus instance exited unexpectedly, causing it to be restarted.",
-	}, []string{"instance_name"})
-
-	currentActiveInstances = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "agent_prometheus_active_instances",
-		Help: "Current number of active instances being used by the agent.",
-	})
-
 	// DefaultBasicManagerConfig is the default config for the BasicManager.
 	DefaultBasicManagerConfig = BasicManagerConfig{
 		InstanceRestartBackoff: 5 * time.Second,
@@ -78,6 +66,7 @@ type BasicManager struct {
 	cfgMut sync.Mutex
 	cfg    BasicManagerConfig
 	logger log.Logger
+	metrics *Metrics
 
 	// Take care when locking mut: if you hold onto a lock of mut while calling
 	// Stop on a process, you will deadlock.
@@ -112,9 +101,10 @@ type Factory func(c Config) (ManagedInstance, error)
 // be handled by the BasicManager. Instances will be automatically restarted
 // if stopped, updated if the config changes, or removed when the Config is
 // deleted.
-func NewBasicManager(cfg BasicManagerConfig, logger log.Logger, launch Factory) *BasicManager {
+func NewBasicManager(cfg BasicManagerConfig, metrics *Metrics, logger log.Logger, launch Factory) *BasicManager {
 	return &BasicManager{
 		cfg:       cfg,
+		metrics:   metrics,
 		logger:    logger,
 		processes: make(map[string]*managedProcess),
 		launch:    launch,
@@ -202,7 +192,7 @@ func (m *BasicManager) ApplyConfig(c Config) error {
 		return err
 	}
 
-	currentActiveInstances.Inc()
+	m.metrics.RunningInstances.Inc()
 	return nil
 }
 
@@ -244,7 +234,7 @@ func (m *BasicManager) spawnProcess(c Config) error {
 		}
 		m.mut.Unlock()
 
-		currentActiveInstances.Dec()
+		m.metrics.RunningInstances.Dec()
 	}()
 
 	return nil
@@ -258,7 +248,7 @@ func (m *BasicManager) runProcess(ctx context.Context, name string, inst Managed
 		if err != nil && err != context.Canceled {
 			backoff := m.instanceRestartBackoff()
 
-			instanceAbnormalExits.WithLabelValues(name).Inc()
+			m.metrics.AbnormalExits.WithLabelValues(name).Inc()
 			level.Error(m.logger).Log("msg", "instance stopped abnormally, restarting after backoff period", "err", err, "backoff", backoff, "instance", name)
 			time.Sleep(backoff)
 		} else {

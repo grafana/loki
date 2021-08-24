@@ -309,7 +309,7 @@ func TestDiscardingAppender(t *testing.T) {
 	}
 	require.False(t, cfg.RemoteWrite.Enabled)
 
-	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake", metrics)
+	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake", WALMetrics)
 	appender := appendable.Appender(context.TODO())
 	require.Equal(t, DiscardingAppender{ErrRemoteWriteDisabled}, appender)
 }
