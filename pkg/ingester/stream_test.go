@@ -53,7 +53,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			cfg.MaxReturnedErrors = tc.limit
 			s := newStream(
 				cfg,
-				newLocalStreamRateStrategy(limiter),
+				limiter,
 				"fake",
 				model.Fingerprint(0),
 				labels.Labels{
@@ -98,7 +98,7 @@ func TestPushDeduplication(t *testing.T) {
 
 	s := newStream(
 		defaultConfig(),
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -127,7 +127,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 
 	s := newStream(
 		defaultConfig(),
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -221,7 +221,7 @@ func TestUnorderedPush(t *testing.T) {
 
 	s := newStream(
 		&cfg,
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -319,7 +319,7 @@ func TestPushRateLimit(t *testing.T) {
 
 	s := newStream(
 		defaultConfig(),
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -360,7 +360,7 @@ func Benchmark_PushStream(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	s := newStream(&Config{}, newLocalStreamRateStrategy(limiter), "fake", model.Fingerprint(0), ls, true, NilMetrics)
+	s := newStream(&Config{}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 

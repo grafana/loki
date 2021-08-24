@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util/flagext"
@@ -430,6 +431,14 @@ func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
 
 func (o *Overrides) DefaultLimits() *Limits {
 	return o.defaultLimits
+}
+
+func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
+	user := o.getOverridesForUser(userID)
+	return RateLimit{
+		Limit: rate.Limit(float64(user.MaxLocalStreamRateBytes.Val())),
+		Burst: user.MaxLocalStreamBurstRateBytes.Val(),
+	}
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

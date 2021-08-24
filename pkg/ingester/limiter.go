@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	cortex_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/validation"
@@ -130,45 +129,33 @@ func (l *Limiter) minNonZero(first, second int) int {
 	return first
 }
 
-type localStrategy struct {
-	limiter *Limiter
+type RateLimiterStrategy interface {
+	RateLimit(tenant string) validation.RateLimit
 }
 
-func newLocalStreamRateStrategy(l *Limiter) cortex_limiter.RateLimiterStrategy {
-	return &localStrategy{
-		limiter: l,
+func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
+	if l.disabled {
+		return validation.Unlimited
 	}
-}
 
-func (s *localStrategy) Limit(userID string) float64 {
-	if s.limiter.disabled {
-		return float64(rate.Inf)
-	}
-	return float64(s.limiter.limits.MaxLocalStreamRateBytes(userID))
-}
-
-func (s *localStrategy) Burst(userID string) int {
-	if s.limiter.disabled {
-		// Burst is ignored when limit = rate.Inf
-		return 0
-	}
-	return s.limiter.limits.MaxLocalStreamBurstRateBytes(userID)
+	return l.limits.PerStreamRateLimit(tenant)
 }
 
 type StreamRateLimiter struct {
 	recheckPeriod time.Duration
 	recheckAt     time.Time
-	strategy      cortex_limiter.RateLimiterStrategy
+	strategy      RateLimiterStrategy
 	tenant        string
 	lim           *rate.Limiter
 }
 
-func NewStreamRateLimiter(strategy cortex_limiter.RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
+func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
+	rl := strategy.RateLimit(tenant)
 	return &StreamRateLimiter{
 		recheckPeriod: recheckPeriod,
 		strategy:      strategy,
 		tenant:        tenant,
-		lim:           rate.NewLimiter(rate.Limit(strategy.Limit(tenant)), strategy.Burst(tenant)),
+		lim:           rate.NewLimiter(rl.Limit, rl.Burst),
 	}
 }
 
@@ -177,25 +164,25 @@ func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
 	if now.After(l.recheckAt) {
 		l.recheckAt = now.Add(l.recheckPeriod)
 
-		oldBurst := l.lim.Burst()
-		newBurst := l.strategy.Burst(l.tenant)
 		oldLim := l.lim.Limit()
-		newLim := rate.Limit(l.strategy.Limit(l.tenant))
+		oldBurst := l.lim.Burst()
+
+		next := l.strategy.RateLimit(l.tenant)
 
 		// Edge case: rate.Inf doesn't advance nicely when reconfigured.
 		// Instead of buffering it manually, we simply create a new limiter.
-		if oldLim == rate.Inf && newLim != oldLim {
-			l.lim = rate.NewLimiter(newLim, newBurst)
+		if oldLim == rate.Inf && next.Limit != oldLim {
+			l.lim = rate.NewLimiter(next.Limit, next.Burst)
 		} else {
 
 			// Need to set Burst first due to race conditions acquiring the underlocking
 			// mutex and because a zero burst allows no events unless limit == Inf.
-			if newBurst != oldBurst {
-				l.lim.SetBurstAt(at, newBurst)
+			if next.Burst != oldBurst {
+				l.lim.SetBurstAt(at, next.Burst)
 			}
 
-			if newLim != oldLim {
-				l.lim.SetLimitAt(at, newLim)
+			if next.Limit != oldLim {
+				l.lim.SetLimitAt(at, next.Limit)
 			}
 		}
 	}
