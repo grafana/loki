@@ -174,9 +174,6 @@ func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
 		if oldLim == rate.Inf && next.Limit != oldLim {
 			l.lim = rate.NewLimiter(next.Limit, next.Burst)
 		} else {
-
-			// Need to set Burst first due to race conditions acquiring the underlocking
-			// mutex and because a zero burst allows no events unless limit == Inf.
 			if next.Burst != oldBurst {
 				l.lim.SetBurstAt(at, next.Burst)
 			}
