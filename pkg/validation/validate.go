@@ -3,8 +3,9 @@ package validation
 import (
 	"fmt"
 
-	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const (

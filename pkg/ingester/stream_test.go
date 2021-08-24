@@ -336,7 +336,7 @@ func TestPushRateLimit(t *testing.T) {
 	}
 	// Counter should be 2 now since the first line will be deduped.
 	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0)
-	require.Equal(t, (&validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(l.MaxLocalStreamRateBytes), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error(), err.Error())
+	require.Equal(t, (&validation.ErrStreamRateLimit{RateLimit: l.MaxLocalStreamRateBytes, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error(), err.Error())
 }
 
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
