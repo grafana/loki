@@ -61,7 +61,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // New returns a new ingester client.
 func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	opts := []grpc.DialOption{
-		grpc.WithInsecure(),
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
 
