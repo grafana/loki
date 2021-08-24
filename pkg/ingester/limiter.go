@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	cortex_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
 	"golang.org/x/time/rate"
@@ -152,4 +153,39 @@ func (s *localStrategy) Burst(userID string) int {
 		return 0
 	}
 	return s.limiter.limits.MaxLocalStreamBurstRateBytes(userID)
+}
+
+type StreamRateLimiter struct {
+	recheckPeriod time.Duration
+	recheckAt     time.Time
+	strategy      cortex_limiter.RateLimiterStrategy
+	tenant        string
+	lim           *rate.Limiter
+}
+
+func NewStreamRateLimiter(strategy cortex_limiter.RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
+	return &StreamRateLimiter{
+		recheckPeriod: recheckPeriod,
+		strategy:      strategy,
+		tenant:        tenant,
+		lim:           rate.NewLimiter(rate.Limit(strategy.Limit(tenant)), strategy.Burst(tenant)),
+	}
+}
+
+func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
+	now := time.Now()
+	if now.After(l.recheckAt) {
+		l.recheckAt = now.Add(l.recheckPeriod)
+		oldLim := l.lim.Limit()
+		if newLim := rate.Limit(l.strategy.Limit(l.tenant)); newLim != oldLim {
+			l.lim.SetLimit(newLim)
+		}
+
+		oldBurst := l.lim.Burst()
+		if newBurst := l.strategy.Burst(l.tenant); newBurst != oldBurst {
+			l.lim.SetBurst(newBurst)
+		}
+	}
+
+	return l.lim.AllowN(at, n)
 }

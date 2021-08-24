@@ -66,7 +66,7 @@ type line struct {
 }
 
 type stream struct {
-	limiter *limiter.RateLimiter
+	limiter *StreamRateLimiter
 	cfg     *Config
 	tenant  string
 	// Newest chunk at chunks[n-1].
@@ -118,7 +118,7 @@ type entryWithError struct {
 
 func newStream(cfg *Config, limits limiter.RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
 	return &stream{
-		limiter:         limiter.NewRateLimiter(limits, 10*time.Second),
+		limiter:         NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:             cfg,
 		fp:              fp,
 		labels:          labels,
@@ -240,7 +240,7 @@ func (s *stream) Push(
 		}
 		// Check if this this should be rate limited.
 		now := time.Now()
-		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {
+		if !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
