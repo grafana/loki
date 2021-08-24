@@ -1,6 +1,8 @@
 package validation
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -46,6 +48,19 @@ const (
 	DuplicateLabelNames         = "duplicate_label_names"
 	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
 )
+
+type ErrStreamRateLimit struct {
+	RateLimit float64
+	Labels    string
+	Bytes     int
+}
+
+func (e *ErrStreamRateLimit) Error() string {
+	return fmt.Sprintf("Per stream rate limit exceeded (limit: %f bytes/sec) while attempting to ingest for stream '%s'  totaling '%d' bytes, consider splitting a stream via additional labels or contact your Loki administrator to see if the limt can be increased",
+		e.RateLimit,
+		e.Labels,
+		e.Bytes)
+}
 
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
 var MutatedSamples = prometheus.NewCounterVec(
