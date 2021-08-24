@@ -177,16 +177,26 @@ func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
 	if now.After(l.recheckAt) {
 		l.recheckAt = now.Add(l.recheckPeriod)
 
-		// Need to set Burst first due to race conditions acquiring the underlocking
-		// mutex and because a zero burst allows no events unless limit == Inf.
 		oldBurst := l.lim.Burst()
-		if newBurst := l.strategy.Burst(l.tenant); newBurst != oldBurst {
-			l.lim.SetBurstAt(at, newBurst)
-		}
-
+		newBurst := l.strategy.Burst(l.tenant)
 		oldLim := l.lim.Limit()
-		if newLim := rate.Limit(l.strategy.Limit(l.tenant)); newLim != oldLim {
-			l.lim.SetLimitAt(at, newLim)
+		newLim := rate.Limit(l.strategy.Limit(l.tenant))
+
+		// Edge case: rate.Inf doesn't advance nicely when reconfigured.
+		// Instead of buffering it manually, we simply create a new limiter.
+		if oldLim == rate.Inf && newLim != oldLim {
+			l.lim = rate.NewLimiter(newLim, newBurst)
+		} else {
+
+			// Need to set Burst first due to race conditions acquiring the underlocking
+			// mutex and because a zero burst allows no events unless limit == Inf.
+			if newBurst != oldBurst {
+				l.lim.SetBurstAt(at, newBurst)
+			}
+
+			if newLim != oldLim {
+				l.lim.SetLimitAt(at, newLim)
+			}
 		}
 	}
 
