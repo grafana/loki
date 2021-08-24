@@ -50,10 +50,10 @@ var (
 // Config is a specific agent that runs within the overall Prometheus
 // agent. It has its own set of scrape_configs and remote_write rules.
 type Config struct {
-	Tenant                   string
-	Name                     string                      `yaml:"name,omitempty"`
-	ScrapeConfigs            []*config.ScrapeConfig      `yaml:"scrape_configs,omitempty"`
-	RemoteWrite              []*config.RemoteWriteConfig `yaml:"remote_write,omitempty"`
+	Tenant        string
+	Name          string                      `yaml:"name,omitempty"`
+	ScrapeConfigs []*config.ScrapeConfig      `yaml:"scrape_configs,omitempty"`
+	RemoteWrite   []*config.RemoteWriteConfig `yaml:"remote_write,omitempty"`
 
 	// How frequently the WAL should be truncated.
 	WALTruncateFrequency time.Duration `yaml:"wal_truncate_frequency,omitempty"`
@@ -151,11 +151,11 @@ type Instance struct {
 	//
 	// Note that all Prometheus components listed here may be nil at any
 	// given time; methods reading them should take care to do nil checks.
-	mut                sync.Mutex
-	cfg                Config
-	wal                walStorage
-	remoteStore        *remote.Storage
-	storage            storage.Storage
+	mut         sync.Mutex
+	cfg         Config
+	wal         walStorage
+	remoteStore *remote.Storage
+	storage     storage.Storage
 
 	logger log.Logger
 
@@ -183,9 +183,9 @@ func newInstance(cfg Config, reg prometheus.Registerer, logger log.Logger, newWa
 	vc := NewMetricValueCollector(prometheus.DefaultGatherer, remoteWriteMetricName)
 
 	i := &Instance{
-		cfg:        cfg,
-		logger:     logger,
-		vc:         vc,
+		cfg:    cfg,
+		logger: logger,
+		vc:     vc,
 
 		reg:    reg,
 		newWal: newWal,
@@ -261,7 +261,7 @@ func (i *Instance) Run(ctx context.Context) error {
 	return err
 }
 
-type noopScrapeManager struct {}
+type noopScrapeManager struct{}
 
 func (n noopScrapeManager) Get() (*scrape.Manager, error) {
 	return nil, nil

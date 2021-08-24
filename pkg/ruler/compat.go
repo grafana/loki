@@ -32,6 +32,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/ruler/prom"
 	"github.com/grafana/loki/pkg/ruler/prom/instance"
 	"github.com/grafana/loki/pkg/ruler/prom/wal"
 )
@@ -104,7 +105,7 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 type storageRegistry struct {
 	sync.RWMutex
 
-	logger log.Logger
+	logger  log.Logger
 	manager instance.Manager
 
 	appenderReady *prometheus.GaugeVec
@@ -112,7 +113,7 @@ type storageRegistry struct {
 
 func newStorageRegistry(logger log.Logger, appenderReady *prometheus.GaugeVec) *storageRegistry {
 	return &storageRegistry{
-		logger: logger,
+		logger:        logger,
 		appenderReady: appenderReady,
 	}
 }
@@ -165,7 +166,6 @@ func (r *storageRegistry) Appender(ctx context.Context) storage.Appender {
 	return inst.Appender(ctx)
 }
 
-
 type notReadyAppender struct{}
 
 var errNotReady = errors.New("appender not ready")
@@ -186,9 +186,11 @@ var instances []instance.ManagedInstance
 
 const MetricsPrefix = "loki_ruler_wal_"
 
+var cleaner *prom.WALCleaner
+
 type TenantWALManager struct {
 	logger log.Logger
-	reg prometheus.Registerer
+	reg    prometheus.Registerer
 }
 
 func (t *TenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
@@ -203,13 +205,7 @@ func (t *TenantWALManager) newInstance(c instance.Config) (instance.ManagedInsta
 	return instance.New(reg, c, wal.NewMetrics(reg), "scratch/wal", t.logger)
 }
 
-func MemstoreTenantManager(
-	cfg Config,
-	engine *logql.Engine,
-	overrides RulesLimits,
-	logger log.Logger,
-	reg prometheus.Registerer,
-) ruler.ManagerFactory {
+func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
 	var msMetrics *memstoreMetrics
 
 	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
@@ -221,7 +217,7 @@ func MemstoreTenantManager(
 	reg.MustRegister(appenderReady)
 
 	// this need to be multi-tenant
-	rs := newStorageRegistry(log.With(logger, "storage", "registry"), appenderReady)
+	walRegistry := newStorageRegistry(log.With(logger, "storage", "registry"), appenderReady)
 
 	instMetrics := instance.NewMetrics(reg)
 	msMetrics = newMemstoreMetrics(reg)
@@ -232,7 +228,7 @@ func MemstoreTenantManager(
 	//promCfg.Global = instance.GlobalConfig{}
 
 	man := &TenantWALManager{
-		reg: reg,
+		reg:    reg,
 		logger: log.With(logger, "manager", "tenant-wal"),
 	}
 
@@ -240,7 +236,19 @@ func MemstoreTenantManager(
 		InstanceRestartBackoff: time.Second,
 	}, instMetrics, log.With(logger, "manager", "tenant-wal"), man.newInstance)
 
-	rs.Set(manager)
+
+	if cleaner != nil {
+		cleaner.Stop()
+	}
+
+	cleaner = prom.NewWALCleaner(
+		logger,
+		manager,
+		"scratch/wal",
+		30*time.Second,
+		10*time.Second)
+
+	walRegistry.Set(manager)
 
 	return func(
 		ctx context.Context,
@@ -256,7 +264,7 @@ func MemstoreTenantManager(
 		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      rs, //newAppendable(cfg, overrides, logger, userID, rwMetrics),
+			Appendable:      walRegistry,
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
