@@ -522,9 +522,14 @@ storage:
       # CLI flag: -ruler.storage.s3.http.response-header-timeout
       [response_header_timeout: <duration> | default = 0s]
 
-      # Set to false to skip verifying the certificate chain and hostname.
+      # Set to true to skip verifying the certificate chain and hostname.
       # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+      # Path to the trusted CA file that signed the SSL certificate of the S3
+      # endpoint.
+      # CLI flag: -ruler.storage.s3.http.ca-file
+      [ca_file: <string> | default = ""]
 
   swift:
     # Openstack authentication URL.
@@ -1190,9 +1195,14 @@ aws:
     # CLI flag: -s3.http.response-header-timeout
     [response_header_timeout: <duration> | default = 0s]
 
-    # Set to false to skip verifying the certificate chain and hostname.
+    # Set to true to skip verifying the certificate chain and hostname.
     # CLI flag: -s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
+
+    # Path to the trusted CA file that signed the SSL certificate of the S3
+    # endpoint.
+    # CLI flag: -s3.http.ca-file
+    [ca_file: <string> | default = ""]
 
   # Configure the DynamoDB connection
   dynamodb:
