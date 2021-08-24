@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	reasonLabel = "reason"
+	ReasonLabel = "reason"
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
 	InvalidLabels = "invalid_labels"
 	MissingLabels = "missing_labels"
@@ -54,7 +54,7 @@ var MutatedSamples = prometheus.NewCounterVec(
 		Name:      "mutated_samples_total",
 		Help:      "The total number of samples that have been mutated.",
 	},
-	[]string{reasonLabel, "truncated"},
+	[]string{ReasonLabel, "truncated"},
 )
 
 // MutatedBytes is a metric of the total mutated bytes, by reason.
@@ -64,7 +64,7 @@ var MutatedBytes = prometheus.NewCounterVec(
 		Name:      "mutated_bytes_total",
 		Help:      "The total number of bytes that have been mutated.",
 	},
-	[]string{reasonLabel, "truncated"},
+	[]string{ReasonLabel, "truncated"},
 )
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
@@ -74,7 +74,7 @@ var DiscardedBytes = prometheus.NewCounterVec(
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
-	[]string{reasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -84,7 +84,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
-	[]string{reasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant"},
 )
 
 func init() {

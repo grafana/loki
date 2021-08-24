@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -13,12 +14,14 @@ type ingesterMetrics struct {
 	checkpointDuration         prometheus.Summary
 	checkpointLoggedBytesTotal prometheus.Counter
 
-	walDiskFullFailures prometheus.Counter
-	walReplayActive     prometheus.Gauge
-	walReplayDuration   prometheus.Gauge
-	walCorruptionsTotal *prometheus.CounterVec
-	walLoggedBytesTotal prometheus.Counter
-	walRecordsLogged    prometheus.Counter
+	walDiskFullFailures     prometheus.Counter
+	walReplayActive         prometheus.Gauge
+	walReplayDuration       prometheus.Gauge
+	walReplaySamplesDropped *prometheus.CounterVec
+	walReplayBytesDropped   *prometheus.CounterVec
+	walCorruptionsTotal     *prometheus.CounterVec
+	walLoggedBytesTotal     prometheus.Counter
+	walRecordsLogged        prometheus.Counter
 
 	recoveredStreamsTotal prometheus.Counter
 	recoveredChunksTotal  prometheus.Counter
@@ -45,6 +48,8 @@ func (m *ingesterMetrics) setRecoveryBytesInUse(v int64) {
 const (
 	walTypeCheckpoint = "checkpoint"
 	walTypeSegment    = "segment"
+
+	duplicateReason = "duplicate"
 )
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
@@ -61,6 +66,14 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Name: "loki_ingester_wal_replay_duration_seconds",
 			Help: "Time taken to replay the checkpoint and the WAL.",
 		}),
+		walReplaySamplesDropped: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_discarded_samples_total",
+			Help: "WAL segment entries discarded during replay",
+		}, []string{validation.ReasonLabel}),
+		walReplayBytesDropped: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_discarded_bytes_total",
+			Help: "WAL segment bytes discarded during replay",
+		}, []string{validation.ReasonLabel}),
 		walCorruptionsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_corruptions_total",
 			Help: "Total number of WAL corruptions encountered.",

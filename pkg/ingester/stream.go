@@ -184,6 +184,13 @@ func (s *stream) Push(
 	defer s.chunkMtx.Unlock()
 
 	if counter > 0 && counter <= s.entryCt {
+		var byteCt int
+		for _, e := range entries {
+			byteCt += len(e.Line)
+		}
+
+		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
+		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
 		return 0, ErrEntriesExist
 	}
 
