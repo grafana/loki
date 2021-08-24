@@ -32,7 +32,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/prom"
+	"github.com/grafana/loki/pkg/ruler/prom/cleaner"
 	"github.com/grafana/loki/pkg/ruler/prom/instance"
 	"github.com/grafana/loki/pkg/ruler/prom/wal"
 )
@@ -186,7 +186,7 @@ var instances []instance.ManagedInstance
 
 const MetricsPrefix = "loki_ruler_wal_"
 
-var cleaner *prom.WALCleaner
+var walCleaner *cleaner.WALCleaner
 
 type TenantWALManager struct {
 	logger log.Logger
@@ -237,13 +237,14 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 	}, instMetrics, log.With(logger, "manager", "tenant-wal"), man.newInstance)
 
 
-	if cleaner != nil {
-		cleaner.Stop()
+	if walCleaner != nil {
+		walCleaner.Stop()
 	}
 
-	cleaner = prom.NewWALCleaner(
+	walCleaner = cleaner.NewWALCleaner(
 		logger,
 		manager,
+		cleaner.NewMetrics(reg),
 		"scratch/wal",
 		30*time.Second,
 		10*time.Second)

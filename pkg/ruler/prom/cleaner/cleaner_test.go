@@ -1,4 +1,4 @@
-package prom
+package cleaner
 
 import (
 	"io/ioutil"
@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/ruler/prom/instance"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/ruler/prom/instance"
 )
 
 func TestWALCleaner_getAllStorageNoRoot(t *testing.T) {
