@@ -76,7 +76,7 @@ relabel_configs:
     target_label: '__host__'
 ```
 
-See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery config](../configuration/#kubernetes_sd_config).
+See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration](../configuration/#kubernetes_sd_config).
 
 ## Journal Scraping (Linux Only)
 
