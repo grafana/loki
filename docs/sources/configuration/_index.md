@@ -526,6 +526,11 @@ storage:
       # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
+      # Path to the trusted CA file that signed the SSL certificate of the S3
+      # endpoint.
+      # CLI flag: -ruler.storage.s3.http.ca-file
+      [ca_file: <string> | default = ""]
+
   swift:
     # Openstack authentication URL.
     # CLI flag: -ruler.storage.swift.auth-url
@@ -1193,6 +1198,11 @@ aws:
     # Set to true to skip verifying the certificate chain and hostname.
     # CLI flag: -s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
+
+    # Path to the trusted CA file that signed the SSL certificate of the S3
+    # endpoint.
+    # CLI flag: -s3.http.ca-file
+    [ca_file: <string> | default = ""]
 
   # Configure the DynamoDB connection
   dynamodb:

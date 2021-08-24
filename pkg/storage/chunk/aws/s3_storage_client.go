@@ -3,12 +3,14 @@ package aws
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -82,6 +84,7 @@ type HTTPConfig struct {
 	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
 	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
 	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
+	CAFile                string        `yaml:"ca_file"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -110,6 +113,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
 	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
+	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
 }
 
@@ -235,6 +239,19 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		s3Config = s3Config.WithCredentials(creds)
 	}
 
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
+	}
+
+	if cfg.HTTPConfig.CAFile != "" {
+		tlsConfig.RootCAs = x509.NewCertPool()
+		data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		tlsConfig.RootCAs.AppendCertsFromPEM(data)
+	}
+
 	// While extending S3 configuration this http config was copied in order to
 	// to maintain backwards compatibility with previous versions of Cortex while providing
 	// more flexible configuration of the http client
@@ -252,7 +269,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		TLSHandshakeTimeout:   3 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: cfg.HTTPConfig.ResponseHeaderTimeout,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify},
+		TLSClientConfig:       tlsConfig,
 	})
 
 	if cfg.Inject != nil {
