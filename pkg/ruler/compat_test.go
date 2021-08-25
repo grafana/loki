@@ -299,21 +299,6 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 	require.Error(t, cfg.RemoteWrite.Validate())
 }
 
-// TestDiscardingAppender tests that a DiscardingAppender is created when remote-write is disabled
-func TestDiscardingAppender(t *testing.T) {
-	cfg := Config{
-		Config: ruler.Config{},
-		RemoteWrite: RemoteWriteConfig{
-			Enabled: false,
-		},
-	}
-	require.False(t, cfg.RemoteWrite.Enabled)
-
-	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake", WALMetrics)
-	appender := appendable.Appender(context.TODO())
-	require.Equal(t, DiscardingAppender{ErrRemoteWriteDisabled}, appender)
-}
-
 // TestNonMetricQuery tests that only metric queries can be executed in the query function,
 // as both alert and recording rules rely on metric queries being run
 func TestNonMetricQuery(t *testing.T) {
