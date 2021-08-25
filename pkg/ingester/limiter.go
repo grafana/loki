@@ -169,18 +169,11 @@ func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
 
 		next := l.strategy.RateLimit(l.tenant)
 
-		// Edge case: rate.Inf doesn't advance nicely when reconfigured.
-		// Instead of buffering it manually, we simply create a new limiter.
-		if oldLim == rate.Inf && next.Limit != oldLim {
+		if oldLim != next.Limit || oldBurst != next.Burst {
+			// Edge case: rate.Inf doesn't advance nicely when reconfigured.
+			// To simplify, we just create a new limiter after reconfiguration rather
+			// than alter the existing one.
 			l.lim = rate.NewLimiter(next.Limit, next.Burst)
-		} else {
-			if next.Burst != oldBurst {
-				l.lim.SetBurstAt(at, next.Burst)
-			}
-
-			if next.Limit != oldLim {
-				l.lim.SetLimitAt(at, next.Limit)
-			}
 		}
 	}
 
