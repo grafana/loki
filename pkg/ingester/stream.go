@@ -316,14 +316,14 @@ func (s *stream) Push(
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
 		_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && ok {
+		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && !ok {
 			return bytesAdded, lastEntryWithErr.e
 		}
 		var statusCode int
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			statusCode = http.StatusBadRequest
 		}
-		if _, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit); ok {
+		if ok {
 			statusCode = http.StatusTooManyRequests
 		}
 		// Return a http status 4xx request response with all failed entries.
