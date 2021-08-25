@@ -316,6 +316,7 @@ Flags:
                            from a given Loki configuration file.
       --colored-output     Show output with colored labels
   -t, --tail               Tail the logs
+  -f, --follow             Alias for --tail
       --delay-for=0        Delay in tailing by number of seconds to accumulate
                            logs for re-ordering
 

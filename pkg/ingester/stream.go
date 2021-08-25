@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -66,7 +65,7 @@ type line struct {
 }
 
 type stream struct {
-	limiter *limiter.RateLimiter
+	limiter *StreamRateLimiter
 	cfg     *Config
 	tenant  string
 	// Newest chunk at chunks[n-1].
@@ -116,9 +115,9 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, limits limiter.RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
 	return &stream{
-		limiter:         limiter.NewRateLimiter(limits, 10*time.Second),
+		limiter:         NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:             cfg,
 		fp:              fp,
 		labels:          labels,
@@ -184,6 +183,13 @@ func (s *stream) Push(
 	defer s.chunkMtx.Unlock()
 
 	if counter > 0 && counter <= s.entryCt {
+		var byteCt int
+		for _, e := range entries {
+			byteCt += len(e.Line)
+		}
+
+		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
+		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
 		return 0, ErrEntriesExist
 	}
 
@@ -233,7 +239,7 @@ func (s *stream) Push(
 		}
 		// Check if this this should be rate limited.
 		now := time.Now()
-		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {
+		if !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
