@@ -193,6 +193,11 @@ func (c *WALCleaner) run() {
 // necessary to call this method explicitly in most cases since it will be run periodically
 // in a goroutine (started when WALCleaner is created).
 func (c *WALCleaner) cleanup() {
+	if !c.instanceManager.Ready() {
+		level.Warn(c.logger).Log("msg", "delaying WAL clean until all storage instances are ready")
+		return
+	}
+
 	start := time.Now()
 	all := c.getAllStorage()
 	managed := c.getManagedStorage(c.instanceManager.ListInstances())

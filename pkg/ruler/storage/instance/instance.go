@@ -148,6 +148,8 @@ type walStorageFactory func(reg prometheus.Registerer) (walStorage, error)
 
 // Instance is an individual metrics collector and remote_writer.
 type Instance struct {
+	initialized bool
+
 	// All fields in the following block may be accessed and modified by
 	// concurrently running goroutines.
 	//
@@ -274,6 +276,9 @@ func (n noopScrapeManager) Get() (*scrape.Manager, error) {
 // components cannot be reused after they are stopped so we need to recreate them
 // each run.
 func (i *Instance) initialize(ctx context.Context, reg prometheus.Registerer, cfg *Config) error {
+	// explicitly set this in case this function is called multiple times
+	i.initialized = false
+
 	i.mut.Lock()
 	defer i.mut.Unlock()
 
@@ -295,6 +300,7 @@ func (i *Instance) initialize(ctx context.Context, reg prometheus.Registerer, cf
 	}
 
 	i.storage = storage.NewFanout(i.logger, i.wal, i.remoteStore)
+	i.initialized = true
 
 	return nil
 }
@@ -357,6 +363,11 @@ func (i *Instance) Update(c Config) (err error) {
 	}
 
 	return nil
+}
+
+// Ready indicates if the instance is ready for processing.
+func (i *Instance) Ready() bool {
+	return i.initialized
 }
 
 // StorageDirectory returns the directory where this Instance is writing series

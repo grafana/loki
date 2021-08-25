@@ -43,6 +43,9 @@ type Manager interface {
 	// DeleteConfig deletes a given managed instance based on its Config.Name.
 	DeleteConfig(name string) error
 
+	// Ready indicates if all instances are ready for processing.
+	Ready() bool
+
 	// Stop stops the Manager and all managed instances.
 	Stop()
 }
@@ -50,6 +53,7 @@ type Manager interface {
 // ManagedInstance is implemented by Instance. It is defined as an interface
 // for the sake of testing from Manager implementations.
 type ManagedInstance interface {
+	Ready() bool
 	Run(ctx context.Context) error
 	Update(c Config) error
 	StorageDirectory() string
@@ -282,6 +286,24 @@ func (m *BasicManager) DeleteConfig(name string) error {
 	// stops so we don't need to delete anything from m.processes here.
 	proc.Stop()
 	return nil
+}
+
+// Ready indicates if all instances are ready for processing.
+func (m *BasicManager) Ready() bool {
+	m.mut.Lock()
+	defer m.mut.Unlock()
+
+	for _, process := range m.processes {
+		if process.inst == nil {
+			return false
+		}
+
+		if !process.inst.Ready() {
+			return false
+		}
+	}
+
+	return true
 }
 
 // Stop stops the BasicManager and stops all active processes for configs.

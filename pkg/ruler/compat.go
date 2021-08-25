@@ -37,13 +37,6 @@ import (
 	"github.com/grafana/loki/pkg/ruler/storage/wal"
 )
 
-var ErrRemoteWriteDisabled = errors.New("remote-write disabled")
-
-const Name = "bob"
-const Name2 = "bobby"
-
-var mx sync.Mutex
-
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
 type RulesLimits interface {
@@ -54,8 +47,14 @@ type RulesLimits interface {
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, userID string) rules.QueryFunc {
+func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, manager instance.Manager, userID string) rules.QueryFunc {
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		// check if storage instance is ready; if not, fail the rule evaluation;
+		// we do this to prevent an attempt to append new samples before the WAL appender is ready
+		if inst, err := manager.GetInstance(userID); err != nil || !inst.Ready() {
+			return nil, errNotReady
+		}
+
 		adjusted := t.Add(-overrides.EvaluationDelay(userID))
 		params := logql.NewLiteralParams(
 			qs,
@@ -146,6 +145,11 @@ func (r *storageRegistry) Get(tenant string) storage.Storage {
 	i, ok := inst.(*instance.Instance)
 	if !ok {
 		// TODO error handling
+		ready.Set(0)
+		return nil
+	}
+
+	if !i.Ready() {
 		ready.Set(0)
 		return nil
 	}
@@ -261,7 +265,7 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 		setupStorage(manager, userID, overrides, logger)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(engine, overrides, userID)
+		queryFunc := engineQueryFunc(engine, overrides, manager, userID)
 		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
