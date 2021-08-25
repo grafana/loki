@@ -1933,7 +1933,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"distributor.*\"}",
+              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"distributor.*\"}",
               "intervalFactor": 3,
               "legendFormat": "{{pod}}-{{container}}",
               "refId": "A"
@@ -2597,7 +2597,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"ingester.*\"}",
+              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"ingester.*\"}",
               "intervalFactor": 3,
               "legendFormat": "{{pod}}-{{container}}",
               "refId": "A"
@@ -3543,7 +3543,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"querier.*\"}",
+              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"querier.*\"}",
               "intervalFactor": 3,
               "legendFormat": "{{pod}}-{{container}}",
               "refId": "A"
