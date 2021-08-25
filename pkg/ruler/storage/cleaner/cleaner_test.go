@@ -1,7 +1,4 @@
-// This directory was copied and adapted from https://github.com/grafana/agent/tree/main/pkg/metrics.
-// We cannot vendor the agent in since the agent vendors loki in, which would cause a cyclic dependency.
-// NOTE: many changes have been made to the original code for our use-case.
-package metrics
+package cleaner
 
 import (
 	"io/ioutil"
@@ -11,8 +8,9 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/agent/pkg/metrics/instance"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/ruler/storage/instance"
 )
 
 func TestWALCleaner_getAllStorageNoRoot(t *testing.T) {

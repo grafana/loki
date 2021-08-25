@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/agent/pkg/util"
+	"github.com/grafana/loki/pkg/ruler/storage/util"
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/value"

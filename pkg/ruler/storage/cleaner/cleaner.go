@@ -1,7 +1,4 @@
-// This directory was copied and adapted from https://github.com/grafana/agent/tree/main/pkg/metrics.
-// We cannot vendor the agent in since the agent vendors loki in, which would cause a cyclic dependency.
-// NOTE: many changes have been made to the original code for our use-case.
-package metrics
+package cleaner
 
 import (
 	"fmt"
@@ -11,70 +8,16 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/agent/pkg/metrics/instance"
-	"github.com/grafana/agent/pkg/metrics/wal"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	promwal "github.com/prometheus/prometheus/tsdb/wal"
+
+	"github.com/grafana/loki/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/pkg/ruler/storage/wal"
 )
 
 // Default settings for the WAL cleaner.
 const (
 	DefaultCleanupAge    = 12 * time.Hour
 	DefaultCleanupPeriod = 30 * time.Minute
-)
-
-var (
-	discoveryError = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "agent_prometheus_cleaner_storage_error_total",
-			Help: "Errors encountered discovering local storage paths",
-		},
-		[]string{"storage"},
-	)
-
-	segmentError = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "agent_prometheus_cleaner_segment_error_total",
-			Help: "Errors encountered finding most recent WAL segments",
-		},
-		[]string{"storage"},
-	)
-
-	managedStorage = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "agent_prometheus_cleaner_managed_storage",
-			Help: "Number of storage directories associated with managed instances",
-		},
-	)
-
-	abandonedStorage = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "agent_prometheus_cleaner_abandoned_storage",
-			Help: "Number of storage directories not associated with any managed instance",
-		},
-	)
-
-	cleanupRunsSuccess = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "agent_prometheus_cleaner_success_total",
-			Help: "Number of successfully removed abandoned WALs",
-		},
-	)
-
-	cleanupRunsErrors = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "agent_prometheus_cleaner_errors_total",
-			Help: "Number of errors removing abandoned WALs",
-		},
-	)
-
-	cleanupTimes = promauto.NewHistogram(
-		prometheus.HistogramOpts{
-			Name: "agent_prometheus_cleaner_cleanup_seconds",
-			Help: "Time spent performing each periodic WAL cleanup",
-		},
-	)
 )
 
 // lastModifiedFunc gets the last modified time of the most recent segment of a WAL
@@ -119,12 +62,14 @@ type WALCleaner struct {
 	minAge          time.Duration
 	period          time.Duration
 	done            chan bool
+
+	metrics *Metrics
 }
 
 // NewWALCleaner creates a new cleaner that looks for abandoned WALs in the given
 // directory and removes them if they haven't been modified in over minAge. Starts
 // a goroutine to periodically run the cleanup method in a loop
-func NewWALCleaner(logger log.Logger, manager instance.Manager, walDirectory string, minAge time.Duration, period time.Duration) *WALCleaner {
+func NewWALCleaner(logger log.Logger, manager instance.Manager, metrics *Metrics, walDirectory string, minAge time.Duration, period time.Duration) *WALCleaner {
 	c := &WALCleaner{
 		logger:          log.With(logger, "component", "cleaner"),
 		instanceManager: manager,
@@ -133,6 +78,8 @@ func NewWALCleaner(logger log.Logger, manager instance.Manager, walDirectory str
 		minAge:          DefaultCleanupAge,
 		period:          DefaultCleanupPeriod,
 		done:            make(chan bool),
+
+		metrics: metrics,
 	}
 
 	if minAge > 0 {
@@ -174,7 +121,7 @@ func (c *WALCleaner) getAllStorage() []string {
 			// Just log any errors traversing the WAL directory. This will potentially result
 			// in a WAL (that has incorrect permissions or some similar problem) not being cleaned
 			// up. This is  better than preventing *all* other WALs from being cleaned up.
-			discoveryError.WithLabelValues(p).Inc()
+			c.metrics.DiscoveryError.WithLabelValues(p).Inc()
 			level.Warn(c.logger).Log("msg", "unable to traverse WAL storage path", "path", p, "err", err)
 		} else if info.IsDir() && filepath.Dir(p) == c.walDirectory {
 			// Single level below the root are instance storage directories (including WALs)
@@ -202,7 +149,7 @@ func (c *WALCleaner) getAbandonedStorage(all []string, managed map[string]bool, 
 		walDir := wal.SubDirectory(dir)
 		mtime, err := c.walLastModified(walDir)
 		if err != nil {
-			segmentError.WithLabelValues(dir).Inc()
+			c.metrics.SegmentError.WithLabelValues(dir).Inc()
 			level.Warn(c.logger).Log("msg", "unable to find segment mtime of WAL", "name", dir, "err", err)
 			continue
 		}
@@ -251,21 +198,21 @@ func (c *WALCleaner) cleanup() {
 	managed := c.getManagedStorage(c.instanceManager.ListInstances())
 	abandoned := c.getAbandonedStorage(all, managed, time.Now())
 
-	managedStorage.Set(float64(len(managed)))
-	abandonedStorage.Set(float64(len(abandoned)))
+	c.metrics.ManagedStorage.Set(float64(len(managed)))
+	c.metrics.AbandonedStorage.Set(float64(len(abandoned)))
 
 	for _, a := range abandoned {
 		level.Info(c.logger).Log("msg", "deleting abandoned WAL", "name", a)
 		err := os.RemoveAll(a)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "failed to delete abandoned WAL", "name", a, "err", err)
-			cleanupRunsErrors.Inc()
+			c.metrics.CleanupRunsErrors.Inc()
 		} else {
-			cleanupRunsSuccess.Inc()
+			c.metrics.CleanupRunsSuccess.Inc()
 		}
 	}
 
-	cleanupTimes.Observe(time.Since(start).Seconds())
+	c.metrics.CleanupTimes.Observe(time.Since(start).Seconds())
 }
 
 // Stop the cleaner and any background tasks running

@@ -32,9 +32,9 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/prom/cleaner"
-	"github.com/grafana/loki/pkg/ruler/prom/instance"
-	"github.com/grafana/loki/pkg/ruler/prom/wal"
+	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
+	"github.com/grafana/loki/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/pkg/ruler/storage/wal"
 )
 
 var ErrRemoteWriteDisabled = errors.New("remote-write disabled")
