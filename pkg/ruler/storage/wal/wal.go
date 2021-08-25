@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -105,6 +107,8 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	}
 
 	metrics.ReplayDuration.Observe(time.Since(start).Seconds())
+
+	go storage.recordSize()
 
 	return storage, nil
 }
@@ -493,6 +497,42 @@ func (w *Storage) Close() error {
 		w.metrics.Unregister()
 	}
 	return w.wal.Close()
+}
+
+func (w *Storage) recordSize() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			size, err := dirSize(w.path)
+			if err != nil {
+				level.Debug(w.logger).Log("msg", "could not calculate WAL disk size", "path", w.path, "err", err)
+				continue
+			}
+			w.metrics.DiskSize.Set(float64(size))
+		}
+	}
+}
+
+func dirSize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() {
+
+			size += info.Size()
+		}
+
+		return err
+	})
+
+	return size, err
 }
 
 type appender struct {

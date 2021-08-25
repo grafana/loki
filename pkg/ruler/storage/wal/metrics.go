@@ -15,59 +15,65 @@ type Metrics struct {
 	TotalFailedRepairs     prometheus.Counter
 	TotalSucceededRepairs  prometheus.Counter
 	ReplayDuration         prometheus.Histogram
+	DiskSize               prometheus.Gauge
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	m := Metrics{r: r}
 	m.NumActiveSeries = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:      "storage_active_series",
-		Help:      "Current number of active series being tracked by a tenant's WAL storage",
+		Name: "storage_active_series",
+		Help: "Current number of active series being tracked by a tenant's WAL storage",
 	})
 
 	m.NumDeletedSeries = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:      "storage_deleted_series",
-		Help:      "Current number of series marked for deletion from memory",
+		Name: "storage_deleted_series",
+		Help: "Current number of series marked for deletion from memory",
 	})
 
 	m.TotalCreatedSeries = prometheus.NewCounter(prometheus.CounterOpts{
-		Name:      "storage_created_series_total",
-		Help:      "Total number of created series appended to a tenant's WAL",
+		Name: "storage_created_series_total",
+		Help: "Total number of created series appended to a tenant's WAL",
 	})
 
 	m.TotalRemovedSeries = prometheus.NewCounter(prometheus.CounterOpts{
-		Name:      "storage_removed_series_total",
-		Help:      "Total number of created series removed from a tenant's WAL",
+		Name: "storage_removed_series_total",
+		Help: "Total number of created series removed from a tenant's WAL",
 	})
 
 	m.TotalAppendedSamples = prometheus.NewCounter(prometheus.CounterOpts{
-		Name:      "samples_appended_total",
-		Help:      "Total number of samples appended to a tenant's WAL",
+		Name: "samples_appended_total",
+		Help: "Total number of samples appended to a tenant's WAL",
 	})
 
 	m.TotalAppendedExemplars = prometheus.NewCounter(prometheus.CounterOpts{
-		Name:      "exemplars_appended_total",
-		Help:      "Total number of exemplars appended to a tenant's WAL",
+		Name: "exemplars_appended_total",
+		Help: "Total number of exemplars appended to a tenant's WAL",
 	})
 
 	m.TotalCorruptions = prometheus.NewCounter(prometheus.CounterOpts{
-		Name:      "corruptions_total",
-		Help:      "Total number of corruptions observed in a tenant's WAL",
+		Name: "corruptions_total",
+		Help: "Total number of corruptions observed in a tenant's WAL",
 	})
 
 	m.TotalFailedRepairs = prometheus.NewCounter(prometheus.CounterOpts{
-		Name:      "corruptions_repair_failed_total",
-		Help:      "Total number of corruptions unsuccessfully repaired in a tenant's WAL",
+		Name: "corruptions_repair_failed_total",
+		Help: "Total number of corruptions unsuccessfully repaired in a tenant's WAL",
 	})
 
 	m.TotalSucceededRepairs = prometheus.NewCounter(prometheus.CounterOpts{
-		Name:      "corruptions_repair_succeeded_total",
-		Help:      "Total number of corruptions successfully repaired in a tenant's WAL",
+		Name: "corruptions_repair_succeeded_total",
+		Help: "Total number of corruptions successfully repaired in a tenant's WAL",
 	})
 
 	m.ReplayDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:      "replay_duration",
-		Help:      "Total duration in seconds it took to replay a tenant's WAL",
+		Name:    "replay_duration",
+		Help:    "Total duration in seconds it took to replay a tenant's WAL",
 		Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
+	})
+
+	m.DiskSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:    "disk_size",
+		Help:    "Size of each tenant's WAL on disk",
 	})
 
 	// why do the metrics not show up?
@@ -85,6 +91,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			m.TotalFailedRepairs,
 			m.TotalSucceededRepairs,
 			m.ReplayDuration,
+			m.DiskSize,
 		)
 	}
 
@@ -106,6 +113,7 @@ func (m *Metrics) Unregister() {
 		m.TotalFailedRepairs,
 		m.TotalSucceededRepairs,
 		m.ReplayDuration,
+		m.DiskSize,
 	}
 	for _, c := range cs {
 		m.r.Unregister(c)
