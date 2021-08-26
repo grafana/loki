@@ -18,6 +18,9 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Config.RegisterFlags(f)
 	c.RemoteWrite.RegisterFlags(f)
+
+	// TODO(owen-d, 3.0.0): remove deprecated experimental prefix in Cortex if they'll accept it.
+	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", false, "Enable the ruler api")
 }
 
 // Validate overrides the embedded cortex variant which expects a cortex limits struct. Instead copy the relevant bits over.

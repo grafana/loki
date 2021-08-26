@@ -34,7 +34,7 @@ func (x *TargetHealth) UnmarshalJSON(entry []byte) error {
 		return errors.Wrapf(err, "targetHealth: unquote %v", string(entry))
 	}
 
-	if len(fieldStr) == 0 {
+	if fieldStr == "" {
 		return errors.New("empty targetHealth")
 	}
 

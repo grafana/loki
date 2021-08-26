@@ -24,12 +24,13 @@ tk init
 tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
 ```
 
+Install `jsonnet-bundler` (`jb`), find instructions for your platform in Tanka's [installation docs](https://tanka.dev/install#jsonnet-bundler).
+
 ## Deploying
 
 Download and install the Loki and Promtail module using `jb` (version v0.4.0 or a more recent version):
 
 ```bash
-go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
 jb init  # not required if you already ran `tk init`
 jb install github.com/grafana/loki/production/ksonnet/loki@main
 jb install github.com/grafana/loki/production/ksonnet/promtail@main

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
@@ -197,12 +198,12 @@ func (w *frontendSchedulerWorker) stop() {
 }
 
 func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb.SchedulerForFrontendClient) {
-	backoffConfig := util.BackoffConfig{
+	backoffConfig := backoff.Config{
 		MinBackoff: 50 * time.Millisecond,
 		MaxBackoff: 1 * time.Second,
 	}
 
-	backoff := util.NewBackoff(ctx, backoffConfig)
+	backoff := backoff.New(ctx, backoffConfig)
 	for backoff.Ongoing() {
 		loop, loopErr := client.FrontendLoop(ctx)
 		if loopErr != nil {

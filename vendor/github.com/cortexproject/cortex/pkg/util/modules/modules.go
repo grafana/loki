@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -25,6 +26,7 @@ type module struct {
 // in the right order of dependencies.
 type Manager struct {
 	modules map[string]*module
+	logger  log.Logger
 }
 
 // UserInvisibleModule is an option for `RegisterModule` that marks module not visible to user. Modules are user visible by default.
@@ -33,9 +35,10 @@ func UserInvisibleModule(m *module) {
 }
 
 // NewManager creates a new Manager
-func NewManager() *Manager {
+func NewManager(logger log.Logger) *Manager {
 	return &Manager{
 		modules: make(map[string]*module),
+		logger:  logger,
 	}
 }
 
@@ -108,7 +111,7 @@ func (m *Manager) initModule(name string, initMap map[string]bool, servicesMap m
 			if s != nil {
 				// We pass servicesMap, which isn't yet complete. By the time service starts,
 				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(servicesMap, n, s, m.DependenciesForModule(n), m.findInverseDependencies(n, deps[ix+1:]))
+				serv = newModuleServiceWrapper(servicesMap, n, m.logger, s, m.DependenciesForModule(n), m.findInverseDependencies(n, deps[ix+1:]))
 			}
 		}
 

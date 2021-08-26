@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/blang/semver/v4"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -50,11 +51,15 @@ type PrometheusStore struct {
 	component        component.StoreAPI
 	externalLabelsFn func() labels.Labels
 	timestamps       func() (mint int64, maxt int64)
+	promVersion      func() string
 
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
 
 	framesRead prometheus.Histogram
 }
+
+// LabelValues call with matchers is supported for Prometheus versions >= 2.24.0 .
+var baseVer, _ = semver.Make("2.24.0")
 
 const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size for sync pool size.
 
@@ -69,6 +74,7 @@ func NewPrometheusStore(
 	component component.StoreAPI,
 	externalLabelsFn func() labels.Labels,
 	timestamps func() (mint int64, maxt int64),
+	promVersion func() string,
 ) (*PrometheusStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -80,6 +86,7 @@ func NewPrometheusStore(
 		component:                     component,
 		externalLabelsFn:              externalLabelsFn,
 		timestamps:                    timestamps,
+		promVersion:                   promVersion,
 		remoteReadAcceptableResponses: []prompb.ReadRequest_ResponseType{prompb.ReadRequest_STREAMED_XOR_CHUNKS, prompb.ReadRequest_SAMPLES},
 		buffers: sync.Pool{New: func() interface{} {
 			b := make([]byte, 0, initialBufSize)
@@ -496,9 +503,45 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 		return &storepb.LabelValuesResponse{Values: []string{l}}, nil
 	}
 
-	vals, err := p.client.LabelValuesInGRPC(ctx, p.base, r.Label, nil, r.Start, r.End)
-	if err != nil {
-		return nil, err
+	var (
+		sers []map[string]string
+		err  error
+	)
+
+	lvc := false // LabelValuesCall
+	vals := []string{}
+	v := p.promVersion()
+
+	version, err := semver.Parse(v)
+	if err == nil && version.GTE(baseVer) {
+		lvc = true
+	}
+
+	if len(r.Matchers) == 0 || lvc {
+		vals, err = p.client.LabelValuesInGRPC(ctx, p.base, r.Label, r.Matchers, r.Start, r.End)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		matchers, err := storepb.MatchersToPromMatchers(r.Matchers...)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		sers, err = p.client.SeriesInGRPC(ctx, p.base, matchers, r.Start, r.End)
+		if err != nil {
+			return nil, err
+		}
+
+		// Using set to handle duplicate values.
+		labelValuesSet := make(map[string]struct{})
+		for _, s := range sers {
+			if val, exists := s[r.Label]; exists {
+				labelValuesSet[val] = struct{}{}
+			}
+		}
+		for key := range labelValuesSet {
+			vals = append(vals, key)
+		}
 	}
 	sort.Strings(vals)
 	return &storepb.LabelValuesResponse{Values: vals}, nil

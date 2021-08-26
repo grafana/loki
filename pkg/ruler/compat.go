@@ -30,6 +30,8 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
+var ErrRemoteWriteDisabled = errors.New("remote-write disabled")
+
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
 type RulesLimits interface {
@@ -144,7 +146,7 @@ func MemstoreTenantManager(
 func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string, metrics *remoteWriteMetrics) storage.Appendable {
 	if !cfg.RemoteWrite.Enabled {
 		level.Info(logger).Log("msg", "remote-write is disabled")
-		return &NoopAppender{}
+		return &DiscardingAppender{ErrRemoteWriteDisabled}
 	}
 
 	return newRemoteWriteAppendable(cfg, overrides, logger, userID, metrics)

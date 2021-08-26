@@ -6,8 +6,6 @@ import (
 	"flag"
 	"path/filepath"
 	"reflect"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,18 +16,15 @@ import (
 	"github.com/prometheus/common/model"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/storage/stores/util"
 )
-
-const delimiter = "/"
 
 type Config struct {
 	WorkingDirectory          string        `yaml:"working_directory"`
@@ -73,7 +68,7 @@ type Compactor struct {
 	services.Service
 
 	cfg                   Config
-	objectClient          chunk.ObjectClient
+	indexStorageClient    shipper_storage.Client
 	tableMarker           retention.TableMarker
 	sweeper               *retention.Sweeper
 	deleteRequestsStore   deletion.DeleteRequestsStore
@@ -110,7 +105,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	if err != nil {
 		return err
 	}
-	c.objectClient = util.NewPrefixedObjectClient(objectClient, c.cfg.SharedStoreKeyPrefix)
+	c.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 	c.metrics = newMetrics(r)
 
 	if c.cfg.RetentionEnabled {
@@ -129,7 +124,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 
 		deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 
-		c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.objectClient)
+		c.deleteRequestsStore, err = deletion.NewDeleteStore(deletionWorkDir, c.indexStorageClient)
 		if err != nil {
 			return err
 		}
@@ -196,13 +191,13 @@ func (c *Compactor) loop(ctx context.Context) error {
 }
 
 func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.objectClient, c.cfg.RetentionEnabled, c.tableMarker)
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, c.cfg.RetentionEnabled, c.tableMarker)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
 	}
 
-	interval := extractIntervalFromTableName(tableName)
+	interval := retention.ExtractIntervalFromTableName(tableName)
 	intervalHasExpiredChunks := false
 	if c.cfg.RetentionEnabled {
 		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
@@ -240,15 +235,10 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 		}
 	}()
 
-	_, dirs, err := c.objectClient.List(ctx, "", delimiter)
+	tables, err := c.indexStorageClient.ListTables(ctx)
 	if err != nil {
 		status = statusFailure
 		return err
-	}
-
-	tables := make([]string, len(dirs))
-	for i, dir := range dirs {
-		tables[i] = strings.TrimSuffix(string(dir), delimiter)
 	}
 
 	compactTablesChan := make(chan string)
@@ -347,17 +337,6 @@ func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bo
 	return e.retentionExpiryChecker.IntervalHasExpiredChunks(interval) || e.deletionExpiryChecker.IntervalHasExpiredChunks(interval)
 }
 
-func extractIntervalFromTableName(tableName string) model.Interval {
-	interval := model.Interval{
-		Start: 0,
-		End:   model.Now(),
-	}
-	tableNumber, err := strconv.ParseInt(tableName[len(tableName)-5:], 10, 64)
-	if err != nil {
-		return interval
-	}
-
-	interval.Start = model.TimeFromUnix(tableNumber * 86400)
-	interval.End = interval.Start.Add(24 * time.Hour)
-	return interval
+func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
 }

@@ -156,10 +156,7 @@ func (c FileSDConfig) convert() (file.SDConfig, error) {
 		return fileSDConfig, err
 	}
 	err = yaml.Unmarshal(b, &fileSDConfig)
-	if err != nil {
-		return fileSDConfig, err
-	}
-	return fileSDConfig, nil
+	return fileSDConfig, err
 }
 
 type AddressProvider interface {

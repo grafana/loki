@@ -21,7 +21,7 @@ func CreateTemporaryTestBucketName(t testing.TB) string {
 	src := rand.NewSource(time.Now().UnixNano())
 
 	// Bucket name need to conform: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-s3-bucket-naming-requirements.html.
-	name := strings.Replace(strings.Replace(fmt.Sprintf("test_%x_%s", src.Int63(), strings.ToLower(t.Name())), "_", "-", -1), "/", "-", -1)
+	name := strings.ReplaceAll(strings.Replace(fmt.Sprintf("test_%x_%s", src.Int63(), strings.ToLower(t.Name())), "_", "-", -1), "/", "-")
 	if len(name) >= 63 {
 		name = name[:63]
 	}

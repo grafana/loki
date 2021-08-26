@@ -275,7 +275,7 @@ groups:
 	}
 }
 
-// TestNoopAppender tests that a NoopAppender is created when remote-write is disabled
+// TestInvalidRemoteWriteConfig tests that a validation error is raised when config is invalid
 func TestInvalidRemoteWriteConfig(t *testing.T) {
 	// if remote-write is not enabled, validation fails
 	cfg := Config{
@@ -299,8 +299,8 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 	require.Error(t, cfg.RemoteWrite.Validate())
 }
 
-// TestNoopAppender tests that a NoopAppender is created when remote-write is disabled
-func TestNoopAppender(t *testing.T) {
+// TestDiscardingAppender tests that a DiscardingAppender is created when remote-write is disabled
+func TestDiscardingAppender(t *testing.T) {
 	cfg := Config{
 		Config: ruler.Config{},
 		RemoteWrite: RemoteWriteConfig{
@@ -311,7 +311,7 @@ func TestNoopAppender(t *testing.T) {
 
 	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake", metrics)
 	appender := appendable.Appender(context.TODO())
-	require.IsType(t, NoopAppender{}, appender)
+	require.Equal(t, DiscardingAppender{ErrRemoteWriteDisabled}, appender)
 }
 
 // TestNonMetricQuery tests that only metric queries can be executed in the query function,

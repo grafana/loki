@@ -65,9 +65,8 @@ type syncWriter struct {
 // progress, the calling goroutine blocks until the syncWriter is available.
 func (w *syncWriter) Write(p []byte) (n int, err error) {
 	w.Lock()
-	n, err = w.Writer.Write(p)
-	w.Unlock()
-	return n, err
+	defer w.Unlock()
+	return w.Writer.Write(p)
 }
 
 // fdWriter is an io.Writer that also has an Fd method. The most common
@@ -87,9 +86,8 @@ type fdSyncWriter struct {
 // progress, the calling goroutine blocks until the fdSyncWriter is available.
 func (w *fdSyncWriter) Write(p []byte) (n int, err error) {
 	w.Lock()
-	n, err = w.fdWriter.Write(p)
-	w.Unlock()
-	return n, err
+	defer w.Unlock()
+	return w.fdWriter.Write(p)
 }
 
 // syncLogger provides concurrent safe logging for another Logger.
@@ -110,7 +108,6 @@ func NewSyncLogger(logger Logger) Logger {
 // progress, the calling goroutine blocks until the syncLogger is available.
 func (l *syncLogger) Log(keyvals ...interface{}) error {
 	l.mu.Lock()
-	err := l.logger.Log(keyvals...)
-	l.mu.Unlock()
-	return err
+	defer l.mu.Unlock()
+	return l.logger.Log(keyvals...)
 }

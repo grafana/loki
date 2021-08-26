@@ -37,9 +37,14 @@ func defaultConfig() *Config {
 var NilMetrics = newIngesterMetrics(nil)
 
 func TestLabelsCollisions(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       10000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	i := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, nil, &OnceSwitch{}, nil)
 
@@ -64,9 +69,14 @@ func TestLabelsCollisions(t *testing.T) {
 }
 
 func TestConcurrentPushes(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       100000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	inst := newInstance(defaultConfig(), "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 
@@ -115,9 +125,14 @@ func TestConcurrentPushes(t *testing.T) {
 }
 
 func TestSyncPeriod(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       1000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	const (
 		syncPeriod = 1 * time.Minute
@@ -157,9 +172,14 @@ func TestSyncPeriod(t *testing.T) {
 }
 
 func Test_SeriesQuery(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       1000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	// just some random values
 	cfg := defaultConfig()
@@ -178,7 +198,7 @@ func Test_SeriesQuery(t *testing.T) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(cfg, "fake", 0, nil, true, NilMetrics).NewChunk()
+		chunk := newStream(cfg, limiter, "fake", 0, nil, true, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -272,9 +292,14 @@ func makeRandomLabels() labels.Labels {
 }
 
 func Benchmark_PushInstance(b *testing.B) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       1000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	i := newInstance(&Config{}, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 	ctx := context.Background()
@@ -312,9 +337,14 @@ func Benchmark_PushInstance(b *testing.B) {
 }
 
 func Benchmark_instance_addNewTailer(b *testing.B) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 100000}, nil)
+	l := validation.Limits{
+		MaxLocalStreamsPerUser:       100000,
+		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
+		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
+	}
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	ctx := context.Background()
 
@@ -334,7 +364,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	lbs := makeRandomLabels()
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(nil, "fake", 0, lbs, true, NilMetrics))
+			inst.addTailersToNewStream(newStream(nil, limiter, "fake", 0, lbs, true, NilMetrics))
 		}
 	})
 }
@@ -368,7 +398,7 @@ func Test_Iterator(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	overrides, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
-	instance := newInstance(&ingesterConfig, "fake", NewLimiter(overrides, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
+	instance := newInstance(&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
 	ctx := context.TODO()
 	direction := logproto.BACKWARD
 	limit := uint32(2)
@@ -450,7 +480,7 @@ func Test_ChunkFilter(t *testing.T) {
 	overrides, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 	instance := newInstance(
-		&ingesterConfig, "fake", NewLimiter(overrides, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, &testFilter{})
+		&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, &testFilter{})
 	ctx := context.TODO()
 	direction := logproto.BACKWARD
 	limit := uint32(2)

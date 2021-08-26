@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
@@ -17,7 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -275,7 +275,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	if i.cfg.MaxTransferRetries <= 0 {
 		return ring.ErrTransferDisabled
 	}
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 5 * time.Second,
 		MaxRetries: i.cfg.MaxTransferRetries,

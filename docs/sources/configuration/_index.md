@@ -372,7 +372,6 @@ results_cache:
 
 The `ruler_config` configures the Loki ruler.
 
-<span style="background-color:#f3f973;">The Ruler API is experimental.</span>
 
 ```yaml
 # URL of alerts return path.
@@ -523,9 +522,14 @@ storage:
       # CLI flag: -ruler.storage.s3.http.response-header-timeout
       [response_header_timeout: <duration> | default = 0s]
 
-      # Set to false to skip verifying the certificate chain and hostname.
+      # Set to true to skip verifying the certificate chain and hostname.
       # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+      # Path to the trusted CA file that signed the SSL certificate of the S3
+      # endpoint.
+      # CLI flag: -ruler.storage.s3.http.ca-file
+      [ca_file: <string> | default = ""]
 
   swift:
     # Openstack authentication URL.
@@ -753,7 +757,7 @@ ring:
 [flush_period: <duration> | default = 1m]
 
 # Enable the Ruler API.
-# CLI flag: -experimental.ruler.enable-api
+# CLI flag: -ruler.enable-api
 [enable_api: <boolean> | default = false]
 ```
 
@@ -1191,9 +1195,14 @@ aws:
     # CLI flag: -s3.http.response-header-timeout
     [response_header_timeout: <duration> | default = 0s]
 
-    # Set to false to skip verifying the certificate chain and hostname.
+    # Set to true to skip verifying the certificate chain and hostname.
     # CLI flag: -s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
+
+    # Path to the trusted CA file that signed the SSL certificate of the S3
+    # endpoint.
+    # CLI flag: -s3.http.ca-file
+    [ca_file: <string> | default = ""]
 
   # Configure the DynamoDB connection
   dynamodb:
@@ -1816,6 +1825,10 @@ logs in Loki.
 # ingesters, and is kept updated whenever the number of ingesters change.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 0]
+
+# When true, out of order writes are accepted.
+# CLI flag: -ingester.unordered-writes
+[unordered_writes: <bool> | default = false]
 
 # Maximum number of chunks that can be fetched by a single query.
 # CLI flag: -store.query-chunk-limit

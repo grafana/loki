@@ -95,6 +95,13 @@ func New(reg prometheus.Registerer, maxConcurrent int) Gate {
 	)
 }
 
+type noopGate struct{}
+
+func (noopGate) Start(context.Context) error { return nil }
+func (noopGate) Done()                       {}
+
+func NewNoop() Gate { return noopGate{} }
+
 type instrumentedDurationGate struct {
 	g        Gate
 	duration prometheus.Observer

@@ -415,10 +415,10 @@ those labels:
 
 ##### unpack
 
-The `unpack` parser will parse a json log line, and unpack all embedded labels via the [`pack`](../clients/promtail/stages/pack/) stage.
+The `unpack` parser parses a JSON log line, unpacking all embedded labels in the [`pack`](../clients/promtail/stages/pack/) stage.
 **A special property `_entry` will also be used to replace the original log line**.
 
-For example, using `| unpack` with the following log line:
+For example, using `| unpack` with the log line:
 
 ```json
 {
@@ -428,9 +428,9 @@ For example, using `| unpack` with the following log line:
 }
 ```
 
-allows to extract the `container` and `pod` labels and the `original log message` as the new log line.
+extracts the `container` and `pod` labels; it sets `original log message` as the new log line.
 
-> You can combine `unpack` with `json` parser (or any other parsers) if the original embedded log line is specific format.
+You can combine the `unpack` and `json` parsers (or any other parsers) if the original embedded log line is of a specific format.
 
 #### Label Filter Expression
 

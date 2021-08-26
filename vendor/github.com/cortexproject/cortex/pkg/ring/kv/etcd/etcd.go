@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/pkg/transport"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortex_tls "github.com/cortexproject/cortex/pkg/util/tls"
@@ -178,7 +178,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 // WatchKey implements kv.Client.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	})
@@ -214,7 +214,7 @@ outer:
 
 // WatchPrefix implements kv.Client.
 func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, interface{}) bool) {
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	})
