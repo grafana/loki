@@ -18,6 +18,8 @@ package main
 
 import (
 	"flag"
+	"net/http"
+	"net/http/pprof"
 	"os"
 
 	"github.com/ViaQ/logerr/log"
@@ -106,11 +108,11 @@ func main() {
 	}
 	// +kubebuilder:scaffold:builder
 
-	if err := mgr.AddHealthzCheck("health", healthz.Ping); err != nil {
+	if err = mgr.AddHealthzCheck("health", healthz.Ping); err != nil {
 		log.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
-	if err := mgr.AddReadyzCheck("check", healthz.Ping); err != nil {
+	if err = mgr.AddReadyzCheck("check", healthz.Ping); err != nil {
 		log.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
@@ -118,9 +120,35 @@ func main() {
 	log.Info("registering metrics")
 	metrics.RegisterMetricCollectors()
 
+	log.Info("Registring profiling endpoints.")
+	err = registerProfiler(mgr)
+	if err != nil {
+		log.Error(err, "failed to register extra pprof handler")
+		os.Exit(1)
+	}
+
 	log.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func registerProfiler(m ctrl.Manager) error {
+	endpoints := map[string]http.HandlerFunc{
+		"/debug/pprof/":        pprof.Index,
+		"/debug/pprof/cmdline": pprof.Cmdline,
+		"/debug/pprof/profile": pprof.Profile,
+		"/debug/pprof/symbol":  pprof.Symbol,
+		"/debug/pprof/trace":   pprof.Trace,
+	}
+
+	for path, handler := range endpoints {
+		err := m.AddMetricsExtraHandler(path, handler)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
