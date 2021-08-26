@@ -24,12 +24,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 )
 
 // ObjectKey identifies a Kubernetes Object.
 type ObjectKey = types.NamespacedName
 
-// ObjectKeyFromObject returns the ObjectKey given a runtime.Object
+// ObjectKeyFromObject returns the ObjectKey given a runtime.Object.
 func ObjectKeyFromObject(obj Object) ObjectKey {
 	return ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}
 }
@@ -39,7 +40,7 @@ type Patch interface {
 	// Type is the PatchType of the patch.
 	Type() types.PatchType
 	// Data is the raw data representing the patch.
-	Data(obj runtime.Object) ([]byte, error)
+	Data(obj Object) ([]byte, error)
 }
 
 // TODO(directxman12): is there a sane way to deal with get/delete options?
@@ -106,6 +107,14 @@ type Client interface {
 	Scheme() *runtime.Scheme
 	// RESTMapper returns the rest this client is using.
 	RESTMapper() meta.RESTMapper
+}
+
+// WithWatch supports Watch on top of the CRUD operations supported by
+// the normal Client. Its intended use-case are CLI apps that need to wait for
+// events.
+type WithWatch interface {
+	Client
+	Watch(ctx context.Context, obj ObjectList, opts ...ListOption) (watch.Interface, error)
 }
 
 // IndexerFunc knows how to take an object and turn it into a series

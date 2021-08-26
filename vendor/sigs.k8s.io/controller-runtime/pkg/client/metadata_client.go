@@ -49,7 +49,7 @@ func (mc *metadataClient) getResourceInterface(gvk schema.GroupVersionKind, ns s
 	return mc.client.Resource(mapping.Resource).Namespace(ns), nil
 }
 
-// Delete implements client.Client
+// Delete implements client.Client.
 func (mc *metadataClient) Delete(ctx context.Context, obj Object, opts ...DeleteOption) error {
 	metadata, ok := obj.(*metav1.PartialObjectMetadata)
 	if !ok {
@@ -67,7 +67,7 @@ func (mc *metadataClient) Delete(ctx context.Context, obj Object, opts ...Delete
 	return resInt.Delete(ctx, metadata.Name, *deleteOpts.AsDeleteOptions())
 }
 
-// DeleteAllOf implements client.Client
+// DeleteAllOf implements client.Client.
 func (mc *metadataClient) DeleteAllOf(ctx context.Context, obj Object, opts ...DeleteAllOfOption) error {
 	metadata, ok := obj.(*metav1.PartialObjectMetadata)
 	if !ok {
@@ -85,7 +85,7 @@ func (mc *metadataClient) DeleteAllOf(ctx context.Context, obj Object, opts ...D
 	return resInt.DeleteCollection(ctx, *deleteAllOfOpts.AsDeleteOptions(), *deleteAllOfOpts.AsListOptions())
 }
 
-// Patch implements client.Client
+// Patch implements client.Client.
 func (mc *metadataClient) Patch(ctx context.Context, obj Object, patch Patch, opts ...PatchOption) error {
 	metadata, ok := obj.(*metav1.PartialObjectMetadata)
 	if !ok {
@@ -104,6 +104,8 @@ func (mc *metadataClient) Patch(ctx context.Context, obj Object, patch Patch, op
 	}
 
 	patchOpts := &PatchOptions{}
+	patchOpts.ApplyOptions(opts)
+
 	res, err := resInt.Patch(ctx, metadata.Name, patch.Type(), data, *patchOpts.AsPatchOptions())
 	if err != nil {
 		return err
@@ -113,7 +115,7 @@ func (mc *metadataClient) Patch(ctx context.Context, obj Object, patch Patch, op
 	return nil
 }
 
-// Get implements client.Client
+// Get implements client.Client.
 func (mc *metadataClient) Get(ctx context.Context, key ObjectKey, obj Object) error {
 	metadata, ok := obj.(*metav1.PartialObjectMetadata)
 	if !ok {
@@ -136,7 +138,7 @@ func (mc *metadataClient) Get(ctx context.Context, key ObjectKey, obj Object) er
 	return nil
 }
 
-// List implements client.Client
+// List implements client.Client.
 func (mc *metadataClient) List(ctx context.Context, obj ObjectList, opts ...ListOption) error {
 	metadata, ok := obj.(*metav1.PartialObjectMetadataList)
 	if !ok {

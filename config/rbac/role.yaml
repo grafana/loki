@@ -44,6 +44,14 @@ rules:
   - update
   - watch
 - apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - update
+- apiGroups:
   - loki.openshift.io
   resources:
   - lokistacks

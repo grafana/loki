@@ -17,7 +17,10 @@ limitations under the License.
 package metrics
 
 import (
+	"net/http"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -58,4 +61,25 @@ var (
 
 func init() {
 	metrics.Registry.MustRegister(RequestLatency, RequestTotal, RequestInFlight)
+}
+
+// InstrumentedHook adds some instrumentation on top of the given webhook.
+func InstrumentedHook(path string, hookRaw http.Handler) http.Handler {
+	lbl := prometheus.Labels{"webhook": path}
+
+	lat := RequestLatency.MustCurryWith(lbl)
+	cnt := RequestTotal.MustCurryWith(lbl)
+	gge := RequestInFlight.With(lbl)
+
+	// Initialize the most likely HTTP status codes.
+	cnt.WithLabelValues("200")
+	cnt.WithLabelValues("500")
+
+	return promhttp.InstrumentHandlerDuration(
+		lat,
+		promhttp.InstrumentHandlerCounter(
+			cnt,
+			promhttp.InstrumentHandlerInFlight(gge, hookRaw),
+		),
+	)
 }

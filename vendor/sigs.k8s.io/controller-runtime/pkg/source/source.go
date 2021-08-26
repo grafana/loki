@@ -66,7 +66,7 @@ type SyncingSource interface {
 
 // NewKindWithCache creates a Source without InjectCache, so that it is assured that the given cache is used
 // and not overwritten. It can be used to watch objects in a different cluster by passing the cache
-// from that other cluster
+// from that other cluster.
 func NewKindWithCache(object client.Object, cache cache.Cache) SyncingSource {
 	return &kindWithCache{kind: Kind{Type: object, cache: cache}}
 }
@@ -84,13 +84,18 @@ func (ks *kindWithCache) WaitForSync(ctx context.Context) error {
 	return ks.kind.WaitForSync(ctx)
 }
 
-// Kind is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create)
+// Kind is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create).
 type Kind struct {
 	// Type is the type of object to watch.  e.g. &v1.Pod{}
 	Type client.Object
 
 	// cache used to watch APIs
 	cache cache.Cache
+
+	// started may contain an error if one was encountered during startup. If its closed and does not
+	// contain an error, startup and syncing finished.
+	started     chan error
+	startCancel func()
 }
 
 var _ SyncingSource = &Kind{}
@@ -99,7 +104,6 @@ var _ SyncingSource = &Kind{}
 // to enqueue reconcile.Requests.
 func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue workqueue.RateLimitingInterface,
 	prct ...predicate.Predicate) error {
-
 	// Type should have been specified by the user.
 	if ks.Type == nil {
 		return fmt.Errorf("must specify Kind.Type")
@@ -110,16 +114,30 @@ func (ks *Kind) Start(ctx context.Context, handler handler.EventHandler, queue w
 		return fmt.Errorf("must call CacheInto on Kind before calling Start")
 	}
 
-	// Lookup the Informer from the Cache and add an EventHandler which populates the Queue
-	i, err := ks.cache.GetInformer(ctx, ks.Type)
-	if err != nil {
-		if kindMatchErr, ok := err.(*meta.NoKindMatchError); ok {
-			log.Error(err, "if kind is a CRD, it should be installed before calling Start",
-				"kind", kindMatchErr.GroupKind)
+	// cache.GetInformer will block until its context is cancelled if the cache was already started and it can not
+	// sync that informer (most commonly due to RBAC issues).
+	ctx, ks.startCancel = context.WithCancel(ctx)
+	ks.started = make(chan error)
+	go func() {
+		// Lookup the Informer from the Cache and add an EventHandler which populates the Queue
+		i, err := ks.cache.GetInformer(ctx, ks.Type)
+		if err != nil {
+			kindMatchErr := &meta.NoKindMatchError{}
+			if errors.As(err, &kindMatchErr) {
+				log.Error(err, "if kind is a CRD, it should be installed before calling Start",
+					"kind", kindMatchErr.GroupKind)
+			}
+			ks.started <- err
+			return
 		}
-		return err
-	}
-	i.AddEventHandler(internal.EventHandler{Queue: queue, EventHandler: handler, Predicates: prct})
+		i.AddEventHandler(internal.EventHandler{Queue: queue, EventHandler: handler, Predicates: prct})
+		if !ks.cache.WaitForCacheSync(ctx) {
+			// Would be great to return something more informative here
+			ks.started <- errors.New("cache did not sync")
+		}
+		close(ks.started)
+	}()
+
 	return nil
 }
 
@@ -127,17 +145,19 @@ func (ks *Kind) String() string {
 	if ks.Type != nil && ks.Type.GetObjectKind() != nil {
 		return fmt.Sprintf("kind source: %v", ks.Type.GetObjectKind().GroupVersionKind().String())
 	}
-	return fmt.Sprintf("kind source: unknown GVK")
+	return "kind source: unknown GVK"
 }
 
 // WaitForSync implements SyncingSource to allow controllers to wait with starting
 // workers until the cache is synced.
 func (ks *Kind) WaitForSync(ctx context.Context) error {
-	if !ks.cache.WaitForCacheSync(ctx) {
-		// Would be great to return something more informative here
-		return errors.New("cache did not sync")
+	select {
+	case err := <-ks.started:
+		return err
+	case <-ctx.Done():
+		ks.startCancel()
+		return errors.New("timed out waiting for cache to be synced")
 	}
-	return nil
 }
 
 var _ inject.Cache = &Kind{}
@@ -286,7 +306,7 @@ func (cs *Channel) syncLoop(ctx context.Context) {
 	}
 }
 
-// Informer is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create)
+// Informer is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create).
 type Informer struct {
 	// Informer is the controller-runtime Informer
 	Informer cache.Informer
@@ -298,7 +318,6 @@ var _ Source = &Informer{}
 // to enqueue reconcile.Requests.
 func (is *Informer) Start(ctx context.Context, handler handler.EventHandler, queue workqueue.RateLimitingInterface,
 	prct ...predicate.Predicate) error {
-
 	// Informer should have been specified by the user.
 	if is.Informer == nil {
 		return fmt.Errorf("must specify Informer.Informer")
@@ -314,10 +333,10 @@ func (is *Informer) String() string {
 
 var _ Source = Func(nil)
 
-// Func is a function that implements Source
+// Func is a function that implements Source.
 type Func func(context.Context, handler.EventHandler, workqueue.RateLimitingInterface, ...predicate.Predicate) error
 
-// Start implements Source
+// Start implements Source.
 func (f Func) Start(ctx context.Context, evt handler.EventHandler, queue workqueue.RateLimitingInterface,
 	pr ...predicate.Predicate) error {
 	return f(ctx, evt, queue, pr...)

@@ -83,7 +83,9 @@ spec:
       - description: Global defines the limits applied globally across the cluster.
         displayName: Global Limits
         path: limits.global
-      - description: IngestionBurstSize defines the local rate-limited sample size per distributor replica. It should be set to the set at least to the maximum logs size expected in a single push request.
+      - description: IngestionBurstSize defines the local rate-limited sample size
+          per distributor replica. It should be set to the set at least to the maximum
+          logs size expected in a single push request.
         displayName: Ingestion Burst Size (in MB)
         path: limits.global.ingestion.ingestionBurstSize
         x-descriptors:
@@ -93,42 +95,50 @@ spec:
         path: limits.global.ingestion.ingestionRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxGlobalStreamsPerTenant defines the maximum number of active streams per tenant, across the cluster.
+      - description: MaxGlobalStreamsPerTenant defines the maximum number of active
+          streams per tenant, across the cluster.
         displayName: Max Global Streams per  Tenant
         path: limits.global.ingestion.maxGlobalStreamsPerTenant
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNameLength defines the maximum number of characters allowed for label keys in log streams.
+      - description: MaxLabelNameLength defines the maximum number of characters allowed
+          for label keys in log streams.
         displayName: Max Label Name Length
         path: limits.global.ingestion.maxLabelNameLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNamesPerSeries defines the maximum number of label names per series in each log stream.
+      - description: MaxLabelNamesPerSeries defines the maximum number of label names
+          per series in each log stream.
         displayName: Max Labels Names per Series
         path: limits.global.ingestion.maxLabelNamesPerSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelValueLength defines the maximum number of characters allowed for label values in log streams.
+      - description: MaxLabelValueLength defines the maximum number of characters
+          allowed for label values in log streams.
         displayName: Max Label Value Length
         path: limits.global.ingestion.maxLabelValueLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
+      - description: MaxLineSize defines the aximum line size on ingestion path. Units
+          in Bytes.
         displayName: Max Line Size
         path: limits.global.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxChunksPerQuery defines the maximum number of chunks that can be fetched by a single query.
+      - description: MaxChunksPerQuery defines the maximum number of chunks that can
+          be fetched by a single query.
         displayName: Max Chunk per Query
         path: limits.global.queries.maxChunksPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries that will be returned for a query.
+      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that is returned by a metric query.
+      - description: MaxQuerySeries defines the the maximum of unique series that
+          is returned by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -136,7 +146,9 @@ spec:
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
-      - description: IngestionBurstSize defines the local rate-limited sample size per distributor replica. It should be set to the set at least to the maximum logs size expected in a single push request.
+      - description: IngestionBurstSize defines the local rate-limited sample size
+          per distributor replica. It should be set to the set at least to the maximum
+          logs size expected in a single push request.
         displayName: Ingestion Burst Size (in MB)
         path: limits.tenants.ingestion.ingestionBurstSize
         x-descriptors:
@@ -146,47 +158,56 @@ spec:
         path: limits.tenants.ingestion.ingestionRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxGlobalStreamsPerTenant defines the maximum number of active streams per tenant, across the cluster.
+      - description: MaxGlobalStreamsPerTenant defines the maximum number of active
+          streams per tenant, across the cluster.
         displayName: Max Global Streams per  Tenant
         path: limits.tenants.ingestion.maxGlobalStreamsPerTenant
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNameLength defines the maximum number of characters allowed for label keys in log streams.
+      - description: MaxLabelNameLength defines the maximum number of characters allowed
+          for label keys in log streams.
         displayName: Max Label Name Length
         path: limits.tenants.ingestion.maxLabelNameLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNamesPerSeries defines the maximum number of label names per series in each log stream.
+      - description: MaxLabelNamesPerSeries defines the maximum number of label names
+          per series in each log stream.
         displayName: Max Labels Names per Series
         path: limits.tenants.ingestion.maxLabelNamesPerSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelValueLength defines the maximum number of characters allowed for label values in log streams.
+      - description: MaxLabelValueLength defines the maximum number of characters
+          allowed for label values in log streams.
         displayName: Max Label Value Length
         path: limits.tenants.ingestion.maxLabelValueLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
+      - description: MaxLineSize defines the aximum line size on ingestion path. Units
+          in Bytes.
         displayName: Max Line Size
         path: limits.tenants.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxChunksPerQuery defines the maximum number of chunks that can be fetched by a single query.
+      - description: MaxChunksPerQuery defines the maximum number of chunks that can
+          be fetched by a single query.
         displayName: Max Chunk per Query
         path: limits.tenants.queries.maxChunksPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries that will be returned for a query.
+      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that is returned by a metric query.
+      - description: MaxQuerySeries defines the the maximum of unique series that
+          is returned by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: ManagementState defines if the CR should be managed by the operator or not. Default is managed.
+      - description: ManagementState defines if the CR should be managed by the operator
+          or not. Default is managed.
         displayName: Management State
         path: managementState
         x-descriptors:
@@ -204,20 +225,24 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small
         - urn:alm:descriptor:com.tectonic.ui:select:1x.small
         - urn:alm:descriptor:com.tectonic.ui:select:1x.medium
-      - description: Storage defines the spec for the object storage endpoint to store logs.
+      - description: Storage defines the spec for the object storage endpoint to store
+          logs.
         displayName: Object Storage
         path: storage
-      - description: Name of a secret in the namespace configured for object storage secrets.
+      - description: Name of a secret in the namespace configured for object storage
+          secrets.
         displayName: Object Storage Secret
         path: storage.secret.name
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:Secret
-      - description: Storage class name defines the storage class for ingester/querier PVCs.
+      - description: Storage class name defines the storage class for ingester/querier
+          PVCs.
         displayName: Storage Class Name
         path: storageClassName
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:StorageClass
-      - description: Template defines the resource/limits/tolerations/nodeselectors per component
+      - description: Template defines the resource/limits/tolerations/nodeselectors
+          per component
         displayName: Node Placement
         path: template
         x-descriptors:
@@ -263,7 +288,8 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
       statusDescriptors:
-      - description: Distributor is a map to the per pod status of the distributor deployment
+      - description: Distributor is a map to the per pod status of the distributor
+          deployment
         displayName: Distributor
         path: components.distributor
         x-descriptors:
@@ -278,7 +304,8 @@ spec:
         path: components.querier
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
-      - description: QueryFrontend is a mpa to the per pod status of the query frontend deployment.
+      - description: QueryFrontend is a mpa to the per pod status of the query frontend
+          deployment.
         displayName: Query Frontend
         path: components.queryFrontend
         x-descriptors:
@@ -348,6 +375,14 @@ spec:
           - patch
           - update
           - watch
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - create
+          - get
+          - update
         - apiGroups:
           - loki.openshift.io
           resources:

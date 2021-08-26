@@ -69,7 +69,7 @@ type Informers interface {
 	client.FieldIndexer
 }
 
-// Informer - informer allows you interact with the underlying informer
+// Informer - informer allows you interact with the underlying informer.
 type Informer interface {
 	// AddEventHandler adds an event handler to the shared informer using the shared informer's resync
 	// period.  Events to a single handler are delivered sequentially, but there is no coordination
@@ -82,11 +82,14 @@ type Informer interface {
 	// AddIndexers adds more indexers to this store.  If you call this after you already have data
 	// in the store, the results are undefined.
 	AddIndexers(indexers toolscache.Indexers) error
-	//HasSynced return true if the informers underlying store has synced
+	// HasSynced return true if the informers underlying store has synced.
 	HasSynced() bool
 }
 
-// Options are the optional arguments for creating a new InformersMap object
+// SelectorsByObject associate a client.Object's GVK to a field/label selector.
+type SelectorsByObject map[client.Object]internal.Selector
+
+// Options are the optional arguments for creating a new InformersMap object.
 type Options struct {
 	// Scheme is the scheme to use for mapping objects to GroupVersionKinds
 	Scheme *runtime.Scheme
@@ -103,6 +106,13 @@ type Options struct {
 	// Namespace restricts the cache's ListWatch to the desired namespace
 	// Default watches all namespaces
 	Namespace string
+
+	// SelectorsByObject restricts the cache's ListWatch to the desired
+	// fields per GVK at the specified object, the map's value must implement
+	// Selector [1] using for example a Set [2]
+	// [1] https://pkg.go.dev/k8s.io/apimachinery/pkg/fields#Selector
+	// [2] https://pkg.go.dev/k8s.io/apimachinery/pkg/fields#Set
+	SelectorsByObject SelectorsByObject
 }
 
 var defaultResyncTime = 10 * time.Hour
@@ -113,8 +123,36 @@ func New(config *rest.Config, opts Options) (Cache, error) {
 	if err != nil {
 		return nil, err
 	}
-	im := internal.NewInformersMap(config, opts.Scheme, opts.Mapper, *opts.Resync, opts.Namespace)
+	selectorsByGVK, err := convertToSelectorsByGVK(opts.SelectorsByObject, opts.Scheme)
+	if err != nil {
+		return nil, err
+	}
+	im := internal.NewInformersMap(config, opts.Scheme, opts.Mapper, *opts.Resync, opts.Namespace, selectorsByGVK)
 	return &informerCache{InformersMap: im}, nil
+}
+
+// BuilderWithOptions returns a Cache constructor that will build the a cache
+// honoring the options argument, this is useful to specify options like
+// SelectorsByObject
+// WARNING: if SelectorsByObject is specified. filtered out resources are not
+//          returned.
+func BuilderWithOptions(options Options) NewCacheFunc {
+	return func(config *rest.Config, opts Options) (Cache, error) {
+		if opts.Scheme == nil {
+			opts.Scheme = options.Scheme
+		}
+		if opts.Mapper == nil {
+			opts.Mapper = options.Mapper
+		}
+		if opts.Resync == nil {
+			opts.Resync = options.Resync
+		}
+		if opts.Namespace == "" {
+			opts.Namespace = options.Namespace
+		}
+		opts.SelectorsByObject = options.SelectorsByObject
+		return New(config, opts)
+	}
 }
 
 func defaultOpts(config *rest.Config, opts Options) (Options, error) {
@@ -138,4 +176,16 @@ func defaultOpts(config *rest.Config, opts Options) (Options, error) {
 		opts.Resync = &defaultResyncTime
 	}
 	return opts, nil
+}
+
+func convertToSelectorsByGVK(selectorsByObject SelectorsByObject, scheme *runtime.Scheme) (internal.SelectorsByGVK, error) {
+	selectorsByGVK := internal.SelectorsByGVK{}
+	for object, selector := range selectorsByObject {
+		gvk, err := apiutil.GVKForObject(object, scheme)
+		if err != nil {
+			return nil, err
+		}
+		selectorsByGVK[gvk] = selector
+	}
+	return selectorsByGVK, nil
 }

@@ -9,11 +9,11 @@ import (
 type JSONEncoder struct{}
 
 // Encode encodes the message as JSON to w
-func (j JSONEncoder) Encode(w io.Writer, entry map[string]interface{}) error {
+func (j JSONEncoder) Encode(w io.Writer, entry interface{}) error {
 	return json.NewEncoder(w).Encode(entry)
 }
 
 // Encoder encodes messages
 type Encoder interface {
-	Encode(w io.Writer, entry map[string]interface{}) error
+	Encode(w io.Writer, entry interface{}) error
 }

@@ -70,78 +70,87 @@ all: generate lint manager bin/loki-broker
 
 OCI_RUNTIME ?= $(shell which podman || which docker)
 
-# Run tests
-test: generate go-generate lint manifests
+##@ General
+
+# The help target prints out all targets with their descriptions organized
+# beneath their categories. The categories are represented by '##@' and the
+# target descriptions by '##'. The awk commands is responsible for reading the
+# entire set of makefiles included in this invocation, looking for lines of the
+# file as xyz: ## something, and then pretty-format the target and help. Then,
+# if there's a line with ##@ something, that gets pretty-printed as a category.
+# More info on the usage of ANSI control characters for terminal formatting:
+# https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
+# More info on the awk command:
+# http://linuxcommand.org/lc3_adv_awk.php
+
+help: ## Display this help.
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+##@ Development
+
+cli: bin/loki-broker ## Build loki-broker CLI binary
+bin/loki-broker: $(GO_FILES) | generate
+	go build -o $@ ./cmd/loki-broker/
+
+manager: generate ## Build manager binary
+	go build -o bin/manager main.go
+
+go-generate: ## Run go generate
+	go generate ./...
+
+generate: $(CONTROLLER_GEN) ## Generate controller and crd code
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+
+test: generate go-generate lint manifests ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
 
-#Runs scorecard test
-scorecard: generate go-generate bundle
+scorecard: generate go-generate bundle ## Run scorecard test
 	$(OPERATOR_SDK) scorecard bundle
 
-# Build manager binary
-manager: generate
-	go build -o bin/manager main.go
-
-# Run against the configured Kubernetes cluster in ~/.kube/config
-run: generate manifests
-	go run ./main.go
-
-# Install CRDs into a cluster
-install: manifests $(KUSTOMIZE)
-	$(KUSTOMIZE) build config/crd | kubectl apply -f -
-
-# Uninstall CRDs from a cluster
-uninstall: manifests $(KUSTOMIZE)
-	$(KUSTOMIZE) build config/crd | kubectl delete -f -
-
-# Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests $(KUSTOMIZE)
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/overlays/development | kubectl apply -f -
-
-# Undeploy controller from the configured Kubernetes cluster in ~/.kube/config
-undeploy:
-	$(KUSTOMIZE) build config/overlays/development | kubectl delete -f -
-
-# Generate manifests e.g. CRD, RBAC etc.
-manifests: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-
-
-lint: $(GOLANGCI_LINT) | generate
+lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run ./...
 
-fmt: $(GOFUMPT)
+fmt: $(GOFUMPT) ## Run gofumpt on source code.
 	find . -type f -name '*.go' -not -path './vendor/*' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
 
-go-generate:
-	go generate ./...
-
-# Generate code
-generate: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
-
-# Build the image
-oci-build:
+oci-build: ## Build the image
 	$(OCI_RUNTIME) build -t ${IMG} .
 
-# Push the image
-oci-push:
+oci-push: ## Push the image
 	$(OCI_RUNTIME) push ${IMG}
 
-# Generate bundle manifests and metadata, then validate generated files.
-.PHONY: bundle
+.PHONY: bundle ## Generate bundle manifests and metadata, then validate generated files.
 bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK)
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
 	$(OPERATOR_SDK) bundle validate ./bundle
 
-# Build the bundle image.
 .PHONY: bundle-build
-bundle-build:
+bundle-build: ## Build the bundle image.
 	$(OCI_RUNTIME) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+##@ Deployment
+
+run: generate manifests ## Run against the configured Kubernetes cluster in ~/.kube/config
+	go run ./main.go
+
+install: manifests $(KUSTOMIZE) ## Install CRDs into a cluster
+	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+
+uninstall: manifests $(KUSTOMIZE) ## Uninstall CRDs from a cluster
+	$(KUSTOMIZE) build config/crd | kubectl delete -f -
+
+deploy: manifests $(KUSTOMIZE) ## Deploy controller in the configured Kubernetes cluster in ~/.kube/config
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/overlays/development | kubectl apply -f -
+
+undeploy: ## Undeploy controller from the configured Kubernetes cluster in ~/.kube/config
+	$(KUSTOMIZE) build config/overlays/development | kubectl delete -f -
 
 # Build and push the bundle image to a container registry.
 .PHONY: olm-deploy-bundle
@@ -152,11 +161,9 @@ olm-deploy-bundle: bundle bundle-build
 .PHONY: olm-deploy-operator
 olm-deploy-operator: oci-build oci-push
 
-# Deploy the operator bundle and the operator via OLM into
-# an Kubernetes cluster selected via KUBECONFIG.
 .PHONY: olm-deploy
 ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
-olm-deploy:
+olm-deploy:  ## Deploy the operator bundle and the operator via OLM into an Kubernetes cluster selected via KUBECONFIG.
 	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
 else
 olm-deploy: olm-deploy-bundle olm-deploy-operator $(OPERATOR_SDK)
@@ -171,16 +178,10 @@ olm-deploy-example-storage-secret:
 	hack/deploy-example-secret.sh $(CLUSTER_LOGGING_NS)
 
 .PHONY: olm-deploy-example
-olm-deploy-example: olm-deploy olm-deploy-example-storage-secret
+olm-deploy-example: olm-deploy olm-deploy-example-storage-secret ## Deploy example LokiStack custom resource
 	kubectl -n $(CLUSTER_LOGGING_NS) create -f hack/lokistack_dev.yaml
 
-# Cleanup deployments of the operator bundle and the operator via OLM
-# on an OpenShift cluster selected via KUBECONFIG.
 .PHONY: olm-undeploy
-olm-undeploy: $(OPERATOR_SDK)
+olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and the operator via OLM on an OpenShift cluster selected via KUBECONFIG.
 	$(OPERATOR_SDK) cleanup loki-operator
 	kubectl delete ns $(CLUSTER_LOGGING_NS)
-
-cli: bin/loki-broker
-bin/loki-broker: $(GO_FILES) | generate
-	go build -o $@ ./cmd/loki-broker/

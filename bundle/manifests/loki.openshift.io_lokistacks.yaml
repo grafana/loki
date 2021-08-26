@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.5.0
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.0.1
@@ -28,10 +28,14 @@ spec:
         description: LokiStack is the Schema for the lokistacks API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -39,109 +43,143 @@ spec:
             description: LokiStackSpec defines the desired state of LokiStack
             properties:
               limits:
-                description: Limits defines the limits to be applied to log stream processing.
+                description: Limits defines the limits to be applied to log stream
+                  processing.
                 properties:
                   global:
-                    description: Global defines the limits applied globally across the cluster.
+                    description: Global defines the limits applied globally across
+                      the cluster.
                     properties:
                       ingestion:
-                        description: IngestionLimits defines the limits applied on ingested log streams.
+                        description: IngestionLimits defines the limits applied on
+                          ingested log streams.
                         properties:
                           ingestionBurstSize:
-                            description: IngestionBurstSize defines the local rate-limited sample size per distributor replica. It should be set to the set at least to the maximum logs size expected in a single push request.
+                            description: IngestionBurstSize defines the local rate-limited
+                              sample size per distributor replica. It should be set
+                              to the set at least to the maximum logs size expected
+                              in a single push request.
                             format: int32
                             type: integer
                           ingestionRate:
-                            description: IngestionRate defines the sample size per second. Units MB.
+                            description: IngestionRate defines the sample size per
+                              second. Units MB.
                             format: int32
                             type: integer
                           maxGlobalStreamsPerTenant:
-                            description: MaxGlobalStreamsPerTenant defines the maximum number of active streams per tenant, across the cluster.
+                            description: MaxGlobalStreamsPerTenant defines the maximum
+                              number of active streams per tenant, across the cluster.
                             format: int32
                             type: integer
                           maxLabelNameLength:
-                            description: MaxLabelNameLength defines the maximum number of characters allowed for label keys in log streams.
+                            description: MaxLabelNameLength defines the maximum number
+                              of characters allowed for label keys in log streams.
                             format: int32
                             type: integer
                           maxLabelNamesPerSeries:
-                            description: MaxLabelNamesPerSeries defines the maximum number of label names per series in each log stream.
+                            description: MaxLabelNamesPerSeries defines the maximum
+                              number of label names per series in each log stream.
                             format: int32
                             type: integer
                           maxLabelValueLength:
-                            description: MaxLabelValueLength defines the maximum number of characters allowed for label values in log streams.
+                            description: MaxLabelValueLength defines the maximum number
+                              of characters allowed for label values in log streams.
                             format: int32
                             type: integer
                           maxLineSize:
-                            description: MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
+                            description: MaxLineSize defines the aximum line size
+                              on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
                         type: object
                       queries:
-                        description: QueryLimits defines the limit applied on querying log streams.
+                        description: QueryLimits defines the limit applied on querying
+                          log streams.
                         properties:
                           maxChunksPerQuery:
-                            description: MaxChunksPerQuery defines the maximum number of chunks that can be fetched by a single query.
+                            description: MaxChunksPerQuery defines the maximum number
+                              of chunks that can be fetched by a single query.
                             format: int32
                             type: integer
                           maxEntriesLimitPerQuery:
-                            description: MaxEntriesLimitsPerQuery defines the maximum number of log entries that will be returned for a query.
+                            description: MaxEntriesLimitsPerQuery defines the maximum
+                              number of log entries that will be returned for a query.
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of unique series that is returned by a metric query.
+                            description: MaxQuerySeries defines the the maximum of
+                              unique series that is returned by a metric query.
                             format: int32
                             type: integer
                         type: object
                     type: object
                   tenants:
                     additionalProperties:
-                      description: LimitsTemplateSpec defines the limits  applied at ingestion or query path.
+                      description: LimitsTemplateSpec defines the limits  applied
+                        at ingestion or query path.
                       properties:
                         ingestion:
-                          description: IngestionLimits defines the limits applied on ingested log streams.
+                          description: IngestionLimits defines the limits applied
+                            on ingested log streams.
                           properties:
                             ingestionBurstSize:
-                              description: IngestionBurstSize defines the local rate-limited sample size per distributor replica. It should be set to the set at least to the maximum logs size expected in a single push request.
+                              description: IngestionBurstSize defines the local rate-limited
+                                sample size per distributor replica. It should be
+                                set to the set at least to the maximum logs size expected
+                                in a single push request.
                               format: int32
                               type: integer
                             ingestionRate:
-                              description: IngestionRate defines the sample size per second. Units MB.
+                              description: IngestionRate defines the sample size per
+                                second. Units MB.
                               format: int32
                               type: integer
                             maxGlobalStreamsPerTenant:
-                              description: MaxGlobalStreamsPerTenant defines the maximum number of active streams per tenant, across the cluster.
+                              description: MaxGlobalStreamsPerTenant defines the maximum
+                                number of active streams per tenant, across the cluster.
                               format: int32
                               type: integer
                             maxLabelNameLength:
-                              description: MaxLabelNameLength defines the maximum number of characters allowed for label keys in log streams.
+                              description: MaxLabelNameLength defines the maximum
+                                number of characters allowed for label keys in log
+                                streams.
                               format: int32
                               type: integer
                             maxLabelNamesPerSeries:
-                              description: MaxLabelNamesPerSeries defines the maximum number of label names per series in each log stream.
+                              description: MaxLabelNamesPerSeries defines the maximum
+                                number of label names per series in each log stream.
                               format: int32
                               type: integer
                             maxLabelValueLength:
-                              description: MaxLabelValueLength defines the maximum number of characters allowed for label values in log streams.
+                              description: MaxLabelValueLength defines the maximum
+                                number of characters allowed for label values in log
+                                streams.
                               format: int32
                               type: integer
                             maxLineSize:
-                              description: MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
+                              description: MaxLineSize defines the aximum line size
+                                on ingestion path. Units in Bytes.
                               format: int32
                               type: integer
                           type: object
                         queries:
-                          description: QueryLimits defines the limit applied on querying log streams.
+                          description: QueryLimits defines the limit applied on querying
+                            log streams.
                           properties:
                             maxChunksPerQuery:
-                              description: MaxChunksPerQuery defines the maximum number of chunks that can be fetched by a single query.
+                              description: MaxChunksPerQuery defines the maximum number
+                                of chunks that can be fetched by a single query.
                               format: int32
                               type: integer
                             maxEntriesLimitPerQuery:
-                              description: MaxEntriesLimitsPerQuery defines the maximum number of log entries that will be returned for a query.
+                              description: MaxEntriesLimitsPerQuery defines the maximum
+                                number of log entries that will be returned for a
+                                query.
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum of unique series that is returned by a metric query.
+                              description: MaxQuerySeries defines the the maximum
+                                of unique series that is returned by a metric query.
                               format: int32
                               type: integer
                           type: object
@@ -151,7 +189,8 @@ spec:
                 type: object
               managementState:
                 default: Managed
-                description: ManagementState defines if the CR should be managed by the operator or not. Default is managed.
+                description: ManagementState defines if the CR should be managed by
+                  the operator or not. Default is managed.
                 enum:
                 - Managed
                 - Unmanaged
@@ -162,20 +201,24 @@ spec:
                 minimum: 1
                 type: integer
               size:
-                description: Size defines one of the support Loki deployment scale out sizes.
+                description: Size defines one of the support Loki deployment scale
+                  out sizes.
                 enum:
                 - 1x.extra-small
                 - 1x.small
                 - 1x.medium
                 type: string
               storage:
-                description: Storage defines the spec for the object storage endpoint to store logs.
+                description: Storage defines the spec for the object storage endpoint
+                  to store logs.
                 properties:
                   secret:
-                    description: Secret for object storage authentication. Name of a secret in the same namespace as the cluster logging operator.
+                    description: Secret for object storage authentication. Name of
+                      a secret in the same namespace as the cluster logging operator.
                     properties:
                       name:
-                        description: Name of a secret in the namespace configured for object storage secrets.
+                        description: Name of a secret in the namespace configured
+                          for object storage secrets.
                         type: string
                     required:
                     - name
@@ -184,10 +227,12 @@ spec:
                 - secret
                 type: object
               storageClassName:
-                description: Storage class name defines the storage class for ingester/querier PVCs.
+                description: Storage class name defines the storage class for ingester/querier
+                  PVCs.
                 type: string
               template:
-                description: Template defines the resource/limits/tolerations/nodeselectors per component
+                description: Template defines the resource/limits/tolerations/nodeselectors
+                  per component
                 properties:
                   compactor:
                     description: Compactor defines the compaction component spec.
@@ -195,32 +240,54 @@ spec:
                       nodeSelector:
                         additionalProperties:
                           type: string
-                        description: NodeSelector defines the labels required by a node to schedule the component onto it.
+                        description: NodeSelector defines the labels required by a
+                          node to schedule the component onto it.
                         type: object
                       replicas:
-                        description: Replicas defines the number of replica pods of the component.
+                        description: Replicas defines the number of replica pods of
+                          the component.
                         format: int32
                         type: integer
                       tolerations:
-                        description: Tolerations defines the tolerations required by a node to schedule the component onto it.
+                        description: Tolerations defines the tolerations required
+                          by a node to schedule the component onto it.
                         items:
-                          description: The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.
+                          description: The pod this Toleration is attached to tolerates
+                            any taint that matches the triple <key,value,effect> using
+                            the matching operator <operator>.
                           properties:
                             effect:
-                              description: Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              description: Effect indicates the taint effect to match.
+                                Empty means match all taint effects. When specified,
+                                allowed values are NoSchedule, PreferNoSchedule and
+                                NoExecute.
                               type: string
                             key:
-                              description: Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              description: Key is the taint key that the toleration
+                                applies to. Empty means match all taint keys. If the
+                                key is empty, operator must be Exists; this combination
+                                means to match all values and all keys.
                               type: string
                             operator:
-                              description: Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.
+                              description: Operator represents a key's relationship
+                                to the value. Valid operators are Exists and Equal.
+                                Defaults to Equal. Exists is equivalent to wildcard
+                                for value, so that a pod can tolerate all taints of
+                                a particular category.
                               type: string
                             tolerationSeconds:
-                              description: TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.
+                              description: TolerationSeconds represents the period
+                                of time the toleration (which must be of effect NoExecute,
+                                otherwise this field is ignored) tolerates the taint.
+                                By default, it is not set, which means tolerate the
+                                taint forever (do not evict). Zero and negative values
+                                will be treated as 0 (evict immediately) by the system.
                               format: int64
                               type: integer
                             value:
-                              description: Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              description: Value is the taint value the toleration
+                                matches to. If the operator is Exists, the value should
+                                be empty, otherwise just a regular string.
                               type: string
                           type: object
                         type: array
@@ -231,32 +298,54 @@ spec:
                       nodeSelector:
                         additionalProperties:
                           type: string
-                        description: NodeSelector defines the labels required by a node to schedule the component onto it.
+                        description: NodeSelector defines the labels required by a
+                          node to schedule the component onto it.
                         type: object
                       replicas:
-                        description: Replicas defines the number of replica pods of the component.
+                        description: Replicas defines the number of replica pods of
+                          the component.
                         format: int32
                         type: integer
                       tolerations:
-                        description: Tolerations defines the tolerations required by a node to schedule the component onto it.
+                        description: Tolerations defines the tolerations required
+                          by a node to schedule the component onto it.
                         items:
-                          description: The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.
+                          description: The pod this Toleration is attached to tolerates
+                            any taint that matches the triple <key,value,effect> using
+                            the matching operator <operator>.
                           properties:
                             effect:
-                              description: Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              description: Effect indicates the taint effect to match.
+                                Empty means match all taint effects. When specified,
+                                allowed values are NoSchedule, PreferNoSchedule and
+                                NoExecute.
                               type: string
                             key:
-                              description: Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              description: Key is the taint key that the toleration
+                                applies to. Empty means match all taint keys. If the
+                                key is empty, operator must be Exists; this combination
+                                means to match all values and all keys.
                               type: string
                             operator:
-                              description: Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.
+                              description: Operator represents a key's relationship
+                                to the value. Valid operators are Exists and Equal.
+                                Defaults to Equal. Exists is equivalent to wildcard
+                                for value, so that a pod can tolerate all taints of
+                                a particular category.
                               type: string
                             tolerationSeconds:
-                              description: TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.
+                              description: TolerationSeconds represents the period
+                                of time the toleration (which must be of effect NoExecute,
+                                otherwise this field is ignored) tolerates the taint.
+                                By default, it is not set, which means tolerate the
+                                taint forever (do not evict). Zero and negative values
+                                will be treated as 0 (evict immediately) by the system.
                               format: int64
                               type: integer
                             value:
-                              description: Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              description: Value is the taint value the toleration
+                                matches to. If the operator is Exists, the value should
+                                be empty, otherwise just a regular string.
                               type: string
                           type: object
                         type: array
@@ -267,32 +356,54 @@ spec:
                       nodeSelector:
                         additionalProperties:
                           type: string
-                        description: NodeSelector defines the labels required by a node to schedule the component onto it.
+                        description: NodeSelector defines the labels required by a
+                          node to schedule the component onto it.
                         type: object
                       replicas:
-                        description: Replicas defines the number of replica pods of the component.
+                        description: Replicas defines the number of replica pods of
+                          the component.
                         format: int32
                         type: integer
                       tolerations:
-                        description: Tolerations defines the tolerations required by a node to schedule the component onto it.
+                        description: Tolerations defines the tolerations required
+                          by a node to schedule the component onto it.
                         items:
-                          description: The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.
+                          description: The pod this Toleration is attached to tolerates
+                            any taint that matches the triple <key,value,effect> using
+                            the matching operator <operator>.
                           properties:
                             effect:
-                              description: Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              description: Effect indicates the taint effect to match.
+                                Empty means match all taint effects. When specified,
+                                allowed values are NoSchedule, PreferNoSchedule and
+                                NoExecute.
                               type: string
                             key:
-                              description: Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              description: Key is the taint key that the toleration
+                                applies to. Empty means match all taint keys. If the
+                                key is empty, operator must be Exists; this combination
+                                means to match all values and all keys.
                               type: string
                             operator:
-                              description: Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.
+                              description: Operator represents a key's relationship
+                                to the value. Valid operators are Exists and Equal.
+                                Defaults to Equal. Exists is equivalent to wildcard
+                                for value, so that a pod can tolerate all taints of
+                                a particular category.
                               type: string
                             tolerationSeconds:
-                              description: TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.
+                              description: TolerationSeconds represents the period
+                                of time the toleration (which must be of effect NoExecute,
+                                otherwise this field is ignored) tolerates the taint.
+                                By default, it is not set, which means tolerate the
+                                taint forever (do not evict). Zero and negative values
+                                will be treated as 0 (evict immediately) by the system.
                               format: int64
                               type: integer
                             value:
-                              description: Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              description: Value is the taint value the toleration
+                                matches to. If the operator is Exists, the value should
+                                be empty, otherwise just a regular string.
                               type: string
                           type: object
                         type: array
@@ -303,68 +414,113 @@ spec:
                       nodeSelector:
                         additionalProperties:
                           type: string
-                        description: NodeSelector defines the labels required by a node to schedule the component onto it.
+                        description: NodeSelector defines the labels required by a
+                          node to schedule the component onto it.
                         type: object
                       replicas:
-                        description: Replicas defines the number of replica pods of the component.
+                        description: Replicas defines the number of replica pods of
+                          the component.
                         format: int32
                         type: integer
                       tolerations:
-                        description: Tolerations defines the tolerations required by a node to schedule the component onto it.
+                        description: Tolerations defines the tolerations required
+                          by a node to schedule the component onto it.
                         items:
-                          description: The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.
+                          description: The pod this Toleration is attached to tolerates
+                            any taint that matches the triple <key,value,effect> using
+                            the matching operator <operator>.
                           properties:
                             effect:
-                              description: Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              description: Effect indicates the taint effect to match.
+                                Empty means match all taint effects. When specified,
+                                allowed values are NoSchedule, PreferNoSchedule and
+                                NoExecute.
                               type: string
                             key:
-                              description: Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              description: Key is the taint key that the toleration
+                                applies to. Empty means match all taint keys. If the
+                                key is empty, operator must be Exists; this combination
+                                means to match all values and all keys.
                               type: string
                             operator:
-                              description: Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.
+                              description: Operator represents a key's relationship
+                                to the value. Valid operators are Exists and Equal.
+                                Defaults to Equal. Exists is equivalent to wildcard
+                                for value, so that a pod can tolerate all taints of
+                                a particular category.
                               type: string
                             tolerationSeconds:
-                              description: TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.
+                              description: TolerationSeconds represents the period
+                                of time the toleration (which must be of effect NoExecute,
+                                otherwise this field is ignored) tolerates the taint.
+                                By default, it is not set, which means tolerate the
+                                taint forever (do not evict). Zero and negative values
+                                will be treated as 0 (evict immediately) by the system.
                               format: int64
                               type: integer
                             value:
-                              description: Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              description: Value is the taint value the toleration
+                                matches to. If the operator is Exists, the value should
+                                be empty, otherwise just a regular string.
                               type: string
                           type: object
                         type: array
                     type: object
                   queryFrontend:
-                    description: QueryFrontend defines the query frontend component spec.
+                    description: QueryFrontend defines the query frontend component
+                      spec.
                     properties:
                       nodeSelector:
                         additionalProperties:
                           type: string
-                        description: NodeSelector defines the labels required by a node to schedule the component onto it.
+                        description: NodeSelector defines the labels required by a
+                          node to schedule the component onto it.
                         type: object
                       replicas:
-                        description: Replicas defines the number of replica pods of the component.
+                        description: Replicas defines the number of replica pods of
+                          the component.
                         format: int32
                         type: integer
                       tolerations:
-                        description: Tolerations defines the tolerations required by a node to schedule the component onto it.
+                        description: Tolerations defines the tolerations required
+                          by a node to schedule the component onto it.
                         items:
-                          description: The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.
+                          description: The pod this Toleration is attached to tolerates
+                            any taint that matches the triple <key,value,effect> using
+                            the matching operator <operator>.
                           properties:
                             effect:
-                              description: Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                              description: Effect indicates the taint effect to match.
+                                Empty means match all taint effects. When specified,
+                                allowed values are NoSchedule, PreferNoSchedule and
+                                NoExecute.
                               type: string
                             key:
-                              description: Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                              description: Key is the taint key that the toleration
+                                applies to. Empty means match all taint keys. If the
+                                key is empty, operator must be Exists; this combination
+                                means to match all values and all keys.
                               type: string
                             operator:
-                              description: Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.
+                              description: Operator represents a key's relationship
+                                to the value. Valid operators are Exists and Equal.
+                                Defaults to Equal. Exists is equivalent to wildcard
+                                for value, so that a pod can tolerate all taints of
+                                a particular category.
                               type: string
                             tolerationSeconds:
-                              description: TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.
+                              description: TolerationSeconds represents the period
+                                of time the toleration (which must be of effect NoExecute,
+                                otherwise this field is ignored) tolerates the taint.
+                                By default, it is not set, which means tolerate the
+                                taint forever (do not evict). Zero and negative values
+                                will be treated as 0 (evict immediately) by the system.
                               format: int64
                               type: integer
                             value:
-                              description: Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string.
+                              description: Value is the taint value the toleration
+                                matches to. If the operator is Exists, the value should
+                                be empty, otherwise just a regular string.
                               type: string
                           type: object
                         type: array
@@ -380,64 +536,92 @@ spec:
             description: LokiStackStatus defines the observed state of LokiStack
             properties:
               components:
-                description: Components provides summary of all Loki pod status grouped per component.
+                description: Components provides summary of all Loki pod status grouped
+                  per component.
                 properties:
                   compactor:
                     additionalProperties:
                       items:
                         type: string
                       type: array
-                    description: Compactor is a map to the pod status of the compactor pod.
+                    description: Compactor is a map to the pod status of the compactor
+                      pod.
                     type: object
                   distributor:
                     additionalProperties:
                       items:
                         type: string
                       type: array
-                    description: Distributor is a map to the per pod status of the distributor deployment
+                    description: Distributor is a map to the per pod status of the
+                      distributor deployment
                     type: object
                   ingester:
                     additionalProperties:
                       items:
                         type: string
                       type: array
-                    description: Ingester is a map to the per pod status of the ingester statefulset
+                    description: Ingester is a map to the per pod status of the ingester
+                      statefulset
                     type: object
                   querier:
                     additionalProperties:
                       items:
                         type: string
                       type: array
-                    description: Querier is a map to the per pod status of the querier statefulset
+                    description: Querier is a map to the per pod status of the querier
+                      statefulset
                     type: object
                   queryFrontend:
                     additionalProperties:
                       items:
                         type: string
                       type: array
-                    description: QueryFrontend is a mpa to the per pod status of the query frontend deployment.
+                    description: QueryFrontend is a mpa to the per pod status of the
+                      query frontend deployment.
                     type: object
                 type: object
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:
-                  description: "Condition contains details for one aspect of the current state of this API Resource. --- This struct is intended for direct use as an array at the field path .status.conditions.  For example, type FooStatus struct{     // Represents the observations of a foo's current state.     // Known .status.conditions.type are: \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type     // +patchStrategy=merge     // +listType=map     // +listMapKey=type     Conditions []metav1.Condition `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"` \n     // other fields }"
+                  description: "Condition contains details for one aspect of the current
+                    state of this API Resource. --- This struct is intended for direct
+                    use as an array at the field path .status.conditions.  For example,
+                    type FooStatus struct{     // Represents the observations of a
+                    foo's current state.     // Known .status.conditions.type are:
+                    \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type
+                    \    // +patchStrategy=merge     // +listType=map     // +listMapKey=type
+                    \    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`
+                    \n     // other fields }"
                   properties:
                     lastTransitionTime:
-                      description: lastTransitionTime is the last time the condition transitioned from one status to another. This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another. This should be when
+                        the underlying condition changed.  If that is not known, then
+                        using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: message is a human readable message indicating details about the transition. This may be an empty string.
+                      description: message is a human readable message indicating
+                        details about the transition. This may be an empty string.
                       maxLength: 32768
                       type: string
                     observedGeneration:
-                      description: observedGeneration represents the .metadata.generation that the condition was set based upon. For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date with respect to the current state of the instance.
+                      description: observedGeneration represents the .metadata.generation
+                        that the condition was set based upon. For instance, if .metadata.generation
+                        is currently 12, but the .status.conditions[x].observedGeneration
+                        is 9, the condition is out of date with respect to the current
+                        state of the instance.
                       format: int64
                       minimum: 0
                       type: integer
                     reason:
-                      description: reason contains a programmatic identifier indicating the reason for the condition's last transition. Producers of specific condition types may define expected values and meanings for this field, and whether the values are considered a guaranteed API. The value should be a CamelCase string. This field may not be empty.
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition. Producers
+                        of specific condition types may define expected values and
+                        meanings for this field, and whether the values are considered
+                        a guaranteed API. The value should be a CamelCase string.
+                        This field may not be empty.
                       maxLength: 1024
                       minLength: 1
                       pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
@@ -450,7 +634,11 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: type of condition in CamelCase or in foo.example.com/CamelCase. --- Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be useful (see .node.status.conditions), the ability to deconflict is important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                        --- Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string

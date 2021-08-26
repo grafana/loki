@@ -55,7 +55,7 @@ func init() {
 //
 // * In-cluster config if running in cluster
 //
-// * $HOME/.kube/config if exists
+// * $HOME/.kube/config if exists.
 func GetConfig() (*rest.Config, error) {
 	return GetConfigWithContext("")
 }
@@ -75,7 +75,7 @@ func GetConfig() (*rest.Config, error) {
 //
 // * In-cluster config if running in cluster
 //
-// * $HOME/.kube/config if exists
+// * $HOME/.kube/config if exists.
 func GetConfigWithContext(context string) (*rest.Config, error) {
 	cfg, err := loadConfig(context)
 	if err != nil {
@@ -95,9 +95,8 @@ func GetConfigWithContext(context string) (*rest.Config, error) {
 // test the precedence of loading the config.
 var loadInClusterConfig = rest.InClusterConfig
 
-// loadConfig loads a REST Config as per the rules specified in GetConfig
+// loadConfig loads a REST Config as per the rules specified in GetConfig.
 func loadConfig(context string) (*rest.Config, error) {
-
 	// If a flag is specified with the config location, use that
 	if len(kubeconfig) > 0 {
 		return loadConfigWithContext("", &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}, context)

@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
-// clientCache creates and caches rest clients and metadata for Kubernetes types
+// clientCache creates and caches rest clients and metadata for Kubernetes types.
 type clientCache struct {
 	// config is the rest.Config to talk to an apiserver
 	config *rest.Config
@@ -107,7 +107,7 @@ func (c *clientCache) getResource(obj runtime.Object) (*resourceMeta, error) {
 	return r, err
 }
 
-// getObjMeta returns objMeta containing both type and object metadata and state
+// getObjMeta returns objMeta containing both type and object metadata and state.
 func (c *clientCache) getObjMeta(obj runtime.Object) (*objMeta, error) {
 	r, err := c.getResource(obj)
 	if err != nil {
@@ -130,18 +130,17 @@ type resourceMeta struct {
 	mapping *meta.RESTMapping
 }
 
-// isNamespaced returns true if the type is namespaced
+// isNamespaced returns true if the type is namespaced.
 func (r *resourceMeta) isNamespaced() bool {
 	return r.mapping.Scope.Name() != meta.RESTScopeNameRoot
-
 }
 
-// resource returns the resource name of the type
+// resource returns the resource name of the type.
 func (r *resourceMeta) resource() string {
 	return r.mapping.Resource.Resource
 }
 
-// objMeta stores type and object information about a Kubernetes type
+// objMeta stores type and object information about a Kubernetes type.
 type objMeta struct {
 	// resourceMeta contains type information for the object
 	*resourceMeta

@@ -41,7 +41,7 @@ type dynamicRESTMapper struct {
 	initOnce sync.Once
 }
 
-// DynamicRESTMapperOption is a functional option on the dynamicRESTMapper
+// DynamicRESTMapperOption is a functional option on the dynamicRESTMapper.
 type DynamicRESTMapperOption func(*dynamicRESTMapper) error
 
 // WithLimiter sets the RESTMapper's underlying limiter to lim.

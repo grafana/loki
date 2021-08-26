@@ -191,8 +191,6 @@ func handleValues(av, bv interface{}, p string, patch []Operation) ([]Operation,
 		if at == nil && bt == nil {
 			// do nothing
 			return patch, nil
-		} else if at == nil && bt != nil {
-			return append(patch, NewOperation("add", p, bv)), nil
 		} else if at != bt {
 			// If types have changed, replace completely (preserves null in destination)
 			return append(patch, NewOperation("replace", p, bv)), nil

@@ -75,28 +75,28 @@ type Funcs struct {
 	GenericFunc func(event.GenericEvent, workqueue.RateLimitingInterface)
 }
 
-// Create implements EventHandler
+// Create implements EventHandler.
 func (h Funcs) Create(e event.CreateEvent, q workqueue.RateLimitingInterface) {
 	if h.CreateFunc != nil {
 		h.CreateFunc(e, q)
 	}
 }
 
-// Delete implements EventHandler
+// Delete implements EventHandler.
 func (h Funcs) Delete(e event.DeleteEvent, q workqueue.RateLimitingInterface) {
 	if h.DeleteFunc != nil {
 		h.DeleteFunc(e, q)
 	}
 }
 
-// Update implements EventHandler
+// Update implements EventHandler.
 func (h Funcs) Update(e event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	if h.UpdateFunc != nil {
 		h.UpdateFunc(e, q)
 	}
 }
 
-// Generic implements EventHandler
+// Generic implements EventHandler.
 func (h Funcs) Generic(e event.GenericEvent, q workqueue.RateLimitingInterface) {
 	if h.GenericFunc != nil {
 		h.GenericFunc(e, q)

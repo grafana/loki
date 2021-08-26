@@ -28,7 +28,7 @@ limitations under the License.
 // The main entrypoint for controller-runtime is this root package, which
 // contains all of the common types needed to get started building controllers:
 //  import (
-//      controllers "sigs.k8s.io/controller-runtime"
+//      ctrl "sigs.k8s.io/controller-runtime"
 //  )
 //
 // The examples in this package walk through a basic controller setup.  The

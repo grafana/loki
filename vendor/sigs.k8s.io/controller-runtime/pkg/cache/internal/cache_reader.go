@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,10 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CacheReader is a client.Reader
+// CacheReader is a client.Reader.
 var _ client.Reader = &CacheReader{}
 
-// CacheReader wraps a cache.Index to implement the client.CacheReader interface for a single type
+// CacheReader wraps a cache.Index to implement the client.CacheReader interface for a single type.
 type CacheReader struct {
 	// indexer is the underlying indexer wrapped by this cache.
 	indexer cache.Indexer
@@ -48,7 +48,7 @@ type CacheReader struct {
 	scopeName apimeta.RESTScopeName
 }
 
-// Get checks the indexer for the object and writes a copy of it if found
+// Get checks the indexer for the object and writes a copy of it if found.
 func (c *CacheReader) Get(_ context.Context, key client.ObjectKey, out client.Object) error {
 	if c.scopeName == apimeta.RESTScopeNameRoot {
 		key.Namespace = ""
@@ -64,7 +64,7 @@ func (c *CacheReader) Get(_ context.Context, key client.ObjectKey, out client.Ob
 	// Not found, return an error
 	if !exists {
 		// Resource gets transformed into Kind in the error anyway, so this is fine
-		return errors.NewNotFound(schema.GroupResource{
+		return apierrors.NewNotFound(schema.GroupResource{
 			Group:    c.groupVersionKind.Group,
 			Resource: c.groupVersionKind.Kind,
 		}, key.Name)
@@ -93,7 +93,7 @@ func (c *CacheReader) Get(_ context.Context, key client.ObjectKey, out client.Ob
 	return nil
 }
 
-// List lists items out of the indexer and writes them to out
+// List lists items out of the indexer and writes them to out.
 func (c *CacheReader) List(_ context.Context, out client.ObjectList, opts ...client.ListOption) error {
 	var objs []interface{}
 	var err error
@@ -101,7 +101,8 @@ func (c *CacheReader) List(_ context.Context, out client.ObjectList, opts ...cli
 	listOpts := client.ListOptions{}
 	listOpts.ApplyOptions(opts)
 
-	if listOpts.FieldSelector != nil {
+	switch {
+	case listOpts.FieldSelector != nil:
 		// TODO(directxman12): support more complicated field selectors by
 		// combining multiple indices, GetIndexers, etc
 		field, val, requiresExact := requiresExactMatch(listOpts.FieldSelector)
@@ -112,9 +113,9 @@ func (c *CacheReader) List(_ context.Context, out client.ObjectList, opts ...cli
 		// namespaced index key.  Otherwise, ask for the non-namespaced variant by using the fake "all namespaces"
 		// namespace.
 		objs, err = c.indexer.ByIndex(FieldIndexName(field), KeyToNamespacedKey(listOpts.Namespace, val))
-	} else if listOpts.Namespace != "" {
+	case listOpts.Namespace != "":
 		objs, err = c.indexer.ByIndex(cache.NamespaceIndex, listOpts.Namespace)
-	} else {
+	default:
 		objs = c.indexer.List()
 	}
 	if err != nil {
@@ -125,8 +126,15 @@ func (c *CacheReader) List(_ context.Context, out client.ObjectList, opts ...cli
 		labelSel = listOpts.LabelSelector
 	}
 
+	limitSet := listOpts.Limit > 0
+
 	runtimeObjs := make([]runtime.Object, 0, len(objs))
-	for _, item := range objs {
+	for i, item := range objs {
+		// if the Limit option is set and the number of items
+		// listed exceeds this limit, then stop reading.
+		if limitSet && int64(i) >= listOpts.Limit {
+			break
+		}
 		obj, isObj := item.(runtime.Object)
 		if !isObj {
 			return fmt.Errorf("cache contained %T, which is not an Object", obj)
@@ -179,7 +187,7 @@ func FieldIndexName(field string) string {
 	return "field:" + field
 }
 
-// noNamespaceNamespace is used as the "namespace" when we want to list across all namespaces
+// noNamespaceNamespace is used as the "namespace" when we want to list across all namespaces.
 const allNamespacesNamespace = "__all_namespaces"
 
 // KeyToNamespacedKey prefixes the given index key with a namespace

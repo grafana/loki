@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-// Options are the arguments for creating a new Controller
+// Options are the arguments for creating a new Controller.
 type Options struct {
 	// MaxConcurrentReconciles is the maximum number of concurrent Reconciles which can be run. Defaults to 1.
 	MaxConcurrentReconciles int

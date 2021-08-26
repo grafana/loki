@@ -38,6 +38,9 @@ type EventBroadcasterProducer func() (caster record.EventBroadcaster, stopWithPr
 // Provider is a recorder.Provider that records events to the k8s API server
 // and to a logr Logger.
 type Provider struct {
+	lock    sync.RWMutex
+	stopped bool
+
 	// scheme to specify when creating a recorder
 	scheme *runtime.Scheme
 	// logger is the logger to use when logging diagnostic event info
@@ -70,7 +73,10 @@ func (p *Provider) Stop(shutdownCtx context.Context) {
 		// an invocation of getBroadcaster.
 		broadcaster := p.getBroadcaster()
 		if p.stopBroadcaster {
+			p.lock.Lock()
 			broadcaster.Shutdown()
+			p.stopped = true
+			p.lock.Unlock()
 		}
 		close(doneCh)
 	}()
@@ -144,13 +150,28 @@ func (l *lazyRecorder) ensureRecording() {
 
 func (l *lazyRecorder) Event(object runtime.Object, eventtype, reason, message string) {
 	l.ensureRecording()
-	l.rec.Event(object, eventtype, reason, message)
+
+	l.prov.lock.RLock()
+	if !l.prov.stopped {
+		l.rec.Event(object, eventtype, reason, message)
+	}
+	l.prov.lock.RUnlock()
 }
 func (l *lazyRecorder) Eventf(object runtime.Object, eventtype, reason, messageFmt string, args ...interface{}) {
 	l.ensureRecording()
-	l.rec.Eventf(object, eventtype, reason, messageFmt, args...)
+
+	l.prov.lock.RLock()
+	if !l.prov.stopped {
+		l.rec.Eventf(object, eventtype, reason, messageFmt, args...)
+	}
+	l.prov.lock.RUnlock()
 }
 func (l *lazyRecorder) AnnotatedEventf(object runtime.Object, annotations map[string]string, eventtype, reason, messageFmt string, args ...interface{}) {
 	l.ensureRecording()
-	l.rec.AnnotatedEventf(object, annotations, eventtype, reason, messageFmt, args...)
+
+	l.prov.lock.RLock()
+	if !l.prov.stopped {
+		l.rec.AnnotatedEventf(object, annotations, eventtype, reason, messageFmt, args...)
+	}
+	l.prov.lock.RUnlock()
 }

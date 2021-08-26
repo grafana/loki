@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// Defaulter defines functions for setting defaults on resources
+// Defaulter defines functions for setting defaults on resources.
 type Defaulter interface {
 	runtime.Object
 	Default()
@@ -58,8 +58,7 @@ func (h *mutatingHandler) Handle(ctx context.Context, req Request) Response {
 
 	// Get the object in the request
 	obj := h.defaulter.DeepCopyObject().(Defaulter)
-	err := h.decoder.Decode(req, obj)
-	if err != nil {
+	if err := h.decoder.Decode(req, obj); err != nil {
 		return Errored(http.StatusBadRequest, err)
 	}
 

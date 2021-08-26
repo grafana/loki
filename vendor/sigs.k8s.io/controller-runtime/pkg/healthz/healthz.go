@@ -35,7 +35,7 @@ type Handler struct {
 	Checks map[string]Checker
 }
 
-// checkStatus holds the output of a particular check
+// checkStatus holds the output of a particular check.
 type checkStatus struct {
 	name     string
 	healthy  bool
@@ -173,8 +173,7 @@ type CheckHandler struct {
 }
 
 func (h CheckHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
-	err := h.Checker(req)
-	if err != nil {
+	if err := h.Checker(req); err != nil {
 		http.Error(resp, fmt.Sprintf("internal server error: %v", err), http.StatusInternalServerError)
 	} else {
 		fmt.Fprint(resp, "ok")
@@ -184,10 +183,10 @@ func (h CheckHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 // Checker knows how to perform a health check.
 type Checker func(req *http.Request) error
 
-// Ping returns true automatically when checked
+// Ping returns true automatically when checked.
 var Ping Checker = func(_ *http.Request) error { return nil }
 
-// getExcludedChecks extracts the health check names to be excluded from the query param
+// getExcludedChecks extracts the health check names to be excluded from the query param.
 func getExcludedChecks(r *http.Request) sets.String {
 	checks, found := r.URL.Query()["exclude"]
 	if found {

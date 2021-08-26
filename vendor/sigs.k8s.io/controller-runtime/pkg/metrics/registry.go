@@ -26,5 +26,5 @@ type RegistererGatherer interface {
 }
 
 // Registry is a prometheus registry for storing metrics within the
-// controller-runtime
+// controller-runtime.
 var Registry RegistererGatherer = prometheus.NewRegistry()

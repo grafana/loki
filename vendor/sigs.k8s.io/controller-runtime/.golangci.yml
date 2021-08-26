@@ -1,35 +1,130 @@
-run:
-  deadline: 5m
-linters-settings:
-  lll:
-    line-length: 170
-  dupl:
-    threshold: 400
-issues:
-  # don't skip warning about doc comments
-  exclude-use-default: false
-
-  # restore some of the defaults
-  # (fill in the rest as needed)
-  exclude-rules:
-  - linters: [errcheck]
-    text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
 linters:
   disable-all: true
   enable:
-  - misspell
-  - structcheck
-  - golint
-  - govet
+  - asciicheck
+  - bodyclose
   - deadcode
+  - depguard
+  - dogsled
   - errcheck
-  - varcheck
+  - exportloopref
   - goconst
-  - unparam
-  - ineffassign
-  - nakedret
+  - gocritic
   - gocyclo
-  - lll
-  - dupl
+  - godot
+  - gofmt
   - goimports
-  - golint
+  - goprintffuncname
+  - gosec
+  - gosimple
+  - govet
+  - ifshort
+  - importas
+  - ineffassign
+  - misspell
+  - nakedret
+  - nilerr
+  - nolintlint
+  - prealloc
+  - revive
+  - rowserrcheck
+  - staticcheck
+  - structcheck
+  - stylecheck
+  - typecheck
+  - unconvert
+  - unparam
+  - varcheck
+  - whitespace
+
+linters-settings:
+  ifshort:
+    # Maximum length of variable declaration measured in number of characters, after which linter won't suggest using short syntax.
+    max-decl-chars: 50
+  importas:
+    no-unaliased: true
+    alias:
+      # Kubernetes
+      - pkg: k8s.io/api/core/v1
+        alias: corev1
+      - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
+        alias: apiextensionsv1
+      - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+        alias: metav1
+      - pkg: k8s.io/apimachinery/pkg/api/errors
+        alias: apierrors
+      - pkg: k8s.io/apimachinery/pkg/util/errors
+        alias: kerrors
+      # Controller Runtime
+      - pkg: sigs.k8s.io/controller-runtime
+        alias: ctrl
+  staticcheck:
+    go: "1.16"
+  stylecheck:
+    go: "1.16"
+
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0
+  # We are disabling default golangci exclusions because we want to help reviewers to focus on reviewing the most relevant
+  # changes in PRs and avoid nitpicking.
+  exclude-use-default: false
+  # List of regexps of issue texts to exclude, empty list by default.
+  exclude:
+  # The following are being worked on to remove their exclusion. This list should be reduced or go away all together over time.
+  # If it is decided they will not be addressed they should be moved above this comment.
+  - Subprocess launch(ed with variable|ing should be audited)
+  - (G204|G104|G307)
+  - "ST1000: at least one file in a package should have a package comment"
+  exclude-rules:
+  - linters:
+    - gosec
+    text: "G108: Profiling endpoint is automatically exposed on /debug/pprof"
+  - linters:
+    - revive
+    text: "exported: exported method .*\\.(Reconcile|SetupWithManager|SetupWebhookWithManager) should have comment or be unexported"
+  - linters:
+    - errcheck
+    text: Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked
+  # With Go 1.16, the new embed directive can be used with an un-named import,
+  # revive (previously, golint) only allows these to be imported in a main.go, which wouldn't work for us.
+  # This directive allows the embed package to be imported with an underscore everywhere.
+  - linters:
+    - revive
+    source: _ "embed"
+  # Exclude some packages or code to require comments, for example test code, or fake clients.
+  - linters:
+    - revive
+    text: exported (method|function|type|const) (.+) should have comment or be unexported
+    source: (func|type).*Fake.*
+  - linters:
+    - revive
+    text: exported (method|function|type|const) (.+) should have comment or be unexported
+    path: fake_\.go
+  # Disable unparam "always receives" which might not be really
+  # useful when building libraries.
+  - linters:
+    - unparam
+    text: always receives
+  # Dot imports for gomega or ginkgo are allowed
+  # within test files.
+  - path: _test\.go
+    text: should not use dot imports
+  - path: _test\.go
+    text: cyclomatic complexity
+  - path: _test\.go
+    text: "G107: Potential HTTP request made with variable url"
+  # Append should be able to assign to a different var/slice.
+  - linters:
+    - gocritic
+    text: "appendAssign: append result not assigned to the same slice"
+  - linters:
+    - gocritic
+    text: "singleCaseSwitch: should rewrite switch statement to if statement"
+
+run:
+  timeout: 10m
+  skip-files:
+  - "zz_generated.*\\.go$"
+  - ".*conversion.*\\.go$"
+  allow-parallel-runners: true

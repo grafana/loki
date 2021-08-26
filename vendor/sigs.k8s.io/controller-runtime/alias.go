@@ -45,7 +45,7 @@ type Result = reconcile.Result
 // A Manager is required to create Controllers.
 type Manager = manager.Manager
 
-// Options are the arguments for creating a new Manager
+// Options are the arguments for creating a new Manager.
 type Options = manager.Options
 
 // SchemeBuilder builds a new Scheme for mapping go types to Kubernetes GroupVersionKinds.
@@ -55,7 +55,7 @@ type SchemeBuilder = scheme.Builder
 type GroupVersion = schema.GroupVersion
 
 // GroupResource specifies a Group and a Resource, but does not force a version.  This is useful for identifying
-// concepts during lookup stages without having partially valid types
+// concepts during lookup stages without having partially valid types.
 type GroupResource = schema.GroupResource
 
 // TypeMeta describes an individual object in an API response or request
@@ -89,7 +89,7 @@ var (
 	//
 	// * In-cluster config if running in cluster
 	//
-	// * $HOME/.kube/config if exists
+	// * $HOME/.kube/config if exists.
 	GetConfig = config.GetConfig
 
 	// ConfigFile returns the cfg.File function for deferred config file loading,
@@ -97,10 +97,10 @@ var (
 	// the manager.
 	ConfigFile = cfg.File
 
-	// NewControllerManagedBy returns a new controller builder that will be started by the provided Manager
+	// NewControllerManagedBy returns a new controller builder that will be started by the provided Manager.
 	NewControllerManagedBy = builder.ControllerManagedBy
 
-	// NewWebhookManagedBy returns a new webhook builder that will be started by the provided Manager
+	// NewWebhookManagedBy returns a new webhook builder that will be started by the provided Manager.
 	NewWebhookManagedBy = builder.WebhookManagedBy
 
 	// NewManager returns a new Manager for creating Controllers.

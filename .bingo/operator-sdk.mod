@@ -10,4 +10,4 @@ replace github.com/mattn/go-sqlite3 => github.com/mattn/go-sqlite3 v1.10.0
 
 replace golang.org/x/text => golang.org/x/text v0.3.3
 
-require github.com/operator-framework/operator-sdk v1.5.0 // cmd/operator-sdk
+require github.com/operator-framework/operator-sdk v1.11.0 // cmd/operator-sdk

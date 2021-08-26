@@ -15,6 +15,7 @@ spec:
   ports:
   - name: https
     port: 8443
+    protocol: TCP
     targetPort: https
   selector:
     app.kubernetes.io/instance: loki-operator-v0.0.1

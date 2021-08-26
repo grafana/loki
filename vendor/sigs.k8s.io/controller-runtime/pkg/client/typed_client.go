@@ -33,7 +33,7 @@ type typedClient struct {
 	paramCodec runtime.ParameterCodec
 }
 
-// Create implements client.Client
+// Create implements client.Client.
 func (c *typedClient) Create(ctx context.Context, obj Object, opts ...CreateOption) error {
 	o, err := c.cache.getObjMeta(obj)
 	if err != nil {
@@ -51,7 +51,7 @@ func (c *typedClient) Create(ctx context.Context, obj Object, opts ...CreateOpti
 		Into(obj)
 }
 
-// Update implements client.Client
+// Update implements client.Client.
 func (c *typedClient) Update(ctx context.Context, obj Object, opts ...UpdateOption) error {
 	o, err := c.cache.getObjMeta(obj)
 	if err != nil {
@@ -70,7 +70,7 @@ func (c *typedClient) Update(ctx context.Context, obj Object, opts ...UpdateOpti
 		Into(obj)
 }
 
-// Delete implements client.Client
+// Delete implements client.Client.
 func (c *typedClient) Delete(ctx context.Context, obj Object, opts ...DeleteOption) error {
 	o, err := c.cache.getObjMeta(obj)
 	if err != nil {
@@ -89,7 +89,7 @@ func (c *typedClient) Delete(ctx context.Context, obj Object, opts ...DeleteOpti
 		Error()
 }
 
-// DeleteAllOf implements client.Client
+// DeleteAllOf implements client.Client.
 func (c *typedClient) DeleteAllOf(ctx context.Context, obj Object, opts ...DeleteAllOfOption) error {
 	o, err := c.cache.getObjMeta(obj)
 	if err != nil {
@@ -108,7 +108,7 @@ func (c *typedClient) DeleteAllOf(ctx context.Context, obj Object, opts ...Delet
 		Error()
 }
 
-// Patch implements client.Client
+// Patch implements client.Client.
 func (c *typedClient) Patch(ctx context.Context, obj Object, patch Patch, opts ...PatchOption) error {
 	o, err := c.cache.getObjMeta(obj)
 	if err != nil {
@@ -131,7 +131,7 @@ func (c *typedClient) Patch(ctx context.Context, obj Object, patch Patch, opts .
 		Into(obj)
 }
 
-// Get implements client.Client
+// Get implements client.Client.
 func (c *typedClient) Get(ctx context.Context, key ObjectKey, obj Object) error {
 	r, err := c.cache.getResource(obj)
 	if err != nil {
@@ -143,7 +143,7 @@ func (c *typedClient) Get(ctx context.Context, key ObjectKey, obj Object) error 
 		Name(key.Name).Do(ctx).Into(obj)
 }
 
-// List implements client.Client
+// List implements client.Client.
 func (c *typedClient) List(ctx context.Context, obj ObjectList, opts ...ListOption) error {
 	r, err := c.cache.getResource(obj)
 	if err != nil {

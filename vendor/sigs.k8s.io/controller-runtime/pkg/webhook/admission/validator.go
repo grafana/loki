@@ -22,11 +22,11 @@ import (
 	"net/http"
 
 	v1 "k8s.io/api/admission/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// Validator defines functions for validating an operation
+// Validator defines functions for validating an operation.
 type Validator interface {
 	runtime.Object
 	ValidateCreate() error
@@ -70,7 +70,7 @@ func (h *validatingHandler) Handle(ctx context.Context, req Request) Response {
 
 		err = obj.ValidateCreate()
 		if err != nil {
-			var apiStatus errors.APIStatus
+			var apiStatus apierrors.APIStatus
 			if goerrors.As(err, &apiStatus) {
 				return validationResponseFromStatus(false, apiStatus.Status())
 			}
@@ -92,7 +92,7 @@ func (h *validatingHandler) Handle(ctx context.Context, req Request) Response {
 
 		err = obj.ValidateUpdate(oldObj)
 		if err != nil {
-			var apiStatus errors.APIStatus
+			var apiStatus apierrors.APIStatus
 			if goerrors.As(err, &apiStatus) {
 				return validationResponseFromStatus(false, apiStatus.Status())
 			}
@@ -110,7 +110,7 @@ func (h *validatingHandler) Handle(ctx context.Context, req Request) Response {
 
 		err = obj.ValidateDelete()
 		if err != nil {
-			var apiStatus errors.APIStatus
+			var apiStatus apierrors.APIStatus
 			if goerrors.As(err, &apiStatus) {
 				return validationResponseFromStatus(false, apiStatus.Status())
 			}

@@ -47,7 +47,7 @@ func (p *loggerPromise) WithName(l *DelegatingLogger, name string) *loggerPromis
 	return res
 }
 
-// WithValues provides a new Logger with the tags appended
+// WithValues provides a new Logger with the tags appended.
 func (p *loggerPromise) WithValues(l *DelegatingLogger, tags ...interface{}) *loggerPromise {
 	res := &loggerPromise{
 		logger:       l,
@@ -74,7 +74,7 @@ func (p *loggerPromise) V(l *DelegatingLogger, level int) *loggerPromise {
 	return res
 }
 
-// Fulfill instantiates the Logger with the provided logger
+// Fulfill instantiates the Logger with the provided logger.
 func (p *loggerPromise) Fulfill(parentLogger logr.Logger) {
 	var logger = parentLogger
 	if p.name != nil {
@@ -163,7 +163,7 @@ func (l *DelegatingLogger) V(level int) logr.Logger {
 	return res
 }
 
-// WithName provides a new Logger with the name appended
+// WithName provides a new Logger with the name appended.
 func (l *DelegatingLogger) WithName(name string) logr.Logger {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
@@ -179,7 +179,7 @@ func (l *DelegatingLogger) WithName(name string) logr.Logger {
 	return res
 }
 
-// WithValues provides a new Logger with the tags appended
+// WithValues provides a new Logger with the tags appended.
 func (l *DelegatingLogger) WithValues(tags ...interface{}) logr.Logger {
 	l.lock.RLock()
 	defer l.lock.RUnlock()

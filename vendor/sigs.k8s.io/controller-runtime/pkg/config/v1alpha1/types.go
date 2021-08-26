@@ -17,12 +17,14 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	configv1alpha1 "k8s.io/component-base/config/v1alpha1"
 )
 
-// ControllerManagerConfigurationSpec defines the desired state of GenericControllerManagerConfiguration
+// ControllerManagerConfigurationSpec defines the desired state of GenericControllerManagerConfiguration.
 type ControllerManagerConfigurationSpec struct {
 	// SyncPeriod determines the minimum frequency at which watched resources are
 	// reconciled. A lower period will correct entropy more quickly, but reduce
@@ -50,8 +52,13 @@ type ControllerManagerConfigurationSpec struct {
 	// GracefulShutdownTimeout is the duration given to runnable to stop before the manager actually returns on stop.
 	// To disable graceful shutdown, set to time.Duration(0)
 	// To use graceful shutdown without timeout, set to a negative duration, e.G. time.Duration(-1)
-	// The graceful shutdown is skipped for safety reasons in case the leadere election lease is lost.
+	// The graceful shutdown is skipped for safety reasons in case the leader election lease is lost.
 	GracefulShutdownTimeout *metav1.Duration `json:"gracefulShutDown,omitempty"`
+
+	// Controller contains global configuration options for controllers
+	// registered within this manager.
+	// +optional
+	Controller *ControllerConfigurationSpec `json:"controller,omitempty"`
 
 	// Metrics contains thw controller metrics configuration
 	// +optional
@@ -66,7 +73,30 @@ type ControllerManagerConfigurationSpec struct {
 	Webhook ControllerWebhook `json:"webhook,omitempty"`
 }
 
-// ControllerMetrics defines the metrics configs
+// ControllerConfigurationSpec defines the global configuration for
+// controllers registered with the manager.
+type ControllerConfigurationSpec struct {
+	// GroupKindConcurrency is a map from a Kind to the number of concurrent reconciliation
+	// allowed for that controller.
+	//
+	// When a controller is registered within this manager using the builder utilities,
+	// users have to specify the type the controller reconciles in the For(...) call.
+	// If the object's kind passed matches one of the keys in this map, the concurrency
+	// for that controller is set to the number specified.
+	//
+	// The key is expected to be consistent in form with GroupKind.String(),
+	// e.g. ReplicaSet in apps group (regardless of version) would be `ReplicaSet.apps`.
+	//
+	// +optional
+	GroupKindConcurrency map[string]int `json:"groupKindConcurrency,omitempty"`
+
+	// CacheSyncTimeout refers to the time limit set to wait for syncing caches.
+	// Defaults to 2 minutes if not set.
+	// +optional
+	CacheSyncTimeout *time.Duration `json:"cacheSyncTimeout,omitempty"`
+}
+
+// ControllerMetrics defines the metrics configs.
 type ControllerMetrics struct {
 	// BindAddress is the TCP address that the controller should bind to
 	// for serving prometheus metrics.
@@ -75,7 +105,7 @@ type ControllerMetrics struct {
 	BindAddress string `json:"bindAddress,omitempty"`
 }
 
-// ControllerHealth defines the health configs
+// ControllerHealth defines the health configs.
 type ControllerHealth struct {
 	// HealthProbeBindAddress is the TCP address that the controller should bind to
 	// for serving health probes
@@ -91,7 +121,7 @@ type ControllerHealth struct {
 	LivenessEndpointName string `json:"livenessEndpointName,omitempty"`
 }
 
-// ControllerWebhook defines the webhook server for the controller
+// ControllerWebhook defines the webhook server for the controller.
 type ControllerWebhook struct {
 	// Port is the port that the webhook server serves at.
 	// It is used to set webhook.Server.Port.
@@ -113,7 +143,7 @@ type ControllerWebhook struct {
 
 // +kubebuilder:object:root=true
 
-// ControllerManagerConfiguration is the Schema for the GenericControllerManagerConfigurations API
+// ControllerManagerConfiguration is the Schema for the GenericControllerManagerConfigurations API.
 type ControllerManagerConfiguration struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -121,7 +151,7 @@ type ControllerManagerConfiguration struct {
 	ControllerManagerConfigurationSpec `json:",inline"`
 }
 
-// Complete returns the configuration for controller-runtime
+// Complete returns the configuration for controller-runtime.
 func (c *ControllerManagerConfigurationSpec) Complete() (ControllerManagerConfigurationSpec, error) {
 	return *c, nil
 }

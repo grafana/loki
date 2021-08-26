@@ -1,5 +1,9 @@
 domain: openshift.io
-layout: go.kubebuilder.io/v3
+layout:
+- go.kubebuilder.io/v3
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
 projectName: loki-operator
 repo: github.com/ViaQ/loki-operator
 resources:
@@ -13,6 +17,3 @@ resources:
   path: github.com/ViaQ/loki-operator/api/v1beta1
   version: v1beta1
 version: "3"
-plugins:
-  manifests.sdk.operatorframework.io/v2: {}
-  scorecard.sdk.operatorframework.io/v2: {}

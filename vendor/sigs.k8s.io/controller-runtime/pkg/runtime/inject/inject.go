@@ -29,7 +29,7 @@ import (
 )
 
 // Cache is used by the ControllerManager to inject Cache into Sources, EventHandlers, Predicates, and
-// Reconciles
+// Reconciles.
 type Cache interface {
 	InjectCache(cache cache.Cache) error
 }
@@ -49,7 +49,7 @@ type APIReader interface {
 }
 
 // APIReaderInto will set APIReader on i and return the result if it implements APIReaderInto.
-// Returns false if i does not implement APIReader
+// Returns false if i does not implement APIReader.
 func APIReaderInto(reader client.Reader, i interface{}) (bool, error) {
 	if s, ok := i.(APIReader); ok {
 		return true, s.InjectAPIReader(reader)
@@ -58,7 +58,7 @@ func APIReaderInto(reader client.Reader, i interface{}) (bool, error) {
 }
 
 // Config is used by the ControllerManager to inject Config into Sources, EventHandlers, Predicates, and
-// Reconciles
+// Reconciles.
 type Config interface {
 	InjectConfig(*rest.Config) error
 }
@@ -73,7 +73,7 @@ func ConfigInto(config *rest.Config, i interface{}) (bool, error) {
 }
 
 // Client is used by the ControllerManager to inject client into Sources, EventHandlers, Predicates, and
-// Reconciles
+// Reconciles.
 type Client interface {
 	InjectClient(client.Client) error
 }
@@ -88,7 +88,7 @@ func ClientInto(client client.Client, i interface{}) (bool, error) {
 }
 
 // Scheme is used by the ControllerManager to inject Scheme into Sources, EventHandlers, Predicates, and
-// Reconciles
+// Reconciles.
 type Scheme interface {
 	InjectScheme(scheme *runtime.Scheme) error
 }
@@ -117,7 +117,7 @@ func StopChannelInto(stop <-chan struct{}, i interface{}) (bool, error) {
 	return false, nil
 }
 
-// Mapper is used to inject the rest mapper to components that may need it
+// Mapper is used to inject the rest mapper to components that may need it.
 type Mapper interface {
 	InjectMapper(meta.RESTMapper) error
 }
@@ -134,7 +134,7 @@ func MapperInto(mapper meta.RESTMapper, i interface{}) (bool, error) {
 // Func injects dependencies into i.
 type Func func(i interface{}) error
 
-// Injector is used by the ControllerManager to inject Func into Controllers
+// Injector is used by the ControllerManager to inject Func into Controllers.
 type Injector interface {
 	InjectFunc(f Func) error
 }

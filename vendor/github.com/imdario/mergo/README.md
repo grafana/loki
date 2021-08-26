@@ -1,14 +1,5 @@
 # Mergo
 
-A helper to merge structs and maps in Golang. Useful for configuration default values, avoiding messy if-statements.
-
-Mergo merges same-type structs and maps by setting default values in zero-value fields. Mergo won't merge unexported (private) fields. It will do recursively any exported one. It also won't merge structs inside maps (because they are not addressable using Go reflection).
-
-Also a lovely [comune](http://en.wikipedia.org/wiki/Mergo) (municipality) in the Province of Ancona in the Italian region of Marche.
-
-## Status
-
-It is ready for production use. [It is used in several projects by Docker, Google, The Linux Foundation, VMWare, Shopify, etc](https://github.com/imdario/mergo#mergo-in-the-wild).
 
 [![GoDoc][3]][4]
 [![GitHub release][5]][6]
@@ -16,7 +7,9 @@ It is ready for production use. [It is used in several projects by Docker, Googl
 [![Build Status][1]][2]
 [![Coverage Status][9]][10]
 [![Sourcegraph][11]][12]
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fimdario%2Fmergo.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fimdario%2Fmergo?ref=badge_shield)
+[![FOSSA Status][13]][14]
+
+[![GoCenter Kudos][15]][16]
 
 [1]: https://travis-ci.org/imdario/mergo.png
 [2]: https://travis-ci.org/imdario/mergo
@@ -30,6 +23,20 @@ It is ready for production use. [It is used in several projects by Docker, Googl
 [10]: https://coveralls.io/github/imdario/mergo?branch=master
 [11]: https://sourcegraph.com/github.com/imdario/mergo/-/badge.svg
 [12]: https://sourcegraph.com/github.com/imdario/mergo?badge
+[13]: https://app.fossa.io/api/projects/git%2Bgithub.com%2Fimdario%2Fmergo.svg?type=shield
+[14]: https://app.fossa.io/projects/git%2Bgithub.com%2Fimdario%2Fmergo?ref=badge_shield
+[15]: https://search.gocenter.io/api/ui/badge/github.com%2Fimdario%2Fmergo
+[16]: https://search.gocenter.io/github.com/imdario/mergo
+
+A helper to merge structs and maps in Golang. Useful for configuration default values, avoiding messy if-statements.
+
+Mergo merges same-type structs and maps by setting default values in zero-value fields. Mergo won't merge unexported (private) fields. It will do recursively any exported one. It also won't merge structs inside maps (because they are not addressable using Go reflection).
+
+Also a lovely [comune](http://en.wikipedia.org/wiki/Mergo) (municipality) in the Province of Ancona in the Italian region of Marche.
+
+## Status
+
+It is ready for production use. [It is used in several projects by Docker, Google, The Linux Foundation, VMWare, Shopify, etc](https://github.com/imdario/mergo#mergo-in-the-wild).
 
 ### Important note
 
@@ -90,7 +97,7 @@ If Mergo is useful to you, consider buying me a coffee, a beer, or making a mont
 - [mantasmatelis/whooplist-server](https://github.com/mantasmatelis/whooplist-server)
 - [jnuthong/item_search](https://github.com/jnuthong/item_search)
 - [bukalapak/snowboard](https://github.com/bukalapak/snowboard)
-- [janoszen/containerssh](https://github.com/janoszen/containerssh)
+- [containerssh/containerssh](https://github.com/containerssh/containerssh)
 
 ## Install
 

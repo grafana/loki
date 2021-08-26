@@ -77,6 +77,16 @@ func (hs multiMutating) InjectFunc(f inject.Func) error {
 	return nil
 }
 
+// InjectDecoder injects the decoder into the handlers.
+func (hs multiMutating) InjectDecoder(d *Decoder) error {
+	for _, handler := range hs {
+		if _, err := InjectDecoderInto(d, handler); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // MultiMutatingHandler combines multiple mutating webhook handlers into a single
 // mutating webhook handler.  Handlers are called in sequential order, and the first
 // `allowed: false`	response may short-circuit the rest.  Users must take care to
@@ -123,5 +133,15 @@ func (hs multiValidating) InjectFunc(f inject.Func) error {
 		}
 	}
 
+	return nil
+}
+
+// InjectDecoder injects the decoder into the handlers.
+func (hs multiValidating) InjectDecoder(d *Decoder) error {
+	for _, handler := range hs {
+		if _, err := InjectDecoderInto(d, handler); err != nil {
+			return err
+		}
+	}
 	return nil
 }

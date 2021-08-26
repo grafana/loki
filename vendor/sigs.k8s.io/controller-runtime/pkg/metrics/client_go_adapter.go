@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"context"
 	"net/url"
 	"time"
 
@@ -50,7 +51,7 @@ const (
 )
 
 var (
-	// client metrics
+	// client metrics.
 	requestLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Subsystem: RestClientSubsystem,
 		Name:      LatencyKey,
@@ -64,7 +65,7 @@ var (
 		Help:      "Number of HTTP requests, partitioned by status code, method, and host.",
 	}, []string{"code", "method", "host"})
 
-	// reflector metrics
+	// reflector metrics.
 
 	// TODO(directxman12): update these to be histograms once the metrics overhaul KEP
 	// PRs start landing.
@@ -123,7 +124,7 @@ func init() {
 	registerReflectorMetrics()
 }
 
-// registerClientMetrics sets up the client latency metrics from client-go
+// registerClientMetrics sets up the client latency metrics from client-go.
 func registerClientMetrics() {
 	// register the metrics with our registry
 	Registry.MustRegister(requestLatency)
@@ -136,7 +137,7 @@ func registerClientMetrics() {
 	})
 }
 
-// registerReflectorMetrics sets up reflector (reconcile) loop metrics
+// registerReflectorMetrics sets up reflector (reconcile) loop metrics.
 func registerReflectorMetrics() {
 	Registry.MustRegister(listsTotal)
 	Registry.MustRegister(listsDuration)
@@ -162,7 +163,7 @@ type latencyAdapter struct {
 	metric *prometheus.HistogramVec
 }
 
-func (l *latencyAdapter) Observe(verb string, u url.URL, latency time.Duration) {
+func (l *latencyAdapter) Observe(_ context.Context, verb string, u url.URL, latency time.Duration) {
 	l.metric.WithLabelValues(verb, u.String()).Observe(latency.Seconds())
 }
 
@@ -170,7 +171,7 @@ type resultAdapter struct {
 	metric *prometheus.CounterVec
 }
 
-func (r *resultAdapter) Increment(code, method, host string) {
+func (r *resultAdapter) Increment(_ context.Context, code, method, host string) {
 	r.metric.WithLabelValues(code, method, host).Inc()
 }
 

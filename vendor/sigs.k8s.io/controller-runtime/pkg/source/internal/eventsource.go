@@ -33,14 +33,14 @@ var log = logf.RuntimeLog.WithName("source").WithName("EventHandler")
 
 var _ cache.ResourceEventHandler = EventHandler{}
 
-// EventHandler adapts a handler.EventHandler interface to a cache.ResourceEventHandler interface
+// EventHandler adapts a handler.EventHandler interface to a cache.ResourceEventHandler interface.
 type EventHandler struct {
 	EventHandler handler.EventHandler
 	Queue        workqueue.RateLimitingInterface
 	Predicates   []predicate.Predicate
 }
 
-// OnAdd creates CreateEvent and calls Create on EventHandler
+// OnAdd creates CreateEvent and calls Create on EventHandler.
 func (e EventHandler) OnAdd(obj interface{}) {
 	c := event.CreateEvent{}
 
@@ -63,7 +63,7 @@ func (e EventHandler) OnAdd(obj interface{}) {
 	e.EventHandler.Create(c, e.Queue)
 }
 
-// OnUpdate creates UpdateEvent and calls Update on EventHandler
+// OnUpdate creates UpdateEvent and calls Update on EventHandler.
 func (e EventHandler) OnUpdate(oldObj, newObj interface{}) {
 	u := event.UpdateEvent{}
 
@@ -94,7 +94,7 @@ func (e EventHandler) OnUpdate(oldObj, newObj interface{}) {
 	e.EventHandler.Update(u, e.Queue)
 }
 
-// OnDelete creates DeleteEvent and calls Delete on EventHandler
+// OnDelete creates DeleteEvent and calls Delete on EventHandler.
 func (e EventHandler) OnDelete(obj interface{}) {
 	d := event.DeleteEvent{}
 

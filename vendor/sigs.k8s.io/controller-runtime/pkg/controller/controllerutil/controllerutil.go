@@ -22,7 +22,7 @@ import (
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,7 +34,7 @@ import (
 
 // AlreadyOwnedError is an error returned if the object you are trying to assign
 // a controller reference is already owned by another controller Object is the
-// subject and Owner is the reference for the current owner
+// subject and Owner is the reference for the current owner.
 type AlreadyOwnedError struct {
 	Object metav1.Object
 	Owner  metav1.OwnerReference
@@ -44,10 +44,10 @@ func (e *AlreadyOwnedError) Error() string {
 	return fmt.Sprintf("Object %s/%s is already owned by another %s controller %s", e.Object.GetNamespace(), e.Object.GetName(), e.Owner.Kind, e.Owner.Name)
 }
 
-func newAlreadyOwnedError(Object metav1.Object, Owner metav1.OwnerReference) *AlreadyOwnedError {
+func newAlreadyOwnedError(obj metav1.Object, owner metav1.OwnerReference) *AlreadyOwnedError {
 	return &AlreadyOwnedError{
-		Object: Object,
-		Owner:  Owner,
+		Object: obj,
+		Owner:  owner,
 	}
 }
 
@@ -118,13 +118,11 @@ func SetOwnerReference(owner, object metav1.Object, scheme *runtime.Scheme) erro
 	// Update owner references and return.
 	upsertOwnerRef(ref, object)
 	return nil
-
 }
 
 func upsertOwnerRef(ref metav1.OwnerReference, object metav1.Object) {
 	owners := object.GetOwnerReferences()
-	idx := indexOwnerRef(owners, ref)
-	if idx == -1 {
+	if idx := indexOwnerRef(owners, ref); idx == -1 {
 		owners = append(owners, ref)
 	} else {
 		owners[idx] = ref
@@ -156,7 +154,7 @@ func validateOwner(owner, object metav1.Object) error {
 	return nil
 }
 
-// Returns true if a and b point to the same object
+// Returns true if a and b point to the same object.
 func referSameObject(a, b metav1.OwnerReference) bool {
 	aGV, err := schema.ParseGroupVersion(a.APIVersion)
 	if err != nil {
@@ -171,19 +169,19 @@ func referSameObject(a, b metav1.OwnerReference) bool {
 	return aGV.Group == bGV.Group && a.Kind == b.Kind && a.Name == b.Name
 }
 
-// OperationResult is the action result of a CreateOrUpdate call
+// OperationResult is the action result of a CreateOrUpdate call.
 type OperationResult string
 
 const ( // They should complete the sentence "Deployment default/foo has been ..."
-	// OperationResultNone means that the resource has not been changed
+	// OperationResultNone means that the resource has not been changed.
 	OperationResultNone OperationResult = "unchanged"
-	// OperationResultCreated means that a new resource is created
+	// OperationResultCreated means that a new resource is created.
 	OperationResultCreated OperationResult = "created"
-	// OperationResultUpdated means that an existing resource is updated
+	// OperationResultUpdated means that an existing resource is updated.
 	OperationResultUpdated OperationResult = "updated"
-	// OperationResultUpdatedStatus means that an existing resource and its status is updated
+	// OperationResultUpdatedStatus means that an existing resource and its status is updated.
 	OperationResultUpdatedStatus OperationResult = "updatedStatus"
-	// OperationResultUpdatedStatusOnly means that only an existing status is updated
+	// OperationResultUpdatedStatusOnly means that only an existing status is updated.
 	OperationResultUpdatedStatusOnly OperationResult = "updatedStatusOnly"
 )
 
@@ -197,7 +195,7 @@ const ( // They should complete the sentence "Deployment default/foo has been ..
 func CreateOrUpdate(ctx context.Context, c client.Client, obj client.Object, f MutateFn) (OperationResult, error) {
 	key := client.ObjectKeyFromObject(obj)
 	if err := c.Get(ctx, key, obj); err != nil {
-		if !errors.IsNotFound(err) {
+		if !apierrors.IsNotFound(err) {
 			return OperationResultNone, err
 		}
 		if err := mutate(f, key, obj); err != nil {
@@ -209,7 +207,7 @@ func CreateOrUpdate(ctx context.Context, c client.Client, obj client.Object, f M
 		return OperationResultCreated, nil
 	}
 
-	existing := obj.DeepCopyObject()
+	existing := obj.DeepCopyObject() //nolint:ifshort
 	if err := mutate(f, key, obj); err != nil {
 		return OperationResultNone, err
 	}
@@ -234,7 +232,7 @@ func CreateOrUpdate(ctx context.Context, c client.Client, obj client.Object, f M
 func CreateOrPatch(ctx context.Context, c client.Client, obj client.Object, f MutateFn) (OperationResult, error) {
 	key := client.ObjectKeyFromObject(obj)
 	if err := c.Get(ctx, key, obj); err != nil {
-		if !errors.IsNotFound(err) {
+		if !apierrors.IsNotFound(err) {
 			return OperationResultNone, err
 		}
 		if f != nil {
@@ -249,8 +247,8 @@ func CreateOrPatch(ctx context.Context, c client.Client, obj client.Object, f Mu
 	}
 
 	// Create patches for the object and its possible status.
-	objPatch := client.MergeFrom(obj.DeepCopyObject())
-	statusPatch := client.MergeFrom(obj.DeepCopyObject())
+	objPatch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
+	statusPatch := client.MergeFrom(obj.DeepCopyObject().(client.Object))
 
 	// Create a copy of the original object as well as converting that copy to
 	// unstructured data.
@@ -309,6 +307,20 @@ func CreateOrPatch(ctx context.Context, c client.Client, obj client.Object, f Mu
 	if (hasBeforeStatus || hasAfterStatus) && !reflect.DeepEqual(beforeStatus, afterStatus) {
 		// Only issue a Status Patch if the resource has a status and the beforeStatus
 		// and afterStatus copies differ
+		if result == OperationResultUpdated {
+			// If Status was replaced by Patch before, set it to afterStatus
+			objectAfterPatch, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+			if err != nil {
+				return result, err
+			}
+			if err = unstructured.SetNestedField(objectAfterPatch, afterStatus, "status"); err != nil {
+				return result, err
+			}
+			// If Status was replaced by Patch before, restore patched structure to the obj
+			if err = runtime.DefaultUnstructuredConverter.FromUnstructured(objectAfterPatch, obj); err != nil {
+				return result, err
+			}
+		}
 		if err := c.Status().Patch(ctx, obj, statusPatch); err != nil {
 			return result, err
 		}
@@ -322,7 +334,7 @@ func CreateOrPatch(ctx context.Context, c client.Client, obj client.Object, f Mu
 	return result, nil
 }
 
-// mutate wraps a MutateFn and applies validation to its result
+// mutate wraps a MutateFn and applies validation to its result.
 func mutate(f MutateFn, key client.ObjectKey, obj client.Object) error {
 	if err := f(); err != nil {
 		return err

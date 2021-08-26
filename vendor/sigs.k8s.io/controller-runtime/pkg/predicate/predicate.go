@@ -65,7 +65,7 @@ type Funcs struct {
 	GenericFunc func(event.GenericEvent) bool
 }
 
-// Create implements Predicate
+// Create implements Predicate.
 func (p Funcs) Create(e event.CreateEvent) bool {
 	if p.CreateFunc != nil {
 		return p.CreateFunc(e)
@@ -73,7 +73,7 @@ func (p Funcs) Create(e event.CreateEvent) bool {
 	return true
 }
 
-// Delete implements Predicate
+// Delete implements Predicate.
 func (p Funcs) Delete(e event.DeleteEvent) bool {
 	if p.DeleteFunc != nil {
 		return p.DeleteFunc(e)
@@ -81,7 +81,7 @@ func (p Funcs) Delete(e event.DeleteEvent) bool {
 	return true
 }
 
-// Update implements Predicate
+// Update implements Predicate.
 func (p Funcs) Update(e event.UpdateEvent) bool {
 	if p.UpdateFunc != nil {
 		return p.UpdateFunc(e)
@@ -89,7 +89,7 @@ func (p Funcs) Update(e event.UpdateEvent) bool {
 	return true
 }
 
-// Generic implements Predicate
+// Generic implements Predicate.
 func (p Funcs) Generic(e event.GenericEvent) bool {
 	if p.GenericFunc != nil {
 		return p.GenericFunc(e)
@@ -117,12 +117,12 @@ func NewPredicateFuncs(filter func(object client.Object) bool) Funcs {
 	}
 }
 
-// ResourceVersionChangedPredicate implements a default update predicate function on resource version change
+// ResourceVersionChangedPredicate implements a default update predicate function on resource version change.
 type ResourceVersionChangedPredicate struct {
 	Funcs
 }
 
-// Update implements default UpdateEvent filter for validating resource version change
+// Update implements default UpdateEvent filter for validating resource version change.
 func (ResourceVersionChangedPredicate) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil {
 		log.Error(nil, "Update event has no old object to update", "event", e)
@@ -156,7 +156,7 @@ type GenerationChangedPredicate struct {
 	Funcs
 }
 
-// Update implements default UpdateEvent filter for validating generation change
+// Update implements default UpdateEvent filter for validating generation change.
 func (GenerationChangedPredicate) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil {
 		log.Error(nil, "Update event has no old object to update", "event", e)
@@ -186,7 +186,7 @@ type AnnotationChangedPredicate struct {
 	Funcs
 }
 
-// Update implements default UpdateEvent filter for validating annotation change
+// Update implements default UpdateEvent filter for validating annotation change.
 func (AnnotationChangedPredicate) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil {
 		log.Error(nil, "Update event has no old object to update", "event", e)
@@ -216,7 +216,7 @@ type LabelChangedPredicate struct {
 	Funcs
 }
 
-// Update implements default UpdateEvent filter for checking label change
+// Update implements default UpdateEvent filter for checking label change.
 func (LabelChangedPredicate) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil {
 		log.Error(nil, "Update event has no old object to update", "event", e)

@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
@@ -25,21 +26,21 @@ var (
 	// ReconcileTotal is a prometheus counter metrics which holds the total
 	// number of reconciliations per controller. It has two labels. controller label refers
 	// to the controller name and result label refers to the reconcile result i.e
-	// success, error, requeue, requeue_after
+	// success, error, requeue, requeue_after.
 	ReconcileTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "controller_runtime_reconcile_total",
 		Help: "Total number of reconciliations per controller",
 	}, []string{"controller", "result"})
 
 	// ReconcileErrors is a prometheus counter metrics which holds the total
-	// number of errors from the Reconciler
+	// number of errors from the Reconciler.
 	ReconcileErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "controller_runtime_reconcile_errors_total",
 		Help: "Total number of reconciliation errors per controller",
 	}, []string{"controller"})
 
 	// ReconcileTime is a prometheus metric which keeps track of the duration
-	// of reconciliations
+	// of reconciliations.
 	ReconcileTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "controller_runtime_reconcile_time_seconds",
 		Help: "Length of time per reconciliation per controller",
@@ -48,14 +49,14 @@ var (
 	}, []string{"controller"})
 
 	// WorkerCount is a prometheus metric which holds the number of
-	// concurrent reconciles per controller
+	// concurrent reconciles per controller.
 	WorkerCount = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "controller_runtime_max_concurrent_reconciles",
 		Help: "Maximum number of concurrent reconciles per controller",
 	}, []string{"controller"})
 
 	// ActiveWorkers is a prometheus metric which holds the number
-	// of active workers per controller
+	// of active workers per controller.
 	ActiveWorkers = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "controller_runtime_active_workers",
 		Help: "Number of currently used workers per controller",
@@ -70,8 +71,8 @@ func init() {
 		WorkerCount,
 		ActiveWorkers,
 		// expose process metrics like CPU, Memory, file descriptor usage etc.
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		// expose Go runtime metrics like GC stats, memory stats etc.
-		prometheus.NewGoCollector(),
+		collectors.NewGoCollector(),
 	)
 }

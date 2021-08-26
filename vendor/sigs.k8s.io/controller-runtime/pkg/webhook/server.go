@@ -29,10 +29,10 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"k8s.io/apimachinery/pkg/runtime"
+	kscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/internal/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/internal/metrics"
 )
 
@@ -41,6 +41,12 @@ var DefaultPort = 9443
 
 // Server is an admission webhook server that can serve traffic and
 // generates related k8s resources for deploying.
+//
+// TLS is required for a webhook to be accessed by kubernetes, so
+// you must provide a CertName and KeyName or have valid cert/key
+// at the default locations (tls.crt and tls.key). If you do not
+// want to configure TLS (i.e for testing purposes) run an
+// admission.StandaloneWebhook in your own server.
 type Server struct {
 	// Host is the address that the server will listen on.
 	// Defaults to "" - all addresses.
@@ -63,6 +69,10 @@ type Server struct {
 	// ClientCAName is the CA certificate name which server used to verify remote(client)'s certificate.
 	// Defaults to "", which means server does not verify client's certificate.
 	ClientCAName string
+
+	// TLSVersion is the minimum version of TLS supported. Accepts
+	// "", "1.0", "1.1", "1.2" and "1.3" only ("" is equivalent to "1.0" for backwards compatibility)
+	TLSMinVersion string
 
 	// WebhookMux is the multiplexer that handles different webhooks.
 	WebhookMux *http.ServeMux
@@ -118,13 +128,12 @@ func (s *Server) Register(path string, hook http.Handler) {
 	defer s.mu.Unlock()
 
 	s.defaultingOnce.Do(s.setDefaults)
-	_, found := s.webhooks[path]
-	if found {
+	if _, found := s.webhooks[path]; found {
 		panic(fmt.Errorf("can't register duplicate path: %v", path))
 	}
 	// TODO(directxman12): call setfields if we've already started the server
 	s.webhooks[path] = hook
-	s.WebhookMux.Handle(path, instrumentedHook(path, hook))
+	s.WebhookMux.Handle(path, metrics.InstrumentedHook(path, hook))
 
 	regLog := log.WithValues("path", path)
 	regLog.Info("registering webhook")
@@ -149,25 +158,44 @@ func (s *Server) Register(path string, hook http.Handler) {
 	}
 }
 
-// instrumentedHook adds some instrumentation on top of the given webhook.
-func instrumentedHook(path string, hookRaw http.Handler) http.Handler {
-	lbl := prometheus.Labels{"webhook": path}
+// StartStandalone runs a webhook server without
+// a controller manager.
+func (s *Server) StartStandalone(ctx context.Context, scheme *runtime.Scheme) error {
+	// Use the Kubernetes client-go scheme if none is specified
+	if scheme == nil {
+		scheme = kscheme.Scheme
+	}
 
-	lat := metrics.RequestLatency.MustCurryWith(lbl)
-	cnt := metrics.RequestTotal.MustCurryWith(lbl)
-	gge := metrics.RequestInFlight.With(lbl)
+	if err := s.InjectFunc(func(i interface{}) error {
+		if _, err := inject.SchemeInto(scheme, i); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 
-	// Initialize the most likely HTTP status codes.
-	cnt.WithLabelValues("200")
-	cnt.WithLabelValues("500")
+	return s.Start(ctx)
+}
 
-	return promhttp.InstrumentHandlerDuration(
-		lat,
-		promhttp.InstrumentHandlerCounter(
-			cnt,
-			promhttp.InstrumentHandlerInFlight(gge, hookRaw),
-		),
-	)
+// tlsVersion converts from human-readable TLS version (for example "1.1")
+// to the values accepted by tls.Config (for example 0x301).
+func tlsVersion(version string) (uint16, error) {
+	switch version {
+	// default is previous behaviour
+	case "":
+		return tls.VersionTLS10, nil
+	case "1.0":
+		return tls.VersionTLS10, nil
+	case "1.1":
+		return tls.VersionTLS11, nil
+	case "1.2":
+		return tls.VersionTLS12, nil
+	case "1.3":
+		return tls.VersionTLS13, nil
+	default:
+		return 0, fmt.Errorf("invalid TLSMinVersion %v: expects 1.0, 1.1, 1.2, 1.3 or empty", version)
+	}
 }
 
 // Start runs the server.
@@ -192,9 +220,15 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
-	cfg := &tls.Config{
+	tlsMinVersion, err := tlsVersion(s.TLSMinVersion)
+	if err != nil {
+		return err
+	}
+
+	cfg := &tls.Config{ //nolint:gosec
 		NextProtos:     []string{"h2"},
 		GetCertificate: certWatcher.GetCertificate,
+		MinVersion:     tlsMinVersion,
 	}
 
 	// load CA to verify client certificate
@@ -214,7 +248,7 @@ func (s *Server) Start(ctx context.Context) error {
 		cfg.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
-	listener, err := tls.Listen("tcp", net.JoinHostPort(s.Host, strconv.Itoa(int(s.Port))), cfg)
+	listener, err := tls.Listen("tcp", net.JoinHostPort(s.Host, strconv.Itoa(s.Port)), cfg)
 	if err != nil {
 		return err
 	}

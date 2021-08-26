@@ -31,7 +31,7 @@ type Decoder struct {
 	codecs serializer.CodecFactory
 }
 
-// NewDecoder creates a Decoder given the runtime.Scheme
+// NewDecoder creates a Decoder given the runtime.Scheme.
 func NewDecoder(scheme *runtime.Scheme) (*Decoder, error) {
 	return &Decoder{codecs: serializer.NewCodecFactory(scheme)}, nil
 }
@@ -64,11 +64,7 @@ func (d *Decoder) DecodeRaw(rawObj runtime.RawExtension, into runtime.Object) er
 	}
 	if unstructuredInto, isUnstructured := into.(*unstructured.Unstructured); isUnstructured {
 		// unmarshal into unstructured's underlying object to avoid calling the decoder
-		if err := json.Unmarshal(rawObj.Raw, &unstructuredInto.Object); err != nil {
-			return err
-		}
-
-		return nil
+		return json.Unmarshal(rawObj.Raw, &unstructuredInto.Object)
 	}
 
 	deserializer := d.codecs.UniversalDeserializer()
