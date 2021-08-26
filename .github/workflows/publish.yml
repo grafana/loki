@@ -3,7 +3,7 @@ name: publish_docs
 on:
   push:
     branches:
-    - main
+    - release-2.3
     paths:
     - 'docs/sources/**'
 
@@ -31,7 +31,7 @@ jobs:
         host: github.com
         github_pat: '${{ secrets.GH_BOT_ACCESS_TOKEN }}'
         source_folder: docs/sources
-        target_folder: content/docs/loki/next
+        target_folder: content/docs/loki/latest
     - shell: bash
       run: |
         test -n "${{ steps.publish.outputs.commit_hash }}"
