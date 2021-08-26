@@ -39,6 +39,7 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 				Name: configVolumeName,
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
+						DefaultMode: &defaultConfigMapMode,
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: lokiConfigMapName(opts.Name),
 						},
@@ -67,8 +68,11 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 							Scheme: corev1.URISchemeHTTP,
 						},
 					},
+					PeriodSeconds:       10,
 					InitialDelaySeconds: 15,
 					TimeoutSeconds:      1,
+					SuccessThreshold:    1,
+					FailureThreshold:    3,
 				},
 				LivenessProbe: &corev1.Probe{
 					Handler: corev1.Handler{
@@ -81,19 +85,23 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 					TimeoutSeconds:   2,
 					PeriodSeconds:    30,
 					FailureThreshold: 10,
+					SuccessThreshold: 1,
 				},
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          "metrics",
 						ContainerPort: httpPort,
+						Protocol:      protocolTCP,
 					},
 					{
 						Name:          "grpc",
 						ContainerPort: grpcPort,
+						Protocol:      protocolTCP,
 					},
 					{
 						Name:          "gossip-ring",
 						ContainerPort: gossipPort,
+						Protocol:      protocolTCP,
 					},
 				},
 				VolumeMounts: []corev1.VolumeMount{
@@ -108,6 +116,9 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 						MountPath: dataDirectory,
 					},
 				},
+				TerminationMessagePath:   "/dev/termination-log",
+				TerminationMessagePolicy: "File",
+				ImagePullPolicy:          "IfNotPresent",
 			},
 		},
 	}
@@ -161,6 +172,7 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 							},
 						},
 						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
 			},
@@ -185,8 +197,10 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 			ClusterIP: "None",
 			Ports: []corev1.ServicePort{
 				{
-					Name: "grpc",
-					Port: grpcPort,
+					Name:       "grpc",
+					Port:       grpcPort,
+					Protocol:   protocolTCP,
+					TargetPort: intstr.IntOrString{IntVal: grpcPort},
 				},
 			},
 			Selector: l,
@@ -213,8 +227,10 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
-					Name: "http",
-					Port: httpPort,
+					Name:       "http",
+					Port:       httpPort,
+					Protocol:   protocolTCP,
+					TargetPort: intstr.IntOrString{IntVal: httpPort},
 				},
 			},
 			Selector: l,

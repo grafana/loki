@@ -3,6 +3,8 @@ package manifests
 import (
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/util/intstr"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -22,9 +24,10 @@ func BuildLokiGossipRingService(stackName string) *corev1.Service {
 			ClusterIP: "None",
 			Ports: []corev1.ServicePort{
 				{
-					Name:     "gossip",
-					Port:     gossipPort,
-					Protocol: "TCP",
+					Name:       "gossip",
+					Port:       gossipPort,
+					Protocol:   protocolTCP,
+					TargetPort: intstr.IntOrString{IntVal: gossipPort},
 				},
 			},
 			Selector: commonLabels(stackName),

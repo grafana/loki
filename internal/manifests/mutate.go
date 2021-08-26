@@ -3,6 +3,10 @@ package manifests
 import (
 	"reflect"
 
+	"github.com/ViaQ/logerr/log"
+
+	"github.com/imdario/mergo"
+
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"github.com/ViaQ/logerr/kverrors"
@@ -22,8 +26,13 @@ import (
 // - ServiceMonitor
 func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 	return func() error {
-		existing.SetAnnotations(desired.GetAnnotations())
-		existing.SetLabels(desired.GetLabels())
+		existingAnnotations := existing.GetAnnotations()
+		mergeWithOverride(&existingAnnotations, desired.GetAnnotations())
+		existing.SetAnnotations(existingAnnotations)
+
+		existingLabels := existing.GetLabels()
+		mergeWithOverride(&existingLabels, desired.GetLabels())
+		existing.SetLabels(existingLabels)
 
 		switch existing.(type) {
 		case *corev1.ConfigMap:
@@ -59,24 +68,31 @@ func MutateFuncFor(existing, desired client.Object) controllerutil.MutateFn {
 	}
 }
 
+func mergeWithOverride(dst, src interface{}) {
+	err := mergo.Merge(dst, src, mergo.WithOverride)
+	if err != nil {
+		log.Error(err, "unable to mergeWithOverride", "dst", dst, "src", src)
+	}
+}
+
 func mutateConfigMap(existing, desired *corev1.ConfigMap) {
 	existing.BinaryData = desired.BinaryData
 }
 
 func mutateService(existing, desired *corev1.Service) {
 	existing.Spec.Ports = desired.Spec.Ports
-	existing.Spec.Selector = desired.Spec.Selector
+	mergeWithOverride(&existing.Spec.Selector, desired.Spec.Selector)
 }
 
 func mutateDeployment(existing, desired *appsv1.Deployment) {
 	// Deployment selector is immutable so we set this value only if
 	// a new object is going to be created
 	if existing.CreationTimestamp.IsZero() {
-		existing.Spec.Selector = desired.Spec.Selector
+		mergeWithOverride(existing.Spec.Selector, desired.Spec.Selector)
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	existing.Spec.Template = desired.Spec.Template
-	existing.Spec.Strategy = desired.Spec.Strategy
+	mergeWithOverride(&existing.Spec.Template, desired.Spec.Template)
+	mergeWithOverride(&existing.Spec.Strategy, desired.Spec.Strategy)
 }
 
 func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
@@ -87,8 +103,12 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
 	}
 	existing.Spec.PodManagementPolicy = desired.Spec.PodManagementPolicy
 	existing.Spec.Replicas = desired.Spec.Replicas
-	existing.Spec.Template = desired.Spec.Template
-	existing.Spec.VolumeClaimTemplates = desired.Spec.VolumeClaimTemplates
+	mergeWithOverride(&existing.Spec.Template, desired.Spec.Template)
+	for i := range existing.Spec.VolumeClaimTemplates {
+		existing.Spec.VolumeClaimTemplates[i].TypeMeta = desired.Spec.VolumeClaimTemplates[i].TypeMeta
+		existing.Spec.VolumeClaimTemplates[i].ObjectMeta = desired.Spec.VolumeClaimTemplates[i].ObjectMeta
+		existing.Spec.VolumeClaimTemplates[i].Spec = desired.Spec.VolumeClaimTemplates[i].Spec
+	}
 }
 
 func mutateServiceMonitor(existing, desired *monitoringv1.ServiceMonitor) {

@@ -4,15 +4,15 @@ import (
 	"fmt"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
 const (
-	gossipPort = 7946
-	httpPort   = 3100
-	grpcPort   = 9095
-
+	gossipPort  = 7946
+	httpPort    = 3100
+	grpcPort    = 9095
+	protocolTCP = "TCP"
 	// DefaultContainerImage declares the default fallback for loki image.
 	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
 
@@ -36,6 +36,11 @@ const (
 	LabelQuerierComponent string = "querier"
 	// LabelQueryFrontendComponent is the label value for the query frontend component
 	LabelQueryFrontendComponent string = "query-frontend"
+)
+
+var (
+	defaultConfigMapMode = int32(420)
+	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
 )
 
 func commonAnnotations(h string) map[string]string {
