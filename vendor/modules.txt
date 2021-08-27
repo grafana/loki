@@ -567,9 +567,10 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 ## explicit
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20210819132858-471020752967
+# github.com/grafana/dskit v0.0.0-20210827060659-9daca2f00327
 ## explicit
 github.com/grafana/dskit/backoff
+github.com/grafana/dskit/flagext
 github.com/grafana/dskit/modules
 github.com/grafana/dskit/services
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0

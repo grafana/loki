@@ -17,18 +17,18 @@ const (
 
 // ManagerListener listens for events from Manager.
 type ManagerListener interface {
-	// Called when Manager reaches Healthy state (all services Running)
+	// Healthy is called when Manager reaches Healthy state (all services Running)
 	Healthy()
 
-	// Called when Manager reaches Stopped state (all services are either Terminated or Failed)
+	// Stopped is called when Manager reaches Stopped state (all services are either Terminated or Failed)
 	Stopped()
 
-	// Called when service fails.
+	// Failure is called when service fails.
 	Failure(service Service)
 }
 
-// Service Manager is initialized with a collection of services. They all must be in New state.
-// Service manager can start them, and observe their state as a group.
+// Manager is initialized with a collection of services. They all must be in New state.
+// Manager can start them, and observe their state as a group.
 // Once all services are running, Manager is said to be Healthy. It is possible for manager to never reach the Healthy state, if some services fail to start.
 // When all services are stopped (Terminated or Failed), manager is Stopped.
 type Manager struct {
@@ -72,7 +72,7 @@ func NewManager(services ...Service) (*Manager, error) {
 	return m, nil
 }
 
-// Initiates service startup on all the services being managed.
+// StartAsync initiates service startup on all the services being managed.
 // It is only valid to call this method if all of the services are New.
 func (m *Manager) StartAsync(ctx context.Context) error {
 	for _, s := range m.services {
@@ -84,7 +84,7 @@ func (m *Manager) StartAsync(ctx context.Context) error {
 	return nil
 }
 
-// Initiates service shutdown if necessary on all the services being managed.
+// StopAsync initiates service shutdown if necessary on all the services being managed.
 func (m *Manager) StopAsync() {
 	if m == nil {
 		return
@@ -95,7 +95,7 @@ func (m *Manager) StopAsync() {
 	}
 }
 
-// Returns true if all services are currently in the Running state.
+// IsHealthy returns true if all services are currently in the Running state.
 func (m *Manager) IsHealthy() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -103,7 +103,7 @@ func (m *Manager) IsHealthy() bool {
 	return m.state == healthy
 }
 
-// Waits for the ServiceManager to become healthy. Returns nil, if manager is healthy, error otherwise (eg. manager
+// AwaitHealthy waits for the ServiceManager to become healthy. Returns nil, if manager is healthy, error otherwise (eg. manager
 // is in a state in which it cannot get healthy anymore).
 func (m *Manager) AwaitHealthy(ctx context.Context) error {
 	select {
@@ -132,7 +132,7 @@ func (m *Manager) AwaitHealthy(ctx context.Context) error {
 	return nil
 }
 
-// Returns true if all services are in terminal state (Terminated or Failed)
+// IsStopped returns true if all services are in terminal state (Terminated or Failed)
 func (m *Manager) IsStopped() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -140,7 +140,7 @@ func (m *Manager) IsStopped() bool {
 	return m.state == stopped
 }
 
-// Waits for the ServiceManager to become stopped. Returns nil, if manager is stopped, error when context finishes earlier.
+// AwaitStopped waits for the ServiceManager to become stopped. Returns nil, if manager is stopped, error when context finishes earlier.
 func (m *Manager) AwaitStopped(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
@@ -150,7 +150,7 @@ func (m *Manager) AwaitStopped(ctx context.Context) error {
 	}
 }
 
-// Provides a snapshot of the current state of all the services under management.
+// ServicesByState provides a snapshot of the current state of all the services under management.
 func (m *Manager) ServicesByState() map[State][]Service {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -219,7 +219,7 @@ func (m *Manager) serviceStateChanged(s Service, from State, to State) {
 	}
 }
 
-// Registers a ManagerListener to be run when this Manager changes state.
+// AddListener registers a ManagerListener to be run when this Manager changes state.
 // The listener will not have previous state changes replayed, so it is suggested that listeners are added before any of the managed services are started.
 //
 // AddListener guarantees execution ordering across calls to a given listener but not across calls to multiple listeners.

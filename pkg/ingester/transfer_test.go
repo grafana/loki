@@ -11,7 +11,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
