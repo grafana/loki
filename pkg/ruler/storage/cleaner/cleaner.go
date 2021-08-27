@@ -69,7 +69,7 @@ type WALCleaner struct {
 // NewWALCleaner creates a new cleaner that looks for abandoned WALs in the given
 // directory and removes them if they haven't been modified in over minAge. Starts
 // a goroutine to periodically run the cleanup method in a loop
-func NewWALCleaner(logger log.Logger, manager instance.Manager, metrics *Metrics, walDirectory string, minAge time.Duration, period time.Duration) *WALCleaner {
+func NewWALCleaner(logger log.Logger, manager instance.Manager, metrics *Metrics, walDirectory string, cfg Config) *WALCleaner {
 	c := &WALCleaner{
 		logger:          log.With(logger, "component", "cleaner"),
 		instanceManager: manager,
@@ -82,14 +82,14 @@ func NewWALCleaner(logger log.Logger, manager instance.Manager, metrics *Metrics
 		metrics: metrics,
 	}
 
-	if minAge > 0 {
-		c.minAge = minAge
+	if cfg.MinAge > 0 {
+		c.minAge = cfg.MinAge
 	}
 
 	// We allow a period of 0 here because '0' means "don't run the task". This
 	// is handled by not running a ticker at all in the run method.
-	if period >= 0 {
-		c.period = period
+	if cfg.Period >= 0 {
+		c.period = cfg.Period
 	}
 
 	go c.run()
@@ -205,6 +205,11 @@ func (c *WALCleaner) cleanup() {
 
 	c.metrics.ManagedStorage.Set(float64(len(managed)))
 	c.metrics.AbandonedStorage.Set(float64(len(abandoned)))
+
+	// NOTE: this is a little imperfect right now; the manager cannot currently be notified when an
+	// instance (rule group) is removed by the prometheus QueueManager, so the cleaner will only really
+	// become aware of "abandoned" instances when the ruler is restarted.
+	// TODO(dannyk): contribute a callback mechanism to prometheus to allow for this hook
 
 	for _, a := range abandoned {
 		level.Info(c.logger).Log("msg", "deleting abandoned WAL", "name", a)

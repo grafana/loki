@@ -42,30 +42,29 @@ var (
 var (
 	DefaultConfig = Config{
 		WALTruncateFrequency: 60 * time.Minute,
-		MinWALTime:           5 * time.Minute,
-		MaxWALTime:           4 * time.Hour,
+		MinAge:               5 * time.Minute,
+		MaxAge:               4 * time.Hour,
 		RemoteFlushDeadline:  1 * time.Minute,
-		WriteStaleOnShutdown: false,
 	}
 )
 
 // Config is a specific agent that runs within the overall Prometheus
 // agent. It has its own set of scrape_configs and remote_write rules.
 type Config struct {
-	Tenant        string
-	Name          string                      `yaml:"name,omitempty"`
-	ScrapeConfigs []*config.ScrapeConfig      `yaml:"scrape_configs,omitempty"`
-	RemoteWrite   []*config.RemoteWriteConfig `yaml:"remote_write,omitempty"`
+	Tenant      string
+	Name        string
+	RemoteWrite []*config.RemoteWriteConfig
+
+	Path string `yaml:"path"`
 
 	// How frequently the WAL should be truncated.
-	WALTruncateFrequency time.Duration `yaml:"wal_truncate_frequency,omitempty"`
+	WALTruncateFrequency time.Duration `yaml:"truncate_frequency,omitempty"`
 
 	// Minimum and maximum time series should exist in the WAL for.
-	MinWALTime time.Duration `yaml:"min_wal_time,omitempty"`
-	MaxWALTime time.Duration `yaml:"max_wal_time,omitempty"`
+	MinAge time.Duration `yaml:"min_age,omitempty"`
+	MaxAge time.Duration `yaml:"max_age,omitempty"`
 
-	RemoteFlushDeadline  time.Duration `yaml:"remote_flush_deadline,omitempty"`
-	WriteStaleOnShutdown bool          `yaml:"write_stale_on_shutdown,omitempty"`
+	RemoteFlushDeadline time.Duration  `yaml:"remote_flush_deadline,omitempty"`
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
@@ -108,7 +107,7 @@ func (c *Config) ApplyDefaults() error {
 		return errors.New("wal_truncate_frequency must be greater than 0s")
 	case c.RemoteFlushDeadline <= 0:
 		return errors.New("remote_flush_deadline must be greater than 0s")
-	case c.MinWALTime > c.MaxWALTime:
+	case c.MinAge > c.MaxAge:
 		return errors.New("min_wal_time must be less than max_wal_time")
 	}
 
@@ -134,9 +133,6 @@ func (c *Config) Clone() (Config, error) {
 	// Some tests will trip up on this; the marshal/unmarshal cycle might set
 	// an empty slice to nil. Set it back to an empty slice if we detect this
 	// happening.
-	if cp.ScrapeConfigs == nil && c.ScrapeConfigs != nil {
-		cp.ScrapeConfigs = []*config.ScrapeConfig{}
-	}
 	if cp.RemoteWrite == nil && c.RemoteWrite != nil {
 		cp.RemoteWrite = []*config.RemoteWriteConfig{}
 	}
@@ -171,10 +167,10 @@ type Instance struct {
 
 // New creates a new Instance with a directory for storing the WAL. The instance
 // will not start until Run is called on the instance.
-func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, walDir string, logger log.Logger) (*Instance, error) {
+func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger) (*Instance, error) {
 	logger = log.With(logger, "instance", cfg.Name)
 
-	instWALDir := filepath.Join(walDir, cfg.Tenant)
+	instWALDir := filepath.Join(cfg.Path, cfg.Tenant)
 
 	newWal := func(reg prometheus.Registerer) (walStorage, error) {
 		return wal.NewStorage(logger, metrics, reg, instWALDir)
@@ -323,8 +319,6 @@ func (i *Instance) Update(c Config) (err error) {
 		err = errImmutableField{Field: "wal_truncate_frequency"}
 	case i.cfg.RemoteFlushDeadline != c.RemoteFlushDeadline:
 		err = errImmutableField{Field: "remote_flush_deadline"}
-	case i.cfg.WriteStaleOnShutdown != c.WriteStaleOnShutdown:
-		err = errImmutableField{Field: "write_stale_on_shutdown"}
 	}
 	if err != nil {
 		return ErrInvalidUpdate{Inner: err}
@@ -398,7 +392,7 @@ func (i *Instance) truncateLoop(ctx context.Context, wal walStorage, cfg *Config
 			//
 			// Subtracting a duration from ts will delay when it will be considered
 			// inactive and scheduled for deletion.
-			ts := i.getRemoteWriteTimestamp() - i.cfg.MinWALTime.Milliseconds()
+			ts := i.getRemoteWriteTimestamp() - i.cfg.MinAge.Milliseconds()
 			if ts < 0 {
 				ts = 0
 			}
@@ -407,7 +401,7 @@ func (i *Instance) truncateLoop(ctx context.Context, wal walStorage, cfg *Config
 			// changing. We don't want data in the WAL to grow forever, so we set a cap
 			// on the maximum age data can be. If our ts is older than this cutoff point,
 			// we'll shift it forward to start deleting very stale data.
-			if maxTS := timestamp.FromTime(time.Now().Add(-i.cfg.MaxWALTime)); ts < maxTS {
+			if maxTS := timestamp.FromTime(time.Now().Add(-i.cfg.MaxAge)); ts < maxTS {
 				ts = maxTS
 			}
 

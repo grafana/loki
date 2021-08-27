@@ -306,7 +306,7 @@ func TestNonMetricQuery(t *testing.T) {
 	require.Nil(t, err)
 
 	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides)
-	queryFunc := engineQueryFunc(engine, overrides, nil, "fake")
+	queryFunc := engineQueryFunc(log.NewNopLogger(), engine, overrides, nil, "fake")
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")

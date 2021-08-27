@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	c "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
@@ -47,7 +45,7 @@ type RulesLimits interface {
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, manager instance.Manager, userID string) rules.QueryFunc {
+func engineQueryFunc(logger log.Logger, engine *logql.Engine, overrides RulesLimits, manager instance.Manager, userID string) rules.QueryFunc {
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
@@ -186,8 +184,6 @@ func (n notReadyAppender) Commit() error { return errNotReady }
 
 func (n notReadyAppender) Rollback() error { return errNotReady }
 
-var instances []instance.ManagedInstance
-
 const MetricsPrefix = "loki_ruler_wal_"
 
 var walCleaner *cleaner.WALCleaner
@@ -206,7 +202,7 @@ func (t *TenantWALManager) newInstance(c instance.Config) (instance.ManagedInsta
 	// TODO how will unregistering work when a rule group is removed?
 
 	// create metrics here and pass down
-	return instance.New(reg, c, wal.NewMetrics(reg), "scratch/wal", t.logger)
+	return instance.New(reg, c, wal.NewMetrics(reg), t.logger)
 }
 
 func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
@@ -220,16 +216,10 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 
 	reg.MustRegister(appenderReady)
 
-	// this need to be multi-tenant
 	walRegistry := newStorageRegistry(log.With(logger, "storage", "registry"), appenderReady)
 
 	instMetrics := instance.NewMetrics(reg)
 	msMetrics = newMemstoreMetrics(reg)
-
-	//promCfg.WALDir = "scratch/wal"
-	//promCfg.WALCleanupAge = 1*time.Minute
-	//promCfg.WALCleanupPeriod = 30*time.Second
-	//promCfg.Global = instance.GlobalConfig{}
 
 	man := &TenantWALManager{
 		reg:    reg,
@@ -249,9 +239,8 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 		logger,
 		manager,
 		cleaner.NewMetrics(reg),
-		"scratch/wal",
-		30*time.Second,
-		10*time.Second)
+		cfg.WAL.Path,
+		cfg.WALCleaner)
 
 	walRegistry.Set(manager)
 
@@ -262,10 +251,10 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-		setupStorage(manager, userID, overrides, logger)
+		setupStorage(cfg, manager, userID, overrides)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(engine, overrides, manager, userID)
+		queryFunc := engineQueryFunc(logger, engine, overrides, manager, userID)
 		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
@@ -290,68 +279,28 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 	}
 }
 
-func setupStorage(manager instance.Manager, tenant string, overrides RulesLimits, logger log.Logger) {
-	// TODO: enable and refactor
-	//if _, err := manager.GetInstance(tenant); err == nil {
-	//	if err := manager.DeleteConfig(tenant); err != nil {
-	//		level.Warn(logger).Log("msg", "tenant WAL does not exist", "tenant", tenant, "err", err)
-	//	}
-	//}
+func setupStorage(cfg Config, manager instance.Manager, tenant string, overrides RulesLimits) {
+	// TODO: add per-tenant overrides
 
-	conf := instance.DefaultConfig
+	conf := cfg.WAL
+
 	conf.Name = tenant
 	conf.Tenant = tenant
-	// set this explicitly since it'll be going away soon - NOT CONFIGURABLE
-	conf.WriteStaleOnShutdown = false
-	//conf.WALTruncateFrequency = 30*time.Second
-	//conf.MinWALTime = 5*time.Second
-	//conf.MaxWALTime = 1*time.Minute
-
-	var u url.URL
-	uu, err := u.Parse("http://localhost:9090/api/v1/write")
-	if err != nil {
-		panic(err)
+	if cfg.RemoteWrite.Client.Headers == nil {
+		cfg.RemoteWrite.Client.Headers = make(map[string]string)
 	}
 
-	rwConf := config.DefaultRemoteWriteConfig
-	rwConf.MetadataConfig.Send = false
-	rwConf.Name = tenant
-	rwConf.QueueConfig.MaxSamplesPerSend = 1000
-	rwConf.QueueConfig.Capacity = overrides.RulerRemoteWriteQueueCapacity(tenant)
-	rwConf.QueueConfig.RetryOnRateLimit = true
-	//def.QueueConfig.MinShards = 10
-	//def.RemoteTimeout = model.Duration(30*time.Nanosecond)
-	//def.QueueConfig.BatchSendDeadline = model.Duration(10*time.Millisecond)
-	rwConf.URL = &c.URL{uu}
-	rwConf.Name = tenant
-	rwConf.Headers = map[string]string{
-		"X-Scope-OrgId": tenant,
+	// we don't need to send metadata - we have no scrape targets
+	cfg.RemoteWrite.Client.MetadataConfig.Send = false
+
+	// inject the X-Org-ScopeId header for multi-tenant metrics backends
+	cfg.RemoteWrite.Client.Headers[user.OrgIDHeaderName] = tenant
+
+	conf.RemoteWrite = []*config.RemoteWriteConfig{
+		&cfg.RemoteWrite.Client,
 	}
 
-	conf.RemoteWrite = []*config.RemoteWriteConfig{&rwConf}
-	//cfg := agent.Config()
-	//
-	//var currConfigs []instance.Config
-	//for _, c := range cfg.Configs {
-	//	// remove old config, if present
-	//	if c.Name == tenant {
-	//		continue
-	//	}
-	//
-	//	currConfigs = append(currConfigs, c)
-	//}
-	//
-	//cfg.Configs = append(currConfigs, conf)
-	//
-	//inst, err := instance.New(reg, conf, metrics, "scratch/wal", log.With(logger, "component", "tenant-wal"))
-	//if err != nil {
-	//	// TODO: don't panic
-	//	panic(err)
-	//}
-	//
-	//instances = append(instances, inst)
-
-	if err = manager.ApplyConfig(conf); err != nil {
+	if err := manager.ApplyConfig(conf); err != nil {
 		// TODO: don't panic
 		panic(err)
 	}
