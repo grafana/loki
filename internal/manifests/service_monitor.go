@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/kverrors"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -141,12 +140,32 @@ func configureServiceMonitorPKI(podSpec *corev1.PodSpec, serviceName string) err
 			"-server.http-tls-key-path=/etc/proxy/secrets/tls.key",
 		},
 	}
+	uriSchemeContainerSpec := corev1.Container{
+		ReadinessProbe: &corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Scheme: corev1.URISchemeHTTPS,
+				},
+			},
+		},
+		LivenessProbe: &corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Scheme: corev1.URISchemeHTTPS,
+				},
+			},
+		},
+	}
 
 	if err := mergo.Merge(podSpec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge volumes")
 	}
 
 	if err := mergo.Merge(&podSpec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	if err := mergo.Merge(&podSpec.Containers[0], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 

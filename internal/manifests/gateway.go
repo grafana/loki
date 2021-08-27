@@ -290,12 +290,32 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec) error {
 			fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", path.Join(gateway.LokiGatewayTLSDir, "ca")),
 		},
 	}
+	uriSchemeContainerSpec := corev1.Container{
+		ReadinessProbe: &corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Scheme: corev1.URISchemeHTTPS,
+				},
+			},
+		},
+		LivenessProbe: &corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Scheme: corev1.URISchemeHTTPS,
+				},
+			},
+		},
+	}
 
 	if err := mergo.Merge(podSpec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge volumes")
 	}
 
 	if err := mergo.Merge(&podSpec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	if err := mergo.Merge(&podSpec.Containers[0], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
