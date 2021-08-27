@@ -1,0 +1,16 @@
+roleBindings:
+- name: telemeter
+  roles:
+  - read-write
+  subjects:
+  - kind: user
+    name: admin@example.com
+roles:
+- name: read-write
+  permissions:
+  - read
+  - write
+  resources:
+  - metrics
+  tenants:
+  - telemeter

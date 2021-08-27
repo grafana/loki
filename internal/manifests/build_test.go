@@ -106,7 +106,7 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 		},
 		{
 			desc:         "service monitor per component created",
-			MonitorCount: 5,
+			MonitorCount: 6,
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -191,6 +191,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 				NewQuerierHTTPService(tst.BuildOptions),
 				NewQueryFrontendHTTPService(tst.BuildOptions),
 				NewCompactorHTTPService(tst.BuildOptions),
+				NewGatewayHTTPService(tst.BuildOptions),
 			}
 
 			for _, service := range httpServices {
@@ -204,6 +205,58 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 	}
 }
 
+func TestBuildAll_WithFeatureFlags_EnableGateway(t *testing.T) {
+	type test struct {
+		desc         string
+		BuildOptions Options
+	}
+	table := []test{
+		{
+			desc: "no lokistack-gateway created",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+				},
+				Flags: FeatureFlags{
+					EnableGateway:                 false,
+					EnableTLSServiceMonitorConfig: false,
+				},
+			},
+		},
+		{
+			desc: "lokistack-gateway created",
+			BuildOptions: Options{
+				Name:      "test",
+				Namespace: "test",
+				Stack: lokiv1beta1.LokiStackSpec{
+					Size: lokiv1beta1.SizeOneXSmall,
+				},
+				Flags: FeatureFlags{
+					EnableGateway:                 true,
+					EnableTLSServiceMonitorConfig: true,
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.desc, func(t *testing.T) {
+			t.Parallel()
+			err := ApplyDefaultSettings(&tst.BuildOptions)
+			require.NoError(t, err)
+			objects, buildErr := BuildAll(tst.BuildOptions)
+			require.NoError(t, buildErr)
+			if tst.BuildOptions.Flags.EnableGateway {
+				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
+			} else {
+				require.False(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
+			}
+		})
+	}
+}
+
 func serviceMonitorCount(objects []client.Object) int {
 	monitors := 0
 	for _, obj := range objects {
@@ -212,4 +265,14 @@ func serviceMonitorCount(objects []client.Object) int {
 		}
 	}
 	return monitors
+}
+
+func checkGatewayDeployed(objects []client.Object, stackName string) bool {
+	for _, obj := range objects {
+		if obj.GetObjectKind().GroupVersionKind().Kind == "Deployment" &&
+			obj.GetName() == GatewayName(stackName) {
+			return true
+		}
+	}
+	return false
 }

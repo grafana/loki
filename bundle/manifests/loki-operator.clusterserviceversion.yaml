@@ -263,6 +263,14 @@ spec:
         path: template.distributor.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Gateway defines the lokistack-gateway component spec.
+        displayName: Gateway pods
+        path: template.gateway
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.gateway.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
       - description: Ingester defines the ingester component spec.
         displayName: Ingester pods
         path: template.ingester

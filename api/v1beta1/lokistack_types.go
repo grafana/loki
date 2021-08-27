@@ -133,6 +133,13 @@ type LokiTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Frontend pods"
 	QueryFrontend *LokiComponentSpec `json:"queryFrontend,omitempty"`
+
+	// Gateway defines the lokistack-gateway component spec.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Gateway pods"
+	Gateway *LokiComponentSpec `json:"gateway,omitempty"`
 }
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.

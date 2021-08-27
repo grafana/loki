@@ -1,0 +1,9 @@
+tenants:
+- name: telemeter
+  id: FB870BF3-9F3A-44FF-9BF7-D7A047A52F43
+  oidc:
+    clientID: telemeter
+    clientSecret: test
+    issuerURL: http://127.0.0.1:5556/dex
+    redirectURL: http://localhost:8080/oidc/telemeter/callback
+    usernameClaim: email

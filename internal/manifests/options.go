@@ -35,4 +35,5 @@ type FeatureFlags struct {
 	EnableCertificateSigningService bool
 	EnableServiceMonitors           bool
 	EnableTLSServiceMonitorConfig   bool
+	EnableGateway                   bool
 }

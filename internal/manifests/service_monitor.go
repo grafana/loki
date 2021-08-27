@@ -20,6 +20,7 @@ func BuildServiceMonitors(opts Options) []client.Object {
 		NewQuerierServiceMonitor(opts),
 		NewCompactorServiceMonitor(opts),
 		NewQueryFrontendServiceMonitor(opts),
+		NewGatewayServiceMonitor(opts),
 	}
 }
 
@@ -73,6 +74,17 @@ func NewQueryFrontendServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(QueryFrontendName(opts.Name))
 	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
+	lokiEndpoint := serviceMonitorLokiEndPoint(opts.Name, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+
+	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
+}
+
+// NewGatewayServiceMonitor creates a k8s service monitor for the lokistack-gateway component
+func NewGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+
+	serviceMonitorName := serviceMonitorName(GatewayName(opts.Name))
+	serviceName := serviceNameGatewayHTTP(opts.Name)
 	lokiEndpoint := serviceMonitorLokiEndPoint(opts.Name, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)

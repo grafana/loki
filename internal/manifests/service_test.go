@@ -38,9 +38,13 @@ func TestServicesMatchPorts(t *testing.T) {
 				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				Gateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 	}
+	sha1C := "deadbef"
 
 	table := []test{
 		{
@@ -76,6 +80,12 @@ func TestServicesMatchPorts(t *testing.T) {
 			Services: []*corev1.Service{
 				NewCompactorGRPCService(opt),
 				NewCompactorHTTPService(opt),
+			},
+		},
+		{
+			Containers: NewGatewayDeployment(opt, sha1C).Spec.Template.Spec.Containers,
+			Services: []*corev1.Service{
+				NewGatewayHTTPService(opt),
 			},
 		},
 	}
@@ -137,9 +147,13 @@ func TestServicesMatchLabels(t *testing.T) {
 				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				Gateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 	}
+	sha1C := "deadbef"
 
 	table := []test{
 		{
@@ -175,6 +189,12 @@ func TestServicesMatchLabels(t *testing.T) {
 			Services: []*corev1.Service{
 				NewCompactorGRPCService(opt),
 				NewCompactorHTTPService(opt),
+			},
+		},
+		{
+			Object: NewGatewayDeployment(opt, sha1C),
+			Services: []*corev1.Service{
+				NewGatewayHTTPService(opt),
 			},
 		},
 	}
