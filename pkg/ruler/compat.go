@@ -286,18 +286,21 @@ func setupStorage(cfg Config, manager instance.Manager, tenant string, overrides
 
 	conf.Name = tenant
 	conf.Tenant = tenant
-	if cfg.RemoteWrite.Client.Headers == nil {
-		cfg.RemoteWrite.Client.Headers = make(map[string]string)
-	}
 
-	// we don't need to send metadata - we have no scrape targets
-	cfg.RemoteWrite.Client.MetadataConfig.Send = false
+	if cfg.RemoteWrite.Enabled {
+		if cfg.RemoteWrite.Client.Headers == nil {
+			cfg.RemoteWrite.Client.Headers = make(map[string]string)
+		}
 
-	// inject the X-Org-ScopeId header for multi-tenant metrics backends
-	cfg.RemoteWrite.Client.Headers[user.OrgIDHeaderName] = tenant
+		// we don't need to send metadata - we have no scrape targets
+		cfg.RemoteWrite.Client.MetadataConfig.Send = false
 
-	conf.RemoteWrite = []*config.RemoteWriteConfig{
-		&cfg.RemoteWrite.Client,
+		// inject the X-Org-ScopeId header for multi-tenant metrics backends
+		cfg.RemoteWrite.Client.Headers[user.OrgIDHeaderName] = tenant
+
+		conf.RemoteWrite = []*config.RemoteWriteConfig{
+			&cfg.RemoteWrite.Client,
+		}
 	}
 
 	if err := manager.ApplyConfig(conf); err != nil {
