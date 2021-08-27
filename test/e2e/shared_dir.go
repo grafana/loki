@@ -14,7 +14,7 @@ import (
 )
 
 func getProjectDirectory() (string, error) {
-	if dir := os.Getenv("LOGS_ENTERPRISE_CHECKOUT_DIR"); dir != "" {
+	if dir := os.Getenv("LOKI_CHECKOUT_DIR"); dir != "" {
 		return dir, nil
 	}
 
@@ -27,7 +27,7 @@ func getProjectDirectory() (string, error) {
 	}
 
 	if gopath := os.Getenv("GOPATH"); gopath != "" {
-		return filepath.Join(gopath, "src/github.com/grafana/loki-enterprise"), nil
+		return filepath.Join(gopath, "src/github.com/grafana/loki"), nil
 	}
 
 	cwd, err := os.Getwd()
