@@ -274,6 +274,9 @@ lint:
 test: all
 	GOGC=10 go test -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
 
+test-e2e:
+	GOGC=1- go test -mod=vendor -count=1 -v -tags=requires_docker -timeout 10m ./test/e2e
+
 #########
 # Clean #
 #########

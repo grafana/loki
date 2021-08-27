@@ -37,3 +37,6 @@ coverage.txt
 .terraform*
 *.tfstate*
 *.tfvars
+
+# e2e test artifacts
+e2e_integration_test*

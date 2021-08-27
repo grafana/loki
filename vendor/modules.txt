@@ -210,6 +210,9 @@ github.com/coreos/go-systemd/v22/journal
 github.com/coreos/pkg/capnslog
 # github.com/cortexproject/cortex v1.10.1-0.20210819151536-bcf15611345d
 ## explicit
+github.com/cortexproject/cortex/integration/e2e
+github.com/cortexproject/cortex/integration/e2e/db
+github.com/cortexproject/cortex/integration/e2e/images
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb
 github.com/cortexproject/cortex/pkg/alertmanager/alertspb
