@@ -8,8 +8,11 @@ import (
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -23,7 +26,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type EntitlementRequest struct {
 	Action     string `protobuf:"bytes,1,opt,name=action,proto3" json:"action,omitempty"`
@@ -45,7 +48,7 @@ func (m *EntitlementRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return xxx_messageInfo_EntitlementRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +112,7 @@ func (m *EntitlementResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return xxx_messageInfo_EntitlementResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -290,6 +293,14 @@ type EntitlementServer interface {
 	Entitled(context.Context, *EntitlementRequest) (*EntitlementResponse, error)
 }
 
+// UnimplementedEntitlementServer can be embedded to have forward compatible implementations.
+type UnimplementedEntitlementServer struct {
+}
+
+func (*UnimplementedEntitlementServer) Entitled(ctx context.Context, req *EntitlementRequest) (*EntitlementResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Entitled not implemented")
+}
+
 func RegisterEntitlementServer(s *grpc.Server, srv EntitlementServer) {
 	s.RegisterService(&_Entitlement_serviceDesc, srv)
 }
@@ -328,7 +339,7 @@ var _Entitlement_serviceDesc = grpc.ServiceDesc{
 func (m *EntitlementRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -336,41 +347,50 @@ func (m *EntitlementRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *EntitlementRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *EntitlementRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Action) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintEntitlement(dAtA, i, uint64(len(m.Action)))
-		i += copy(dAtA[i:], m.Action)
-	}
-	if len(m.LabelValue) > 0 {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintEntitlement(dAtA, i, uint64(len(m.LabelValue)))
-		i += copy(dAtA[i:], m.LabelValue)
+	if len(m.UserID) > 0 {
+		i -= len(m.UserID)
+		copy(dAtA[i:], m.UserID)
+		i = encodeVarintEntitlement(dAtA, i, uint64(len(m.UserID)))
+		i--
+		dAtA[i] = 0x22
 	}
 	if len(m.OrgID) > 0 {
-		dAtA[i] = 0x1a
-		i++
+		i -= len(m.OrgID)
+		copy(dAtA[i:], m.OrgID)
 		i = encodeVarintEntitlement(dAtA, i, uint64(len(m.OrgID)))
-		i += copy(dAtA[i:], m.OrgID)
+		i--
+		dAtA[i] = 0x1a
 	}
-	if len(m.UserID) > 0 {
-		dAtA[i] = 0x22
-		i++
-		i = encodeVarintEntitlement(dAtA, i, uint64(len(m.UserID)))
-		i += copy(dAtA[i:], m.UserID)
+	if len(m.LabelValue) > 0 {
+		i -= len(m.LabelValue)
+		copy(dAtA[i:], m.LabelValue)
+		i = encodeVarintEntitlement(dAtA, i, uint64(len(m.LabelValue)))
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	if len(m.Action) > 0 {
+		i -= len(m.Action)
+		copy(dAtA[i:], m.Action)
+		i = encodeVarintEntitlement(dAtA, i, uint64(len(m.Action)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *EntitlementResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -378,31 +398,38 @@ func (m *EntitlementResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *EntitlementResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *EntitlementResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.Entitled {
-		dAtA[i] = 0x8
-		i++
+		i--
 		if m.Entitled {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
 		}
-		i++
+		i--
+		dAtA[i] = 0x8
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintEntitlement(dAtA []byte, offset int, v uint64) int {
+	offset -= sovEntitlement(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *EntitlementRequest) Size() (n int) {
 	if m == nil {
@@ -442,14 +469,7 @@ func (m *EntitlementResponse) Size() (n int) {
 }
 
 func sovEntitlement(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozEntitlement(x uint64) (n int) {
 	return sovEntitlement(uint64((x << 1) ^ uint64((int64(x) >> 63))))
