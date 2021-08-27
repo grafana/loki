@@ -11,9 +11,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/entitlement"
 	grpc "google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/entitlement"
 )
 
 type entitlementOptions struct {
@@ -139,5 +140,8 @@ func main() {
 	server := grpc.NewServer()
 	service := &entitlementService{}
 	entitlement.RegisterEntitlementServer(server, service)
-	server.Serve(listenPort)
+	err = server.Serve(listenPort)
+	if err != nil {
+		panic(err)
+	}
 }

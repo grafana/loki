@@ -5,8 +5,9 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/grafana/loki/pkg/entitlement"
 	grpc "google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/entitlement"
 )
 
 type entitlementClientOptions struct {
@@ -15,7 +16,6 @@ type entitlementClientOptions struct {
 	action     string
 	orgid      string
 	userid     string
-	labelKey   string
 	labelValue string
 }
 

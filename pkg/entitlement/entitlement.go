@@ -23,8 +23,8 @@ type Entitlement struct {
 	authzEnabled bool
 }
 
-// EntitlementConfig is a data structure for the Entitlement config
-type EntitlementConfig struct {
+// Config is a data structure for the Entitlement config
+type Config struct {
 	GrpcServer    string   `yaml:"grpc_server"`
 	LabelKey      string   `yaml:"label_key"`
 	DefaultAllow  bool     `yaml:"allow_access_if_label_key_doesnt_exist"`
@@ -39,7 +39,7 @@ type entitlementResult struct {
 
 var ent *Entitlement = &Entitlement{}
 var entLock *sync.RWMutex = &sync.RWMutex{}
-var entConfig EntitlementConfig
+var entConfig Config
 
 func (e *Entitlement) labelValueFromLabelstring(labelKey string, labelString string) string {
 	// labelString format:
@@ -77,7 +77,7 @@ func (e *Entitlement) entConnect() {
 }
 
 // SetConfig sets entitlement config
-func SetConfig(authzEnabled bool, c EntitlementConfig) {
+func SetConfig(authzEnabled bool, c Config) {
 	entLock.Lock()
 	entConfig = c
 	ent.authzEnabled = authzEnabled
@@ -93,7 +93,7 @@ func GetAuthzEnabled() bool {
 // Entitled returns true if the action/uid/labelString is entitled by the ent server
 func Entitled(action string, oid string, uid string, labelString string) bool {
 	// if GrpcServer is not configured, there is no entitlement check
-	if ent.authzEnabled == false || entConfig.GrpcServer == "" {
+	if !ent.authzEnabled || entConfig.GrpcServer == "" {
 		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("skipping ent check because authzEnabled:%v, GrpcServer:%v", ent.authzEnabled, entConfig.GrpcServer))
 		return true
 	}
@@ -157,9 +157,8 @@ func GetClientUserID(ctx context.Context) (string, error) {
 		// we don't need to check cname here because it's already verified by
 		// extractClientUserIDFromGRPCRequest in middleware.go
 		return user.ExtractUserID(ctx)
-	} else {
-		return "fake", nil
 	}
+	return "fake", nil
 }
 
 // InjectClientUserID injects UserIDHeader into ctx if it's available and from a trusted cname

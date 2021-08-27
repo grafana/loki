@@ -15,7 +15,7 @@ import (
 func TestLabelValueFromLabelstring(t *testing.T) {
 	var got string
 	ent.DeleteCache()
-	ls := `{agent="curl", filename="/var/tmp/dummy", host="host1.example.com", job="logtest00000999"}`
+	const ls = `{agent="curl", filename="/var/tmp/dummy", host="host1.example.com", job="logtest00000999"}`
 	assert.Equal(t, 0, reLabelsLen())
 
 	got = ent.labelValueFromLabelstring("agent", ls)
@@ -34,9 +34,6 @@ func TestLabelValueFromLabelstring(t *testing.T) {
 	assert.Equal(t, "logtest00000999", got)
 	assert.Equal(t, 4, reLabelsLen())
 
-	got = ent.labelValueFromLabelstring("job", ls)
-	assert.Equal(t, 4, reLabelsLen())
-
 	got = ent.labelValueFromLabelstring("hoge", ls)
 	assert.Equal(t, "", got)
 	assert.Equal(t, 5, reLabelsLen())
@@ -44,7 +41,7 @@ func TestLabelValueFromLabelstring(t *testing.T) {
 
 func TestLabelValueFromLabelstringRace(t *testing.T) {
 	ent.DeleteCache()
-	ls := `{agent="curl", filename="/var/tmp/dummy", host="host1.example.com", job="logtest00000999"}`
+	const ls = `{agent="curl", filename="/var/tmp/dummy", host="host1.example.com", job="logtest00000999"}`
 
 	GOROUTINES := 2
 	var wg sync.WaitGroup
@@ -148,7 +145,7 @@ func TestCnameIsTrusted(t *testing.T) {
 		want  bool
 	}
 
-	ec := EntitlementConfig{
+	ec := Config{
 		TrustedCnames: []string{"foo", "bar"},
 	}
 	SetConfig(true, ec)

@@ -56,26 +56,26 @@ type Config struct {
 	AuthzEnabled bool                   `yaml:"authz_enabled,omitempty"`
 	HTTPPrefix   string                 `yaml:"http_prefix"`
 
-	Server           server.Config                 `yaml:"server,omitempty"`
-	Distributor      distributor.Config            `yaml:"distributor,omitempty"`
-	Querier          querier.Config                `yaml:"querier,omitempty"`
-	IngesterClient   client.Config                 `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config               `yaml:"ingester,omitempty"`
-	StorageConfig    storage.Config                `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig storage.ChunkStoreConfig      `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     storage.SchemaConfig          `yaml:"schema_config,omitempty"`
-	LimitsConfig     validation.Limits             `yaml:"limits_config,omitempty"`
-	TableManager     chunk.TableManagerConfig      `yaml:"table_manager,omitempty"`
-	Worker           worker.Config                 `yaml:"frontend_worker,omitempty"`
-	Frontend         lokifrontend.Config           `yaml:"frontend,omitempty"`
-	Ruler            ruler.Config                  `yaml:"ruler,omitempty"`
-	QueryRange       queryrange.Config             `yaml:"query_range,omitempty"`
-	RuntimeConfig    runtimeconfig.ManagerConfig   `yaml:"runtime_config,omitempty"`
-	MemberlistKV     memberlist.KVConfig           `yaml:"memberlist"`
-	Tracing          tracing.Config                `yaml:"tracing"`
-	CompactorConfig  compactor.Config              `yaml:"compactor,omitempty"`
-	QueryScheduler   scheduler.Config              `yaml:"query_scheduler"`
-	Entitlement      entitlement.EntitlementConfig `yaml: "entitlement,omitempty"`
+	Server           server.Config               `yaml:"server,omitempty"`
+	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
+	Querier          querier.Config              `yaml:"querier,omitempty"`
+	IngesterClient   client.Config               `yaml:"ingester_client,omitempty"`
+	Ingester         ingester.Config             `yaml:"ingester,omitempty"`
+	StorageConfig    storage.Config              `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig storage.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
+	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
+	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
+	Worker           worker.Config               `yaml:"frontend_worker,omitempty"`
+	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
+	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
+	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
+	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
+	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
+	Tracing          tracing.Config              `yaml:"tracing"`
+	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
+	QueryScheduler   scheduler.Config            `yaml:"query_scheduler"`
+	Entitlement      entitlement.Config          `yaml:"entitlement,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -231,7 +231,7 @@ func (t *Loki) setupAuthMiddleware() {
 	t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
 
 	if t.Cfg.AuthzEnabled {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor, serverutil.ServerClientUserHeaderInterceptor)
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor, serverutil.ClientUserHeaderInterceptorServer)
 		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor, GRPCStreamAuthzInterceptor)
 		if t.Cfg.AuthEnabled {
 			// multi tenancy w/ authz

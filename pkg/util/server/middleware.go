@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/grafana/loki/pkg/entitlement"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -12,6 +11,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+
+	"github.com/grafana/loki/pkg/entitlement"
 )
 
 // NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.
@@ -86,10 +87,10 @@ func StreamClientUserHeaderInterceptor(ctx context.Context, desc *grpc.StreamDes
 	return streamer(ctx, desc, cc, method, opts...)
 }
 
-// ServerClientUserHeaderInterceptor propagates the user ID from the gRPC metadata back to our context.
+// ClientUserHeaderInterceptorServer propagates the user ID from the gRPC metadata back to our context.
 // Copied and modified from weaveworks/common/middleware/grpc_auth.go to extract ClientUserID
-func ServerClientUserHeaderInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	_, ctx, err := extractClientUserIDFromGRPCRequest(ctx)
+func ClientUserHeaderInterceptorServer(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	ctx, err := extractClientUserIDFromGRPCRequest(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +101,7 @@ func ServerClientUserHeaderInterceptor(ctx context.Context, req interface{}, inf
 // StreamServerClientUserHeaderInterceptor propagates the user ID from the gRPC metadata back to our context.
 // Copied and modified from weaveworks/common/middleware/grpc_auth.go to extract ClientUserID
 func StreamServerClientUserHeaderInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	_, ctx, err := extractClientUserIDFromGRPCRequest(ss.Context())
+	ctx, err := extractClientUserIDFromGRPCRequest(ss.Context())
 	if err != nil {
 		return err
 	}
@@ -121,14 +122,10 @@ func (ss serverStream) Context() context.Context {
 }
 
 const (
-	// OrgIDHeaderName  = "X-Scope-OrgID"
-	// UserIDHeaderName = "X-Scope-UserID"
-
-	lowerOrgIDHeaderName  = "x-scope-orgid"
 	lowerUserIDHeaderName = "x-scope-userid"
 )
 
-func extractClientUserIDFromGRPCRequest(ctx context.Context) (string, context.Context, error) {
+func extractClientUserIDFromGRPCRequest(ctx context.Context) (context.Context, error) {
 	// extract userid from grpc metadata into ctx
 	// only when cname is trusted
 	if p, ok := peer.FromContext(ctx); ok {
@@ -138,21 +135,21 @@ func extractClientUserIDFromGRPCRequest(ctx context.Context) (string, context.Co
 			if entitlement.CnameIsTrusted(cname) {
 				md, ok := metadata.FromIncomingContext(ctx)
 				if !ok {
-					return "", ctx, user.ErrNoUserID
+					return ctx, user.ErrNoUserID
 				}
 
 				userIDs, okUserID := md[lowerUserIDHeaderName]
 
 				if !okUserID || len(userIDs) != 1 {
-					return "", ctx, user.ErrNoUserID
+					return ctx, user.ErrNoUserID
 				}
 
-				return userIDs[0], user.InjectUserID(ctx, userIDs[0]), nil
+				return user.InjectUserID(ctx, userIDs[0]), nil
 			}
 		}
 	}
 
-	return "fake", ctx, nil
+	return ctx, nil
 }
 
 func injectClientUserIDIntoGRPCRequest(ctx context.Context) (context.Context, error) {
