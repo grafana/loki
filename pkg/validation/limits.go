@@ -23,8 +23,8 @@ const (
 
 	bytesInMB = 1048576
 
-	defaultPerStreamRateLimit  = 1 << 20 // 1MB
-	defaultPerStreamBurstLimit = 2 * defaultPerStreamRateLimit
+	defaultPerStreamRateLimit  = 3 << 20 // 3MB
+	defaultPerStreamBurstLimit = 5 * defaultPerStreamRateLimit
 )
 
 // Limits describe all the limits for users; can be used to describe global default
