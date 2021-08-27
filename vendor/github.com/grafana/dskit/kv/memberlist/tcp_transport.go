@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/flagext"
@@ -128,7 +129,7 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		}
 	}
 
-	t.registerMetrics()
+	t.registerMetrics(config.MetricsRegisterer)
 
 	// Clean up listeners if there's an error.
 	defer func() {
@@ -545,98 +546,76 @@ func (t *TCPTransport) Shutdown() error {
 	return nil
 }
 
-func (t *TCPTransport) registerMetrics() {
+func (t *TCPTransport) registerMetrics(registerer prometheus.Registerer) {
 	const subsystem = "memberlist_tcp_transport"
 
-	t.incomingStreams = prometheus.NewCounter(prometheus.CounterOpts{
+	t.incomingStreams = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "incoming_streams_total",
 		Help:      "Number of incoming memberlist streams",
 	})
 
-	t.outgoingStreams = prometheus.NewCounter(prometheus.CounterOpts{
+	t.outgoingStreams = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "outgoing_streams_total",
 		Help:      "Number of outgoing streams",
 	})
 
-	t.outgoingStreamErrors = prometheus.NewCounter(prometheus.CounterOpts{
+	t.outgoingStreamErrors = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "outgoing_stream_errors_total",
 		Help:      "Number of errors when opening memberlist stream to another node",
 	})
 
-	t.receivedPackets = prometheus.NewCounter(prometheus.CounterOpts{
+	t.receivedPackets = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_received_total",
 		Help:      "Number of received memberlist packets",
 	})
 
-	t.receivedPacketsBytes = prometheus.NewCounter(prometheus.CounterOpts{
+	t.receivedPacketsBytes = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_received_bytes_total",
 		Help:      "Total bytes received as packets",
 	})
 
-	t.receivedPacketsErrors = prometheus.NewCounter(prometheus.CounterOpts{
+	t.receivedPacketsErrors = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_received_errors_total",
 		Help:      "Number of errors when receiving memberlist packets",
 	})
 
-	t.sentPackets = prometheus.NewCounter(prometheus.CounterOpts{
+	t.sentPackets = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_sent_total",
 		Help:      "Number of memberlist packets sent",
 	})
 
-	t.sentPacketsBytes = prometheus.NewCounter(prometheus.CounterOpts{
+	t.sentPacketsBytes = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_sent_bytes_total",
 		Help:      "Total bytes sent as packets",
 	})
 
-	t.sentPacketsErrors = prometheus.NewCounter(prometheus.CounterOpts{
+	t.sentPacketsErrors = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_sent_errors_total",
 		Help:      "Number of errors when sending memberlist packets",
 	})
 
-	t.unknownConnections = prometheus.NewCounter(prometheus.CounterOpts{
+	t.unknownConnections = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "unknown_connections_total",
 		Help:      "Number of unknown TCP connections (not a packet or stream)",
 	})
-
-	if t.cfg.MetricsRegisterer == nil {
-		return
-	}
-
-	all := []prometheus.Metric{
-		t.incomingStreams,
-		t.outgoingStreams,
-		t.outgoingStreamErrors,
-		t.receivedPackets,
-		t.receivedPacketsBytes,
-		t.receivedPacketsErrors,
-		t.sentPackets,
-		t.sentPacketsBytes,
-		t.sentPacketsErrors,
-		t.unknownConnections,
-	}
-
-	// if registration fails, that's too bad, but don't panic
-	for _, c := range all {
-		t.cfg.MetricsRegisterer.MustRegister(c.(prometheus.Collector))
-	}
 }

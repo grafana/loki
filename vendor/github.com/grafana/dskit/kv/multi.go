@@ -10,34 +10,9 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 )
-
-var (
-	primaryStoreGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "multikv_primary_store",
-		Help: "Selected primary KV store",
-	}, []string{"store"})
-
-	mirrorEnabledGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "multikv_mirror_enabled",
-		Help: "Is mirroring to secondary store enabled",
-	})
-
-	mirrorWritesCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "multikv_mirror_writes_total",
-		Help: "Number of mirror-writes to secondary store",
-	})
-
-	mirrorFailuresCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "multikv_mirror_write_errors_total",
-		Help: "Number of failures to mirror-write to secondary store",
-	})
-)
-
-func init() {
-	prometheus.MustRegister(primaryStoreGauge, mirrorEnabledGauge, mirrorWritesCounter, mirrorFailuresCounter)
-}
 
 // MultiConfig is a configuration for MultiClient.
 type MultiConfig struct {
@@ -102,11 +77,16 @@ type MultiClient struct {
 	// so we use this map instead.
 	inProgress    map[int]clientInProgress
 	inProgressCnt int
+
+	primaryStoreGauge     *prometheus.GaugeVec
+	mirrorEnabledGauge    prometheus.Gauge
+	mirrorWritesCounter   prometheus.Counter
+	mirrorFailuresCounter prometheus.Counter
 }
 
 // NewMultiClient creates new MultiClient with given KV Clients.
 // First client in the slice is the primary client.
-func NewMultiClient(cfg MultiConfig, clients []kvclient, logger log.Logger) *MultiClient {
+func NewMultiClient(cfg MultiConfig, clients []kvclient, logger log.Logger, registerer prometheus.Registerer) *MultiClient {
 	c := &MultiClient{
 		clients:    clients,
 		primaryID:  atomic.NewInt32(0),
@@ -125,6 +105,7 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient, logger log.Logger) *Mul
 		go c.watchConfigChannel(ctx, cfg.ConfigProvider())
 	}
 
+	c.registerMetrics(registerer)
 	c.updatePrimaryStoreGauge()
 	c.updateMirrorEnabledGauge()
 	return c
@@ -201,6 +182,28 @@ func (m *MultiClient) setNewPrimaryClient(store string) (bool, error) {
 	return true, nil
 }
 
+func (m *MultiClient) registerMetrics(registerer prometheus.Registerer) {
+	m.primaryStoreGauge = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "multikv_primary_store",
+		Help: "Selected primary KV store",
+	}, []string{"store"})
+
+	m.mirrorEnabledGauge = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		Name: "multikv_mirror_enabled",
+		Help: "Is mirroring to secondary store enabled",
+	})
+
+	m.mirrorWritesCounter = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "multikv_mirror_writes_total",
+		Help: "Number of mirror-writes to secondary store",
+	})
+
+	m.mirrorFailuresCounter = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "multikv_mirror_write_errors_total",
+		Help: "Number of failures to mirror-write to secondary store",
+	})
+}
+
 func (m *MultiClient) updatePrimaryStoreGauge() {
 	_, pkv := m.getPrimaryClient()
 
@@ -210,15 +213,15 @@ func (m *MultiClient) updatePrimaryStoreGauge() {
 			value = 1
 		}
 
-		primaryStoreGauge.WithLabelValues(kv.name).Set(value)
+		m.primaryStoreGauge.WithLabelValues(kv.name).Set(value)
 	}
 }
 
 func (m *MultiClient) updateMirrorEnabledGauge() {
 	if m.mirroringEnabled.Load() {
-		mirrorEnabledGauge.Set(1)
+		m.mirrorEnabledGauge.Set(1)
 	} else {
-		mirrorEnabledGauge.Set(0)
+		m.mirrorEnabledGauge.Set(0)
 	}
 }
 
@@ -345,14 +348,14 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 			continue
 		}
 
-		mirrorWritesCounter.Inc()
+		m.mirrorWritesCounter.Inc()
 		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 			// try once
 			return newValue, false, nil
 		})
 
 		if err != nil {
-			mirrorFailuresCounter.Inc()
+			m.mirrorFailuresCounter.Inc()
 			level.Warn(m.logger).Log("msg", "failed to update value in secondary store", "key", key, "err", err, "primary", primary.name, "secondary", kvc.name)
 		} else {
 			level.Debug(m.logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)

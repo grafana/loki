@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
@@ -61,9 +62,10 @@ type kv interface {
 // Client is a KV.Client for Consul.
 type Client struct {
 	kv
-	codec  codec.Codec
-	cfg    Config
-	logger log.Logger
+	codec         codec.Codec
+	cfg           Config
+	logger        log.Logger
+	consulMetrics *consulMetrics
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -78,7 +80,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 }
 
 // NewClient returns a new Client.
-func NewClient(cfg Config, codec codec.Codec, logger log.Logger) (*Client, error) {
+func NewClient(cfg Config, codec codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
 		Token:   cfg.ACLToken,
@@ -92,11 +94,14 @@ func NewClient(cfg Config, codec codec.Codec, logger log.Logger) (*Client, error
 	if err != nil {
 		return nil, err
 	}
+	consulMetrics := newConsulMetrics(registerer)
+
 	c := &Client{
-		kv:     consulMetrics{client.KV()},
-		codec:  codec,
-		cfg:    cfg,
-		logger: logger,
+		kv:            consulInstrumentation{client.KV(), consulMetrics},
+		codec:         codec,
+		cfg:           cfg,
+		logger:        logger,
+		consulMetrics: consulMetrics,
 	}
 	return c, nil
 }
@@ -108,7 +113,7 @@ func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
 		return err
 	}
 
-	return instrument.CollectedRequest(ctx, "Put", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "Put", c.consulMetrics.consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := c.kv.Put(&consul.KVPair{
 			Key:   key,
 			Value: bytes,
@@ -120,7 +125,7 @@ func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	return instrument.CollectedRequest(ctx, "CAS loop", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "CAS loop", c.consulMetrics.consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return c.cas(ctx, key, f)
 	})
 }

@@ -129,7 +129,7 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 
 	switch backend {
 	case "consul":
-		client, err = consul.NewClient(cfg.Consul, codec, logger)
+		client, err = consul.NewClient(cfg.Consul, codec, logger, reg)
 
 	case "etcd":
 		client, err = etcd.New(cfg.Etcd, codec, logger)
@@ -138,7 +138,7 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 		// If we use the in-memory store, make sure everyone gets the same instance
 		// within the same process.
 		inmemoryStoreInit.Do(func() {
-			inmemoryStore, _ = consul.NewInMemoryClient(codec, logger)
+			inmemoryStore, _ = consul.NewInMemoryClient(codec, logger, reg)
 		})
 		client = inmemoryStore
 
@@ -205,5 +205,5 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registe
 		{client: secondary, name: cfg.Multi.Secondary},
 	}
 
-	return NewMultiClient(cfg.Multi, clients, logger), nil
+	return NewMultiClient(cfg.Multi, clients, logger, reg), nil
 }

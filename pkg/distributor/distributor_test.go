@@ -273,7 +273,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
 
 			// Init a shared KVStore
-			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Start all expected distributors
