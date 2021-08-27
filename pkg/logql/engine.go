@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"math"
 	"sort"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/entitlement"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -164,7 +167,15 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		}
 
 		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
+		orgID, err := tenant.TenantID(ctx)
+		if err != nil {
+			orgID = "fake"
+		}
+		clientUserID, err := entitlement.GetClientUserID(ctx)
+		if err != nil {
+			return nil, err
+		}
+		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval(), orgID, clientUserID)
 		return streams, err
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
@@ -294,7 +305,7 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration, orgID string, clientUserID string) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
@@ -302,6 +313,11 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
+
+		if !entitlement.Entitled("read", orgID, clientUserID, labels) {
+			level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("Not entitled for read. uid:%s, labels: %s", clientUserID, labels))
+			continue
+		}
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
 		backwardShouldOutput := dir == logproto.BACKWARD &&

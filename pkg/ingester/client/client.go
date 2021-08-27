@@ -18,6 +18,7 @@ import (
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -64,6 +65,10 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
 
+	if !cfg.GRPCClientConfig.TLSEnabled {
+		opts = append(opts, grpc.WithInsecure())
+	}
+
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation(&cfg))
 	if err != nil {
 		return nil, err
@@ -89,6 +94,7 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	unaryInterceptors = append(unaryInterceptors,
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
+		server.ClientUserHeaderInterceptor,
 		cortex_middleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
 	)
 	var streamInterceptors []grpc.StreamClientInterceptor
@@ -96,6 +102,7 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	streamInterceptors = append(streamInterceptors,
 		otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 		middleware.StreamClientUserHeaderInterceptor,
+		server.StreamClientUserHeaderInterceptor,
 		cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
 	)
 

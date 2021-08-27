@@ -1,0 +1,13 @@
+entitlements:
+  - orgid: fake
+    readers:
+      - "*"
+    writers:
+      - user1
+      - user2
+      - user3
+  - orgid: public
+    readers:
+      - "*"
+    writers:
+      - "*"

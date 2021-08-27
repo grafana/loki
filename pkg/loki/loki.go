@@ -29,9 +29,11 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
+	"github.com/grafana/loki/pkg/entitlement"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/lokifrontend"
@@ -43,34 +45,37 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 // Config is the root config for Loki.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target,omitempty"`
-	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
+	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	AuthzEnabled bool                   `yaml:"authz_enabled,omitempty"`
+	HTTPPrefix   string                 `yaml:"http_prefix"`
 
-	Server           server.Config               `yaml:"server,omitempty"`
-	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
-	Querier          querier.Config              `yaml:"querier,omitempty"`
-	IngesterClient   client.Config               `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config             `yaml:"ingester,omitempty"`
-	StorageConfig    storage.Config              `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig storage.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
-	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
-	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	Worker           worker.Config               `yaml:"frontend_worker,omitempty"`
-	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
-	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
-	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
-	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
-	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
-	Tracing          tracing.Config              `yaml:"tracing"`
-	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
-	QueryScheduler   scheduler.Config            `yaml:"query_scheduler"`
+	Server           server.Config                 `yaml:"server,omitempty"`
+	Distributor      distributor.Config            `yaml:"distributor,omitempty"`
+	Querier          querier.Config                `yaml:"querier,omitempty"`
+	IngesterClient   client.Config                 `yaml:"ingester_client,omitempty"`
+	Ingester         ingester.Config               `yaml:"ingester,omitempty"`
+	StorageConfig    storage.Config                `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig storage.ChunkStoreConfig      `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     storage.SchemaConfig          `yaml:"schema_config,omitempty"`
+	LimitsConfig     validation.Limits             `yaml:"limits_config,omitempty"`
+	TableManager     chunk.TableManagerConfig      `yaml:"table_manager,omitempty"`
+	Worker           worker.Config                 `yaml:"frontend_worker,omitempty"`
+	Frontend         lokifrontend.Config           `yaml:"frontend,omitempty"`
+	Ruler            ruler.Config                  `yaml:"ruler,omitempty"`
+	QueryRange       queryrange.Config             `yaml:"query_range,omitempty"`
+	RuntimeConfig    runtimeconfig.ManagerConfig   `yaml:"runtime_config,omitempty"`
+	MemberlistKV     memberlist.KVConfig           `yaml:"memberlist"`
+	Tracing          tracing.Config                `yaml:"tracing"`
+	CompactorConfig  compactor.Config              `yaml:"compactor,omitempty"`
+	QueryScheduler   scheduler.Config              `yaml:"query_scheduler"`
+	Entitlement      entitlement.EntitlementConfig `yaml: "entitlement,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -216,23 +221,83 @@ func New(cfg Config) (*Loki, error) {
 	}
 	storage.RegisterCustomIndexClients(&loki.Cfg.StorageConfig, prometheus.DefaultRegisterer)
 
+	entitlement.SetConfig(cfg.AuthzEnabled, cfg.Entitlement)
+
 	return loki, nil
 }
 
 func (t *Loki) setupAuthMiddleware() {
+	t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
+	t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
+
+	if t.Cfg.AuthzEnabled {
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor, serverutil.ServerClientUserHeaderInterceptor)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor, GRPCStreamAuthzInterceptor)
+		if t.Cfg.AuthEnabled {
+			// multi tenancy w/ authz
+			t.HTTPAuthMiddleware = serverutil.AuthenticateUserMultiTenancy
+		} else {
+			// single tenancy w/ authz
+			t.HTTPAuthMiddleware = serverutil.AuthenticateUserSingleTenancy
+		}
+	} else {
+		// single or multi-tenancy, no authz
+		if t.Cfg.AuthEnabled {
+			// multi tenancy, no authz
+			t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
+			t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
+		}
+		// Don't check auth header on TransferChunks, as we weren't originally
+		// sending it and this could cause transfers to fail on update.
+		t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
+			// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
+			[]string{
+				"/grpc.health.v1.Health/Check",
+				"/logproto.Ingester/TransferChunks",
+				"/frontend.Frontend/Process",
+				"/frontend.Frontend/NotifyClientShutdown",
+				"/schedulerpb.SchedulerForFrontend/FrontendLoop",
+				"/schedulerpb.SchedulerForQuerier/QuerierLoop",
+				"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
+			})
+	}
+}
+
+var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	switch info.FullMethod {
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
-	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
-		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
-		[]string{
-			"/grpc.health.v1.Health/Check",
-			"/logproto.Ingester/TransferChunks",
-			"/frontend.Frontend/Process",
-			"/frontend.Frontend/NotifyClientShutdown",
-			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
-			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
-			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
-		})
+	//
+	// Also don't check auth /frontend.Frontend/Process, as this handles
+	// queries for multiple users.
+	case
+		"/grpc.health.v1.Health/Check",
+		"/logproto.Ingester/TransferChunks",
+		"/frontend.Frontend/Process",
+		"/frontend.Frontend/NotifyClientShutdown",
+		"/schedulerpb.SchedulerForFrontend/FrontendLoop",
+		"/schedulerpb.SchedulerForQuerier/QuerierLoop",
+		"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown":
+		return handler(srv, ss)
+	default:
+		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+	}
+}
+
+var GRPCStreamAuthzInterceptor = func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	switch info.FullMethod {
+	case
+		"/grpc.health.v1.Health/Check",
+		"/logproto.Ingester/TransferChunks",
+		"/frontend.Frontend/Process",
+		"/frontend.Frontend/NotifyClientShutdown",
+		"/schedulerpb.SchedulerForFrontend/FrontendLoop",
+		"/schedulerpb.SchedulerForQuerier/QuerierLoop",
+		"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown":
+		return handler(srv, ss)
+	default:
+		return serverutil.StreamServerClientUserHeaderInterceptor(srv, ss, info, handler)
+	}
 }
 
 func newDefaultConfig() *Config {

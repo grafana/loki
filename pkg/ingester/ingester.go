@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/entitlement"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
@@ -497,6 +498,29 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, err
 	} else if i.readonly {
 		return nil, ErrReadOnly
+	}
+
+	// if authzEnabled, filter out entries which are not entitled
+	if entitlement.GetAuthzEnabled() {
+		clientUserID, err := entitlement.GetClientUserID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// remove unentitled messages from req.Streams
+		k := 0
+		for _, s := range req.Streams {
+			// Labels is like
+			// labels: {agent="curl", filename="/path/to/file", host="host1", job="job1"}
+			level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("labels: %+v", s.Labels))
+			if entitlement.Entitled("write", instanceID, clientUserID, s.Labels) {
+				req.Streams[k] = s
+				k++
+			} else {
+				level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("Not entitled for write. uid:%s, labels: %+v", clientUserID, s.Labels))
+			}
+		}
+		req.Streams = req.Streams[:k]
 	}
 
 	instance := i.getOrCreateInstance(instanceID)

@@ -1,0 +1,11 @@
+// generate entitlement.pb.go when you change the protocol (see Makefile for more info)
+// protoc entitlement.proto --go_out=plugins=grpc,paths=source_relative:./
+
+syntax = "proto3";
+
+package entitlement;
+option go_package="github.com/grafana/loki/entitlement";
+
+message EntitlementRequest { string action = 1; string labelValue = 2; string orgID = 3; string userID = 4; }
+message EntitlementResponse { bool entitled = 1; }
+service Entitlement { rpc Entitled(EntitlementRequest) returns(EntitlementResponse); }
