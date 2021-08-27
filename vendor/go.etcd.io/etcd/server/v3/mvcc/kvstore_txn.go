@@ -21,6 +21,7 @@ import (
 	"go.etcd.io/etcd/pkg/v3/traceutil"
 	"go.etcd.io/etcd/server/v3/lease"
 	"go.etcd.io/etcd/server/v3/mvcc/backend"
+	"go.etcd.io/etcd/server/v3/mvcc/buckets"
 	"go.uber.org/zap"
 )
 
@@ -34,12 +35,20 @@ type storeTxnRead struct {
 	trace *traceutil.Trace
 }
 
-func (s *store) Read(trace *traceutil.Trace) TxnRead {
+func (s *store) Read(mode ReadTxMode, trace *traceutil.Trace) TxnRead {
 	s.mu.RLock()
 	s.revMu.RLock()
-	// backend holds b.readTx.RLock() only when creating the concurrentReadTx. After
-	// ConcurrentReadTx is created, it will not block write transaction.
-	tx := s.b.ConcurrentReadTx()
+	// For read-only workloads, we use shared buffer by copying transaction read buffer
+	// for higher concurrency with ongoing blocking writes.
+	// For write/write-read transactions, we use the shared buffer
+	// rather than duplicating transaction read buffer to avoid transaction overhead.
+	var tx backend.ReadTx
+	if mode == ConcurrentReadTxMode {
+		tx = s.b.ConcurrentReadTx()
+	} else {
+		tx = s.b.ReadTx()
+	}
+
 	tx.RLock() // RLock is no-op. concurrentReadTx does not need to be locked after it is created.
 	firstRev, rev := s.compactMainRev, s.currentRev
 	s.revMu.RUnlock()
@@ -104,7 +113,6 @@ func (tw *storeTxnWrite) Put(key, value []byte, lease lease.LeaseID) int64 {
 func (tw *storeTxnWrite) End() {
 	// only update index if the txn modifies the mvcc state.
 	if len(tw.changes) != 0 {
-		tw.s.saveIndex(tw.tx)
 		// hold revMu lock to prevent new read txns from opening until writeback.
 		tw.s.revMu.Lock()
 		tw.s.currentRev++
@@ -128,14 +136,14 @@ func (tr *storeTxnRead) rangeKeys(ctx context.Context, key, end []byte, curRev i
 		return &RangeResult{KVs: nil, Count: -1, Rev: 0}, ErrCompacted
 	}
 	if ro.Count {
-		total := tr.s.kvindex.CountRevisions(key, end, rev, int(ro.Limit))
+		total := tr.s.kvindex.CountRevisions(key, end, rev)
 		tr.trace.Step("count revisions from in-memory index tree")
 		return &RangeResult{KVs: nil, Count: total, Rev: curRev}, nil
 	}
-	revpairs := tr.s.kvindex.Revisions(key, end, rev, int(ro.Limit))
+	revpairs, total := tr.s.kvindex.Revisions(key, end, rev, int(ro.Limit))
 	tr.trace.Step("range keys from in-memory index tree")
 	if len(revpairs) == 0 {
-		return &RangeResult{KVs: nil, Count: 0, Rev: curRev}, nil
+		return &RangeResult{KVs: nil, Count: total, Rev: curRev}, nil
 	}
 
 	limit := int(ro.Limit)
@@ -152,7 +160,7 @@ func (tr *storeTxnRead) rangeKeys(ctx context.Context, key, end []byte, curRev i
 		default:
 		}
 		revToBytes(revpair, revBytes)
-		_, vs := tr.tx.UnsafeRange(keyBucketName, revBytes, nil, 0)
+		_, vs := tr.tx.UnsafeRange(buckets.Key, revBytes, nil, 0)
 		if len(vs) != 1 {
 			tr.s.lg.Fatal(
 				"range failed to find revision pair",
@@ -168,7 +176,7 @@ func (tr *storeTxnRead) rangeKeys(ctx context.Context, key, end []byte, curRev i
 		}
 	}
 	tr.trace.Step("range keys from bolt db")
-	return &RangeResult{KVs: kvs, Count: len(revpairs), Rev: curRev}, nil
+	return &RangeResult{KVs: kvs, Count: total, Rev: curRev}, nil
 }
 
 func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
@@ -182,8 +190,8 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	if err == nil {
 		c = created.main
 		oldLease = tw.s.le.GetLease(lease.LeaseItem{Key: string(key)})
+		tw.trace.Step("get key's previous created_revision and leaseID")
 	}
-	tw.trace.Step("get key's previous created_revision and leaseID")
 	ibytes := newRevBytes()
 	idxRev := revision{main: rev, sub: int64(len(tw.changes))}
 	revToBytes(idxRev, ibytes)
@@ -207,7 +215,7 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	}
 
 	tw.trace.Step("marshal mvccpb.KeyValue")
-	tw.tx.UnsafeSeqPut(keyBucketName, ibytes, d)
+	tw.tx.UnsafeSeqPut(buckets.Key, ibytes, d)
 	tw.s.kvindex.Put(key, idxRev)
 	tw.changes = append(tw.changes, kv)
 	tw.trace.Step("store kv pair into bolt db")
@@ -268,7 +276,7 @@ func (tw *storeTxnWrite) delete(key []byte) {
 		)
 	}
 
-	tw.tx.UnsafeSeqPut(keyBucketName, ibytes, d)
+	tw.tx.UnsafeSeqPut(buckets.Key, ibytes, d)
 	err = tw.s.kvindex.Tombstone(key, idxRev)
 	if err != nil {
 		tw.storeTxnRead.s.lg.Fatal(
