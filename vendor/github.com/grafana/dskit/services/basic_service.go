@@ -77,7 +77,7 @@ func invalidServiceStateWithFailureError(state, expected State, failure error) e
 	return fmt.Errorf("invalid service state: %v, expected: %v, failure: %w", state, expected, failure)
 }
 
-// Returns service built from three functions (using BasicService).
+// NewBasicService returns service built from three functions (using BasicService).
 func NewBasicService(start StartingFn, run RunningFn, stop StoppingFn) *BasicService {
 	return &BasicService{
 		startFn:             start,
@@ -246,7 +246,7 @@ func (b *BasicService) StopAsync() {
 	}
 }
 
-// Returns context that this service uses internally for controlling its lifecycle. It is the same context that
+// ServiceContext returns context that this service uses internally for controlling its lifecycle. It is the same context that
 // is passed to Starting and Running functions, and is based on context passed to the service via StartAsync.
 //
 // Before service enters Starting state, there is no context. This context is stopped when service enters Stopping state.

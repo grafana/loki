@@ -13,7 +13,7 @@ func NewFailureWatcher() *FailureWatcher {
 	return &FailureWatcher{ch: make(chan error)}
 }
 
-// Returns channel for this watcher. If watcher is nil, returns nil channel.
+// Chan returns channel for this watcher. If watcher is nil, returns nil channel.
 // Errors returned on the channel include failure case and service description.
 func (w *FailureWatcher) Chan() <-chan error {
 	if w == nil {

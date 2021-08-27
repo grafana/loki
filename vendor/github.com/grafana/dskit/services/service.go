@@ -8,13 +8,14 @@ import (
 // State of the service. See Service interface for full state diagram.
 type State int
 
+// Possible states to represent the service State.
 const (
-	New        State = iota // Service is new, not running yet. Initial state.
-	Starting                // Service is starting. If starting succeeds, service enters Running state.
-	Running                 // Service is fully running now. When service stops running, it enters Stopping state.
-	Stopping                // Service is shutting down
-	Terminated              // Service has stopped successfully. Terminal state.
-	Failed                  // Service has failed in Starting, Running or Stopping state. Terminal state.
+	New        State = iota // New: Service is new, not running yet. Initial State.
+	Starting                // Starting: Service is starting. If starting succeeds, service enters Running state.
+	Running                 // Running: Service is fully running now. When service stops running, it enters Stopping state.
+	Stopping                // Stopping: Service is shutting down
+	Terminated              // Terminated: Service has stopped successfully. Terminal state.
+	Failed                  // Failed: Service has failed in Starting, Running or Stopping state. Terminal state.
 )
 
 func (s State) String() string {
@@ -104,18 +105,18 @@ type NamedService interface {
 
 // Listener receives notifications about Service state changes.
 type Listener interface {
-	// Called when the service transitions from NEW to STARTING.
+	// Starting is called when the service transitions from NEW to STARTING.
 	Starting()
 
-	// Called when the service transitions from STARTING to RUNNING.
+	// Running is called when the service transitions from STARTING to RUNNING.
 	Running()
 
-	// Called when the service transitions to the STOPPING state.
+	// Stopping is called when the service transitions to the STOPPING state.
 	Stopping(from State)
 
-	// Called when the service transitions to the TERMINATED state.
+	// Terminated is called when the service transitions to the TERMINATED state.
 	Terminated(from State)
 
-	// Called when the service transitions to the FAILED state.
+	// Failed is called when the service transitions to the FAILED state.
 	Failed(from State, failure error)
 }

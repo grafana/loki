@@ -12,21 +12,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
-	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/loki/clients/pkg/logentry/metric"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-
-	lokiutil "github.com/grafana/loki/pkg/util"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
+	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/clients/pkg/logentry/metric"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
+
+	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 const (
