@@ -572,6 +572,7 @@ github.com/gorilla/websocket
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/flagext
 github.com/grafana/dskit/modules
+github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 ## explicit

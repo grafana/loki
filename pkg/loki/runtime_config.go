@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/grafana/dskit/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/runtime"

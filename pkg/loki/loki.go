@@ -18,11 +18,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/modules"
+	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -52,25 +52,25 @@ type Config struct {
 	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
-	Server           server.Config               `yaml:"server,omitempty"`
-	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
-	Querier          querier.Config              `yaml:"querier,omitempty"`
-	IngesterClient   client.Config               `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config             `yaml:"ingester,omitempty"`
-	StorageConfig    storage.Config              `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig storage.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
-	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
-	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	Worker           worker.Config               `yaml:"frontend_worker,omitempty"`
-	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
-	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
-	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
-	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
-	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
-	Tracing          tracing.Config              `yaml:"tracing"`
-	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
-	QueryScheduler   scheduler.Config            `yaml:"query_scheduler"`
+	Server           server.Config            `yaml:"server,omitempty"`
+	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
+	Querier          querier.Config           `yaml:"querier,omitempty"`
+	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
+	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
+	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig storage.ChunkStoreConfig `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     storage.SchemaConfig     `yaml:"schema_config,omitempty"`
+	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
+	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Worker           worker.Config            `yaml:"frontend_worker,omitempty"`
+	Frontend         lokifrontend.Config      `yaml:"frontend,omitempty"`
+	Ruler            ruler.Config             `yaml:"ruler,omitempty"`
+	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
+	RuntimeConfig    runtimeconfig.Config     `yaml:"runtime_config,omitempty"`
+	MemberlistKV     memberlist.KVConfig      `yaml:"memberlist"`
+	Tracing          tracing.Config           `yaml:"tracing"`
+	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
+	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
