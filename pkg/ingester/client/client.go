@@ -65,10 +65,6 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
 
-	if !cfg.GRPCClientConfig.TLSEnabled {
-		opts = append(opts, grpc.WithInsecure())
-	}
-
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation(&cfg))
 	if err != nil {
 		return nil, err
