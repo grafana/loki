@@ -443,13 +443,14 @@ var (
 
 func Test_SeriesIterator(t *testing.T) {
 	var instances []*instance
-	limits, err := validation.NewOverrides(validation.Limits{
-		MaxLocalStreamsPerUser:       1000,
-		IngestionRateMB:              1e4,
-		IngestionBurstSizeMB:         1e4,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}, nil)
+
+	// NB (owen-d): Not sure why we have these overrides
+	l := defaultLimitsTestConfig()
+	l.MaxLocalStreamsPerUser = 1000
+	l.IngestionRateMB = 1e4
+	l.IngestionBurstSizeMB = 1e4
+
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
