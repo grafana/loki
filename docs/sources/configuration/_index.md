@@ -1910,6 +1910,17 @@ logs in Loki.
 # when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
+
+# Maximum byte rate per second per stream,
+# also expressible in human readable forms (1MB, 256KB, etc).
+# CLI flag: -ingester.per-stream-rate-limit
+[per_stream_rate_limit: <string|int> | default = "3MB"]
+
+# Maximum burst bytes per stream,
+# also expressible in human readable forms (1MB, 256KB, etc).
+# This is how far over the rate limit a stream can "burst" before it's limited.
+# CLI flag: -ingester.per-stream-rate-limit-burst
+[per_stream_rate_limit_burst: <string|int> | default = "15MB"]
 ```
 
 ### grpc_client_config

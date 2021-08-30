@@ -52,6 +52,8 @@ type Limits struct {
 	UnorderedWrites              bool             `yaml:"unordered_writes" json:"unordered_writes"`
 	MaxLocalStreamRateBytes      flagext.ByteSize `yaml:"max_stream_rate_bytes" json:"max_stream_rate_bytes"`
 	MaxLocalStreamBurstRateBytes flagext.ByteSize `yaml:"max_stream_burst_rate_bytes" json:"max_stream_burst_rate_bytes"`
+	PerStreamRateLimit           flagext.ByteSize `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit"`
+	PerStreamRateLimitBurst      flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery          int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
@@ -114,10 +116,17 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 0, "Maximum number of active streams per user, across the cluster. 0 to disable.")
 	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", false, "(Experimental) Allow out of order writes.")
+
+	// Deprecated
 	_ = l.MaxLocalStreamRateBytes.Set(strconv.Itoa(defaultPerStreamRateLimit))
-	f.Var(&l.MaxLocalStreamRateBytes, "ingester.max-stream-rate-bytes", "Maximum bytes per second rate per active stream.")
+	f.Var(&l.MaxLocalStreamRateBytes, "ingester.max-stream-rate-bytes", "Maximum bytes per second rate per active stream (deprecated in favor of ingester.per-stream-rate-limit).")
 	_ = l.MaxLocalStreamBurstRateBytes.Set(strconv.Itoa(defaultPerStreamBurstLimit))
-	f.Var(&l.MaxLocalStreamBurstRateBytes, "ingester.max-stream-burst-bytes", "Maximum burst bytes per second rate per active stream.")
+	f.Var(&l.MaxLocalStreamBurstRateBytes, "ingester.max-stream-burst-bytes", "Maximum burst bytes per second rate per active stream (deprecated in favor of ingester.per-stream-rate-limit-burst).")
+
+	_ = l.PerStreamRateLimit.Set(strconv.Itoa(defaultPerStreamRateLimit))
+	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
+	_ = l.PerStreamRateLimitBurst.Set(strconv.Itoa(defaultPerStreamBurstLimit))
+	f.Var(&l.PerStreamRateLimitBurst, "ingester.per-stream-rate-limit-burst", "Maximum burst bytes per stream, also expressible in human readable forms (1MB, 256KB, etc).")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 
@@ -417,14 +426,6 @@ func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
 }
 
-func (o *Overrides) MaxLocalStreamRateBytes(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalStreamRateBytes.Val()
-}
-
-func (o *Overrides) MaxLocalStreamBurstRateBytes(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalStreamBurstRateBytes.Val()
-}
-
 func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
 	o.tenantLimits.ForEachTenantLimit(callback)
 }
@@ -435,9 +436,20 @@ func (o *Overrides) DefaultLimits() *Limits {
 
 func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 	user := o.getOverridesForUser(userID)
+
 	return RateLimit{
-		Limit: rate.Limit(float64(user.MaxLocalStreamRateBytes.Val())),
-		Burst: user.MaxLocalStreamBurstRateBytes.Val(),
+		Limit: rate.Limit(float64(
+			firstNonDefault(
+				defaultPerStreamRateLimit,
+				user.PerStreamRateLimit.Val(),
+				user.MaxLocalStreamRateBytes.Val(),
+			),
+		)),
+		Burst: firstNonDefault(
+			defaultPerStreamBurstLimit,
+			user.PerStreamRateLimitBurst.Val(),
+			user.MaxLocalStreamBurstRateBytes.Val(),
+		),
 	}
 }
 
@@ -449,4 +461,13 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 		}
 	}
 	return o.defaultLimits
+}
+
+func firstNonDefault(def int, xs ...int) int {
+	for _, x := range xs {
+		if x != def {
+			return x
+		}
+	}
+	return def
 }
