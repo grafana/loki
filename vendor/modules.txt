@@ -55,6 +55,9 @@ github.com/NYTimes/gziphandler
 github.com/PuerkitoBio/purell
 # github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
 github.com/PuerkitoBio/urlesc
+# github.com/RoaringBitmap/roaring v0.9.1
+github.com/RoaringBitmap/roaring
+github.com/RoaringBitmap/roaring/internal
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
@@ -123,11 +126,51 @@ github.com/aws/aws-sdk-go/service/s3/internal/arn
 github.com/aws/aws-sdk-go/service/s3/s3iface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
+# github.com/axiomhq/hyperloglog v0.0.0-20191112132149-a4c4c47bc57f
+github.com/axiomhq/hyperloglog
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
+# github.com/bits-and-blooms/bitset v1.2.0
+github.com/bits-and-blooms/bitset
 # github.com/blang/semver v3.5.1+incompatible
 ## explicit
 github.com/blang/semver
+# github.com/blevesearch/go-porterstemmer v1.0.3
+github.com/blevesearch/go-porterstemmer
+# github.com/blevesearch/mmap-go v1.0.2
+github.com/blevesearch/mmap-go
+# github.com/blevesearch/segment v0.9.0
+github.com/blevesearch/segment
+# github.com/blevesearch/snowballstem v0.9.0
+github.com/blevesearch/snowballstem
+github.com/blevesearch/snowballstem/english
+# github.com/blevesearch/vellum v1.0.5
+github.com/blevesearch/vellum
+github.com/blevesearch/vellum/levenshtein
+github.com/blevesearch/vellum/regexp
+github.com/blevesearch/vellum/utf8
+# github.com/blugelabs/bluge v0.1.7
+## explicit
+github.com/blugelabs/bluge
+github.com/blugelabs/bluge/analysis
+github.com/blugelabs/bluge/analysis/analyzer
+github.com/blugelabs/bluge/analysis/lang/en
+github.com/blugelabs/bluge/analysis/token
+github.com/blugelabs/bluge/analysis/tokenizer
+github.com/blugelabs/bluge/index
+github.com/blugelabs/bluge/index/lock
+github.com/blugelabs/bluge/index/mergeplan
+github.com/blugelabs/bluge/numeric
+github.com/blugelabs/bluge/numeric/geo
+github.com/blugelabs/bluge/search
+github.com/blugelabs/bluge/search/aggregations
+github.com/blugelabs/bluge/search/collector
+github.com/blugelabs/bluge/search/searcher
+github.com/blugelabs/bluge/search/similarity
+# github.com/blugelabs/bluge_segment_api v0.2.0
+github.com/blugelabs/bluge_segment_api
+# github.com/blugelabs/ice v0.2.0
+github.com/blugelabs/ice
 # github.com/bmatcuk/doublestar v1.2.2
 ## explicit
 github.com/bmatcuk/doublestar
@@ -136,6 +179,8 @@ github.com/bradfitz/gomemcache/memcache
 # github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 ## explicit
 github.com/c2h5oh/datasize
+# github.com/caio/go-tdigest v3.1.0+incompatible
+github.com/caio/go-tdigest
 # github.com/cenkalti/backoff/v4 v4.0.2
 github.com/cenkalti/backoff/v4
 # github.com/cespare/xxhash v1.1.0
@@ -251,6 +296,8 @@ github.com/cortexproject/cortex/tools/querytee
 github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 github.com/dgrijalva/jwt-go
+# github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc
+github.com/dgryski/go-metro
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 github.com/dgryski/go-rendezvous
 # github.com/digitalocean/godo v1.42.1
@@ -619,6 +666,8 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/morikuni/aec v1.0.0
 github.com/morikuni/aec
+# github.com/mschoch/smat v0.2.0
+github.com/mschoch/smat
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 ## explicit
 github.com/mwitkow/go-conntrack
