@@ -88,6 +88,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. ")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
+	f.BoolVar(&c.AuthzEnabled, "authz.enabled", false, "Set to true to enable authorization. Entitlement config is necessary to enabule authorization.")
 
 	c.Server.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
@@ -108,6 +109,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
+	c.Entitlement.RegisterFlags(f)
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.

@@ -23,6 +23,7 @@ package entitlement
 
 import (
 	context "context"
+	"flag"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -31,6 +32,7 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/weaveworks/common/user"
 	grpc "google.golang.org/grpc"
 )
@@ -46,11 +48,12 @@ type Entitlement struct {
 
 // Config is a data structure for the Entitlement config
 type Config struct {
-	GrpcServer    string   `yaml:"grpc_server"`
-	LabelKey      string   `yaml:"label_key"`
-	DefaultAllow  bool     `yaml:"allow_access_if_label_key_doesnt_exist"`
-	TrustedCnames []string `yaml:"trusted_cnames"`
-	UserIDHeader  string   `yaml:"userid_header"`
+	GrpcServer        string              `yaml:"grpc_server"`
+	LabelKey          string              `yaml:"label_key"`
+	DefaultAllow      bool                `yaml:"allow_access_if_label_key_doesnt_exist"`
+	TrustedCnames     flagext.StringSlice `yaml:"trusted_cnames"`
+	UserIDHeader      string              `yaml:"userid_header"`
+	CacheRetainPeriod time.Duration       `yaml:"cache_retain_period"`
 }
 
 type entitlementResult struct {
@@ -61,6 +64,16 @@ type entitlementResult struct {
 var ent *Entitlement = &Entitlement{}
 var entLock *sync.RWMutex = &sync.RWMutex{}
 var entConfig Config
+
+// RegisterFlags registers the flags
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.GrpcServer, "entitlement.grpc-server", "", "host:port of entitlement server")
+	f.StringVar(&cfg.LabelKey, "entitlement.label-key", "", "label key name to check entitlement per orgid/userid")
+	f.BoolVar(&cfg.DefaultAllow, "entitlement.default-allow", false, "Allow access if entitlement.label_key doesn't exist")
+	f.Var(&cfg.TrustedCnames, "entitlement.trused-cnames", "Trusted CNAMEs")
+	f.StringVar(&cfg.UserIDHeader, "entitlement.userid-header", "", "Used as userid instead of CNAME if it's from trusted_cnames")
+	f.DurationVar(&cfg.CacheRetainPeriod, "entitlement.cache-retain-period", 1*time.Minute, "")
+}
 
 func (e *Entitlement) labelValueFromLabelstring(labelKey string, labelString string) string {
 	// labelString format:
@@ -125,7 +138,7 @@ func Entitled(action string, oid string, uid string, labelString string) bool {
 	}
 	// 1. entitlement cache
 	if entResult, ok := ent.entitledCache(action, oid, uid, labelString); ok {
-		if time.Now().Unix()-entResult.timestamp <= 60 {
+		if time.Now().Unix()-entResult.timestamp <= int64(entConfig.CacheRetainPeriod.Seconds()) {
 			level.Debug(util_log.Logger).Log("msg",
 				fmt.Sprintf("Cache found for action:%s, uid:%s, value:%s, entitled:%v, Ts:%v",
 					action, uid, value, entResult.entitled, entResult.timestamp))
