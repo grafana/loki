@@ -300,6 +300,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-tracker.done:
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
+		go func() {
+			select {
+			case <-tracker.err:
+				return
+			case <-tracker.done:
+				return
+			}
+		}()
 		return nil, ctx.Err()
 	}
 }
