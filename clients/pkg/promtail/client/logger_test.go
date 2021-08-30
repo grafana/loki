@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	cortexflag "github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	cortexflag "github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 

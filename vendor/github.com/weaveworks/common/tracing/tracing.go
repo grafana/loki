@@ -14,9 +14,13 @@ var (
 )
 
 // installJaeger registers Jaeger as the OpenTracing implementation.
-func installJaeger(serviceName string, cfg *jaegercfg.Configuration) (io.Closer, error) {
+func installJaeger(serviceName string, cfg *jaegercfg.Configuration, options ...jaegercfg.Option) (io.Closer, error) {
 	metricsFactory := jaegerprom.New()
-	closer, err := cfg.InitGlobalTracer(serviceName, jaegercfg.Metrics(metricsFactory))
+
+	// put the metricsFactory earlier so provided options can override it
+	opts := append([]jaegercfg.Option{jaegercfg.Metrics(metricsFactory)}, options...)
+
+	closer, err := cfg.InitGlobalTracer(serviceName, opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not initialize jaeger tracer")
 	}
@@ -29,7 +33,7 @@ func installJaeger(serviceName string, cfg *jaegercfg.Configuration) (io.Closer,
 // Tracing will be enabled if one (or more) of the following environment variables is used to configure trace reporting:
 // - JAEGER_AGENT_HOST
 // - JAEGER_SAMPLER_MANAGER_HOST_PORT
-func NewFromEnv(serviceName string) (io.Closer, error) {
+func NewFromEnv(serviceName string, options ...jaegercfg.Option) (io.Closer, error) {
 	cfg, err := jaegercfg.FromEnv()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not load jaeger tracer configuration")
@@ -39,5 +43,5 @@ func NewFromEnv(serviceName string) (io.Closer, error) {
 		return nil, ErrBlankTraceConfiguration
 	}
 
-	return installJaeger(serviceName, cfg)
+	return installJaeger(serviceName, cfg, options...)
 }

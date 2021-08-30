@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 )
 
