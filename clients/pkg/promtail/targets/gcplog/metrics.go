@@ -32,7 +32,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	m.gcplogTargetLastSuccessScrape = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "promtail",
 		Name:      "gcplog_target_last_success_scrape",
-		Help:      "Timestamp of the specific target's last successfull poll",
+		Help:      "Timestamp of the specific target's last successful poll",
 	}, []string{"project", "target"})
 
 	reg.MustRegister(m.gcplogEntries, m.gcplogErrors)

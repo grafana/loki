@@ -139,7 +139,7 @@ func (t *GcplogTarget) Type() target.TargetType {
 
 func (t *GcplogTarget) Ready() bool {
 	// Return true just like all other targets.
-	// Rationale is gcplog scraping shouldn't stop because of some some transient timeout errors.
+	// Rationale is gcplog scraping shouldn't stop because of some transient timeout errors.
 	// This transient failure can cause promtail readyness probe to fail which may prevent pod from starting.
 	// We have metrics now to track if scraping failed (`gcplog_target_last_success_scrape`).
 	return true
