@@ -103,7 +103,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	require.NoError(t, flagset.Parse(nil))
 	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
 
-	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.DefaultRegisterer, log.NewNopLogger())
+	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer), log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, runtimeConfig.StartAsync(context.Background()))

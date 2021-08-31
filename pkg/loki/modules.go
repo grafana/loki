@@ -149,7 +149,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
 
 	var err error
-	t.runtimeConfig, err = runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer, util_log.Logger)
+	t.runtimeConfig, err = runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer), util_log.Logger)
 	return t.runtimeConfig, err
 }
 
