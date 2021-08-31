@@ -1911,10 +1911,11 @@ logs in Loki.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
-# Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago.
-# This limit is enforced in the query-frontend, querier and ruler.
-# If the requested time range is outside the allowed range, the request will not fail but will be manipulated
-# to only query data within the allowed time range. 0 to disable.
+# Limit how far back in time series data and metadata can be queried, up until lookback duration ago.
+# This limit is enforced in the query frontend, the querier and the ruler.
+# If the requested time range is outside the allowed range, the request will not fail,
+# but will be modified to only query data within the allowed time range. 
+# The default value of 0 does not set a limit.
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0]
 ```
