@@ -1826,7 +1826,7 @@ logs in Loki.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 0]
 
-# When true, out of order writes are accepted.
+# When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
 [unordered_writes: <bool> | default = false]
 
@@ -1910,6 +1910,13 @@ logs in Loki.
 # when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
+
+# Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago.
+# This limit is enforced in the query-frontend, querier and ruler.
+# If the requested time range is outside the allowed range, the request will not fail but will be manipulated
+# to only query data within the allowed time range. 0 to disable.
+# CLI flag: -querier.max-query-lookback
+[max_query_lookback: <duration> | default = 0]
 ```
 
 ### grpc_client_config
@@ -2125,3 +2132,54 @@ multi_kv_config:
     primary: consul
 ```
 ### Generic placeholders
+
+## Accept out-of-order writes
+
+Since the beginning of Loki, log entries had to be written to Loki in order
+by time.
+This limitation has been lifted.
+Out-of-order writes may be enabled globally for a Loki cluster
+or enabled on a per-tenant basis.
+
+- To enable out-of-order writes for all tenants,
+place in the `limits_config` section:
+
+    ```
+    limits_config:
+        unordered_writes: true
+    ```
+
+- To enable out-of-order writes for specific tenants,
+configure a runtime configuration file:
+
+    ```
+    runtime_config: overrides.yaml
+    ```
+
+    In the `overrides.yaml` file, add `unordered_writes` for each tenant
+    permitted to have out-of-order writes:
+
+    ```
+    overrides:
+      "tenantA":
+        unordered_writes: true
+    ```
+
+How far into the past accepted out-of-order log entries may be
+is configurable with `max_chunk_age`.
+`max_chunk_age` defaults to 1 hour.
+Loki calculates the earliest time that out-of-order entries may have
+and be accepted with 
+
+```
+time_of_most_recent_line - (max_chunk_age/2)
+```
+
+Log entries with timestamps that are after this earliest time are accepted.
+Log entries further back in time return an out-of-order error.
+
+For example, if `max_chunk_age` is 2 hours
+and the stream `{foo="bar"}` has one entry at `8:00`,
+Loki will accept data for that stream as far back in time as `7:00`.
+If another log line is written at `10:00`,
+Loki will accept data for that stream as far back in time as `9:00`.

@@ -78,10 +78,11 @@ means that after 4 hours of running the canary will have a list of 16 entries
 it will query every minute (default `spot-check-query-rate` interval is 1m),
 so be aware of the query load this can put on Loki if you have a lot of canaries.
 
-__NOTE:__ if you are using `out-of-order-percentage` to test ingestion of out of order
+__NOTE:__ if you are using `out-of-order-percentage` to test ingestion of out-of-order
 log lines be sure not to set the two out of order time range flags too far in the past.
 The defaults are already enough to test this functionality properly, and setting them
 too far in the past can cause issues with the spot check test.
+
 
 When using `out-of-order-percentage` you also need to make use of pipeline stages
 in your Promtail configuration in order to set the timestamps correctly as the logs are pushed

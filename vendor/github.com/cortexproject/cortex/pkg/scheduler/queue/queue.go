@@ -5,11 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (

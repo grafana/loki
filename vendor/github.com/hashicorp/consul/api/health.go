@@ -58,6 +58,7 @@ type HealthCheckDefinition struct {
 	Header                                 map[string][]string
 	Method                                 string
 	Body                                   string
+	TLSServerName                          string
 	TLSSkipVerify                          bool
 	TCP                                    string
 	IntervalDuration                       time.Duration `json:"-"`
@@ -233,7 +234,7 @@ func (h *Health) Node(node string, q *QueryOptions) (HealthChecks, *QueryMeta, e
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -254,7 +255,7 @@ func (h *Health) Checks(service string, q *QueryOptions) (HealthChecks, *QueryMe
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -331,7 +332,7 @@ func (h *Health) service(service string, tags []string, passingOnly bool, q *Que
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)
@@ -361,7 +362,7 @@ func (h *Health) State(state string, q *QueryOptions) (HealthChecks, *QueryMeta,
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	qm := &QueryMeta{}
 	parseQueryMeta(resp, qm)

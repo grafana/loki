@@ -26,7 +26,6 @@ import (
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
@@ -176,12 +175,16 @@ func (c *Client) ExternalLabels(ctx context.Context, base *url.URL) (labels.Labe
 	if err := json.Unmarshal(body, &d); err != nil {
 		return nil, errors.Wrapf(err, "unmarshal response: %v", string(body))
 	}
-	var cfg config.Config
+	var cfg struct {
+		Global struct {
+			ExternalLabels map[string]string `yaml:"external_labels"`
+		} `yaml:"global"`
+	}
 	if err := yaml.Unmarshal([]byte(d.Data.YAML), &cfg); err != nil {
 		return nil, errors.Wrapf(err, "parse Prometheus config: %v", d.Data.YAML)
 	}
 
-	lset := cfg.GlobalConfig.ExternalLabels
+	lset := labels.FromMap(cfg.Global.ExternalLabels)
 	sort.Sort(lset)
 	return lset, nil
 }

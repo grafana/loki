@@ -8,7 +8,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
