@@ -67,7 +67,10 @@ the log line as a key=value pair you could write a query like this: `{logGroup="
 
 Loki can cache data at many levels, which can drastically improve performance. Details of this will be in a future post.
 
-## Logs must be in increasing time order per stream
+## Time ordering of logs
+
+Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
+This section identifies best practices when Loki is _not_ configured to accept out-of-order writes.
 
 One issue many people have with Loki is their client receiving errors for out of order log entries.  This happens because of this hard and fast rule within Loki:
 
@@ -99,8 +102,6 @@ What can we do about this? What if this was because the sources of these logs we
 ```
 
 But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the Promtail pipeline stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
-
-But I want Loki to fix this! Why can’t you buffer streams and re-order them for me?! To be honest, because this would add a lot of memory overhead and complication to Loki, and as has been a common thread in this post, we want Loki to be simple and cost-effective. Ideally we would want to improve our clients to do some basic buffering and sorting as this seems a better place to solve this problem.
 
 It's also worth noting that the batching nature of the Loki push API can lead to some instances of out of order errors being received which are really false positives. (Perhaps a batch partially succeeded and was present; or anything that previously succeeded would return an out of order entry; or anything new would be accepted.)
 

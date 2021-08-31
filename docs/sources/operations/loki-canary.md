@@ -72,13 +72,13 @@ means that after 4 hours of running the canary will have a list of 16 entries
 it will query every minute (default `spot-check-query-rate` interval is 1m),
 so be aware of the query load this can put on Loki if you have a lot of canaries.
 
-__NOTE:__ if you are using `out-of-order-percentage` to test ingestion of out of order
+__NOTE:__ if you are using `out-of-order-percentage` to test ingestion of out-of-order
 log lines be sure not to set the two out of order time range flags too far in the past.
 The defaults are already enough to test this functionality properly, and setting them
 too far in the past can cause issues with the spot check test.
 
-When using `out-of-order-percentage` you also need to make use of pipeline stages
-in your promtail config in order to set the timestamps correctly as the logs are pushed
+When using `out-of-order-percentage`, you also need to make use of pipeline stages
+in your Promtail configuration in order to set the timestamps correctly as the logs are pushed
 to Loki. The `client/promtail/pipelines` docs have examples of how to do this.
 
 #### Metric Test
@@ -310,9 +310,9 @@ All options:
   -metric-test-range duration
         The range value [24h] used in the metric test instant-query. Note: this value is truncated to the running time of the canary until this value is reached (default 24h0m0s)
   -out-of-order-max duration
-    	  Maximum amount of time to go back for out of order entries (in seconds). (default 1m0s)
+    	  Maximum amount of time to go back for out-of-order entries (in seconds). (default 1m0s)
   -out-of-order-min duration
-    	  Minimum amount of time to go back for out of order entries (in seconds). (default 30s)
+    	  Minimum amount of time to go back for out-of-order entries (in seconds). (default 30s)
   -out-of-order-percentage int
       	Percentage (0-100) of log entries that should be sent out of order.
   -pass string
