@@ -163,7 +163,7 @@ deduplicated.
 
 Loki can be configured to [accept out-of-order writes](../../configuration/#accept-out-of-order-writes).
 
-When not configured to accept out-of-order writes, the ingester validates that ingested log lines are not out of order. When an
+When not configured to accept out-of-order writes, the ingester validates that ingested log lines are in order. When an
 ingester receives a log line that doesn't follow the expected order, the line
 is rejected and an error is returned to the user. 
 
