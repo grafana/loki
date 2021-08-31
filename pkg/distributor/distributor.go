@@ -278,8 +278,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		done: make(chan struct{}),
-		err:  make(chan error),
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		err:  make(chan error, 1),
 	}
 	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {
@@ -300,14 +300,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-tracker.done:
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
-		go func() {
-			select {
-			case <-tracker.err:
-				return
-			case <-tracker.done:
-				return
-			}
-		}()
 		return nil, ctx.Err()
 	}
 }
