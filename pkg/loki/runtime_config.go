@@ -24,6 +24,10 @@ type runtimeConfigValues struct {
 
 func (r runtimeConfigValues) validate() error {
 	for t, c := range r.TenantLimits {
+		if c == nil {
+			continue
+		}
+
 		if err := c.Validate(); err != nil {
 			return fmt.Errorf("invalid override for tenant %s: %w", t, err)
 		}
