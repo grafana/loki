@@ -107,7 +107,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	client.Timeout = cfg.Timeout
 	client.MaxIdleConns = cfg.MaxIdleConns
 
-	dnsProviderRegisterer := prometheus.WrapRegistererWithPrefix("loki_", prometheus.WrapRegistererWith(prometheus.Labels{
+	dnsProviderRegisterer := prometheus.WrapRegistererWithPrefix("cortex_", prometheus.WrapRegistererWith(prometheus.Labels{
 		"name": name,
 	}, r))
 
