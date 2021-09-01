@@ -161,13 +161,15 @@ deduplicated.
 
 #### Timestamp Ordering
 
-The ingester validates that ingested log lines are not out of order. When an
+Loki can be configured to [accept out-of-order writes](../../configuration/#accept-out-of-order-writes).
+
+When not configured to accept out-of-order writes, the ingester validates that ingested log lines are in order. When an
 ingester receives a log line that doesn't follow the expected order, the line
 is rejected and an error is returned to the user. 
 
-The ingester validates that ingested log lines are received in
-timestamp-ascending order (i.e., each log has a timestamp that occurs at a later
-time than the log before it). When the ingester receives a log that does not
+The ingester validates that log lines are received in
+timestamp-ascending order. Each log has a timestamp that occurs at a later
+time than the log before it. When the ingester receives a log that does not
 follow this order, the log line is rejected and an error is returned.
 
 Logs from each unique set of labels are built up into "chunks" in memory and
@@ -176,7 +178,8 @@ then flushed to the backing storage backend.
 If an ingester process crashes or exits abruptly, all the data that has not yet
 been flushed could be lost. Loki is usually configured with a [Write Ahead Log](../operations/storage/wal) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
 
-In general, all lines pushed to Loki for a given stream (unique combination of
+When not configured to accept out-of-order writes,
+all lines pushed to Loki for a given stream (unique combination of
 labels) must have a newer timestamp than the line received before it. There are,
 however, two cases for handling logs for the same stream with identical
 nanosecond timestamps:

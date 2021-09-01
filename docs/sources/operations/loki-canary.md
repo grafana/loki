@@ -6,10 +6,16 @@ weight: 60
 
 ![canary](../canary.png)
 
-Loki Canary is a standalone app that audits the log capturing performance of
-Loki.
+Loki Canary is a standalone app that audits the log-capturing performance of
+a Loki cluster.
 
-## How it works
+Loki Canary generates artificial log lines.
+These log lines are sent to the Loki cluster.
+Loki Canary communicates with the Loki cluster to capture metrics about the
+artificial log lines,
+such that Loki Canary forms information about the performance of the
+Loki cluster.
+The information is available as Prometheus time series metrics.
 
 ![block_diagram](../loki-canary-block.png)
 
@@ -72,20 +78,21 @@ means that after 4 hours of running the canary will have a list of 16 entries
 it will query every minute (default `spot-check-query-rate` interval is 1m),
 so be aware of the query load this can put on Loki if you have a lot of canaries.
 
-__NOTE:__ if you are using `out-of-order-percentage` to test ingestion of out of order
+__NOTE:__ if you are using `out-of-order-percentage` to test ingestion of out-of-order
 log lines be sure not to set the two out of order time range flags too far in the past.
 The defaults are already enough to test this functionality properly, and setting them
 too far in the past can cause issues with the spot check test.
 
+
 When using `out-of-order-percentage` you also need to make use of pipeline stages
-in your promtail config in order to set the timestamps correctly as the logs are pushed
+in your Promtail configuration in order to set the timestamps correctly as the logs are pushed
 to Loki. The `client/promtail/pipelines` docs have examples of how to do this.
 
 #### Metric Test
 
-Starting with version 1.6.0 the canary will run a metric query `count_over_time` to
-verify the rate of logs being stored in Loki corresponds to the rate they are being
-created by the canary.
+Loki Canary will run a metric query `count_over_time` to
+verify that the rate of logs being stored in Loki corresponds to the rate they are being
+created by Loki Canary.
 
 `-metric-test-interval` and `-metric-test-range` are used to tune this feature, but
 by default every `15m` the canary will run a `count_over_time` instant-query to Loki
@@ -294,7 +301,7 @@ whatever your `pruneinterval` is defined at.
 
 All options:
 
-```nohighlight
+```
   -addr string
         The Loki server URL:Port, e.g. loki:3100
   -buckets int
@@ -302,45 +309,58 @@ All options:
   -interval duration
         Duration between log entries (default 1s)
   -labelname string
-        The label name for this instance of loki-canary to use in the log selector (default "name")
+        The label name for this instance of Loki Canary to use in the log selector
+        (default "name")
   -labelvalue string
-        The unique label value for this instance of loki-canary to use in the log selector (default "loki-canary")
+        The unique label value for this instance of Loki Canary to use in the log selector
+        (default "loki-canary")
   -metric-test-interval duration
         The interval the metric test query should be run (default 1h0m0s)
   -metric-test-range duration
-        The range value [24h] used in the metric test instant-query. Note: this value is truncated to the running time of the canary until this value is reached (default 24h0m0s)
+        The range value [24h] used in the metric test instant-query. This value is truncated
+        to the running time of the canary until this value is reached (default 24h0m0s)
   -out-of-order-max duration
-    	  Maximum amount of time to go back for out of order entries (in seconds). (default 1m0s)
+    	  Maximum amount of time (in seconds) in the past an out of order entry may have as a
+          timestamp. (default 60s)
   -out-of-order-min duration
-    	  Minimum amount of time to go back for out of order entries (in seconds). (default 30s)
+    	  Minimum amount of time (in seconds) in the past an out of order entry may have as a
+          timestamp. (default 30s)
   -out-of-order-percentage int
-      	Percentage (0-100) of log entries that should be sent out of order.
+      	Percentage (0-100) of log entries that should be sent out of order
   -pass string
         Loki password
   -port int
-        Port which loki-canary should expose metrics (default 3500)
+        Port which Loki Canary should expose metrics (default 3500)
   -pruneinterval duration
-        Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki, and the frequency spot check queries are run (default 1m0s)
+        Frequency to check sent versus received logs, and also the frequency at which queries
+        for missing logs will be dispatched to Loki, and the frequency spot check queries are run
+        (default 1m0s)
   -query-timeout duration
         How long to wait for a query response from Loki (default 10s)
   -size int
         Size in bytes of each log line (default 100)
   -spot-check-interval duration
-        Interval that a single result will be kept from sent entries and spot-checked against Loki, e.g. 15min default one entry every 15 min will be saved andthen queried again every 15min until spot-check-max is reached (default 15m0s)
+        Interval that a single result will be kept from sent entries and spot-checked against
+        Loki. For example, with the 15 minute default, one entry every 15 minutes will be saved,
+        and then queried again every 15 minutes until the time defined by spot-check-max is
+        reached (default 15m0s)
   -spot-check-max duration
-        How far back to check a spot check entry before dropping it (default 4h0m0s)
+        How far back to check a spot check an entry before dropping it (default 4h0m0s)
   -spot-check-query-rate duration
-        Interval that the canary will query Loki for the current list of all spot check entries (default 1m0s)
+        Interval that Loki Canary will query Loki for the current list of all spot check entries
+        (default 1m0s)
   -streamname string
-        The stream name for this instance of loki-canary to use in the log selector (default "stream")
+        The stream name for this instance of Loki Canary to use in the log selector
+        (default "stream")
   -streamvalue string
-        The unique stream value for this instance of loki-canary to use in the log selector (default "stdout")
+        The unique stream value for this instance of Loki Canary to use in the log selector
+        (default "stdout")
   -tls
-        Does the loki connection use TLS?
+        Does the Loki connection use TLS?
   -user string
-        Loki username
+        Loki user name
   -version
-        Print this builds version information
+        Print this build's version information
   -wait duration
-        Duration to wait for log entries before reporting them lost (default 1m0s)
+        Duration to wait for log entries before reporting them as lost (default 1m0s)
 ```
