@@ -20,7 +20,7 @@ markComment: >
 
   We use a stalebot among other tools to help manage the state of issues in this project.
   A stalebot can be very useful in closing issues in a number of cases; the most common
-  is closing issues or PR's where the original reporter has not responded.
+  is closing issues or PRs where the original reporter has not responded.
 
   Stalebots are also emotionless and cruel and can close issues which are still very relevant.
 
