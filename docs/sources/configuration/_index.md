@@ -1918,7 +1918,7 @@ logs in Loki.
 
 # Maximum burst bytes per stream,
 # also expressible in human readable forms (1MB, 256KB, etc).
-# This is how far over the rate limit a stream can "burst" before it's limited.
+# This is how far above the rate limit a stream can "burst" before the stream is limited.
 # CLI flag: -ingester.per-stream-rate-limit-burst
 [per_stream_rate_limit_burst: <string|int> | default = "15MB"]
 
