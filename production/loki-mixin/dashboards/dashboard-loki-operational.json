@@ -3203,7 +3203,7 @@
               "refId": "A"
             },
             {
-              "expr": "sum(increase(cortex_chunk_store_deduped_chunks_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m]))/sum(increase(loki_ingester_chunks_flushed_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m])) < 1",
+              "expr": "sum(increase(loki_chunk_store_deduped_chunks_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m]))/sum(increase(loki_ingester_chunks_flushed_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m])) < 1",
               "interval": "",
               "legendFormat": "De-Dupe Ratio",
               "refId": "B"

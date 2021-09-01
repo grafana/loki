@@ -94,7 +94,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       .addPanel(
         g.panel('Entries') +
         g.queryPanel(
-          'sum(rate(cortex_chunk_store_index_entries_per_chunk_sum{%s}[5m])) / sum(rate(cortex_chunk_store_index_entries_per_chunk_count{%s}[5m]))' % [
+          'sum(rate(loki_chunk_store_index_entries_per_chunk_sum{%s}[5m])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{%s}[5m]))' % [
             dashboards['loki-chunks.json'].ingesterSelector,
             dashboards['loki-chunks.json'].ingesterSelector,
           ],
