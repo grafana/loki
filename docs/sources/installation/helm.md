@@ -129,7 +129,7 @@ spec:
 
 In order to receive and process syslog message into Promtail, the following changes will be necessary:
 
-* Review the [Promtail syslog-receiver configuration documentation](/docs/clients/promtail/scraping.md#syslog-receiver)
+* Review the [Promtail syslog-receiver configuration documentation](/docs/loki/latest/clients/promtail/scraping/#syslog-receiver)
 
 * Configure the Promtail helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
 
@@ -153,7 +153,7 @@ syslogService:
 
 In order to receive and process syslog message into Promtail, the following changes will be necessary:
 
-* Review the [Promtail systemd-journal configuration documentation](/docs/clients/promtail/scraping.md#journal-scraping-linux-only)
+* Review the [Promtail systemd-journal configuration documentation](/docs/loki/latest/clients/promtail/scraping/#journal-scraping-linux-only)
 
 * Configure the Promtail helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
 
