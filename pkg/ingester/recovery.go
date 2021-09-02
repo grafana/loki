@@ -220,8 +220,16 @@ func (r *ingesterRecoverer) Close() {
 
 	for _, inst := range r.ing.getInstances() {
 		inst.forAllStreams(context.Background(), func(s *stream) error {
+			s.chunkMtx.Lock()
+			defer s.chunkMtx.Unlock()
+
 			// reset all the incrementing stream counters after a successful WAL replay.
 			s.resetCounter()
+
+			if len(s.chunks) == 0 {
+				inst.removeStream(s)
+				return nil
+			}
 
 			// If we've replayed a WAL with unordered writes, but the new
 			// configuration disables them, convert all streams/head blocks
@@ -232,14 +240,9 @@ func (r *ingesterRecoverer) Close() {
 			s.unorderedWrites = isAllowed
 
 			if !isAllowed && old {
-
-				s.chunkMtx.Lock()
-				defer s.chunkMtx.Unlock()
-				if len(s.chunks) > 0 {
-					err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
-					if err != nil {
-						return err
-					}
+				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
+				if err != nil {
+					return err
 				}
 			}
 
