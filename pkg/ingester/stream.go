@@ -310,7 +310,10 @@ func (s *stream) Push(
 				}
 			}()
 		}
+	}
 
+	if len(s.chunks) != prevNumChunks {
+		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
 	if len(failedEntriesWithError) > 0 {
@@ -345,9 +348,6 @@ func (s *stream) Push(
 		return bytesAdded, httpgrpc.Errorf(statusCode, buf.String())
 	}
 
-	if len(s.chunks) != prevNumChunks {
-		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
-	}
 	return bytesAdded, nil
 }
 
