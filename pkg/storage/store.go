@@ -83,7 +83,6 @@ type ChunkStoreConfig struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreConfig.RegisterFlags(f)
-	_ = cfg.MaxLookBackPeriod.Set("0s")
 	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "This flag is deprecated. Use -querier.max-query-lookback instead.")
 }
 
