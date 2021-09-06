@@ -197,7 +197,7 @@ type Loki struct {
 	rulerAPI                 *cortex_ruler.API
 	stopper                  queryrange.Stopper
 	runtimeConfig            *runtimeconfig.Manager
-	memberlistKV             *memberlist.KVInitService
+	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware cortex_tripper.Tripperware
 
