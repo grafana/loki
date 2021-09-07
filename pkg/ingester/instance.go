@@ -273,6 +273,15 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	return stream, nil
 }
 
+// removeStream removes a stream from the instance. The streamsMtx must be held.
+func (i *instance) removeStream(s *stream) {
+	delete(i.streamsByFP, s.fp)
+	delete(i.streams, s.labelsString)
+	i.index.Delete(s.labels, s.fp)
+	i.streamsRemovedTotal.Inc()
+	memoryStreams.WithLabelValues(i.instanceID).Dec()
+}
+
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 	var fp uint64
 	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
