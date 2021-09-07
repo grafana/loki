@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+	"encoding/hex"
+	"crypto/md5"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -219,6 +221,11 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 			},
 		},
 	}
+
+	// Regenerate the id for the line
+	sum := md5.Sum([]byte(collapsed.Line))
+	collapsed.Id = hex.EncodeToString(sum[:])
+
 	s.buffer.Reset()
 	s.currentLines = 0
 

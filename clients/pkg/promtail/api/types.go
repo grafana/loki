@@ -10,6 +10,7 @@ import (
 
 // Entry is a log entry with labels.
 type Entry struct {
+	Id string `json:"id"`
 	Labels model.LabelSet
 	logproto.Entry
 }

@@ -63,7 +63,7 @@ func (i inspector) inspect(stageName string, before *Entry, after Entry) {
 		diff = i.formatter.red.Sprintf("none")
 	}
 
-	fmt.Fprintf(i.writer, "[inspect: %s stage]: %s\n", i.formatter.bold.Sprintf("%s", stageName), diff)
+	fmt.Fprintf(i.writer, "[%s inspect: %s stage]: %s\n", after.Id, i.formatter.bold.Sprintf("%s", stageName), diff)
 }
 
 // diffReporter is a simple custom reporter that only records differences

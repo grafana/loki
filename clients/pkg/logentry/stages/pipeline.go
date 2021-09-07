@@ -2,6 +2,8 @@ package stages
 
 import (
 	"sync"
+	"encoding/hex"
+	"crypto/md5"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
@@ -47,6 +49,7 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 			st = append(st, newStage)
 		}
 	}
+
 	return &Pipeline{
 		logger:  log.With(logger, "component", "pipeline"),
 		stages:  st,
@@ -106,6 +109,12 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 		defer wg.Done()
 		defer close(pipelineIn)
 		for e := range handlerIn {
+			// Tag the incoming entry with an id
+			if e.Id == "" {
+				sum := md5.Sum([]byte(e.Line))
+				e.Id = hex.EncodeToString(sum[:])
+			}
+
 			pipelineIn <- Entry{
 				Extracted: map[string]interface{}{},
 				Entry:     e,

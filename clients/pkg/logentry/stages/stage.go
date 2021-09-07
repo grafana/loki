@@ -96,7 +96,7 @@ func (s stageProcessor) Run(in chan Entry) chan Entry {
 func toStage(p Processor) Stage {
 	return &stageProcessor{
 		Processor: p,
-		inspector: newInspector(os.Stderr, runtime.GOOS == "windows"),
+		inspector: newInspector(os.Stdout, runtime.GOOS == "windows"),
 	}
 }
 
