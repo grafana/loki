@@ -47,15 +47,20 @@ local utils = import 'mixin-utils/utils.libsonnet';
           d.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
           .addMultiTemplate('namespace', 'loki_build_info', 'namespace')
         else
-          d.addTemplate('cluster', 'loki_build_info', 'cluster')
-          .addTemplate('namespace', 'loki_build_info', 'namespace'),
+          d.addTemplate('namespace', 'loki_build_info', 'namespace'),
     },
+
+  jobSelector(job)::
+    if $._config.singleBinary
+    then [utils.selector.noop('cluster'), utils.selector.re('job', '$job')]
+    else [utils.selector.re('cluster', '$cluster'), utils.selector.re('job', '($namespace)/%s' % job)],
 
   jobMatcher(job)::
     'cluster=~"$cluster", job=~"($namespace)/%s"' % job,
 
   namespaceMatcher()::
     'cluster=~"$cluster", namespace=~"$namespace"',
+
   logPanel(title, selector, datasource='$logs'):: {
     title: title,
     type: 'logs',
@@ -116,6 +121,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
       datasource: '$datasource',
     },
+
   containerCPUUsagePanel(title, containerName)::
     $.panel(title) +
     $.queryPanel([
