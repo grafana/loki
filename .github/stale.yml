@@ -14,7 +14,7 @@ staleLabel: stale
 
 # Comment to post when marking an issue as stale. Leave as false
 # to disable.
-markComment: >
+markComment: |
   Hi! This issue has been automatically marked as stale because it has not had any
   activity in the past 30 days.
 
