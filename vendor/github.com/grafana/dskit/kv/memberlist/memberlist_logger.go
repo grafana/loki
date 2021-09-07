@@ -49,7 +49,7 @@ func (a loggerAdapter) Write(p []byte) (int, error) {
 	}
 	if lvl, ok := result["level"]; ok {
 		lvl = strings.ToLower(lvl)
-		var lvlVal level.Value = nil
+		var lvlVal level.Value
 
 		switch lvl {
 		case "debug":

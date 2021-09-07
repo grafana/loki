@@ -18,6 +18,8 @@ package queryrange
 import (
 	"context"
 	"flag"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -289,7 +291,10 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024))
+		_ = response.Body.Close()
+	}()
 
 	return q.codec.DecodeResponse(ctx, response, r)
 }

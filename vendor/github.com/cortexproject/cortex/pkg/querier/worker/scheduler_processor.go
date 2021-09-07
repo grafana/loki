@@ -6,18 +6,17 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/dskit/backoff"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/weaveworks/common/user"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 

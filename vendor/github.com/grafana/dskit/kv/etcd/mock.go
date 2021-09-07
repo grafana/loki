@@ -8,19 +8,20 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
+	"github.com/go-kit/kit/log"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v3client"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/grafana/dskit/closer"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/codec"
 )
 
 const etcdStartTimeout = 30 * time.Second
 
 // Mock returns a Mock Etcd client.
 // Inspired by https://github.com/ligato/cn-infra/blob/master/db/keyval/etcd/mocks/embeded_etcd.go.
-func Mock(codec codec.Codec) (*Client, io.Closer, error) {
+func Mock(codec codec.Codec, logger log.Logger) (*Client, io.Closer, error) {
 	dir, err := ioutil.TempDir("", "etcd")
 	if err != nil {
 		return nil, nil, err
@@ -46,7 +47,7 @@ func Mock(codec codec.Codec) (*Client, io.Closer, error) {
 		return nil, nil, fmt.Errorf("server took too long to start")
 	}
 
-	closer := CloserFunc(func() error {
+	closer := closer.Func(func() error {
 		etcd.Server.Stop()
 		return nil
 	})
@@ -55,26 +56,14 @@ func Mock(codec codec.Codec) (*Client, io.Closer, error) {
 	flagext.DefaultValues(&config)
 
 	client := &Client{
-		cfg:   config,
-		codec: codec,
-		cli:   v3client.New(etcd.Server),
+		cfg:    config,
+		codec:  codec,
+		cli:    v3client.New(etcd.Server),
+		logger: logger,
 	}
 
 	return client, closer, nil
 }
-
-// CloserFunc is like http.HandlerFunc but for io.Closers.
-type CloserFunc func() error
-
-// Close implements io.Closer.
-func (f CloserFunc) Close() error {
-	return f()
-}
-
-// NopCloser does nothing.
-var NopCloser = CloserFunc(func() error {
-	return nil
-})
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

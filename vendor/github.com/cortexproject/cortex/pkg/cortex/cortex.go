@@ -12,7 +12,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/modules"
+	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,7 +50,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
@@ -56,11 +58,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/process"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -120,7 +120,7 @@ type Config struct {
 	Configs             configs.Config                             `yaml:"configs"`
 	Alertmanager        alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	AlertmanagerStorage alertstore.Config                          `yaml:"alertmanager_storage"`
-	RuntimeConfig       runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
 }

@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
+	"github.com/grafana/dskit/kv/codec"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/kv/etcd"
+	"github.com/grafana/dskit/kv/memberlist"
 )
 
 const (
@@ -114,30 +115,30 @@ type Client interface {
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
 // encodes and decodes data for storage using the codec.
-func NewClient(cfg Config, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+func NewClient(cfg Config, codec codec.Codec, reg prometheus.Registerer, logger log.Logger) (Client, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, Primary, reg)
+	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec, Primary, reg, logger)
 }
 
-func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Codec, role role, reg prometheus.Registerer) (Client, error) {
+func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Codec, role role, reg prometheus.Registerer, logger log.Logger) (Client, error) {
 	var client Client
 	var err error
 
 	switch backend {
 	case "consul":
-		client, err = consul.NewClient(cfg.Consul, codec)
+		client, err = consul.NewClient(cfg.Consul, codec, logger)
 
 	case "etcd":
-		client, err = etcd.New(cfg.Etcd, codec)
+		client, err = etcd.New(cfg.Etcd, codec, logger)
 
 	case "inmemory":
 		// If we use the in-memory store, make sure everyone gets the same instance
 		// within the same process.
 		inmemoryStoreInit.Do(func() {
-			inmemoryStore = consul.NewInMemoryClient(codec)
+			inmemoryStore, _ = consul.NewInMemoryClient(codec, logger)
 		})
 		client = inmemoryStore
 
@@ -152,11 +153,11 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 		}
 
 	case "multi":
-		client, err = buildMultiClient(cfg, codec, reg)
+		client, err = buildMultiClient(cfg, codec, reg, logger)
 
 	// This case is for testing. The mock KV client does not do anything internally.
 	case "mock":
-		client, err = buildMockClient()
+		client, err = buildMockClient(logger)
 
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", backend)
@@ -178,7 +179,7 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 	return newMetricsClient(backend, client, prometheus.WrapRegistererWith(role.Labels(), reg)), nil
 }
 
-func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer) (Client, error) {
+func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registerer, logger log.Logger) (Client, error) {
 	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
 		return nil, fmt.Errorf("primary or secondary store not set")
 	}
@@ -189,12 +190,12 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registe
 		return nil, fmt.Errorf("primary and secondary stores must be different")
 	}
 
-	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec, Primary, reg)
+	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec, Primary, reg, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec, Secondary, reg)
+	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec, Secondary, reg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -204,5 +205,5 @@ func buildMultiClient(cfg StoreConfig, codec codec.Codec, reg prometheus.Registe
 		{client: secondary, name: cfg.Multi.Secondary},
 	}
 
-	return NewMultiClient(cfg.Multi, clients), nil
+	return NewMultiClient(cfg.Multi, clients, logger), nil
 }

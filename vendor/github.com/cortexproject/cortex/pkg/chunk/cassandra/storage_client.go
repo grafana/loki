@@ -13,13 +13,13 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 

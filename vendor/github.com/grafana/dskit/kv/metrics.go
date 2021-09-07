@@ -49,10 +49,9 @@ func newMetricsClient(backend string, c Client, reg prometheus.Registerer) Clien
 		c: c,
 		requestDuration: instrument.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace: "cortex",
-				Name:      "kv_request_duration_seconds",
-				Help:      "Time spent on kv store requests.",
-				Buckets:   prometheus.DefBuckets,
+				Name:    "kv_request_duration_seconds",
+				Help:    "Time spent on kv store requests.",
+				Buckets: prometheus.DefBuckets,
 				ConstLabels: prometheus.Labels{
 					"type": backend,
 				},

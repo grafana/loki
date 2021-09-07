@@ -3,6 +3,8 @@ package ruler
 import (
 	"time"
 
+	"github.com/grafana/dskit/services"
+
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,7 +16,26 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
-func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) *client.Pool {
+// ClientsPool is the interface used to get the client from the pool for a specified address.
+type ClientsPool interface {
+	services.Service
+	// GetClientFor returns the ruler client for the given address.
+	GetClientFor(addr string) (RulerClient, error)
+}
+
+type rulerClientsPool struct {
+	*client.Pool
+}
+
+func (p *rulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
+	c, err := p.Pool.GetClientFor(addr)
+	if err != nil {
+		return nil, err
+	}
+	return c.(RulerClient), nil
+}
+
+func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) ClientsPool {
 	// We prefer sane defaults instead of exposing further config options.
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,
@@ -27,7 +48,9 @@ func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prom
 		Help: "The current number of ruler clients in the pool.",
 	})
 
-	return client.NewPool("ruler", poolCfg, nil, newRulerClientFactory(clientCfg, reg), clientsCount, logger)
+	return &rulerClientsPool{
+		client.NewPool("ruler", poolCfg, nil, newRulerClientFactory(clientCfg, reg), clientsCount, logger),
+	}
 }
 
 func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {

@@ -171,8 +171,12 @@ func New(cfg Config) (*Server, error) {
 	}, []string{"protocol"})
 	prometheus.MustRegister(tcpConnections)
 
+	network := cfg.HTTPListenNetwork
+	if network == "" {
+		network = DefaultNetwork
+	}
 	// Setup listeners first, so we can fail early if the port is in use.
-	httpListener, err := net.Listen(cfg.HTTPListenNetwork, fmt.Sprintf("%s:%d", cfg.HTTPListenAddress, cfg.HTTPListenPort))
+	httpListener, err := net.Listen(network, fmt.Sprintf("%s:%d", cfg.HTTPListenAddress, cfg.HTTPListenPort))
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +186,11 @@ func New(cfg Config) (*Server, error) {
 		httpListener = netutil.LimitListener(httpListener, cfg.HTTPConnLimit)
 	}
 
-	grpcListener, err := net.Listen(cfg.HTTPListenNetwork, fmt.Sprintf("%s:%d", cfg.GRPCListenAddress, cfg.GRPCListenPort))
+	network = cfg.GRPCListenNetwork
+	if network == "" {
+		network = DefaultNetwork
+	}
+	grpcListener, err := net.Listen(network, fmt.Sprintf("%s:%d", cfg.GRPCListenAddress, cfg.GRPCListenPort))
 	if err != nil {
 		return nil, err
 	}
@@ -258,8 +266,8 @@ func New(cfg Config) (*Server, error) {
 	}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
-		middleware.UnaryServerInstrumentInterceptor(requestDuration),
 		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
+		middleware.UnaryServerInstrumentInterceptor(requestDuration),
 	}
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
 

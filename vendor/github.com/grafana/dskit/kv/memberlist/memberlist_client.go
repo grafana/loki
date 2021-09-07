@@ -15,16 +15,13 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/services"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/discovery/dns"
-	"github.com/thanos-io/thanos/pkg/extprom"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/codec"
+	"github.com/grafana/dskit/services"
 )
 
 const (
@@ -165,7 +162,7 @@ type KVConfig struct {
 	Codecs []codec.Codec `yaml:"-"`
 }
 
-// RegisterFlags registers flags.
+// RegisterFlagsWithPrefix registers flags.
 func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	mlDefaults := defaultMemberlistConfig()
 
@@ -174,7 +171,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.RandomizeNodeName, prefix+"memberlist.randomize-node-name", true, "Add random suffix to the node name.")
 	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", mlDefaults.TCPTimeout, "The timeout for establishing a connection with a remote node, and for read/write operations.")
 	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", mlDefaults.RetransmitMult, "Multiplication factor used when sending out messages (factor * log(N+1)).")
-	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. It can be an IP, hostname or an entry specified in the DNS Service Discovery format (see https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery for more details).")
+	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. It can be an IP, hostname or an entry specified in the DNS Service Discovery format.")
 	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
 	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
 	f.IntVar(&cfg.MaxJoinRetries, prefix+"memberlist.max-join-retries", 10, "Max number of retries to join other cluster members.")
@@ -197,11 +194,11 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(f, "")
 }
 
-func generateRandomSuffix() string {
+func generateRandomSuffix(logger log.Logger) string {
 	suffix := make([]byte, 4)
 	_, err := rand.Read(suffix)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to generate random suffix", "err", err)
+		level.Error(logger).Log("msg", "failed to generate random suffix", "err", err)
 		return "error"
 	}
 	return fmt.Sprintf("%2x", suffix)
@@ -219,7 +216,7 @@ type KV struct {
 	logger log.Logger
 
 	// dns discovery provider
-	provider *dns.Provider
+	provider DNSProvider
 
 	// Protects access to memberlist and broadcasts fields.
 	initWG     sync.WaitGroup
@@ -329,21 +326,14 @@ var (
 // gossiping part. Only after service is in Running state, it is really gossiping. Starting the service will also
 // trigger connecting to the existing memberlist cluster. If that fails and AbortIfJoinFails is true, error is returned
 // and service enters Failed state.
-func NewKV(cfg KVConfig, logger log.Logger) *KV {
+func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider) *KV {
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
-
-	mr := extprom.WrapRegistererWithPrefix("cortex_",
-		extprom.WrapRegistererWith(
-			prometheus.Labels{"name": "memberlist"},
-			cfg.MetricsRegisterer,
-		),
-	)
 
 	mlkv := &KV{
 		cfg:            cfg,
 		logger:         logger,
-		provider:       dns.NewProvider(logger, mr, dns.GolangResolverType),
+		provider:       dnsProvider,
 		store:          make(map[string]valueDesc),
 		codecs:         make(map[string]codec.Codec),
 		watchers:       make(map[string][]chan string),
@@ -388,7 +378,7 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 		mlCfg.Name = m.cfg.NodeName
 	}
 	if m.cfg.RandomizeNodeName {
-		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix()
+		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix(m.logger)
 		level.Info(m.logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
 	}
 
@@ -450,7 +440,7 @@ func (m *KV) running(ctx context.Context) error {
 		}
 	}
 
-	var tickerChan <-chan time.Time = nil
+	var tickerChan <-chan time.Time
 	if m.cfg.RejoinInterval > 0 && len(m.cfg.JoinMembers) > 0 {
 		t := time.NewTicker(m.cfg.RejoinInterval)
 		defer t.Stop()
@@ -787,7 +777,7 @@ func (m *KV) notifyWatchers(key string) {
 // detect removals. If Merge doesn't result in any change (returns nil), then operation fails and is retried again.
 // After too many failed retries, this method returns error.
 func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	var lastError error = nil
+	var lastError error
 
 outer:
 	for retries := m.maxCasRetries; retries > 0; retries-- {
@@ -996,6 +986,7 @@ func (m *KV) queueBroadcast(key string, content []string, version uint, message 
 		finished: func(b ringBroadcast) {
 			m.totalSizeOfBroadcastMessagesInQueue.Sub(float64(l))
 		},
+		logger: m.logger,
 	}
 
 	m.totalSizeOfBroadcastMessagesInQueue.Add(float64(l))

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,7 +20,6 @@ import (
 	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
@@ -113,7 +113,8 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		ringStore, err = kv.NewClient(
 			gatewayCfg.ShardingRing.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(reg, "store-gateway"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), "store-gateway"),
+			logger,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")

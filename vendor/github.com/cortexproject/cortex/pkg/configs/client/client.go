@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	tls_cfg "github.com/cortexproject/cortex/pkg/util/tls"
 )

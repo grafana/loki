@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
