@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (

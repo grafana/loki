@@ -8,32 +8,29 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/go-kit/kit/log/level"
 )
 
 var (
 	primaryStoreGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_multikv_primary_store",
+		Name: "multikv_primary_store",
 		Help: "Selected primary KV store",
 	}, []string{"store"})
 
 	mirrorEnabledGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_multikv_mirror_enabled",
+		Name: "multikv_mirror_enabled",
 		Help: "Is mirroring to secondary store enabled",
 	})
 
 	mirrorWritesCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_multikv_mirror_writes_total",
+		Name: "multikv_mirror_writes_total",
 		Help: "Number of mirror-writes to secondary store",
 	})
 
 	mirrorFailuresCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_multikv_mirror_write_errors_total",
+		Name: "multikv_mirror_write_errors_total",
 		Help: "Number of failures to mirror-write to secondary store",
 	})
 )
@@ -109,7 +106,7 @@ type MultiClient struct {
 
 // NewMultiClient creates new MultiClient with given KV Clients.
 // First client in the slice is the primary client.
-func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
+func NewMultiClient(cfg MultiConfig, clients []kvclient, logger log.Logger) *MultiClient {
 	c := &MultiClient{
 		clients:    clients,
 		primaryID:  atomic.NewInt32(0),
@@ -118,7 +115,7 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
 		mirrorTimeout:    cfg.MirrorTimeout,
 		mirroringEnabled: atomic.NewBool(cfg.MirrorEnabled),
 
-		logger: log.With(util_log.Logger, "component", "multikv"),
+		logger: log.With(logger, "component", "multikv"),
 	}
 
 	ctx, cancelFn := context.WithCancel(context.Background())

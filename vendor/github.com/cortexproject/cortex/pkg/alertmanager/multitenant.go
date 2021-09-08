@@ -15,6 +15,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
@@ -33,11 +35,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -344,7 +344,8 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 		ringStore, err = kv.NewClient(
 			cfg.ShardingRing.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(registerer, "alertmanager"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", registerer), "alertmanager"),
+			logger,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")

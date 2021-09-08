@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	gokitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -125,7 +126,7 @@ type testIngesterFactory struct {
 }
 
 func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil, gokitlog.NewNopLogger())
 	require.NoError(t, err)
 
 	return &testIngesterFactory{

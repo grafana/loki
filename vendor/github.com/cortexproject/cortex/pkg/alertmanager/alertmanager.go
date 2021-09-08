@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/api"
@@ -48,7 +49,6 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_net "github.com/cortexproject/cortex/pkg/util/net"
 )
 

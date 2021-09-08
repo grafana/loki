@@ -13,21 +13,21 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/dskit/services"
 	"github.com/hashicorp/memberlist"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/dskit/services"
 )
 
-// This service initialized memberlist.KV on first call to GetMemberlistKV, and starts it. On stop,
+// KVInitService initializes a memberlist.KV on first call to GetMemberlistKV, and starts it. On stop,
 // KV is stopped too. If KV fails, error is reported from the service.
 type KVInitService struct {
 	services.Service
 
 	// config used for initialization
-	cfg    *KVConfig
-	logger log.Logger
+	cfg         *KVConfig
+	logger      log.Logger
+	dnsProvider DNSProvider
 
 	// init function, to avoid multiple initializations.
 	init sync.Once
@@ -38,20 +38,21 @@ type KVInitService struct {
 	watcher *services.FailureWatcher
 }
 
-func NewKVInitService(cfg *KVConfig, logger log.Logger) *KVInitService {
+func NewKVInitService(cfg *KVConfig, logger log.Logger, dnsProvider DNSProvider) *KVInitService {
 	kvinit := &KVInitService{
-		cfg:     cfg,
-		watcher: services.NewFailureWatcher(),
-		logger:  logger,
+		cfg:         cfg,
+		watcher:     services.NewFailureWatcher(),
+		logger:      logger,
+		dnsProvider: dnsProvider,
 	}
 	kvinit.Service = services.NewBasicService(nil, kvinit.running, kvinit.stopping).WithName("memberlist KV service")
 	return kvinit
 }
 
-// This method will initialize Memberlist.KV on first call, and add it to service failure watcher.
+// GetMemberlistKV will initialize Memberlist.KV on first call, and add it to service failure watcher.
 func (kvs *KVInitService) GetMemberlistKV() (*KV, error) {
 	kvs.init.Do(func() {
-		kv := NewKV(*kvs.cfg, kvs.logger)
+		kv := NewKV(*kvs.cfg, kvs.logger, kvs.dnsProvider)
 		kvs.watcher.WatchService(kv)
 		kvs.err = kv.StartAsync(context.Background())
 
@@ -92,7 +93,9 @@ func (kvs *KVInitService) stopping(_ error) error {
 func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	kv := kvs.getKV()
 	if kv == nil {
-		util.WriteTextResponse(w, "This Cortex instance doesn't use memberlist.")
+		w.Header().Set("Content-Type", "text/plain")
+		// Ignore inactionable errors.
+		_, _ = w.Write([]byte("This instance doesn't use memberlist."))
 		return
 	}
 
@@ -151,14 +154,36 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	sent, received := kv.getSentAndReceivedMessages()
 
-	util.RenderHTTPResponse(w, pageData{
+	v := pageData{
 		Now:              time.Now(),
 		Memberlist:       kv.memberlist,
 		SortedMembers:    members,
 		Store:            kv.storeCopy(),
 		SentMessages:     sent,
 		ReceivedMessages: received,
-	}, pageTemplate, req)
+	}
+
+	accept := req.Header.Get("Accept")
+	if strings.Contains(accept, "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+
+		data, err := json.Marshal(v)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// We ignore errors here, because we cannot do anything about them.
+		// Write will trigger sending Status code, so we cannot send a different status code afterwards.
+		// Also this isn't internal error, but error communicating with client.
+		_, _ = w.Write(data)
+		return
+	}
+
+	err := pageTemplate.Execute(w, v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func getFormat(req *http.Request) string {
@@ -266,10 +291,10 @@ const pageContent = `
 <html>
 	<head>
 		<meta charset="UTF-8">
-		<title>Cortex Memberlist Status</title>
+		<title>Memberlist Status</title>
 	</head>
 	<body>
-		<h1>Cortex Memberlist Status</h1>
+		<h1>Memberlist Status</h1>
 		<p>Current time: {{ .Now }}</p>
 
 		<ul>
@@ -304,7 +329,7 @@ const pageContent = `
 			</tbody>
 		</table>
 
-		<p>Note that value "version" is node-specific. It starts with 0 (on restart), and increases on each received update. Size is in bytes.</p> 
+		<p>Note that value "version" is node-specific. It starts with 0 (on restart), and increases on each received update. Size is in bytes.</p>
 
 		<h2>Memberlist Cluster Members</h2>
 
@@ -355,7 +380,7 @@ const pageContent = `
 					<td>{{ .Pair.Key }}</td>
 					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
 					<td>{{ .Version }}</td>
-					<td>{{ StringsJoin .Changes ", " }}</td> 
+					<td>{{ StringsJoin .Changes ", " }}</td>
 					<td>
 						<a href="?viewMsg={{ .ID }}&format=json">json</a>
 						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
@@ -391,7 +416,7 @@ const pageContent = `
 					<td>{{ .Pair.Key }}</td>
 					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
 					<td>{{ .Version }}</td>
-					<td>{{ StringsJoin .Changes ", " }}</td> 
+					<td>{{ StringsJoin .Changes ", " }}</td>
 					<td>
 						<a href="?viewMsg={{ .ID }}&format=json">json</a>
 						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>

@@ -6,10 +6,9 @@ import (
 	armonmetrics "github.com/armon/go-metrics"
 	armonprometheus "github.com/armon/go-metrics/prometheus"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/services"
 )
 
 func (m *KV) createAndRegisterMetrics() {
@@ -190,7 +189,7 @@ func (m *KV) createAndRegisterMetrics() {
 	}
 
 	for _, c := range all {
-		m.cfg.MetricsRegisterer.MustRegister(c.(prometheus.Collector))
+		m.cfg.MetricsRegisterer.MustRegister(c)
 	}
 
 	m.cfg.MetricsRegisterer.MustRegister(m)
@@ -210,7 +209,7 @@ func (m *KV) createAndRegisterMetrics() {
 	}
 
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to register prometheus metrics for memberlist", "err", err)
+		level.Error(m.logger).Log("msg", "failed to register prometheus metrics for memberlist", "err", err)
 	}
 }
 

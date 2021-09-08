@@ -2,7 +2,6 @@ package ring
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -11,15 +10,16 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 	perrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -157,7 +157,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	store, err := kv.NewClient(
 		cfg.RingConfig.KVStore,
 		codec,
-		kv.RegistererWithKVName(reg, ringName+"-lifecycler"),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), ringName+"-lifecycler"),
+		log.Logger,
 	)
 	if err != nil {
 		return nil, err

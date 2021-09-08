@@ -3,17 +3,16 @@ package kv
 import (
 	"context"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // The mockClient does not anything.
 // This is used for testing only.
 type mockClient struct{}
 
-func buildMockClient() (Client, error) {
-	level.Warn(util_log.Logger).Log("msg", "created mockClient for testing only")
+func buildMockClient(logger log.Logger) (Client, error) {
+	level.Warn(logger).Log("msg", "created mockClient for testing only")
 	return mockClient{}, nil
 }
 

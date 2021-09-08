@@ -513,8 +513,8 @@ github.com/cortexproject/cortex v1.6.1-0.20210215155036-dfededd9f331/go.mod h1:8
 github.com/cortexproject/cortex v1.7.1-0.20210224085859-66d6fb5b0d42/go.mod h1:u2dxcHInYbe45wxhLoWVdlFJyDhXewsMcxtnbq/QbH4=
 github.com/cortexproject/cortex v1.7.1-0.20210316085356-3fedc1108a49/go.mod h1:/DBOW8TzYBTE/U+O7Whs7i7E2eeeZl1iRVDtIqxn5kg=
 github.com/cortexproject/cortex v1.8.1-0.20210422151339-cf1c444e0905/go.mod h1:xxm4/CLvTmDxwE7yXwtClR4dIvkG4S09o5DygPOgc1U=
-github.com/cortexproject/cortex v1.10.1-0.20210819151536-bcf15611345d h1:+AjY8PhuRXxfy8UOLAQWxjTYHrLKl5w9rsCmJlVCr4c=
-github.com/cortexproject/cortex v1.10.1-0.20210819151536-bcf15611345d/go.mod h1:F8PX2IHaeFvqCci46Y+fhskJkCtLvh0OqCKFtWyjP7w=
+github.com/cortexproject/cortex v1.10.1-0.20210906152552-028c4b3c9e71 h1:B6ds0Im3SlPgTjl60EcMPEXf7NL3QlHAyPYfOOZ58a4=
+github.com/cortexproject/cortex v1.10.1-0.20210906152552-028c4b3c9e71/go.mod h1:Gi5GxqUBbTqZbIl342JkxH0RHoCC9YdDAsVnsgfimq0=
 github.com/couchbase/go-couchbase v0.0.0-20180501122049-16db1f1fe037/go.mod h1:TWI8EKQMs5u5jLKW/tsb9VwauIrMIxQG1r5fMsswK5U=
 github.com/couchbase/gomemcached v0.0.0-20180502221210-0da75df14530/go.mod h1:srVSlQLB8iXBVXHgnqemxUXqN6FCvClgCMPCsjBDR7c=
 github.com/couchbase/goutils v0.0.0-20180530154633-e865a1461c8a/go.mod h1:BQwMFlJzDjFDG3DJUdU0KORxn88UlsOULuxLExMh3Hs=
@@ -1076,7 +1076,6 @@ github.com/gorilla/websocket v1.4.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoA
 github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gotestyourself/gotestyourself v2.2.0+incompatible/go.mod h1:zZKM6oeNM8k+FRljX1mnzVYeS8wiGgQyvST1/GafPbY=
-github.com/grafana/dskit v0.0.0-20210818123532-6645f87e9e12/go.mod h1:QaNAQaCSFOtG/NHf6Jd/zh67H25kkrVCq36U61Y2Mhw=
 github.com/grafana/dskit v0.0.0-20210827060659-9daca2f00327 h1:THdW9RnugPdLwW8RmHB/xOcKf267QunSH1mDuaJkhWk=
 github.com/grafana/dskit v0.0.0-20210827060659-9daca2f00327/go.mod h1:+T2iuDOzx/BSQJSvli9FUvLM5HnV8aDPmXM8KWuVj3M=
 github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85 h1:xLuzPoOzdfNb/RF/IENCw+oLVdZB4G21VPhkHBgwSHY=
@@ -1944,7 +1943,6 @@ github.com/thanos-io/thanos v0.13.1-0.20210204123931-82545cdd16fe/go.mod h1:ZLDG
 github.com/thanos-io/thanos v0.13.1-0.20210224074000-659446cab117/go.mod h1:kdqFpzdkveIKpNNECVJd75RPvgsAifQgJymwCdfev1w=
 github.com/thanos-io/thanos v0.13.1-0.20210226164558-03dace0a1aa1/go.mod h1:gMCy4oCteKTT7VuXVvXLTPGzzjovX1VPE5p+HgL1hyU=
 github.com/thanos-io/thanos v0.13.1-0.20210401085038-d7dff0c84d17/go.mod h1:zU8KqE+6A+HksK4wiep8e/3UvCZLm+Wrw9AqZGaAm9k=
-github.com/thanos-io/thanos v0.19.1-0.20210729154440-aa148f8fdb28/go.mod h1:Xskx78e0CYL6w0yDNOZHGdvwQMlsuzPsePmPtbp9Xuk=
 github.com/thanos-io/thanos v0.22.0 h1:bHTzC0ZaP5rBJ2pOeJ73+hO/p3U4tSshJoR3pumM6sA=
 github.com/thanos-io/thanos v0.22.0/go.mod h1:SZDWz3phcUcBr4MYFoPFRvl+Z9Nbi45HlwQlwSZSt+Q=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab h1:7ZR3hmisBWw77ZpO1/o86g+JV3VKlk3d48jopJxzTjU=
@@ -2011,8 +2009,9 @@ github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099/go.mod h1:hz10LO
 github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec/go.mod h1:ykzWac1LtVfOxdCK+jD754at1Ws9dKCwFeUzkFBffPs=
 github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120/go.mod h1:ykzWac1LtVfOxdCK+jD754at1Ws9dKCwFeUzkFBffPs=
 github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624/go.mod h1:ykzWac1LtVfOxdCK+jD754at1Ws9dKCwFeUzkFBffPs=
-github.com/weaveworks/common v0.0.0-20210722103813-e649eff5ab4a h1:ALomSnvy/NPeVoc4a1o7keaHHgLS76r9ZYIlwWWF+KA=
 github.com/weaveworks/common v0.0.0-20210722103813-e649eff5ab4a/go.mod h1:YU9FvnS7kUnRt6HY10G+2qHkwzP3n3Vb1XsXDsJTSp8=
+github.com/weaveworks/common v0.0.0-20210901124008-1fa3f9fa874c h1:+yzwVr4/12cUgsdjbEHq6MsKB7jWBZpZccAP6xvqTzQ=
+github.com/weaveworks/common v0.0.0-20210901124008-1fa3f9fa874c/go.mod h1:YU9FvnS7kUnRt6HY10G+2qHkwzP3n3Vb1XsXDsJTSp8=
 github.com/weaveworks/promrus v1.2.0 h1:jOLf6pe6/vss4qGHjXmGz4oDJQA+AOCqEL3FvvZGz7M=
 github.com/weaveworks/promrus v1.2.0/go.mod h1:SaE82+OJ91yqjrE1rsvBWVzNZKcHYFtMUyS1+Ogs/KA=
 github.com/willf/bitset v1.1.3/go.mod h1:RjeCKbqT1RxIR/KWY6phxZiaY1IyutSBfGjNPySAYV4=
@@ -2149,7 +2148,6 @@ go.uber.org/atomic v1.8.0/go.mod h1:fEN4uk6kAWBTFdckzkM89CLk9XfWZrxpCo0nPH17wJc=
 go.uber.org/atomic v1.9.0 h1:ECmE8Bn/WFTYwEW/bpKD3M8VtR/zQVbavAoalC1PYyE=
 go.uber.org/atomic v1.9.0/go.mod h1:fEN4uk6kAWBTFdckzkM89CLk9XfWZrxpCo0nPH17wJc=
 go.uber.org/automaxprocs v1.2.0/go.mod h1:YfO3fm683kQpzETxlTGZhGIVmXAhaw3gxeBADbpZtnU=
-go.uber.org/automaxprocs v1.4.0/go.mod h1:/mTEdr7LvHhs0v7mjdxDreTz1OG5zdZGqgOnhWiR/+Q=
 go.uber.org/goleak v1.0.0/go.mod h1:8a7PlsEVH3e/a/GLqe5IIrQx6GzcnRmZEufDUTk4A7A=
 go.uber.org/goleak v1.1.10 h1:z+mqJhf6ss6BSfSM671tgKyZBFPTTJM+HLxnhPC3wu0=
 go.uber.org/goleak v1.1.10/go.mod h1:8a7PlsEVH3e/a/GLqe5IIrQx6GzcnRmZEufDUTk4A7A=

@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"

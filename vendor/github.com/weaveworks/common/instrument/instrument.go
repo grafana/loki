@@ -11,6 +11,7 @@ import (
 	oldcontext "golang.org/x/net/context"
 
 	"github.com/weaveworks/common/grpc"
+	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/common/user"
 )
 
@@ -21,8 +22,8 @@ var DefBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25,
 // Collector describes something that collects data before and/or after a task.
 type Collector interface {
 	Register()
-	Before(method string, start time.Time)
-	After(method, statusCode string, start time.Time)
+	Before(ctx context.Context, method string, start time.Time)
+	After(ctx context.Context, method, statusCode string, start time.Time)
 }
 
 // HistogramCollector collects the duration of a request
@@ -52,14 +53,28 @@ func (c *HistogramCollector) Register() {
 }
 
 // Before collects for the upcoming request.
-func (c *HistogramCollector) Before(method string, start time.Time) {
+func (c *HistogramCollector) Before(ctx context.Context, method string, start time.Time) {
 }
 
 // After collects when the request is done.
-func (c *HistogramCollector) After(method, statusCode string, start time.Time) {
+func (c *HistogramCollector) After(ctx context.Context, method, statusCode string, start time.Time) {
 	if c.metric != nil {
-		c.metric.WithLabelValues(method, statusCode).Observe(time.Now().Sub(start).Seconds())
+		ObserveWithExemplar(ctx, c.metric.WithLabelValues(method, statusCode), time.Since(start).Seconds())
 	}
+}
+
+// ObserveWithExemplar adds a sample to a histogram, and adds an exemplar if the context has a sampled trace.
+// 'histogram' parameter must be castable to prometheus.ExemplarObserver or function will panic
+// (this will always work for a HistogramVec).
+func ObserveWithExemplar(ctx context.Context, histogram prometheus.Observer, seconds float64) {
+	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
+		histogram.(prometheus.ExemplarObserver).ObserveWithExemplar(
+			seconds,
+			prometheus.Labels{"traceID": traceID},
+		)
+		return
+	}
+	histogram.Observe(seconds)
 }
 
 // JobCollector collects metrics for jobs. Designed for batch jobs which run on a regular,
@@ -116,13 +131,13 @@ func (c *JobCollector) Register() {
 }
 
 // Before collects for the upcoming request.
-func (c *JobCollector) Before(method string, start time.Time) {
+func (c *JobCollector) Before(ctx context.Context, method string, start time.Time) {
 	c.start.WithLabelValues(method).Set(float64(start.UTC().Unix()))
 	c.started.WithLabelValues(method).Inc()
 }
 
 // After collects when the request is done.
-func (c *JobCollector) After(method, statusCode string, start time.Time) {
+func (c *JobCollector) After(ctx context.Context, method, statusCode string, start time.Time) {
 	end := time.Now()
 	c.end.WithLabelValues(method, statusCode).Set(float64(end.UTC().Unix()))
 	c.duration.WithLabelValues(method, statusCode).Set(end.Sub(start).Seconds())
@@ -148,9 +163,9 @@ func CollectedRequest(ctx context.Context, method string, col Collector, toStatu
 	}
 
 	start := time.Now()
-	col.Before(method, start)
+	col.Before(newCtx, method, start)
 	err := f(newCtx)
-	col.After(method, toStatusCode(err), start)
+	col.After(newCtx, method, toStatusCode(err), start)
 
 	if err != nil {
 		if !grpc.IsCanceled(err) {

@@ -18,16 +18,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	cortex_querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/kv/codec"
+	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -609,7 +610,16 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 
-	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger)
+	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
+		"cortex_",
+		prometheus.WrapRegistererWith(
+			prometheus.Labels{"name": "memberlist"},
+			prometheus.DefaultRegisterer,
+		),
+	)
+	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
+
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider)
 	return t.MemberlistKV, nil
 }
 

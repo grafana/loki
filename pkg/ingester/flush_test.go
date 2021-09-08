@@ -11,9 +11,10 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -272,7 +273,7 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 
 // nolint
 func defaultIngesterTestConfig(t testing.TB) Config {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil, gokitlog.NewNopLogger())
 	require.NoError(t, err)
 
 	cfg := Config{}

@@ -1,9 +1,12 @@
 package tracing
 
 import (
+	"context"
 	"io"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	jaeger "github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	jaegerprom "github.com/uber/jaeger-lib/metrics/prometheus"
 )
@@ -44,4 +47,33 @@ func NewFromEnv(serviceName string, options ...jaegercfg.Option) (io.Closer, err
 	}
 
 	return installJaeger(serviceName, cfg, options...)
+}
+
+// ExtractTraceID extracts the trace id, if any from the context.
+func ExtractTraceID(ctx context.Context) (string, bool) {
+	sp := opentracing.SpanFromContext(ctx)
+	if sp == nil {
+		return "", false
+	}
+	sctx, ok := sp.Context().(jaeger.SpanContext)
+	if !ok {
+		return "", false
+	}
+
+	return sctx.TraceID().String(), true
+}
+
+// ExtractSampledTraceID works like ExtractTraceID but the returned bool is only
+// true if the returned trace id is sampled.
+func ExtractSampledTraceID(ctx context.Context) (string, bool) {
+	sp := opentracing.SpanFromContext(ctx)
+	if sp == nil {
+		return "", false
+	}
+	sctx, ok := sp.Context().(jaeger.SpanContext)
+	if !ok {
+		return "", false
+	}
+
+	return sctx.TraceID().String(), sctx.IsSampled()
 }
