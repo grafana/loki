@@ -116,6 +116,11 @@ func Test_ByteSizeJSON(t *testing.T) {
 			out: ByteSize(256 << 30),
 		},
 		{
+			// JSON shouldn't allow to set integer as value for ByteSize field.
+			in:  `{ "bytes": 2.62144e+07 }`,
+			err: true,
+		},
+		{
 			in:  `{ "bytes": "abc" }`,
 			err: true,
 		},
