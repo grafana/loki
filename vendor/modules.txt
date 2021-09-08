@@ -765,6 +765,7 @@ github.com/opencontainers/image-spec/specs-go/v1
 ## explicit
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v1.0.0
+## explicit
 github.com/opentracing-contrib/go-stdlib/nethttp
 # github.com/opentracing/opentracing-go v1.2.0
 ## explicit

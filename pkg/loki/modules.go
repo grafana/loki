@@ -16,7 +16,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	cortex_querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler"
@@ -29,7 +28,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
-	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
@@ -190,51 +188,47 @@ func (t *Loki) initDistributor() (services.Service, error) {
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
-	var (
-		worker services.Service
-		err    error
-	)
-
-	// NewQuerierWorker now expects Frontend (or Scheduler) address to be set.
-	if t.Cfg.Worker.FrontendAddress != "" || t.Cfg.Worker.SchedulerAddress != "" {
-		t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
-		level.Debug(util_log.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.Cfg.Worker))
-		worker, err = cortex_querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), util_log.Logger, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
+
+	var err error
 	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
 
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-		t.HTTPAuthMiddleware,
-		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
-	)
-	t.Server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.RangeQueryHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.InstantQueryHandler)))
-	// Prometheus compatibility requires `loki/api/v1/labels` however we already released `loki/api/v1/label`
-	// which is a little more consistent with `/loki/api/v1/label/{name}/values` so we are going to handle both paths.
-	t.Server.HTTP.Handle("/loki/api/v1/label", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/labels", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/tail", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.TailHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/series", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.SeriesHandler)))
+	querierWorkerServiceConfig := generateQuerierServiceConfig(t)
 
-	t.Server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LogQueryHandler)))
-	t.Server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.TailHandler)))
-	t.Server.HTTP.Handle("/api/prom/series", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.SeriesHandler)))
-	return worker, nil // ok if worker is nil here
+	var queryHandlers = map[string]http.Handler{
+		"/loki/api/v1/query_range":         http.HandlerFunc(t.Querier.RangeQueryHandler),
+		"/loki/api/v1/query":               http.HandlerFunc(t.Querier.InstantQueryHandler),
+		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
+		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
+		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
+		"/loki/api/v1/tail":                http.HandlerFunc(t.Querier.TailHandler),
+		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+
+		"/api/prom/query":               http.HandlerFunc(t.Querier.LogQueryHandler),
+		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
+		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
+		"/api/prom/tail":                http.HandlerFunc(t.Querier.TailHandler),
+		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+	}
+	return querier.InitQuerierWorkerService(
+		querierWorkerServiceConfig, queryHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+	)
+}
+
+func generateQuerierServiceConfig(t *Loki) querier.QuerierWorkerServiceConfig {
+	return querier.QuerierWorkerServiceConfig{
+		AllEnabled:            t.Cfg.isModuleEnabled(All),
+		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
+		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
+		QuerierWorkerConfig:   &t.Cfg.Worker,
+		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
+		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
+	}
 }
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
