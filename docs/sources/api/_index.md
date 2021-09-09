@@ -842,7 +842,7 @@ In microservices mode, these endpoints are exposed by the querier.
 ### Examples
 
 ``` bash
-$ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match={container_name=~"prometheus.*", component="server"}' --data-urlencode 'match={app="loki"}' | jq '.'
+$ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match[]={container_name=~"prometheus.*", component="server"}' --data-urlencode 'match[]={app="loki"}' | jq '.'
 {
   "status": "success",
   "data": [
