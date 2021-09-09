@@ -6,6 +6,7 @@ import (
 
 type CacheEntryIterator interface {
 	EntryIterator
+	Base() EntryIterator
 	Reset()
 }
 
@@ -35,35 +36,44 @@ func (it *cachedIterator) Reset() {
 	it.curr = -1
 }
 
-func (it *cachedIterator) Next() bool {
-	if it.base != nil {
-		ok := it.base.Next()
-		// we're done with the base iterator.
-		if !ok {
-			it.closeErr = it.base.Close()
-			it.iterErr = it.base.Error()
-			it.base = nil
-			return false
-		}
-		// we're caching entries
-		it.cache = append(it.cache, entryWithLabels{entry: it.base.Entry(), labels: it.base.Labels()})
-		it.curr++
-		return true
+func (it *cachedIterator) Base() EntryIterator {
+	return it.base
+}
+
+func (it *cachedIterator) consumeNext() bool {
+	if it.base == nil {
+		return false
 	}
-	// second pass
-	if len(it.cache) == 0 {
-		it.cache = nil
+	ok := it.base.Next()
+	// we're done with the base iterator.
+	if !ok {
+		it.closeErr = it.base.Close()
+		it.iterErr = it.base.Error()
+		it.base = nil
+		return false
+	}
+	// we're caching entries
+	it.cache = append(it.cache, entryWithLabels{entry: it.base.Entry(), labels: it.base.Labels()})
+	it.curr++
+	return true
+}
+
+func (it *cachedIterator) Next() bool {
+	if len(it.cache) == 0 && it.base == nil {
 		return false
 	}
 	if it.curr+1 >= len(it.cache) {
+		if it.base != nil {
+			return it.consumeNext()
+		}
 		return false
 	}
 	it.curr++
-	return it.curr < len(it.cache)
+	return true
 }
 
 func (it *cachedIterator) Entry() logproto.Entry {
-	if len(it.cache) == 0 || it.curr < 0 {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return logproto.Entry{}
 	}
 
@@ -71,7 +81,7 @@ func (it *cachedIterator) Entry() logproto.Entry {
 }
 
 func (it *cachedIterator) Labels() string {
-	if len(it.cache) == 0 || it.curr < 0 {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return ""
 	}
 	return it.cache[it.curr].labels
@@ -86,6 +96,7 @@ func (it *cachedIterator) Close() error {
 
 type CacheSampleIterator interface {
 	SampleIterator
+	Base() SampleIterator
 	Reset()
 }
 
@@ -111,46 +122,55 @@ func NewCachedSampleIterator(it SampleIterator, cap int) CacheSampleIterator {
 	return c
 }
 
+func (it *cachedSampleIterator) Base() SampleIterator {
+	return it.base
+}
+
 func (it *cachedSampleIterator) Reset() {
 	it.curr = -1
 }
 
-func (it *cachedSampleIterator) Next() bool {
-	if it.base != nil {
-		ok := it.base.Next()
-		// we're done with the base iterator.
-		if !ok {
-			it.closeErr = it.base.Close()
-			it.iterErr = it.base.Error()
-			it.base = nil
-			return false
-		}
-		// we're caching entries
-		it.cache = append(it.cache, sampleWithLabels{Sample: it.base.Sample(), labels: it.base.Labels()})
-		it.curr++
-		return true
+func (it *cachedSampleIterator) consumeNext() bool {
+	if it.base == nil {
+		return false
 	}
-	// second pass
-	if len(it.cache) == 0 {
-		it.cache = nil
+	ok := it.base.Next()
+	// we're done with the base iterator.
+	if !ok {
+		it.closeErr = it.base.Close()
+		it.iterErr = it.base.Error()
+		it.base = nil
+		return false
+	}
+	// we're caching entries
+	it.cache = append(it.cache, sampleWithLabels{Sample: it.base.Sample(), labels: it.base.Labels()})
+	it.curr++
+	return true
+}
+
+func (it *cachedSampleIterator) Next() bool {
+	if len(it.cache) == 0 && it.base == nil {
 		return false
 	}
 	if it.curr+1 >= len(it.cache) {
+		if it.base != nil {
+			return it.consumeNext()
+		}
 		return false
 	}
 	it.curr++
-	return it.curr < len(it.cache)
+	return true
 }
 
 func (it *cachedSampleIterator) Sample() logproto.Sample {
-	if len(it.cache) == 0 || it.curr < 0 {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return logproto.Sample{}
 	}
 	return it.cache[it.curr].Sample
 }
 
 func (it *cachedSampleIterator) Labels() string {
-	if len(it.cache) == 0 || it.curr < 0 {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return ""
 	}
 	return it.cache[it.curr].labels

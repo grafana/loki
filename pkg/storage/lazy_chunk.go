@@ -67,7 +67,10 @@ func (c *LazyChunk) Iterator(
 			continue
 		}
 		if nextChunk != nil {
-			delete(c.overlappingBlocks, b.Offset())
+			if cache, ok := c.overlappingBlocks[b.Offset()]; ok {
+				delete(c.overlappingBlocks, b.Offset())
+				cache.Base().Close()
+			}
 		}
 		// non-overlapping block with the next chunk are not cached.
 		its = append(its, b.Iterator(ctx, pipeline))
@@ -140,7 +143,10 @@ func (c *LazyChunk) SampleIterator(
 			continue
 		}
 		if nextChunk != nil {
-			delete(c.overlappingSampleBlocks, b.Offset())
+			if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
+				delete(c.overlappingSampleBlocks, b.Offset())
+				cache.Base().Close()
+			}
 		}
 		// non-overlapping block with the next chunk are not cached.
 		its = append(its, b.SampleIterator(ctx, extractor))
