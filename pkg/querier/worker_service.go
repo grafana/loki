@@ -6,9 +6,9 @@ import (
 
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/grafana/dskit/services"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/services"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,7 +18,7 @@ import (
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
-type QuerierWorkerServiceConfig struct {
+type WorkerServiceConfig struct {
 	AllEnabled            bool
 	GrpcListenPort        int
 	QuerierMaxConcurrent  int
@@ -27,9 +27,9 @@ type QuerierWorkerServiceConfig struct {
 	QuerySchedulerEnabled bool
 }
 
-// InitQuerierWorkerService takes a config object, a map of routes to handlers, an external http router and external
-// http handler, and an auth middleware wrapper. This function creates an internal HTTP router that responds to all 
-// the provided query routes/handlers. This router can either be registered with the external Loki HTTP server, or 
+// InitWorkerService takes a config object, a map of routes to handlers, an external http router and external
+// http handler, and an auth middleware wrapper. This function creates an internal HTTP router that responds to all
+// the provided query routes/handlers. This router can either be registered with the external Loki HTTP server, or
 // be used internally by a querier worker so that it does not conflict with the routes registered by the Query Frontend module.
 //
 // 1. Query-Frontend Enabled: If Loki has an All or QueryFrontend target, the internal
@@ -40,8 +40,8 @@ type QuerierWorkerServiceConfig struct {
 //    HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
 //    as a http.Handler to the frontend worker.
 //
-func InitQuerierWorkerService(
-	cfg QuerierWorkerServiceConfig,
+func InitWorkerService(
+	cfg WorkerServiceConfig,
 	queryRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
 	externalHandler http.Handler,
@@ -61,7 +61,7 @@ func InitQuerierWorkerService(
 		// First, register the internal querier handler with the external HTTP server
 		routes := make([]string, len(queryRoutesToHandlers))
 		var idx = 0
-		for route, _ := range queryRoutesToHandlers {
+		for route := range queryRoutesToHandlers {
 			routes[idx] = route
 			idx++
 		}
@@ -105,7 +105,7 @@ func InitQuerierWorkerService(
 	httpMiddleware := middleware.Merge(
 		authMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
-  )
+	)
 
 	internalHandler = httpMiddleware.Wrap(internalHandler)
 
@@ -131,6 +131,6 @@ func registerRoutesExternally(routes []string, externalRouter *mux.Router, inter
 	}
 }
 
-func querierRunningStandalone(cfg QuerierWorkerServiceConfig) bool {
+func querierRunningStandalone(cfg WorkerServiceConfig) bool {
 	return !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.AllEnabled
 }

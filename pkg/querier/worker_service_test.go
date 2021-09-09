@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
-	"github.com/grafana/dskit/services"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
@@ -22,14 +22,15 @@ func Test_InitQuerierService(t *testing.T) {
 
 	var mockQueryHandlers = map[string]http.Handler{
 		"/loki/api/v1/query": http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-			res.Write([]byte("test handler"))
+			_, err := res.Write([]byte("test handler"))
+			require.NoError(t, err)
 		}),
 	}
 
-	testContext := func(config QuerierWorkerServiceConfig) (*mux.Router, services.Service) {
+	testContext := func(config WorkerServiceConfig) (*mux.Router, services.Service) {
 		requestedAuthenticated = false
 		externalRouter := mux.NewRouter()
-		querierWorkerService, err := InitQuerierWorkerService(config, mockQueryHandlers, externalRouter, http.HandlerFunc(externalRouter.ServeHTTP), noopWrapper)
+		querierWorkerService, err := InitWorkerService(config, mockQueryHandlers, externalRouter, http.HandlerFunc(externalRouter.ServeHTTP), noopWrapper)
 		require.NoError(t, err)
 
 		return externalRouter, querierWorkerService
@@ -37,7 +38,7 @@ func Test_InitQuerierService(t *testing.T) {
 
 	t.Run("when querier is configured to run standalone, without a query frontend", func(t *testing.T) {
 		t.Run("register the internal query handlers externally", func(t *testing.T) {
-			config := QuerierWorkerServiceConfig{
+			config := WorkerServiceConfig{
 				QueryFrontendEnabled:  false,
 				QuerySchedulerEnabled: false,
 				AllEnabled:            false,
@@ -54,7 +55,7 @@ func Test_InitQuerierService(t *testing.T) {
 		})
 
 		t.Run("wrap external handler with auth middleware", func(t *testing.T) {
-			config := QuerierWorkerServiceConfig{
+			config := WorkerServiceConfig{
 				QueryFrontendEnabled:  false,
 				QuerySchedulerEnabled: false,
 				AllEnabled:            false,
@@ -70,7 +71,7 @@ func Test_InitQuerierService(t *testing.T) {
 		})
 
 		t.Run("wrap external handler with response json middleware", func(t *testing.T) {
-			config := QuerierWorkerServiceConfig{
+			config := WorkerServiceConfig{
 				QueryFrontendEnabled:  false,
 				QuerySchedulerEnabled: false,
 				AllEnabled:            false,
@@ -83,12 +84,12 @@ func Test_InitQuerierService(t *testing.T) {
 			request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
 			externalRouter.ServeHTTP(recorder, request)
 
-      contentTypeHeader := recorder.Header().Get("Content-Type")
-      assert.Equal(t, "application/json; charset=UTF-8", contentTypeHeader)
+			contentTypeHeader := recorder.Header().Get("Content-Type")
+			assert.Equal(t, "application/json; charset=UTF-8", contentTypeHeader)
 		})
 
 		t.Run("do not create a querier worker service if neither frontend address nor scheduler address has been configured", func(t *testing.T) {
-			config := QuerierWorkerServiceConfig{
+			config := WorkerServiceConfig{
 				QueryFrontendEnabled:  false,
 				QuerySchedulerEnabled: false,
 				AllEnabled:            false,
@@ -100,18 +101,18 @@ func Test_InitQuerierService(t *testing.T) {
 		})
 
 		t.Run("return a querier worker service if frontend or scheduler address has been configured", func(t *testing.T) {
-			withFrontendConfig := QuerierWorkerServiceConfig{
+			withFrontendConfig := WorkerServiceConfig{
 				QuerierWorkerConfig: &querier_worker.Config{
 					FrontendAddress: "http://example.com",
 				},
 			}
-			withSchedulerConfig := QuerierWorkerServiceConfig{
+			withSchedulerConfig := WorkerServiceConfig{
 				QuerierWorkerConfig: &querier_worker.Config{
 					SchedulerAddress: "http://example.com",
 				},
 			}
 
-			for _, config := range []QuerierWorkerServiceConfig{
+			for _, config := range []WorkerServiceConfig{
 				withFrontendConfig,
 				withSchedulerConfig,
 			} {
@@ -123,7 +124,7 @@ func Test_InitQuerierService(t *testing.T) {
 
 	t.Run("when query frontend, scheduler, or all target is enabled", func(t *testing.T) {
 		defaultWorkerConfig := querier_worker.Config{}
-		nonStandaloneTargetPermutations := []QuerierWorkerServiceConfig{
+		nonStandaloneTargetPermutations := []WorkerServiceConfig{
 			{
 				QueryFrontendEnabled:  true,
 				QuerySchedulerEnabled: false,

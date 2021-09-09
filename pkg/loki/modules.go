@@ -215,13 +215,13 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/api/prom/tail":                http.HandlerFunc(t.Querier.TailHandler),
 		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
 	}
-	return querier.InitQuerierWorkerService(
+	return querier.InitWorkerService(
 		querierWorkerServiceConfig, queryHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
 	)
 }
 
-func generateQuerierServiceConfig(t *Loki) querier.QuerierWorkerServiceConfig {
-	return querier.QuerierWorkerServiceConfig{
+func generateQuerierServiceConfig(t *Loki) querier.WorkerServiceConfig {
+	return querier.WorkerServiceConfig{
 		AllEnabled:            t.Cfg.isModuleEnabled(All),
 		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
 		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
