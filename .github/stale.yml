@@ -14,7 +14,7 @@ staleLabel: stale
 
 # Comment to post when marking an issue as stale. Leave as false
 # to disable.
-markComment: >
+markComment: |
   Hi! This issue has been automatically marked as stale because it has not had any
   activity in the past 30 days.
 
@@ -24,9 +24,7 @@ markComment: >
 
   Stalebots are also emotionless and cruel and can close issues which are still very relevant.
 
-  If this issue is important to you, please add a comment to reopen it.
-
-  **More importantly, please add a thumbs-up to the original issue entry.**
+  **If this issue is important to you, please add a comment to keep it open. More importantly, please add a thumbs-up to the original issue entry.**
 
   We regularly sort for closed issues which have a `stale` label sorted by thumbs up.
 
