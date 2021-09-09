@@ -8,7 +8,7 @@ Currently there are five ways to try out Loki, in order from easier to hardest:
 - [Build Loki from source](#build-and-run-from-source)
 - [Get inspired by our production setup](#get-inspired-by-our-production-setup)
 
-For the various ways to run `promtail`, the tailing agent, see our [Promtail documentation](https://grafana.com/docs/loki/latest/clients/promtail/installation/).
+For the various ways to run `promtail`, the tailing agent, see our [Promtail documentation](../docs/sources/clients/promtail/installation.md).
 
 ## Grafana Cloud: Hosted Logs
 
