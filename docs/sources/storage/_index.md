@@ -298,20 +298,20 @@ schema_config:
     object_store: azure
     schema: v11
     store: boltdb-shipper
-  storage_config:
-    azure:
-      # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
-      account_key: <account-key>
-      # Your azure account name
-      account_name: <account-name>
-      # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
-      container_name: <container-name>
-      request_timeout: 0
-    boltdb_shipper:
-      active_index_directory: /data/loki/boltdb-shipper-active
-      cache_location: /data/loki/boltdb-shipper-cache
-      cache_ttl: 24h
-      shared_store: azure
-    filesystem:
-      directory: /data/loki/chunks
+storage_config:
+  azure:
+    # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
+    account_key: <account-key>
+    # Your azure account name
+    account_name: <account-name>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <container-name>
+    request_timeout: 0
+  boltdb_shipper:
+    active_index_directory: /data/loki/boltdb-shipper-active
+    cache_location: /data/loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: azure
+  filesystem:
+    directory: /data/loki/chunks
 ```
