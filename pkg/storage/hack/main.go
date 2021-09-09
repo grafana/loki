@@ -9,13 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -24,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 

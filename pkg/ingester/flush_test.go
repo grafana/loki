@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	gokitlog "github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -299,7 +299,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	if s.onPut != nil {
 		return s.onPut(ctx, chunks)
 	}
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}

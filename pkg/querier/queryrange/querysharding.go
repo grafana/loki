@@ -8,11 +8,11 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -194,7 +194,7 @@ type shardSplitter struct {
 }
 
 func (splitter *shardSplitter) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
-	userid, err := tenant.TenantID(ctx)
+	userid, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

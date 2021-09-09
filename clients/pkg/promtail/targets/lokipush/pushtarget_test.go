@@ -65,7 +65,7 @@ func TestPushTarget(t *testing.T) {
 		},
 	}
 
-	pt, err := NewPushTarget(logger, eh, rlbl, "job1", config)
+	pt, err := NewPushTarget(logger, eh, rlbl, "job1", config, nil)
 	require.NoError(t, err)
 
 	// Build a client to send logs

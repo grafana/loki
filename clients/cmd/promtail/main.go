@@ -11,7 +11,6 @@ import (
 
 	"k8s.io/klog"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,9 +21,10 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 
-	logutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func init() {
@@ -81,7 +81,7 @@ func main() {
 		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
-	util_log.InitLogger(&config.ServerConfig.Config)
+	util_log.InitLogger(&config.ServerConfig.Config, prometheus.DefaultRegisterer)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)
@@ -97,20 +97,20 @@ func main() {
 	}
 
 	if config.printConfig {
-		err := logutil.PrintConfig(os.Stderr, &config)
+		err := util.PrintConfig(os.Stderr, &config)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to print config to stderr", "err", err.Error())
 		}
 	}
 
 	if config.logConfig {
-		err := logutil.LogConfig(&config)
+		err := util.LogConfig(&config)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to log config object", "err", err.Error())
 		}
 	}
 
-	p, err := promtail.New(config.Config, config.dryRun)
+	p, err := promtail.New(config.Config, config.dryRun, prometheus.DefaultRegisterer)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)

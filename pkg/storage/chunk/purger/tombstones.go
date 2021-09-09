@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const tombstonesReloadDuration = 5 * time.Minute

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func Test_newReaderTarget(t *testing.T) {

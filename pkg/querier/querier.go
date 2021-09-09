@@ -10,10 +10,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -254,7 +254,7 @@ func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval
 
 // Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +358,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 
 // Series fetches any matching series for a list of matcher sets
 func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -484,7 +484,7 @@ func (q *Querier) seriesForMatcher(ctx context.Context, from, through time.Time,
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
@@ -532,7 +532,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 }
 
 func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}

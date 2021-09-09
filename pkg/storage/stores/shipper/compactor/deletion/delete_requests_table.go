@@ -12,13 +12,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type deleteRequestsTable struct {

@@ -3,10 +3,11 @@ package ingester
 import (
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log/level"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type replayFlusher struct {

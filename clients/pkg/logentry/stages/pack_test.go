@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -105,7 +105,7 @@ func Test_packStage_Run(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg)
+	util_log.InitLogger(cfg, nil)
 	Debug = true
 
 	tests := []struct {

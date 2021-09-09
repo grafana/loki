@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (

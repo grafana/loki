@@ -12,8 +12,9 @@ import (
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/dslog"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type MockStorageMode int
@@ -196,7 +197,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 		}
 		seenWrites[key] = true
 
-		level.Debug(log.WithContext(ctx, log.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
+		level.Debug(dslog.WithContext(ctx, util_log.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
 
 		items := table.items[req.hashValue]
 
@@ -269,7 +270,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, call
 }
 
 func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func(ReadBatch) (shouldContinue bool)) error {
-	logger := log.WithContext(ctx, log.Logger)
+	logger := dslog.WithContext(ctx, util_log.Logger)
 	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
 
 	table, ok := m.tables[query.TableName]

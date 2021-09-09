@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/stretchr/testify/assert"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // GZip source string and return compressed string

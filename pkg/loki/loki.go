@@ -16,7 +16,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -43,6 +42,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 

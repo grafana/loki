@@ -5,14 +5,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -96,7 +95,7 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 		return nil
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}

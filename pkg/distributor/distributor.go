@@ -9,10 +9,9 @@ import (
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -29,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -191,7 +191,7 @@ type pushTracker struct {
 
 // Push a set of streams.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -14,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type WALReader interface {

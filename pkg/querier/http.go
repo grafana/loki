@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/dslog"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -17,6 +17,7 @@ import (
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -199,7 +200,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
+	logger := dslog.WithContext(r.Context(), util_log.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
 	if err != nil {
@@ -347,7 +348,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 }
 
 func (q *Querier) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

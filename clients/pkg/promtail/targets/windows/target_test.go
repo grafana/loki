@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/afero"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/windows/win_eventlog"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func init() {
@@ -28,7 +28,7 @@ func init() {
 	// Enable debug logging
 	cfg := &server.Config{}
 	_ = cfg.LogLevel.Set("debug")
-	util_log.InitLogger(cfg)
+	util_log.InitLogger(cfg, nil)
 }
 
 // Test that you can use to generate event logs locally.

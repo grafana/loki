@@ -8,9 +8,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -177,7 +177,7 @@ func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql_parser.
 		return q.evalLiteral(ctx, lit)
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -8,13 +8,13 @@ import (
 	"io"
 	"io/ioutil"
 
+	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
+	"github.com/grafana/dskit/dslog"
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
 
-	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-	"github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type SwiftObjectClient struct {
@@ -44,7 +44,7 @@ func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
 func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
-	log.WarnExperimentalUse("OpenStack Swift Storage")
+	dslog.WarnExperimentalUse("OpenStack Swift Storage", util_log.Logger)
 
 	// Create a connection
 	c := &swift.Connection{

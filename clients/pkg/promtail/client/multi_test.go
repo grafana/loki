@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -14,11 +13,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
-
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+
+	"github.com/grafana/loki/pkg/logproto"
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func TestNewMulti(t *testing.T) {

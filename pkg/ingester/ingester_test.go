@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -261,7 +261,7 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	userid, err := tenant.TenantID(ctx)
+	userid, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}

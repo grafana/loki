@@ -12,8 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
@@ -25,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
 	"github.com/grafana/loki/pkg/storage/chunk/purger"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Supported storage engines

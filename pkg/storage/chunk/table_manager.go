@@ -19,7 +19,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (

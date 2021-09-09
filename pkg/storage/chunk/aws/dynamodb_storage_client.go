@@ -18,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
@@ -34,6 +33,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -214,8 +214,8 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 				continue
 			} else if ok && awsErr.Code() == validationException {
 				// this write will never work, so the only option is to drop the offending items and continue.
-				level.Warn(log.Logger).Log("msg", "Data lost while flushing to DynamoDB", "err", awsErr)
-				level.Debug(log.Logger).Log("msg", "Dropped request details", "requests", requests)
+				level.Warn(util_log.Logger).Log("msg", "Data lost while flushing to DynamoDB", "err", awsErr)
+				level.Debug(util_log.Logger).Log("msg", "Dropped request details", "requests", requests)
 				util.Event().Log("msg", "ValidationException", "requests", requests)
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
@@ -792,7 +792,7 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	}
 	path := strings.TrimPrefix(awsURL.Path, "/")
 	if len(path) > 0 {
-		level.Warn(log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+		level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
 	config, err := awscommon.ConfigFromURL(awsURL)
 	if err != nil {

@@ -10,11 +10,10 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -35,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
 	listutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -492,7 +492,7 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	} else if i.readonly {
@@ -526,7 +526,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	ctx := stats.NewContext(queryServer.Context())
 	defer stats.SendAsTrailer(ctx, queryServer)
 
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}
@@ -567,7 +567,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	ctx := stats.NewContext(queryServer.Context())
 	defer stats.SendAsTrailer(ctx, queryServer)
 
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}
@@ -621,7 +621,7 @@ func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
-	orgID, err := tenant.TenantID(ctx)
+	orgID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +660,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -715,7 +715,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +771,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
-	instanceID, err := tenant.TenantID(queryServer.Context())
+	instanceID, err := tenant.ID(queryServer.Context())
 	if err != nil {
 		return err
 	}
@@ -791,7 +791,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}

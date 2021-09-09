@@ -9,7 +9,6 @@ import (
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type responseFromIngesters struct {

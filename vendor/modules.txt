@@ -163,6 +163,8 @@ github.com/aws/aws-sdk-go/service/sso
 github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
+# github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f
+## explicit
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
 # github.com/blang/semver/v4 v4.0.0
@@ -208,7 +210,7 @@ github.com/coreos/go-systemd/sdjournal
 github.com/coreos/go-systemd/v22/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v1.10.1-0.20210910135323-8250d8703a8f
+# github.com/cortexproject/cortex v1.10.1-0.20210910135323-8250d8703a8f => github.com/aknuds1/cortex v1.10.0-rc.0.0.20210909135543-2f24c2505290
 ## explicit
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb
@@ -560,10 +562,11 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 ## explicit
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20210910100700-60e6d9b19675
+# github.com/grafana/dskit v0.0.0-20210910105318-30d0c6aacedd
 ## explicit
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/closer
+github.com/grafana/dskit/dslog
 github.com/grafana/dskit/flagext
 github.com/grafana/dskit/kv
 github.com/grafana/dskit/kv/codec
@@ -575,6 +578,7 @@ github.com/grafana/dskit/middleware
 github.com/grafana/dskit/modules
 github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
+github.com/grafana/dskit/tenant
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 ## explicit
 github.com/grpc-ecosystem/go-grpc-middleware
@@ -685,8 +689,10 @@ github.com/klauspost/cpuid
 ## explicit
 github.com/klauspost/pgzip
 # github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
+## explicit
 github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
+## explicit
 github.com/lann/ps
 # github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165
 github.com/leodido/ragel-machinery
@@ -701,7 +707,7 @@ github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
 # github.com/mattn/go-colorable v0.1.6
 github.com/mattn/go-colorable
-# github.com/mattn/go-ieproxy v0.0.0-20191113090002-7c0f6868bffe
+# github.com/mattn/go-ieproxy v0.0.0-20190702010315-6dee0af9227d
 github.com/mattn/go-ieproxy
 # github.com/mattn/go-isatty v0.0.12
 github.com/mattn/go-isatty
@@ -1596,7 +1602,7 @@ k8s.io/apimachinery/pkg/util/yaml
 k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v12.0.0+incompatible => k8s.io/client-go v0.21.0
+# k8s.io/client-go v8.0.0+incompatible => k8s.io/client-go v0.21.0
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1
 k8s.io/client-go/applyconfigurations/apiserverinternal/v1alpha1
@@ -1734,3 +1740,4 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+# github.com/cortexproject/cortex => github.com/aknuds1/cortex v1.10.0-rc.0.0.20210909135543-2f24c2505290

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 

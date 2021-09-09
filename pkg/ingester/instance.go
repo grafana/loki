@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	cutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,9 +20,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
-	cutil "github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -30,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 

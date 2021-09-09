@@ -7,23 +7,21 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
-
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/dslog"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/cortexproject/cortex/pkg/tenant"
+	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	loki_util "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -218,7 +216,7 @@ func (i *Ingester) flushLoop(j int) {
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			level.Error(util_log.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush user", "err", err)
+			level.Error(dslog.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation
@@ -332,7 +330,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}

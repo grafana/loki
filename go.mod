@@ -14,6 +14,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.14.3
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/aws/aws-sdk-go v1.38.68
+	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/buger/jsonparser v1.1.1
@@ -44,7 +45,7 @@ require (
 	github.com/google/go-cmp v0.5.6
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/grafana/dskit v0.0.0-20210910100700-60e6d9b19675
+	github.com/grafana/dskit v0.0.0-20210910105318-30d0c6aacedd
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20191002090509-6af20e3a5340 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
@@ -59,6 +60,8 @@ require (
 	github.com/json-iterator/go v1.1.11
 	github.com/klauspost/compress v1.13.1
 	github.com/klauspost/pgzip v1.2.5
+	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
+	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/minio/minio-go/v7 v7.0.10
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/modern-go/reflect2 v1.0.1
@@ -122,3 +125,5 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 // Same as Cortex
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+
+replace github.com/cortexproject/cortex => github.com/aknuds1/cortex v1.10.0-rc.0.0.20210909135543-2f24c2505290

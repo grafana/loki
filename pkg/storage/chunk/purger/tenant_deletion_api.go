@@ -6,17 +6,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
-
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type TenantDeletionAPI struct {
@@ -44,7 +43,7 @@ func newTenantDeletionAPI(bkt objstore.Bucket, cfgProvider bucket.TenantConfigPr
 
 func (api *TenantDeletionAPI) DeleteTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
 		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
@@ -72,7 +71,7 @@ type DeleteTenantStatusResponse struct {
 
 func (api *TenantDeletionAPI) DeleteTenantStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

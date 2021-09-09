@@ -12,11 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
@@ -27,6 +25,7 @@ import (
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -135,7 +134,7 @@ func main() {
 	ctx := context.Background()
 	// This is a little weird but it was the easiest way to guarantee the userID is in the right format
 	ctx = user.InjectOrgID(ctx, *source)
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		panic(err)
 	}

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
@@ -22,6 +21,7 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.

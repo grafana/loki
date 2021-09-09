@@ -7,9 +7,7 @@ import (
 	"io"
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
-
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const maxQueriesPerGoroutine = 100

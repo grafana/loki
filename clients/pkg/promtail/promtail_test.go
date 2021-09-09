@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -41,6 +40,7 @@ import (
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
 
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const httpTestPort = 9080
@@ -103,7 +103,7 @@ func TestPromtail(t *testing.T) {
 	}()
 	// Run.
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir), false)
+	p, err := New(buildTestConfig(t, positionsFileName, testDir), false, nil)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
@@ -646,7 +646,7 @@ func Test_DryRun(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	_, err = New(config.Config{}, true)
+	_, err = New(config.Config{}, true, nil)
 	require.Error(t, err)
 
 	// Set the minimum config needed to start a server. We need to do this since we
@@ -668,7 +668,7 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, true)
+	}, true, nil)
 	require.NoError(t, err)
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
@@ -680,7 +680,7 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, false)
+	}, false, nil)
 	require.NoError(t, err)
 	require.IsType(t, &client.MultiClient{}, p.client)
 }

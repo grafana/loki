@@ -5,13 +5,14 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/dslog"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -198,7 +199,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	var err error
 	defer t.dropTailClient(addr)
 
-	logger := util_log.WithContext(querierTailClient.Context(), util_log.Logger)
+	logger := dslog.WithContext(querierTailClient.Context(), util_log.Logger)
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {

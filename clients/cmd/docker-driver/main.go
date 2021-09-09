@@ -7,7 +7,6 @@ import (
 
 	_ "net/http/pprof"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -15,6 +14,7 @@ import (
 	"github.com/weaveworks/common/logging"
 
 	_ "github.com/grafana/loki/pkg/util/build"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const socketAddress = "/run/docker/plugins/loki.sock"

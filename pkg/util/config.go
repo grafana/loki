@@ -5,10 +5,11 @@ import (
 	"io"
 	"strings"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // LogConfig takes a pointer to a config object, marshalls it to YAML and prints each line in REVERSE order

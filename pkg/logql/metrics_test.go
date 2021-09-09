@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/require"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func TestQueryType(t *testing.T) {

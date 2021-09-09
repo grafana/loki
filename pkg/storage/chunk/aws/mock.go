@@ -18,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/go-kit/kit/log/level"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const arnPrefix = "arn:"

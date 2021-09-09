@@ -10,13 +10,13 @@ import (
 	"strings"
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
