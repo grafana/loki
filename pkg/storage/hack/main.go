@@ -9,17 +9,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logutil"
 	lstore "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
@@ -74,7 +73,7 @@ func getStore() (lstore.Store, error) {
 		&validation.Overrides{},
 		prometheus.DefaultRegisterer,
 		nil,
-		util_log.Logger,
+		logutil.Logger,
 	)
 	if err != nil {
 		return nil, err

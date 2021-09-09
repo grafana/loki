@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -14,15 +13,16 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
-
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logutil"
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 func TestNewMulti(t *testing.T) {
-	_, err := NewMulti(nil, util_log.Logger, lokiflag.LabelSet{}, []Config{}...)
+	_, err := NewMulti(nil, logutil.Logger, lokiflag.LabelSet{}, []Config{}...)
 	if err == nil {
 		t.Fatal("expected err but got nil")
 	}
@@ -41,7 +41,7 @@ func TestNewMulti(t *testing.T) {
 		ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"hi": "there"}},
 	}
 
-	clients, err := NewMulti(prometheus.DefaultRegisterer, util_log.Logger, lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "command"}}, cc1, cc2)
+	clients, err := NewMulti(prometheus.DefaultRegisterer, logutil.Logger, lokiflag.LabelSet{LabelSet: model.LabelSet{"order": "command"}}, cc1, cc2)
 	if err != nil {
 		t.Fatalf("expected err: nil got:%v", err)
 	}

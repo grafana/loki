@@ -15,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -34,7 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/loki/common"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
@@ -137,7 +136,7 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
-	if err := c.Worker.Validate(util_log.Logger); err != nil {
+	if err := c.Worker.Validate(logutil.Logger); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
@@ -146,7 +145,7 @@ func (c *Config) Validate() error {
 	if err := c.CompactorConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.ChunkStoreConfig.Validate(util_log.Logger); err != nil {
+	if err := c.ChunkStoreConfig.Validate(logutil.Logger); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
 	// TODO(cyriltovena): remove when MaxLookBackPeriod in the storage will be fully deprecated.
@@ -286,8 +285,8 @@ func (t *Loki) Run() error {
 	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
-	stopped := func() { level.Info(util_log.Logger).Log("msg", "Loki stopped") }
+	healthy := func() { level.Info(logutil.Logger).Log("msg", "Loki started") }
+	stopped := func() { level.Info(logutil.Logger).Log("msg", "Loki stopped") }
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Loki
 		sm.StopAsync()
@@ -296,15 +295,15 @@ func (t *Loki) Run() error {
 		for m, s := range serviceMap {
 			if s == service {
 				if service.FailureCase() == modules.ErrStopProcess {
-					level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
+					level.Info(logutil.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
 				} else {
-					level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+					level.Error(logutil.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
 				}
 				return
 			}
 		}
 
-		level.Error(util_log.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
+		level.Error(logutil.Logger).Log("msg", "module failed", "module", "unknown", "error", service.FailureCase())
 	}
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
@@ -380,7 +379,7 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 }
 
 func (t *Loki) setupModuleManager() error {
-	mm := modules.NewManager(util_log.Logger)
+	mm := modules.NewManager(logutil.Logger)
 
 	mm.RegisterModule(Server, t.initServer)
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)

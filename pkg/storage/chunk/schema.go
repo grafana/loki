@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 const (
@@ -883,7 +883,7 @@ func (v10Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.Shard
 		s := strings.Split(query.HashValue, ":")[0]
 		n, err := strconv.Atoi(s)
 		if err != nil {
-			level.Error(util_log.Logger).Log(
+			level.Error(logutil.Logger).Log(
 				"msg",
 				"Unable to determine shard from IndexQuery",
 				"HashValue",

@@ -13,8 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/mtime"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -112,7 +111,7 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 		throttleRate := m.throttleRates[expected.Name]
 		usageRate := m.usageRates[expected.Name]
 
-		level.Info(util_log.Logger).Log("msg", "checking write metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "throttleRate", throttleRate, "usageRate", usageRate)
+		level.Info(logutil.Logger).Log("msg", "checking write metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "throttleRate", throttleRate, "usageRate", usageRate)
 
 		switch {
 		case throttleRate < throttleFractionScaledown*float64(current.ProvisionedWrite) &&
@@ -170,7 +169,7 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 		readUsageRate := m.usageReadRates[expected.Name]
 		readErrorRate := m.readErrorRates[expected.Name]
 
-		level.Info(util_log.Logger).Log("msg", "checking read metrics", "table", current.Name, "errorRate", readErrorRate, "readUsageRate", readUsageRate)
+		level.Info(logutil.Logger).Log("msg", "checking read metrics", "table", current.Name, "errorRate", readErrorRate, "readUsageRate", readUsageRate)
 		// Read Scaling
 		switch {
 		// the table is at low/minimum capacity and it is being used -> scale up
@@ -235,14 +234,14 @@ func scaleDown(tableName string, currentValue, minValue int64, newValue int64, l
 
 	earliest := lastUpdated[tableName].Add(time.Duration(coolDown) * time.Second)
 	if earliest.After(mtime.Now()) {
-		level.Info(util_log.Logger).Log("msg", "deferring "+msg, "table", tableName, "till", earliest, "op", operation)
+		level.Info(logutil.Logger).Log("msg", "deferring "+msg, "table", tableName, "till", earliest, "op", operation)
 		return currentValue
 	}
 
 	// Reject a change that is less than 20% - AWS rate-limits scale-downs so save
 	// our chances until it makes a bigger difference
 	if newValue > currentValue*4/5 {
-		level.Info(util_log.Logger).Log("msg", "rejected de minimis "+msg, "table", tableName, "current", currentValue, "proposed", newValue, "op", operation)
+		level.Info(logutil.Logger).Log("msg", "rejected de minimis "+msg, "table", tableName, "current", currentValue, "proposed", newValue, "op", operation)
 		return currentValue
 	}
 
@@ -254,12 +253,12 @@ func scaleDown(tableName string, currentValue, minValue int64, newValue int64, l
 			totalUsage += u
 		}
 		if totalUsage < minUsageForScaledown {
-			level.Info(util_log.Logger).Log("msg", "rejected low usage "+msg, "table", tableName, "totalUsage", totalUsage, "op", operation)
+			level.Info(logutil.Logger).Log("msg", "rejected low usage "+msg, "table", tableName, "totalUsage", totalUsage, "op", operation)
 			return currentValue
 		}
 	}
 
-	level.Info(util_log.Logger).Log("msg", msg, "table", tableName, operation, newValue)
+	level.Info(logutil.Logger).Log("msg", msg, "table", tableName, operation, newValue)
 	lastUpdated[tableName] = mtime.Now()
 	return newValue
 }
@@ -270,12 +269,12 @@ func scaleUp(tableName string, currentValue, maxValue int64, newValue int64, las
 	}
 	earliest := lastUpdated[tableName].Add(time.Duration(coolDown) * time.Second)
 	if !earliest.After(mtime.Now()) && newValue > currentValue {
-		level.Info(util_log.Logger).Log("msg", msg, "table", tableName, operation, newValue)
+		level.Info(logutil.Logger).Log("msg", msg, "table", tableName, operation, newValue)
 		lastUpdated[tableName] = mtime.Now()
 		return newValue
 	}
 
-	level.Info(util_log.Logger).Log("msg", "deferring "+msg, "table", tableName, "till", earliest)
+	level.Info(logutil.Logger).Log("msg", "deferring "+msg, "table", tableName, "till", earliest)
 	return currentValue
 }
 
@@ -362,7 +361,7 @@ func promQuery(ctx context.Context, promAPI promV1.API, query string, duration, 
 		return nil, err
 	}
 	if wrngs != nil {
-		level.Warn(util_log.Logger).Log(
+		level.Warn(logutil.Logger).Log(
 			"query", query,
 			"start", queryRange.Start,
 			"end", queryRange.End,

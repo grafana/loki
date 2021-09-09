@@ -19,7 +19,7 @@ import (
 	"github.com/sony/gobreaker"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 // MemcachedClient interface exists for mocking memcacheClient.
@@ -145,7 +145,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}
 
 	if len(cfg.Addresses) > 0 {
-		util_log.WarnExperimentalUse("DNS-based memcached service discovery")
+		logutil.WarnExperimentalUse("DNS-based memcached service discovery", logger)
 		newClient.addresses = strings.Split(cfg.Addresses, ",")
 	}
 

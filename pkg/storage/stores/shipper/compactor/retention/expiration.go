@@ -8,8 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -59,7 +58,7 @@ func (e *expirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Tim
 func (e *expirationChecker) MarkPhaseStarted() {
 	smallestRetentionPeriod := findSmallestRetentionPeriod(e.tenantsRetention.limits)
 	e.latestRetentionStartTime = model.Now().Add(-smallestRetentionPeriod)
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("smallest retention period %v", smallestRetentionPeriod))
+	level.Info(logutil.Logger).Log("msg", fmt.Sprintf("smallest retention period %v", smallestRetentionPeriod))
 }
 
 func (e *expirationChecker) MarkPhaseFailed()   {}

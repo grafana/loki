@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -91,7 +91,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 		// Using background context to avoid cancellation of download when request times out.
 		// We would anyways need the files for serving next requests.
 		if err := table.init(ctx, log); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to download table", "name", table.name)
+			level.Error(logutil.Logger).Log("msg", "failed to download table", "name", table.name)
 		}
 	}()
 
@@ -135,7 +135,7 @@ func LoadTable(ctx context.Context, name, cacheLocation string, storageClient St
 		cancelFunc:        func() {},
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
+	level.Debug(logutil.Logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(filesInfo))
 
 	for _, fileInfo := range filesInfo {
 		if fileInfo.IsDir() {
@@ -146,12 +146,12 @@ func LoadTable(ctx context.Context, name, cacheLocation string, storageClient St
 		// if we fail to open a boltdb file, lets skip it and let sync operation re-download the file from storage.
 		boltdb, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open existing boltdb file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
+			level.Error(logutil.Logger).Log("msg", fmt.Sprintf("failed to open existing boltdb file %s, removing the file and continuing without it to let the sync operation catch up", fullPath), "err", err)
 			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which causes boltdb client to panic.
 			// We already recover the panic but the lock on the file is not released by boltdb client which causes the reopening of the file to fail when the sync operation tries it.
 			// We want to remove the file failing to open to get rid of the lock.
 			if err := os.Remove(fullPath); err != nil {
-				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove boltdb file %s which failed to open", fullPath))
+				level.Error(logutil.Logger).Log("msg", fmt.Sprintf("failed to remove boltdb file %s which failed to open", fullPath))
 			}
 			continue
 		}
@@ -159,7 +159,7 @@ func LoadTable(ctx context.Context, name, cacheLocation string, storageClient St
 		table.dbs[fileInfo.Name()] = boltdb
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", name))
+	level.Debug(logutil.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", name))
 	// sync the table to get new files and remove the deleted ones from storage.
 	err = table.Sync(ctx)
 	if err != nil {
@@ -181,12 +181,12 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 			status = statusFailure
 			t.err = err
 
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.name), "err", err)
+			level.Error(logutil.Logger).Log("msg", fmt.Sprintf("failed to initialize table %s, cleaning it up", t.name), "err", err)
 
 			// cleaning up files due to error to avoid returning invalid results.
 			for fileName := range t.dbs {
 				if err := t.cleanupDB(fileName); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
+					level.Error(logutil.Logger).Log("msg", "failed to cleanup partially downloaded file", "filename", fileName, "err", err)
 				}
 			}
 		}
@@ -201,7 +201,7 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 		return
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, files))
+	level.Debug(logutil.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", t.name, files))
 
 	folderPath, err := t.folderPathForTable(true)
 	if err != nil {
@@ -220,7 +220,7 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 	for _, file := range files {
 		filePath := path.Join(folderPath, file.Name)
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping opening of non-existent file %s, possibly not downloaded due to it being removed during compaction.", filePath))
+			level.Info(logutil.Logger).Log("msg", fmt.Sprintf("skipping opening of non-existent file %s, possibly not downloaded due to it being removed during compaction.", filePath))
 			continue
 		}
 		boltdb, err := shipper_util.SafeOpenBoltdbFile(filePath)
@@ -257,7 +257,7 @@ func (t *Table) Close() {
 
 	for name, db := range t.dbs {
 		if err := db.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to close file %s for table %s", name, t.name), "err", err)
+			level.Error(logutil.Logger).Log("msg", fmt.Sprintf("failed to close file %s for table %s", name, t.name), "err", err)
 		}
 	}
 
@@ -363,14 +363,14 @@ func (t *Table) cleanupDB(fileName string) error {
 
 // Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *Table) Sync(ctx context.Context) error {
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
+	level.Debug(logutil.Logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	toDownload, toDelete, err := t.checkStorageForUpdates(ctx)
 	if err != nil {
 		return err
 	}
 
-	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.name, toDownload, toDelete))
+	level.Debug(logutil.Logger).Log("msg", fmt.Sprintf("updates for table %s. toDownload: %s, toDelete: %s", t.name, toDownload, toDelete))
 
 	for _, storageObject := range toDownload {
 		err = t.downloadFile(ctx, storageObject)
@@ -429,7 +429,7 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []storag
 
 // downloadFile first downloads file to a temp location so that we can close the existing db(if already exists), replace it with new one and then reopen it.
 func (t *Table) downloadFile(ctx context.Context, file storage.IndexFile) error {
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloading object from storage with key %s", file.Name))
+	level.Info(logutil.Logger).Log("msg", fmt.Sprintf("downloading object from storage with key %s", file.Name))
 
 	folderPath, _ := t.folderPathForTable(false)
 	filePath := path.Join(folderPath, file.Name)
@@ -437,7 +437,7 @@ func (t *Table) downloadFile(ctx context.Context, file storage.IndexFile) error 
 	err := shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
 	if err != nil {
 		if t.storageClient.IsFileNotFoundErr(err) {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", file.Name))
+			level.Info(logutil.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", file.Name))
 			return nil
 		}
 		return err
@@ -493,7 +493,7 @@ func (t *Table) doParallelDownload(ctx context.Context, files []storage.IndexFil
 				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
 				if err != nil {
 					if t.storageClient.IsFileNotFoundErr(err) {
-						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", file.Name))
+						level.Info(logutil.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", file.Name))
 						err = nil
 					} else {
 						break

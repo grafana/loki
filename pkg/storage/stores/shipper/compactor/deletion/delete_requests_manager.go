@@ -10,8 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
@@ -58,7 +57,7 @@ func (d *DeleteRequestsManager) loop() {
 		select {
 		case <-ticker.C:
 			if err := d.updateMetrics(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to update metrics", "err", err)
+				level.Error(logutil.Logger).Log("msg", "failed to update metrics", "err", err)
 			}
 		case <-d.done:
 			return
@@ -171,7 +170,7 @@ func (d *DeleteRequestsManager) MarkPhaseStarted() {
 	status := statusSuccess
 	if err := d.loadDeleteRequestsToProcess(); err != nil {
 		status = statusFail
-		level.Error(util_log.Logger).Log("msg", "failed to load delete requests to process", "err", err)
+		level.Error(logutil.Logger).Log("msg", "failed to load delete requests to process", "err", err)
 	}
 	d.metrics.loadPendingRequestsAttemptsTotal.WithLabelValues(status).Inc()
 }
@@ -189,7 +188,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 
 	for _, deleteRequest := range d.deleteRequestsToProcess {
 		if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusProcessed); err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to mark delete request %s for user %s as processed", deleteRequest.RequestID, deleteRequest.UserID), "err", err)
+			level.Error(logutil.Logger).Log("msg", fmt.Sprintf("failed to mark delete request %s for user %s as processed", deleteRequest.RequestID, deleteRequest.UserID), "err", err)
 		}
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}

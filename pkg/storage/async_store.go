@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -55,7 +55,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 		if a.queryIngestersWithin != 0 {
 			// don't query ingesters if the query does not overlap with queryIngestersWithin.
 			if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
-				level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
+				level.Debug(logutil.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
 				errs <- nil
 				return
 			}
@@ -66,7 +66,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 
 		if err == nil {
 			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
-			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
+			level.Debug(logutil.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
 		errs <- err
 	}()
@@ -87,7 +87,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*chunk.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
 	ingesterChunkIDs = filterDuplicateChunks(storeChunks, ingesterChunkIDs)
-	level.Debug(util_log.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
+	level.Debug(logutil.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
 
 	fetcherToChunksGroupIdx := make(map[*chunk.Fetcher]int, len(fetchers))
 

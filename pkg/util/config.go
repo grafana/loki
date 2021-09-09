@@ -5,10 +5,11 @@ import (
 	"io"
 	"strings"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 // LogConfig takes a pointer to a config object, marshalls it to YAML and prints each line in REVERSE order
@@ -22,7 +23,7 @@ func LogConfig(cfg interface{}) error {
 	cfgStr := string(lc)
 	cfgStrs := strings.Split(cfgStr, "\n")
 	for i := len(cfgStrs) - 1; i >= 0; i-- {
-		level.Info(util_log.Logger).Log("type", "config", "msg", cfgStrs[i])
+		level.Info(logutil.Logger).Log("type", "config", "msg", cfgStrs[i])
 	}
 	return nil
 }

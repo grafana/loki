@@ -3,10 +3,11 @@ package ingester
 import (
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log/level"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 type replayFlusher struct {
@@ -82,7 +83,7 @@ func (c *replayController) Flush() {
 	if c.isFlushing.CAS(false, true) {
 		c.metrics.recoveryIsFlushing.Set(1)
 		prior := c.currentBytes.Load()
-		level.Debug(util_log.Logger).Log(
+		level.Debug(logutil.Logger).Log(
 			"msg", "replay flusher pre-flush",
 			"bytes", humanize.Bytes(uint64(prior)),
 		)
@@ -90,7 +91,7 @@ func (c *replayController) Flush() {
 		c.flusher.Flush()
 
 		after := c.currentBytes.Load()
-		level.Debug(util_log.Logger).Log(
+		level.Debug(logutil.Logger).Log(
 			"msg", "replay flusher post-flush",
 			"bytes", humanize.Bytes(uint64(after)),
 		)

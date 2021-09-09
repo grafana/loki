@@ -44,7 +44,7 @@ func NewPushTargetManager(
 			return nil, err
 		}
 
-		t, err := NewPushTarget(logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.JobName, cfg.PushConfig)
+		t, err := NewPushTarget(logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.JobName, cfg.PushConfig, reg)
 		if err != nil {
 			return nil, err
 		}

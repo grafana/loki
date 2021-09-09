@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/logutil"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
@@ -64,7 +64,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 		applyRetention:     applyRetention,
 		tableMarker:        tableMarker,
 	}
-	table.logger = log.With(util_log.Logger, "table-name", table.name)
+	table.logger = log.With(logutil.Logger, "table-name", table.name)
 
 	return &table, nil
 }

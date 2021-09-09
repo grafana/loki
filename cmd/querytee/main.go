@@ -4,16 +4,15 @@ import (
 	"flag"
 	"os"
 
+	"github.com/cortexproject/cortex/tools/querytee"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/tools/querytee"
-
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 type Config struct {
@@ -30,9 +29,9 @@ func main() {
 	cfg.ProxyConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
-	util_log.InitLogger(&server.Config{
+	logutil.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
-	})
+	}, prometheus.DefaultRegisterer)
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()
@@ -40,19 +39,19 @@ func main() {
 
 	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry)
 	if err := i.Start(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
+		level.Error(logutil.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
 		os.Exit(1)
 	}
 
 	// Run the proxy.
-	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), registry)
+	proxy, err := querytee.NewProxy(cfg.ProxyConfig, logutil.Logger, lokiReadRoutes(cfg), registry)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
+		level.Error(logutil.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
 	}
 
 	if err := proxy.Start(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
+		level.Error(logutil.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
 		os.Exit(1)
 	}
 

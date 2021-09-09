@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 func TestSnapshot(t *testing.T) {
@@ -28,7 +29,7 @@ func TestSnapshot(t *testing.T) {
 	fakeIngesterQuery(ctx)
 
 	res := Snapshot(ctx, 2*time.Second)
-	res.Log(util_log.Logger)
+	res.Log(logutil.Logger)
 	expected := Result{
 		Ingester: Ingester{
 			TotalChunksMatched: 200,

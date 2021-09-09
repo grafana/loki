@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
@@ -16,6 +15,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
@@ -129,7 +129,7 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []chunk.IndexQuer
 		}
 		query, ok := queryKeyQueryMap[resp.QueryKey]
 		if !ok {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKeyQueryMap)))
+			level.Error(logutil.Logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKeyQueryMap)))
 			return fmt.Errorf("unexpected %s QueryKey received", resp.QueryKey)
 		}
 		if !callback(query, &readBatch{resp}) {

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	gokitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/kv"
@@ -24,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 func TestTransferOut(t *testing.T) {
@@ -204,7 +204,7 @@ func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption)
 		c.i.stopIncomingRequests() // used to be called from lifecycler, now it must be called *before* stopping lifecyler. (ingester does this on shutdown)
 		err := services.StopAndAwaitTerminated(context.Background(), c.i.lifecycler)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "lifecycler failed", "err", err)
+			level.Error(logutil.Logger).Log("msg", "lifecycler failed", "err", err)
 		}
 	}()
 

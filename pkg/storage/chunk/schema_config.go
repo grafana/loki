@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 const (
@@ -395,7 +395,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
 			table = pCfg.ActiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags)
 
-			level.Debug(log.Logger).Log("msg", "Table is Active",
+			level.Debug(logutil.Logger).Log("msg", "Table is Active",
 				"tableName", table.Name,
 				"provisionedRead", table.ProvisionedRead,
 				"provisionedWrite", table.ProvisionedWrite,
@@ -410,7 +410,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 			disableAutoscale := i < (nowWeek - pCfg.InactiveWriteScaleLastN)
 			table = pCfg.InactiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags, disableAutoscale)
 
-			level.Debug(log.Logger).Log("msg", "Table is Inactive",
+			level.Debug(logutil.Logger).Log("msg", "Table is Inactive",
 				"tableName", table.Name,
 				"provisionedRead", table.ProvisionedRead,
 				"provisionedWrite", table.ProvisionedWrite,

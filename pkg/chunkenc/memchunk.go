@@ -14,17 +14,16 @@ import (
 	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
-
-	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/logutil"
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 const (
@@ -413,7 +412,7 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			_ = level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
+			_ = level.Error(logutil.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
 			continue
 		}
 

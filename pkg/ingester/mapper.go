@@ -6,12 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/prometheus/prometheus/pkg/labels"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.
@@ -104,7 +104,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 		// A new mapping has to be created.
 		mappedFP = m.nextMappedFP()
 		mappedFPs[ms] = mappedFP
-		level.Info(util_log.Logger).Log(
+		level.Info(logutil.Logger).Log(
 			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
@@ -118,7 +118,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric labels.
 	m.mtx.Lock()
 	m.mappings[fp] = mappedFPs
 	m.mtx.Unlock()
-	level.Info(util_log.Logger).Log(
+	level.Info(logutil.Logger).Log(
 		"msg", "fingerprint collision detected, mapping to new fingerprint",
 		"old_fp", fp,
 		"new_fp", mappedFP,

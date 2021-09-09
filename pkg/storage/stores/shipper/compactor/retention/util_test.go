@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -18,6 +17,7 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
@@ -189,7 +189,7 @@ func (t *testStore) open() {
 		t.limits,
 		nil,
 		nil,
-		util_log.Logger,
+		logutil.Logger,
 	)
 	require.NoError(t.t, err)
 
@@ -202,7 +202,7 @@ func newTestStore(t testing.TB) *testStore {
 	t.Helper()
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg)
+	logutil.InitLogger(cfg, nil)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")
@@ -246,7 +246,7 @@ func newTestStore(t testing.TB) *testStore {
 		limits,
 		nil,
 		nil,
-		util_log.Logger,
+		logutil.Logger,
 	)
 	require.NoError(t, err)
 

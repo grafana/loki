@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
@@ -62,9 +62,9 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.
 	status := statusSuccess
 	defer func() {
 		t.markerMetrics.tableProcessedDurationSeconds.WithLabelValues(tableName, status).Observe(time.Since(start).Seconds())
-		level.Debug(util_log.Logger).Log("msg", "finished to process table", "table", tableName, "duration", time.Since(start))
+		level.Debug(logutil.Logger).Log("msg", "finished to process table", "table", tableName, "duration", time.Since(start))
 	}()
-	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
+	level.Debug(logutil.Logger).Log("msg", "starting to process table", "table", tableName)
 
 	empty, markCount, err := t.markTable(ctx, tableName, db)
 	if err != nil {
@@ -245,11 +245,11 @@ func (s *Sweeper) Start() {
 		err = s.chunkClient.DeleteChunk(ctx, unsafeGetString(userID), chunkIDString)
 		if s.chunkClient.IsChunkNotFoundErr(err) {
 			status = statusNotFound
-			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
+			level.Debug(logutil.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
 			return nil
 		}
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error deleting chunk", "chunkID", chunkIDString, "err", err)
+			level.Error(logutil.Logger).Log("msg", "error deleting chunk", "chunkID", chunkIDString, "err", err)
 			status = statusFailure
 		}
 		return err

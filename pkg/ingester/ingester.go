@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -29,12 +27,14 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
 	listutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/tenant"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -256,11 +256,11 @@ func (i *Ingester) setupAutoForget() {
 		ctx := context.Background()
 		err := i.Service.AwaitRunning(ctx)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
+			level.Error(logutil.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+		level.Info(logutil.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 
 		ticker := time.NewTicker(i.cfg.LifecyclerConfig.HeartbeatPeriod)
 		defer ticker.Stop()
@@ -275,14 +275,14 @@ func (i *Ingester) setupAutoForget() {
 
 				ringDesc, ok := in.(*ring.Desc)
 				if !ok {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
+					level.Warn(logutil.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
 					return nil, false, nil
 				}
 
 				for id, ingester := range ringDesc.Ingesters {
 					if !ingester.IsHealthy(ring.Reporting, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout, time.Now()) {
 						if i.lifecycler.ID == id {
-							level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
+							level.Warn(logutil.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
 							return nil, false, nil
 						}
 						forgetList = append(forgetList, id)
@@ -290,7 +290,7 @@ func (i *Ingester) setupAutoForget() {
 				}
 
 				if len(forgetList) == len(ringDesc.Ingesters)-1 {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
+					level.Warn(logutil.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
 					forgetList = forgetList[:0]
 					return nil, false, nil
 				}
@@ -304,12 +304,12 @@ func (i *Ingester) setupAutoForget() {
 				return nil, false, nil
 			})
 			if err != nil {
-				level.Warn(util_log.Logger).Log("msg", err)
+				level.Warn(logutil.Logger).Log("msg", err)
 				continue
 			}
 
 			for _, id := range forgetList {
-				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+				level.Info(logutil.Logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 			}
 			i.metrics.autoForgetUnhealthyIngestersTotal.Add(float64(len(forgetList)))
 		}
@@ -336,7 +336,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 			var once sync.Once
 			return func() {
 				once.Do(func() {
-					level.Info(util_log.Logger).Log("msg", "closing recoverer")
+					level.Info(logutil.Logger).Log("msg", "closing recoverer")
 					recoverer.Close()
 
 					elapsed := time.Since(start)
@@ -344,13 +344,13 @@ func (i *Ingester) starting(ctx context.Context) error {
 					i.metrics.walReplayActive.Set(0)
 					i.metrics.walReplayDuration.Set(elapsed.Seconds())
 					i.cfg.RetainPeriod = oldRetain
-					level.Info(util_log.Logger).Log("msg", "WAL recovery finished", "time", elapsed.String())
+					level.Info(logutil.Logger).Log("msg", "WAL recovery finished", "time", elapsed.String())
 				})
 			}
 		}()
 		defer endReplay()
 
-		level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
+		level.Info(logutil.Logger).Log("msg", "recovering from checkpoint")
 		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
 		if err != nil {
 			return err
@@ -360,19 +360,19 @@ func (i *Ingester) starting(ctx context.Context) error {
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util_log.Logger).Log(
+			level.Error(logutil.Logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		level.Info(logutil.Logger).Log(
 			"msg", "recovered WAL checkpoint recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", checkpointRecoveryErr != nil,
 		)
 
-		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
+		level.Info(logutil.Logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := newWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
@@ -382,13 +382,13 @@ func (i *Ingester) starting(ctx context.Context) error {
 		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(util_log.Logger).Log(
+			level.Error(logutil.Logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		level.Info(logutil.Logger).Log(
 			"msg", "WAL segment recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", segmentRecoveryErr != nil,
@@ -492,7 +492,7 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	} else if i.readonly {
@@ -526,7 +526,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	ctx := stats.NewContext(queryServer.Context())
 	defer stats.SendAsTrailer(ctx, queryServer)
 
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}
@@ -567,7 +567,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	ctx := stats.NewContext(queryServer.Context())
 	defer stats.SendAsTrailer(ctx, queryServer)
 
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return err
 	}
@@ -621,7 +621,7 @@ func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
-	orgID, err := tenant.TenantID(ctx)
+	orgID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +660,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -715,7 +715,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +771,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
-	instanceID, err := tenant.TenantID(queryServer.Context())
+	instanceID, err := tenant.ID(queryServer.Context())
 	if err != nil {
 		return err
 	}
@@ -791,7 +791,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
+	instanceID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}

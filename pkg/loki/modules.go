@@ -20,7 +20,6 @@ import (
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -36,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
@@ -148,7 +148,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
 
 	var err error
-	t.runtimeConfig, err = runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), util_log.Logger)
+	t.runtimeConfig, err = runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), logutil.Logger)
 	return t.runtimeConfig, err
 }
 
@@ -190,6 +190,21 @@ func (t *Loki) initDistributor() (services.Service, error) {
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
+	var (
+		worker services.Service
+		err    error
+	)
+
+	// NewQuerierWorker now expects Frontend (or Scheduler) address to be set.
+	if t.Cfg.Worker.FrontendAddress != "" || t.Cfg.Worker.SchedulerAddress != "" {
+		t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
+		level.Debug(logutil.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.Cfg.Worker))
+		worker, err = cortex_querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), logutil.Logger, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
@@ -269,7 +284,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		t.Cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
 		t.Cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
 		t.Cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "" {
-		level.Error(util_log.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
+		level.Error(logutil.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
 		os.Exit(1)
 	}
 
@@ -281,7 +296,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	}
 
 	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig.Config)
-	util_log.CheckFatal("initializing bucket client", err)
+	logutil.CheckFatal("initializing bucket client", err, logutil.Logger)
 
 	t.tableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -327,7 +342,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	chunkStore, err := chunk_storage.NewStore(t.Cfg.StorageConfig.Config, t.Cfg.ChunkStoreConfig.StoreConfig, t.Cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, logutil.Logger)
 	if err != nil {
 		return
 	}
@@ -389,11 +404,11 @@ type disabledShuffleShardingLimits struct{}
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { return 0 }
 
 func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
-	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
+	level.Debug(logutil.Logger).Log("msg", "initializing query frontend tripperware")
 
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
-		util_log.Logger,
+		logutil.Logger,
 		t.overrides,
 		t.Cfg.SchemaConfig.SchemaConfig,
 		t.Cfg.Querier.QueryIngestersWithin,
@@ -409,14 +424,14 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
-	level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
+	level.Debug(logutil.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
 
 	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
 		Handler:       t.Cfg.Frontend.Handler,
 		FrontendV1:    t.Cfg.Frontend.FrontendV1,
 		FrontendV2:    t.Cfg.Frontend.FrontendV2,
 		DownstreamURL: t.Cfg.Frontend.DownstreamURL,
-	}, disabledShuffleShardingLimits{}, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
+	}, disabledShuffleShardingLimits{}, t.Cfg.Server.GRPCListenPort, logutil.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -424,18 +439,18 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	if frontendV1 != nil {
 		frontendv1pb.RegisterFrontendServer(t.Server.GRPC, frontendV1)
 		t.frontend = frontendV1
-		level.Debug(util_log.Logger).Log("msg", "using query frontend", "version", "v1")
+		level.Debug(logutil.Logger).Log("msg", "using query frontend", "version", "v1")
 	} else if frontendV2 != nil {
 		frontendv2pb.RegisterFrontendForQuerierServer(t.Server.GRPC, frontendV2)
 		t.frontend = frontendV2
-		level.Debug(util_log.Logger).Log("msg", "using query frontend", "version", "v2")
+		level.Debug(logutil.Logger).Log("msg", "using query frontend", "version", "v2")
 	} else {
-		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
+		level.Debug(logutil.Logger).Log("msg", "no query frontend configured")
 	}
 
 	roundTripper = t.QueryFrontEndTripperware(roundTripper)
 
-	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
+	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, logutil.Logger, prometheus.DefaultRegisterer)
 	if t.Cfg.Frontend.CompressResponses {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}
@@ -501,7 +516,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		// Log but not return in case of error, so that other following dependencies
 		// are stopped too.
 		if err := services.StopAndAwaitTerminated(context.Background(), t.frontend); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to stop frontend service", "err", err)
+			level.Warn(logutil.Logger).Log("msg", "failed to stop frontend service", "err", err)
 		}
 
 		if t.stopper != nil {
@@ -517,7 +532,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
 	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		level.Info(logutil.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
 		return
 	}
 
@@ -535,14 +550,14 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		}
 	}
 
-	t.RulerStorage, err = cortex_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, ruler.GroupLoader{}, util_log.Logger)
+	t.RulerStorage, err = cortex_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, ruler.GroupLoader{}, logutil.Logger)
 
 	return
 }
 
 func (t *Loki) initRuler() (_ services.Service, err error) {
 	if t.RulerStorage == nil {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
+		level.Info(logutil.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
 
@@ -559,7 +574,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.Cfg.Ruler,
 		engine,
 		prometheus.DefaultRegisterer,
-		util_log.Logger,
+		logutil.Logger,
 		t.RulerStorage,
 		t.overrides,
 	)
@@ -568,7 +583,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		return
 	}
 
-	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage, util_log.Logger)
+	t.rulerAPI = cortex_ruler.NewAPI(t.ruler, t.RulerStorage, logutil.Logger)
 
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
@@ -602,7 +617,8 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
-	t.Cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+
+	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
@@ -614,9 +630,9 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 			reg,
 		),
 	)
-	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
+	dnsProvider := dns.NewProvider(logutil.Logger, dnsProviderReg, dns.GolangResolverType)
 
-	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider, reg)
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, logutil.Logger, dnsProvider, reg)
 	return t.MemberlistKV, nil
 }
 
@@ -657,7 +673,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
-	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.overrides, logutil.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

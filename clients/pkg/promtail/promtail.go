@@ -3,7 +3,6 @@ package promtail
 import (
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -11,6 +10,8 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 // Option is a function that can be passed to the New method of Promtail and
@@ -44,11 +45,11 @@ type Promtail struct {
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
+func New(cfg config.Config, dryRun bool, reg prometheus.Registerer, opts ...Option) (*Promtail, error) {
 	// Initialize promtail with some defaults and allow the options to override
 	// them.
 	promtail := &Promtail{
-		logger: util_log.Logger,
+		logger: logutil.Logger,
 		reg:    prometheus.DefaultRegisterer,
 	}
 	for _, o := range opts {

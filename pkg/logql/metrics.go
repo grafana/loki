@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 const (
@@ -68,7 +68,7 @@ var (
 
 func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result, result promql_parser.Value) {
 	var (
-		logger        = util_log.WithContext(ctx, util_log.Logger)
+		logger        = logutil.WithContext(ctx, logutil.Logger)
 		rt            = string(GetRangeType(p))
 		latencyType   = latencyTypeFast
 		returnedLines = 0

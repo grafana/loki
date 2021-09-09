@@ -4,14 +4,13 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
@@ -213,7 +212,7 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 			missing = append(missing, chunks[i])
 			i++
 		} else if chunkKey > keys[j] {
-			level.Warn(util_log.Logger).Log("msg", "got chunk from cache we didn't ask for")
+			level.Warn(logutil.Logger).Log("msg", "got chunk from cache we didn't ask for")
 			j++
 		} else {
 			requests = append(requests, decodeRequest{

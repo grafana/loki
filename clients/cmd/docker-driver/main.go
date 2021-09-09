@@ -7,13 +7,13 @@ import (
 
 	_ "net/http/pprof"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 
+	"github.com/grafana/loki/pkg/logutil"
 	_ "github.com/grafana/loki/pkg/util/build"
 )
 
@@ -32,7 +32,7 @@ func main() {
 		os.Exit(1)
 	}
 	logger := newLogger(logLevel)
-	level.Info(util_log.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
+	level.Info(logutil.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
 
 	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
 

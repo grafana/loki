@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -43,7 +43,7 @@ pipeline_stages:
 func TestPackPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline_deal_with_it_linter"
-	pl, err := NewPipeline(util_log.Logger, loadConfig(testPackYaml), &plName, registry)
+	pl, err := NewPipeline(logutil.Logger, loadConfig(testPackYaml), &plName, registry)
 	require.NoError(t, err)
 
 	l1Lbls := model.LabelSet{
@@ -105,7 +105,7 @@ func Test_packStage_Run(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg)
+	logutil.InitLogger(cfg, nil)
 	Debug = true
 
 	tests := []struct {
@@ -347,7 +347,7 @@ func Test_packStage_Run(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			m, err := newPackStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
+			m, err := newPackStage(logutil.Logger, tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			// Normal pipeline operation will put all the labels into the extracted map
 			// replicate that here.

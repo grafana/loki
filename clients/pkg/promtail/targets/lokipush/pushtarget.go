@@ -9,11 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/imdario/mergo"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -26,6 +25,8 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logutil"
+	"github.com/grafana/loki/pkg/util/tenant"
 )
 
 type PushTarget struct {
@@ -35,13 +36,16 @@ type PushTarget struct {
 	relabelConfig []*relabel.Config
 	jobName       string
 	server        *server.Server
+	registerer    prometheus.Registerer
 }
 
 func NewPushTarget(logger log.Logger,
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
 	jobName string,
-	config *scrapeconfig.PushTargetConfig) (*PushTarget, error) {
+	config *scrapeconfig.PushTargetConfig,
+	reg prometheus.Registerer,
+) (*PushTarget, error) {
 
 	pt := &PushTarget{
 		logger:        logger,
@@ -49,6 +53,7 @@ func NewPushTarget(logger log.Logger,
 		relabelConfig: relabel,
 		jobName:       jobName,
 		config:        config,
+		registerer:    reg,
 	}
 
 	// Bit of a chicken and egg problem trying to register the defaults and apply overrides from the loaded config.
@@ -86,7 +91,7 @@ func (t *PushTarget) run() error {
 	// We don't want the /debug and /metrics endpoints running
 	t.config.Server.RegisterInstrumentation = false
 
-	util_log.InitLogger(&t.config.Server)
+	logutil.InitLogger(&t.config.Server, t.registerer)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {
@@ -108,8 +113,8 @@ func (t *PushTarget) run() error {
 }
 
 func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
-	userID, _ := tenant.TenantID(r.Context())
+	logger := logutil.WithContext(r.Context(), logutil.Logger)
+	userID, _ := tenant.ID(r.Context())
 	req, err := push.ParseRequest(logger, userID, r, nil)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())

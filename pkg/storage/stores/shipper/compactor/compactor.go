@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/logutil"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
@@ -152,7 +152,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 	runCompaction := func() {
 		err := c.RunCompaction(ctx)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
+			level.Error(logutil.Logger).Log("msg", "failed to run compaction", "err", err)
 		}
 	}
 	var wg sync.WaitGroup
@@ -193,7 +193,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), c.indexStorageClient, c.cfg.RetentionEnabled, c.tableMarker)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
+		level.Error(logutil.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err
 	}
 
@@ -205,7 +205,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 
 	err = table.compact(intervalHasExpiredChunks)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+		level.Error(logutil.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
 	}
 	return nil
@@ -258,12 +258,12 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 						return
 					}
 
-					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
+					level.Info(logutil.Logger).Log("msg", "compacting table", "table-name", tableName)
 					err = c.CompactTable(ctx, tableName)
 					if err != nil {
 						return
 					}
-					level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
+					level.Info(logutil.Logger).Log("msg", "finished compacting table", "table-name", tableName)
 				case <-ctx.Done():
 					return
 				}

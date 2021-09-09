@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cespare/xxhash/v2"
@@ -28,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
@@ -218,7 +217,7 @@ func getLocalStore() Store {
 	chunkStore, err := storage.NewStore(
 		storeConfig.Config,
 		chunk.StoreConfig{},
-		schemaConfig.SchemaConfig, limits, nil, nil, util_log.Logger)
+		schemaConfig.SchemaConfig, limits, nil, nil, logutil.Logger)
 	if err != nil {
 		panic(err)
 	}
@@ -852,7 +851,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		limits,
 		nil,
 		nil,
-		util_log.Logger,
+		logutil.Logger,
 	)
 	require.NoError(t, err)
 	store, err := NewStore(config, schemaConfig, chunkStore, nil)
@@ -898,7 +897,7 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 		limits,
 		nil,
 		nil,
-		util_log.Logger,
+		logutil.Logger,
 	)
 	require.NoError(t, err)
 

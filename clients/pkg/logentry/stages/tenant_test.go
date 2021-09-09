@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 
+	"github.com/grafana/loki/pkg/logutil"
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
@@ -101,7 +101,7 @@ func TestTenantStage_Validation(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			stage, err := newTenantStage(util_log.Logger, testData.config)
+			stage, err := newTenantStage(logutil.Logger, testData.config)
 
 			if testData.expectedErr != nil {
 				assert.EqualError(t, err, *testData.expectedErr)
@@ -171,7 +171,7 @@ func TestTenantStage_Process(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			stage, err := newTenantStage(util_log.Logger, testData.config)
+			stage, err := newTenantStage(logutil.Logger, testData.config)
 			require.NoError(t, err)
 
 			// Process and dummy line and ensure nothing has changed except

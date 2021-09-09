@@ -9,8 +9,6 @@ import (
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/services"
 	lru "github.com/hashicorp/golang-lru"
@@ -26,9 +24,11 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/tenant"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -122,7 +122,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
 		validator:            validator,
-		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, logutil.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:           labelCache,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -191,7 +191,7 @@ type pushTracker struct {
 
 // Push a set of streams.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := tenant.ID(ctx)
 	if err != nil {
 		return nil, err
 	}

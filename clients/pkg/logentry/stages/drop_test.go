@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -39,7 +40,7 @@ func Test_dropStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg)
+	logutil.InitLogger(cfg, nil)
 	Debug = true
 
 	tests := []struct {
@@ -265,7 +266,7 @@ func Test_dropStage_Process(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			m, err := newDropStage(util_log.Logger, tt.config, prometheus.DefaultRegisterer)
+			m, err := newDropStage(logutil.Logger, tt.config, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			out := processEntries(m, newEntry(tt.extracted, tt.labels, tt.entry, tt.t))
 			if tt.shouldDrop {
@@ -285,7 +286,7 @@ func ptrFromString(str string) *string {
 func TestDropPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline"
-	pl, err := NewPipeline(util_log.Logger, loadConfig(testDropYaml), &plName, registry)
+	pl, err := NewPipeline(logutil.Logger, loadConfig(testDropYaml), &plName, registry)
 	require.NoError(t, err)
 	out := processEntries(pl,
 		newEntry(nil, nil, testMatchLogLineApp1, time.Now()),

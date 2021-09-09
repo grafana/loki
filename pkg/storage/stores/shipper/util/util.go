@@ -10,11 +10,11 @@ import (
 	"strings"
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 )
@@ -79,7 +79,7 @@ func GetFileFromStorage(ctx context.Context, storageClient IndexStorageClient, t
 
 	defer func() {
 		if err := readCloser.Close(); err != nil {
-			level.Error(util_log.Logger)
+			level.Error(logutil.Logger)
 		}
 	}()
 
@@ -90,7 +90,7 @@ func GetFileFromStorage(ctx context.Context, storageClient IndexStorageClient, t
 
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close file", "file", destination)
+			level.Warn(logutil.Logger).Log("msg", "failed to close file", "file", destination)
 		}
 	}()
 	var objectReader io.Reader = readCloser
@@ -106,7 +106,7 @@ func GetFileFromStorage(ctx context.Context, storageClient IndexStorageClient, t
 		return err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("downloaded file %s from table %s", fileName, tableName))
+	level.Info(logutil.Logger).Log("msg", fmt.Sprintf("downloaded file %s from table %s", fileName, tableName))
 	if sync {
 		return f.Sync()
 	}
@@ -126,7 +126,7 @@ func BuildIndexFileName(tableName, uploader, dbName string) string {
 }
 
 func CompressFile(src, dest string, sync bool) error {
-	level.Info(util_log.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
+	level.Info(logutil.Logger).Log("msg", "compressing the file", "src", src, "dest", dest)
 	uncompressedFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -134,7 +134,7 @@ func CompressFile(src, dest string, sync bool) error {
 
 	defer func() {
 		if err := uncompressedFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close uncompressed file", "path", src, "err", err)
+			level.Error(logutil.Logger).Log("msg", "failed to close uncompressed file", "path", src, "err", err)
 		}
 	}()
 
@@ -145,7 +145,7 @@ func CompressFile(src, dest string, sync bool) error {
 
 	defer func() {
 		if err := compressedFile.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
+			level.Error(logutil.Logger).Log("msg", "failed to close compressed file", "path", dest, "err", err)
 		}
 	}()
 

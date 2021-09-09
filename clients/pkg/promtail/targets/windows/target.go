@@ -9,20 +9,20 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/spf13/afero"
 	"golang.org/x/sys/windows"
-
-	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/windows/win_eventlog"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 var fs = afero.NewOsFs()
@@ -114,7 +114,7 @@ func (t *Target) loop() {
 			if err != nil {
 				if err != win_eventlog.ERROR_NO_MORE_ITEMS {
 					t.err = err
-					level.Error(util_log.Logger).Log("msg", "error fetching events", "err", err)
+					level.Error(logutil.Logger).Log("msg", "error fetching events", "err", err)
 				}
 				break loop
 			}
@@ -124,7 +124,7 @@ func (t *Target) loop() {
 				t.handler.Chan() <- entry
 				if err := t.bm.save(handles[i]); err != nil {
 					t.err = err
-					level.Error(util_log.Logger).Log("msg", "error saving bookmark", "err", err)
+					level.Error(logutil.Logger).Log("msg", "error saving bookmark", "err", err)
 				}
 			}
 			win_eventlog.Close(handles)

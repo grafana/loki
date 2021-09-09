@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 var testJSONYamlSingleStageWithoutSource = `
@@ -82,7 +83,7 @@ func TestPipeline_JSON(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
+			pl, err := NewPipeline(logutil.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -354,7 +355,7 @@ func TestJSONParser_Parse(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := New(util_log.Logger, nil, StageTypeJSON, tt.config, nil)
+			p, err := New(logutil.Logger, nil, StageTypeJSON, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}

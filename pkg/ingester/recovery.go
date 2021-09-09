@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -14,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 type WALReader interface {
@@ -70,7 +70,7 @@ func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
 		return nil, nil, err
 	}
 	if idx < 0 {
-		level.Info(util_log.Logger).Log("msg", "no checkpoint found, treating as no-op")
+		level.Info(logutil.Logger).Log("msg", "no checkpoint found, treating as no-op")
 		var reader NoopWALReader
 		return reader, reader, nil
 	}

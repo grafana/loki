@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 var testMatchYaml = `
@@ -57,7 +58,7 @@ var testMatchLogLineApp2 = `
 func TestMatchPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline"
-	pl, err := NewPipeline(util_log.Logger, loadConfig(testMatchYaml), &plName, registry)
+	pl, err := NewPipeline(logutil.Logger, loadConfig(testMatchYaml), &plName, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestMatcher(t *testing.T) {
 				tt.action,
 				nil,
 			}
-			s, err := newMatcherStage(util_log.Logger, nil, matchConfig, prometheus.DefaultRegisterer)
+			s, err := newMatcherStage(logutil.Logger, nil, matchConfig, prometheus.DefaultRegisterer)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("withMatcher() error = %v, wantErr %v", err, tt.wantErr)
 				return

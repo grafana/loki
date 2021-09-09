@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	cutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,14 +20,12 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
-	cutil "github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util"
@@ -176,7 +175,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
 				i.metrics.walDiskFullFailures.Inc()
 				i.flushOnShutdownSwitch.TriggerAnd(func() {
-					level.Error(util_log.Logger).Log(
+					level.Error(logutil.Logger).Log(
 						"msg",
 						"Error writing to WAL, disk full, no further messages will be logged for this error",
 					)
@@ -211,7 +210,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
+			level.Debug(logutil.Logger).Log(
 				"msg", "failed to create stream, exceeded limit",
 				"org_id", i.instanceID,
 				"err", err,
@@ -231,7 +230,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	labels, err := logql.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
+			level.Debug(logutil.Logger).Log(
 				"msg", "failed to create stream, failed to parse labels",
 				"org_id", i.instanceID,
 				"err", err,
@@ -263,7 +262,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	i.addTailersToNewStream(stream)
 
 	if i.configs.LogStreamCreation(i.instanceID) {
-		level.Debug(util_log.Logger).Log(
+		level.Debug(logutil.Logger).Log(
 			"msg", "successfully created stream",
 			"org_id", i.instanceID,
 			"stream", pushReqStream.Labels,

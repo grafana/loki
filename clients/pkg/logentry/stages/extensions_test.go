@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 var (
@@ -65,7 +66,7 @@ func TestNewDocker(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewDocker(util_log.Logger, prometheus.DefaultRegisterer)
+			p, err := NewDocker(logutil.Logger, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatalf("failed to create Docker parser: %s", err)
 			}
@@ -139,7 +140,7 @@ func TestNewCri(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewCRI(util_log.Logger, prometheus.DefaultRegisterer)
+			p, err := NewCRI(logutil.Logger, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatalf("failed to create CRI parser: %s", err)
 			}

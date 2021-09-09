@@ -12,11 +12,10 @@ import (
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
-
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
@@ -96,7 +95,7 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
-	log.WarnExperimentalUse("Azure Blob Storage")
+	logutil.WarnExperimentalUse("Azure Blob Storage", logutil.Logger)
 	blobStorage := &BlobStorage{
 		cfg: cfg,
 	}

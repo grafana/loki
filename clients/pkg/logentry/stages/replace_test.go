@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 var testReplaceYamlSingleStageWithoutSource = `
@@ -149,7 +150,7 @@ func TestPipeline_Replace(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
+			pl, err := NewPipeline(logutil.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatal(err)
 			}

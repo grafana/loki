@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/afero"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/windows/win_eventlog"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 func init() {
@@ -28,7 +28,7 @@ func init() {
 	// Enable debug logging
 	cfg := &server.Config{}
 	_ = cfg.LogLevel.Set("debug")
-	util_log.InitLogger(cfg)
+	logutil.InitLogger(cfg, nil)
 }
 
 // Test that you can use to generate event logs locally.
@@ -59,7 +59,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 	}
 	client := fake.New(func() {})
 	defer client.Stop()
-	ta, err := New(util_log.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+	ta, err := New(logutil.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		BookmarkPath: "c:foo.xml",
 		PollInterval: time.Microsecond,
 		Query: `<QueryList>
@@ -93,7 +93,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 
 	client = fake.New(func() {})
 	defer client.Stop()
-	ta, err = New(util_log.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+	ta, err = New(logutil.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		BookmarkPath: "c:foo.xml",
 		PollInterval: time.Microsecond,
 		Query: `<QueryList>
@@ -122,7 +122,7 @@ func Test_GetCreateBookrmark(t *testing.T) {
 func Test_renderEntries(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
-	ta, err := New(util_log.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
+	ta, err := New(logutil.Logger, client, nil, &scrapeconfig.WindowsEventsTargetConfig{
 		Labels:               model.LabelSet{"job": "windows-events"},
 		EventlogName:         "Application",
 		Query:                "*",

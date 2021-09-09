@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
@@ -105,7 +105,7 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometh
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %d mode", cfg.Mode))
+	level.Info(logutil.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %d mode", cfg.Mode))
 
 	return &shipper, nil
 }

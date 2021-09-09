@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util/tenant"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -197,7 +197,7 @@ func transformRegexQuery(req *http.Request, expr logql.LogSelectorExpr) (logql.L
 
 // validates log entries limits
 func validateLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	userID, err := tenant.TenantID(req.Context())
+	userID, err := tenant.ID(req.Context())
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

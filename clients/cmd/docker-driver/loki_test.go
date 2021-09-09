@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 func Test_loki_LogWhenClosed(t *testing.T) {
@@ -14,7 +15,7 @@ func Test_loki_LogWhenClosed(t *testing.T) {
 		Config: map[string]string{
 			"loki-url": "http://localhost:3000",
 		},
-	}, util_log.Logger)
+	}, logutil.Logger)
 	require.Nil(t, err)
 	msg := logger.NewMessage()
 	msg.Line = []byte(`foo`)

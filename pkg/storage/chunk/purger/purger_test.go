@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
@@ -221,7 +221,7 @@ func TestPurger_BuildPlan(t *testing.T) {
 				require.NoError(t, err)
 
 				deleteRequest := deleteRequests[0]
-				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
+				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, logutil.Logger)
 
 				err = purger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
@@ -314,7 +314,7 @@ func TestPurger_ExecutePlan(t *testing.T) {
 				require.NoError(t, err)
 
 				deleteRequest := deleteRequests[0]
-				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
+				requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, logutil.Logger)
 				err = purger.buildDeletePlan(requestWithLogger)
 				require.NoError(t, err)
 
@@ -365,7 +365,7 @@ func TestPurger_Restarts(t *testing.T) {
 	require.NoError(t, err)
 
 	deleteRequest := deleteRequests[0]
-	requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, util_log.Logger)
+	requestWithLogger := makeDeleteRequestWithLogger(deleteRequest, logutil.Logger)
 	err = purger.buildDeletePlan(requestWithLogger)
 	require.NoError(t, err)
 

@@ -13,13 +13,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/grafana/dskit/flagext"
-
+	"github.com/grafana/loki/pkg/logutil"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
@@ -117,7 +116,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cluster.ReconnectInterval = cfg.ReconnectInterval
 	cluster.NumConns = cfg.NumConnections
-	cluster.Logger = log.With(util_log.Logger, "module", "gocql", "client", name)
+	cluster.Logger = log.With(logutil.Logger, "module", "gocql", "client", name)
 	cluster.Registerer = prometheus.WrapRegistererWith(
 		prometheus.Labels{"client": name}, reg)
 	if cfg.Retries > 0 {
@@ -562,7 +561,7 @@ type noopConvictionPolicy struct{}
 // Convicted means connections are removed - we don't want that.
 // Implementats gocql.ConvictionPolicy.
 func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
-	level.Error(util_log.Logger).Log("msg", "Cassandra host failure", "err", err, "host", host.String())
+	level.Error(logutil.Logger).Log("msg", "Cassandra host failure", "err", err, "host", host.String())
 	return false
 }
 

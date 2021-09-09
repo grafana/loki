@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/logutil"
 )
 
 var testLabelsYaml = `
@@ -43,7 +44,7 @@ var testLabelsLogLineWithMissingKey = `
 `
 
 func TestLabelsPipeline_Labels(t *testing.T) {
-	pl, err := NewPipeline(util_log.Logger, loadConfig(testLabelsYaml), nil, prometheus.DefaultRegisterer)
+	pl, err := NewPipeline(logutil.Logger, loadConfig(testLabelsYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +179,7 @@ func TestLabelStage_Process(t *testing.T) {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			st, err := newLabelStage(util_log.Logger, test.config)
+			st, err := newLabelStage(logutil.Logger, test.config)
 			if err != nil {
 				t.Fatal(err)
 			}
