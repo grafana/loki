@@ -15,7 +15,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', $._config.job_names.gateway),
           )
         )
         .addRow(
@@ -27,7 +27,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-frontend'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'query-frontend'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', $._config.job_names.query_frontend),
           )
         )
         .addRow(
@@ -39,7 +39,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'querier'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', $._config.job_names.querier),
           )
         )
         .addRow(
@@ -77,7 +77,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'index-gateway'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'index-gateway'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', $._config.job_names.index_gateway),
           )
         )
         .addRow(
@@ -115,7 +115,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'ingester'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'ingester'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', $._config.job_names.ingester),
           )
         )
         .addRow(
@@ -137,7 +137,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             $.containerMemoryWorkingSetPanel('Memory (workingset)', 'ruler'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'ruler'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', $._config.job_names.ruler),
           )
         ),
     },
