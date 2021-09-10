@@ -71,7 +71,7 @@ func (c *LazyChunk) Iterator(
 		if nextChunk != nil {
 			if cache, ok := c.overlappingBlocks[b.Offset()]; ok {
 				delete(c.overlappingBlocks, b.Offset())
-				if err := cache.Base().Close(); err != nil {
+				if err := cache.Wrapped().Close(); err != nil {
 					level.Warn(util_log.Logger).Log(
 						"msg", "failed to close cache block iterator",
 						"err", err,
@@ -152,7 +152,7 @@ func (c *LazyChunk) SampleIterator(
 		if nextChunk != nil {
 			if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
 				delete(c.overlappingSampleBlocks, b.Offset())
-				if err := cache.Base().Close(); err != nil {
+				if err := cache.Wrapped().Close(); err != nil {
 					level.Warn(util_log.Logger).Log(
 						"msg", "failed to close cache block sample iterator",
 						"err", err,
