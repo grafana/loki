@@ -58,6 +58,7 @@ func InitWorkerService(
 	// external Loki Server HTTP handler to the frontend worker to ensure requests it processes use the default
 	// middleware instrumentation.
 	if querierRunningStandalone(cfg) {
+
 		// First, register the internal querier handler with the external HTTP server
 		routes := make([]string, len(queryRoutesToHandlers))
 		var idx = 0
@@ -132,5 +133,14 @@ func registerRoutesExternally(routes []string, externalRouter *mux.Router, inter
 }
 
 func querierRunningStandalone(cfg WorkerServiceConfig) bool {
-	return !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.AllEnabled
+	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.AllEnabled
+	level.Debug(util_log.Logger).Log(
+		"msg", "determing if querier is running as standalone target",
+		"runningStandalone", runningStandalone,
+		"queryFrontendEnabled", cfg.QueryFrontendEnabled,
+		"queryScheduleEnabled", cfg.QuerySchedulerEnabled,
+		"allEnabled", cfg.AllEnabled,
+	)
+
+	return runningStandalone
 }
