@@ -640,7 +640,7 @@ See [statistics](#Statistics) for information about the statistics returned by L
 ### Examples
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar"}' | jq
+$ curl -G -s "http://localhost:3100/api/prom/query" --data-urlencode 'query={foo="bar"}' | jq
 {
   "streams": [
     {
