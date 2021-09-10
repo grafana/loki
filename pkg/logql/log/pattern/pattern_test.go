@@ -150,9 +150,11 @@ func Test_Error(t *testing.T) {
 		{"<_>", ErrNoCapture},
 		{"foo <_> bar <_>", ErrNoCapture},
 		{"foo bar buzz", ErrNoCapture},
-		{"<f><f>", fmt.Errorf("found consecutive capture: %w", ErrInvalidExpr)},
-		{"<f> f<d><b>", fmt.Errorf("found consecutive capture: %w", ErrInvalidExpr)},
+		{"<f><f>", fmt.Errorf("found consecutive capture '<f><f>': %w", ErrInvalidExpr)},
+		{"<f> f<d><b>", fmt.Errorf("found consecutive capture '<d><b>': %w", ErrInvalidExpr)},
 		{"<f> f<f>", fmt.Errorf("duplicate capture name (f): %w", ErrInvalidExpr)},
+		{`f<f><_>`, fmt.Errorf("found consecutive capture '<f><_>': %w", ErrInvalidExpr)},
+		{`<f>f<f><_>`, fmt.Errorf("found consecutive capture '<f><_>': %w", ErrInvalidExpr)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := New(tt.name)
