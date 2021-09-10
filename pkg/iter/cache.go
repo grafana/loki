@@ -6,14 +6,14 @@ import (
 
 type CacheEntryIterator interface {
 	EntryIterator
-	Base() EntryIterator
+	Wrapped() EntryIterator
 	Reset()
 }
 
 // cachedIterator is an iterator that caches iteration to be replayed later on.
 type cachedIterator struct {
-	cache []entryWithLabels
-	base  EntryIterator // once set to nil it means we have to use the cache.
+	cache   []entryWithLabels
+	wrapped EntryIterator // once set to nil it means we have to use the cache.
 
 	curr int
 
@@ -25,9 +25,9 @@ type cachedIterator struct {
 // after closing it without re-using the underlaying iterator `it`.
 func NewCachedIterator(it EntryIterator, cap int) CacheEntryIterator {
 	c := &cachedIterator{
-		base:  it,
-		cache: make([]entryWithLabels, 0, cap),
-		curr:  -1,
+		wrapped: it,
+		cache:   make([]entryWithLabels, 0, cap),
+		curr:    -1,
 	}
 	return c
 }
@@ -36,35 +36,35 @@ func (it *cachedIterator) Reset() {
 	it.curr = -1
 }
 
-func (it *cachedIterator) Base() EntryIterator {
-	return it.base
+func (it *cachedIterator) Wrapped() EntryIterator {
+	return it.wrapped
 }
 
-func (it *cachedIterator) consumeNext() bool {
-	if it.base == nil {
+func (it *cachedIterator) consumeWrapped() bool {
+	if it.Wrapped() == nil {
 		return false
 	}
-	ok := it.base.Next()
+	ok := it.Wrapped().Next()
 	// we're done with the base iterator.
 	if !ok {
-		it.closeErr = it.base.Close()
-		it.iterErr = it.base.Error()
-		it.base = nil
+		it.closeErr = it.Wrapped().Close()
+		it.iterErr = it.Wrapped().Error()
+		it.wrapped = nil
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, entryWithLabels{entry: it.base.Entry(), labels: it.base.Labels()})
+	it.cache = append(it.cache, entryWithLabels{entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels()})
 	it.curr++
 	return true
 }
 
 func (it *cachedIterator) Next() bool {
-	if len(it.cache) == 0 && it.base == nil {
+	if len(it.cache) == 0 && it.Wrapped() == nil {
 		return false
 	}
 	if it.curr+1 >= len(it.cache) {
-		if it.base != nil {
-			return it.consumeNext()
+		if it.Wrapped() != nil {
+			return it.consumeWrapped()
 		}
 		return false
 	}
@@ -96,14 +96,14 @@ func (it *cachedIterator) Close() error {
 
 type CacheSampleIterator interface {
 	SampleIterator
-	Base() SampleIterator
+	Wrapped() SampleIterator
 	Reset()
 }
 
 // cachedIterator is an iterator that caches iteration to be replayed later on.
 type cachedSampleIterator struct {
-	cache []sampleWithLabels
-	base  SampleIterator
+	cache   []sampleWithLabels
+	wrapped SampleIterator
 
 	curr int
 
@@ -115,46 +115,46 @@ type cachedSampleIterator struct {
 // after closing it without re-using the underlaying iterator `it`.
 func NewCachedSampleIterator(it SampleIterator, cap int) CacheSampleIterator {
 	c := &cachedSampleIterator{
-		base:  it,
-		cache: make([]sampleWithLabels, 0, cap),
-		curr:  -1,
+		wrapped: it,
+		cache:   make([]sampleWithLabels, 0, cap),
+		curr:    -1,
 	}
 	return c
 }
 
-func (it *cachedSampleIterator) Base() SampleIterator {
-	return it.base
+func (it *cachedSampleIterator) Wrapped() SampleIterator {
+	return it.wrapped
 }
 
 func (it *cachedSampleIterator) Reset() {
 	it.curr = -1
 }
 
-func (it *cachedSampleIterator) consumeNext() bool {
-	if it.base == nil {
+func (it *cachedSampleIterator) consumeWrapped() bool {
+	if it.Wrapped() == nil {
 		return false
 	}
-	ok := it.base.Next()
+	ok := it.Wrapped().Next()
 	// we're done with the base iterator.
 	if !ok {
-		it.closeErr = it.base.Close()
-		it.iterErr = it.base.Error()
-		it.base = nil
+		it.closeErr = it.Wrapped().Close()
+		it.iterErr = it.Wrapped().Error()
+		it.wrapped = nil
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, sampleWithLabels{Sample: it.base.Sample(), labels: it.base.Labels()})
+	it.cache = append(it.cache, sampleWithLabels{Sample: it.Wrapped().Sample(), labels: it.Wrapped().Labels()})
 	it.curr++
 	return true
 }
 
 func (it *cachedSampleIterator) Next() bool {
-	if len(it.cache) == 0 && it.base == nil {
+	if len(it.cache) == 0 && it.Wrapped() == nil {
 		return false
 	}
 	if it.curr+1 >= len(it.cache) {
-		if it.base != nil {
-			return it.consumeNext()
+		if it.Wrapped() != nil {
+			return it.consumeWrapped()
 		}
 		return false
 	}

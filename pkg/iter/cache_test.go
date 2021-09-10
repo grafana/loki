@@ -31,7 +31,7 @@ func Test_CachedIterator(t *testing.T) {
 		require.Equal(t, true, c.Next())
 		require.Equal(t, stream.Entries[2], c.Entry())
 		require.Equal(t, false, c.Next())
-		require.Equal(t, nil, c.Error())
+		require.NoError(t, c.Error())
 		require.Equal(t, stream.Entries[2], c.Entry())
 		require.Equal(t, false, c.Next())
 	}
@@ -95,7 +95,7 @@ func Test_CachedIteratorResetNotExhausted(t *testing.T) {
 	require.Equal(t, true, c.Next())
 	require.Equal(t, stream.Entries[2], c.Entry())
 	require.Equal(t, false, c.Next())
-	require.Equal(t, nil, c.Error())
+	require.NoError(t, c.Error())
 	require.Equal(t, stream.Entries[2], c.Entry())
 	require.Equal(t, false, c.Next())
 
@@ -149,7 +149,7 @@ func Test_CachedSampleIterator(t *testing.T) {
 		require.Equal(t, true, c.Next())
 		require.Equal(t, series.Samples[2], c.Sample())
 		require.Equal(t, false, c.Next())
-		require.Equal(t, nil, c.Error())
+		require.NoError(t, c.Error())
 		require.Equal(t, series.Samples[2], c.Sample())
 		require.Equal(t, false, c.Next())
 	}
@@ -185,7 +185,7 @@ func Test_CachedSampleIteratorResetNotExhausted(t *testing.T) {
 	require.Equal(t, true, c.Next())
 	require.Equal(t, series.Samples[2], c.Sample())
 	require.Equal(t, false, c.Next())
-	require.Equal(t, nil, c.Error())
+	require.NoError(t, c.Error())
 	require.Equal(t, series.Samples[2], c.Sample())
 	require.Equal(t, false, c.Next())
 
