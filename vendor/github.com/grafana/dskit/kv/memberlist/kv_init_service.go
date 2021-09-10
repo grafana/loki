@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/hashicorp/memberlist"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/services"
@@ -28,6 +29,7 @@ type KVInitService struct {
 	cfg         *KVConfig
 	logger      log.Logger
 	dnsProvider DNSProvider
+	registerer  prometheus.Registerer
 
 	// init function, to avoid multiple initializations.
 	init sync.Once
@@ -38,11 +40,12 @@ type KVInitService struct {
 	watcher *services.FailureWatcher
 }
 
-func NewKVInitService(cfg *KVConfig, logger log.Logger, dnsProvider DNSProvider) *KVInitService {
+func NewKVInitService(cfg *KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer prometheus.Registerer) *KVInitService {
 	kvinit := &KVInitService{
 		cfg:         cfg,
 		watcher:     services.NewFailureWatcher(),
 		logger:      logger,
+		registerer:  registerer,
 		dnsProvider: dnsProvider,
 	}
 	kvinit.Service = services.NewBasicService(nil, kvinit.running, kvinit.stopping).WithName("memberlist KV service")
@@ -52,7 +55,7 @@ func NewKVInitService(cfg *KVConfig, logger log.Logger, dnsProvider DNSProvider)
 // GetMemberlistKV will initialize Memberlist.KV on first call, and add it to service failure watcher.
 func (kvs *KVInitService) GetMemberlistKV() (*KV, error) {
 	kvs.init.Do(func() {
-		kv := NewKV(*kvs.cfg, kvs.logger, kvs.dnsProvider)
+		kv := NewKV(*kvs.cfg, kvs.logger, kvs.dnsProvider, kvs.registerer)
 		kvs.watcher.WatchService(kv)
 		kvs.err = kv.StartAsync(context.Background())
 

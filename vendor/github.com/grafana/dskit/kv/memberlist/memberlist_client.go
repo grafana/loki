@@ -212,8 +212,9 @@ func generateRandomSuffix(logger log.Logger) string {
 type KV struct {
 	services.Service
 
-	cfg    KVConfig
-	logger log.Logger
+	cfg        KVConfig
+	logger     log.Logger
+	registerer prometheus.Registerer
 
 	// dns discovery provider
 	provider DNSProvider
@@ -326,14 +327,16 @@ var (
 // gossiping part. Only after service is in Running state, it is really gossiping. Starting the service will also
 // trigger connecting to the existing memberlist cluster. If that fails and AbortIfJoinFails is true, error is returned
 // and service enters Failed state.
-func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider) *KV {
+func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer prometheus.Registerer) *KV {
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
 
 	mlkv := &KV{
-		cfg:            cfg,
-		logger:         logger,
-		provider:       dnsProvider,
+		cfg:        cfg,
+		logger:     logger,
+		registerer: registerer,
+		provider:   dnsProvider,
+
 		store:          make(map[string]valueDesc),
 		codecs:         make(map[string]codec.Codec),
 		watchers:       make(map[string][]chan string),
