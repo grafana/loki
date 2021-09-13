@@ -19,19 +19,18 @@ func (e expr) validate() error {
 	if !e.hasCapture() {
 		return ErrNoCapture
 	}
-	// if there is at least 2 node, verify that none are consecutive.
-	if len(e) >= 2 {
-		for i := 0; i < len(e); i = i + 2 {
-			if i+1 >= len(e) {
-				break
-			}
-			if _, ok := e[i].(capture); ok {
-				if _, ok := e[i+1].(capture); ok {
-					return fmt.Errorf("found consecutive capture: %w", ErrInvalidExpr)
-				}
+	// Consecutive captures are not allowed.
+	for i, n := range e {
+		if i+1 >= len(e) {
+			break
+		}
+		if _, ok := n.(capture); ok {
+			if _, ok := e[i+1].(capture); ok {
+				return fmt.Errorf("found consecutive capture '%s': %w", n.String()+e[i+1].String(), ErrInvalidExpr)
 			}
 		}
 	}
+
 	caps := e.captures()
 	uniq := map[string]struct{}{}
 	for _, c := range caps {
@@ -46,7 +45,7 @@ func (e expr) validate() error {
 func (e expr) captures() (captures []string) {
 	for _, n := range e {
 		if c, ok := n.(capture); ok && !c.isUnamed() {
-			captures = append(captures, c.String())
+			captures = append(captures, c.Name())
 		}
 	}
 	return
@@ -59,6 +58,10 @@ func (e expr) captureCount() (count int) {
 type capture string
 
 func (c capture) String() string {
+	return "<" + string(c) + ">"
+}
+
+func (c capture) Name() string {
 	return string(c)
 }
 
