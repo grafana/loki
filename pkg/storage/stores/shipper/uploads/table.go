@@ -14,13 +14,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"go.etcd.io/bbolt"
-
-	"github.com/grafana/loki/pkg/chunkenc"
+	//"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 )
 
 const (
@@ -35,9 +33,9 @@ const (
 	snapshotFileSuffix = ".temp"
 )
 
-type BoltDBIndexClient interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
-	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
+type BlugeDBIndexClient interface {
+	QueryDB(ctx context.Context, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
+	WriteToDB(ctx context.Context, writes shipper.TableWrites) error
 }
 
 type StorageClient interface {
@@ -47,13 +45,12 @@ type StorageClient interface {
 // Table is a collection of multiple dbs created for a same table by the ingester.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type Table struct {
-	name              string
-	path              string
-	uploader          string
-	storageClient     StorageClient
-	boltdbIndexClient BoltDBIndexClient
+	name          string
+	path          string
+	uploader      string
+	storageClient StorageClient
 
-	dbs    map[string]*bbolt.DB
+	dbs    map[string]*shipper.BlugeDB
 	dbsMtx sync.RWMutex
 
 	uploadedDBsMtime    map[string]time.Time
@@ -62,18 +59,18 @@ type Table struct {
 }
 
 // NewTable create a new Table without looking for any existing local dbs belonging to the table.
-func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
+func NewTable(path, uploader string, storageClient StorageClient) (*Table, error) {
 	err := chunk_util.EnsureDirectory(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return newTableWithDBs(map[string]*bbolt.DB{}, path, uploader, storageClient, boltdbIndexClient)
+	return newTableWithDBs(map[string]*shipper.BlugeDB{}, path, uploader, storageClient)
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
-	dbs, err := loadBoltDBsFromDir(path)
+func LoadTable(path, uploader string, storageClient StorageClient) (*Table, error) {
+	dbs, err := loadBlugeDBsFromDir(path)
 	if err != nil {
 		return nil, err
 	}
@@ -82,16 +79,15 @@ func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexCl
 		return nil, nil
 	}
 
-	return newTableWithDBs(dbs, path, uploader, storageClient, boltdbIndexClient)
+	return newTableWithDBs(dbs, path, uploader, storageClient)
 }
 
-func newTableWithDBs(dbs map[string]*bbolt.DB, path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
+func newTableWithDBs(dbs map[string]*shipper.BlugeDB, path, uploader string, storageClient StorageClient) (*Table, error) {
 	return &Table{
 		name:              filepath.Base(path),
 		path:              path,
 		uploader:          uploader,
 		storageClient:     storageClient,
-		boltdbIndexClient: boltdbIndexClient,
 		dbs:               dbs,
 		uploadedDBsMtime:  map[string]time.Time{},
 		modifyShardsSince: time.Now().Unix(),
@@ -104,8 +100,9 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 	defer lt.dbsMtx.RUnlock()
 
 	for _, db := range lt.dbs {
+		fmt.Print(db)
 		for _, query := range queries {
-			if err := lt.boltdbIndexClient.QueryDB(ctx, db, query, callback); err != nil {
+			if err := db.QueryDB(ctx, query, callback); err != nil {
 				return err
 			}
 		}
@@ -114,19 +111,23 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 	return nil
 }
 
-func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
+func (lt *Table) getOrAddDB(name string) (*shipper.BlugeDB, error) {
 	lt.dbsMtx.Lock()
 	defer lt.dbsMtx.Unlock()
 
 	var (
-		db  *bbolt.DB
+		db  *shipper.BlugeDB
 		err error
 		ok  bool
 	)
 
 	db, ok = lt.dbs[name]
 	if !ok {
-		db, err = local.OpenBoltdbFile(filepath.Join(lt.path, name))
+		//db, err = local.OpenBlugeDBFile(filepath.Join(lt.path, name))
+
+		db = &shipper.BlugeDB{name}
+
+		// create index
 		if err != nil {
 			return nil, err
 		}
@@ -139,14 +140,14 @@ func (lt *Table) getOrAddDB(name string) (*bbolt.DB, error) {
 }
 
 // Write writes to a db locally with write time set to now.
-func (lt *Table) Write(ctx context.Context, writes local.TableWrites) error {
+func (lt *Table) Write(ctx context.Context, writes shipper.TableWrites) error {
 	return lt.write(ctx, time.Now(), writes)
 }
 
 // write writes to a db locally. It shards the db files by truncating the passed time by shardDBsByDuration using https://golang.org/pkg/time/#Time.Truncate
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
-func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrites) error {
+func (lt *Table) write(ctx context.Context, tm time.Time, writes shipper.TableWrites) error {
 	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
 	shard := tm.Truncate(shardDBsByDuration).Unix()
 	if shard < lt.modifyShardsSince {
@@ -158,7 +159,7 @@ func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrit
 		return err
 	}
 
-	return lt.boltdbIndexClient.WriteToDB(ctx, db, writes)
+	return db.WriteToDB(ctx, writes)
 }
 
 // Stop closes all the open dbs.
@@ -172,7 +173,7 @@ func (lt *Table) Stop() {
 		}
 	}
 
-	lt.dbs = map[string]*bbolt.DB{}
+	lt.dbs = map[string]*shipper.BlugeDB{}
 }
 
 // RemoveDB closes the db and removes the file locally.
@@ -247,7 +248,7 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 	return nil
 }
 
-func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error {
+func (lt *Table) uploadDB(ctx context.Context, name string, db *shipper.BlugeDB) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 
 	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix))
@@ -266,20 +267,22 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 		}
 	}()
 
-	err = db.View(func(tx *bbolt.Tx) (err error) {
-		compressedWriter := chunkenc.Gzip.GetWriter(f)
-		defer chunkenc.Gzip.PutWriter(compressedWriter)
+	// compress
+	//err = db.View(func(tx *bbolt.Tx) (err error) {
+	//	compressedWriter := chunkenc.Gzip.GetWriter(f)
+	//	defer chunkenc.Gzip.PutWriter(compressedWriter)
+	//
+	//	defer func() {
+	//		cerr := compressedWriter.Close()
+	//		if err == nil {
+	//			err = cerr
+	//		}
+	//	}()
+	//
+	//	_, err = tx.WriteTo(compressedWriter)
+	//	return
+	//})
 
-		defer func() {
-			cerr := compressedWriter.Close()
-			if err == nil {
-				err = cerr
-			}
-		}()
-
-		_, err = tx.WriteTo(compressedWriter)
-		return
-	})
 	if err != nil {
 		return err
 	}
@@ -348,8 +351,8 @@ func (lt *Table) buildObjectKey(dbName string) string {
 	return fmt.Sprintf("%s.gz", objectKey)
 }
 
-func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
-	dbs := map[string]*bbolt.DB{}
+func loadBlugeDBsFromDir(dir string) (map[string]*shipper.BlugeDB, error) {
+	dbs := map[string]*shipper.BlugeDB{}
 	filesInfo, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -369,7 +372,7 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 			continue
 		}
 
-		db, err := local.OpenBoltdbFile(filepath.Join(dir, fileInfo.Name()))
+		db := &shipper.BlugeDB{Name: fileInfo.Name()} //local.OpenBlugeDBFile(filepath.Join(dir, fileInfo.Name()))
 		if err != nil {
 			return nil, err
 		}
