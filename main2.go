@@ -1,23 +1,24 @@
 package main
 
-import (
-	"context"
-	"fmt"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
-)
-
-func main() {
-	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: "./obstore"})
-	fmt.Print(err)
-	tb, _ := uploads.NewTable("./snpseg", "uploader", fsObjectClient)
-	w := bluge_db.TableWrites{Puts: map[string]string{"foo": "1", "bar": "2"}}
-	tb.Write(context.Background(), w)
-
-	tb.Upload(context.Background(), true)
-}
-
+//
+//
+//import (
+//	"archive/tar"
+//	"bytes"
+//	"compress/gzip"
+//	"context"
+//	"fmt"
+//	"github.com/cortexproject/cortex/pkg/chunk/local"
+//	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+//	"io"
+//	"io/ioutil"
+//	"log"
+//	"os"
+//	"path/filepath"
+//	"strings"
+//)
+//import "github.com/blugelabs/bluge"
+//
 //func main() {
 //	config := bluge.DefaultConfig("./snpseg")
 //	writer, err := bluge.OpenWriter(config)

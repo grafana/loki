@@ -1,4 +1,4 @@
-package shipper
+package bluge_db
 
 import (
 	"context"
@@ -15,23 +15,8 @@ type BlugeDB struct {
 	Folder string // snpseg
 }
 
-func (b *BlugeDB) NewDB(name string) BlugeDB {
-	config := bluge.DefaultConfig(b.Folder + name)
-	writer, err := bluge.OpenWriter(config)
-	if err != nil {
-		log.Fatalf("error opening writer: %v", err)
-	}
-	defer writer.Close()
-
-	doc := bluge.NewDocument("example").
-		AddField(bluge.NewTextField("name", "bluge"))
-
-	err = writer.Update(doc.ID(), doc)
-	if err != nil {
-		log.Fatalf("error updating document: %v", err)
-	}
-
-	return BlugeDB{}
+func NewDB(name string, path string) *BlugeDB {
+	return &BlugeDB{Name: name, Folder: path} // "./snpseg"
 }
 
 type logItem []logLabel
@@ -62,12 +47,12 @@ type logLabel struct {
 //}
 
 type TableWrites struct {
-	puts    map[string][]byte
-	deletes map[string]struct{}
+	Puts map[string]string
+	//deletes map[string]struct{}
 }
 
 func (b *BlugeDB) WriteToDB(ctx context.Context, writes TableWrites) error {
-	config := bluge.DefaultConfig(b.Folder + b.Name)
+	config := bluge.DefaultConfig(b.Folder + "/" + b.Name)
 	writer, err := bluge.OpenWriter(config)
 	if err != nil {
 		log.Fatalf("error opening writer: %v", err)
@@ -76,8 +61,8 @@ func (b *BlugeDB) WriteToDB(ctx context.Context, writes TableWrites) error {
 
 	doc := bluge.NewDocument("example") // can use server name
 
-	for key, value := range writes.puts {
-		doc = doc.AddField(bluge.NewTextField(key, string(value)))
+	for key, value := range writes.Puts {
+		doc = doc.AddField(bluge.NewTextField(key, value))
 	}
 
 	err = writer.Update(doc.ID(), doc)
@@ -97,5 +82,5 @@ func (b *BlugeDB) Close() error {
 }
 
 func (b *BlugeDB) Path() string {
-	return ""
+	return b.Folder + "/" + b.Name
 }

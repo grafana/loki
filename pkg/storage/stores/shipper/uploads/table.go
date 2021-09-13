@@ -1,8 +1,12 @@
 package uploads
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io"
 	"io/ioutil"
 	"os"
@@ -17,8 +21,6 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	//"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
 )
 
 const (
@@ -35,7 +37,7 @@ const (
 
 type BlugeDBIndexClient interface {
 	QueryDB(ctx context.Context, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
-	WriteToDB(ctx context.Context, writes shipper.TableWrites) error
+	WriteToDB(ctx context.Context, writes bluge_db.TableWrites) error
 }
 
 type StorageClient interface {
@@ -50,7 +52,7 @@ type Table struct {
 	uploader      string
 	storageClient StorageClient
 
-	dbs    map[string]*shipper.BlugeDB
+	dbs    map[string]*bluge_db.BlugeDB
 	dbsMtx sync.RWMutex
 
 	uploadedDBsMtime    map[string]time.Time
@@ -65,7 +67,7 @@ func NewTable(path, uploader string, storageClient StorageClient) (*Table, error
 		return nil, err
 	}
 
-	return newTableWithDBs(map[string]*shipper.BlugeDB{}, path, uploader, storageClient)
+	return newTableWithDBs(map[string]*bluge_db.BlugeDB{}, path, uploader, storageClient)
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
@@ -82,7 +84,7 @@ func LoadTable(path, uploader string, storageClient StorageClient) (*Table, erro
 	return newTableWithDBs(dbs, path, uploader, storageClient)
 }
 
-func newTableWithDBs(dbs map[string]*shipper.BlugeDB, path, uploader string, storageClient StorageClient) (*Table, error) {
+func newTableWithDBs(dbs map[string]*bluge_db.BlugeDB, path, uploader string, storageClient StorageClient) (*Table, error) {
 	return &Table{
 		name:              filepath.Base(path),
 		path:              path,
@@ -111,21 +113,19 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 	return nil
 }
 
-func (lt *Table) getOrAddDB(name string) (*shipper.BlugeDB, error) {
+func (lt *Table) getOrAddDB(name string) (*bluge_db.BlugeDB, error) {
 	lt.dbsMtx.Lock()
 	defer lt.dbsMtx.Unlock()
 
 	var (
-		db  *shipper.BlugeDB
+		db  *bluge_db.BlugeDB
 		err error
 		ok  bool
 	)
 
 	db, ok = lt.dbs[name]
 	if !ok {
-		//db, err = local.OpenBlugeDBFile(filepath.Join(lt.path, name))
-
-		db = &shipper.BlugeDB{name}
+		db = bluge_db.NewDB(name, lt.path)
 
 		// create index
 		if err != nil {
@@ -140,14 +140,14 @@ func (lt *Table) getOrAddDB(name string) (*shipper.BlugeDB, error) {
 }
 
 // Write writes to a db locally with write time set to now.
-func (lt *Table) Write(ctx context.Context, writes shipper.TableWrites) error {
+func (lt *Table) Write(ctx context.Context, writes bluge_db.TableWrites) error {
 	return lt.write(ctx, time.Now(), writes)
 }
 
 // write writes to a db locally. It shards the db files by truncating the passed time by shardDBsByDuration using https://golang.org/pkg/time/#Time.Truncate
 // db files are named after the time shard i.e epoch of the truncated time.
 // If a db file does not exist for a shard it gets created.
-func (lt *Table) write(ctx context.Context, tm time.Time, writes shipper.TableWrites) error {
+func (lt *Table) write(ctx context.Context, tm time.Time, writes bluge_db.TableWrites) error {
 	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
 	shard := tm.Truncate(shardDBsByDuration).Unix()
 	if shard < lt.modifyShardsSince {
@@ -173,7 +173,7 @@ func (lt *Table) Stop() {
 		}
 	}
 
-	lt.dbs = map[string]*shipper.BlugeDB{}
+	lt.dbs = map[string]*bluge_db.BlugeDB{}
 }
 
 // RemoveDB closes the db and removes the file locally.
@@ -248,7 +248,7 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 	return nil
 }
 
-func (lt *Table) uploadDB(ctx context.Context, name string, db *shipper.BlugeDB) error {
+func (lt *Table) uploadDB(ctx context.Context, name string, db *bluge_db.BlugeDB) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 
 	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix))
@@ -283,6 +283,17 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *shipper.BlugeDB)
 	//	return
 	//})
 
+	var buf bytes.Buffer
+	lt.compress(db.Path(), &buf)
+	// write the .tar.gzip
+	fileToWrite, err := os.OpenFile(db.Folder+"/"+db.Name+".tar.gzip", os.O_CREATE|os.O_RDWR, os.FileMode(600))
+	if err != nil {
+		panic(err)
+	}
+	if _, err := io.Copy(fileToWrite, &buf); err != nil {
+		panic(err)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -298,6 +309,81 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *shipper.BlugeDB)
 
 	objectKey := lt.buildObjectKey(name)
 	return lt.storageClient.PutObject(ctx, objectKey, f)
+}
+
+func (lt *Table) compress(src string, buf io.Writer) error {
+	// tar > gzip > buf
+	zr := gzip.NewWriter(buf)
+	tw := tar.NewWriter(zr)
+
+	// is file a folder?
+	fi, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	mode := fi.Mode()
+	if mode.IsRegular() {
+		// get header
+		header, err := tar.FileInfoHeader(fi, src)
+		if err != nil {
+			return err
+		}
+		// write header
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		// get content
+		data, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(tw, data); err != nil {
+			return err
+		}
+	} else if mode.IsDir() { // folder
+
+		// walk through every file in the folder
+		filepath.Walk(src, func(file string, fi os.FileInfo, err error) error {
+			// generate tar header
+			header, err := tar.FileInfoHeader(fi, file)
+			if err != nil {
+				return err
+			}
+
+			// must provide real name
+			// (see https://golang.org/src/archive/tar/common.go?#L626)
+			header.Name = filepath.ToSlash(file)
+
+			// write header
+			if err := tw.WriteHeader(header); err != nil {
+				return err
+			}
+			// if not a dir, write file content
+			if !fi.IsDir() {
+				data, err := os.Open(file)
+				if err != nil {
+					return err
+				}
+				if _, err := io.Copy(tw, data); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	} else {
+		return fmt.Errorf("error: file type not supported")
+	}
+
+	// produce tar
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	// produce gzip
+	if err := zr.Close(); err != nil {
+		return err
+	}
+	//
+	return nil
 }
 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
@@ -351,8 +437,8 @@ func (lt *Table) buildObjectKey(dbName string) string {
 	return fmt.Sprintf("%s.gz", objectKey)
 }
 
-func loadBlugeDBsFromDir(dir string) (map[string]*shipper.BlugeDB, error) {
-	dbs := map[string]*shipper.BlugeDB{}
+func loadBlugeDBsFromDir(dir string) (map[string]*bluge_db.BlugeDB, error) {
+	dbs := map[string]*bluge_db.BlugeDB{}
 	filesInfo, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -372,7 +458,7 @@ func loadBlugeDBsFromDir(dir string) (map[string]*shipper.BlugeDB, error) {
 			continue
 		}
 
-		db := &shipper.BlugeDB{Name: fileInfo.Name()} //local.OpenBlugeDBFile(filepath.Join(dir, fileInfo.Name()))
+		db := &bluge_db.BlugeDB{Name: fileInfo.Name()} //local.OpenBlugeDBFile(filepath.Join(dir, fileInfo.Name()))
 		if err != nil {
 			return nil, err
 		}
