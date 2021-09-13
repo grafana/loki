@@ -341,7 +341,8 @@ The queryrange_config configures the query splitting and caching in the Loki que
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
 
-# Deprecated: Split queries by day and execute in parallel. Use -querier.split-queries-by-interval instead.
+# Deprecated: Split queries by day and execute in parallel.
+# Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
 [split_queries_by_day: <boolean> | default = false]
 
@@ -945,27 +946,32 @@ lifecycler:
 # CLI flag: -ingester.max-ignored-stream-errors
 [max_returned_stream_errors: <int> | default = 10]
 
-# The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created.
+# The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this,
+# the current chunk will be flushed to the store and a new chunk created.
 # CLI flag: -ingester.max-chunk-age
 [max_chunk_age: <duration> | default = 1h]
 
 # How far in the past an ingester is allowed to query the store for data.
-# This is only useful for running multiple loki binaries with a shared ring with a `filesystem` store which is NOT shared between the binaries
-# When using any "shared" object store like S3 or GCS this value must always be left as 0
-# It is an error to configure this to a non-zero value when using any object store other than `filesystem`
+# This is only useful for running multiple Loki binaries with a shared ring with a `filesystem` store,
+# which is NOT shared between the binaries.
+# When using any "shared" object store like S3 or GCS, this value must always be left as 0.
+# It is an error to configure this to a non-zero value when using any object store other
+# than `filesystem`.
 # Use a value of -1 to allow the ingester to query the store infinitely far back in time.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0]
 
 # Forget about ingesters having heartbeat timestamps older than `ring.kvstore.heartbeat_timeout`.
-# This is equivalent to clicking on `/ring` `forget` button in the UI: the ingester is removed from the ring.
-# A useful setting when you are sure that an unhealthy node won't return. An example is when not
-# using stateful sets or the equivalent.
-# You may use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.
+# This is equivalent to clicking on the `/ring` `forget` button in the UI:
+# the ingester is removed from the ring.
+# This is a useful setting when you are sure that an unhealthy node won't return.
+# An example is when not using stateful sets or the equivalent.
+# Use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.
 # CLI flag: -ingester.autoforget-unhealthy
 [autoforget_unhealthy: <boolean> | default = false]
 
-# The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash.
+# The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system
+# in order to guarantee persistence of acknowledged data in the event of a process crash.
 wal:
   # Enables writing to WAL.
   # CLI flag: -ingester.wal-enabled
@@ -983,7 +989,8 @@ wal:
   # CLI flag: ingester.checkpoint-duration
   [checkpoint_duration: <duration> | default = 5m]
 
-  # Maximum memory size the WAL may use during replay. After hitting this it will flush data to storage before continuing.
+  # Maximum memory size the WAL may use during replay. After hitting this it will flush data to storage
+  # before continuing.
   # A unit suffix (KB, MB, GB) may be applied.
   [replay_memory_ceiling: <string> | default = 4GB]
 
@@ -1240,23 +1247,33 @@ aws:
 
       # Query to fetch ingester queue length
       # CLI flag: -metrics.queue-length-query
-      [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
+      [queue_length_query: <string> |
+        default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
 
       # Query to fetch throttle rates per table
       # CLI flag: -metrics.write-throttle-query
-      [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
+      [write_throttle_query: <string> |
+        default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m]))
+        by (table) > 0"]
 
       # Query to fetch write capacity usage per table
       # CLI flag: -metrics.usage-query
-      [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
+      [write_usage_query: <string> |
+        default =
+        "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m]))
+        by (table) > 0"]
 
       # Query to fetch read capacity usage per table
       # CLI flag: -metrics.read-usage-query
-      [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0"]
+      [read_usage_query: <string> |
+        default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h]))
+        by (table) > 0"]
 
       # Query to fetch read errors per table
       # CLI flag: -metrics.read-error-query
-      [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
+      [read_error_query: <string> |
+        default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",
+        error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
 
     # Number of chunks to group together to parallelise fetches (0 to disable)
     # CLI flag: -dynamodb.chunk-gang-size
@@ -1430,7 +1447,8 @@ filesystem:
   # CLI flag: -local.chunk-directory
   directory: <string>
 
-# Configures storing index in an Object Store(GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files.
+# Configures storing index in an Object Store(GCS/S3/Azure/Swift/Filesystem) in the form of
+# boltdb files.
 # Required fields only required when boltdb-shipper is defined in config.
 boltdb_shipper:
   # Directory where ingesters would write boltdb files which would then be
@@ -1737,7 +1755,9 @@ compacts index shards to more performant forms.
 # The total amount of worker to use to delete chunks.
 [retention_delete_worker_count: <int> | default = 150]
 
-# Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.
+# Allow cancellation of delete request until duration after they are created.
+# Data would be deleted only after delete requests have been older than this duration.
+# Ideally this should be set to at least 24h.
 [delete_request_cancel_period: <duration> | default = 24h]
 ```
 
@@ -1889,15 +1909,18 @@ logs in Loki.
 # CLI flag: -ruler.remote-write.queue-capacity
 [ruler_remote_write_queue_capacity: <int> | default = 10000]
 
-# Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).
+# Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file
+# (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config
 [per_tenant_override_config: <string>]
 
-# Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML).
+# Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.reload-period
+# (runtime_config.period in YAML).
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
 
-# Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.
+# Most recent allowed cacheable result per-tenant, to prevent caching very recent results that
+# might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 1m]
 
@@ -1944,7 +1967,8 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # CLI flag: -<prefix>.grpc-max-send-msg-size
 [max_send_msg_size: <int> | default = 16777216]
 
-# Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)
+# Use compression when sending messages. Supported values are: 'gzip', 'snappy',
+# and '' (disable compression).
 # CLI flag: -<prefix>.grpc-compression
 [grpc_compression: <string> | default = '']
 
