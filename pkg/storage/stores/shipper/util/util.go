@@ -1,10 +1,13 @@
 package util
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -29,28 +32,11 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 			level.Error(util.Logger)
 		}
 	}()
-
-	f, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-
 	var objectReader io.Reader = readCloser
-	//if strings.HasSuffix(objectKey, ".gz") {
-	//	decompressedReader := chunkenc.Gzip.GetReader(readCloser)
-	//	defer chunkenc.Gzip.PutReader(decompressedReader)
-	//
-	//	objectReader = decompressedReader
-	//}
-
-	_, err = io.Copy(f, objectReader)
-	if err != nil {
-		return err
-	}
-
+	err = decompress(objectReader, destination)
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
 
-	return f.Sync()
+	return err
 }
 
 func GetDBNameFromObjectKey(objectKey string) (string, error) {
@@ -115,4 +101,56 @@ func CompressFile(src, dest string) error {
 	}
 
 	return compressedFile.Sync()
+}
+
+func decompress(src io.Reader, dst string) error {
+	// ungzip
+	zr, err := gzip.NewReader(src)
+	if err != nil {
+		return err
+	}
+	// untar
+	tr := tar.NewReader(zr)
+	// uncompress each element
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		if err != nil {
+			return err
+		}
+		// check the type
+		switch header.Typeflag {
+		// if its a dir and it doesn't exist create it (with 0755 permission)
+		case tar.TypeDir:
+			target := header.Name[strings.LastIndex(header.Name, "/")+1:]
+			target = filepath.Join(dst, target)
+			if _, err := os.Stat(target); err != nil {
+				if err := os.MkdirAll(target, 0755); err != nil {
+					return err
+				}
+			}
+		// if it's a file create it (with same permission)
+		case tar.TypeReg:
+			target := header.Name[strings.LastIndex(header.Name, "/")-1:]
+			ss := strings.Split(header.Name, "/")
+			target = strings.Join(ss[len(ss)-2:], "/")
+			target = filepath.Join(dst, target)
+			fileToWrite, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+			// copy over contents
+			if _, err := io.Copy(fileToWrite, tr); err != nil {
+				return err
+			}
+			// manually close here after each file operation; defering would cause each file close
+			// to wait until all operations have completed.
+			fileToWrite.Close()
+		}
+	}
+
+	//
+	return nil
 }

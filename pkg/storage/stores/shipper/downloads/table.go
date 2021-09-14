@@ -438,14 +438,7 @@ func (t *Table) doParallelDownload(ctx context.Context, objects []chunk.StorageO
 					break
 				}
 
-				var dbName string
-				dbName, err = getDBNameFromObjectKey(object.Key)
-				if err != nil {
-					break
-				}
-
-				filePath := path.Join(folderPathForTable, dbName)
-				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, filePath)
+				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, object.Key, folderPathForTable)
 				if err != nil {
 					break
 				}
