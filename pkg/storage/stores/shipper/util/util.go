@@ -36,12 +36,12 @@ func GetFileFromStorage(ctx context.Context, storageClient StorageClient, object
 	}
 
 	var objectReader io.Reader = readCloser
-	if strings.HasSuffix(objectKey, ".gz") {
-		decompressedReader := chunkenc.Gzip.GetReader(readCloser)
-		defer chunkenc.Gzip.PutReader(decompressedReader)
-
-		objectReader = decompressedReader
-	}
+	//if strings.HasSuffix(objectKey, ".gz") {
+	//	decompressedReader := chunkenc.Gzip.GetReader(readCloser)
+	//	defer chunkenc.Gzip.PutReader(decompressedReader)
+	//
+	//	objectReader = decompressedReader
+	//}
 
 	_, err = io.Copy(f, objectReader)
 	if err != nil {
