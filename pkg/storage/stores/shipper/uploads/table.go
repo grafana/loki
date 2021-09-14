@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -250,43 +249,20 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bluge_db.BlugeDB) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
-
-	filePath := path.Join(lt.path, fmt.Sprintf("%s%s", name, snapshotFileSuffix))
-	f, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-
+	var buf bytes.Buffer
+	err := lt.compress(db.Path(), &buf)
+	// write the .tar.gzip
+	fullPath := db.Folder + "/" + db.Name + ".tar.gzip"
+	fileToWrite, err := os.OpenFile(fullPath, os.O_CREATE|os.O_RDWR, os.FileMode(600))
 	defer func() {
-		if err := f.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to close temp file", "path", filePath, "err", err)
+		if err := fileToWrite.Close(); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to close temp file", "path", fullPath, "err", err)
 		}
 
-		if err := os.Remove(filePath); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to remove temp file", "path", filePath, "err", err)
+		if err := os.Remove(fullPath); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to remove temp file", "path", fullPath, "err", err)
 		}
 	}()
-
-	// compress
-	//err = db.View(func(tx *bbolt.Tx) (err error) {
-	//	compressedWriter := chunkenc.Gzip.GetWriter(f)
-	//	defer chunkenc.Gzip.PutWriter(compressedWriter)
-	//
-	//	defer func() {
-	//		cerr := compressedWriter.Close()
-	//		if err == nil {
-	//			err = cerr
-	//		}
-	//	}()
-	//
-	//	_, err = tx.WriteTo(compressedWriter)
-	//	return
-	//})
-
-	var buf bytes.Buffer
-	lt.compress(db.Path(), &buf)
-	// write the .tar.gzip
-	fileToWrite, err := os.OpenFile(db.Folder+"/"+db.Name+".tar.gzip", os.O_CREATE|os.O_RDWR, os.FileMode(600))
 	if err != nil {
 		panic(err)
 	}
@@ -294,21 +270,16 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bluge_db.BlugeDB
 		panic(err)
 	}
 
-	if err != nil {
-		return err
-	}
-
 	// flush the file to disk and seek the file to the beginning.
-	if err := f.Sync(); err != nil {
+	if err := fileToWrite.Sync(); err != nil {
 		return err
 	}
-
-	if _, err := f.Seek(0, 0); err != nil {
+	if _, err := fileToWrite.Seek(0, 0); err != nil {
 		return err
 	}
 
 	objectKey := lt.buildObjectKey(name)
-	return lt.storageClient.PutObject(ctx, objectKey, f)
+	return lt.storageClient.PutObject(ctx, objectKey, fileToWrite)
 }
 
 func (lt *Table) compress(src string, buf io.Writer) error {
@@ -445,7 +416,7 @@ func loadBlugeDBsFromDir(dir string) (map[string]*bluge_db.BlugeDB, error) {
 	}
 
 	for _, fileInfo := range filesInfo {
-		if fileInfo.IsDir() {
+		if !fileInfo.IsDir() || fileInfo.Name() == ".DS_Store" {
 			continue
 		}
 
@@ -458,7 +429,7 @@ func loadBlugeDBsFromDir(dir string) (map[string]*bluge_db.BlugeDB, error) {
 			continue
 		}
 
-		db := &bluge_db.BlugeDB{Name: fileInfo.Name()} //local.OpenBlugeDBFile(filepath.Join(dir, fileInfo.Name()))
+		db := &bluge_db.BlugeDB{Name: fileInfo.Name(), Folder: dir} //local.OpenBlugeDBFile(filepath.Join(dir, fileInfo.Name()))
 		if err != nil {
 			return nil, err
 		}
