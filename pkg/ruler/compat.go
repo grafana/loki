@@ -40,7 +40,7 @@ import (
 type RulesLimits interface {
 	ruler.RulesLimits
 
-	RulerRemoteWriteQueueCapacity(userID string) int
+	RulerRemoteWrite(userID string, base RemoteWriteConfig) RemoteWriteConfig
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
@@ -280,33 +280,44 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 }
 
 func setupStorage(cfg Config, manager instance.Manager, tenant string, overrides RulesLimits) {
-	// TODO: add per-tenant overrides
-
+	// make a copy
 	conf := cfg.WAL
 
 	conf.Name = tenant
 	conf.Tenant = tenant
 
-	if cfg.RemoteWrite.Enabled {
-		if cfg.RemoteWrite.Client.Headers == nil {
-			cfg.RemoteWrite.Client.Headers = make(map[string]string)
-		}
+	// we don't need to send metadata - we have no scrape targets
+	cfg.RemoteWrite.Client.MetadataConfig.Send = false
 
-		// we don't need to send metadata - we have no scrape targets
-		cfg.RemoteWrite.Client.MetadataConfig.Send = false
+	// retrieve remote-write config for this tenant, using the global remote-write for defaults
+	rwCfg := overrides.RulerRemoteWrite(tenant, cfg.RemoteWrite)
 
-		// inject the X-Org-ScopeId header for multi-tenant metrics backends
-		cfg.RemoteWrite.Client.Headers[user.OrgIDHeaderName] = tenant
-
+	// TODO(dannyk): implement multiple RW configs
+	if rwCfg.Enabled {
 		conf.RemoteWrite = []*config.RemoteWriteConfig{
-			&cfg.RemoteWrite.Client,
+			configureRemoteWrite(rwCfg, tenant),
 		}
+	} else {
+		// reset if remote-write is disabled at runtime
+		conf.RemoteWrite = []*config.RemoteWriteConfig{}
 	}
 
 	if err := manager.ApplyConfig(conf); err != nil {
 		// TODO: don't panic
 		panic(err)
 	}
+}
+
+func configureRemoteWrite(cfg RemoteWriteConfig, tenant string) *config.RemoteWriteConfig {
+	// always inject the X-Org-ScopeId header for multi-tenant metrics backends
+
+	if cfg.Client.Headers == nil {
+		cfg.Client.Headers = make(map[string]string)
+	}
+
+	cfg.Client.Headers[user.OrgIDHeaderName] = tenant
+
+	return &cfg.Client
 }
 
 type GroupLoader struct{}
