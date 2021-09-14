@@ -39,6 +39,7 @@ storage_config:
     shared_store: filesystem
   filesystem:
     directory: /tmp/loki/chunks
+    tenant_folders: true
 
 compactor:
   working_directory: /tmp/loki/boltdb-shipper-compactor

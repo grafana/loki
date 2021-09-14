@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/base64"
 	"io/ioutil"
+	"reflect"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -22,6 +24,20 @@ var Base64Encoder = func(key string) string {
 	return base64.StdEncoding.EncodeToString([]byte(key))
 }
 
+// TenantBase64Encoder is a variation of Base64Encoder that encodes tenant
+// and remainder of the key separately and returns the results joined by "/"
+var TenantBase64Encoder = func(key string) string {
+	data := []byte(key)
+	if i := bytes.LastIndex(data, []byte("/")); i > 0 {
+		return strings.Join([]string{
+			base64.URLEncoding.EncodeToString(data[:i]),
+			base64.URLEncoding.EncodeToString(data[i+1:]),
+		}, "/")
+	} else {
+		return base64.URLEncoding.EncodeToString(data)
+	}
+}
+
 // Client is used to store chunks in object store backends
 type Client struct {
 	store      chunk.ObjectClient
@@ -29,7 +45,19 @@ type Client struct {
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
-func NewClient(store chunk.ObjectClient, encoder KeyEncoder) *Client {
+func NewClient(store chunk.ObjectClient) *Client {
+	var encoder KeyEncoder = nil
+	// check if store provides a KeyEncoder
+	var ok bool
+	method := reflect.ValueOf(&store).MethodByName("KeyEncoder")
+	if method.IsValid() {
+		for _, v := range method.Call([]reflect.Value{}) {
+			if encoder, ok = v.Interface().(KeyEncoder); !ok {
+				encoder = nil
+			}
+		}
+	}
+
 	return &Client{
 		store:      store,
 		keyEncoder: encoder,

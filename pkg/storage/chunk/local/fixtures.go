@@ -43,7 +43,7 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	chunkClient = objectclient.NewClient(oClient, objectclient.Base64Encoder)
+	chunkClient = objectclient.NewClient(oClient)
 
 	tableClient, err = NewTableClient(f.dirname)
 	if err != nil {

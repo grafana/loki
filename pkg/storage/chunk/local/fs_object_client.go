@@ -17,11 +17,13 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 )
 
 // FSConfig is the config for a FSObjectClient.
 type FSConfig struct {
-	Directory string `yaml:"directory"`
+	Directory     string `yaml:"directory"`
+	TenantFolders bool   `yaml:"tenant_folders"`
 }
 
 // RegisterFlags registers flags.
@@ -32,6 +34,7 @@ func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlags registers flags with prefix.
 func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
+	f.BoolVar(&cfg.TenantFolders, prefix+"local.chunk-tenant-folders", false, "Store chunks in per-tenant folders")
 }
 
 // FSObjectClient holds config for filesystem as object store
@@ -58,6 +61,14 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 
 // Stop implements ObjectClient
 func (FSObjectClient) Stop() {}
+
+func (f *FSObjectClient) KeyEncoder() objectclient.KeyEncoder {
+	if f.cfg.TenantFolders {
+		return objectclient.TenantBase64Encoder
+	} else {
+		return objectclient.Base64Encoder
+	}
+}
 
 // GetObject from the store
 func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, error) {

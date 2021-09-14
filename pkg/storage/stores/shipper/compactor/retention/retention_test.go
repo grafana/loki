@@ -363,7 +363,7 @@ func TestChunkRewriter(t *testing.T) {
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
 			store.Stop()
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir))
 			for _, indexTable := range store.indexTables() {
 				err := indexTable.DB.Update(func(tx *bbolt.Tx) error {
 					bucket := tx.Bucket(bucketName)
@@ -618,7 +618,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, len(tc.expectedDeletedSeries))
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir))
 
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder()

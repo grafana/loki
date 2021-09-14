@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
@@ -109,12 +108,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	c.metrics = newMetrics(r)
 
 	if c.cfg.RetentionEnabled {
-		var encoder objectclient.KeyEncoder
-		if _, ok := objectClient.(*local.FSObjectClient); ok {
-			encoder = objectclient.Base64Encoder
-		}
-
-		chunkClient := objectclient.NewClient(objectClient, encoder)
+		chunkClient := objectclient.NewClient(objectClient)
 
 		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
 		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)

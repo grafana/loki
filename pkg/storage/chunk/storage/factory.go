@@ -298,7 +298,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClient(store, objectclient.Base64Encoder), nil
+		return objectclient.NewClient(store), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
@@ -310,7 +310,7 @@ func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client,
 	if err != nil {
 		return nil, err
 	}
-	return objectclient.NewClient(store, nil), nil
+	return objectclient.NewClient(store), nil
 }
 
 // NewTableClient makes a new table client based on the configuration.
