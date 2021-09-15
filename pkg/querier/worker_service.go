@@ -135,7 +135,7 @@ func registerRoutesExternally(routes []string, externalRouter *mux.Router, inter
 func querierRunningStandalone(cfg WorkerServiceConfig) bool {
 	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.AllEnabled
 	level.Debug(util_log.Logger).Log(
-		"msg", "determing if querier is running as standalone target",
+		"msg", "determining if querier is running as standalone target",
 		"runningStandalone", runningStandalone,
 		"queryFrontendEnabled", cfg.QueryFrontendEnabled,
 		"queryScheduleEnabled", cfg.QuerySchedulerEnabled,
