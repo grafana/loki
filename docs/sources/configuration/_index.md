@@ -1429,6 +1429,9 @@ filesystem:
   # Directory to store chunks in.
   # CLI flag: -local.chunk-directory
   directory: <string>
+  # Store chunks in per-tenant folders.
+  # CLI flag: -local.chunk-tenant-folders
+  [tenant_folders: <boolean> | default = false]
 
 # Configures storing index in an Object Store(GCS/S3/Azure/Swift/Filesystem) in the form of boltdb files.
 # Required fields only required when boltdb-shipper is defined in config.

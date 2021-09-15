@@ -13,9 +13,10 @@ storage_config:
     directory: /tmp/loki/
 ```
 
-A folder is created for every tenant all the chunks for one tenant are stored in that directory.
+By default all chunks are stored in the given directory.
+Enable the `tenant_folders` option to separate chunks of tenants into their own folders.
 
-If loki is run in single-tenant mode, all the chunks are put in a folder named `fake` which is the synthesized tenant name used for single tenant mode.
+If loki is run in single-tenant mode, the synthesized tenant name `fake` is used for all chunks.
 
 See [multi-tenancy](../../multi-tenancy/) for more information.
 
