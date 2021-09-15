@@ -33,9 +33,8 @@ var TenantBase64Encoder = func(key string) string {
 			base64.URLEncoding.EncodeToString(data[:i]),
 			base64.URLEncoding.EncodeToString(data[i+1:]),
 		}, "/")
-	} else {
-		return base64.URLEncoding.EncodeToString(data)
 	}
+	return base64.URLEncoding.EncodeToString(data)
 }
 
 // Client is used to store chunks in object store backends

@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
-func testFSObjectClient_DeleteChunksBefore(t *testing.T, tenantFolders bool) {
+func deleteChunksBefore(t *testing.T, tenantFolders bool) {
 	deleteFilesOlderThan := 10 * time.Minute
 
 	fsChunksDir, err := ioutil.TempDir(os.TempDir(), "fs-chunks")
@@ -65,11 +65,11 @@ func testFSObjectClient_DeleteChunksBefore(t *testing.T, tenantFolders bool) {
 }
 
 func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
-	testFSObjectClient_DeleteChunksBefore(t, false)
-	testFSObjectClient_DeleteChunksBefore(t, true)
+	deleteChunksBefore(t, false)
+	deleteChunksBefore(t, true)
 }
 
-func testFSObjectClient_List(t *testing.T, tenantFolders bool) {
+func list(t *testing.T, tenantFolders bool) {
 	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-objects")
 	require.NoError(t, err)
 
@@ -173,11 +173,11 @@ func testFSObjectClient_List(t *testing.T, tenantFolders bool) {
 }
 
 func TestFSObjectClient_List(t *testing.T) {
-	testFSObjectClient_List(t, false)
-	testFSObjectClient_List(t, true)
+	list(t, false)
+	list(t, true)
 }
 
-func testFSObjectClient_DeleteObject(t *testing.T, tenantFolders bool) {
+func deleteObject(t *testing.T, tenantFolders bool) {
 	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-delete-object")
 	require.NoError(t, err)
 
@@ -230,6 +230,6 @@ func testFSObjectClient_DeleteObject(t *testing.T, tenantFolders bool) {
 }
 
 func TestFSObjectClient_DeleteObject(t *testing.T) {
-	testFSObjectClient_DeleteObject(t, false)
-	testFSObjectClient_DeleteObject(t, true)
+	deleteObject(t, false)
+	deleteObject(t, true)
 }

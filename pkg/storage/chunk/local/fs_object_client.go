@@ -65,9 +65,8 @@ func (FSObjectClient) Stop() {}
 func (f *FSObjectClient) KeyEncoder() objectclient.KeyEncoder {
 	if f.cfg.TenantFolders {
 		return objectclient.TenantBase64Encoder
-	} else {
-		return objectclient.Base64Encoder
 	}
+	return objectclient.Base64Encoder
 }
 
 // GetObject from the store
