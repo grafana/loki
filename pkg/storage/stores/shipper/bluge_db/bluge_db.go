@@ -46,6 +46,39 @@ type logLabel struct {
 //	return err
 //}
 
+type BlugeWriteBatch struct {
+	Writes map[string]TableWrites
+}
+
+//func (b *BlugeWriteBatch) NewWriteBatch() chunk.WriteBatch {
+//	return &BoltWriteBatch{
+//		Writes: map[string]TableWrites{},
+//	}
+//}
+
+func (b *BlugeWriteBatch) getOrCreateTableWrites(tableName string) TableWrites {
+	writes, ok := b.Writes[tableName]
+	if !ok {
+		writes = TableWrites{
+			Puts: map[string]string{},
+		}
+		b.Writes[tableName] = writes
+	}
+
+	return writes
+}
+
+func (b *BlugeWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+
+}
+
+func (b *BlugeWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	writes := b.getOrCreateTableWrites(tableName)
+
+	key := hashValue
+	writes.Puts[key] = string(value)
+}
+
 type TableWrites struct {
 	Puts map[string]string
 	//deletes map[string]struct{}

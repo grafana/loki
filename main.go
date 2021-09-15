@@ -6,16 +6,54 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
+	"time"
 )
 
 func main() {
 	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: "./obstore"})
 	fmt.Print(err)
-	tb, _ := uploads.NewTable("./snpseg", "uploader", fsObjectClient)
-	w := bluge_db.TableWrites{Puts: map[string]string{"foo": "1", "bar": "2"}}
-	tb.Write(context.Background(), w)
+	//tb, _ := uploads.NewTable("/Users/mwang5/loki/snpseg", "uploader", fsObjectClient)
+	//w := bluge_db.TableWrites{Puts: map[string]string{"foo": "1", "bar": "2"}}
+	//tb.Write(context.Background(), w)
+	// tb, _ := uploads.LoadTable("/Users/mwang5/loki/snpseg", "uploader", fsObjectClient)
+	//tb.Upload(context.Background(), true)
 
-	tb.Upload(context.Background(), true)
+	// /Users/mwang5/loki/dcache/snpseg
+	//tb := downloads.NewTable(context.Background(), "snpseg", "/Users/mwang5/loki/dcache", fsObjectClient)
+	//tb.Sync(context.Background())
+
+	// bluge_db.BlugeDB
+
+	// build queries each looking for specific value from all the dbs
+	//var queries []chunk.IndexQuery
+	//for i := 5; i < 8; i++ {
+	//	queries = append(queries, chunk.IndexQuery{ValueEqual: []byte(strconv.Itoa(i))})
+	//}
+	//tb.MultiQueries(context.Background(), queries)
+
+	//cfg := uploads.Config{
+	//	CacheDir:     "/Users/mwang5/loki/dcache",
+	//	SyncInterval: time.Hour,
+	//	CacheTTL:     time.Hour,
+	//}
+
+	cfg := uploads.Config{
+		Uploader:       "test-table-manager",
+		IndexDir:       "/Users/mwang5/loki/snpsegindex",
+		UploadInterval: time.Hour,
+	}
+
+	tableManager, err := uploads.NewTableManager(cfg, fsObjectClient, nil)
+
+	wr := &bluge_db.BlugeWriteBatch{Writes: map[string]bluge_db.TableWrites{}}
+	wr.Add("mark", "test", []byte("test"), []byte("test"))
+	tableManager.BatchWrite(context.Background(), wr)
+	select {
+
+	case <-time.Tick(2000000000 * time.Second):
+		//t.Fatal("failed to initialize table in time")
+	}
+	fmt.Print(tableManager)
 }
 
 //func main() {

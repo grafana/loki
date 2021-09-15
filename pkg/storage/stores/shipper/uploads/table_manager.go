@@ -2,7 +2,9 @@ package uploads
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -111,26 +113,26 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 	return util.DoParallelQueries(ctx, table, queries, callback)
 }
 
-//func (tm *TableManager) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-//	boltWriteBatch, ok := batch.(*local.BoltWriteBatch)
-//	if !ok {
-//		return errors.New("invalid write batch")
-//	}
-//
-//	for tableName, tableWrites := range boltWriteBatch.Writes {
-//		table, err := tm.getOrCreateTable(tableName)
-//		if err != nil {
-//			return err
-//		}
-//
-//		err = table.Write(ctx, tableWrites)
-//		if err != nil {
-//			return err
-//		}
-//	}
-//
-//	return nil
-//}
+func (tm *TableManager) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+	boltWriteBatch, ok := batch.(*bluge_db.BlugeWriteBatch)
+	if !ok {
+		return errors.New("invalid write batch")
+	}
+
+	for tableName, tableWrites := range boltWriteBatch.Writes {
+		table, err := tm.getOrCreateTable(tableName)
+		if err != nil {
+			return err
+		}
+
+		err = table.Write(ctx, tableWrites)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 func (tm *TableManager) getOrCreateTable(tableName string) (*Table, error) {
 	tm.tablesMtx.RLock()
