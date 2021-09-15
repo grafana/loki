@@ -178,10 +178,45 @@ func (r *storageRegistry) Appender(ctx context.Context) storage.Appender {
 		r.lastUpdateTime = now
 
 		level.Debug(r.logger).Log("tenant", tenant, "msg", "refreshing remote-write configuration")
-		setupStorage(r.config, r.manager, tenant, r.overrides)
+		r.configureTenantStorage(tenant)
 	}
 
 	return inst.Appender(ctx)
+}
+
+func (r *storageRegistry) configureTenantStorage(tenant string) {
+	// make a copy
+	conf := r.config.WAL
+
+	conf.Name = tenant
+	conf.Tenant = tenant
+
+	// we don't need to send metadata - we have no scrape targets
+	r.config.RemoteWrite.Client.MetadataConfig.Send = false
+
+	// retrieve remote-write config for this tenant, using the global remote-write for defaults
+	rwCfg := r.overrides.RulerRemoteWrite(tenant, r.config.RemoteWrite)
+
+	// TODO(dannyk): implement multiple RW configs
+	if rwCfg.Enabled {
+		// always inject the X-Org-ScopeId header for multi-tenant metrics backends
+		if rwCfg.Client.Headers == nil {
+			rwCfg.Client.Headers = make(map[string]string)
+		}
+
+		rwCfg.Client.Headers[user.OrgIDHeaderName] = tenant
+
+		conf.RemoteWrite = []*config.RemoteWriteConfig{
+			&rwCfg.Client,
+		}
+	} else {
+		// reset if remote-write is disabled at runtime
+		conf.RemoteWrite = []*config.RemoteWriteConfig{}
+	}
+
+	if err := r.manager.ApplyConfig(conf); err != nil {
+		level.Error(r.logger).Log("tenant", tenant, "msg", "could not apply given config", "err", err)
+	}
 }
 
 type notReadyAppender struct{}
@@ -266,7 +301,7 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-		setupStorage(cfg, manager, userID, overrides)
+		walRegistry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
 		queryFunc := engineQueryFunc(logger, engine, overrides, manager, userID)
@@ -292,47 +327,6 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 
 		return mgr
 	}
-}
-
-func setupStorage(cfg Config, manager instance.Manager, tenant string, overrides RulesLimits) {
-	// make a copy
-	conf := cfg.WAL
-
-	conf.Name = tenant
-	conf.Tenant = tenant
-
-	// we don't need to send metadata - we have no scrape targets
-	cfg.RemoteWrite.Client.MetadataConfig.Send = false
-
-	// retrieve remote-write config for this tenant, using the global remote-write for defaults
-	rwCfg := overrides.RulerRemoteWrite(tenant, cfg.RemoteWrite)
-
-	// TODO(dannyk): implement multiple RW configs
-	if rwCfg.Enabled {
-		conf.RemoteWrite = []*config.RemoteWriteConfig{
-			configureRemoteWrite(rwCfg, tenant),
-		}
-	} else {
-		// reset if remote-write is disabled at runtime
-		conf.RemoteWrite = []*config.RemoteWriteConfig{}
-	}
-
-	if err := manager.ApplyConfig(conf); err != nil {
-		// TODO: don't panic
-		panic(err)
-	}
-}
-
-func configureRemoteWrite(cfg RemoteWriteConfig, tenant string) *config.RemoteWriteConfig {
-	// always inject the X-Org-ScopeId header for multi-tenant metrics backends
-
-	if cfg.Client.Headers == nil {
-		cfg.Client.Headers = make(map[string]string)
-	}
-
-	cfg.Client.Headers[user.OrgIDHeaderName] = tenant
-
-	return &cfg.Client
 }
 
 type GroupLoader struct{}

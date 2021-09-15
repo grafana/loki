@@ -96,7 +96,7 @@ type Limits struct {
 	RulerRemoteWriteQueueCapacity          int               `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
 	RulerRemoteWriteQueueMinShards         int               `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
 	RulerRemoteWriteQueueMaxShards         int               `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
-	RulerRemoteWriteQueueMaxSamplesPerSend int               `yaml:"ruler_remote_write_queue_max_samples_per_second" json:"ruler_remote_write_queue_max_samples_per_second"`
+	RulerRemoteWriteQueueMaxSamplesPerSend int               `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
 	RulerRemoteWriteQueueBatchSendDeadline time.Duration     `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
 	RulerRemoteWriteQueueMinBackoff        time.Duration     `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
 	RulerRemoteWriteQueueMaxBackoff        time.Duration     `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
