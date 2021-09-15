@@ -100,14 +100,14 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
 
-	for _, db := range lt.dbs {
-		fmt.Print(db)
-		for _, query := range queries {
-			if err := db.QueryDB(ctx, query, callback); err != nil {
-				return err
-			}
-		}
-	}
+	//for _, db := range lt.dbs {
+	//	fmt.Print(db)
+	//	for _, query := range queries {
+	//		if err := db.QueryDB(ctx, query, callback); err != nil {
+	//			return err
+	//		}
+	//	}
+	//}
 
 	return nil
 }
