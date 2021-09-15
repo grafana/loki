@@ -14,9 +14,9 @@ storage_config:
 ```
 
 By default all chunks are stored in the given directory.
-Enable the `tenant_folders` option to separate chunks of tenants into their own folders.
+Set `tenant_folders` to true to separate chunks of tenants into their own folders.
 
-If loki is run in single-tenant mode, the synthesized tenant name `fake` is used for all chunks.
+If Loki is run in single-tenant mode, the synthesized tenant name `fake` is used for all chunks.
 
 See [multi-tenancy](../../multi-tenancy/) for more information.
 
