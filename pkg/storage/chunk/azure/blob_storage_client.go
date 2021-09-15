@@ -12,6 +12,7 @@ import (
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/go-autorest/autorest/adal"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
@@ -64,6 +65,7 @@ type BlobStorageConfig struct {
 	MaxRetries         int            `yaml:"max_retries"`
 	MinRetryDelay      time.Duration  `yaml:"min_retry_delay"`
 	MaxRetryDelay      time.Duration  `yaml:"max_retry_delay"`
+	UseManagedIdentity bool           `yaml:"use_managed_identity"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -84,6 +86,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.IntVar(&c.MaxRetries, prefix+"azure.max-retries", 5, "Number of retries for a request which times out.")
 	f.DurationVar(&c.MinRetryDelay, prefix+"azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
 	f.DurationVar(&c.MaxRetryDelay, prefix+"azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
+	f.BoolVar(&c.UseManagedIdentity, prefix+"azure.use-managed-identity", false, "Use Managed Identity or not.")
 }
 
 // BlobStorage is used to interact with azure blob storage for setting or getting time series chunks.
@@ -190,20 +193,86 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 }
 
 func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
-	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
+
+	if b.cfg.UseManagedIdentity == false {
+		credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		return azblob.NewPipeline(credential, azblob.PipelineOptions{
+			Retry: azblob.RetryOptions{
+				Policy:        azblob.RetryPolicyExponential,
+				MaxTries:      (int32)(b.cfg.MaxRetries),
+				TryTimeout:    b.cfg.RequestTimeout,
+				RetryDelay:    b.cfg.MinRetryDelay,
+				MaxRetryDelay: b.cfg.MaxRetryDelay,
+			},
+		}), nil
+	} else {
+		tokenCredential, err := b.getOAuthToken()
+		if err != nil {
+			return nil, err
+		}
+
+		return azblob.NewPipeline(*tokenCredential, azblob.PipelineOptions{
+			Retry: azblob.RetryOptions{
+				Policy:        azblob.RetryPolicyExponential,
+				MaxTries:      (int32)(b.cfg.MaxRetries),
+				TryTimeout:    b.cfg.RequestTimeout,
+				RetryDelay:    b.cfg.MinRetryDelay,
+				MaxRetryDelay: b.cfg.MaxRetryDelay,
+			},
+		}), nil
+	}
+
+}
+
+func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
+	spt, err := b.fetchMSIToken()
 	if err != nil {
 		return nil, err
 	}
 
-	return azblob.NewPipeline(credential, azblob.PipelineOptions{
-		Retry: azblob.RetryOptions{
-			Policy:        azblob.RetryPolicyExponential,
-			MaxTries:      (int32)(b.cfg.MaxRetries),
-			TryTimeout:    b.cfg.RequestTimeout,
-			RetryDelay:    b.cfg.MinRetryDelay,
-			MaxRetryDelay: b.cfg.MaxRetryDelay,
-		},
-	}), nil
+	// Refresh obtains a fresh token
+	err = spt.Refresh()
+	if err != nil {
+		return nil, err
+	}
+
+	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
+		err := spt.Refresh()
+		if err != nil {
+			// something went wrong, prevent the refresher from being triggered again
+			return 0
+		}
+
+		// set the new token value
+		tc.SetToken(spt.Token().AccessToken)
+
+		// get the next token slightly before the current one expires
+		return time.Until(spt.Token().Expires()) - 10*time.Second
+	})
+
+	return &tc, nil
+}
+
+func (b *BlobStorage) fetchMSIToken() (*adal.ServicePrincipalToken, error) {
+	// msiEndpoint is the well known endpoint for getting MSI authentications tokens
+	// msiEndpoint := "http://169.254.169.254/metadata/identity/oauth2/token" for production Jobs
+	msiEndpoint, _ := adal.GetMSIVMEndpoint()
+
+	var spt *adal.ServicePrincipalToken
+	var err error
+
+	// both can be empty, systemAssignedMSI scenario
+	spt, err = adal.NewServicePrincipalTokenFromMSI(msiEndpoint, "https://storage.azure.com/")
+
+	if err != nil {
+		return nil, err
+	}
+
+	return spt, spt.Refresh()
 }
 
 // List implements chunk.ObjectClient.

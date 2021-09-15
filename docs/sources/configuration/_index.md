@@ -459,6 +459,10 @@ storage:
     # CLI flag: -ruler.storage.azure.max-retry-delay
     [max_retry_delay: <duration> | default = 500ms]
 
+    # Use Managed Identity or not.
+    # CLI flag: -ruler.storage.azure.use-managed-identity
+    [use_managed_identity: <boolean> | default = false]
+
   gcs:
     # Name of GCS bucket to put chunks in.
     # CLI flag: -ruler.storage.gcs.bucketname

@@ -307,6 +307,7 @@ storage_config:
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
     container_name: <container-name>
     request_timeout: 0
+    use_managed_identity: <true|false>
   boltdb_shipper:
     active_index_directory: /data/loki/boltdb-shipper-active
     cache_location: /data/loki/boltdb-shipper-cache
