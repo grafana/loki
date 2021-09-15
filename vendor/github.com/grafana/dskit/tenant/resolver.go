@@ -3,18 +3,17 @@ package tenant
 import (
 	"context"
 	"errors"
-	"net/http"
+	"fmt"
 	"strings"
 
 	"github.com/weaveworks/common/user"
 )
 
-var defaultResolver Resolver = NewSingleResolver()
+var (
+	errTenantIDTooLong = errors.New("tenant ID is too long: max 150 characters")
+)
 
-// WithDefaultResolver updates the resolver used for the package methods.
-func WithDefaultResolver(r Resolver) {
-	defaultResolver = r
-}
+var defaultResolver Resolver = &singleResolver{}
 
 // ID returns exactly a single tenant ID from the context. It should be
 // used when a certain endpoint should only support exactly a single
@@ -24,9 +23,9 @@ func ID(ctx context.Context) (string, error) {
 	return defaultResolver.TenantID(ctx)
 }
 
-// IDs returns all tenant IDs from the context. It should return
+// IDs returns all tenant IDs from the context. It should return a
 // normalized list of ordered and distinct tenant IDs (as produced by
-// NormalizeTenantIDs).
+// normalizeTenantIDs).
 func IDs(ctx context.Context) ([]string, error) {
 	return defaultResolver.TenantIDs(ctx)
 }
@@ -40,18 +39,11 @@ type Resolver interface {
 
 	// TenantIDs returns all tenant IDs from the context. It should return
 	// normalized list of ordered and distinct tenant IDs (as produced by
-	// NormalizeTenantIDs).
+	// normalizeTenantIDs).
 	TenantIDs(context.Context) ([]string, error)
 }
 
-// NewSingleResolver creates a tenant resolver, which restricts all requests to
-// be using a single tenant only. This allows a wider set of characters to be
-// used within the tenant ID and should not impose a breaking change.
-func NewSingleResolver() *SingleResolver {
-	return &SingleResolver{}
-}
-
-type SingleResolver struct {
+type singleResolver struct {
 }
 
 // containsUnsafePathSegments will return true if the string is a directory
@@ -68,7 +60,7 @@ func containsUnsafePathSegments(id string) bool {
 
 var errInvalidTenantID = errors.New("invalid tenant ID")
 
-func (t *SingleResolver) TenantID(ctx context.Context) (string, error) {
+func (t *singleResolver) TenantID(ctx context.Context) (string, error) {
 	//lint:ignore faillint wrapper around upstream method
 	id, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -82,7 +74,7 @@ func (t *SingleResolver) TenantID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
-func (t *SingleResolver) TenantIDs(ctx context.Context) ([]string, error) {
+func (t *singleResolver) TenantIDs(ctx context.Context) ([]string, error) {
 	orgID, err := t.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -90,63 +82,57 @@ func (t *SingleResolver) TenantIDs(ctx context.Context) ([]string, error) {
 	return []string{orgID}, err
 }
 
-type MultiResolver struct {
+type errTenantIDUnsupportedCharacter struct {
+	pos      int
+	tenantID string
 }
 
-// NewMultiResolver creates a tenant resolver, which allows request to have
-// multiple tenant ids submitted separated by a '|' character. This enforces
-// further limits on the character set allowed within tenants as detailed here:
+func (e *errTenantIDUnsupportedCharacter) Error() string {
+	return fmt.Sprintf(
+		"tenant ID '%s' contains unsupported character '%c'",
+		e.tenantID,
+		e.tenantID[e.pos],
+	)
+}
+
+func validTenantID(s string) error {
+	// check if it contains invalid runes
+	for pos, r := range s {
+		if !isSupported(r) {
+			return &errTenantIDUnsupportedCharacter{
+				tenantID: s,
+				pos:      pos,
+			}
+		}
+	}
+
+	if len(s) > 150 {
+		return errTenantIDTooLong
+	}
+
+	return nil
+}
+
+// this checks if a rune is supported in tenant IDs (according to
 // https://cortexmetrics.io/docs/guides/limitations/#tenant-id-naming)
-func NewMultiResolver() *MultiResolver {
-	return &MultiResolver{}
-}
-
-func (t *MultiResolver) TenantID(ctx context.Context) (string, error) {
-	orgIDs, err := t.TenantIDs(ctx)
-	if err != nil {
-		return "", err
+func isSupported(c rune) bool {
+	// characters
+	if ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') {
+		return true
 	}
 
-	if len(orgIDs) > 1 {
-		return "", user.ErrTooManyOrgIDs
+	// digits
+	if '0' <= c && c <= '9' {
+		return true
 	}
 
-	return orgIDs[0], nil
-}
-
-func (t *MultiResolver) TenantIDs(ctx context.Context) ([]string, error) {
-	//lint:ignore faillint wrapper around upstream method
-	orgID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	orgIDs := strings.Split(orgID, tenantIDsLabelSeparator)
-	for _, orgID := range orgIDs {
-		if err := ValidTenantID(orgID); err != nil {
-			return nil, err
-		}
-		if containsUnsafePathSegments(orgID) {
-			return nil, errInvalidTenantID
-		}
-	}
-
-	return NormalizeTenantIDs(orgIDs), nil
-}
-
-// ExtractTenantIDFromHTTPRequest extracts a single TenantID through a given
-// resolver directly from a HTTP request.
-func ExtractTenantIDFromHTTPRequest(req *http.Request) (string, context.Context, error) {
-	//lint:ignore faillint wrapper around upstream method
-	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
-	if err != nil {
-		return "", nil, err
-	}
-
-	tenantID, err := defaultResolver.TenantID(ctx)
-	if err != nil {
-		return "", nil, err
-	}
-
-	return tenantID, ctx, nil
+	// special
+	return c == '!' ||
+		c == '-' ||
+		c == '_' ||
+		c == '.' ||
+		c == '*' ||
+		c == '\'' ||
+		c == '(' ||
+		c == ')'
 }
