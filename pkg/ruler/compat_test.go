@@ -320,7 +320,7 @@ func TestNonMetricQuery(t *testing.T) {
 	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.Nil(t, err)
 
-	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides)
+	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, log.NewNopLogger())
 	queryFunc := engineQueryFunc(engine, overrides, "fake")
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())

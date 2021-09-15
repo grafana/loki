@@ -201,7 +201,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	eng := logql.NewEngine(conf.Querier.Engine, querier, limits)
+	eng := logql.NewEngine(conf.Querier.Engine, querier, limits, util_log.Logger)
 	var query logql.Query
 
 	if q.isInstant() {

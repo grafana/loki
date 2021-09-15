@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -108,7 +108,7 @@ func (tm *TableManager) query(ctx context.Context, tableName string, queries []c
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
-	log, ctx := spanlogger.New(ctx, "Shipper.Uploads.Query")
+	log, ctx := spanlogger.New(ctx, util_log.Logger, "Shipper.Uploads.Query")
 	defer log.Span.Finish()
 
 	table, ok := tm.tables[tableName]

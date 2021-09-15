@@ -10,9 +10,9 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
 	listutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -78,13 +79,13 @@ func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limi
 		limits:          limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier, limits, util_log.Logger)
 
 	return &querier, nil
 }
 
 func (q *Querier) SetQueryable(queryable logql.Querier) {
-	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits)
+	q.engine = logql.NewEngine(q.cfg.Engine, queryable, q.limits, util_log.Logger)
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
@@ -107,7 +108,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
+		level.Debug(spanlogger.FromContext(ctx, util_log.Logger)).Log(
 			"msg", "querying ingester",
 			"params", newParams)
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
@@ -121,7 +122,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	if storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
+		level.Debug(spanlogger.FromContext(ctx, util_log.Logger)).Log(
 			"msg", "querying store",
 			"params", params)
 		storeIter, err := q.store.SelectLogs(ctx, params)
@@ -516,7 +517,7 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
-		level.Debug(spanlogger.FromContext(ctx)).Log(
+		level.Debug(spanlogger.FromContext(ctx, util_log.Logger)).Log(
 			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
 			"original", origStartTime,
 			"updated", from)

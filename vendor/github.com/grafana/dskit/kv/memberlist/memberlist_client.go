@@ -135,6 +135,10 @@ type KVConfig struct {
 	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time"`
 	EnableCompression   bool          `yaml:"compression_enabled"`
 
+	// ip:port to advertise other cluster members. Used for NAT traversal
+	AdvertiseAddr string `yaml:"advertise_addr"`
+	AdvertisePort int    `yaml:"advertise_port"`
+
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
 	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff"`
@@ -186,6 +190,8 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
+	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
+	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
@@ -376,6 +382,9 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
 	mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
 	mlCfg.EnableCompression = m.cfg.EnableCompression
+
+	mlCfg.AdvertiseAddr = m.cfg.AdvertiseAddr
+	mlCfg.AdvertisePort = m.cfg.AdvertisePort
 
 	if m.cfg.NodeName != "" {
 		mlCfg.Name = m.cfg.NodeName

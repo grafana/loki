@@ -8,8 +8,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -59,15 +60,17 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
+	logger    log.Logger
 	timeout   time.Duration
 	evaluator Evaluator
 	limits    Limits
 }
 
 // NewEngine creates a new LogQL Engine.
-func NewEngine(opts EngineOpts, q Querier, l Limits) *Engine {
+func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
 	opts.applyDefault()
 	return &Engine{
+		logger:    logger,
 		timeout:   opts.Timeout,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 		limits:    l,
@@ -76,7 +79,11 @@ func NewEngine(opts EngineOpts, q Querier, l Limits) *Engine {
 
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (ng *Engine) Query(params Params) Query {
+	if ng.logger == nil {
+		panic("doof")
+	}
 	return &query{
+		logger:    ng.logger,
 		timeout:   ng.timeout,
 		params:    params,
 		evaluator: ng.evaluator,
@@ -95,6 +102,7 @@ type Query interface {
 }
 
 type query struct {
+	logger    log.Logger
 	timeout   time.Duration
 	params    Params
 	parse     func(context.Context, string) (Expr, error)
@@ -105,7 +113,10 @@ type query struct {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	log, ctx := spanlogger.New(ctx, "query.Exec")
+	if q.logger == nil {
+		panic("oof")
+	}
+	log, ctx := spanlogger.New(ctx, q.logger, "query.Exec")
 	defer log.Finish()
 
 	rangeType := GetRangeType(q.params)

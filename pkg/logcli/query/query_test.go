@@ -3,14 +3,15 @@ package query
 import (
 	"bytes"
 	"context"
-	"log"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -31,35 +32,35 @@ func Test_commonLabels(t *testing.T) {
 		{
 			"Extract common labels source > target",
 			args{
-				[]loghttp.LabelSet{mustParseLabels(`{foo="bar", bar="foo"}`), mustParseLabels(`{bar="foo", foo="foo", baz="baz"}`)},
+				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`)},
 			},
-			mustParseLabels(`{bar="foo"}`),
+			mustParseLabels(t, `{bar="foo"}`),
 		},
 		{
 			"Extract common labels source > target",
 			args{
-				[]loghttp.LabelSet{mustParseLabels(`{foo="bar", bar="foo"}`), mustParseLabels(`{bar="foo", foo="bar", baz="baz"}`)},
+				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="bar", baz="baz"}`)},
 			},
-			mustParseLabels(`{foo="bar", bar="foo"}`),
+			mustParseLabels(t, `{foo="bar", bar="foo"}`),
 		},
 		{
 			"Extract common labels source < target",
 			args{
-				[]loghttp.LabelSet{mustParseLabels(`{foo="bar", bar="foo"}`), mustParseLabels(`{bar="foo"}`)},
+				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo"}`)},
 			},
-			mustParseLabels(`{bar="foo"}`),
+			mustParseLabels(t, `{bar="foo"}`),
 		},
 		{
 			"Extract common labels source < target no common",
 			args{
-				[]loghttp.LabelSet{mustParseLabels(`{foo="bar", bar="foo"}`), mustParseLabels(`{fo="bar"}`)},
+				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{fo="bar"}`)},
 			},
 			loghttp.LabelSet{},
 		},
 		{
 			"Extract common labels source = target no common",
 			args{
-				[]loghttp.LabelSet{mustParseLabels(`{foo="bar"}`), mustParseLabels(`{fooo="bar"}`)},
+				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar"}`), mustParseLabels(t, `{fooo="bar"}`)},
 			},
 			loghttp.LabelSet{},
 		},
@@ -95,50 +96,50 @@ func Test_subtract(t *testing.T) {
 		{
 			"Subtract labels source > target",
 			args{
-				mustParseLabels(`{foo="bar", bar="foo"}`),
-				mustParseLabels(`{bar="foo", foo="foo", baz="baz"}`),
+				mustParseLabels(t, `{foo="bar", bar="foo"}`),
+				mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`),
 			},
-			mustParseLabels(`{foo="bar"}`),
+			mustParseLabels(t, `{foo="bar"}`),
 		},
 		{
 			"Subtract labels source < target",
 			args{
-				mustParseLabels(`{foo="bar", bar="foo"}`),
-				mustParseLabels(`{bar="foo"}`),
+				mustParseLabels(t, `{foo="bar", bar="foo"}`),
+				mustParseLabels(t, `{bar="foo"}`),
 			},
-			mustParseLabels(`{foo="bar"}`),
+			mustParseLabels(t, `{foo="bar"}`),
 		},
 		{
 			"Subtract labels source < target no sub",
 			args{
-				mustParseLabels(`{foo="bar", bar="foo"}`),
-				mustParseLabels(`{fo="bar"}`),
+				mustParseLabels(t, `{foo="bar", bar="foo"}`),
+				mustParseLabels(t, `{fo="bar"}`),
 			},
-			mustParseLabels(`{bar="foo", foo="bar"}`),
+			mustParseLabels(t, `{bar="foo", foo="bar"}`),
 		},
 		{
 			"Subtract labels source = target no sub",
 			args{
-				mustParseLabels(`{foo="bar"}`),
-				mustParseLabels(`{fiz="buz"}`),
+				mustParseLabels(t, `{foo="bar"}`),
+				mustParseLabels(t, `{fiz="buz"}`),
 			},
-			mustParseLabels(`{foo="bar"}`),
+			mustParseLabels(t, `{foo="bar"}`),
 		},
 		{
 			"Subtract labels source > target no sub",
 			args{
-				mustParseLabels(`{foo="bar"}`),
-				mustParseLabels(`{fiz="buz", foo="baz"}`),
+				mustParseLabels(t, `{foo="bar"}`),
+				mustParseLabels(t, `{fiz="buz", foo="baz"}`),
 			},
-			mustParseLabels(`{foo="bar"}`),
+			mustParseLabels(t, `{foo="bar"}`),
 		},
 		{
 			"Subtract labels source > target no sub",
 			args{
-				mustParseLabels(`{a="b", foo="bar", baz="baz", fizz="fizz"}`),
-				mustParseLabels(`{foo="bar", baz="baz", buzz="buzz", fizz="fizz"}`),
+				mustParseLabels(t, `{a="b", foo="bar", baz="baz", fizz="fizz"}`),
+				mustParseLabels(t, `{foo="bar", baz="baz", buzz="buzz", fizz="fizz"}`),
 			},
-			mustParseLabels(`{a="b"}`),
+			mustParseLabels(t, `{a="b"}`),
 		},
 	}
 	for _, tt := range tests {
@@ -485,12 +486,10 @@ func Test_batch(t *testing.T) {
 	}
 }
 
-func mustParseLabels(s string) loghttp.LabelSet {
+func mustParseLabels(t *testing.T, s string) loghttp.LabelSet {
+	t.Helper()
 	l, err := marshal.NewLabelSet(s)
-
-	if err != nil {
-		log.Fatalf("Failed to parse %s", s)
-	}
+	require.NoErrorf(t, err, "Failed to parse %q", s)
 
 	return l
 }
@@ -502,7 +501,7 @@ type testQueryClient struct {
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 	q := logql.NewMockQuerier(0, testStreams)
-	e := logql.NewEngine(logql.EngineOpts{}, q, logql.NoLimits)
+	e := logql.NewEngine(logql.EngineOpts{}, q, logql.NoLimits, log.NewNopLogger())
 	return &testQueryClient{
 		engine:          e,
 		queryRangeCalls: 0,

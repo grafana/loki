@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -142,7 +142,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 }
 
 func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
-	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Query")
+	log, ctx := spanlogger.New(ctx, util_log.Logger, "Shipper.Downloads.Query")
 	defer log.Span.Finish()
 
 	level.Debug(log).Log("table-name", tableName)

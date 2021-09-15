@@ -12,9 +12,9 @@ import (
 	"time"
 
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -82,7 +82,7 @@ func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient
 		defer table.dbsMtx.Unlock()
 		defer close(table.ready)
 
-		log, _ := spanlogger.New(spanCtx, "Shipper.DownloadTable")
+		log, _ := spanlogger.New(spanCtx, util_log.Logger, "Shipper.DownloadTable")
 		defer log.Span.Finish()
 
 		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
@@ -282,7 +282,7 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	t.lastUsedAt = time.Now()
 
-	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Table.MultiQueries")
+	log, ctx := spanlogger.New(ctx, util_log.Logger, "Shipper.Downloads.Table.MultiQueries")
 	defer log.Span.Finish()
 
 	level.Debug(log).Log("table-name", t.name, "query-count", len(queries))

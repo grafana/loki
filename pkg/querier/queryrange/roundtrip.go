@@ -245,7 +245,7 @@ func NewLogFilterTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(log), queryrange.NewLimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByTime, splitByMetrics))
 	}
@@ -370,7 +370,7 @@ func NewMetricTripperware(
 	splitByMetrics *SplitByMetrics,
 	registerer prometheus.Registerer,
 ) (queryrange.Tripperware, Stopper, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(log), queryrange.NewLimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
@@ -461,7 +461,7 @@ func NewInstantMetricTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.NewLimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(log), queryrange.NewLimitsMiddleware(limits)}
 
 	if cfg.ShardedQueries {
 		queryRangeMiddleware = append(queryRangeMiddleware,

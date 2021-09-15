@@ -17,10 +17,11 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/grafana/dskit/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -331,7 +332,7 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQ
 func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	const null = string('\xff')
 
-	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
+	log, ctx := spanlogger.New(ctx, util_log.Logger, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer log.Finish()
 
 	table := s.client.Open(query.TableName)

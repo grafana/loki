@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -71,7 +72,7 @@ type instance struct {
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		req := ParamsToLokiRequest(qry.Params, qry.Shards).WithQuery(qry.Expr.String())
-		logger, ctx := spanlogger.New(ctx, "DownstreamHandler.instance")
+		logger, ctx := spanlogger.New(ctx, util_log.Logger, "DownstreamHandler.instance")
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep())
 

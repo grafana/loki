@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
@@ -31,6 +32,7 @@ which can then take advantage of our sharded execution model.
 // ShardedEngine is an Engine implementation that can split queries into more parallelizable forms via
 // querying the underlying backend shards individually and reaggregating them.
 type ShardedEngine struct {
+	logger         log.Logger
 	timeout        time.Duration
 	downstreamable Downstreamable
 	limits         Limits
@@ -38,9 +40,10 @@ type ShardedEngine struct {
 }
 
 // NewShardedEngine constructs a *ShardedEngine
-func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits) *ShardedEngine {
+func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *ShardingMetrics, limits Limits, logger log.Logger) *ShardedEngine {
 	opts.applyDefault()
 	return &ShardedEngine{
+		logger:         logger,
 		timeout:        opts.Timeout,
 		downstreamable: downstreamable,
 		metrics:        metrics,
@@ -51,6 +54,7 @@ func NewShardedEngine(opts EngineOpts, downstreamable Downstreamable, metrics *S
 // Query constructs a Query
 func (ng *ShardedEngine) Query(p Params, mapped Expr) Query {
 	return &query{
+		logger:    ng.logger,
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer()),

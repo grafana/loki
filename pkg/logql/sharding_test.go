@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -59,8 +60,8 @@ func TestMappingEquivalence(t *testing.T) {
 		)
 
 		opts := EngineOpts{}
-		regular := NewEngine(opts, q, NoLimits)
-		sharded := NewShardedEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits)
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		sharded := NewShardedEngine(opts, MockDownstreamer{regular}, nilMetrics, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
 			params := NewLiteralParams(

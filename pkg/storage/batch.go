@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
+	logqllog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -271,7 +272,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 		}
 	}
 	// download chunk for this batch.
-	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, batch, it.matchers, it.chunkFilterer)
+	chksBySeries, err := fetchChunkBySeries(it.ctx, it.metrics, batch, it.matchers, it.chunkFilterer, util_log.Logger)
 	if err != nil {
 		return &chunkBatch{err: err}
 	}
@@ -405,7 +406,7 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 	return result, nil
 }
 
-func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamPipeline log.StreamPipeline, nextChunk *LazyChunk) (iter.EntryIterator, error) {
+func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamPipeline logqllog.StreamPipeline, nextChunk *LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	for i := range chks {
@@ -542,7 +543,7 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 	return result, nil
 }
 
-func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamExtractor log.StreamSampleExtractor, nextChunk *LazyChunk) (iter.SampleIterator, error) {
+func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamExtractor logqllog.StreamSampleExtractor, nextChunk *LazyChunk) (iter.SampleIterator, error) {
 	result := make([]iter.SampleIterator, 0, len(chks))
 
 	for i := range chks {
@@ -581,12 +582,13 @@ func fetchChunkBySeries(
 	chunks []*LazyChunk,
 	matchers []*labels.Matcher,
 	chunkFilter ChunkFilterer,
+	logger log.Logger,
 ) (map[model.Fingerprint][][]*LazyChunk, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
 	// Make sure the initial chunks are loaded. This is not one chunk
 	// per series, but rather a chunk per non-overlapping iterator.
-	if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+	if err := loadFirstChunks(ctx, chksBySeries, logger); err != nil {
 		return nil, err
 	}
 
@@ -602,7 +604,7 @@ func fetchChunkBySeries(
 	}
 
 	// Finally we load all chunks not already loaded
-	if err := fetchLazyChunks(ctx, allChunks); err != nil {
+	if err := fetchLazyChunks(ctx, allChunks, logger); err != nil {
 		return nil, err
 	}
 	metrics.chunks.WithLabelValues(statusMatched).Add(float64(len(allChunks)))
@@ -647,8 +649,8 @@ outer:
 	return chks
 }
 
-func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
-	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
+func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk, logger log.Logger) error {
+	log, ctx := spanlogger.New(ctx, logger, "LokiStore.fetchLazyChunks")
 	defer log.Finish()
 	start := time.Now()
 	storeStats := stats.GetStoreData(ctx)
@@ -733,7 +735,7 @@ func isInvalidChunkError(err error) bool {
 	return false
 }
 
-func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*LazyChunk) error {
+func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*LazyChunk, logger log.Logger) error {
 	var toLoad []*LazyChunk
 	for _, lchks := range chks {
 		for _, lchk := range lchks {
@@ -743,7 +745,7 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]*LazyCh
 			toLoad = append(toLoad, lchk[0])
 		}
 	}
-	return fetchLazyChunks(ctx, toLoad)
+	return fetchLazyChunks(ctx, toLoad, logger)
 }
 
 func partitionBySeriesChunks(chunks []*LazyChunk) map[model.Fingerprint][][]*LazyChunk {

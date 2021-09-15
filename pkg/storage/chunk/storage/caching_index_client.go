@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -291,7 +291,7 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	log, ctx := spanlogger.New(ctx, "cachingIndexClient.cacheFetch")
+	log, ctx := spanlogger.New(ctx, s.logger, "cachingIndexClient.cacheFetch")
 	defer log.Finish()
 
 	cacheGets.Add(float64(len(keys)))

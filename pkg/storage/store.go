@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -295,7 +296,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 	}
 
 	for _, group := range groups {
-		err = fetchLazyChunks(ctx, group)
+		err = fetchLazyChunks(ctx, group, util_log.Logger)
 		if err != nil {
 			return nil, err
 		}

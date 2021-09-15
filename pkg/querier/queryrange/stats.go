@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
 
@@ -77,10 +78,10 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 }
 
 // StatsCollectorMiddleware compute the stats summary based on the actual duration of the request and inject it in the request context.
-func StatsCollectorMiddleware() queryrange.Middleware {
+func StatsCollectorMiddleware(logger log.Logger) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
-			logger := spanlogger.FromContext(ctx)
+			logger := spanlogger.FromContext(ctx, logger)
 			start := time.Now()
 
 			// execute the request

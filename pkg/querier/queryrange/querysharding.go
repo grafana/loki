@@ -9,9 +9,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/spanlogger"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -75,7 +75,7 @@ func newASTMapperware(
 		confs:   confs,
 		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
 		next:    next,
-		ng:      logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits),
+		ng:      logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics, limits, logger),
 		metrics: metrics,
 	}
 }
@@ -96,7 +96,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		return ast.next.Do(ctx, r)
 	}
 
-	shardedLog, ctx := spanlogger.New(ctx, "shardedEngine")
+	shardedLog, ctx := spanlogger.New(ctx, ast.logger, "shardedEngine")
 	defer shardedLog.Finish()
 
 	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)

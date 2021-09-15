@@ -17,7 +17,7 @@ import (
 	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/grafana/dskit/spanlogger"
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -137,7 +137,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	var items map[string]*memcache.Item
 	const method = "Memcache.GetMulti"
 	err := instr.CollectedRequest(ctx, method, c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
-		log, _ := spanlogger.New(innerCtx, method)
+		log, _ := spanlogger.New(innerCtx, c.logger, method)
 		defer log.Finish()
 		log.LogFields(otlog.Int("keys requested", len(keys)))
 
