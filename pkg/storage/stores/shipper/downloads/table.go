@@ -360,10 +360,15 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 	folderPath, _ := t.folderPathForTable(false)
 	filePath := path.Join(folderPath, dbName)
 
-	// download the file temporarily with some other name to allow blugeDB client to close the existing file first if it exists
-	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", dbName, "temp"))
+	dbName = dbName[strings.LastIndex(dbName, "-")+1:]
+	dbName = dbName[:strings.LastIndex(dbName, ".")]
 
-	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, tempFilePath)
+	// download the file temporarily with some other name to allow blugeDB client to close the existing file first if it exists
+	// tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", dbName, "temp"))
+
+	filePath = path.Join(folderPath, dbName)
+
+	err = shipper_util.GetFileFromStorage(ctx, t.storageClient, storageObject.Key, folderPath)
 	if err != nil {
 		return err
 	}
@@ -380,14 +385,14 @@ func (t *Table) downloadFile(ctx context.Context, storageObject chunk.StorageObj
 		df = &downloadedFile{}
 	}
 
-	// move the file from temp location to actual location
-	err = os.Rename(tempFilePath, filePath)
-	if err != nil {
-		return err
-	}
+	//// move the file from temp location to actual location
+	//err = os.Rename(tempFilePath, filePath)
+	//if err != nil {
+	//	return err
+	//}
 
 	df.mtime = storageObject.ModifiedAt
-	df.blugeDB = &bluge_db.BlugeDB{} //local.OpenBoltdbFile(filePath)
+	df.blugeDB = &bluge_db.BlugeDB{Name: dbName, Folder: filePath} //local.OpenBoltdbFile(filePath)
 	if err != nil {
 		return err
 	}

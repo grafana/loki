@@ -82,7 +82,7 @@ func (b *BlugeDB) QueryDB() error {
 	}
 	defer reader.Close()
 
-	q := bluge.NewMatchQuery("bluge").SetField("name")
+	q := bluge.NewMatchQuery("1").SetField("foo")
 	request := bluge.NewTopNSearch(10, q).
 		WithStandardAggregations()
 	documentMatchIterator, err := reader.Search(context.Background(), request)
