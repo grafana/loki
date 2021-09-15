@@ -59,9 +59,8 @@ type Table struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient StorageClient) *Table {
+func NewTable(spanCtx context.Context, name, cacheLocation string, storageClient StorageClient, metrics *metrics) *Table {
 	ctx, cancel := context.WithCancel(context.Background())
-	metrics := &metrics{}
 	table := Table{
 		name:          name,
 		cacheLocation: cacheLocation,
