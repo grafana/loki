@@ -152,7 +152,10 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 		df := downloadedFile{}
 
 		df.mtime = object.ModifiedAt
-		df.blugeDB = &bluge_db.BlugeDB{Name: dbName, Folder: ""} //bluge_db.OpenBoltdbFile(filePath)
+		dbName = dbName[strings.LastIndex(dbName, "-")+1:]
+		dbName = dbName[:strings.LastIndex(dbName, ".")]
+
+		df.blugeDB = &bluge_db.BlugeDB{Name: dbName, Folder: folderPath} //bluge_db.OpenBoltdbFile(filePath)
 		if err != nil {
 			return err
 		}
@@ -200,7 +203,7 @@ func (t *Table) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery) error {
 	// let us check if table is ready for use while also honoring the context timeout
 	select {
 	case <-ctx.Done():
@@ -224,7 +227,8 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	for name, db := range t.dbs {
 		for _, query := range queries {
-			if err := db.blugeDB.QueryDB(ctx, query, callback); err != nil {
+			fmt.Print(query)
+			if err := db.blugeDB.QueryDB(); err != nil {
 				return err
 			}
 		}
