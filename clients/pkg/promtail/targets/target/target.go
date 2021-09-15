@@ -27,9 +27,6 @@ const (
 	// PushTargetType is a Loki push target
 	PushTargetType = TargetType("Push")
 
-	// HTTPTargetType is a HTTP target
-	HTTPTargetType = TargetType("Push")
-
 	// WindowsTargetType is a Windows event target
 	WindowsTargetType = TargetType("WindowsEvent")
 )
