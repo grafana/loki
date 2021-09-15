@@ -227,17 +227,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	)
 }
 
-func generateQuerierServiceConfig(t *Loki) querier.WorkerServiceConfig {
-	return querier.WorkerServiceConfig{
-		AllEnabled:            t.Cfg.isModuleEnabled(All),
-		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
-		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
-		QuerierWorkerConfig:   &t.Cfg.Worker,
-		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
-		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
-	}
-}
-
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV

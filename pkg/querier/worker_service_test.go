@@ -14,12 +14,6 @@ import (
 )
 
 func Test_InitQuerierService(t *testing.T) {
-	requestedAuthenticated := false
-	noopWrapper := middleware.Func(func(next http.Handler) http.Handler {
-		requestedAuthenticated = true
-		return next
-	})
-
 	var mockQueryHandlers = map[string]http.Handler{
 		"/loki/api/v1/query": http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			_, err := res.Write([]byte("test handler"))
@@ -27,10 +21,20 @@ func Test_InitQuerierService(t *testing.T) {
 		}),
 	}
 
-	testContext := func(config WorkerServiceConfig) (*mux.Router, services.Service) {
-		requestedAuthenticated = false
+	testContext := func(config WorkerServiceConfig, authMiddleware middleware.Interface) (*mux.Router, services.Service) {
 		externalRouter := mux.NewRouter()
-		querierWorkerService, err := InitWorkerService(config, mockQueryHandlers, externalRouter, http.HandlerFunc(externalRouter.ServeHTTP), noopWrapper)
+
+		if authMiddleware == nil {
+			authMiddleware = middleware.Identity
+		}
+
+		querierWorkerService, err := InitWorkerService(
+			config,
+			mockQueryHandlers,
+			externalRouter,
+			http.HandlerFunc(externalRouter.ServeHTTP),
+			authMiddleware,
+		)
 		require.NoError(t, err)
 
 		return externalRouter, querierWorkerService
@@ -45,7 +49,7 @@ func Test_InitQuerierService(t *testing.T) {
 				QuerierWorkerConfig:   &querier_worker.Config{},
 			}
 
-			externalRouter, _ := testContext(config)
+			externalRouter, _ := testContext(config, nil)
 
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
@@ -62,7 +66,13 @@ func Test_InitQuerierService(t *testing.T) {
 				QuerierWorkerConfig:   &querier_worker.Config{},
 			}
 
-			externalRouter, _ := testContext(config)
+			requestedAuthenticated := false
+			mockAuthMiddleware := middleware.Func(func(next http.Handler) http.Handler {
+				requestedAuthenticated = true
+				return next
+			})
+
+			externalRouter, _ := testContext(config, mockAuthMiddleware)
 
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
@@ -78,7 +88,7 @@ func Test_InitQuerierService(t *testing.T) {
 				QuerierWorkerConfig:   &querier_worker.Config{},
 			}
 
-			externalRouter, _ := testContext(config)
+			externalRouter, _ := testContext(config, nil)
 
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
@@ -96,7 +106,7 @@ func Test_InitQuerierService(t *testing.T) {
 				QuerierWorkerConfig:   &querier_worker.Config{},
 			}
 
-			_, workerService := testContext(config)
+			_, workerService := testContext(config, nil)
 			assert.Nil(t, workerService)
 		})
 
@@ -116,7 +126,7 @@ func Test_InitQuerierService(t *testing.T) {
 				withFrontendConfig,
 				withSchedulerConfig,
 			} {
-				_, workerService := testContext(config)
+				_, workerService := testContext(config, nil)
 				assert.NotNil(t, workerService)
 			}
 		})
@@ -171,7 +181,7 @@ func Test_InitQuerierService(t *testing.T) {
 
 		t.Run("do not register the internal query handler externally", func(t *testing.T) {
 			for _, config := range nonStandaloneTargetPermutations {
-				externalRouter, _ := testContext(config)
+				externalRouter, _ := testContext(config, nil)
 				recorder := httptest.NewRecorder()
 				request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
 				externalRouter.ServeHTTP(recorder, request)
@@ -185,7 +195,7 @@ func Test_InitQuerierService(t *testing.T) {
 				config.QuerierWorkerConfig = &workerConfig
 				config.GrpcListenPort = 1234
 
-				testContext(config)
+				testContext(config, nil)
 
 				assert.Equal(t, "127.0.0.1:1234", workerConfig.FrontendAddress)
 			}
@@ -197,7 +207,7 @@ func Test_InitQuerierService(t *testing.T) {
 				config.QuerierWorkerConfig = &workerConfig
 				config.QuerierMaxConcurrent = 42
 
-				testContext(config)
+				testContext(config, nil)
 
 				assert.Equal(t, 42, workerConfig.MaxConcurrentRequests)
 			}
@@ -209,7 +219,7 @@ func Test_InitQuerierService(t *testing.T) {
 				config.QuerierWorkerConfig = &workerConfig
 				config.GrpcListenPort = 1234
 
-				_, querierWorkerService := testContext(config)
+				_, querierWorkerService := testContext(config, nil)
 
 				assert.NotNil(t, querierWorkerService)
 			}
