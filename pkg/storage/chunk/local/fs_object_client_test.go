@@ -16,14 +16,15 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
-func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
+func testFSObjectClient_DeleteChunksBefore(t *testing.T, tenantFolders bool) {
 	deleteFilesOlderThan := 10 * time.Minute
 
 	fsChunksDir, err := ioutil.TempDir(os.TempDir(), "fs-chunks")
 	require.NoError(t, err)
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
-		Directory: fsChunksDir,
+		Directory:     fsChunksDir,
+		TenantFolders: tenantFolders,
 	})
 	require.NoError(t, err)
 
@@ -63,12 +64,18 @@ func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	require.Equal(t, 1, len(files), "Number of files should be 1 after enforcing retention")
 }
 
-func TestFSObjectClient_List(t *testing.T) {
+func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
+	testFSObjectClient_DeleteChunksBefore(t, false)
+	testFSObjectClient_DeleteChunksBefore(t, true)
+}
+
+func testFSObjectClient_List(t *testing.T, tenantFolders bool) {
 	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-objects")
 	require.NoError(t, err)
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
-		Directory: fsObjectsDir,
+		Directory:     fsObjectsDir,
+		TenantFolders: tenantFolders,
 	})
 	require.NoError(t, err)
 
@@ -165,12 +172,18 @@ func TestFSObjectClient_List(t *testing.T) {
 	require.Empty(t, commonPrefixes)
 }
 
-func TestFSObjectClient_DeleteObject(t *testing.T) {
+func TestFSObjectClient_List(t *testing.T) {
+	testFSObjectClient_List(t, false)
+	testFSObjectClient_List(t, true)
+}
+
+func testFSObjectClient_DeleteObject(t *testing.T, tenantFolders bool) {
 	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-delete-object")
 	require.NoError(t, err)
 
 	bucketClient, err := NewFSObjectClient(FSConfig{
-		Directory: fsObjectsDir,
+		Directory:     fsObjectsDir,
+		TenantFolders: tenantFolders,
 	})
 	require.NoError(t, err)
 
@@ -214,4 +227,9 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, commonPrefixes, 0)
 	require.Len(t, files, len(foldersWithFiles["folder2/"]))*/
+}
+
+func TestFSObjectClient_DeleteObject(t *testing.T) {
+	testFSObjectClient_DeleteObject(t, false)
+	testFSObjectClient_DeleteObject(t, true)
 }
