@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/blugelabs/bluge"
-	//"github.com/cortexproject/cortex/pkg/chunk/local"
-
-	//"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"log"
 )
 
@@ -50,11 +48,11 @@ type BlugeWriteBatch struct {
 	Writes map[string]TableWrites
 }
 
-//func (b *BlugeWriteBatch) NewWriteBatch() chunk.WriteBatch {
-//	return &BoltWriteBatch{
-//		Writes: map[string]TableWrites{},
-//	}
-//}
+func NewWriteBatch() chunk.WriteBatch {
+	return &BlugeWriteBatch{
+		Writes: map[string]TableWrites{},
+	}
+}
 
 func (b *BlugeWriteBatch) getOrCreateTableWrites(tableName string) TableWrites {
 	writes, ok := b.Writes[tableName]

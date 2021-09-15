@@ -45,7 +45,7 @@ func main() {
 
 	tableManager, err := uploads.NewTableManager(cfg, fsObjectClient, nil)
 
-	wr := &bluge_db.BlugeWriteBatch{Writes: map[string]bluge_db.TableWrites{}}
+	wr := bluge_db.NewWriteBatch()
 	wr.Add("mark", "test", []byte("test"), []byte("test"))
 	tableManager.BatchWrite(context.Background(), wr)
 	select {
