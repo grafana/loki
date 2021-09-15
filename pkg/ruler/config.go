@@ -3,6 +3,7 @@ package ruler
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/pkg/errors"
@@ -15,7 +16,7 @@ import (
 type Config struct {
 	ruler.Config `yaml:",inline"`
 
-	WAL         instance.Config   `yaml:"wal,omitempty"`
+	WAL instance.Config `yaml:"wal,omitempty"`
 	// we cannot define this in the WAL config since it creates an import cycle
 	WALCleaner  cleaner.Config    `yaml:"wal_cleaner,omitempty"`
 	RemoteWrite RemoteWriteConfig `yaml:"remote_write,omitempty"`
@@ -43,8 +44,9 @@ func (c *Config) Validate() error {
 }
 
 type RemoteWriteConfig struct {
-	Client  config.RemoteWriteConfig `yaml:"client"`
-	Enabled bool                     `yaml:"enabled"`
+	Client              config.RemoteWriteConfig `yaml:"client"`
+	Enabled             bool                     `yaml:"enabled"`
+	ConfigRefreshPeriod time.Duration            `yaml:"config_refresh_period"`
 }
 
 func (c *RemoteWriteConfig) Validate() error {
@@ -58,4 +60,5 @@ func (c *RemoteWriteConfig) Validate() error {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Remote-write recording rule samples to Prometheus-compatible remote-write receiver.")
+	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
 }

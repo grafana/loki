@@ -106,12 +106,18 @@ type storageRegistry struct {
 	manager instance.Manager
 
 	appenderReady *prometheus.GaugeVec
+
+	config         Config
+	overrides      RulesLimits
+	lastUpdateTime time.Time
 }
 
-func newStorageRegistry(logger log.Logger, appenderReady *prometheus.GaugeVec) *storageRegistry {
+func newStorageRegistry(logger log.Logger, appenderReady *prometheus.GaugeVec, config Config, overrides RulesLimits) *storageRegistry {
 	return &storageRegistry{
 		logger:        logger,
 		appenderReady: appenderReady,
+		config:        config,
+		overrides:     overrides,
 	}
 }
 
@@ -165,6 +171,16 @@ func (r *storageRegistry) Appender(ctx context.Context) storage.Appender {
 		return notReadyAppender{}
 	}
 
+	// we should reconfigure the storage whenever this appender is requested, but since
+	// this can request an appender very often, we hide this behind a gate
+	now := time.Now()
+	if r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod)) {
+		r.lastUpdateTime = now
+
+		level.Debug(r.logger).Log("tenant", tenant, "msg", "refreshing remote-write configuration")
+		setupStorage(r.config, r.manager, tenant, r.overrides)
+	}
+
 	return inst.Appender(ctx)
 }
 
@@ -216,7 +232,7 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 
 	reg.MustRegister(appenderReady)
 
-	walRegistry := newStorageRegistry(log.With(logger, "storage", "registry"), appenderReady)
+	walRegistry := newStorageRegistry(log.With(logger, "storage", "registry"), appenderReady, cfg, overrides)
 
 	instMetrics := instance.NewMetrics(reg)
 	msMetrics = newMemstoreMetrics(reg)
@@ -229,7 +245,6 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 	manager := instance.NewBasicManager(instance.BasicManagerConfig{
 		InstanceRestartBackoff: time.Second,
 	}, instMetrics, log.With(logger, "manager", "tenant-wal"), man.newInstance)
-
 
 	if walCleaner != nil {
 		walCleaner.Stop()
