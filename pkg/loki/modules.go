@@ -198,7 +198,14 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	querierWorkerServiceConfig := generateQuerierServiceConfig(t)
+	querierWorkerServiceConfig := querier.WorkerServiceConfig{
+		AllEnabled:            t.Cfg.isModuleEnabled(All),
+		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
+		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
+		QuerierWorkerConfig:   &t.Cfg.Worker,
+		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
+		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
+	}
 
 	var queryHandlers = map[string]http.Handler{
 		"/loki/api/v1/query_range":         http.HandlerFunc(t.Querier.RangeQueryHandler),
