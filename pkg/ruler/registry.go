@@ -113,10 +113,14 @@ func (r *walRegistry) Get(tenant string) storage.Storage {
 
 func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	tenant, _ := user.ExtractOrgID(ctx)
+	rwCfg := r.overrides.RulerRemoteWrite(tenant, r.config.RemoteWrite)
+	if !rwCfg.Enabled {
+		return discardingAppender{}
+	}
 
 	inst := r.Get(tenant)
 	if inst == nil {
-		level.Warn(r.logger).Log("user", tenant, "msg", "not ready")
+		level.Warn(r.logger).Log("user", tenant, "msg", "WAL instance not yet ready")
 		return notReadyAppender{}
 	}
 
@@ -191,6 +195,17 @@ func (n notReadyAppender) AppendExemplar(ref uint64, l labels.Labels, e exemplar
 }
 func (n notReadyAppender) Commit() error   { return errNotReady }
 func (n notReadyAppender) Rollback() error { return errNotReady }
+
+type discardingAppender struct{}
+
+func (n discardingAppender) Append(ref uint64, l labels.Labels, t int64, v float64) (uint64, error) {
+	return 0, nil
+}
+func (n discardingAppender) AppendExemplar(ref uint64, l labels.Labels, e exemplar.Exemplar) (uint64, error) {
+	return 0, nil
+}
+func (n discardingAppender) Commit() error   { return nil }
+func (n discardingAppender) Rollback() error { return nil }
 
 type readyChecker interface {
 	IsReady(tenant string) bool
