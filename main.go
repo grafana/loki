@@ -48,8 +48,20 @@ func main() {
 	wr := bluge_db.NewWriteBatch()
 	wr.Add("mark", "test", []byte("test"), []byte("test"))
 	tableManager.BatchWrite(context.Background(), wr)
+	match := map[string]string{
+		"test": "test",
+	}
+	qs := bluge_db.IndexQuery{
+		TableName: "mark",
+		Matchs:    match,
+	}
+	tableManager.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
+		if field == "_id" {
+			fmt.Printf("match: %s\n", string(value))
+		}
+		return true
+	})
 	select {
-
 	case <-time.Tick(2000000000 * time.Second):
 		//t.Fatal("failed to initialize table in time")
 	}

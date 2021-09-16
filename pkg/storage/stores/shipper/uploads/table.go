@@ -96,18 +96,17 @@ func newTableWithDBs(dbs map[string]*bluge_db.BlugeDB, path, uploader string, st
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
+func (lt *Table) MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
 
-	//for _, db := range lt.dbs {
-	//	fmt.Print(db)
-	//	for _, query := range queries {
-	//		if err := db.QueryDB(ctx, query, callback); err != nil {
-	//			return err
-	//		}
-	//	}
-	//}
+	for _, db := range lt.dbs {
+		for _, query := range queries {
+			if err := db.QueryDB(ctx, query, callback); err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }

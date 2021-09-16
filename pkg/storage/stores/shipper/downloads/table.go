@@ -50,7 +50,7 @@ type Table struct {
 	cacheLocation string
 	metrics       *metrics
 	storageClient StorageClient
-	lastUsedAt    time.Time
+	lastUsedAt    time.Time // use for cache expired
 	dbs           map[string]*downloadedFile
 	dbsMtx        sync.RWMutex
 	err           error
@@ -202,7 +202,7 @@ func (t *Table) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery) error {
+func (t *Table) MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
 	// let us check if table is ready for use while also honoring the context timeout
 	select {
 	case <-ctx.Done():
@@ -226,8 +226,7 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery) er
 
 	for name, db := range t.dbs {
 		for _, query := range queries {
-			fmt.Print(query)
-			if err := db.blugeDB.QueryDB(); err != nil {
+			if err := db.blugeDB.QueryDB(ctx, query, callback); err != nil {
 				return err
 			}
 		}

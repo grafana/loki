@@ -17,33 +17,6 @@ func NewDB(name string, path string) *BlugeDB {
 	return &BlugeDB{Name: name, Folder: path} // "./snpseg"
 }
 
-type logItem []logLabel
-type logLabel struct {
-	name  string
-	value string
-}
-
-//func (b *BlugeDB) WriteToDB(ctx context.Context,  writes logItem) error {
-//	config := bluge.DefaultConfig(b.Name)
-//	writer, err := bluge.OpenWriter(config)
-//	if err != nil {
-//		log.Fatalf("error opening writer: %v", err)
-//	}
-//	defer writer.Close()
-//
-//	doc := bluge.NewDocument("example") // can use server name
-//
-//	for _, label := range writes {
-//		doc = doc.AddField(bluge.NewTextField(label.name, label.value))
-//	}
-//
-//	err = writer.Update(doc.ID(), doc)
-//	if err != nil {
-//		log.Fatalf("error updating document: %v", err)
-//	}
-//	return err
-//}
-
 type BlugeWriteBatch struct {
 	Writes map[string]TableWrites
 }
@@ -93,7 +66,7 @@ func (b *BlugeDB) WriteToDB(ctx context.Context, writes TableWrites) error {
 	doc := bluge.NewDocument("example") // can use server name
 
 	for key, value := range writes.Puts {
-		doc = doc.AddField(bluge.NewTextField(key, value))
+		doc = doc.AddField(bluge.NewTextField(key, value).StoreValue())
 	}
 
 	err = writer.Update(doc.ID(), doc)
@@ -103,8 +76,16 @@ func (b *BlugeDB) WriteToDB(ctx context.Context, writes TableWrites) error {
 	return err
 }
 
+type IndexQuery struct {
+	TableName string
+	Matchs    map[string]string // filed => value
+}
+
+//visitor segment.StoredFieldVisitor
+type StoredFieldVisitor func(field string, value []byte) bool
+
 // ctx context.Context, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)
-func (b *BlugeDB) QueryDB() error {
+func (b *BlugeDB) QueryDB(ctx context.Context, query IndexQuery, callback StoredFieldVisitor) error {
 	config := bluge.DefaultConfig(b.Folder + "/" + b.Name)
 	writer, err := bluge.OpenWriter(config)
 	reader, err := writer.Reader()
@@ -113,7 +94,7 @@ func (b *BlugeDB) QueryDB() error {
 	}
 	defer reader.Close()
 
-	q := bluge.NewMatchQuery("1").SetField("foo")
+	q := bluge.NewMatchQuery("test").SetField("test")
 	request := bluge.NewTopNSearch(10, q).
 		WithStandardAggregations()
 	documentMatchIterator, err := reader.Search(context.Background(), request)
