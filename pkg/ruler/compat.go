@@ -5,7 +5,6 @@ import (
 	"context"
 	"io/ioutil"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
@@ -14,25 +13,19 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
 	yaml "gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -45,11 +38,11 @@ type RulesLimits interface {
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(logger log.Logger, engine *logql.Engine, overrides RulesLimits, manager instance.Manager, userID string) rules.QueryFunc {
+func engineQueryFunc(logger log.Logger, engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
-		if inst, err := manager.GetInstance(userID); err != nil || !inst.Ready() {
+		if !checker.IsReady(userID) {
 			return nil, errNotReady
 		}
 
@@ -99,200 +92,19 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 	return ValidateGroups(grp)
 }
 
-type storageRegistry struct {
-	sync.RWMutex
-
-	logger  log.Logger
-	manager instance.Manager
-
-	appenderReady *prometheus.GaugeVec
-
-	config         Config
-	overrides      RulesLimits
-	lastUpdateTime time.Time
-}
-
-func newStorageRegistry(logger log.Logger, appenderReady *prometheus.GaugeVec, config Config, overrides RulesLimits) *storageRegistry {
-	return &storageRegistry{
-		logger:        logger,
-		appenderReady: appenderReady,
-		config:        config,
-		overrides:     overrides,
-	}
-}
-
-func (r *storageRegistry) Set(manager instance.Manager) {
-	r.Lock()
-	defer r.Unlock()
-	r.manager = manager
-}
-
-func (r *storageRegistry) Get(tenant string) storage.Storage {
-	r.RLock()
-	defer r.RUnlock()
-
-	ready := r.appenderReady.WithLabelValues(tenant)
-
-	if r.manager == nil {
-		// TODO error handling
-		ready.Set(0)
-		return nil
-	}
-
-	inst, err := r.manager.GetInstance(tenant)
-	if err != nil {
-		// TODO error handling
-		ready.Set(0)
-		return nil
-	}
-
-	i, ok := inst.(*instance.Instance)
-	if !ok {
-		// TODO error handling
-		ready.Set(0)
-		return nil
-	}
-
-	if !i.Ready() {
-		ready.Set(0)
-		return nil
-	}
-
-	ready.Set(1)
-	return i.Storage()
-}
-
-func (r *storageRegistry) Appender(ctx context.Context) storage.Appender {
-	tenant, _ := user.ExtractOrgID(ctx)
-
-	inst := r.Get(tenant)
-	if inst == nil {
-		level.Warn(r.logger).Log("tenant", tenant, "msg", "not ready")
-		return notReadyAppender{}
-	}
-
-	// we should reconfigure the storage whenever this appender is requested, but since
-	// this can request an appender very often, we hide this behind a gate
-	now := time.Now()
-	if r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod)) {
-		r.lastUpdateTime = now
-
-		level.Debug(r.logger).Log("tenant", tenant, "msg", "refreshing remote-write configuration")
-		r.configureTenantStorage(tenant)
-	}
-
-	return inst.Appender(ctx)
-}
-
-func (r *storageRegistry) configureTenantStorage(tenant string) {
-	// make a copy
-	conf := r.config.WAL
-
-	conf.Name = tenant
-	conf.Tenant = tenant
-
-	// we don't need to send metadata - we have no scrape targets
-	r.config.RemoteWrite.Client.MetadataConfig.Send = false
-
-	// retrieve remote-write config for this tenant, using the global remote-write for defaults
-	rwCfg := r.overrides.RulerRemoteWrite(tenant, r.config.RemoteWrite)
-
-	// TODO(dannyk): implement multiple RW configs
-	if rwCfg.Enabled {
-		// always inject the X-Org-ScopeId header for multi-tenant metrics backends
-		if rwCfg.Client.Headers == nil {
-			rwCfg.Client.Headers = make(map[string]string)
-		}
-
-		rwCfg.Client.Headers[user.OrgIDHeaderName] = tenant
-
-		conf.RemoteWrite = []*config.RemoteWriteConfig{
-			&rwCfg.Client,
-		}
-	} else {
-		// reset if remote-write is disabled at runtime
-		conf.RemoteWrite = []*config.RemoteWriteConfig{}
-	}
-
-	if err := r.manager.ApplyConfig(conf); err != nil {
-		level.Error(r.logger).Log("tenant", tenant, "msg", "could not apply given config", "err", err)
-	}
-}
-
-type notReadyAppender struct{}
-
-var errNotReady = errors.New("appender not ready")
-
-func (n notReadyAppender) Append(ref uint64, l labels.Labels, t int64, v float64) (uint64, error) {
-	return 0, errNotReady
-}
-
-func (n notReadyAppender) AppendExemplar(ref uint64, l labels.Labels, e exemplar.Exemplar) (uint64, error) {
-	return 0, errNotReady
-}
-
-func (n notReadyAppender) Commit() error { return errNotReady }
-
-func (n notReadyAppender) Rollback() error { return errNotReady }
-
+// MetricsPrefix defines the prefix to use for all metrics in this package
 const MetricsPrefix = "loki_ruler_wal_"
 
-var walCleaner *cleaner.WALCleaner
+var registry *walRegistry
 
-type TenantWALManager struct {
-	logger log.Logger
-	reg    prometheus.Registerer
-}
-
-func (t *TenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{
-		"tenant": c.Tenant,
-	}, t.reg)
-
-	// TODO create new metrics each time? (probably yes, but do they clash when registering?)
-	// TODO how will unregistering work when a rule group is removed?
-
-	// create metrics here and pass down
-	return instance.New(reg, c, wal.NewMetrics(reg), t.logger)
-}
-
-func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
-	var msMetrics *memstoreMetrics
-
+func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
 	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
 
-	appenderReady := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "appender_ready",
-	}, []string{"tenant"})
-
-	reg.MustRegister(appenderReady)
-
-	walRegistry := newStorageRegistry(log.With(logger, "storage", "registry"), appenderReady, cfg, overrides)
-
-	instMetrics := instance.NewMetrics(reg)
-	msMetrics = newMemstoreMetrics(reg)
-
-	man := &TenantWALManager{
-		reg:    reg,
-		logger: log.With(logger, "manager", "tenant-wal"),
+	if registry != nil {
+		registry.Close()
 	}
 
-	manager := instance.NewBasicManager(instance.BasicManagerConfig{
-		InstanceRestartBackoff: time.Second,
-	}, instMetrics, log.With(logger, "manager", "tenant-wal"), man.newInstance)
-
-	if walCleaner != nil {
-		walCleaner.Stop()
-	}
-
-	walCleaner = cleaner.NewWALCleaner(
-		logger,
-		manager,
-		cleaner.NewMetrics(reg),
-		cfg.WAL.Path,
-		cfg.WALCleaner)
-
-	walRegistry.Set(manager)
+	registry = newStorageRegistry(log.With(logger, "storage", "registry"), reg, cfg, overrides)
 
 	return func(
 		ctx context.Context,
@@ -301,14 +113,14 @@ func MemstoreTenantManager(cfg Config, engine *logql.Engine, overrides RulesLimi
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-		walRegistry.configureTenantStorage(userID)
+		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(logger, engine, overrides, manager, userID)
-		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		queryFunc := engineQueryFunc(logger, engine, overrides, registry, userID)
+		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      walRegistry,
+			Appendable:      registry,
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),

@@ -46,6 +46,9 @@ type Manager interface {
 	// Ready indicates if all instances are ready for processing.
 	Ready() bool
 
+	// InstanceReady indicates if an instance is ready for processing.
+	InstanceReady(name string) bool
+
 	// Stop stops the Manager and all managed instances.
 	Stop()
 }
@@ -304,6 +307,16 @@ func (m *BasicManager) Ready() bool {
 	}
 
 	return true
+}
+
+// InstanceReady indicates if an instance is ready for processing.
+func (m *BasicManager) InstanceReady(name string) bool {
+	inst, err := m.GetInstance(name)
+	if err != nil {
+		return false
+	}
+
+	return inst.Ready()
 }
 
 // Stop stops the BasicManager and stops all active processes for configs.
