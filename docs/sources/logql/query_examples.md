@@ -1,6 +1,6 @@
 ---
 title: Query examples
-weight: 40
+weight: 50
 ---
 
 # Query examples
