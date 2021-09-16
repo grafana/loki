@@ -9,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 
-	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 )
 
@@ -18,7 +17,10 @@ type Config struct {
 
 	WAL instance.Config `yaml:"wal,omitempty"`
 	// we cannot define this in the WAL config since it creates an import cycle
-	WALCleaner  cleaner.Config    `yaml:"wal_cleaner,omitempty"`
+
+	// TODO(dannyk): once we have a way to know when a rulegroup has been unregistered,
+	// 				 we can enable the WAL cleaner - which cleans up WALs that are no longer managed
+	//WALCleaner  cleaner.Config    `yaml:"wal_cleaner,omitempty"`
 	RemoteWrite RemoteWriteConfig `yaml:"remote_write,omitempty"`
 }
 

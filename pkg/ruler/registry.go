@@ -43,12 +43,15 @@ func newStorageRegistry(logger log.Logger, reg prometheus.Registerer, config Con
 		config:    config,
 		overrides: overrides,
 		manager:   manager,
-		cleaner: cleaner.NewWALCleaner(
-			logger,
-			manager,
-			cleaner.NewMetrics(reg),
-			config.WAL.Path,
-			config.WALCleaner),
+
+		// TODO(dannyk): once we have a way to know when a rulegroup has been unregistered,
+		// 				 we can enable the WAL cleaner - which cleans up WALs that are no longer managed
+		//cleaner: cleaner.NewWALCleaner(
+		//	logger,
+		//	manager,
+		//	cleaner.NewMetrics(reg),
+		//	config.WAL.Dir,
+		//	config.WALCleaner),
 	}
 }
 
