@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/runtimeconfig"
 	"gopkg.in/yaml.v2"
@@ -25,6 +27,7 @@ type runtimeConfigValues struct {
 func (r runtimeConfigValues) validate() error {
 	for t, c := range r.TenantLimits {
 		if c == nil {
+			level.Warn(util_log.Logger).Log("msg", "skipping empty tenant limit definition", "tenant", t)
 			continue
 		}
 
