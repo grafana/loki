@@ -64,7 +64,7 @@ func (tm *TableManager) loop() {
 	tm.wg.Add(1)
 	defer tm.wg.Done()
 
-	syncTicker := time.NewTicker(1 * time.Second)
+	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
 	defer syncTicker.Stop()
 
 	for {

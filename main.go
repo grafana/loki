@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	"time"
 )
 
@@ -37,17 +37,43 @@ func main() {
 	//	CacheTTL:     time.Hour,
 	//}
 
-	cfg := uploads.Config{
-		Uploader:       "test-table-manager",
-		IndexDir:       "/Users/mwang5/loki/snpsegindex",
-		UploadInterval: time.Hour,
+	//cfg := uploads.Config{
+	//	Uploader:       "test-table-manager",
+	//	IndexDir:       "/Users/mwang5/loki/snpsegindex",
+	//	UploadInterval: time.Hour,
+	//}
+	//
+	//tableManager, err := uploads.NewTableManager(cfg, fsObjectClient, nil)
+	//
+	//wr := bluge_db.NewWriteBatch()
+	//wr.Add("mark", "test", []byte("test"), []byte("test"))
+	//tableManager.BatchWrite(context.Background(), wr)
+	//match := map[string]string{
+	//	"test": "test",
+	//}
+	//qs := bluge_db.IndexQuery{
+	//	TableName: "mark",
+	//	Matchs:    match,
+	//}
+	//tableManager.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
+	//	if field == "_id" {
+	//		fmt.Printf("match: %s\n", string(value))
+	//	}
+	//	return true
+	//})
+
+	config := shipper.Config{ActiveIndexDirectory: "snpsegindex",
+		SharedStoreType: "filesystem",
+		CacheLocation:   "dcache",
+		CacheTTL:        30 * time.Second,
+		ResyncInterval:  20 * time.Second,
+		IngesterName:    "wang",
+		Mode:            shipper.ModeReadWrite,
 	}
-
-	tableManager, err := uploads.NewTableManager(cfg, fsObjectClient, nil)
-
-	wr := bluge_db.NewWriteBatch()
-	wr.Add("mark", "test", []byte("test"), []byte("test"))
-	tableManager.BatchWrite(context.Background(), wr)
+	s, err := shipper.NewShipper(config, fsObjectClient, nil)
+	//wr := s.NewWriteBatch()
+	//wr.Add("mark", "test", []byte("test"), []byte("test"))
+	//s.BatchWrite(context.Background(), wr)
 	match := map[string]string{
 		"test": "test",
 	}
@@ -55,17 +81,28 @@ func main() {
 		TableName: "mark",
 		Matchs:    match,
 	}
-	tableManager.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
+	s.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
 		if field == "_id" {
 			fmt.Printf("match: %s\n", string(value))
 		}
 		return true
 	})
+
+	//tableManager.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
+	//	if field == "_id" {
+	//		fmt.Printf("match: %s\n", string(value))
+	//	}
+	//	return true
+	//})
+	//wr := bluge_db.NewWriteBatch()
+	//wr.Add("mark", "test", []byte("test"), []byte("test"))
+	//tableManager.BatchWrite(context.Background(), wr)
+	fmt.Print(s)
 	select {
 	case <-time.Tick(2000000000 * time.Second):
 		//t.Fatal("failed to initialize table in time")
 	}
-	fmt.Print(tableManager)
+	//fmt.Print(tableManager)
 }
 
 //func main() {

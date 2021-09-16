@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io/ioutil"
 	"os"
 	"path"
@@ -72,17 +73,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 type Shipper struct {
-	cfg               Config
-	boltDBIndexClient boltDBIndexClient
-	uploadsManager    *uploads.TableManager
-	downloadsManager  *downloads.TableManager
+	cfg              Config
+	uploadsManager   *uploads.TableManager
+	downloadsManager *downloads.TableManager
 
 	metrics  *metrics
 	stopOnce sync.Once
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (chunk.IndexClient, error) {
+func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometheus.Registerer) (*Shipper, error) {
 	shipper := Shipper{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
@@ -99,19 +99,6 @@ func NewShipper(cfg Config, storageClient chunk.ObjectClient, registerer prometh
 }
 
 func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.Registerer) error {
-	// When we run with target querier we don't have ActiveIndexDirectory set so using CacheLocation instead.
-	// Also it doesn't matter which directory we use since BoltDBIndexClient doesn't do anything with it but it is good to have a valid path.
-	boltdbIndexClientDir := s.cfg.ActiveIndexDirectory
-	if boltdbIndexClientDir == "" {
-		boltdbIndexClientDir = s.cfg.CacheLocation
-	}
-
-	var err error
-	s.boltDBIndexClient, err = local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: boltdbIndexClientDir})
-	if err != nil {
-		return err
-	}
-
 	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, StorageKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
@@ -125,7 +112,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			IndexDir:       s.cfg.ActiveIndexDirectory,
 			UploadInterval: UploadInterval,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		uploadsManager, err := uploads.NewTableManager(cfg, prefixedObjectClient, registerer)
 		if err != nil {
 			return err
 		}
@@ -139,7 +126,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			SyncInterval: s.cfg.ResyncInterval,
 			CacheTTL:     s.cfg.CacheTTL,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		downloadsManager, err := downloads.NewTableManager(cfg, prefixedObjectClient, registerer)
 		if err != nil {
 			return err
 		}
@@ -193,11 +180,11 @@ func (s *Shipper) stop() {
 		s.downloadsManager.Stop()
 	}
 
-	s.boltDBIndexClient.Stop()
+	//s.boltDBIndexClient.Stop()
 }
 
 func (s *Shipper) NewWriteBatch() chunk.WriteBatch {
-	return s.boltDBIndexClient.NewWriteBatch()
+	return bluge_db.NewWriteBatch()
 }
 
 func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
@@ -206,7 +193,7 @@ func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error 
 	})
 }
 
-func (s *Shipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *Shipper) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
 	return instrument.CollectedRequest(ctx, "QUERY", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)
 
