@@ -41,10 +41,11 @@ var (
 // Default configuration values
 var (
 	DefaultConfig = Config{
-		WALTruncateFrequency: 60 * time.Minute,
-		MinAge:               5 * time.Minute,
-		MaxAge:               4 * time.Hour,
-		RemoteFlushDeadline:  1 * time.Minute,
+		Dir:                 "wal",
+		TruncateFrequency:   60 * time.Minute,
+		MinAge:              5 * time.Minute,
+		MaxAge:              4 * time.Hour,
+		RemoteFlushDeadline: 1 * time.Minute,
 	}
 )
 
@@ -55,16 +56,16 @@ type Config struct {
 	Name        string
 	RemoteWrite []*config.RemoteWriteConfig
 
-	Path string `yaml:"path"`
+	Dir string `yaml:"dir"`
 
 	// How frequently the WAL should be truncated.
-	WALTruncateFrequency time.Duration `yaml:"truncate_frequency,omitempty"`
+	TruncateFrequency time.Duration `yaml:"truncate_frequency,omitempty"`
 
 	// Minimum and maximum time series should exist in the WAL for.
 	MinAge time.Duration `yaml:"min_age,omitempty"`
 	MaxAge time.Duration `yaml:"max_age,omitempty"`
 
-	RemoteFlushDeadline time.Duration  `yaml:"remote_flush_deadline,omitempty"`
+	RemoteFlushDeadline time.Duration `yaml:"remote_flush_deadline,omitempty"`
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
@@ -103,7 +104,7 @@ func (c *Config) ApplyDefaults() error {
 	switch {
 	case c.Name == "":
 		return errors.New("missing instance name")
-	case c.WALTruncateFrequency <= 0:
+	case c.TruncateFrequency <= 0:
 		return errors.New("wal_truncate_frequency must be greater than 0s")
 	case c.RemoteFlushDeadline <= 0:
 		return errors.New("remote_flush_deadline must be greater than 0s")
@@ -171,7 +172,7 @@ type Instance struct {
 func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger) (*Instance, error) {
 	logger = log.With(logger, "instance", cfg.Name)
 
-	instWALDir := filepath.Join(cfg.Path, cfg.Tenant)
+	instWALDir := filepath.Join(cfg.Dir, cfg.Tenant)
 
 	newWal := func(reg prometheus.Registerer) (walStorage, error) {
 		return wal.NewStorage(logger, metrics, reg, instWALDir)
@@ -318,7 +319,7 @@ func (i *Instance) Update(c Config) (err error) {
 	// completions sake.
 	case i.cfg.Name != c.Name:
 		err = errImmutableField{Field: "name"}
-	case i.cfg.WALTruncateFrequency != c.WALTruncateFrequency:
+	case i.cfg.TruncateFrequency != c.TruncateFrequency:
 		err = errImmutableField{Field: "wal_truncate_frequency"}
 	case i.cfg.RemoteFlushDeadline != c.RemoteFlushDeadline:
 		err = errImmutableField{Field: "remote_flush_deadline"}
@@ -402,7 +403,7 @@ func (i *Instance) truncateLoop(ctx context.Context, wal walStorage, cfg *Config
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(cfg.WALTruncateFrequency):
+		case <-time.After(cfg.TruncateFrequency):
 			// The timestamp ts is used to determine which series are not receiving
 			// samples and may be deleted from the WAL. Their most recent append
 			// timestamp is compared to ts, and if that timestamp is older then ts,

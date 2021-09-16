@@ -47,7 +47,7 @@ remote_write:
 	require.NoError(t, err)
 
 	require.Equal(t, DefaultConfig.HostFilter, cfg.HostFilter)
-	require.Equal(t, DefaultConfig.WALTruncateFrequency, cfg.WALTruncateFrequency)
+	require.Equal(t, DefaultConfig.TruncateFrequency, cfg.TruncateFrequency)
 	require.Equal(t, DefaultConfig.RemoteFlushDeadline, cfg.RemoteFlushDeadline)
 	require.Equal(t, DefaultConfig.WriteStaleOnShutdown, cfg.WriteStaleOnShutdown)
 
@@ -96,7 +96,7 @@ func TestConfig_ApplyDefaults_Validations(t *testing.T) {
 		},
 		{
 			"missing wal truncate frequency",
-			func(c *Config) { c.WALTruncateFrequency = 0 },
+			func(c *Config) { c.TruncateFrequency = 0 },
 			fmt.Errorf("wal_truncate_frequency must be greater than 0s"),
 		},
 		{
@@ -111,7 +111,7 @@ func TestConfig_ApplyDefaults_Validations(t *testing.T) {
 		},
 		{
 			"scrape interval greater than truncate frequency",
-			func(c *Config) { c.ScrapeConfigs[0].ScrapeInterval = model.Duration(c.WALTruncateFrequency + 1) },
+			func(c *Config) { c.ScrapeConfigs[0].ScrapeInterval = model.Duration(c.TruncateFrequency + 1) },
 			fmt.Errorf("scrape interval greater than wal_truncate_frequency for scrape config with job name \"scrape\""),
 		},
 		{
@@ -199,7 +199,7 @@ func TestInstance_Path(t *testing.T) {
 	globalConfig := getTestGlobalConfig(t)
 
 	cfg := getTestConfig(t, &globalConfig, scrapeAddr)
-	cfg.WALTruncateFrequency = time.Hour
+	cfg.TruncateFrequency = time.Hour
 	cfg.RemoteFlushDeadline = time.Hour
 
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
@@ -227,7 +227,7 @@ func TestInstance(t *testing.T) {
 
 	globalConfig := getTestGlobalConfig(t)
 	cfg := getTestConfig(t, &globalConfig, scrapeAddr)
-	cfg.WALTruncateFrequency = time.Hour
+	cfg.TruncateFrequency = time.Hour
 	cfg.RemoteFlushDeadline = time.Hour
 
 	mockStorage := mockWalStorage{
@@ -263,7 +263,7 @@ func TestInstance_Recreate(t *testing.T) {
 
 	cfg := getTestConfig(t, &globalConfig, scrapeAddr)
 	cfg.Name = "recreate_test"
-	cfg.WALTruncateFrequency = time.Hour
+	cfg.TruncateFrequency = time.Hour
 	cfg.RemoteFlushDeadline = time.Hour
 
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
