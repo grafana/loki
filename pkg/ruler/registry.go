@@ -165,7 +165,7 @@ func (r *walRegistry) configureTenantStorage(tenant string) {
 	}
 }
 
-func (r *walRegistry) Close() {
+func (r *walRegistry) Stop() {
 	r.Lock()
 	defer r.Unlock()
 

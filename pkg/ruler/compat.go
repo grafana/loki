@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -79,12 +80,28 @@ func engineQueryFunc(logger log.Logger, engine *logql.Engine, overrides RulesLim
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
 func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) ruler.MultiTenantManager {
-	return &MultiTenantManager{mgr}
+	return &MultiTenantManager{inner: mgr}
 }
 
 // MultiTenantManager wraps a cortex MultiTenantManager but validates loki rules
 type MultiTenantManager struct {
-	ruler.MultiTenantManager
+	inner ruler.MultiTenantManager
+}
+
+func (m *MultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
+	m.inner.SyncRuleGroups(ctx, ruleGroups)
+}
+
+func (m *MultiTenantManager) GetRules(userID string) []*rules.Group {
+	return m.inner.GetRules(userID)
+}
+
+func (m *MultiTenantManager) Stop() {
+	if registry != nil {
+		registry.Stop()
+	}
+
+	m.inner.Stop()
 }
 
 // ValidateRuleGroup validates a rulegroup
@@ -101,7 +118,7 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
 
 	if registry != nil {
-		registry.Close()
+		registry.Stop()
 	}
 
 	registry = newStorageRegistry(log.With(logger, "storage", "registry"), reg, cfg, overrides)

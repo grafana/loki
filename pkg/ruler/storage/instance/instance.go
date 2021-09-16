@@ -162,7 +162,8 @@ type Instance struct {
 	reg    prometheus.Registerer
 	newWal walStorageFactory
 
-	vc *MetricValueCollector
+	vc     *MetricValueCollector
+	tenant string
 }
 
 // New creates a new Instance with a directory for storing the WAL. The instance
@@ -176,10 +177,10 @@ func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log
 		return wal.NewStorage(logger, metrics, reg, instWALDir)
 	}
 
-	return newInstance(cfg, reg, logger, newWal)
+	return newInstance(cfg, reg, logger, newWal, cfg.Tenant)
 }
 
-func newInstance(cfg Config, reg prometheus.Registerer, logger log.Logger, newWal walStorageFactory) (*Instance, error) {
+func newInstance(cfg Config, reg prometheus.Registerer, logger log.Logger, newWal walStorageFactory, tenant string) (*Instance, error) {
 	vc := NewMetricValueCollector(prometheus.DefaultGatherer, remoteWriteMetricName)
 
 	i := &Instance{
@@ -189,6 +190,8 @@ func newInstance(cfg Config, reg prometheus.Registerer, logger log.Logger, newWa
 
 		reg:    reg,
 		newWal: newWal,
+
+		tenant: tenant,
 	}
 
 	return i, nil
@@ -373,6 +376,21 @@ func (i *Instance) StorageDirectory() string {
 // Appender returns a storage.Appender from the instance's WAL
 func (i *Instance) Appender(ctx context.Context) storage.Appender {
 	return i.wal.Appender(ctx)
+}
+
+// Stop stops the WAL
+func (i *Instance) Stop() error {
+	level.Info(i.logger).Log("msg", "stopping WAL instance", "user", i.Tenant())
+
+	if err := i.remoteStore.Close(); err != nil {
+		level.Error(i.logger).Log("msg", "error stopping remote storage instance", "user", i.Tenant(), "err", err)
+	}
+	return i.wal.Close()
+}
+
+// Tenant returns the tenant name of the instance
+func (i *Instance) Tenant() string {
+	return i.tenant
 }
 
 func (i *Instance) truncateLoop(ctx context.Context, wal walStorage, cfg *Config) {

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/storage"
@@ -61,6 +62,8 @@ type ManagedInstance interface {
 	Update(c Config) error
 	StorageDirectory() string
 	Appender(ctx context.Context) storage.Appender
+	Stop() error
+	Tenant() string
 }
 
 // BasicManagerConfig controls the operations of a BasicManager.
@@ -97,6 +100,10 @@ type managedProcess struct {
 }
 
 func (p managedProcess) Stop() {
+	if err := p.inst.Stop(); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error while stopping instance", "user", p.inst.Tenant(), "err", err)
+	}
+
 	p.cancel()
 	<-p.done
 }
