@@ -1688,7 +1688,7 @@ for from specific time periods.
 # used.
 
 # Which store to use for the index. Either aws, aws-dynamo, gcp, bigtable, bigtable-hashed,
-# cassandra, or boltdb.
+# cassandra, boltdb or boltdb-shipper.
 store: <string>
 
 # Which store to use for the chunks. Either aws, azure, gcp,
