@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io"
 	"io/ioutil"
@@ -96,7 +97,7 @@ func newTableWithDBs(dbs map[string]*bluge_db.BlugeDB, path, uploader string, st
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (lt *Table) MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func (lt *Table) MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	lt.dbsMtx.RLock()
 	defer lt.dbsMtx.RUnlock()
 

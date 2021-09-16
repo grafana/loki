@@ -2,8 +2,8 @@ package bluge_db
 
 import (
 	"context"
-	"fmt"
 	"github.com/blugelabs/bluge"
+	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"log"
 )
@@ -81,11 +81,11 @@ type IndexQuery struct {
 	Matchs    map[string]string // filed => value
 }
 
-//visitor segment.StoredFieldVisitor
-type StoredFieldVisitor func(field string, value []byte) bool
+//visitor segment.segment.StoredFieldVisitor
+//type segment.StoredFieldVisitor func(field string, value []byte) bool
 
 // ctx context.Context, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)
-func (b *BlugeDB) QueryDB(ctx context.Context, query IndexQuery, callback StoredFieldVisitor) error {
+func (b *BlugeDB) QueryDB(ctx context.Context, query IndexQuery, callback segment.StoredFieldVisitor) error {
 	config := bluge.DefaultConfig(b.Folder + "/" + b.Name)
 	writer, err := bluge.OpenWriter(config)
 	reader, err := writer.Reader()
@@ -94,7 +94,10 @@ func (b *BlugeDB) QueryDB(ctx context.Context, query IndexQuery, callback Stored
 	}
 	defer reader.Close()
 
-	q := bluge.NewMatchQuery("test").SetField("test")
+	var q *bluge.MatchQuery
+	for filed, value := range query.Matchs {
+		q = bluge.NewMatchQuery(value).SetField(filed)
+	}
 	request := bluge.NewTopNSearch(10, q).
 		WithStandardAggregations()
 	documentMatchIterator, err := reader.Search(context.Background(), request)
@@ -103,12 +106,7 @@ func (b *BlugeDB) QueryDB(ctx context.Context, query IndexQuery, callback Stored
 	}
 	match, err := documentMatchIterator.Next()
 	for err == nil && match != nil {
-		err = match.VisitStoredFields(func(field string, value []byte) bool {
-			if field == "_id" {
-				fmt.Printf("match: %s\n", string(value))
-			}
-			return true
-		})
+		err = match.VisitStoredFields(callback)
 		if err != nil {
 			log.Fatalf("error loading stored fields: %v", err)
 		}

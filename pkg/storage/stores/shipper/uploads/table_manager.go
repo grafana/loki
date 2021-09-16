@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io/ioutil"
 	"os"
@@ -86,7 +87,7 @@ func (tm *TableManager) Stop() {
 	tm.uploadTables(context.Background(), true)
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	queriesByTable := util.QueriesByTable(queries)
 	for tableName, queries := range queriesByTable {
 		err := tm.query(ctx, tableName, queries, callback)
@@ -98,7 +99,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []bluge_db.Index
 	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 

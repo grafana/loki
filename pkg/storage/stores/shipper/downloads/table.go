@@ -3,6 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
+	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io"
 	"os"
@@ -202,7 +203,7 @@ func (t *Table) Close() {
 }
 
 // MultiQueries runs multiple queries without having to take lock multiple times for each query.
-func (t *Table) MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func (t *Table) MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	// let us check if table is ready for use while also honoring the context timeout
 	select {
 	case <-ctx.Done():

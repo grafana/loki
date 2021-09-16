@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io/ioutil"
 	"os"
@@ -193,7 +194,7 @@ func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error 
 	})
 }
 
-func (s *Shipper) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func (s *Shipper) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	return instrument.CollectedRequest(ctx, "QUERY", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)
 

@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -10,7 +11,7 @@ import (
 const maxQueriesPerGoroutine = 100
 
 type TableQuerier interface {
-	MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error
+	MultiQueries(ctx context.Context, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error
 }
 
 // QueriesByTable groups and returns queries by tables.
@@ -27,7 +28,7 @@ func QueriesByTable(queries []bluge_db.IndexQuery) map[string][]bluge_db.IndexQu
 	return queriesByTable
 }
 
-func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	errs := make(chan error)
 
 	for i := 0; i < len(queries); i += maxQueriesPerGoroutine {

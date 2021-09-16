@@ -3,6 +3,7 @@ package downloads
 import (
 	"context"
 	"fmt"
+	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
@@ -102,7 +103,7 @@ func (tm *TableManager) Stop() {
 	}
 }
 
-func (tm *TableManager) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func (tm *TableManager) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	queriesByTable := util.QueriesByTable(queries)
 	for tableName, queries := range queriesByTable {
 		err := tm.query(ctx, tableName, queries, callback)
@@ -114,7 +115,7 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []bluge_db.Index
 	return nil
 }
 
-func (tm *TableManager) query(ctx context.Context, tableName string, queries []bluge_db.IndexQuery, callback bluge_db.StoredFieldVisitor) error {
+func (tm *TableManager) query(ctx context.Context, tableName string, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Query")
 	defer log.Span.Finish()
 
