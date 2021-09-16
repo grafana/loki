@@ -383,10 +383,18 @@ func (i *Instance) Appender(ctx context.Context) storage.Appender {
 func (i *Instance) Stop() error {
 	level.Info(i.logger).Log("msg", "stopping WAL instance", "user", i.Tenant())
 
+	// close WAL first to prevent any further appends
+	if err := i.wal.Close(); err != nil {
+		level.Error(i.logger).Log("msg", "error stopping WAL instance", "user", i.Tenant(), "err", err)
+		return err
+	}
+
 	if err := i.remoteStore.Close(); err != nil {
 		level.Error(i.logger).Log("msg", "error stopping remote storage instance", "user", i.Tenant(), "err", err)
+		return err
 	}
-	return i.wal.Close()
+
+	return nil
 }
 
 // Tenant returns the tenant name of the instance
