@@ -10,7 +10,7 @@ This powerful feature creates metrics from logs.
 
 Metric queries can be used to calculate the rate of error messages or the top N log sources with the greatest quantity of logs over the last 3 hours.
 
-Combined with parsers, metrics queries can also be used to calculate metrics from a sample value within the log line, such as latency or request size.
+Combined with parsers, metric queries can also be used to calculate metrics from a sample value within the log line, such as latency or request size.
 All labels, including extracted ones, will be available for aggregations and generation of new series.
 
 ## Range Vector aggregation
