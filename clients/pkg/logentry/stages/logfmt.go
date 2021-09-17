@@ -124,15 +124,14 @@ func (j *logfmtStage) Process(labels model.LabelSet, extracted map[string]interf
 	decoder := logfmt.NewDecoder(strings.NewReader(*input))
 	for decoder.ScanRecord() {
 		for decoder.ScanKeyval() {
-			key := string(decoder.Key())
-			mapKey, ok := j.inverseMapping[key]
+			mapKey, ok := j.inverseMapping[string(decoder.Key())]
 			if ok {
 				extracted[mapKey] = string(decoder.Value())
 			}
 		}
 	}
 
-	if decoder.Err() != nil{
+	if decoder.Err() != nil {
 		level.Error(j.logger).Log("msg", "failed to decode logfmt", "err", decoder.Err())
 		return
 	}
