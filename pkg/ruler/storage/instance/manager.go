@@ -76,9 +76,9 @@ type BasicManagerConfig struct {
 //
 // Other implementations of Manager usually wrap a BasicManager.
 type BasicManager struct {
-	cfgMut sync.Mutex
-	cfg    BasicManagerConfig
-	logger log.Logger
+	cfgMut  sync.Mutex
+	cfg     BasicManagerConfig
+	logger  log.Logger
 	metrics *Metrics
 
 	// Take care when locking mut: if you hold onto a lock of mut while calling

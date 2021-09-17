@@ -429,50 +429,62 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
 }
+
 // RulerRemoteWriteURL TODO
 func (o *Overrides) RulerRemoteWriteURL(userID string) string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteURL
 }
+
 // RulerRemoteWriteTimeout TODO
 func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteTimeout
 }
+
 // RulerRemoteWriteHeaders TODO
 func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders
 }
+
 // RulerRemoteWriteRelabelConfigs TODO
 func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config {
 	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
 }
+
 // RulerRemoteWriteQueueCapacity TODO
 func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
 }
+
 // RulerRemoteWriteQueueMinShards TODO
 func (o *Overrides) RulerRemoteWriteQueueMinShards(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinShards
 }
+
 // RulerRemoteWriteQueueMaxShards TODO
 func (o *Overrides) RulerRemoteWriteQueueMaxShards(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxShards
 }
+
 // RulerRemoteWriteQueueMaxSamplesPerSend TODO
 func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxSamplesPerSend
 }
+
 // RulerRemoteWriteQueueBatchSendDeadline TODO
 func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
 }
+
 // RulerRemoteWriteQueueMinBackoff TODO
 func (o *Overrides) RulerRemoteWriteQueueMinBackoff(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinBackoff
 }
+
 // RulerRemoteWriteQueueMaxBackoff TODO
 func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxBackoff
 }
+
 // RulerRemoteWriteQueueRetryOnRateLimit TODO
 func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit

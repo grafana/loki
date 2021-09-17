@@ -1,4 +1,5 @@
 package cleaner
+
 // TODO(dannyk): re-enable tests once we start using the WAL cleaner
 //
 //import (

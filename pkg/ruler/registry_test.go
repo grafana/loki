@@ -144,7 +144,7 @@ func TestStorageSetup(t *testing.T) {
 	reg.configureTenantStorage(enabledRWTenant)
 
 	// give the manager some time to spawn its processes
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 
 	app := reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
 	_, ok := app.(storage.Appender)

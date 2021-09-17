@@ -72,8 +72,8 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 	})
 
 	m.DiskSize = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:    "disk_size",
-		Help:    "Size of each tenant's WAL on disk",
+		Name: "disk_size",
+		Help: "Size of each tenant's WAL on disk",
 	})
 
 	// why do the metrics not show up?
