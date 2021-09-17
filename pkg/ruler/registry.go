@@ -39,7 +39,19 @@ type walRegistry struct {
 	cleaner        *cleaner.WALCleaner
 }
 
-func newStorageRegistry(logger log.Logger, reg prometheus.Registerer, config Config, overrides RulesLimits) *walRegistry {
+type storageRegistry interface {
+	storage.Appendable
+	readyChecker
+
+	stop()
+	configureTenantStorage(tenant string)
+}
+
+func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config, overrides RulesLimits) storageRegistry {
+	if !config.RemoteWrite.Enabled {
+		return nullRegistry{}
+	}
+
 	manager := createInstanceManager(logger, reg)
 
 	return &walRegistry{
@@ -71,11 +83,11 @@ func createInstanceManager(logger log.Logger, reg prometheus.Registerer) *instan
 	}, instance.NewMetrics(reg), log.With(logger, "manager", "tenant-wal"), tenantManager.newInstance)
 }
 
-func (r *walRegistry) IsReady(tenant string) bool {
+func (r *walRegistry) isReady(tenant string) bool {
 	return r.manager.InstanceReady(tenant)
 }
 
-func (r *walRegistry) Get(tenant string) storage.Storage {
+func (r *walRegistry) get(tenant string) storage.Storage {
 	r.RLock()
 	defer r.RUnlock()
 
@@ -128,7 +140,7 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 		return discardingAppender{}
 	}
 
-	inst := r.Get(tenant)
+	inst := r.get(tenant)
 	if inst == nil {
 		level.Warn(r.logger).Log("user", tenant, "msg", "WAL instance not yet ready")
 		return notReadyAppender{}
@@ -148,10 +160,32 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 }
 
 func (r *walRegistry) configureTenantStorage(tenant string) {
-	conf, err := r.config.WAL.Clone()
+	conf, err := r.getTenantConfig(tenant)
 	if err != nil {
 		level.Error(r.logger).Log("msg", "error configuring tenant storage", "user", tenant, "err", err)
 		return
+	}
+
+	if err := r.manager.ApplyConfig(conf); err != nil {
+		level.Error(r.logger).Log("user", tenant, "msg", "could not apply given config", "err", err)
+	}
+}
+
+func (r *walRegistry) stop() {
+	r.Lock()
+	defer r.Unlock()
+
+	if r.cleaner != nil {
+		r.cleaner.Stop()
+	}
+
+	r.manager.Stop()
+}
+
+func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
+	conf, err := r.config.WAL.Clone()
+	if err != nil {
+		return instance.Config{}, err
 	}
 
 	conf.Name = tenant
@@ -163,8 +197,7 @@ func (r *walRegistry) configureTenantStorage(tenant string) {
 	// retrieve remote-write config for this tenant, using the global remote-write for defaults
 	rwCfg, err := r.getTenantRemoteWriteConfig(tenant, r.config.RemoteWrite)
 	if err != nil {
-		level.Error(r.logger).Log("msg", "error retrieving remote-write config", "user", tenant, "err", err)
-		return
+		return instance.Config{}, err
 	}
 
 	// TODO(dannyk): implement multiple RW configs
@@ -184,20 +217,7 @@ func (r *walRegistry) configureTenantStorage(tenant string) {
 		conf.RemoteWrite = []*config.RemoteWriteConfig{}
 	}
 
-	if err := r.manager.ApplyConfig(conf); err != nil {
-		level.Error(r.logger).Log("user", tenant, "msg", "could not apply given config", "err", err)
-	}
-}
-
-func (r *walRegistry) Stop() {
-	r.Lock()
-	defer r.Unlock()
-
-	if r.cleaner != nil {
-		r.cleaner.Stop()
-	}
-
-	r.manager.Stop()
+	return conf, nil
 }
 
 func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWriteConfig) (*RemoteWriteConfig, error) {
@@ -212,15 +232,16 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	}
 
 	overrides := RemoteWriteConfig{
-		Client:  config.RemoteWriteConfig{
+		Client: config.RemoteWriteConfig{
 			URL:                 &promConfig.URL{u},
 			RemoteTimeout:       model.Duration(r.overrides.RulerRemoteWriteTimeout(tenant)),
 			Headers:             r.overrides.RulerRemoteWriteHeaders(tenant),
 			WriteRelabelConfigs: r.overrides.RulerRemoteWriteRelabelConfigs(tenant),
 			Name:                fmt.Sprintf("%s-rw", tenant),
 			SendExemplars:       false,
-			HTTPClientConfig:    promConfig.HTTPClientConfig{}, // TODO: configure
-			QueueConfig:         config.QueueConfig{
+			// TODO(dannyk): configure HTTP client overrides
+			HTTPClientConfig: promConfig.HTTPClientConfig{},
+			QueueConfig: config.QueueConfig{
 				Capacity:          r.overrides.RulerRemoteWriteQueueCapacity(tenant),
 				MaxShards:         r.overrides.RulerRemoteWriteQueueMaxShards(tenant),
 				MinShards:         r.overrides.RulerRemoteWriteQueueMinShards(tenant),
@@ -230,15 +251,15 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 				MaxBackoff:        model.Duration(r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant)),
 				RetryOnRateLimit:  r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant),
 			},
-			MetadataConfig:      config.MetadataConfig{
+			MetadataConfig: config.MetadataConfig{
 				Send: false,
 			},
-			SigV4Config:         nil,
+			SigV4Config: nil,
 		},
 		Enabled: true,
 	}
 
-	err = mergo.Merge(copy, overrides, mergo.WithOverride)
+	err = mergo.Merge(copy, overrides, mergo.WithOverride, mergo.WithOverrideEmptySlice)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +298,7 @@ func (n discardingAppender) Commit() error   { return nil }
 func (n discardingAppender) Rollback() error { return nil }
 
 type readyChecker interface {
-	IsReady(tenant string) bool
+	isReady(tenant string) bool
 }
 
 type tenantWALManager struct {
@@ -316,3 +337,10 @@ func newStorageRegistryMetrics(reg prometheus.Registerer) *storageRegistryMetric
 
 	return m
 }
+
+type nullRegistry struct{}
+
+func (n nullRegistry) Appender(ctx context.Context) storage.Appender { return discardingAppender{} }
+func (n nullRegistry) isReady(tenant string) bool                    { return true }
+func (n nullRegistry) stop()                                         {}
+func (n nullRegistry) configureTenantStorage(tenant string)          {}

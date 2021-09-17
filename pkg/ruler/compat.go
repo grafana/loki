@@ -55,7 +55,7 @@ func engineQueryFunc(logger log.Logger, engine *logql.Engine, overrides RulesLim
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
-		if !checker.IsReady(userID) {
+		if !checker.isReady(userID) {
 			return nil, errNotReady
 		}
 
@@ -110,7 +110,7 @@ func (m *MultiTenantManager) GetRules(userID string) []*rules.Group {
 
 func (m *MultiTenantManager) Stop() {
 	if registry != nil {
-		registry.Stop()
+		registry.stop()
 	}
 
 	m.inner.Stop()
@@ -124,16 +124,12 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 // MetricsPrefix defines the prefix to use for all metrics in this package
 const MetricsPrefix = "loki_ruler_wal_"
 
-var registry *walRegistry
+var registry storageRegistry
 
 func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
 	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
 
-	if registry != nil {
-		registry.Stop()
-	}
-
-	registry = newStorageRegistry(log.With(logger, "storage", "registry"), reg, cfg, overrides)
+	registry = newWALRegistry(log.With(logger, "storage", "registry"), reg, cfg, overrides)
 
 	return func(
 		ctx context.Context,
