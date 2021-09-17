@@ -173,7 +173,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, err
 	}
 
-	// Register the distributor to receive Push requests over GRPC 
+	// Register the distributor to receive Push requests over GRPC
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
