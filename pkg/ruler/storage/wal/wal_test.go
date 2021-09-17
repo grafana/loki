@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/ruler/storage/util"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/value"
@@ -23,12 +23,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newTestStorage(walDir string) (*Storage, error) {
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	return NewStorage(log.NewNopLogger(), metrics, nil, walDir)
+}
+
 func TestStorage_InvalidSeries(t *testing.T) {
 	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
 	require.NoError(t, err)
 	defer os.RemoveAll(walDir)
 
-	s, err := NewStorage(log.NewNopLogger(), nil, walDir)
+	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, s.Close())
@@ -70,7 +75,7 @@ func TestStorage(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(walDir)
 
-	s, err := NewStorage(log.NewNopLogger(), nil, walDir)
+	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, s.Close())
@@ -112,7 +117,7 @@ func TestStorage_ExistingWAL(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(walDir)
 
-	s, err := NewStorage(log.NewNopLogger(), nil, walDir)
+	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 
 	app := s.Appender(context.Background())
@@ -131,7 +136,7 @@ func TestStorage_ExistingWAL(t *testing.T) {
 	time.Sleep(time.Millisecond * 150)
 
 	// Create a new storage, write the other half of samples.
-	s, err = NewStorage(log.NewNopLogger(), nil, walDir)
+	s, err = newTestStorage(walDir)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, s.Close())
@@ -173,13 +178,11 @@ func TestStorage_ExistingWAL(t *testing.T) {
 }
 
 func TestStorage_ExistingWAL_RefID(t *testing.T) {
-	l := util.TestLogger(t)
-
 	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
 	require.NoError(t, err)
 	defer os.RemoveAll(walDir)
 
-	s, err := NewStorage(l, nil, walDir)
+	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 
 	app := s.Appender(context.Background())
@@ -196,7 +199,7 @@ func TestStorage_ExistingWAL_RefID(t *testing.T) {
 	require.NoError(t, s.Close())
 
 	// Create a new storage and see what the ref ID is initialized to.
-	s, err = NewStorage(l, nil, walDir)
+	s, err = newTestStorage(walDir)
 	require.NoError(t, err)
 	defer require.NoError(t, s.Close())
 
@@ -212,7 +215,7 @@ func TestStorage_Truncate(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(walDir)
 
-	s, err := NewStorage(log.NewNopLogger(), nil, walDir)
+	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, s.Close())
@@ -273,7 +276,7 @@ func TestStorage_WriteStalenessMarkers(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(walDir)
 
-	s, err := NewStorage(log.NewNopLogger(), nil, walDir)
+	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, s.Close())
@@ -327,7 +330,7 @@ func TestStorage_TruncateAfterClose(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(walDir)
 
-	s, err := NewStorage(log.NewNopLogger(), nil, walDir)
+	s, err := newTestStorage(walDir)
 	require.NoError(t, err)
 
 	require.NoError(t, s.Close())

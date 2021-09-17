@@ -356,6 +356,14 @@ type MockManager struct {
 	StopFunc          func()
 }
 
+func (m MockManager) Ready() bool {
+	return true
+}
+
+func (m MockManager) InstanceReady(name string) bool {
+	return true
+}
+
 // GetInstance implements Manager.
 func (m MockManager) GetInstance(name string) (ManagedInstance, error) {
 	if m.GetInstanceFunc != nil {
