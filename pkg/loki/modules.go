@@ -238,12 +238,16 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	if err != nil {
 		return
 	}
-
 	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
-	t.Server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.Ingester.FlushHandler))
-	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(http.HandlerFunc(t.Ingester.ShutdownHandler))
+
+	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+	)
+	t.Server.HTTP.Path("/flush").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)))
+	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)))
+
 	return t.Ingester, nil
 }
 
