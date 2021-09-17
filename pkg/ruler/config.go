@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 )
@@ -62,6 +63,21 @@ func (c *RemoteWriteConfig) Validate() error {
 	}
 
 	return nil
+}
+
+func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
+	out, err := yaml.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+
+	var n *RemoteWriteConfig
+	err = yaml.Unmarshal(out, &n)
+	if err != nil {
+		return nil, err
+	}
+
+	return n, nil
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

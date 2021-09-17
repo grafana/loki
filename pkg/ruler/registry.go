@@ -3,12 +3,17 @@ package ruler
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/imdario/mergo"
 	"github.com/prometheus/client_golang/prometheus"
+	promConfig "github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -113,7 +118,12 @@ func (r *walRegistry) Get(tenant string) storage.Storage {
 
 func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	tenant, _ := user.ExtractOrgID(ctx)
-	rwCfg := r.overrides.RulerRemoteWrite(tenant, r.config.RemoteWrite)
+	rwCfg, err := r.getTenantRemoteWriteConfig(tenant, r.config.RemoteWrite)
+	if err != nil {
+		level.Error(r.logger).Log("msg", "error retrieving remote-write config; discarding samples", "user", tenant, "err", err)
+		return discardingAppender{}
+	}
+
 	if !rwCfg.Enabled {
 		return discardingAppender{}
 	}
@@ -138,8 +148,11 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 }
 
 func (r *walRegistry) configureTenantStorage(tenant string) {
-	// make a copy
-	conf := r.config.WAL
+	conf, err := r.config.WAL.Clone()
+	if err != nil {
+		level.Error(r.logger).Log("msg", "error configuring tenant storage", "user", tenant, "err", err)
+		return
+	}
 
 	conf.Name = tenant
 	conf.Tenant = tenant
@@ -148,7 +161,11 @@ func (r *walRegistry) configureTenantStorage(tenant string) {
 	r.config.RemoteWrite.Client.MetadataConfig.Send = false
 
 	// retrieve remote-write config for this tenant, using the global remote-write for defaults
-	rwCfg := r.overrides.RulerRemoteWrite(tenant, r.config.RemoteWrite)
+	rwCfg, err := r.getTenantRemoteWriteConfig(tenant, r.config.RemoteWrite)
+	if err != nil {
+		level.Error(r.logger).Log("msg", "error retrieving remote-write config", "user", tenant, "err", err)
+		return
+	}
 
 	// TODO(dannyk): implement multiple RW configs
 	if rwCfg.Enabled {
@@ -181,6 +198,58 @@ func (r *walRegistry) Stop() {
 	}
 
 	r.manager.Stop()
+}
+
+func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWriteConfig) (*RemoteWriteConfig, error) {
+	copy, err := base.Clone()
+	if err != nil {
+		return nil, fmt.Errorf("error generating tenant remote-write config: %w", err)
+	}
+
+	u, err := url.Parse(r.overrides.RulerRemoteWriteURL(tenant))
+	if err != nil {
+		return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
+	}
+
+	overrides := RemoteWriteConfig{
+		Client:  config.RemoteWriteConfig{
+			URL:                 &promConfig.URL{u},
+			RemoteTimeout:       model.Duration(r.overrides.RulerRemoteWriteTimeout(tenant)),
+			Headers:             r.overrides.RulerRemoteWriteHeaders(tenant),
+			WriteRelabelConfigs: r.overrides.RulerRemoteWriteRelabelConfigs(tenant),
+			Name:                fmt.Sprintf("%s-rw", tenant),
+			SendExemplars:       false,
+			HTTPClientConfig:    promConfig.HTTPClientConfig{}, // TODO: configure
+			QueueConfig:         config.QueueConfig{
+				Capacity:          r.overrides.RulerRemoteWriteQueueCapacity(tenant),
+				MaxShards:         r.overrides.RulerRemoteWriteQueueMaxShards(tenant),
+				MinShards:         r.overrides.RulerRemoteWriteQueueMinShards(tenant),
+				MaxSamplesPerSend: r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant),
+				BatchSendDeadline: model.Duration(r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant)),
+				MinBackoff:        model.Duration(r.overrides.RulerRemoteWriteQueueMinBackoff(tenant)),
+				MaxBackoff:        model.Duration(r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant)),
+				RetryOnRateLimit:  r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant),
+			},
+			MetadataConfig:      config.MetadataConfig{
+				Send: false,
+			},
+			SigV4Config:         nil,
+		},
+		Enabled: true,
+	}
+
+	err = mergo.Merge(copy, overrides, mergo.WithOverride)
+	if err != nil {
+		return nil, err
+	}
+
+	// we can't use mergo.WithOverwriteWithEmptyValue since that will set all the default values, so here we
+	// explicitly apply some config options that might be set to their type's zero value
+	if r.overrides.RulerRemoteWriteDisabled(tenant) {
+		copy.Enabled = false
+	}
+
+	return copy, nil
 }
 
 var errNotReady = errors.New("appender not ready")

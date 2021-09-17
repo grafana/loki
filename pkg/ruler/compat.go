@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
@@ -34,7 +35,19 @@ import (
 type RulesLimits interface {
 	ruler.RulesLimits
 
-	RulerRemoteWrite(userID string, base RemoteWriteConfig) RemoteWriteConfig
+	RulerRemoteWriteDisabled(userID string) bool
+	RulerRemoteWriteURL(userID string) string
+	RulerRemoteWriteTimeout(userID string) time.Duration
+	RulerRemoteWriteHeaders(userID string) map[string]string
+	RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config
+	RulerRemoteWriteQueueCapacity(userID string) int
+	RulerRemoteWriteQueueMinShards(userID string) int
+	RulerRemoteWriteQueueMaxShards(userID string) int
+	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
+	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
+	RulerRemoteWriteQueueMinBackoff(userID string) time.Duration
+	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
+	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function

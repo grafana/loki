@@ -3,20 +3,15 @@ package validation
 import (
 	"flag"
 	"fmt"
-	"net/url"
 	"strconv"
 	"time"
 
-	"github.com/imdario/mergo"
-	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -430,54 +425,57 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
-// RulerRemoteWrite returns the remote-write config for a given user.
-func (o *Overrides) RulerRemoteWrite(userID string, base ruler.RemoteWriteConfig) ruler.RemoteWriteConfig {
-	user := o.getOverridesForUser(userID)
-
-	// TODO: error handling
-	u, _ := url.Parse(user.RulerRemoteWriteURL)
-
-	copy := base
-	override := ruler.RemoteWriteConfig{
-		Client:  config.RemoteWriteConfig{
-			URL:                 &promConfig.URL{u},
-			RemoteTimeout:       model.Duration(user.RulerRemoteWriteTimeout),
-			Headers:             user.RulerRemoteWriteHeaders,
-			WriteRelabelConfigs: user.RulerRemoteWriteRelabelConfigs,
-			Name:                fmt.Sprintf("%s-rw", userID),
-			SendExemplars:       false,
-			HTTPClientConfig:    promConfig.HTTPClientConfig{}, // TODO: configure
-			QueueConfig:         config.QueueConfig{
-				Capacity:          user.RulerRemoteWriteQueueCapacity,
-				MaxShards:         user.RulerRemoteWriteQueueMaxShards,
-				MinShards:         user.RulerRemoteWriteQueueMinShards,
-				MaxSamplesPerSend: user.RulerRemoteWriteQueueMaxSamplesPerSend,
-				BatchSendDeadline: model.Duration(user.RulerRemoteWriteQueueBatchSendDeadline),
-				MinBackoff:        model.Duration(user.RulerRemoteWriteQueueMinBackoff),
-				MaxBackoff:        model.Duration(user.RulerRemoteWriteQueueMaxBackoff),
-				RetryOnRateLimit:  user.RulerRemoteWriteQueueRetryOnRateLimit,
-			},
-			MetadataConfig:      config.MetadataConfig{
-				Send: false,
-			},
-			SigV4Config:         nil,
-		},
-		Enabled: true,
-	}
-
-	err := mergo.Merge(&copy, override, mergo.WithOverride)
-	if err != nil {
-		// TODO: better error handling
-		return ruler.RemoteWriteConfig{}
-	}
-
-	// we can't use mergo.WithOverwriteWithEmptyValue since that will set all the default values, so here we
-	// explicitly apply some config options that might be set to their type's zero value
-	if user.RulerRemoteWriteDisabled {
-		copy.Enabled = false
-	}
-
-	return copy
+// RulerRemoteWriteDisabled TODO
+func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
+	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
+}
+// RulerRemoteWriteURL TODO
+func (o *Overrides) RulerRemoteWriteURL(userID string) string {
+	return o.getOverridesForUser(userID).RulerRemoteWriteURL
+}
+// RulerRemoteWriteTimeout TODO
+func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteTimeout
+}
+// RulerRemoteWriteHeaders TODO
+func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
+	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders
+}
+// RulerRemoteWriteRelabelConfigs TODO
+func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config {
+	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
+}
+// RulerRemoteWriteQueueCapacity TODO
+func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
+}
+// RulerRemoteWriteQueueMinShards TODO
+func (o *Overrides) RulerRemoteWriteQueueMinShards(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinShards
+}
+// RulerRemoteWriteQueueMaxShards TODO
+func (o *Overrides) RulerRemoteWriteQueueMaxShards(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxShards
+}
+// RulerRemoteWriteQueueMaxSamplesPerSend TODO
+func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxSamplesPerSend
+}
+// RulerRemoteWriteQueueBatchSendDeadline TODO
+func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
+}
+// RulerRemoteWriteQueueMinBackoff TODO
+func (o *Overrides) RulerRemoteWriteQueueMinBackoff(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinBackoff
+}
+// RulerRemoteWriteQueueMaxBackoff TODO
+func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxBackoff
+}
+// RulerRemoteWriteQueueRetryOnRateLimit TODO
+func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit
 }
 
 // RetentionPeriod returns the retention period for a given user.
