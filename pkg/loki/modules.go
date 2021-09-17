@@ -173,7 +173,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, err
 	}
 
-	if !t.Cfg.isModuleEnabled(All) {
+	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
