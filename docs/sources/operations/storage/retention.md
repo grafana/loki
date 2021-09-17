@@ -33,15 +33,9 @@ The retention algorithm is applied to the index. Chunks are not deleted while ap
 
 Marked chunks will only  be deleted after `retention_delete_delay` configured is expired because:
 
-1. boltdb-shipper indexes are refreshed from the shared store on components using it (querier and ruler) at a specific interval. This means deleting chunks instantly could lead to components still having reference to old chunks and so they could fails to execute queries. Having a delay allows for components to refresh their store and so remove gracefully their reference of those chunks.
+- boltdb-shipper indexes are refreshed from the shared store on components using it (querier and ruler) at a specific interval. This means deleting chunks instantly could lead to components still having reference to old chunks and so they could fails to execute queries. Having a delay allows for components to refresh their store and so remove gracefully their reference of those chunks.
 
-2. It gives you a short period to cancel chunks deletion in case of mistakes.
-
-Marked chunks will only  be deleted after `retention_delete_delay` configured is expired because
-
-- boltdb-shipper indexes are refreshed from the shared store on components using them (querier and ruler) at a specific interval. Deleting chunks instantly could lead to components still having a reference to old chunks. This could, in turn, cause query execution failure. Having a delay allows components to refresh their store and gracefully remove their reference to those chunks.
-
-- It provides a short window of time in which to cancel chunk deletion in the case of a configuration mistake.
+- It gives you a short period to cancel chunks deletion in case of mistakes.
 
 Marker files (containing chunks to delete) should be stored on a persistent disk, since the disk will be the sole reference to them.
 
