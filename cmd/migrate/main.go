@@ -52,7 +52,7 @@ func main() {
 	flag.Parse()
 
 	// Create a set of defaults
-	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults()); err != nil {
+	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults(flag.CommandLine)); err != nil {
 		log.Println("Failed parsing defaults config:", err)
 		os.Exit(1)
 	}

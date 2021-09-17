@@ -31,6 +31,7 @@ import (
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/cfg/common"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -52,6 +53,7 @@ type Config struct {
 	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
+	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`

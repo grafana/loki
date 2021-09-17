@@ -65,7 +65,7 @@ func (c *Config) Clone() flagext.Registerer {
 func main() {
 	// Load config, merging config file and CLI flags
 	var config Config
-	if err := cfg.Parse(&config); err != nil {
+	if err := cfg.DefaultUnmarshal(&config); err != nil {
 		fmt.Println("Unable to parse config:", err)
 		os.Exit(1)
 	}

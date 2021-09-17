@@ -44,27 +44,11 @@ func Unmarshal(dst Cloneable, sources ...Source) error {
 	return nil
 }
 
-// Parse is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
-func Parse(dst Cloneable) error {
-	return dParse(dst,
-		dDefaults(flag.CommandLine),
+// DefaultUnmarshal is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
+func DefaultUnmarshal(dst Cloneable) error {
+	return Unmarshal(dst,
+		Defaults(flag.CommandLine),
 		YAMLFlag(os.Args[1:], "config.file"),
 		Flags(),
-	)
-}
-
-// dParse is the same as Parse, but with dependency injection for testing
-func dParse(dst Cloneable, defaults, yaml, flags Source) error {
-	// check dst is a pointer
-	v := reflect.ValueOf(dst)
-	if v.Kind() != reflect.Ptr {
-		return ErrNotPointer
-	}
-
-	// unmarshal config
-	return Unmarshal(dst,
-		defaults,
-		yaml,
-		flags,
 	)
 }
