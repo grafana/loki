@@ -78,7 +78,7 @@ func (b *BlugeDB) WriteToDB(ctx context.Context, writes TableWrites) error {
 
 type IndexQuery struct {
 	TableName string
-	Matchs    map[string]string // filed => value
+	Query     bluge.Query
 }
 
 //visitor segment.segment.StoredFieldVisitor
@@ -93,12 +93,7 @@ func (b *BlugeDB) QueryDB(ctx context.Context, query IndexQuery, callback segmen
 		log.Fatalf("error getting index reader: %v", err)
 	}
 	defer reader.Close()
-
-	var q *bluge.MatchQuery
-	for filed, value := range query.Matchs {
-		q = bluge.NewMatchQuery(value).SetField(filed)
-	}
-	request := bluge.NewTopNSearch(10, q).
+	request := bluge.NewTopNSearch(10, query.Query).
 		WithStandardAggregations()
 	documentMatchIterator, err := reader.Search(context.Background(), request)
 	if err != nil {

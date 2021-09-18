@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/blugelabs/bluge"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
@@ -74,17 +75,19 @@ func main() {
 	//wr := s.NewWriteBatch()
 	//wr.Add("mark", "test", []byte("test"), []byte("test"))
 	//s.BatchWrite(context.Background(), wr)
-	match := map[string]string{
-		"test": "test",
-	}
+	//match := map[string]string{
+	//	"test": "test",
+	//}
 	qs := bluge_db.IndexQuery{
 		TableName: "mark",
-		Matchs:    match,
+		Query:     bluge.NewMatchQuery("test").SetField("test"),
 	}
 	s.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
 		if field == "_id" {
 			fmt.Printf("match: %s\n", string(value))
 		}
+		fmt.Printf("field: %s\n", string(field))
+		fmt.Printf("value: %s\n", string(value))
 		return true
 	})
 
