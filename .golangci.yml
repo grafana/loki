@@ -58,14 +58,14 @@ linters:
     - revive
     - gosimple
     - ineffassign
-    - megacheck
+    - staticcheck
     - misspell
     - structcheck
     - unconvert
     - unparam
     - varcheck
     - govet
-    - unused # new from here.
+    - unused
     - typecheck
 
 issues:
