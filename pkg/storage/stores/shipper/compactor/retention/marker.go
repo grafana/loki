@@ -303,7 +303,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 			}
 		}()
 	}
-	if err := dbView.View(func(tx *bbolt.Tx) error {
+	return dbView.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
 			return nil
@@ -323,10 +323,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 
 		}
 		return nil
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 func processKey(ctx context.Context, key *keyPair, db *bbolt.DB, deleteFunc func(ctx context.Context, chunkId []byte) error) error {

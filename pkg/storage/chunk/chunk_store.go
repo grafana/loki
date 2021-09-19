@@ -82,10 +82,7 @@ func (cfg *StoreConfig) Validate(logger log.Logger) error {
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
 	}
-	if err := cfg.WriteDedupeCacheConfig.Validate(); err != nil {
-		return err
-	}
-	return nil
+	return cfg.WriteDedupeCacheConfig.Validate()
 }
 
 type baseStore struct {

@@ -357,7 +357,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 				return err
 			}
 
-			var partiallyDeletedInterval *model.Interval = nil
+			var partiallyDeletedInterval *model.Interval
 			if chunkDetails.PartiallyDeletedInterval != nil {
 				partiallyDeletedInterval = &model.Interval{
 					Start: model.Time(chunkDetails.PartiallyDeletedInterval.StartTimestampMs),

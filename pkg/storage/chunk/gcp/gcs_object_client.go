@@ -112,11 +112,7 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 		_ = writer.Close()
 		return err
 	}
-	if err := writer.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return writer.Close()
 }
 
 // List implements chunk.ObjectClient.

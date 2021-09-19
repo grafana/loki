@@ -52,7 +52,7 @@ type Shutdownable interface {
 	Shutdown()
 }
 
-// nolint:golint
+// nolint:revive
 type StdinTargetManager struct {
 	*readerTarget
 	app Shutdownable

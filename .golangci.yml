@@ -55,7 +55,7 @@ linters:
     - goconst
     - gofmt
     - goimports
-    - golint
+    - revive
     - gosimple
     - ineffassign
     - megacheck
@@ -66,7 +66,6 @@ linters:
     - varcheck
     - govet
     - unused # new from here.
-    - interfacer
     - typecheck
 
 issues:
