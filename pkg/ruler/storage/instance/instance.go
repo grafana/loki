@@ -275,7 +275,7 @@ func (n noopScrapeManager) Get() (*scrape.Manager, error) {
 // settings. initialize will be called each time the Instance is run. Prometheus
 // components cannot be reused after they are stopped so we need to recreate them
 // each run.
-func (i *Instance) initialize(ctx context.Context, reg prometheus.Registerer, cfg *Config) error {
+func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg *Config) error {
 	// explicitly set this in case this function is called multiple times
 	i.initialized = false
 

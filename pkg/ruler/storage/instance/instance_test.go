@@ -6,15 +6,22 @@ package instance
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -151,6 +158,49 @@ func TestRemoteWriteMetricInterceptor_AllValues(t *testing.T) {
 	vals, err := vc.GetValues("foo", "bar")
 	require.NoError(t, err)
 	require.Equal(t, []float64{12345, 67890}, vals)
+}
+
+// TestInstance tests that discovery and scraping are working by using a mock
+// instance of the WAL storage and testing that samples get written to it.
+// This test touches most of Instance and is enough for a basic integration test.
+func TestInstance(t *testing.T) {
+	walDir, err := ioutil.TempDir(os.TempDir(), "wal")
+	require.NoError(t, err)
+	defer os.RemoveAll(walDir)
+
+	mockStorage := mockWalStorage{
+		series:    make(map[uint64]int),
+		directory: walDir,
+	}
+	newWal := func(_ prometheus.Registerer) (walStorage, error) { return &mockStorage, nil }
+
+	logger := level.NewFilter(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), level.AllowInfo())
+	cfg := DefaultConfig
+	cfg.Dir = walDir
+	inst, err := newInstance(cfg, nil, logger, newWal, "12345")
+	require.NoError(t, err)
+	runInstance(t, inst)
+
+	// Wait until mockWalStorage is initialized.
+	test.Poll(t, 10*time.Second, true, func() interface{} {
+		mockStorage.mut.Lock()
+		defer mockStorage.mut.Unlock()
+		return inst.Ready()
+	})
+
+	app := inst.Appender(context.TODO())
+	refTime := time.Now().UnixNano()
+
+	count := 3
+	for i := 0; i < count; i++ {
+		_, err := app.Append(0, labels.Labels{
+			labels.Label{Name: "__name__", Value: "test"},
+			labels.Label{Name: "iter", Value: fmt.Sprintf("%v", i)},
+		}, refTime-int64(i), float64(i))
+
+		require.NoError(t, err)
+	}
+	assert.Len(t, mockStorage.series, count)
 }
 
 type mockWalStorage struct {

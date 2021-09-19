@@ -51,7 +51,7 @@ type RulesLimits interface {
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(logger log.Logger, engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
+func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
@@ -141,7 +141,7 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(logger, engine, overrides, registry, userID)
+		queryFunc := engineQueryFunc(engine, overrides, registry, userID)
 		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{

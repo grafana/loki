@@ -503,16 +503,13 @@ func (w *Storage) recordSize() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			size, err := dirSize(w.path)
-			if err != nil {
-				level.Debug(w.logger).Log("msg", "could not calculate WAL disk size", "path", w.path, "err", err)
-				continue
-			}
-			w.metrics.DiskSize.Set(float64(size))
+	for range ticker.C {
+		size, err := dirSize(w.path)
+		if err != nil {
+			level.Debug(w.logger).Log("msg", "could not calculate WAL disk size", "path", w.path, "err", err)
+			continue
 		}
+		w.metrics.DiskSize.Set(float64(size))
 	}
 }
 

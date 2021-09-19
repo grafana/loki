@@ -2,17 +2,19 @@ package ruler
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/relabel"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -40,13 +42,13 @@ func newFakeLimits() fakeLimits {
 	}
 }
 
-func setupRegistry(t *testing.T) *walRegistry {
+func setupRegistry(t *testing.T, dir string) *walRegistry {
 	u, _ := url.Parse("http://remote-write")
 
 	cfg := Config{
 		RemoteWrite: RemoteWriteConfig{
 			Client: config.RemoteWriteConfig{
-				URL: &promConfig.URL{u},
+				URL: &promConfig.URL{URL: u},
 				QueueConfig: config.QueueConfig{
 					Capacity: defaultCapacity,
 				},
@@ -62,7 +64,7 @@ func setupRegistry(t *testing.T) *walRegistry {
 			ConfigRefreshPeriod: 5 * time.Second,
 		},
 		WAL: instance.Config{
-			Dir: os.TempDir(),
+			Dir: dir,
 		},
 	}
 
@@ -75,8 +77,15 @@ func setupRegistry(t *testing.T) *walRegistry {
 	return reg.(*walRegistry)
 }
 
+func createTempWALDir() (string, error) {
+	return ioutil.TempDir(os.TempDir(), "wal")
+}
+
 func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
-	reg := setupRegistry(t)
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -90,7 +99,10 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
-	reg := setupRegistry(t)
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
 
 	// this tenant has no overrides, so will get defaults
 	tenantCfg, err := reg.getTenantConfig("unknown")
@@ -103,7 +115,10 @@ func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
-	reg := setupRegistry(t)
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
 
 	tenantCfg, err := reg.getTenantConfig(disabledRWTenant)
 	require.NoError(t, err)
@@ -137,22 +152,28 @@ func TestWALRegistryCreation(t *testing.T) {
 }
 
 func TestStorageSetup(t *testing.T) {
-	reg := setupRegistry(t)
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage
 	reg.configureTenantStorage(enabledRWTenant)
 
-	// give the manager some time to spawn its processes
-	time.Sleep(2 * time.Second)
+	test.Poll(t, 2*time.Second, true, func() interface{} {
+		return reg.isReady(enabledRWTenant)
+	})
 
 	app := reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
-	_, ok := app.(storage.Appender)
-	assert.Truef(t, ok, "instance is not of expected type")
+	assert.Equalf(t, "*storage.fanoutAppender", fmt.Sprintf("%T", app), "instance is not of expected type")
 }
 
 func TestStorageSetupWithRemoteWriteDisabled(t *testing.T) {
-	reg := setupRegistry(t)
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage

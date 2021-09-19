@@ -6,14 +6,10 @@ package wal
 import (
 	"sync"
 
-	//"github.com/prometheus/prometheus/pkg/intern"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-// NOTE:
-// interning has been disabled since it has not been upstreamed to prometheus/prometheus
-// the agent (from which this file was copied) replaces the prometheus/prometheus lib:
-// replace github.com/prometheus/prometheus => github.com/grafana/prometheus v1.8.2-0.20210608193638-7b78de4ccffc
+// TODO(dannyk): add label set interning
 
 type memSeries struct {
 	sync.Mutex
@@ -81,8 +77,6 @@ func (m seriesHashmap) del(hash uint64, ref uint64) {
 	for _, s := range m[hash] {
 		if s.ref != ref {
 			rem = append(rem, s)
-		} else {
-			//intern.ReleaseLabels(intern.Global, s.lset)
 		}
 	}
 	if len(rem) == 0 {

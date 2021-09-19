@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/require"
 
@@ -306,7 +305,7 @@ func TestNonMetricQuery(t *testing.T) {
 	require.Nil(t, err)
 
 	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides)
-	queryFunc := engineQueryFunc(log.NewNopLogger(), engine, overrides, fakeChecker{}, "fake")
+	queryFunc := engineQueryFunc(engine, overrides, fakeChecker{}, "fake")
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")
