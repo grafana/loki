@@ -425,67 +425,67 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
-// RulerRemoteWriteDisabled TODO
+// RulerRemoteWriteDisabled returns whether remote-write is disabled for a given user or not.
 func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
 }
 
-// RulerRemoteWriteURL TODO
+// RulerRemoteWriteURL returns the remote-write URL to use for a given user.
 func (o *Overrides) RulerRemoteWriteURL(userID string) string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteURL
 }
 
-// RulerRemoteWriteTimeout TODO
+// RulerRemoteWriteTimeout returns the duration after which to timeout a remote-write request for a given user.
 func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteTimeout
 }
 
-// RulerRemoteWriteHeaders TODO
+// RulerRemoteWriteHeaders returns the headers to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders
 }
 
-// RulerRemoteWriteRelabelConfigs TODO
+// RulerRemoteWriteRelabelConfigs returns the write relabel configs to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config {
 	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
 }
 
-// RulerRemoteWriteQueueCapacity TODO
+// RulerRemoteWriteQueueCapacity returns the queue capacity to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
 }
 
-// RulerRemoteWriteQueueMinShards TODO
+// RulerRemoteWriteQueueMinShards returns the minimum shards to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMinShards(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinShards
 }
 
-// RulerRemoteWriteQueueMaxShards TODO
+// RulerRemoteWriteQueueMaxShards returns the maximum shards to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMaxShards(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxShards
 }
 
-// RulerRemoteWriteQueueMaxSamplesPerSend TODO
+// RulerRemoteWriteQueueMaxSamplesPerSend returns the max samples to send in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxSamplesPerSend
 }
 
-// RulerRemoteWriteQueueBatchSendDeadline TODO
+// RulerRemoteWriteQueueBatchSendDeadline returns the maximum time a sample will be buffered before being discarded for a given user.
 func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
 }
 
-// RulerRemoteWriteQueueMinBackoff TODO
+// RulerRemoteWriteQueueMinBackoff returns the minimum time for an exponential backoff for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMinBackoff(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinBackoff
 }
 
-// RulerRemoteWriteQueueMaxBackoff TODO
+// RulerRemoteWriteQueueMaxBackoff returns the maximum time for an exponential backoff for a given user.
 func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxBackoff
 }
 
-// RulerRemoteWriteQueueRetryOnRateLimit TODO
+// RulerRemoteWriteQueueRetryOnRateLimit returns whether to retry failed remote-write requests (429 response) for a given user.
 func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit
 }
