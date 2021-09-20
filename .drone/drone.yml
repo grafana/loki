@@ -48,6 +48,24 @@ steps:
 
 ---
 kind: pipeline
+name: validate-example-configs
+
+platform:
+  os: linux
+  arch: amd64
+
+workspace:
+  base: /src
+  path: loki
+
+steps:
+- name: validate provided example configuration files
+  image: grafana/loki-build-image:0.17.0
+  commands:
+  - echo "Hello, World"
+
+---
+kind: pipeline
 name: docker-amd64
 
 platform:
@@ -973,6 +991,6 @@ get:
 
 ---
 kind: signature
-hmac: b70be41d1a7f91c11af945a34bdbdc7a4f7613cf830c13f5438dba0bf33a1ec5
+hmac: 384fb788a2ab1e26b8c0eacb7a455508beaf70d4d14b313ddcdebb6ffc0d9b69
 
 ...

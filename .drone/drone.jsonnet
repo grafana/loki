@@ -286,6 +286,15 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
+  pipeline('validate-example-configs') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      run('validate provided example configuration files', ['echo "Hello, World"'])
+    ],
+  },
 ] + [
   multiarch_image(arch)
   for arch in archs
