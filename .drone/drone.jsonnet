@@ -292,7 +292,8 @@ local manifest(apps) = pipeline('manifest') {
       path: 'loki',
     },
     steps: [
-      run('validate provided example configuration files', ['docker run --rm grafana/loki:main-%s-amd64 -version' % '$(./tools/image-tag)'])
+      make('loki', container=false) { depends_on: ['clone'] },
+      run('validate provided example configuration files', ['ls', './cmd/loki/loki -version'])
     ],
   },
 ] + [

@@ -59,10 +59,18 @@ workspace:
   path: loki
 
 steps:
+- name: loki
+  image: grafana/loki-build-image:0.17.0
+  commands:
+  - make BUILD_IN_CONTAINER=false loki
+  depends_on:
+  - clone
+
 - name: validate provided example configuration files
   image: grafana/loki-build-image:0.17.0
   commands:
-  - docker run --rm grafana/loki:main-$(./tools/image-tag)-amd64 -version
+  - ls
+  - ./cmd/loki/loki -version
 
 ---
 kind: pipeline
@@ -991,6 +999,6 @@ get:
 
 ---
 kind: signature
-hmac: 12b5e8a892b9a0432ad83b6a0d060eea5b367bb0a82e9f72eba61282185d9ca1
+hmac: 335c81b9dc5edfcd8674b5df6713206639dbf61ffed51bf8551d3a6e1a52b629
 
 ...
