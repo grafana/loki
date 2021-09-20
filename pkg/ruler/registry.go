@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,7 +207,14 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 			rwCfg.Client.Headers = make(map[string]string)
 		}
 
-		// always inject the X-Org-ScopeId header for multi-tenant metrics backends
+		// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
+		for k, _ := range rwCfg.Client.Headers {
+			if strings.ToLower(user.OrgIDHeaderName) == strings.ToLower(k) {
+				delete(rwCfg.Client.Headers, k)
+			}
+		}
+
+		// always inject the X-Scope-OrgId header for multi-tenant metrics backends
 		rwCfg.Client.Headers[user.OrgIDHeaderName] = tenant
 
 		conf.RemoteWrite = []*config.RemoteWriteConfig{

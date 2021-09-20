@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 
 const enabledRWTenant = "12345"
 const disabledRWTenant = "54321"
+const additionalHeadersRWTenant = "55443"
 
 const defaultCapacity = 1000
 
@@ -37,6 +39,14 @@ func newFakeLimits() fakeLimits {
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
+			},
+			additionalHeadersRWTenant: {
+				RulerRemoteWriteHeaders: map[string]string{
+					user.OrgIDHeaderName:                  "overridden",
+					strings.ToLower(user.OrgIDHeaderName): "overridden-lower",
+					strings.ToUpper(user.OrgIDHeaderName): "overridden-upper",
+					"Additional":                          "Header",
+				},
 			},
 		},
 	}
@@ -125,6 +135,28 @@ func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
 
 	// this tenant has remote-write disabled
 	assert.Len(t, tenantCfg.RemoteWrite, 0)
+}
+
+func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], additionalHeadersRWTenant)
+	// but that the additional header defined is set
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Additional"], "Header")
+
+	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
 }
 
 func TestWALRegistryCreation(t *testing.T) {
