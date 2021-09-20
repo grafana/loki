@@ -1,3 +1,5 @@
+# This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
+
 schema_config:
   configs:
   - from: 2020-05-15

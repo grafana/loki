@@ -286,6 +286,7 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
+  # Build Loki and use the `-verify-config` flag on all example configurations
   pipeline('validate-example-configs') {
     workspace: {
       base: '/src',
