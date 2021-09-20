@@ -292,7 +292,7 @@ local manifest(apps) = pipeline('manifest') {
       path: 'loki',
     },
     steps: [
-      run('validate provided example configuration files', ['echo "Hello, World"'])
+      run('validate provided example configuration files', ['docker run --rm grafana/loki:main-%s-amd64 -version' % '$(./tools/image-tag)'])
     ],
   },
 ] + [

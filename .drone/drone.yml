@@ -62,7 +62,7 @@ steps:
 - name: validate provided example configuration files
   image: grafana/loki-build-image:0.17.0
   commands:
-  - echo "Hello, World"
+  - docker run --rm grafana/loki:main-$(./tools/image-tag)-amd64 -version
 
 ---
 kind: pipeline
@@ -991,6 +991,6 @@ get:
 
 ---
 kind: signature
-hmac: 384fb788a2ab1e26b8c0eacb7a455508beaf70d4d14b313ddcdebb6ffc0d9b69
+hmac: 12b5e8a892b9a0432ad83b6a0d060eea5b367bb0a82e9f72eba61282185d9ca1
 
 ...
