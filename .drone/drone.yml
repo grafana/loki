@@ -71,6 +71,8 @@ steps:
   commands:
   - ls
   - ./cmd/loki/loki -version
+  depends_on:
+  - loki
 
 ---
 kind: pipeline
@@ -999,6 +1001,6 @@ get:
 
 ---
 kind: signature
-hmac: 335c81b9dc5edfcd8674b5df6713206639dbf61ffed51bf8551d3a6e1a52b629
+hmac: 30973ad4b8577e27782938633e80d324068e4938210e4ea88049d2f18f09dc7d
 
 ...

@@ -293,7 +293,7 @@ local manifest(apps) = pipeline('manifest') {
     },
     steps: [
       make('loki', container=false) { depends_on: ['clone'] },
-      run('validate provided example configuration files', ['ls', './cmd/loki/loki -version'])
+      run('validate provided example configuration files', ['ls', './cmd/loki/loki -version']) { depends_on: ['loki'] },
     ],
   },
 ] + [
