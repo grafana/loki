@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -27,8 +26,6 @@ import (
 )
 
 type walRegistry struct {
-	sync.RWMutex
-
 	logger  log.Logger
 	manager instance.Manager
 
@@ -89,9 +86,6 @@ func (r *walRegistry) isReady(tenant string) bool {
 }
 
 func (r *walRegistry) get(tenant string) storage.Storage {
-	r.RLock()
-	defer r.RUnlock()
-
 	logger := log.With(r.logger, "user", tenant)
 	ready := r.metrics.appenderReady.WithLabelValues(tenant)
 
@@ -173,9 +167,6 @@ func (r *walRegistry) configureTenantStorage(tenant string) {
 }
 
 func (r *walRegistry) stop() {
-	r.Lock()
-	defer r.Unlock()
-
 	if r.cleaner != nil {
 		r.cleaner.Stop()
 	}
