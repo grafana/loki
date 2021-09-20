@@ -69,8 +69,7 @@ steps:
 - name: validate provided example configuration files
   image: grafana/loki-build-image:0.17.0
   commands:
-  - ls
-  - ./cmd/loki/loki -version
+  - "for f in ./docs/sources/configuration/examples/*.yaml; do echo \"Validating provided example config: $f\" && ./cmd/loki/loki -config.file=$f -verify-config || exit 1; done"
   depends_on:
   - loki
 
@@ -1001,6 +1000,6 @@ get:
 
 ---
 kind: signature
-hmac: 30973ad4b8577e27782938633e80d324068e4938210e4ea88049d2f18f09dc7d
+hmac: 240486a8797126889051bfd3658b22f3a04d4a814161847db4ed334e7561bf99
 
 ...

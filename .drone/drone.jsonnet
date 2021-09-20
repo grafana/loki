@@ -293,7 +293,7 @@ local manifest(apps) = pipeline('manifest') {
     },
     steps: [
       make('loki', container=false) { depends_on: ['clone'] },
-      run('validate provided example configuration files', ['ls', './cmd/loki/loki -version']) { depends_on: ['loki'] },
+      run('validate provided example configuration files', ['for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $f" && ./cmd/loki/loki -config.file=$f -verify-config || exit 1; done']) { depends_on: ['loki'] },
     ],
   },
 ] + [
