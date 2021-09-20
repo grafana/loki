@@ -565,7 +565,7 @@ The following query shows how you can reformat a log line to make it easier to r
 
 Label formatting is used to sanitize the query while the line format reduce the amount of information and creates a tabular output.
 
-For those given log line:
+For this given log line:
 
 ```log
 level=info ts=2020-10-23T20:32:18.094668233Z caller=metrics.go:81 org_id=29 traceID=1980d41501b57b68 latency=fast query="{cluster=\"ops-tools1\", job=\"cortex-ops/query-frontend\"} |= \"query_range\"" query_type=filter range_type=range length=15m0s step=7s duration=650.22401ms status=200 throughput_mb=1.529717 total_bytes_mb=0.994659
