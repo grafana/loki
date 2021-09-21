@@ -284,17 +284,8 @@ local manifest(apps) = pipeline('manifest') {
         image: 'koalaman/shellcheck-alpine:stable',
         commands: ['apk add make bash && make lint-scripts'],
       },
-    ],
-  },
-  # Build Loki and use the `-verify-config` flag on all example configurations
-  pipeline('validate-example-configs') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
       make('loki', container=false) { depends_on: ['clone'] },
-      run('validate provided example configuration files', ['for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $f" && ./cmd/loki/loki -config.file=$f -verify-config || exit 1; done']) { depends_on: ['loki'] },
+      make('validate-example-configs', container=false) { depends_on: ['loki'] },
     ],
   },
 ] + [

@@ -46,19 +46,6 @@ steps:
   commands:
   - apk add make bash && make lint-scripts
 
----
-kind: pipeline
-name: validate-example-configs
-
-platform:
-  os: linux
-  arch: amd64
-
-workspace:
-  base: /src
-  path: loki
-
-steps:
 - name: loki
   image: grafana/loki-build-image:0.17.0
   commands:
@@ -66,10 +53,10 @@ steps:
   depends_on:
   - clone
 
-- name: validate provided example configuration files
+- name: validate-example-configs
   image: grafana/loki-build-image:0.17.0
   commands:
-  - "for f in ./docs/sources/configuration/examples/*.yaml; do echo \"Validating provided example config: $f\" && ./cmd/loki/loki -config.file=$f -verify-config || exit 1; done"
+  - make BUILD_IN_CONTAINER=false validate-example-configs
   depends_on:
   - loki
 
@@ -1000,6 +987,6 @@ get:
 
 ---
 kind: signature
-hmac: 240486a8797126889051bfd3658b22f3a04d4a814161847db4ed334e7561bf99
+hmac: b86209659200c59388bec4ba2706d95f2514e1b34a91a85d2547143aae735e19
 
 ...
