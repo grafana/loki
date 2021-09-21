@@ -4,6 +4,7 @@
 package cleaner
 
 import (
+	"flag"
 	"time"
 )
 
@@ -11,4 +12,9 @@ import (
 type Config struct {
 	MinAge time.Duration `yaml:"min_age,omitempty"`
 	Period time.Duration `yaml:"period,omitempty"`
+}
+
+func (c Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&c.MinAge, "ruler.wal-cleaner.min-age", DefaultCleanupAge, "The minimum age of a WAL to consider for cleaning.")
+	f.DurationVar(&c.Period, "ruler.wal-cleaer.period", DefaultCleanupPeriod, "How often to run the WAL cleaner.")
 }

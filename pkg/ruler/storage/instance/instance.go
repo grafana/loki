@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -139,6 +140,13 @@ func (c *Config) Clone() (Config, error) {
 	}
 
 	return *cp, nil
+}
+
+func (c *Config) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&c.Dir, "ruler.wal.dir", DefaultConfig.Dir, "Directory to store the WAL and/or recover from WAL.")
+	f.DurationVar(&c.TruncateFrequency, "ruler.wal.truncate-frequency", DefaultConfig.TruncateFrequency, "How often to run the WAL truncation.")
+	f.DurationVar(&c.MinAge, "ruler.wal.min-age", DefaultConfig.MinAge, "Minimum age that samples must exist in the WAL before being truncated.")
+	f.DurationVar(&c.MaxAge, "ruler.wal.max-age", DefaultConfig.MaxAge, "Maximum age that samples must exist in the WAL before being truncated.")
 }
 
 type walStorageFactory func(reg prometheus.Registerer) (walStorage, error)
