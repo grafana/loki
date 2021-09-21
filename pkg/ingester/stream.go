@@ -218,6 +218,11 @@ func (s *stream) Push(
 		}
 	}()
 
+	// This call uses a mutex under the hood, cache the result since we're checking the limit
+	// on each entry in the push (hot path) and we only use this value when logging entries that
+	// passed the rate limit.
+	limit := s.limiter.lim.Limit()
+
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
 	for i := range entries {
@@ -240,7 +245,7 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(s.limiter.lim.Limit()), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
 			continue
