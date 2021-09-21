@@ -90,3 +90,4 @@ jobs:
       with:
         path-to-profile: profile.cov
         flag-name: Go-${{ matrix.go }}
+        shallow: true
