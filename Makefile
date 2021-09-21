@@ -263,6 +263,8 @@ publish: dist
 # Lint #
 ########
 
+# To run this efficiently on your workstation, run this from the root dir:
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
 lint:
 	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...

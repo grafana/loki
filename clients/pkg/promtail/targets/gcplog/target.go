@@ -17,7 +17,7 @@ import (
 
 // GcplogTarget represents the target specific to GCP project.
 // It collects logs from GCP and push it to Loki.
-// nolint:golint
+// nolint:revive
 type GcplogTarget struct {
 	metrics       *Metrics
 	logger        log.Logger
@@ -41,7 +41,7 @@ type GcplogTarget struct {
 // and push it Loki via given `api.EntryHandler.`
 // It starts the `run` loop to consume log entries that can be
 // stopped via `target.Stop()`
-// nolint:golint,govet
+// nolint:revive,govet
 func NewGcplogTarget(
 	metrics *Metrics,
 	logger log.Logger,
@@ -66,7 +66,7 @@ func NewGcplogTarget(
 	return target, nil
 }
 
-// nolint: golint
+// nolint:revive
 func newGcplogTarget(
 	metrics *Metrics,
 	logger log.Logger,

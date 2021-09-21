@@ -33,7 +33,7 @@ var (
 )
 
 // SyslogTarget listens to syslog messages.
-// nolint:golint
+// nolint:revive
 type SyslogTarget struct {
 	metrics       *Metrics
 	logger        log.Logger

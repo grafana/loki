@@ -44,7 +44,7 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 		return nil, err
 	}
 	var handler api.EntryHandler = c
-	var stop func() = func() {}
+	var stop = func() {}
 	if len(cfg.pipeline.PipelineStages) != 0 {
 		pipeline, err := stages.NewPipeline(logger, cfg.pipeline.PipelineStages, &jobName, prometheus.DefaultRegisterer)
 		if err != nil {

@@ -33,7 +33,7 @@ const (
 )
 
 // FileTargetManager manages a set of targets.
-// nolint:golint
+// nolint:revive
 type FileTargetManager struct {
 	log     log.Logger
 	quit    context.CancelFunc

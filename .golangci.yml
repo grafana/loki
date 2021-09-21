@@ -55,18 +55,17 @@ linters:
     - goconst
     - gofmt
     - goimports
-    - golint
+    - revive
     - gosimple
     - ineffassign
-    - megacheck
+    - staticcheck
     - misspell
     - structcheck
     - unconvert
     - unparam
     - varcheck
     - govet
-    - unused # new from here.
-    - interfacer
+    - unused
     - typecheck
 
 issues:
