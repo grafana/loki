@@ -561,7 +561,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 ## explicit
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20210910100700-60e6d9b19675
+# github.com/grafana/dskit v0.0.0-20210914144857-dbbb3701e01d
 ## explicit
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/closer
@@ -572,6 +572,7 @@ github.com/grafana/dskit/kv/consul
 github.com/grafana/dskit/kv/etcd
 github.com/grafana/dskit/kv/kvtls
 github.com/grafana/dskit/kv/memberlist
+github.com/grafana/dskit/limiter
 github.com/grafana/dskit/middleware
 github.com/grafana/dskit/modules
 github.com/grafana/dskit/runtimeconfig
