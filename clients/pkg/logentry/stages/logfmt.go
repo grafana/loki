@@ -16,7 +16,7 @@ import (
 
 // Config Errors
 const (
-	ErrMappingRequired        = "mapping is required"
+	ErrMappingRequired        = "logfmt mapping is required"
 	ErrEmptyLogfmtStageConfig = "empty logfmt stage configuration"
 	ErrEmptyLogfmtStageSource = "empty source"
 )
@@ -122,11 +122,13 @@ func (j *logfmtStage) Process(labels model.LabelSet, extracted map[string]interf
 		return
 	}
 	decoder := logfmt.NewDecoder(strings.NewReader(*input))
+	extractedEntriesCount := 0
 	for decoder.ScanRecord() {
 		for decoder.ScanKeyval() {
 			mapKey, ok := j.inverseMapping[string(decoder.Key())]
 			if ok {
 				extracted[mapKey] = string(decoder.Value())
+				extractedEntriesCount++
 			}
 		}
 	}
@@ -137,6 +139,9 @@ func (j *logfmtStage) Process(labels model.LabelSet, extracted map[string]interf
 	}
 
 	if Debug {
+		if extractedEntriesCount != len(j.inverseMapping) {
+			level.Debug(j.logger).Log("msg", fmt.Sprintf("found only %d out of %d configured mappings in logfmt stage", extractedEntriesCount, len(j.inverseMapping)))
+		}
 		level.Debug(j.logger).Log("msg", "extracted data debug in logfmt stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }

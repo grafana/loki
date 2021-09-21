@@ -1,7 +1,6 @@
 package stages
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
@@ -71,9 +70,7 @@ func TestPipeline_Logfmt(t *testing.T) {
 			t.Parallel()
 
 			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
 			out := processEntries(pl, newEntry(nil, nil, testData.entry, time.Now()))[0]
 			assert.Equal(t, testData.expectedExtract, out.Extracted)
 		})
@@ -91,26 +88,18 @@ func TestLogfmtYamlMapStructure(t *testing.T) {
 
 	// testing that we can use yaml data into mapstructure.
 	var mapstruct map[interface{}]interface{}
-	if err := yaml.Unmarshal([]byte(testLogfmtCfg), &mapstruct); err != nil {
-		t.Fatalf("error while un-marshalling config: %s", err)
-	}
+	assert.NoError(t, yaml.Unmarshal([]byte(testLogfmtCfg), &mapstruct))
 	p, ok := mapstruct["logfmt"].(map[interface{}]interface{})
-	if !ok {
-		t.Fatalf("could not read parser %+v", mapstruct["logfmt"])
-	}
+	assert.True(t, ok)
 	got, err := parseLogfmtConfig(p)
-	if err != nil {
-		t.Fatalf("could not create parser from yaml: %s", err)
-	}
+	assert.NoError(t, err)
 	want := &LogfmtConfig{
 		Mapping: map[string]string{
 			"foo1": "bar1",
 			"foo2": "",
 		},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("want: %+v got: %+v", want, got)
-	}
+	assert.EqualValues(t, want, got)
 }
 
 func TestLogfmtConfig_validate(t *testing.T) {
@@ -167,17 +156,12 @@ func TestLogfmtConfig_validate(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			c, err := parseLogfmtConfig(tt.config)
-			if err != nil {
-				t.Fatalf("failed to create config: %s", err)
-			}
+			assert.NoError(t, err)
 			got, err := validateLogfmtConfig(c)
-			if (err != nil) != (tt.err != nil) {
-				t.Errorf("LogfmtConfig.validate() expected error = %v, actual error = %v", tt.err, err)
-				return
-			}
-			if (err != nil) && (err.Error() != tt.err.Error()) {
-				t.Errorf("LogfmtConfig.validate() expected error = %v, actual error = %v", tt.err, err)
-				return
+			if tt.err != nil {
+				assert.EqualError(t, err, tt.err.Error())
+			} else {
+				assert.NoError(t, err)
 			}
 			assert.Equal(t, tt.wantMappingCount, len(got))
 		})
@@ -301,9 +285,7 @@ func TestLogfmtParser_Parse(t *testing.T) {
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			p, err := New(util_log.Logger, nil, StageTypeLogfmt, tt.config, nil)
-			if err != nil {
-				t.Fatalf("failed to create json parser: %s", err)
-			}
+			assert.NoError(t, err)
 			out := processEntries(p, newEntry(tt.extracted, nil, tt.entry, time.Now()))[0]
 
 			assert.Equal(t, tt.expectedExtract, out.Extracted)
