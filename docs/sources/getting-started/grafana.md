@@ -3,10 +3,10 @@ title: Loki in Grafana
 ---
 # Loki in Grafana
 
-Grafana ships with built-in support for Loki for versions greater than
-[6.0](https://grafana.com/grafana/download/6.0.0). Using
-[6.3](https://grafana.com/grafana/download/6.3.0) or later is highly
-recommended to take advantage of new [LogQL]({{< relref "../logql/_index.md" >}}) functionality.
+[Grafana 6.0](https://grafana.com/grafana/download/6.0.0) and more recent
+versions have built-in support for Loki.
+Use [Grafana 6.3](https://grafana.com/grafana/download/6.3.0) or a more
+recent version to take advantage of [LogQL]({{< relref "../logql/_index.md" >}}) functionality.
 
 1. Log into your Grafana instance. If this is your first time running
    Grafana, the username and password are both defaulted to `admin`.
@@ -27,7 +27,6 @@ Read more about Grafana's Explore feature in the
 [Grafana documentation](http://docs.grafana.org/features/explore) and on how to
 search and filter for logs with Loki.
 
-> To configure the datasource via provisioning, see [Configuring Grafana via
-> Provisioning](http://docs.grafana.org/features/datasources/loki/#configure-the-datasource-with-provisioning)
-> in the Grafana documentation and make sure to adjust the URL similarly as
-> shown above.
+To configure Loki as a datasource via provisioning, see [Configuring Grafana via
+Provisioning](http://docs.grafana.org/features/datasources/loki/#configure-the-datasource-with-provisioning).
+Set the URL in the provisioning.

@@ -9,9 +9,6 @@ Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-
 
 Add [Loki's chart repository](https://github.com/grafana/helm-charts) to Helm:
 
-> **PLEASE NOTE** On 2020/12/11 Loki's Helm charts were moved from their initial location within the
-Loki repo and hosted at https://grafana.github.io/loki/charts to their new location at https://github.com/grafana/helm-charts which are hosted at https://grafana.github.io/helm-charts
-
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
 ```
@@ -24,7 +21,7 @@ helm repo update
 
 ## Deploy Loki to your cluster
 
-### Deploy with default config
+### Deploy with default configuration
 
 ```bash
 helm upgrade --install loki grafana/loki-stack
@@ -36,7 +33,7 @@ helm upgrade --install loki grafana/loki-stack
 helm upgrade --install loki --namespace=loki grafana/loki
 ```
 
-### Deploy with custom config
+### Deploy with custom configuration
 
 ```bash
 helm upgrade --install loki grafana/loki --set "key1=val1,key2=val2,..."
@@ -87,11 +84,11 @@ output above. Then follow the [instructions for adding the Loki Data Source](../
 
 ## Run Loki behind HTTPS ingress
 
-If Loki and Promtail are deployed on different clusters you can add an Ingress
-in front of Loki. By adding a certificate you create an HTTPS endpoint. For
-extra security you can also enable Basic Authentication on the Ingress.
+If Loki and Promtail are deployed on different clusters, you can add an Ingress
+in front of Loki. By adding a certificate, you create an HTTPS endpoint. For
+extra security you can also enable Basic Authentication on Ingress.
 
-In Promtail, set the following values to communicate using HTTPS and basic authentication:
+In the Promtail configuration, set the following values to communicate using HTTPS and basic authentication:
 
 ```yaml
 loki:
@@ -127,11 +124,11 @@ spec:
 
 ## Run Promtail with syslog support
 
-In order to receive and process syslog message into Promtail, the following changes will be necessary:
+In order to receive and process syslog messages in Promtail, the following changes will be necessary:
 
 * Review the [Promtail syslog-receiver configuration documentation](/docs/clients/promtail/scraping.md#syslog-receiver)
 
-* Configure the Promtail helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
+* Configure the Promtail Helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
 
 ```yaml
 extraScrapeConfigs:
@@ -155,7 +152,7 @@ In order to receive and process syslog message into Promtail, the following chan
 
 * Review the [Promtail systemd-journal configuration documentation](/docs/clients/promtail/scraping.md#journal-scraping-linux-only)
 
-* Configure the Promtail helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
+* Configure the Promtail Helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
 
 ```yaml
 # Add additional scrape config
