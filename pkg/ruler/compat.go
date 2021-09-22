@@ -7,16 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/storage"
-
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
@@ -24,26 +23,42 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 	"github.com/weaveworks/common/user"
-	yaml "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 )
-
-var ErrRemoteWriteDisabled = errors.New("remote-write disabled")
 
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
 type RulesLimits interface {
 	ruler.RulesLimits
 
+	RulerRemoteWriteDisabled(userID string) bool
+	RulerRemoteWriteURL(userID string) string
+	RulerRemoteWriteTimeout(userID string) time.Duration
+	RulerRemoteWriteHeaders(userID string) map[string]string
+	RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config
 	RulerRemoteWriteQueueCapacity(userID string) int
+	RulerRemoteWriteQueueMinShards(userID string) int
+	RulerRemoteWriteQueueMaxShards(userID string) int
+	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
+	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
+	RulerRemoteWriteQueueMinBackoff(userID string) time.Duration
+	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
+	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, userID string) rules.QueryFunc {
+func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
 	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		// check if storage instance is ready; if not, fail the rule evaluation;
+		// we do this to prevent an attempt to append new samples before the WAL appender is ready
+		if !checker.isReady(userID) {
+			return nil, errNotReady
+		}
+
 		adjusted := t.Add(-overrides.EvaluationDelay(userID))
 		params := logql.NewLiteralParams(
 			qs,
@@ -77,12 +92,28 @@ func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, userID string)
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
 func MultiTenantManagerAdapter(mgr ruler.MultiTenantManager) ruler.MultiTenantManager {
-	return &MultiTenantManager{mgr}
+	return &MultiTenantManager{inner: mgr}
 }
 
 // MultiTenantManager wraps a cortex MultiTenantManager but validates loki rules
 type MultiTenantManager struct {
-	ruler.MultiTenantManager
+	inner ruler.MultiTenantManager
+}
+
+func (m *MultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
+	m.inner.SyncRuleGroups(ctx, ruleGroups)
+}
+
+func (m *MultiTenantManager) GetRules(userID string) []*rules.Group {
+	return m.inner.GetRules(userID)
+}
+
+func (m *MultiTenantManager) Stop() {
+	if registry != nil {
+		registry.stop()
+	}
+
+	m.inner.Stop()
 }
 
 // ValidateRuleGroup validates a rulegroup
@@ -90,39 +121,31 @@ func (m *MultiTenantManager) ValidateRuleGroup(grp rulefmt.RuleGroup) []error {
 	return ValidateGroups(grp)
 }
 
-func MemstoreTenantManager(
-	cfg Config,
-	engine *logql.Engine,
-	overrides RulesLimits,
-) ruler.ManagerFactory {
-	var msMetrics *memstoreMetrics
-	var rwMetrics *remoteWriteMetrics
+// MetricsPrefix defines the prefix to use for all metrics in this package
+const MetricsPrefix = "loki_ruler_wal_"
 
-	return ruler.ManagerFactory(func(
+var registry storageRegistry
+
+func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
+	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
+
+	registry = newWALRegistry(log.With(logger, "storage", "registry"), reg, cfg, overrides)
+
+	return func(
 		ctx context.Context,
 		userID string,
 		notifier *notifier.Manager,
 		logger log.Logger,
 		reg prometheus.Registerer,
 	) ruler.RulesManager {
-		// We'll ignore the passed registerer and use the default registerer to avoid prefix issues and other weirdness.
-		// This closure prevents re-registering.
-		registerer := prometheus.DefaultRegisterer
-
-		if msMetrics == nil {
-			msMetrics = newMemstoreMetrics(registerer)
-		}
-
-		if rwMetrics == nil {
-			rwMetrics = newRemoteWriteMetrics(registerer)
-		}
+		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(engine, overrides, userID)
-		memStore := NewMemStore(userID, queryFunc, msMetrics, 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		queryFunc := engineQueryFunc(engine, overrides, registry, userID)
+		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      newAppendable(cfg, overrides, logger, userID, rwMetrics),
+			Appendable:      registry,
 			Queryable:       memStore,
 			QueryFunc:       queryFunc,
 			Context:         user.InjectOrgID(ctx, userID),
@@ -140,16 +163,7 @@ func MemstoreTenantManager(
 		memStore.Start(mgr)
 
 		return mgr
-	})
-}
-
-func newAppendable(cfg Config, overrides RulesLimits, logger log.Logger, userID string, metrics *remoteWriteMetrics) storage.Appendable {
-	if !cfg.RemoteWrite.Enabled {
-		level.Info(logger).Log("msg", "remote-write is disabled")
-		return &DiscardingAppender{ErrRemoteWriteDisabled}
 	}
-
-	return newRemoteWriteAppendable(cfg, overrides, logger, userID, metrics)
 }
 
 type GroupLoader struct{}

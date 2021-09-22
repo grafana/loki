@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/require"
 
@@ -299,21 +298,6 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 	require.Error(t, cfg.RemoteWrite.Validate())
 }
 
-// TestDiscardingAppender tests that a DiscardingAppender is created when remote-write is disabled
-func TestDiscardingAppender(t *testing.T) {
-	cfg := Config{
-		Config: ruler.Config{},
-		RemoteWrite: RemoteWriteConfig{
-			Enabled: false,
-		},
-	}
-	require.False(t, cfg.RemoteWrite.Enabled)
-
-	appendable := newAppendable(cfg, &validation.Overrides{}, log.NewNopLogger(), "fake", metrics)
-	appender := appendable.Appender(context.TODO())
-	require.Equal(t, DiscardingAppender{ErrRemoteWriteDisabled}, appender)
-}
-
 // TestNonMetricQuery tests that only metric queries can be executed in the query function,
 // as both alert and recording rules rely on metric queries being run
 func TestNonMetricQuery(t *testing.T) {
@@ -321,7 +305,7 @@ func TestNonMetricQuery(t *testing.T) {
 	require.Nil(t, err)
 
 	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides)
-	queryFunc := engineQueryFunc(engine, overrides, "fake")
+	queryFunc := engineQueryFunc(engine, overrides, fakeChecker{}, "fake")
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")
@@ -335,4 +319,10 @@ func (q *FakeQuerier) SelectLogs(context.Context, logql.SelectLogParams) (iter.E
 
 func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return iter.NoopIterator, nil
+}
+
+type fakeChecker struct{}
+
+func (f fakeChecker) isReady(tenant string) bool {
+	return true
 }

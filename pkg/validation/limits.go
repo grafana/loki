@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/logql"
@@ -73,10 +74,28 @@ type Limits struct {
 	MinShardingLookback model.Duration `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay          model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerMaxRulesPerRuleGroup     int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant   int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerRemoteWriteQueueCapacity int            `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
+	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+
+	// TODO(dannyk): add HTTP client overrides (basic auth / tls config, etc)
+	// Ruler remote-write limits.
+
+	// this field is the inversion of the general remote_write.enabled because the zero value of a boolean is false,
+	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
+	RulerRemoteWriteDisabled               bool              `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
+	RulerRemoteWriteURL                    string            `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
+	RulerRemoteWriteTimeout                time.Duration     `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
+	RulerRemoteWriteHeaders                map[string]string `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
+	RulerRemoteWriteRelabelConfigs         []*relabel.Config `yaml:"ruler_remote_write_relabel_configs" json:"ruler_remote_write_relabel_configs"`
+	RulerRemoteWriteQueueCapacity          int               `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
+	RulerRemoteWriteQueueMinShards         int               `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
+	RulerRemoteWriteQueueMaxShards         int               `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
+	RulerRemoteWriteQueueMaxSamplesPerSend int               `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
+	RulerRemoteWriteQueueBatchSendDeadline time.Duration     `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
+	RulerRemoteWriteQueueMinBackoff        time.Duration     `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
+	RulerRemoteWriteQueueMaxBackoff        time.Duration     `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
+	RulerRemoteWriteQueueRetryOnRateLimit  bool              `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
@@ -154,7 +173,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
-	f.IntVar(&l.RulerRemoteWriteQueueCapacity, "ruler.remote-write.queue-capacity", 10000, "Capacity of remote-write queues; if a queue exceeds its capacity it will evict oldest samples.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	_ = l.RetentionPeriod.Set("744h")
@@ -407,9 +425,69 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
-// RulerRemoteWriteQueueCapacity returns the remote-write queue capacity for a given user.
+// RulerRemoteWriteDisabled returns whether remote-write is disabled for a given user or not.
+func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
+	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
+}
+
+// RulerRemoteWriteURL returns the remote-write URL to use for a given user.
+func (o *Overrides) RulerRemoteWriteURL(userID string) string {
+	return o.getOverridesForUser(userID).RulerRemoteWriteURL
+}
+
+// RulerRemoteWriteTimeout returns the duration after which to timeout a remote-write request for a given user.
+func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteTimeout
+}
+
+// RulerRemoteWriteHeaders returns the headers to use in a remote-write for a given user.
+func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
+	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders
+}
+
+// RulerRemoteWriteRelabelConfigs returns the write relabel configs to use in a remote-write for a given user.
+func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config {
+	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
+}
+
+// RulerRemoteWriteQueueCapacity returns the queue capacity to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
+}
+
+// RulerRemoteWriteQueueMinShards returns the minimum shards to use in a remote-write for a given user.
+func (o *Overrides) RulerRemoteWriteQueueMinShards(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinShards
+}
+
+// RulerRemoteWriteQueueMaxShards returns the maximum shards to use in a remote-write for a given user.
+func (o *Overrides) RulerRemoteWriteQueueMaxShards(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxShards
+}
+
+// RulerRemoteWriteQueueMaxSamplesPerSend returns the max samples to send in a remote-write for a given user.
+func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxSamplesPerSend
+}
+
+// RulerRemoteWriteQueueBatchSendDeadline returns the maximum time a sample will be buffered before being discarded for a given user.
+func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
+}
+
+// RulerRemoteWriteQueueMinBackoff returns the minimum time for an exponential backoff for a given user.
+func (o *Overrides) RulerRemoteWriteQueueMinBackoff(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinBackoff
+}
+
+// RulerRemoteWriteQueueMaxBackoff returns the maximum time for an exponential backoff for a given user.
+func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxBackoff
+}
+
+// RulerRemoteWriteQueueRetryOnRateLimit returns whether to retry failed remote-write requests (429 response) for a given user.
+func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
+	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit
 }
 
 // RetentionPeriod returns the retention period for a given user.
