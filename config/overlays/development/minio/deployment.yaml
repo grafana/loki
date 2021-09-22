@@ -19,7 +19,7 @@ spec:
         - -c
         - |
           mkdir -p /storage/loki && \
-          /usr/bin/minio server /storage
+          minio server /storage
         env:
         - name: MINIO_ACCESS_KEY
           value: minio
