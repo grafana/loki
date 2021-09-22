@@ -63,11 +63,15 @@ $ kubectl port-forward loki-promtail-jrfg7 9080
 
 ## Debug output
 
-Both Loki and Promtail support a log level flag on the command-line:
+Both Loki and Promtail support a log level flag with the addition of
+a command-line option:
 
 ```bash
-$ loki -log.level=debug
-$ promtail -log.level=debug
+loki -log.level=debug
+```
+
+```bash
+promtail -log.level=debug
 ```
 
 ## Failed to create target, `ioutil.ReadDir: readdirent: not a directory`
