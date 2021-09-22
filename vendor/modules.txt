@@ -754,6 +754,7 @@ github.com/mwitkow/go-conntrack
 ## explicit
 github.com/ncw/swift
 # github.com/oklog/run v1.1.0
+## explicit
 github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 ## explicit

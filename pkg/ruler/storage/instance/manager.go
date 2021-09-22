@@ -10,25 +10,13 @@ import (
 	"sync"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 )
 
 var (
-	instanceAbnormalExits = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "agent_prometheus_instance_abnormal_exits_total",
-		Help: "Total number of times a Prometheus instance exited unexpectedly, causing it to be restarted.",
-	}, []string{"instance_name"})
-
-	currentActiveInstances = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "agent_prometheus_active_instances",
-		Help: "Current number of active instances being used by the agent.",
-	})
-
 	// DefaultBasicManagerConfig is the default config for the BasicManager.
 	DefaultBasicManagerConfig = BasicManagerConfig{
 		InstanceRestartBackoff: 5 * time.Second,
@@ -56,6 +44,12 @@ type Manager interface {
 	// DeleteConfig deletes a given managed instance based on its Config.Name.
 	DeleteConfig(name string) error
 
+	// Ready indicates if all instances are ready for processing.
+	Ready() bool
+
+	// InstanceReady indicates if an instance is ready for processing.
+	InstanceReady(name string) bool
+
 	// Stop stops the Manager and all managed instances.
 	Stop()
 }
@@ -63,11 +57,13 @@ type Manager interface {
 // ManagedInstance is implemented by Instance. It is defined as an interface
 // for the sake of testing from Manager implementations.
 type ManagedInstance interface {
+	Ready() bool
 	Run(ctx context.Context) error
 	Update(c Config) error
-	TargetsActive() map[string][]*scrape.Target
 	StorageDirectory() string
 	Appender(ctx context.Context) storage.Appender
+	Stop() error
+	Tenant() string
 }
 
 // BasicManagerConfig controls the operations of a BasicManager.
@@ -80,9 +76,10 @@ type BasicManagerConfig struct {
 //
 // Other implementations of Manager usually wrap a BasicManager.
 type BasicManager struct {
-	cfgMut sync.Mutex
-	cfg    BasicManagerConfig
-	logger log.Logger
+	cfgMut  sync.Mutex
+	cfg     BasicManagerConfig
+	logger  log.Logger
+	metrics *Metrics
 
 	// Take care when locking mut: if you hold onto a lock of mut while calling
 	// Stop on a process, you will deadlock.
@@ -103,6 +100,10 @@ type managedProcess struct {
 }
 
 func (p managedProcess) Stop() {
+	if err := p.inst.Stop(); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error while stopping instance", "user", p.inst.Tenant(), "err", err)
+	}
+
 	p.cancel()
 	<-p.done
 }
@@ -117,9 +118,10 @@ type Factory func(c Config) (ManagedInstance, error)
 // be handled by the BasicManager. Instances will be automatically restarted
 // if stopped, updated if the config changes, or removed when the Config is
 // deleted.
-func NewBasicManager(cfg BasicManagerConfig, logger log.Logger, launch Factory) *BasicManager {
+func NewBasicManager(cfg BasicManagerConfig, metrics *Metrics, logger log.Logger, launch Factory) *BasicManager {
 	return &BasicManager{
 		cfg:       cfg,
+		metrics:   metrics,
 		logger:    logger,
 		processes: make(map[string]*managedProcess),
 		launch:    launch,
@@ -207,7 +209,7 @@ func (m *BasicManager) ApplyConfig(c Config) error {
 		return err
 	}
 
-	currentActiveInstances.Inc()
+	m.metrics.RunningInstances.Inc()
 	return nil
 }
 
@@ -249,7 +251,7 @@ func (m *BasicManager) spawnProcess(c Config) error {
 		}
 		m.mut.Unlock()
 
-		currentActiveInstances.Dec()
+		m.metrics.RunningInstances.Dec()
 	}()
 
 	return nil
@@ -263,7 +265,7 @@ func (m *BasicManager) runProcess(ctx context.Context, name string, inst Managed
 		if err != nil && err != context.Canceled {
 			backoff := m.instanceRestartBackoff()
 
-			instanceAbnormalExits.WithLabelValues(name).Inc()
+			m.metrics.AbnormalExits.WithLabelValues(name).Inc()
 			level.Error(m.logger).Log("msg", "instance stopped abnormally, restarting after backoff period", "err", err, "backoff", backoff, "instance", name)
 			time.Sleep(backoff)
 		} else {
@@ -296,6 +298,34 @@ func (m *BasicManager) DeleteConfig(name string) error {
 	return nil
 }
 
+// Ready indicates if all instances are ready for processing.
+func (m *BasicManager) Ready() bool {
+	m.mut.Lock()
+	defer m.mut.Unlock()
+
+	for _, process := range m.processes {
+		if process.inst == nil {
+			return false
+		}
+
+		if !process.inst.Ready() {
+			return false
+		}
+	}
+
+	return true
+}
+
+// InstanceReady indicates if an instance is ready for processing.
+func (m *BasicManager) InstanceReady(name string) bool {
+	inst, err := m.GetInstance(name)
+	if err != nil {
+		return false
+	}
+
+	return inst.Ready()
+}
+
 // Stop stops the BasicManager and stops all active processes for configs.
 func (m *BasicManager) Stop() {
 	var wg sync.WaitGroup
@@ -324,6 +354,14 @@ type MockManager struct {
 	ApplyConfigFunc   func(Config) error
 	DeleteConfigFunc  func(name string) error
 	StopFunc          func()
+}
+
+func (m MockManager) Ready() bool {
+	return true
+}
+
+func (m MockManager) InstanceReady(name string) bool {
+	return true
 }
 
 // GetInstance implements Manager.

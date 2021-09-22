@@ -41,7 +41,7 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 			return &newMock, nil
 		}
 
-		cm := NewBasicManager(DefaultBasicManagerConfig, logger, spawner)
+		cm := NewBasicManager(DefaultBasicManagerConfig, NewMetrics(nil), logger, spawner)
 
 		for i := 0; i < 10; i++ {
 			err := cm.ApplyConfig(Config{Name: "test"})
@@ -65,7 +65,7 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 			return &newMock, nil
 		}
 
-		cm := NewBasicManager(DefaultBasicManagerConfig, logger, spawner)
+		cm := NewBasicManager(DefaultBasicManagerConfig, NewMetrics(nil), logger, spawner)
 
 		for i := 0; i < 10; i++ {
 			err := cm.ApplyConfig(Config{Name: "test"})
@@ -87,7 +87,7 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 			return &newMock, nil
 		}
 
-		cm := NewBasicManager(DefaultBasicManagerConfig, logger, spawner)
+		cm := NewBasicManager(DefaultBasicManagerConfig, NewMetrics(nil), logger, spawner)
 
 		// Creation should succeed
 		err := cm.ApplyConfig(Config{Name: "test"})
@@ -106,6 +106,18 @@ type mockInstance struct {
 	TargetsActiveFunc    func() map[string][]*scrape.Target
 	StorageDirectoryFunc func() string
 	AppenderFunc         func() storage.Appender
+}
+
+func (m mockInstance) Ready() bool {
+	return true
+}
+
+func (m mockInstance) Stop() error {
+	return nil
+}
+
+func (m mockInstance) Tenant() string {
+	return ""
 }
 
 func (m mockInstance) Run(ctx context.Context) error {
