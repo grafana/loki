@@ -21,12 +21,15 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 const enabledRWTenant = "12345"
 const disabledRWTenant = "54321"
 const additionalHeadersRWTenant = "55443"
+const customRelabelsTenant = "98765"
+const badRelabelsTenant = "45677"
 
 const defaultCapacity = 1000
 
@@ -34,8 +37,7 @@ func newFakeLimits() fakeLimits {
 	return fakeLimits{
 		limits: map[string]*validation.Limits{
 			enabledRWTenant: {
-				RulerRemoteWriteQueueCapacity:  987,
-				RulerRemoteWriteRelabelConfigs: []*relabel.Config{},
+				RulerRemoteWriteQueueCapacity: 987,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
@@ -46,6 +48,27 @@ func newFakeLimits() fakeLimits {
 					strings.ToLower(user.OrgIDHeaderName): "overridden-lower",
 					strings.ToUpper(user.OrgIDHeaderName): "overridden-upper",
 					"Additional":                          "Header",
+				},
+			},
+			customRelabelsTenant: {
+				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
+					{
+						Regex:        ".+:.+",
+						SourceLabels: []string{"__name__"},
+						Action:       "drop",
+					},
+					{
+						Regex:  "__cluster__",
+						Action: "labeldrop",
+					},
+				},
+			},
+			badRelabelsTenant: {
+				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
+					{
+						SourceLabels: []string{"__cluster__"},
+						Action:       "labeldrop",
+					},
 				},
 			},
 		},
@@ -104,8 +127,6 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 	assert.Len(t, tenantCfg.RemoteWrite, 1)
 	// but the tenant has an override for the queue capacity
 	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, 987)
-	// it should also override the default label configs (in this case by clearing them)
-	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
@@ -157,6 +178,31 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 
 	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+}
+
+func TestRelabelConfigOverrides(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(customRelabelsTenant)
+	require.NoError(t, err)
+
+	// it should also override the default label configs
+	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
+}
+
+func TestRelabelConfigOverridesWithErrors(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	_, err = reg.getTenantConfig(badRelabelsTenant)
+
+	// ensure that relabel validation is being applied
+	require.EqualError(t, err, "failed to parse relabel configs: labeldrop action requires only 'regex', and no other fields")
 }
 
 func TestWALRegistryCreation(t *testing.T) {

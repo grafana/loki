@@ -17,8 +17,10 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
@@ -228,12 +230,17 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
 	}
 
+	relabelConfigs, err := r.createRelabelConfigs(tenant)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse relabel configs: %w", err)
+	}
+
 	overrides := RemoteWriteConfig{
 		Client: config.RemoteWriteConfig{
 			URL:                 &promConfig.URL{u},
 			RemoteTimeout:       model.Duration(r.overrides.RulerRemoteWriteTimeout(tenant)),
 			Headers:             r.overrides.RulerRemoteWriteHeaders(tenant),
-			WriteRelabelConfigs: r.overrides.RulerRemoteWriteRelabelConfigs(tenant),
+			WriteRelabelConfigs: relabelConfigs,
 			Name:                fmt.Sprintf("%s-rw", tenant),
 			SendExemplars:       false,
 			// TODO(dannyk): configure HTTP client overrides
@@ -268,6 +275,29 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	}
 
 	return copy, nil
+}
+
+// createRelabelConfigs converts the util.RelabelConfig into relabel.Config to allow for
+// more control over json/yaml unmarshaling
+func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, error) {
+	configs := r.overrides.RulerRemoteWriteRelabelConfigs(tenant)
+
+	var relabelConfigs []*relabel.Config
+	for _, config := range configs {
+		out, err := yaml.Marshal(config)
+		if err != nil {
+			return nil, err
+		}
+
+		var rc relabel.Config
+		if err = yaml.Unmarshal(out, &rc); err != nil {
+			return nil, err
+		}
+
+		relabelConfigs = append(relabelConfigs, &rc)
+	}
+
+	return relabelConfigs, nil
 }
 
 var errNotReady = errors.New("appender not ready")
