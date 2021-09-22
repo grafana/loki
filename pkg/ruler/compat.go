@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/ruler/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -38,7 +38,7 @@ type RulesLimits interface {
 	RulerRemoteWriteURL(userID string) string
 	RulerRemoteWriteTimeout(userID string) time.Duration
 	RulerRemoteWriteHeaders(userID string) map[string]string
-	RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config
+	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
 	RulerRemoteWriteQueueCapacity(userID string) int
 	RulerRemoteWriteQueueMinShards(userID string) int
 	RulerRemoteWriteQueueMaxShards(userID string) int

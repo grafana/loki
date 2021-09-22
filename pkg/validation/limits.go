@@ -8,10 +8,10 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -83,19 +83,19 @@ type Limits struct {
 
 	// this field is the inversion of the general remote_write.enabled because the zero value of a boolean is false,
 	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
-	RulerRemoteWriteDisabled               bool              `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
-	RulerRemoteWriteURL                    string            `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
-	RulerRemoteWriteTimeout                time.Duration     `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
-	RulerRemoteWriteHeaders                map[string]string `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
-	RulerRemoteWriteRelabelConfigs         []*relabel.Config `yaml:"ruler_remote_write_relabel_configs" json:"ruler_remote_write_relabel_configs"`
-	RulerRemoteWriteQueueCapacity          int               `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
-	RulerRemoteWriteQueueMinShards         int               `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
-	RulerRemoteWriteQueueMaxShards         int               `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
-	RulerRemoteWriteQueueMaxSamplesPerSend int               `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
-	RulerRemoteWriteQueueBatchSendDeadline time.Duration     `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
-	RulerRemoteWriteQueueMinBackoff        time.Duration     `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
-	RulerRemoteWriteQueueMaxBackoff        time.Duration     `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
-	RulerRemoteWriteQueueRetryOnRateLimit  bool              `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
+	RulerRemoteWriteDisabled               bool                  `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
+	RulerRemoteWriteURL                    string                `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
+	RulerRemoteWriteTimeout                time.Duration         `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
+	RulerRemoteWriteHeaders                map[string]string     `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
+	RulerRemoteWriteRelabelConfigs         []*util.RelabelConfig `yaml:"ruler_remote_write_relabel_configs" json:"ruler_remote_write_relabel_configs"`
+	RulerRemoteWriteQueueCapacity          int                   `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
+	RulerRemoteWriteQueueMinShards         int                   `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
+	RulerRemoteWriteQueueMaxShards         int                   `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
+	RulerRemoteWriteQueueMaxSamplesPerSend int                   `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
+	RulerRemoteWriteQueueBatchSendDeadline time.Duration         `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
+	RulerRemoteWriteQueueMinBackoff        time.Duration         `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
+	RulerRemoteWriteQueueMaxBackoff        time.Duration         `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
+	RulerRemoteWriteQueueRetryOnRateLimit  bool                  `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
@@ -446,7 +446,7 @@ func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
 }
 
 // RulerRemoteWriteRelabelConfigs returns the write relabel configs to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*relabel.Config {
+func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig {
 	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
 }
 
