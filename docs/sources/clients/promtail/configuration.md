@@ -743,6 +743,15 @@ if many clients are connected. (`ulimit -Sn`)
 # TCP address to listen on. Has the format of "host:port".
 listen_address: <string>
 
+# Configure the receiver to use TLS.
+tls_config:
+  # Certificate and key files sent by the server (required)
+  cert_file: <string>
+  key_file: <string>
+
+  # CA certificate used to validate client certificate. Enables client certificate verification when specified.
+  [ ca_file: <string> ]
+
 # The idle timeout for tcp syslog connections, default is 120 seconds.
 idle_timeout: <duration>
 

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"time"
 
+	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/aws"
@@ -173,6 +174,8 @@ type SyslogTargetConfig struct {
 
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
+
+	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.
