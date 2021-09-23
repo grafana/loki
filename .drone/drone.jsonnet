@@ -291,6 +291,7 @@ local manifest(apps) = pipeline('manifest') {
         commands: ['funcbench -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/'],
         environment: {
           GITHUB_TOKEN: { from_secret: github_secret.name },
+          CGO_ENABLED: 0,
         },
       },
     ],

@@ -51,6 +51,7 @@ steps:
   commands:
   - funcbench -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/
   environment:
+    CGO_ENABLED: 0
     GITHUB_TOKEN:
       from_secret: github_token
 
@@ -981,6 +982,6 @@ get:
 
 ---
 kind: signature
-hmac: 7bb2d6e58084719fc5b54d7b05e14f76b23c079f11860f60af1bf086c0d0e909
+hmac: f8d411b5dc180449a8e560ef014071a5743a235991fe67e578ed8ec17355fcbd
 
 ...
