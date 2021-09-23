@@ -29,6 +29,7 @@ const (
 )
 
 var writeAddress *url.URL
+var username, password string
 
 func init() {
 	addr := os.Getenv("WRITE_ADDRESS")
@@ -41,6 +42,14 @@ func init() {
 		panic(err)
 	}
 	fmt.Println("write address: ", writeAddress.String())
+
+	username = os.Getenv("USERNAME")
+	password = os.Getenv("PASSWORD")
+
+	// If either username or password is set then both must be.
+	if (username != "" && password == "") || (username == "" && password != "") {
+		panic("both username and password must be set if either one is set")
+	}
 }
 
 func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
@@ -78,12 +87,20 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 	buf = snappy.Encode(nil, buf)
 	req, err := http.NewRequest("POST", writeAddress.String(), bytes.NewReader(buf))
 	if err != nil {
+		fmt.Println("error: ", err)
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)
 
+	// If either is not empty both should be (see initS), but just to be safe.
+	if username != "" && password != "" {
+		fmt.Println("adding basic auth to request")
+		req.SetBasicAuth(username, password)
+	}
+
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
+		fmt.Println("error: ", err)
 		return err
 	}
 
@@ -94,8 +111,8 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 			line = scanner.Text()
 		}
 		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
+		fmt.Println("error:", err)
 	}
-
 	return err
 }
 
