@@ -49,7 +49,7 @@ steps:
 - name: benchmark
   image: prominfra/funcbench:master
   commands:
-  - funcbench --help
+  - funcbench -v main
   environment:
     GITHUB_TOKEN:
       from_secret: github_token
@@ -981,6 +981,6 @@ get:
 
 ---
 kind: signature
-hmac: e6b73c3ea0df86d65813e1bd9f401ca8557a310603d65cfc7e197cba5ad51b1b
+hmac: 50f1ff848905fa0207fb4aa675247e576d167a6c8acf02b86eafb4bd0e642b98
 
 ...
