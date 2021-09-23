@@ -984,4 +984,8 @@ get:
   path: infra/data/ci/loki/deploy
   name: config.json
 
+---
+kind: signature
+hmac: f5c36715ad9642bbc9690097e465ab9467b0ad346027fe64fe3ef90ec9850e60
+
 ...
