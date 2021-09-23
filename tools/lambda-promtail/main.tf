@@ -8,14 +8,14 @@ resource "aws_iam_role" "iam_for_lambda" {
   name = "iam_for_lambda"
 
   assume_role_policy = jsonencode({
-    "Version": "2012-10-17",
-    "Statement": [
+    "Version" : "2012-10-17",
+    "Statement" : [
       {
-        "Action": "sts:AssumeRole",
-        "Principal": {
-          "Service": "lambda.amazonaws.com"
+        "Action" : "sts:AssumeRole",
+        "Principal" : {
+          "Service" : "lambda.amazonaws.com"
         },
-        "Effect": "Allow",
+        "Effect" : "Allow",
       }
     ]
   })
@@ -40,7 +40,7 @@ resource "aws_iam_role_policy" "logs" {
 }
 
 resource "aws_lambda_function" "lambda_promtail" {
-  image_uri     = "your-image-ecr:latest"
+  image_uri     = var.lambda_promtail_image
   function_name = "lambda_promtail"
   role          = aws_iam_role.iam_for_lambda.arn
 
@@ -56,7 +56,9 @@ resource "aws_lambda_function" "lambda_promtail" {
 
   environment {
     variables = {
-      WRITE_ADDRESS = "http://localhost:8080/loki/api/v1/push"
+      WRITE_ADDRESS = var.write_address
+      USERNAME      = var.username
+      PASSWORD      = var.password
     }
   }
 }
@@ -73,9 +75,13 @@ resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
   principal     = "logs.${data.aws_region.current.name}.amazonaws.com"
 }
 
-resource "aws_cloudwatch_log_subscription_filter" "test_lambdafunction_logfilter" {
-  name            = "test_lambdafunction_logfilter"
-  log_group_name  = "/aws/lambda/some-lambda-log-group"
+# This block allows for easily subscribing to multiple log groups via the `log_group_names` var.
+# However, if you need to provide an actual filter_pattern for a specific log group you should
+# copy this block and modify it accordingly.
+resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
+  name            = "lambdafunction_logfilter_${var.log_group_names[count.index]}"
+  count           = length(var.log_group_names)
+  log_group_name  = var.log_group_names[count.index]
   destination_arn = aws_lambda_function.lambda_promtail.arn
   # required but can be empty string
   filter_pattern = ""
