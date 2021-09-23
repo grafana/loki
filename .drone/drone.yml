@@ -49,12 +49,7 @@ steps:
 - name: benchmark
   image: prominfra/funcbench:master
   commands:
-  - funcbench
-  - --owner=grafana
-  - --repo=loki
-  - --github-pr=$DRONE_PULL_REQUEST
-  - main
-  - ./pkg/logql/
+  - funcbench --owner=grafana --repo=loki --github-pr=$DRONE_PULL_REQUEST main .* ./pkg/logql/
   environment:
     GITHUB_TOKEN:
       from_secret: github_token
@@ -986,6 +981,6 @@ get:
 
 ---
 kind: signature
-hmac: f5c36715ad9642bbc9690097e465ab9467b0ad346027fe64fe3ef90ec9850e60
+hmac: 57acd706cea19e121af9c98d9af42f9dbc6d07d5c9588475c02ee76f24e00ab0
 
 ...

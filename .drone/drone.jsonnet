@@ -287,7 +287,7 @@ local manifest(apps) = pipeline('manifest') {
       {
         name: 'benchmark',
         image: 'prominfra/funcbench:master',
-        commands: ['funcbench', '--owner=grafana', '--repo=loki', '--github-pr=$DRONE_PULL_REQUEST', 'main', './pkg/logql/'],
+        commands: ['funcbench --owner=grafana --repo=loki --github-pr=$DRONE_PULL_REQUEST main .* ./pkg/logql/'],
         environment: {
           GITHUB_TOKEN: { from_secret: github_secret.name },
         },
