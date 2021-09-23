@@ -1,7 +1,10 @@
 ---
 title: Helm
+weight: 20
 ---
 # Install Loki with Helm
+
+The Helm installation runs the Loki cluster in microservices mode.
 
 ## Prerequisites
 

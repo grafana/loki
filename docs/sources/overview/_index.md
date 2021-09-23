@@ -41,7 +41,7 @@ and allows for efficient query execution.
 -  **Multi-tenancy**
 
     Loki allows multiple tenants to utilize a single Loki instance.
-    The data of distinct tenants is completely isolated from other tentants.
+    The data of distinct tenants is completely isolated from other tenants.
     Multi-tenancy is configured by assigning a tenant ID in the agent.
 
 -  **LogQL, Loki's query language**
@@ -53,15 +53,13 @@ and allows for efficient query execution.
 
 -  **Scalability**
 
-    Loki works well at small scale. 
-    In single process mode, all required microservices run in one process.
-    Single process mode is great for testing Loki,
-    running it locally, or running it at a small scale.
+    Loki can be run as a single binary;
+    all the components run in one process.
 
-    Loki is also designed to scale out for large scale installations.
-    Each of the Loki's microservice components can be broken out into
-    separate processes, and configuration permits individual scaling 
-    of the components.
+    Loki is designed for scalability,
+    as each of Loki's components can be run as microservices.
+    Configuration permits scaling the microservices individually,
+    permitting flexible large-scale installations.
 
 -  **Flexibility**
 
