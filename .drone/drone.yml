@@ -46,6 +46,19 @@ steps:
   commands:
   - apk add make bash && make lint-scripts
 
+- name: benchmark
+  image: prominfra/funcbench:master
+  commands:
+  - funcbench
+  - --owner=grafana
+  - --repo=loki
+  - --github-pr=$DRONE_PULL_REQUEST
+  - main
+  - ./pkg/logql/
+  environment:
+    GITHUB_TOKEN:
+      from_secret: github_token
+
 ---
 kind: pipeline
 name: docker-amd64
@@ -970,9 +983,5 @@ name: deploy_config
 get:
   path: infra/data/ci/loki/deploy
   name: config.json
-
----
-kind: signature
-hmac: b70be41d1a7f91c11af945a34bdbdc7a4f7613cf830c13f5438dba0bf33a1ec5
 
 ...
