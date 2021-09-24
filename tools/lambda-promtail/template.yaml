@@ -13,6 +13,18 @@ Parameters:
     Description: The maximum of concurrent executions you want to reserve for the function.
     Type: Number
     Default: 2
+  Username:
+    Description: The basic auth username, necessarry if writing directly to Grafana Cloud Loki.
+    Type: String
+    Default: ""
+  Password:
+    Description: The basic auth password, necessarry if writing directly to Grafana Cloud Loki.
+    Type: String
+    Default: ""
+  LambdaPromtailImage:
+    Description: The ECR image URI to pull and use for lambda-promtail.
+    Type: String
+    Default: ""
 
 Resources:
   LambdaPromtailRole:
@@ -44,7 +56,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Code:
-        ImageUri: "your-image-ecr:latest"
+        ImageUri: !Ref LambdaPromtailImage
       MemorySize: 128
       PackageType: Image
       Timeout: 60
@@ -55,6 +67,8 @@ Resources:
       Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
         Variables:
           WRITE_ADDRESS: !Ref WriteAddress
+          USERNAME: !Ref Username
+          PASSWORD: !Ref Password
   LambdaPromtailVersion:
     Type: AWS::Lambda::Version
     Properties:
@@ -73,6 +87,8 @@ Resources:
       FunctionName: !Ref LambdaPromtailFunction
       MaximumRetryAttempts: 2
       Qualifier: !GetAtt LambdaPromtailVersion.Version
+  # Copy this block and modify as required to create Subscription Filters for
+  # additional CloudWatch Log Groups.
   MainLambdaPromtailSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
     Properties:
