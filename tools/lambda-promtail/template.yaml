@@ -21,6 +21,7 @@ Parameters:
     Description: The basic auth password, necessarry if writing directly to Grafana Cloud Loki.
     Type: String
     Default: ""
+    NoEcho: true
   LambdaPromtailImage:
     Description: The ECR image URI to pull and use for lambda-promtail.
     Type: String
