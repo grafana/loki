@@ -48,11 +48,12 @@ resource "aws_lambda_function" "lambda_promtail" {
   memory_size  = 128
   package_type = "Image"
 
-  # vpc_config {
-  #   # Every subnet should be able to reach an EFS mount target in the same Availability Zone. Cross-AZ mounts are not permitted.
-  #   subnet_ids         = [aws_subnet.subnet_for_lambda.id]
-  #   security_group_ids = [aws_security_group.sg_for_lambda.id]
-  # }
+  # From the Terraform AWS Lambda docs: If both subnet_ids and security_group_ids are empty then vpc_config is considered to be empty or unset.
+  vpc_config {
+    # Every subnet should be able to reach an EFS mount target in the same Availability Zone. Cross-AZ mounts are not permitted.
+    subnet_ids         = var.lambda_vpc_subnets
+    security_group_ids = var.lambda_vpc_security_groups
+  }
 
   environment {
     variables = {

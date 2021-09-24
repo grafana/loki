@@ -28,3 +28,15 @@ variable "password" {
   sensitive   = true
   default     = ""
 }
+
+variable "lambda_vpc_subnets" {
+  type        = list(string)
+  description = "List of subnet IDs associated with the Lambda function."
+  default     = [""]
+}
+
+variable "lambda_vpc_security_groups" {
+  type        = list(string)
+  description = "List of security group IDs associated with the Lambda function."
+  default     = [""]
+}
