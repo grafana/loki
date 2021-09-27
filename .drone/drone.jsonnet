@@ -295,6 +295,24 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
+  pipeline('benchmark') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    node: { type: 'no-parallel' },
+    steps: [
+      {
+        name: 'RangeQuery',
+        image: 'prominfra/funcbench:master',
+        commands: ['funcbench --owner=grafana --repo=loki --github-pr="4372" -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/'],
+        environment: {
+          GITHUB_TOKEN: { from_secret: github_secret.name },
+          CGO_ENABLED: 0,
+        },
+      },
+    ],
+  },
 ] + [
   multiarch_image(arch)
   for arch in archs
