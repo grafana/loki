@@ -20,7 +20,7 @@ import (
 // Default settings for the WAL cleaner.
 const (
 	DefaultCleanupAge    = 12 * time.Hour
-	DefaultCleanupPeriod = 30 * time.Minute
+	DefaultCleanupPeriod = 0
 )
 
 // lastModifiedFunc gets the last modified time of the most recent segment of a WAL
