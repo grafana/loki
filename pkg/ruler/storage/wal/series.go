@@ -6,9 +6,10 @@ package wal
 import (
 	"sync"
 
-	"github.com/prometheus/prometheus/pkg/intern"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
+
+// TODO(dannyk): add label set interning
 
 type memSeries struct {
 	sync.Mutex
@@ -59,7 +60,7 @@ func (m seriesHashmap) get(hash uint64, lset labels.Labels) *memSeries {
 }
 
 func (m seriesHashmap) set(hash uint64, s *memSeries) {
-	intern.InternLabels(intern.Global, s.lset)
+	//intern.InternLabels(intern.Global, s.lset)
 
 	l := m[hash]
 	for i, prev := range l {
@@ -76,8 +77,6 @@ func (m seriesHashmap) del(hash uint64, ref uint64) {
 	for _, s := range m[hash] {
 		if s.ref != ref {
 			rem = append(rem, s)
-		} else {
-			intern.ReleaseLabels(intern.Global, s.lset)
 		}
 	}
 	if len(rem) == 0 {

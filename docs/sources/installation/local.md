@@ -23,24 +23,23 @@ The configuration specifies running Loki as a single binary.
     wget https://raw.githubusercontent.com/grafana/loki/master/cmd/loki/loki-local-config.yaml
     wget https://raw.githubusercontent.com/grafana/loki/main/clients/cmd/promtail/promtail-local-config.yaml
     ```
-## Run Loki
+6. Enter the following command to start Loki:
 
-Enter the following command to start Loki:
+    **Windows**
 
-**Windows**
+    ```
+    .\loki-windows-amd64.exe --config.file=loki-local-config.yaml
+    ```
 
-```
-.\loki-windows-amd64.exe --config.file=loki-local-config.yaml
-```
-
-**Linux**
-```
-./loki-linux-amd64 -config.file=loki-local-config.yaml
-```
+    **Linux**
+    ```
+    ./loki-linux-amd64 -config.file=loki-local-config.yaml
+    ```
 
 Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
-Next, install and run Promtail. Follow instruction in [get logs into Loki](../../getting-started/get-logs-into-loki/).
+The next step will be running an agent to send logs to Loki.
+To do so with Promtail, refer to [get logs into Loki](../../getting-started/get-logs-into-loki/).
 
 ## Release binaries - openSUSE Linux only
 

@@ -1,7 +1,7 @@
 // This directory was copied and adapted from https://github.com/grafana/agent/tree/main/pkg/metrics.
 // We cannot vendor the agent in since the agent vendors loki in, which would cause a cyclic dependency.
 // NOTE: many changes have been made to the original code for our use-case.
-package metrics
+package cleaner
 
 import (
 	"io/ioutil"
@@ -11,20 +11,14 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/agent/pkg/metrics/instance"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/ruler/storage/instance"
 )
 
 func TestWALCleaner_getAllStorageNoRoot(t *testing.T) {
 	walRoot := filepath.Join(os.TempDir(), "getAllStorageNoRoot")
-	logger := log.NewLogfmtLogger(os.Stderr)
-	cleaner := NewWALCleaner(
-		logger,
-		&instance.MockManager{},
-		walRoot,
-		DefaultCleanupAge,
-		DefaultCleanupPeriod,
-	)
+	cleaner := newCleaner(walRoot, Config{})
 
 	// Bogus WAL root that doesn't exist. Method should return no results
 	wals := cleaner.getAllStorage()
@@ -41,14 +35,7 @@ func TestWALCleaner_getAllStorageSuccess(t *testing.T) {
 	err = os.MkdirAll(walDir, 0755)
 	require.NoError(t, err)
 
-	logger := log.NewLogfmtLogger(os.Stderr)
-	cleaner := NewWALCleaner(
-		logger,
-		&instance.MockManager{},
-		walRoot,
-		DefaultCleanupAge,
-		DefaultCleanupPeriod,
-	)
+	cleaner := newCleaner(walRoot, Config{})
 	wals := cleaner.getAllStorage()
 
 	require.Equal(t, []string{walDir}, wals)
@@ -67,15 +54,7 @@ func TestWALCleaner_getAbandonedStorageBeforeCutoff(t *testing.T) {
 	managed := make(map[string]bool)
 	now := time.Now()
 
-	logger := log.NewLogfmtLogger(os.Stderr)
-	cleaner := NewWALCleaner(
-		logger,
-		&instance.MockManager{},
-		walRoot,
-		5*time.Minute,
-		DefaultCleanupPeriod,
-	)
-
+	cleaner := newCleaner(walRoot, Config{})
 	cleaner.walLastModified = func(path string) (time.Time, error) {
 		return now, nil
 	}
@@ -100,14 +79,9 @@ func TestWALCleaner_getAbandonedStorageAfterCutoff(t *testing.T) {
 	managed := make(map[string]bool)
 	now := time.Now()
 
-	logger := log.NewLogfmtLogger(os.Stderr)
-	cleaner := NewWALCleaner(
-		logger,
-		&instance.MockManager{},
-		walRoot,
-		5*time.Minute,
-		DefaultCleanupPeriod,
-	)
+	cleaner := newCleaner(walRoot, Config{
+		MinAge: 5 * time.Minute,
+	})
 
 	cleaner.walLastModified = func(path string) (time.Time, error) {
 		return now.Add(-30 * time.Minute), nil
@@ -130,19 +104,15 @@ func TestWALCleaner_cleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	logger := log.NewLogfmtLogger(os.Stderr)
 	manager := &instance.MockManager{}
 	manager.ListInstancesFunc = func() map[string]instance.ManagedInstance {
 		return make(map[string]instance.ManagedInstance)
 	}
 
-	cleaner := NewWALCleaner(
-		logger,
-		manager,
-		walRoot,
-		5*time.Minute,
-		DefaultCleanupPeriod,
-	)
+	cleaner := newCleaner(walRoot, Config{
+		MinAge: 5 * time.Minute,
+	})
+	cleaner.instanceManager = manager
 
 	cleaner.walLastModified = func(path string) (time.Time, error) {
 		return now.Add(-30 * time.Minute), nil
@@ -155,4 +125,16 @@ func TestWALCleaner_cleanup(t *testing.T) {
 	_, err = os.Stat(walDir)
 	require.Error(t, err)
 	require.True(t, os.IsNotExist(err))
+}
+
+func newCleaner(walRoot string, cfg Config) *WALCleaner {
+	logger := log.NewLogfmtLogger(os.Stderr)
+	cleaner := NewWALCleaner(
+		logger,
+		&instance.MockManager{},
+		NewMetrics(nil),
+		walRoot,
+		cfg,
+	)
+	return cleaner
 }

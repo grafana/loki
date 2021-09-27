@@ -77,7 +77,7 @@ output {
 
     [ca_cert => path | default = nil | required=false]
 
-    [insecure_skip_verify => boolean | default = fasle | required=false]
+    [insecure_skip_verify => boolean | default = false | required=false]
   }
 }
 ```
