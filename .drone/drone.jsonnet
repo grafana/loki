@@ -284,15 +284,6 @@ local manifest(apps) = pipeline('manifest') {
         image: 'koalaman/shellcheck-alpine:stable',
         commands: ['apk add make bash && make lint-scripts'],
       },
-      {
-        name: 'benchmark',
-        image: 'prominfra/funcbench:master',
-        commands: ['funcbench --owner=grafana --repo=loki --github-pr="4372" -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/'],
-        environment: {
-          GITHUB_TOKEN: { from_secret: github_secret.name },
-          CGO_ENABLED: 0,
-        },
-      },
     ],
   },
   pipeline('benchmark') {

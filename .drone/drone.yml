@@ -46,15 +46,6 @@ steps:
   commands:
   - apk add make bash && make lint-scripts
 
-- name: benchmark
-  image: prominfra/funcbench:master
-  commands:
-  - funcbench --owner=grafana --repo=loki --github-pr="4372" -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/
-  environment:
-    CGO_ENABLED: 0
-    GITHUB_TOKEN:
-      from_secret: github_token
-
 ---
 kind: pipeline
 name: benchmark
@@ -1007,6 +998,6 @@ get:
 
 ---
 kind: signature
-hmac: 20de0229c0aabbc3427e030d684e7ed78d1b4bee8274881838a0003399da9aaf
+hmac: 19fbc996339b5fdc03c278508b7530d6d4732d1b1751c184c6fbd4fa0f3cf210
 
 ...
