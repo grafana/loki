@@ -708,9 +708,11 @@ const (
 	OpFmtLine  = "line_format"
 	OpFmtLabel = "label_format"
 
-	OpPipe   = "|"
-	OpUnwrap = "unwrap"
-	OpOffset = "offset"
+	OpPipe       = "|"
+	OpUnwrap     = "unwrap"
+	OpOffset     = "offset"
+	OpDiff       = "diff"
+	OpPrettyDiff = "pdiff"
 
 	// conversion Op
 	OpConvBytes           = "bytes"
@@ -1171,3 +1173,31 @@ func (e *LabelReplaceExpr) String() string {
 	sb.WriteString(")")
 	return sb.String()
 }
+
+type DiffFilterExpr struct {
+	filter *log.DiffFilter
+	pretty bool
+	implicit
+}
+
+func newDiffFilterExpr(op string) *DiffFilterExpr {
+	return &DiffFilterExpr{
+		filter: log.NewDiffFilter(op == OpPrettyDiff),
+		pretty: op == OpPrettyDiff,
+	}
+}
+
+// TODO(jdb): is it shardable?
+func (e *DiffFilterExpr) Shardable() bool { return false }
+
+func (e *DiffFilterExpr) Stage() (log.Stage, error) {
+	return e.filter.ToStage(), nil
+}
+
+func (e *DiffFilterExpr) String() string {
+	if e.pretty {
+		return OpPipe + OpPrettyDiff
+	}
+	return OpPipe + OpDiff
+}
+func (e *DiffFilterExpr) Walk(f WalkFn) { f(e) }

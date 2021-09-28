@@ -54,6 +54,7 @@ import (
   JSONExpressionList      []log.JSONExpression
   UnwrapExpr              *UnwrapExpr
   OffsetExpr              *OffsetExpr
+  DiffFilter              *DiffFilterExpr
 }
 
 %start root
@@ -98,6 +99,7 @@ import (
 %type <UnitFilter>            unitFilter
 %type <IPLabelFilter>         ipLabelFilter
 %type <OffsetExpr>            offsetExpr
+%type <DiffFilter>            diffFilter
 
 %token <bytes> BYTES
 %token <str>      IDENTIFIER STRING NUMBER
@@ -106,7 +108,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP
+                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP DIFF PRETTY_DIFF
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -236,6 +238,7 @@ pipelineExpr:
 
 pipelineStage:
    lineFilters                   { $$ = $1 }
+  | PIPE diffFilter              { $$ = $2 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
@@ -263,6 +266,11 @@ labelParser:
   | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
   | UNPACK         { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
   | PATTERN STRING { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
+  ;
+
+diffFilter:
+    DIFF        { $$ = newDiffFilterExpr(OpDiff) }
+  | PRETTY_DIFF { $$ = newDiffFilterExpr(OpPrettyDiff) }
   ;
 
 jsonExpressionParser:
