@@ -27,6 +27,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+const localhost = "127.0.0.1"
+
 func TestLokiPushTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
@@ -36,7 +38,7 @@ func TestLokiPushTarget(t *testing.T) {
 	defer eh.Stop()
 
 	// Get a randomly available port by open and closing a TCP socket
-	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	addr, err := net.ResolveTCPAddr("tcp", localhost)
 	require.NoError(t, err)
 	l, err := net.ListenTCP("tcp", addr)
 	require.NoError(t, err)
@@ -47,9 +49,9 @@ func TestLokiPushTarget(t *testing.T) {
 	// Adjust some of the defaults
 	defaults := server.Config{}
 	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
-	defaults.HTTPListenAddress = "127.0.0.1"
+	defaults.HTTPListenAddress = localhost
 	defaults.HTTPListenPort = port
-	defaults.GRPCListenAddress = "127.0.0.1"
+	defaults.GRPCListenAddress = localhost
 	defaults.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
 
 	config := &scrapeconfig.PushTargetConfig{
@@ -73,7 +75,7 @@ func TestLokiPushTarget(t *testing.T) {
 
 	// Build a client to send logs
 	serverURL := flagext.URLValue{}
-	err = serverURL.Set("http://127.0.0.1:" + strconv.Itoa(port) + "/loki/api/v1/push")
+	err = serverURL.Set("http://" + localhost + ":" + strconv.Itoa(port) + "/loki/api/v1/push")
 	require.NoError(t, err)
 
 	ccfg := client.Config{
@@ -135,7 +137,7 @@ func TestPlaintextPushTarget(t *testing.T) {
 	defer eh.Stop()
 
 	// Get a randomly available port by open and closing a TCP socket
-	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	addr, err := net.ResolveTCPAddr("tcp", localhost)
 	require.NoError(t, err)
 	l, err := net.ListenTCP("tcp", addr)
 	require.NoError(t, err)
@@ -146,9 +148,9 @@ func TestPlaintextPushTarget(t *testing.T) {
 	// Adjust some of the defaults
 	defaults := server.Config{}
 	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
-	defaults.HTTPListenAddress = "127.0.0.1"
+	defaults.HTTPListenAddress = localhost
 	defaults.HTTPListenPort = port
-	defaults.GRPCListenAddress = "127.0.0.1"
+	defaults.GRPCListenAddress = localhost
 	defaults.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
 
 	config := &scrapeconfig.PushTargetConfig{
@@ -168,7 +170,7 @@ func TestPlaintextPushTarget(t *testing.T) {
 	body := new(bytes.Buffer)
 	for i := 0; i < 100; i++ {
 		body.WriteString("line" + strconv.Itoa(i))
-		_, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/promtail/api/v1/raw", port), "text/json", body)
+		_, err := http.Post(fmt.Sprintf("http://%s:%d/promtail/api/v1/raw", localhost, port), "text/json", body)
 		require.NoError(t, err)
 		body.Reset()
 	}
