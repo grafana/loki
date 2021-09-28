@@ -38,7 +38,7 @@ func TestLokiPushTarget(t *testing.T) {
 	defer eh.Stop()
 
 	// Get a randomly available port by open and closing a TCP socket
-	addr, err := net.ResolveTCPAddr("tcp", localhost)
+	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
 	require.NoError(t, err)
 	l, err := net.ListenTCP("tcp", addr)
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestPlaintextPushTarget(t *testing.T) {
 	defer eh.Stop()
 
 	// Get a randomly available port by open and closing a TCP socket
-	addr, err := net.ResolveTCPAddr("tcp", localhost)
+	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
 	require.NoError(t, err)
 	l, err := net.ListenTCP("tcp", addr)
 	require.NoError(t, err)
