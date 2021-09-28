@@ -59,10 +59,10 @@ workspace:
   path: loki
 
 steps:
-- name: RangeQuery
+- name: LogQL
   image: prominfra/funcbench:master
   commands:
-  - funcbench --owner=grafana --repo=loki --github-pr="4372" -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/
+  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/logql/
   environment:
     CGO_ENABLED: 0
     GITHUB_TOKEN:
@@ -998,6 +998,6 @@ get:
 
 ---
 kind: signature
-hmac: 19fbc996339b5fdc03c278508b7530d6d4732d1b1751c184c6fbd4fa0f3cf210
+hmac: 67280a6ac7890e542b21f25ab8f65bda586c64d5b74e5d465c69c13900408c54
 
 ...
