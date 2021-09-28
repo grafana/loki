@@ -52,7 +52,7 @@ local make(target, container=true) = run(target, [
 local benchmark(name, package) = {
   name: name,
   image: 'prominfra/funcbench:master',
-  commands: ['funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" %s' % package],
+  commands: ['funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main --bench-time=10x "Benchmark.*" %s' % package],
   environment: {
     GITHUB_TOKEN: { from_secret: github_secret.name },
     CGO_ENABLED: 0,
@@ -303,7 +303,7 @@ local manifest(apps) = pipeline('manifest') {
     },
     node: { type: 'no-parallel' },
     steps: [
-      benchmark('All', './pkg/...'),
+      benchmark('LogQL', './pkg/logql/'),
     ],
   },
 ] + [
