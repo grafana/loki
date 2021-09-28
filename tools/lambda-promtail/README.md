@@ -1,90 +1,86 @@
 # lambda-promtail
 
-This is a sample template for lambda-promtail - Below is a brief explanation of what we have generated for you:
+This is a sample deployment for lambda-promtail - Below is a brief explanation of what we have generated for you:
 
 ```bash
 .
 ├── Makefile                    <-- Make to automate build
+├── Dockerfile                  <-- Uses the AWS Lambda Go base image
 ├── README.md                   <-- This instructions file
 ├── lambda-promtail             <-- Source code for a lambda function
 │   └── main.go                 <-- Lambda function code
-└── template.yaml
 ```
 
 ## Requirements
 
 * AWS CLI already configured with Administrator permission
+* [Terraform](https://www.terraform.io/downloads.html)
+
+If you want to modify the lambda-promtail code you will also need: 
 * [Docker installed](https://www.docker.com/community-edition)
 * [Golang](https://golang.org)
-* SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
 
 ## Setup process
 
-### Installing dependencies & building the target 
+### Building and Packaging
 
-In this example we use the built-in `sam build` to automatically download all the dependencies and package our build target.   
-Read more about [SAM Build here](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-cli-command-reference-sam-build.html) 
+The provided Makefile has targets `build`, `docker`, `all`, and `clean`.
 
-The `sam build` command is wrapped inside of the `Makefile`. To execute this simply run
- 
-```shell
-make
+`build`, `docker`, and `all` build the lambda-promtail as a Go static binary and use the AWS Lambda Go runtime base image to generate an image that you
+can upload to your AWS ECR and use via Lambda. `clean` will remove the built Go binary.
+
+### Packaging and deployment
+
+The easiest way to deploy to AWS Lambda using the Golang runtime is to use the `lambda-promtail` image by uploading it to your ECR.
+
+Alternatively you can build the Go binary and upload it to Lambda as a zip:
+```bash
+GOOS=linux CGO_ENABLED=0 go build main.go
+zip function.zip main
 ```
 
-### Local development
+To deploy your application for the first time, first make sure you've set the following value in the Terraform file:
+- `WRITE_ADDRESS`
 
-**Invoking function locally
+This is the [Loki Write API](https://grafana.com/docs/loki/latest/api/#post-lokiapiv1push) compatible endpoint that you want to write logs to, either promtail or Loki.
+
+The `lambda-promtail` code picks this value up via an environment variable.
+
+Also, if your deployment requires a [VPC configuration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config), make sure to edit the `vpc_config` field in `main.tf` manually. Additonal documentation for the Lambda specific Terraform configuration is [here](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function#vpc_config).
+
+Then use Terraform to deploy:
 
 ```bash
-make dry-run
+terraform apply -var "<ecr-repo>:<tag>" -var "write_address=https://your-loki-url/loki/api/v1/push" -var "password=<basic-auth-pw>" -var "username=<basic-auth-username>" -var 'log_group_names=["log-group-01", "log-group-02"]'
 ```
 
-## Packaging and deployment
-
-AWS Lambda Golang runtime requires a flat folder with the executable generated on build step. SAM will use `CodeUri` property to know where to look up for the application:
+or CloudFormation:
 
 ```bash
-make build
+aws cloudformation create-stack --stack-name lambda-promtail-stack --template-body file://template.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag>
 ```
-
-To deploy your application for the first time, first make sure you've set the following parameters in the template:
-- `LogGroup`
-- `PromtailAddress`
-- `ReservedConcurrency`
-
-These can also be set via overrides by passing the following argument to `sam deploy`:
-```
-  --parameter-overrides           Optional. A string that contains AWS
-                                  CloudFormation parameter overrides encoded
-                                  as key=value pairs.For example, 'ParameterKe
-                                  y=KeyPairName,ParameterValue=MyKey Parameter
-                                  Key=InstanceType,ParameterValue=t1.micro' or
-                                  KeyPairName=MyKey InstanceType=t1.micro
-```
-
-Also, if your deployment requires a VPC configuration, make sure to edit the `VpcConfig` field in the `template.yaml` manually.
-
-Then run the following in your shell:
-
-```bash
-sam deploy --guided --capabilities CAPABILITY_IAM,CAPABILITY_NAMED_IAM --parameter-overrides PromtailAddress=<>,LogGroup=<>
-```
-
-The command will package and deploy your application to AWS, with a series of prompts:
-
-* **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-* **AWS Region**: The AWS region you want to deploy your app to.
-* **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-* **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modified IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-* **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
 
 # Appendix
 
-### Golang installation
+## Golang installation
 
 Please ensure Go 1.x (where 'x' is the latest version) is installed as per the instructions on the official golang website: https://golang.org/doc/install
 
-A quickstart way would be to use Homebrew, chocolatey or your linux package manager.
+For example:
+
+```bash
+GO_VERSION=go1.16.6.linux-amd64.tar.gz
+
+rm -rf /usr/local/bin/go*
+rm -rf /usr/local/go
+curl -O https://storage.googleapis.com/golang/$GO_VERSION
+tar -zxvf $GO_VERSION
+sudo mv go /usr/local/
+rm $GO_VERSION
+ln -s /usr/local/go/bin/* /usr/local/bin/
+```
+
+A quickstart way would be to use Homebrew, chocolatey or your Linux package manager.
 
 #### Homebrew (Mac)
 
@@ -117,4 +113,4 @@ choco upgrade golang
 
 ## Limitations
 - Error handling: If promtail is unresponsive, `lambda-promtail` will drop logs after `retry_count`, which defaults to 2.
-- AWS does not support passing log lines over 256kb to lambdas.
+- AWS CloudWatch [quotas](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html) state that the event size is limited to 256kb. `256 KB (maximum). This quota can't be changed.`

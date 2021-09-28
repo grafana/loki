@@ -97,13 +97,6 @@ github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20200907205600-7a23bdc65eef
 github.com/asaskevich/govalidator
-# github.com/aws/aws-lambda-go v1.17.0
-## explicit
-github.com/aws/aws-lambda-go/events
-github.com/aws/aws-lambda-go/lambda
-github.com/aws/aws-lambda-go/lambda/handlertrace
-github.com/aws/aws-lambda-go/lambda/messages
-github.com/aws/aws-lambda-go/lambdacontext
 # github.com/aws/aws-sdk-go v1.38.68
 ## explicit
 github.com/aws/aws-sdk-go/aws
