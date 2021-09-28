@@ -104,6 +104,7 @@ func InitWorkerService(
 	// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
 	// request context, as well as make sure any x-www-url-formencoded params are correctly parsed
 	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		authMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 	)
