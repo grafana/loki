@@ -296,7 +296,7 @@ local manifest(apps) = pipeline('manifest') {
       {
         name: 'RangeQuery',
         image: 'prominfra/funcbench:master',
-        commands: ['funcbench --owner=grafana --repo=loki --github-pr="4372" -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/'],
+        commands: ['funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "BenchmarkRangeQuery.*" ./pkg/logql/'],
         environment: {
           GITHUB_TOKEN: { from_secret: github_secret.name },
           CGO_ENABLED: 0,
