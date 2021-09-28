@@ -59,10 +59,19 @@ workspace:
   path: loki
 
 steps:
-- name: All Benchmarks
+- name: LogQL
   image: prominfra/funcbench:master
   commands:
-  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/
+  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/logql/
+  environment:
+    CGO_ENABLED: 0
+    GITHUB_TOKEN:
+      from_secret: github_token
+
+- name: Distributor
+  image: prominfra/funcbench:master
+  commands:
+  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/distributor/
   environment:
     CGO_ENABLED: 0
     GITHUB_TOKEN:
@@ -998,6 +1007,6 @@ get:
 
 ---
 kind: signature
-hmac: 318a80f4637a26760372bb7f6ff4f50456460b63276f2af7d5723402005e398f
+hmac: 95f04f99cdd2f724edf730865b3c9538fb9fc62a694936d04b9ea05045b573ba
 
 ...

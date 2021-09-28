@@ -49,6 +49,16 @@ local make(target, container=true) = run(target, [
   'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
 ]);
 
+local benchmark(name, package) = {
+  name: name,
+  image: 'prominfra/funcbench:master',
+  commands: ['funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" %s' % package],
+  environment: {
+    GITHUB_TOKEN: { from_secret: github_secret.name },
+    CGO_ENABLED: 0,
+  },
+};
+
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: 'plugins/docker',
@@ -293,15 +303,8 @@ local manifest(apps) = pipeline('manifest') {
     },
     node: { type: 'no-parallel' },
     steps: [
-      {
-        name: 'All Benchmarks',
-        image: 'prominfra/funcbench:master',
-        commands: ['funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/'],
-        environment: {
-          GITHUB_TOKEN: { from_secret: github_secret.name },
-          CGO_ENABLED: 0,
-        },
-      },
+      benchmark('LogQL', './pkg/logql/'),
+      benchmark('Distributor', './pkg/distributor/'),
     ],
   },
 ] + [
