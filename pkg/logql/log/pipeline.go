@@ -18,15 +18,15 @@ type Pipeline interface {
 // StreamPipeline transform and filter log lines and labels.
 // A StreamPipeline never mutate the received line.
 type StreamPipeline interface {
-	Process(line []byte) (resultLine []byte, resultLabels LabelsResult, skip bool)
-	ProcessString(line string) (resultLine string, resultLabels LabelsResult, skip bool)
+	Process(line []byte) (resultLine []byte, resultLabels LabelsResult, keep bool)
+	ProcessString(line string) (resultLine string, resultLabels LabelsResult, keep bool)
 }
 
 // Stage is a single step of a Pipeline.
 // A Stage implementation should never mutate the line passed, but instead either
 // return the line unchanged or allocate a new line.
 type Stage interface {
-	Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
+	Process(line []byte, lbs *LabelsBuilder) (resultLine []byte, keep bool)
 	RequiredLabelNames() []string
 }
 

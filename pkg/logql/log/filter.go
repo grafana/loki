@@ -11,7 +11,7 @@ import (
 
 // Filterer is a interface to filter log lines.
 type Filterer interface {
-	Filter(line []byte) bool
+	Filter(line []byte) (keep bool)
 	ToStage() Stage
 }
 
