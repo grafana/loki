@@ -68,10 +68,10 @@ steps:
     GITHUB_TOKEN:
       from_secret: github_token
 
-- name: Ingester
+- name: Storage
   image: prominfra/funcbench:master
   commands:
-  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/ingester/
+  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/storage/
   environment:
     CGO_ENABLED: 0
     GITHUB_TOKEN:
@@ -1007,6 +1007,6 @@ get:
 
 ---
 kind: signature
-hmac: 844a083dad8234d63a31ec53fd9ea15c4bfefd849f405783c92694b78f51237c
+hmac: eda2604206dbf4b7852b81adabc3a626772ed430c2bc42dddd2e61d5a86316fc
 
 ...
