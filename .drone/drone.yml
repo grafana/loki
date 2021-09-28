@@ -62,7 +62,7 @@ steps:
 - name: LogQL
   image: prominfra/funcbench:master
   commands:
-  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main --bench-time=10x "Benchmark.*" ./pkg/logql/
+  - funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main --bench-time=10s "Benchmark.*" ./pkg/logql/
   environment:
     CGO_ENABLED: 0
     GITHUB_TOKEN:
@@ -998,6 +998,6 @@ get:
 
 ---
 kind: signature
-hmac: 71d75ea4f688482f3513ed0d960d7cedf08696f5b01ebf1285f8ba8836dd2206
+hmac: 826737a35d3cd4a03ec55b934abea9c639783951292476237a5958d4f3c3cb5f
 
 ...
