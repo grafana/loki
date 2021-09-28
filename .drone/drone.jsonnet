@@ -294,9 +294,9 @@ local manifest(apps) = pipeline('manifest') {
     node: { type: 'no-parallel' },
     steps: [
       {
-        name: 'LogQL',
+        name: 'All Benchmarks',
         image: 'prominfra/funcbench:master',
-        commands: ['funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/logql/'],
+        commands: ['funcbench --owner=grafana --repo=loki --github-pr="$DRONE_PULL_REQUEST" -v origin/main "Benchmark.*" ./pkg/'],
         environment: {
           GITHUB_TOKEN: { from_secret: github_secret.name },
           CGO_ENABLED: 0,
