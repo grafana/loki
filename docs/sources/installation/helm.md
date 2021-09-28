@@ -4,7 +4,7 @@ weight: 20
 ---
 # Install Loki with Helm
 
-The Helm installation runs the Loki cluster in microservices mode.
+The Helm installation runs the Loki cluster as a single binary.
 
 ## Prerequisites
 
