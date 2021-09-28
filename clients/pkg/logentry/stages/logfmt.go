@@ -27,7 +27,9 @@ type LogfmtConfig struct {
 	Source  *string           `mapstructure:"source"`
 }
 
-// validateLogfmtConfig validates a logfmt stage config and returns a map of necessary jmespath expressions.
+// validateLogfmtConfig validates a logfmt stage config and returns an inverse mapping of configured mapping.
+// Mapping inverse is done to make lookup easier. The key would be the key from parsed logfmt and
+// value would be the key with which the data in extracted map would be set.
 func validateLogfmtConfig(c *LogfmtConfig) (map[string]string, error) {
 	if c == nil {
 		return nil, errors.New(ErrEmptyLogfmtStageConfig)

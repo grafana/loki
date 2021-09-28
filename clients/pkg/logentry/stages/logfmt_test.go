@@ -32,11 +32,10 @@ pipeline_stages:
     source: extra
 `
 
-var testLogfmtLogLine = `
-	time=2012-11-01T22:08:41+00:00 app=loki	level=WARN duration=125 message="this is a log line" extra="user=foo""
-`
-
 func TestPipeline_Logfmt(t *testing.T) {
+	var testLogfmtLogLine = `
+		time=2012-11-01T22:08:41+00:00 app=loki	level=WARN duration=125 message="this is a log line" extra="user=foo""
+	`
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -44,7 +43,7 @@ func TestPipeline_Logfmt(t *testing.T) {
 		entry           string
 		expectedExtract map[string]interface{}
 	}{
-		"successfully run a pipeline with 1 json stage without source": {
+		"successfully run a pipeline with 1 logfmt stage without source": {
 			testLogfmtYamlSingleStageWithoutSource,
 			testLogfmtLogLine,
 			map[string]interface{}{
@@ -53,7 +52,7 @@ func TestPipeline_Logfmt(t *testing.T) {
 				"duration": "125",
 			},
 		},
-		"successfully run a pipeline with 2 json stages with source": {
+		"successfully run a pipeline with 2 logfmt stages with source": {
 			testLogfmtYamlMultiStageWithSource,
 			testLogfmtLogLine,
 			map[string]interface{}{
