@@ -8,6 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	prev = "test"
+)
+
 func newDiffFilterWithPrev(pretty bool, prev []byte) *DiffFilter {
 	return &DiffFilter{
 		dmp:    diffmatchpatch.New(),
@@ -18,21 +22,18 @@ func newDiffFilterWithPrev(pretty bool, prev []byte) *DiffFilter {
 
 func TestDiffFilter_Filter(t *testing.T) {
 	t.Run("should not keep a line matching the previous", func(t *testing.T) {
-		prev := "test"
 		df := newDiffFilterWithPrev(false, []byte(prev))
 		keep := df.Filter([]byte(prev))
 		require.Equal(t, false, keep)
 	})
 
 	t.Run("should keep line with a diff", func(t *testing.T) {
-		prev := "test"
 		df := newDiffFilterWithPrev(false, []byte(prev))
 		keep := df.Filter([]byte(prev + "2"))
 		require.Equal(t, true, keep)
 	})
 
 	t.Run("pretty should have no effect on filtering", func(t *testing.T) {
-		prev := "test"
 		df := newDiffFilterWithPrev(true, []byte(prev))
 		keep := df.Filter([]byte(prev))
 		require.Equal(t, false, keep)
@@ -48,7 +49,6 @@ func green(str string) string {
 
 func TestDiffFilter_Process(t *testing.T) {
 	t.Run("should not process a line matching the previous", func(t *testing.T) {
-		prev := "test"
 		stage := newDiffFilterWithPrev(false, []byte(prev)).ToStage()
 		line, keep := stage.Process([]byte(prev), nil)
 		require.Equal(t, false, keep)
@@ -56,7 +56,6 @@ func TestDiffFilter_Process(t *testing.T) {
 	})
 
 	t.Run("should return a patch for a line differing from the previous", func(t *testing.T) {
-		prev := "test"
 		stage := newDiffFilterWithPrev(false, []byte(prev)).ToStage()
 		line, keep := stage.Process([]byte(prev+"2"), nil)
 		require.Equal(t, true, keep)
@@ -72,7 +71,6 @@ func TestDiffFilter_Process(t *testing.T) {
 	})
 
 	t.Run("pretty should return a human readable diff for a line differing from the previous", func(t *testing.T) {
-		prev := "test"
 		stage := newDiffFilterWithPrev(true, []byte(prev)).ToStage()
 		line, keep := stage.Process([]byte(prev+"2"), nil)
 		require.Equal(t, true, keep)
