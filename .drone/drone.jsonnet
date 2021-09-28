@@ -304,7 +304,7 @@ local manifest(apps) = pipeline('manifest') {
     node: { type: 'no-parallel' },
     steps: [
       benchmark('LogQL', './pkg/logql/'),
-      benchmark('Distributor', './pkg/distributor/'),
+      benchmark('Ingester', './pkg/ingester/'),
     ],
   },
 ] + [
