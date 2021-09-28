@@ -11,10 +11,10 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
-	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
 	logutil "github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/cfg"
 	"github.com/grafana/loki/pkg/validation"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -25,9 +25,9 @@ func init() {
 }
 
 func main() {
-	var config cfg.ConfigWrapper
+	var config loki.ConfigWrapper
 
-	if err := cfg.Unmarshal(&config); err != nil {
+	if err := cfg.DynamicUnmarshal(&config); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}

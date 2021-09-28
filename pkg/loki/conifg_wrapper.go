@@ -1,20 +1,20 @@
-package cfg
+package loki
 
 import (
 	"flag"
-	"os"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
 // ConfigWrapper is a struct containing the Loki config along with other values that can be set on the command line
 // for interacting with the config file or the application directly.
+// ConfigWrapper implements cfg.DynamicCloneable, allowing configuration to be dynamically set based
+// on the logic in ApplyDynamicConfig, which receives values set in config file
 type ConfigWrapper struct {
-	loki.Config     `yaml:",inline"`
+	Config          `yaml:",inline"`
 	PrintVersion    bool
 	VerifyConfig    bool
 	PrintConfig     bool
@@ -42,34 +42,12 @@ func (c *ConfigWrapper) Clone() flagext.Registerer {
 	}(*c)
 }
 
-// Unmarshal handles populating Loki's config based on the following precedence:
-// 1. Defaults provided by the `RegisterFlags` interface
-// 2. Sections populated by the `common` config section of the Loki config
-// 3. Any config options specified directly in the loki config file
-// 4. Any config options specified on the command line.
-func Unmarshal(dst cfg.Cloneable) error {
-	return cfg.Unmarshal(dst,
-		// First populate the config with defaults including flags from the command line
-		cfg.Defaults(flag.CommandLine),
-		// Next populate the config from the config file, we do this to populate the `common`
-		// section of the config file by taking advantage of the code in YAMLFlag which will load
-		// and process the config file.
-		cfg.YAMLFlag(os.Args[1:], "config.file"),
-		// Apply our logic to use values from the common section to set values throughout the Loki config.
-		CommonConfig(),
-		// Load configs from the config file a second time, this will supersede anything set by the common
-		// config with values specified in the config file.
-		cfg.YAMLFlag(os.Args[1:], "config.file"),
-		// Load the flags again, this will supersede anything set from config file with flags from the command line.
-		cfg.Flags(),
-	)
-}
-
-// CommonConfig applies all rules for setting Loki config values from the common section of the Loki config file.
-// This entire method's purpose is to simplify Loki's config in an opinionated way so that Loki can be run
+// ApplyDynamicConfig satisfies WithCommonCloneable interface, and applies all rules for setting Loki
+// config values from the common section of the Loki config file.
+// This method's purpose is to simplify Loki's config in an opinionated way so that Loki can be run
 // with the minimal amount of config options for most use cases. It also aims to reduce redundancy where
 // some values are set multiple times through the Loki config.
-func CommonConfig() cfg.Source {
+func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 	return func(dst cfg.Cloneable) error {
 		r, ok := dst.(*ConfigWrapper)
 		if !ok {
