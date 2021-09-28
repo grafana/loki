@@ -94,16 +94,8 @@ func (t *PushTarget) run() error {
 	}
 
 	t.server = srv
-
-	switch t.config.Format {
-	// NDJSON and Plaintext are both newline delimited formats and will be handled the same.
-	case "ndjson", "plaintext":
-		t.server.HTTP.Handle("/promtail/api/v1", http.HandlerFunc(t.handlePlaintext))
-	case "loki":
-		fallthrough
-	default:
-		t.server.HTTP.Handle("/loki/api/v1/push", http.HandlerFunc(t.handleLoki))
-	}
+	t.server.HTTP.Handle("/loki/api/v1/push", http.HandlerFunc(t.handleLoki))
+	t.server.HTTP.Handle("/promtail/api/v1/raw", http.HandlerFunc(t.handlePlaintext))
 
 	go func() {
 		err := srv.Run()

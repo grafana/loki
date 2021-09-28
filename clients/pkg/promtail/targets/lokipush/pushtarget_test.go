@@ -1,8 +1,11 @@
 package lokipush
 
 import (
+	"bytes"
 	"flag"
+	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"testing"
@@ -24,7 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func TestPushTarget(t *testing.T) {
+func TestLokiPushTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 
@@ -118,6 +121,78 @@ func TestPushTarget(t *testing.T) {
 
 	// With keep timestamp enabled, verify timestamp
 	require.Equal(t, time.Unix(99, 0).Unix(), eh.Received()[99].Timestamp.Unix())
+
+	_ = pt.Stop()
+
+}
+
+func TestPlaintextPushTarget(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	//Create PushTarget
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	// Get a randomly available port by open and closing a TCP socket
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	l, err := net.ListenTCP("tcp", addr)
+	require.NoError(t, err)
+	port := l.Addr().(*net.TCPAddr).Port
+	err = l.Close()
+	require.NoError(t, err)
+
+	// Adjust some of the defaults
+	defaults := server.Config{}
+	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
+	defaults.HTTPListenAddress = "127.0.0.1"
+	defaults.HTTPListenPort = port
+	defaults.GRPCListenAddress = "127.0.0.1"
+	defaults.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
+
+	config := &scrapeconfig.PushTargetConfig{
+		Server: defaults,
+		Labels: model.LabelSet{
+			"pushserver": "pushserver2",
+			"keepme":     "label",
+		},
+		KeepTimestamp: true,
+	}
+
+	pt, err := NewPushTarget(logger, eh, []*relabel.Config{}, "job2", config)
+	require.NoError(t, err)
+
+	// Send some logs
+	ts := time.Now()
+	body := new(bytes.Buffer)
+	for i := 0; i < 100; i++ {
+		body.WriteString("line" + strconv.Itoa(i))
+		_, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/promtail/api/v1/raw", port), "text/json", body)
+		require.NoError(t, err)
+		body.Reset()
+	}
+
+	// Wait for them to appear in the test handler
+	countdown := 10000
+	for len(eh.Received()) != 100 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
+	}
+
+	// Make sure we didn't timeout
+	require.Equal(t, 100, len(eh.Received()))
+
+	// Verify labels
+	expectedLabels := model.LabelSet{
+		"pushserver": "pushserver2",
+		"keepme":     "label",
+	}
+	// Spot check the first value in the result to make sure relabel rules were applied properly
+	require.Equal(t, expectedLabels, eh.Received()[0].Labels)
+
+	// Timestamp is always set in the handler, we expect received timestamps to be slightly higher than the timestamp when we started sending logs.
+	require.GreaterOrEqual(t, ts.Unix(), eh.Received()[99].Timestamp.Unix())
 
 	_ = pt.Stop()
 

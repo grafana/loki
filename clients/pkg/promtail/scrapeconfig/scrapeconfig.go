@@ -245,9 +245,6 @@ type PushTargetConfig struct {
 
 	// If promtail should maintain the incoming log timestamp or replace it with the current time.
 	KeepTimestamp bool `yaml:"use_incoming_timestamp"`
-
-	// Format dictates which format the enpoint should expect. Valid values are `loki`, `ndjson` and `plaintext`.
-	Format string `yaml:"format"`
 }
 
 // DefaultScrapeConfig is the default Config.

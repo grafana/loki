@@ -784,9 +784,8 @@ Each job configured with a `loki_push_api` will expose this API and will require
 
 Note the `server` configuration is the same as [server](#server).
 
-The format of the expected payload can be configured using the `format` configuration:
-- `loki` expects the [Loki Push Format](../../../api#post-lokiapiv1push);
-- `plaintext` and `ndjson` expect newline delimited loglines.
+Promtail also exposes a second endpoint on `/promtail/api/v1/raw` which expects newline-delimited log lines.
+This can be used to send NDJSON or plaintext logs.
 
 ```yaml
 # The push server configuration options
@@ -797,11 +796,9 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 
 # If Promtail should pass on the timestamp from the incoming log or not.
-# When false Promtail will assign the current timestamp to the log when it was processed
+# When false Promtail will assign the current timestamp to the log when it was processed.
+# Does not apply to the plaintext endpoint on `/promtail/api/v1/raw`.
 [use_incoming_timestamp: <bool> | default = false]
-
-# Defines how promtail should interpret the incoming payload. Valid values are `loki`, `plaintext` and `ndjson`.
-[format: <string> | default = "loki"]
 ```
 
 See [Example Push Config](#example-push-config)
