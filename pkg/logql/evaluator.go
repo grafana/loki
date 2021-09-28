@@ -575,8 +575,24 @@ func binOpStepEvaluator(
 				// TODO(owen-d): this seems wildly inefficient: we're calculating
 				// the hash on each sample & step per evaluator.
 				// We seem limited to this approach due to using the StepEvaluator ifc.
-				hash := sample.Metric.Hash()
+
+				var hash uint64
+				if expr.opts == nil || expr.opts.VectorMatching == nil {
+					hash = sample.Metric.Hash()
+				} else if expr.opts.VectorMatching.On {
+					hash = sample.Metric.WithLabels(expr.opts.VectorMatching.Include...).Hash()
+				} else {
+					hash = sample.Metric.WithoutLabels(expr.opts.VectorMatching.Include...).Hash()
+				}
 				pair := pairs[hash]
+				if pair[i] != nil {
+					if i == 0 {
+						failStepEvaluator(lhs, errors.New("multiple matches for labels"))
+					} else {
+						failStepEvaluator(rhs, errors.New("multiple matches for labels"))
+					}
+					return false, ts, nil
+				}
 				pair[i] = &promql.Sample{
 					Metric: sample.Metric,
 					Point:  sample.Point,
@@ -588,7 +604,11 @@ func binOpStepEvaluator(
 		results := make(promql.Vector, 0, len(pairs))
 		for _, pair := range pairs {
 			// merge
-			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool, IsComparisonOperator(expr.op)); merged != nil {
+			filter := true
+			if expr.opts != nil && expr.opts.ReturnBool {
+				filter = false
+			}
+			if merged := mergeBinOp(expr.op, pair[0], pair[1], filter, IsComparisonOperator(expr.op)); merged != nil {
 				results = append(results, *merged)
 			}
 		}
@@ -1016,4 +1036,18 @@ func absentLabels(expr SampleExpr) labels.Labels {
 		m = labels.NewBuilder(m).Del(v).Labels()
 	}
 	return m
+}
+
+// failStepEvaluator marks the step evaluator as failed
+func failStepEvaluator(se StepEvaluator, err error) {
+	switch s := se.(type) {
+	case *stepEvaluator:
+		s.err = func() error {
+			return err
+		}
+	case *rangeVectorEvaluator:
+		s.err = err
+	case *absentRangeVectorEvaluator:
+		s.err = err
+	}
 }

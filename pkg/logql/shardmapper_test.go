@@ -675,7 +675,11 @@ func TestMapping(t *testing.T) {
 		{
 			in: `1 + sum by (cluster) (rate({foo="bar"}[5m]))`,
 			expr: &BinOpExpr{
-				op:         OpTypeAdd,
+				op: OpTypeAdd,
+				opts: &BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: nil,
+				},
 				SampleExpr: &LiteralExpr{value: 1},
 				RHS: &VectorAggregationExpr{
 					grouping: &grouping{
@@ -850,6 +854,10 @@ func TestMapping(t *testing.T) {
 			in: `max(sum by (cluster) (rate({foo="bar"}[5m]))) / count(rate({foo="bar"}[5m]))`,
 			expr: &BinOpExpr{
 				op: OpTypeDiv,
+				opts: &BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: nil,
+				},
 				SampleExpr: &VectorAggregationExpr{
 					operation: OpTypeMax,
 					grouping:  &grouping{},
