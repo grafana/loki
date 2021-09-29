@@ -28,7 +28,7 @@ server:
 		_, err = file.WriteString(config)
 		require.NoError(t, err)
 
-		configFileArgs := []string{"loki", "-config.file", file.Name()}
+		configFileArgs := []string{"-config.file", file.Name()}
 		if args == nil {
 			args = configFileArgs
 		} else {
@@ -99,7 +99,6 @@ server:
 		}
 
 		args := []string{
-			"loki",
 			"-server.port", "7070",
 		}
 
