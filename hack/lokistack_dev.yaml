@@ -8,4 +8,4 @@ spec:
   storage:
     secret:
       name: test
-  storageClassName: standard
+  storageClassName: gp2

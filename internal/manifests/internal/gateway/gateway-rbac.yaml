@@ -1,16 +1,35 @@
+{{- if eq .Stack.Tenants.Mode "static" -}}
 roleBindings:
-- name: telemeter
+{{- range $spec := .Stack.Tenants.Authorization.RoleBindings }}
+- name: {{ $spec.Name }}
   roles:
-  - read-write
+  {{- range $role := $spec.Roles }}
+  - {{ $role }}
+  {{- end -}}
+  {{ print "\n" }}
   subjects:
-  - kind: user
-    name: admin@example.com
+  {{- range $subject := $spec.Subjects }}
+  - kind: {{ $subject.Kind }}
+    name: {{ $subject.Name }}
+  {{- end -}}
+{{- end -}}
+{{ print "\n" }}
 roles:
-- name: read-write
+{{- range $spec := .Stack.Tenants.Authorization.Roles }}
+- name: {{ $spec.Name }}
   permissions:
-  - read
-  - write
+  {{- range $permission := $spec.Permissions }}
+  - {{ $permission }}
+  {{- end -}}
+  {{ print "\n" }}
   resources:
-  - metrics
+  {{- range $resource := $spec.Resources }}
+  - {{ $resource }}
+  {{- end -}}
+  {{ print "\n" }}
   tenants:
-  - telemeter
+  {{- range $tenant := $spec.Tenants }}
+  - {{ $tenant }}
+  {{- end -}}
+{{- end -}}
+{{- end -}}

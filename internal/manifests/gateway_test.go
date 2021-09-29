@@ -64,6 +64,37 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 					Replicas: rand.Int31(),
 				},
 			},
+			Tenants: &lokiv1beta1.TenantsSpec{
+				Mode: lokiv1beta1.Dynamic,
+				Authentication: []lokiv1beta1.AuthenticationSpec{
+					{
+						TenantName: "test",
+						TenantID:   "1234",
+						OIDC: &lokiv1beta1.OIDCSpec{
+							Secret: &lokiv1beta1.TenantSecretSpec{
+								Name: "test",
+							},
+							IssuerURL:     "https://127.0.0.1:5556/dex",
+							RedirectURL:   "https://localhost:8443/oidc/test/callback",
+							GroupClaim:    "test",
+							UsernameClaim: "test",
+						},
+					},
+				},
+				Authorization: &lokiv1beta1.AuthorizationSpec{
+					OPA: &lokiv1beta1.OPASpec{
+						URL: "http://127.0.0.1:8181/v1/data/observatorium/allow",
+					},
+				},
+			},
+		},
+		TenantSecrets: []*TenantSecrets{
+			{
+				TenantName:   "test",
+				ClientID:     "test",
+				ClientSecret: "test",
+				IssuerCAPath: "/tmp/test",
+			},
 		},
 	}
 

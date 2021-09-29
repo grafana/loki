@@ -263,54 +263,32 @@ spec:
                       nodeSelector:
                         additionalProperties:
                           type: string
-                        description: NodeSelector defines the labels required by a
-                          node to schedule the component onto it.
+                        description: NodeSelector defines the labels required by a node to schedule the component onto it.
                         type: object
                       replicas:
-                        description: Replicas defines the number of replica pods of
-                          the component.
+                        description: Replicas defines the number of replica pods of the component.
                         format: int32
                         type: integer
                       tolerations:
-                        description: Tolerations defines the tolerations required
-                          by a node to schedule the component onto it.
+                        description: Tolerations defines the tolerations required by a node to schedule the component onto it.
                         items:
-                          description: The pod this Toleration is attached to tolerates
-                            any taint that matches the triple <key,value,effect> using
-                            the matching operator <operator>.
+                          description: The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.
                           properties:
                             effect:
-                              description: Effect indicates the taint effect to match.
-                                Empty means match all taint effects. When specified,
-                                allowed values are NoSchedule, PreferNoSchedule and
-                                NoExecute.
+                              description: Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
                               type: string
                             key:
-                              description: Key is the taint key that the toleration
-                                applies to. Empty means match all taint keys. If the
-                                key is empty, operator must be Exists; this combination
-                                means to match all values and all keys.
+                              description: Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys.
                               type: string
                             operator:
-                              description: Operator represents a key's relationship
-                                to the value. Valid operators are Exists and Equal.
-                                Defaults to Equal. Exists is equivalent to wildcard
-                                for value, so that a pod can tolerate all taints of
-                                a particular category.
+                              description: Operator represents a key's relationship to the value. Valid operators are Exists and Equal. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category.
                               type: string
                             tolerationSeconds:
-                              description: TolerationSeconds represents the period
-                                of time the toleration (which must be of effect NoExecute,
-                                otherwise this field is ignored) tolerates the taint.
-                                By default, it is not set, which means tolerate the
-                                taint forever (do not evict). Zero and negative values
-                                will be treated as 0 (evict immediately) by the system.
+                              description: TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.
                               format: int64
                               type: integer
                             value:
-                              description: Value is the taint value the toleration
-                                matches to. If the operator is Exists, the value should
-                                be empty, otherwise just a regular string.
+                              description: Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string.
                               type: string
                           type: object
                         type: array
@@ -423,6 +401,143 @@ spec:
                           type: object
                         type: array
                     type: object
+                type: object
+              tenants:
+                description: Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.
+                properties:
+                  authentication:
+                    description: Authentication defines the lokistack-gateway component authentication configuration spec per tenant.
+                    items:
+                      description: AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.
+                      properties:
+                        oidc:
+                          description: OIDC defines the spec for the OIDC tenant's authentication.
+                          properties:
+                            groupClaim:
+                              type: string
+                            issuerURL:
+                              description: IssuerURL defines the URL for issuer.
+                              type: string
+                            redirectURL:
+                              description: RedirectURL defines the URL for redirect.
+                              type: string
+                            secret:
+                              description: Secret defines the spec for the clientID, clientSecret and issuerCAPath for tenant's authentication.
+                              properties:
+                                name:
+                                  description: Name of a secret in the namespace configured for tenant secrets.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            usernameClaim:
+                              type: string
+                          required:
+                          - groupClaim
+                          - issuerURL
+                          - redirectURL
+                          - secret
+                          - usernameClaim
+                          type: object
+                        tenantId:
+                          description: TenantID defines the id of the tenant.
+                          type: string
+                        tenantName:
+                          description: TenantName defines the name of the tenant.
+                          type: string
+                      required:
+                      - oidc
+                      - tenantId
+                      - tenantName
+                      type: object
+                    type: array
+                  authorization:
+                    description: Authorization defines the lokistack-gateway component authorization configuration spec per tenant.
+                    properties:
+                      opa:
+                        description: OPA defines the spec for the third-party endpoint for tenant's authorization.
+                        properties:
+                          url:
+                            description: URL defines the third-party endpoint for authorization.
+                            type: string
+                        required:
+                        - url
+                        type: object
+                      roleBindings:
+                        description: RoleBindings defines configuration to bind a set of roles to a set of subjects.
+                        items:
+                          description: RoleBindingsSpec binds a set of roles to a set of subjects.
+                          properties:
+                            name:
+                              type: string
+                            roles:
+                              items:
+                                type: string
+                              type: array
+                            subjects:
+                              items:
+                                description: Subject represents a subject that has been bound to a role.
+                                properties:
+                                  kind:
+                                    description: SubjectKind is a kind of LokiStack Gateway RBAC subject.
+                                    enum:
+                                    - user
+                                    - group
+                                    type: string
+                                  name:
+                                    type: string
+                                required:
+                                - kind
+                                - name
+                                type: object
+                              type: array
+                          required:
+                          - name
+                          - roles
+                          - subjects
+                          type: object
+                        type: array
+                      roles:
+                        description: Roles defines a set of permissions to interact with a tenant.
+                        items:
+                          description: RoleSpec describes a set of permissions to interact with a tenant.
+                          properties:
+                            name:
+                              type: string
+                            permissions:
+                              items:
+                                description: PermissionType is a LokiStack Gateway RBAC permission.
+                                enum:
+                                - read
+                                - write
+                                type: string
+                              type: array
+                            resources:
+                              items:
+                                type: string
+                              type: array
+                            tenants:
+                              items:
+                                type: string
+                              type: array
+                          required:
+                          - name
+                          - permissions
+                          - resources
+                          - tenants
+                          type: object
+                        type: array
+                    type: object
+                  mode:
+                    default: openshift-logging
+                    description: Mode defines the mode in which lokistack-gateway component will be configured.
+                    enum:
+                    - static
+                    - dynamic
+                    - openshift-logging
+                    type: string
+                required:
+                - mode
                 type: object
             required:
             - replicationFactor

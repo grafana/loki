@@ -295,6 +295,64 @@ spec:
         path: template.queryFrontend.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Tenants defines the per-tenant authentication and authorization
+          spec for the lokistack-gateway component.
+        displayName: Tenants Configuration
+        path: tenants
+      - description: Authentication defines the lokistack-gateway component authentication
+          configuration spec per tenant.
+        displayName: Authentication
+        path: tenants.authentication
+      - description: OIDC defines the spec for the OIDC tenant's authentication.
+        displayName: OIDC Configuration
+        path: tenants.authentication[0].oidc
+      - description: IssuerURL defines the URL for issuer.
+        displayName: Issuer URL
+        path: tenants.authentication[0].oidc.issuerURL
+      - description: RedirectURL defines the URL for redirect.
+        displayName: Redirect URL
+        path: tenants.authentication[0].oidc.redirectURL
+      - description: Secret defines the spec for the clientID, clientSecret and issuerCAPath
+          for tenant's authentication.
+        displayName: Tenant Secret
+        path: tenants.authentication[0].oidc.secret
+      - description: Name of a secret in the namespace configured for tenant secrets.
+        displayName: Tenant Secret Name
+        path: tenants.authentication[0].oidc.secret.name
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:Secret
+      - description: TenantID defines the id of the tenant.
+        displayName: Tenant ID
+        path: tenants.authentication[0].tenantId
+      - description: TenantName defines the name of the tenant.
+        displayName: Tenant Name
+        path: tenants.authentication[0].tenantName
+      - description: Authorization defines the lokistack-gateway component authorization
+          configuration spec per tenant.
+        displayName: Authorization
+        path: tenants.authorization
+      - description: OPA defines the spec for the third-party endpoint for tenant's
+          authorization.
+        displayName: OPA Configuration
+        path: tenants.authorization.opa
+      - description: URL defines the third-party endpoint for authorization.
+        displayName: OpenPolicyAgent URL
+        path: tenants.authorization.opa.url
+      - description: RoleBindings defines configuration to bind a set of roles to
+          a set of subjects.
+        displayName: Static Role Bindings
+        path: tenants.authorization.roleBindings
+      - description: Roles defines a set of permissions to interact with a tenant.
+        displayName: Static Roles
+        path: tenants.authorization.roles
+      - description: Mode defines the mode in which lokistack-gateway component will
+          be configured.
+        displayName: Mode
+        path: tenants.mode
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:static
+        - urn:alm:descriptor:com.tectonic.ui:select:dynamic
+        - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment

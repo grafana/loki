@@ -77,3 +77,66 @@ func TestExtract(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractGatewaySecret(t *testing.T) {
+	type test struct {
+		name       string
+		tenantName string
+		secret     *corev1.Secret
+		wantErr    bool
+	}
+	table := []test{
+		{
+			name:       "missing clientID",
+			tenantName: "tenant-a",
+			secret:     &corev1.Secret{},
+			wantErr:    true,
+		},
+		{
+			name:       "missing clientSecret",
+			tenantName: "tenant-a",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"clientID": []byte("test"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:       "missing issuerCAPath",
+			tenantName: "tenant-a",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"clientID":     []byte("test"),
+					"clientSecret": []byte("test"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:       "all set",
+			tenantName: "tenant-a",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"clientID":     []byte("test"),
+					"clientSecret": []byte("test"),
+					"issuerCAPath": []byte("/tmp/test"),
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := secrets.ExtractGatewaySecret(tst.secret, tst.tenantName)
+			if !tst.wantErr {
+				require.NoError(t, err)
+			}
+			if tst.wantErr {
+				require.NotNil(t, err)
+			}
+		})
+	}
+}

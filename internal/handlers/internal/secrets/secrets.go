@@ -42,3 +42,27 @@ func Extract(s *corev1.Secret) (*manifests.ObjectStorage, error) {
 		Region:          string(region),
 	}, nil
 }
+
+// ExtractGatewaySecret reads a k8s secret into a manifest tenant secret struct if valid.
+func ExtractGatewaySecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
+	// Extract and validate mandatory fields
+	clientID, ok := s.Data["clientID"]
+	if !ok {
+		return nil, kverrors.New("missing clientID field", "field", "clientID")
+	}
+	clientSecret, ok := s.Data["clientSecret"]
+	if !ok {
+		return nil, kverrors.New("missing clientSecret field", "field", "clientSecret")
+	}
+	issuerCAPath, ok := s.Data["issuerCAPath"]
+	if !ok {
+		return nil, kverrors.New("missing issuerCAPath field", "field", "issuerCAPath")
+	}
+
+	return &manifests.TenantSecrets{
+		TenantName:   tenantName,
+		ClientID:     string(clientID),
+		ClientSecret: string(clientSecret),
+		IssuerCAPath: string(issuerCAPath),
+	}, nil
+}

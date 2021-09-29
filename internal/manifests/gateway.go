@@ -64,6 +64,16 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					},
 				},
 			},
+			{
+				Name: "lokistack-gateway",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: LabelGatewayComponent,
+						},
+					},
+				},
+			},
 		},
 		Containers: []corev1.Container{
 			{
@@ -110,6 +120,12 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 						ReadOnly:  true,
 						MountPath: path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayTenantFileName),
 						SubPath:   "tenants.yaml",
+					},
+					{
+						Name:      "lokistack-gateway",
+						ReadOnly:  true,
+						MountPath: path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRegoFileName),
+						SubPath:   "lokistack-gateway.rego",
 					},
 				},
 				LivenessProbe: &corev1.Probe{
@@ -203,13 +219,13 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 // gatewayConfigMap creates a configMap for rbac.yaml and tenants.yaml
 func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg := gatewayConfigOptions(opt)
-	rbacConfig, tenantsConfig, err := gateway.Build(cfg)
+	rbacConfig, tenantsConfig, regoConfig, err := gateway.Build(cfg)
 	if err != nil {
 		return nil, "", err
 	}
 
 	s := sha1.New()
-	_, err = s.Write(rbacConfig)
+	_, err = s.Write(tenantsConfig)
 	if err != nil {
 		return nil, "", err
 	}
@@ -227,16 +243,29 @@ func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 		BinaryData: map[string][]byte{
 			gateway.LokiGatewayRbacFileName:   rbacConfig,
 			gateway.LokiGatewayTenantFileName: tenantsConfig,
+			gateway.LokiGatewayRegoFileName:   regoConfig,
 		},
 	}, sha1C, nil
 }
 
 // gatewayConfigOptions converts Options to gateway.Options
 func gatewayConfigOptions(opt Options) gateway.Options {
+	var gatewaySecrets []*gateway.Secret
+	for _, secret := range opt.TenantSecrets {
+		gatewaySecret := &gateway.Secret{
+			TenantName:   secret.TenantName,
+			ClientID:     secret.ClientID,
+			ClientSecret: secret.ClientSecret,
+			IssuerCAPath: secret.IssuerCAPath,
+		}
+		gatewaySecrets = append(gatewaySecrets, gatewaySecret)
+	}
+
 	return gateway.Options{
-		Stack:     opt.Stack,
-		Namespace: opt.Namespace,
-		Name:      opt.Name,
+		Stack:         opt.Stack,
+		Namespace:     opt.Namespace,
+		Name:          opt.Name,
+		TenantSecrets: gatewaySecrets,
 	}
 }
 

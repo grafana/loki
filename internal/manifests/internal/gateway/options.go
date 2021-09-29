@@ -11,4 +11,14 @@ type Options struct {
 	Namespace        string
 	Name             string
 	StorageDirectory string
+
+	TenantSecrets []*Secret
+}
+
+// Secret for clientID, clientSecret and issuerCAPath for tenant's authentication.
+type Secret struct {
+	TenantName   string
+	ClientID     string
+	ClientSecret string
+	IssuerCAPath string
 }
