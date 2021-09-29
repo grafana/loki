@@ -183,7 +183,7 @@ func (l *containsFilter) Filter(line []byte) bool {
 	if !l.caseInsensitive {
 		return bytes.Contains(line, l.match)
 	}
-	// verify if we have to uppercase in the line and if it's only ascii chars
+	// verify if we have uppercase in the line and if it's only ascii chars
 	isASCII, hasUpper := true, false
 	for i := 0; i < len(line); i++ {
 		c := line[i]
