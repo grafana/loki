@@ -586,11 +586,7 @@ func binOpStepEvaluator(
 				}
 				pair := pairs[hash]
 				if pair[i] != nil {
-					if i == 0 {
-						failStepEvaluator(lhs, errors.New("multiple matches for labels"))
-					} else {
-						failStepEvaluator(rhs, errors.New("multiple matches for labels"))
-					}
+					failStepEvaluator(eval, errors.New("multiple matches for labels"))
 					return false, ts, nil
 				}
 				pair[i] = &promql.Sample{
