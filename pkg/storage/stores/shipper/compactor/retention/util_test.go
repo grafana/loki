@@ -125,6 +125,14 @@ type testObjectClient struct {
 	path string
 }
 
+func (c *testObjectClient) KeyEncoder() chunk.KeyEncoder {
+	var encoder chunk.KeyEncoder
+	if encoderClient, ok := c.ObjectClient.(chunk.EncoderObjectClient); ok {
+		encoder = encoderClient.KeyEncoder()
+	}
+	return encoder
+}
+
 func newTestObjectClient(path string) chunk.ObjectClient {
 	c, err := chunk_storage.NewObjectClient("filesystem", chunk_storage.Config{
 		FSConfig: local.FSConfig{
