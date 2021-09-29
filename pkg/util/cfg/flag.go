@@ -3,7 +3,6 @@ package cfg
 import (
 	"flag"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -27,9 +26,9 @@ func Defaults(fs *flag.FlagSet) Source {
 
 // Flags parses the flag from the command line, setting only user-supplied
 // values on the flagext.Registerer passed to Defaults()
-func Flags() Source {
-	flag.Usage = categorizedUsage(flag.CommandLine)
-	return dFlags(flag.CommandLine, os.Args[1:])
+func Flags(args []string, fs *flag.FlagSet) Source {
+	flag.Usage = categorizedUsage(fs)
+	return dFlags(fs, args)
 }
 
 // dFlags parses the flagset, applying all values set on the slice

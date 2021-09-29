@@ -2,6 +2,7 @@ package loki
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
@@ -48,15 +49,32 @@ func (c *ConfigWrapper) Clone() flagext.Registerer {
 // with the minimal amount of config options for most use cases. It also aims to reduce redundancy where
 // some values are set multiple times through the Loki config.
 func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
+	defaults := ConfigWrapper{}
+	freshFlags := flag.NewFlagSet("config-file-defaults-loader", flag.PanicOnError)
+
+	//Do not need command line args to figure out defaults, so pass an empty slice here
+	defaultsUnmarshalError := cfg.DefaultUnmarshal(&defaults, []string{}, freshFlags)
+
 	return func(dst cfg.Cloneable) error {
 		r, ok := dst.(*ConfigWrapper)
 		if !ok {
 			return errors.New("dst is not a Loki ConfigWrapper")
 		}
 
+		if defaultsUnmarshalError != nil {
+			return defaultsUnmarshalError
+		}
+
 		// Apply all our custom logic here to set values in the Loki config from values in the common config
-		// FIXME this is just an example showing how we can use values from the common section to set values on the Loki config object
-		r.StorageConfig.BoltDBShipperConfig.SharedStoreType = r.Common.Store
+		if r.Common.PathPrefix != "" {
+			if r.Ruler.RulePath == defaults.Ruler.RulePath {
+				r.Ruler.RulePath = fmt.Sprintf("%s/rules", r.Common.PathPrefix)
+			}
+
+			if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
+				r.Ingester.WAL.Dir = fmt.Sprintf("%s/wal", r.Common.PathPrefix)
+			}
+		}
 
 		return nil
 	}

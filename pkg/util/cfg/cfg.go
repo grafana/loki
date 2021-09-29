@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"flag"
-	"os"
 	"reflect"
 
 	"github.com/grafana/dskit/flagext"
@@ -45,10 +44,10 @@ func Unmarshal(dst Cloneable, sources ...Source) error {
 }
 
 // DefaultUnmarshal is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
-func DefaultUnmarshal(dst Cloneable) error {
+func DefaultUnmarshal(dst Cloneable, args []string, fs *flag.FlagSet) error {
 	return Unmarshal(dst,
-		Defaults(flag.CommandLine),
-		YAMLFlag(os.Args[1:], "config.file"),
-		Flags(),
+		Defaults(fs),
+		YAMLFlag(args, "config.file"),
+		Flags(args, fs),
 	)
 }

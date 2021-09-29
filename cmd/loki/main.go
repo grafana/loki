@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"reflect"
@@ -27,7 +28,7 @@ func init() {
 func main() {
 	var config loki.ConfigWrapper
 
-	if err := cfg.DynamicUnmarshal(&config); err != nil {
+	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}

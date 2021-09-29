@@ -3,7 +3,6 @@ package cfg
 import (
 	"flag"
 	"io/ioutil"
-	"os"
 	"testing"
 	"time"
 
@@ -22,9 +21,9 @@ server:
 
 	testContext := func(mockApplyDynamicConfig Source, config string, args []string) DynamicConfig {
 		data := NewDynamicConfig(mockApplyDynamicConfig)
-		flag.CommandLine = flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
-		file, err := ioutil.TempFile("", "foo.yaml")
+		file, err := ioutil.TempFile("", "config.yaml")
 		require.NoError(t, err)
 		_, err = file.WriteString(config)
 		require.NoError(t, err)
@@ -35,15 +34,14 @@ server:
 		} else {
 			args = append(args, configFileArgs...)
 		}
-		os.Args = args
 
+		err = DynamicUnmarshal(&data, args, fs)
+		require.NoError(t, err)
 		return data
 	}
 
 	t.Run("parses defaults", func(t *testing.T) {
 		data := testContext(nil, "", nil)
-		err := DynamicUnmarshal(&data)
-		require.NoError(t, err)
 
 		assert.Equal(t, 80, data.Server.Port)
 		assert.Equal(t, 60*time.Second, data.Server.Timeout)
@@ -51,8 +49,6 @@ server:
 
 	t.Run("parses config from config.file", func(t *testing.T) {
 		data := testContext(nil, defaultYamlConfig, nil)
-		err := DynamicUnmarshal(&data)
-		require.NoError(t, err)
 		assert.Equal(t, 8080, data.Server.Port)
 	})
 
@@ -63,9 +59,7 @@ server:
 			return nil
 		}
 		data := testContext(mockApplyDynamicConfig, "", nil)
-		err := DynamicUnmarshal(&data)
-
-		require.NoError(t, err)
+		assert.NotNil(t, data)
 		assert.True(t, applyDynamicConfigCalled)
 	})
 
@@ -79,9 +73,7 @@ server:
 		}
 
 		data := testContext(mockApplyDynamicConfig, defaultYamlConfig, nil)
-		err := DynamicUnmarshal(&data)
-
-		require.NoError(t, err)
+		assert.NotNil(t, data)
 		assert.NotNil(t, configFromFile)
 		assert.Equal(t, 8080, configFromFile.Server.Port)
 	})
@@ -95,9 +87,6 @@ server:
 		}
 
 		data := testContext(mockApplyDynamicConfig, defaultYamlConfig, nil)
-		err := DynamicUnmarshal(&data)
-
-		require.NoError(t, err)
 		assert.Equal(t, 8080, data.Server.Port)
 	})
 
@@ -115,9 +104,6 @@ server:
 		}
 
 		data := testContext(mockApplyDynamicConfig, defaultYamlConfig, args)
-		err := DynamicUnmarshal(&data)
-
-		require.NoError(t, err)
 		assert.Equal(t, 7070, data.Server.Port)
 	})
 }
