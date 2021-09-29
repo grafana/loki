@@ -1,11 +1,14 @@
 ---
 title: Tanka
+weight: 10
 ---
 # Install Loki with Tanka
 
 [Tanka](https://tanka.dev) is a reimplementation of
 [Ksonnet](https://ksonnet.io) that Grafana Labs created after Ksonnet was
 deprecated. Tanka is used by Grafana Labs to run Loki in production.
+
+The Tanka installation runs the Loki cluster in microservices mode.
 
 ## Prerequisites
 
