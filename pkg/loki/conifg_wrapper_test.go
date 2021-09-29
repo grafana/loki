@@ -41,7 +41,7 @@ func Test_CommonConfig(t *testing.T) {
 		return config, defaults
 	}
 
-	t.Run("common base directory config", func(t *testing.T) {
+	t.Run("common path prefix config", func(t *testing.T) {
 		t.Run("does not override defaults for file paths when not provided", func(t *testing.T) {
 			configFileString := `---`
 			config, defaults := testContext(configFileString, nil)
@@ -82,5 +82,4 @@ common:
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 		})
 	})
-
 }
