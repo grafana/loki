@@ -791,9 +791,10 @@ The `loki_push_api` block configures Promtail to expose a [Loki push API](../../
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
-Note the `server` configuration is the same as [server](#server)
+Note the `server` configuration is the same as [server](#server).
 
-
+Promtail also exposes a second endpoint on `/promtail/api/v1/raw` which expects newline-delimited log lines.
+This can be used to send NDJSON or plaintext logs.
 
 ```yaml
 # The push server configuration options
@@ -804,7 +805,8 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 
 # If Promtail should pass on the timestamp from the incoming log or not.
-# When false Promtail will assign the current timestamp to the log when it was processed
+# When false Promtail will assign the current timestamp to the log when it was processed.
+# Does not apply to the plaintext endpoint on `/promtail/api/v1/raw`.
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
