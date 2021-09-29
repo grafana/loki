@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var defaultArgs = []string{"config.file", "foo.yaml"}
-
 func Test_DynamicUnmarshal(t *testing.T) {
 	defaultYamlConfig := `---
 server:

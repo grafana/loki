@@ -31,7 +31,8 @@ func Test_CommonConfig(t *testing.T) {
 		} else {
 			args = append(args, configFileArgs...)
 		}
-		cfg.DynamicUnmarshal(&config, args, fs)
+		err = cfg.DynamicUnmarshal(&config, args, fs)
+		require.NoError(t, err)
 
 		defaults := ConfigWrapper{}
 		freshFlags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
