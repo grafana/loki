@@ -88,11 +88,17 @@ help: ## Display this help.
 
 ##@ Development
 
-cli: bin/loki-broker ## Build loki-broker CLI binary
+.PHONY: deps
+deps: go.mod go.sum
+	go mod tidy
+	go mod download
+	go mod verify
+
+cli: deps bin/loki-broker ## Build loki-broker CLI binary
 bin/loki-broker: $(GO_FILES) | generate
 	go build -o $@ ./cmd/loki-broker/
 
-manager: generate ## Build manager binary
+manager: deps generate ## Build manager binary
 	go build -o bin/manager main.go
 
 go-generate: ## Run go generate
@@ -104,7 +110,7 @@ generate: $(CONTROLLER_GEN) ## Generate controller and crd code
 manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-test: generate go-generate lint manifests ## Run tests
+test: deps generate go-generate lint manifests ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
 
@@ -115,7 +121,7 @@ lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run ./...
 
 fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path './vendor/*' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
+	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -s -w {} \;
 
 oci-build: ## Build the image
 	$(OCI_RUNTIME) build -t ${IMG} .
