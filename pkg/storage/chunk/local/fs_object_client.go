@@ -62,9 +62,9 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 // Stop implements ObjectClient
 func (FSObjectClient) Stop() {}
 
-func (f *FSObjectClient) KeyEncoder() objectclient.KeyEncoder {
+func (f *FSObjectClient) KeyEncoder() chunk.KeyEncoder {
 	if f.cfg.TenantFolders {
-		return objectclient.TenantBase64Encoder
+		return objectclient.SlashBase64Encoder
 	}
 	return objectclient.Base64Encoder
 }

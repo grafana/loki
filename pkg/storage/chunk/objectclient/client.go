@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"io/ioutil"
-	"reflect"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -14,49 +13,37 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
-// KeyEncoder is used to encode chunk keys before writing/retrieving chunks
-// from the underlying ObjectClient
-type KeyEncoder func(string) string
-
 // Base64Encoder is used to encode chunk keys in base64 before storing/retrieving
 // them from the ObjectClient
 var Base64Encoder = func(key string) string {
 	return base64.StdEncoding.EncodeToString([]byte(key))
 }
 
-// TenantBase64Encoder is a variation of Base64Encoder that encodes tenant
-// and remainder of the key separately and returns the results joined by "/"
-var TenantBase64Encoder = func(key string) string {
-	data := []byte(key)
-	if i := bytes.LastIndex(data, []byte("/")); i > 0 {
-		return strings.Join([]string{
-			base64.URLEncoding.EncodeToString(data[:i]),
-			base64.URLEncoding.EncodeToString(data[i+1:]),
-		}, "/")
+// SlashBase64Encoder is a variation of Base64Encoder that preserves all "/"
+// in the key by base64 encoding the strings separately
+var SlashBase64Encoder = func(key string) string {
+	parts := bytes.Split([]byte(key), []byte("/"))
+	ret := make([]string, len(parts))
+	for i, part := range parts {
+		ret[i] = base64.URLEncoding.EncodeToString(part)
 	}
-	return base64.URLEncoding.EncodeToString(data)
+	return strings.Join(ret, "/")
+
 }
 
 // Client is used to store chunks in object store backends
 type Client struct {
 	store      chunk.ObjectClient
-	keyEncoder KeyEncoder
+	keyEncoder chunk.KeyEncoder
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
 func NewClient(store chunk.ObjectClient) *Client {
-	var encoder KeyEncoder
+	var encoder chunk.KeyEncoder
 	// check if store provides a KeyEncoder
-	var ok bool
-	method := reflect.ValueOf(&store).MethodByName("KeyEncoder")
-	if method.IsValid() {
-		for _, v := range method.Call([]reflect.Value{}) {
-			if encoder, ok = v.Interface().(KeyEncoder); !ok {
-				encoder = nil
-			}
-		}
+	if encoderClient, ok := store.(chunk.EncoderObjectClient); ok {
+		encoder = encoderClient.KeyEncoder()
 	}
-
 	return &Client{
 		store:      store,
 		keyEncoder: encoder,

@@ -79,6 +79,17 @@ type ObjectClient interface {
 	Stop()
 }
 
+// KeyEncoder is used to encode chunk keys before writing/retrieving chunks
+// from the underlying ObjectClient
+type KeyEncoder func(string) string
+
+// EncoderObjectClient is a specialization of the ObjectClient interface that implements encoding schemes for object keys
+type EncoderObjectClient interface {
+	ObjectClient
+	// Returns the KeyEncoder function as defined/required by the ObjectClient
+	KeyEncoder() KeyEncoder
+}
+
 // StorageObject represents an object being stored in an Object Store
 type StorageObject struct {
 	Key        string
