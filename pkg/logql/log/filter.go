@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/pool"
 )
 
 // Filterer is a interface to filter log lines.
@@ -104,14 +105,14 @@ func NewAndFilters(filters []Filterer) Filterer {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
 		if !(filter == nil || filter == TrueFilter) {
 			switch c := filter.(type) {
-			case containsFilter:
+			case *containsFilter:
 				// Start accumulating contains filters.
 				if containsFilterAcc == nil {
 					containsFilterAcc = &containsAllFilter{}
 				}
 
 				// Join all contain filters.
-				containsFilterAcc.Add(c)
+				containsFilterAcc.Add(*c)
 			case regexpFilter:
 				regexpFilters = append(regexpFilters, c)
 
@@ -239,9 +240,19 @@ func (r regexpFilter) ToStage() Stage {
 	}
 }
 
+var (
+	// BytesBufferPool is a bytes buffer used for lines decompressed.
+	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
+	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+
+	toLower = func(r rune) rune { return unicode.To(unicode.LowerCase, r) }
+)
+
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
+
+	buf []byte // reusable buffer for lowercase transformation
 }
 
 func (l *containsFilter) Filter(line []byte) bool {
