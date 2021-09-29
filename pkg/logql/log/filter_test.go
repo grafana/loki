@@ -10,6 +10,7 @@ import (
 func Test_SimplifiedRegex(t *testing.T) {
 	fixtures := []string{
 		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo", "FoO",
+		"foo, 世界", allunicode(),
 	}
 	for _, test := range []struct {
 		re         string
@@ -91,6 +92,14 @@ func Test_SimplifiedRegex(t *testing.T) {
 			}
 		})
 	}
+}
+
+func allunicode() string {
+	var b []byte
+	for i := 0x00; i <= 0x10FFFF; i++ {
+		b = append(b, byte(i))
+	}
+	return string(b)
 }
 
 func Test_TrueFilter(t *testing.T) {

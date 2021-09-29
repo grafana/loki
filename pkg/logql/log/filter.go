@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"regexp"
 	"regexp/syntax"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/pool"
 )
 
 // Filterer is a interface to filter log lines.
@@ -161,16 +164,102 @@ func (r regexpFilter) ToStage() Stage {
 	}
 }
 
+var (
+	// BytesBufferPool is a bytes buffer used for lines decompressed.
+	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
+	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+
+	toLower = func(r rune) rune { return unicode.To(unicode.LowerCase, r) }
+)
+
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
+
+	buf []byte // reusable buffer for lowercase transformation
 }
 
-func (l containsFilter) Filter(line []byte) bool {
-	if l.caseInsensitive {
-		line = bytes.ToLower(line)
+func (l *containsFilter) Filter(line []byte) bool {
+	if !l.caseInsensitive {
+		return bytes.Contains(line, l.match)
 	}
-	return bytes.Contains(line, l.match)
+	// verify if we have to uppercase in the line and if it's only ascii chars
+	isASCII, hasUpper := true, false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if c >= utf8.RuneSelf {
+			isASCII = false
+			break
+		}
+		hasUpper = hasUpper || ('A' <= c && c <= 'Z')
+	}
+	if isASCII {
+		if !hasUpper {
+			return bytes.Contains(line, l.match)
+		}
+		return bytes.Contains(l.toLowerASCII(line), l.match)
+	}
+	return bytes.Contains(l.toLowerUnicode(line), l.match)
+}
+
+func (l *containsFilter) toLowerASCII(line []byte) []byte {
+	if len(line) > cap(l.buf) {
+		if l.buf != nil {
+			BytesBufferPool.Put(l.buf)
+		}
+		l.buf = BytesBufferPool.Get(len(line)).([]byte)[:len(line)]
+	}
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		l.buf[i] = c
+	}
+	return l.buf
+}
+
+// toLowerUnicode returns a lowercased version of s, using the Unicode lower case function.
+// this is inspired by `bytes.ToLower` but doesn't allocate a new buffer.
+func (l *containsFilter) toLowerUnicode(line []byte) []byte {
+	// In the worst case, the slice can grow when mapped, making
+	// things unpleasant. But it's so rare we barge in assuming it's
+	// fine. It could also shrink but that falls out naturally.
+	nbytes := 0 // number of bytes encoded in b
+	if len(line) > cap(l.buf) {
+		if l.buf != nil {
+			BytesBufferPool.Put(l.buf)
+		}
+		l.buf = BytesBufferPool.Get(len(line)).([]byte)
+		l.buf = l.buf[:cap(l.buf)]
+	}
+	for i := 0; i < len(line); {
+		wid := 1
+		r := rune(line[i])
+		if r >= utf8.RuneSelf {
+			r, wid = utf8.DecodeRune(line[i:])
+		}
+		r = toLower(r)
+		if r >= 0 {
+			rl := utf8.RuneLen(r)
+			if rl < 0 {
+				rl = len(string(utf8.RuneError))
+			}
+			if nbytes+rl > cap(l.buf) {
+				// Grow the buffer.
+				nb := BytesBufferPool.Get(cap(l.buf)*2 + utf8.UTFMax).([]byte)
+				copy(nb, l.buf[0:nbytes])
+				if l.buf != nil {
+					BytesBufferPool.Put(l.buf)
+				}
+				l.buf = nb
+
+			}
+			nbytes += utf8.EncodeRune(l.buf[nbytes:cap(l.buf)], r)
+		}
+		i += wid
+	}
+	return l.buf[0:nbytes]
 }
 
 func (l containsFilter) ToStage() Stage {
@@ -193,7 +282,7 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if caseInsensitive {
 		match = bytes.ToLower(match)
 	}
-	return containsFilter{
+	return &containsFilter{
 		match:           match,
 		caseInsensitive: caseInsensitive,
 	}
