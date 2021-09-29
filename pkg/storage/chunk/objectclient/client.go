@@ -45,7 +45,7 @@ type Client struct {
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
 func NewClient(store chunk.ObjectClient) *Client {
-	var encoder KeyEncoder = nil
+	var encoder KeyEncoder
 	// check if store provides a KeyEncoder
 	var ok bool
 	method := reflect.ValueOf(&store).MethodByName("KeyEncoder")
