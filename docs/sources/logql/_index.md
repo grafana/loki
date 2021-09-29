@@ -143,6 +143,19 @@ More details can be found in the [Golang language documentation](https://golang.
 
 `2 * 3 % 2` is evaluated as `(2 * 3) % 2`.
 
+### On and Ignoring keywords
+
+The `ignoring` keyword allows ignoring certain labels when matching, while the `on` keyword allows reducing the set of considered labels to a provided list:
+```logql
+<vector expr> <bin-op> ignoring/on(<labels>) <vector expr>
+```
+Example:
+```logql
+sum by(machine) (count_over_time({app="foo"}[1m])) > bool ignoring(machine) sum(count_over_time({app="bar"}[1m]))
+
+sum by(app,machine) (count_over_time({app="foo"}[1m])) + on(app) sum by (app) (count_over_time({app="bar"}[1m]))
+```
+
 ## Comments
 
 LogQL queries can be commented using the `#` character:
