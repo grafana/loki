@@ -34,7 +34,7 @@ import (
   duration                time.Duration
   LiteralExpr             *LiteralExpr
   BinOpModifier           *BinOpOptions
-  BoolModifier		  *BinOpOptions
+  BoolModifier            *BinOpOptions
   LabelParser             *LabelParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
@@ -373,7 +373,7 @@ binOpModifier:
 	| boolModifier ON OPEN_PARENTHESIS CLOSE_PARENTHESIS
 		{
 		$$ = $1
-		$$.VectorMatching = &VectorMatching{On: true, Include: []string{}}
+		$$.VectorMatching = &VectorMatching{On: true, Include: nil}
 		}
 	| boolModifier IGNORING OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
 		{
@@ -383,7 +383,7 @@ binOpModifier:
 	| boolModifier IGNORING OPEN_PARENTHESIS CLOSE_PARENTHESIS
 		{
 		$$ = $1
-		$$.VectorMatching = &VectorMatching{On: false, Include: []string{}}
+		$$.VectorMatching = &VectorMatching{On: false, Include: nil}
 		}
 	;
 

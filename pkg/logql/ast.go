@@ -998,6 +998,10 @@ func (e *BinOpExpr) String() string {
 
 // impl SampleExpr
 func (e *BinOpExpr) Shardable() bool {
+	if e.opts != nil && e.opts.VectorMatching != nil {
+		// prohibit sharding when we're changing the label groupings, such as on or ignoring
+		return false
+	}
 	return shardableOps[e.op] && e.SampleExpr.Shardable() && e.RHS.Shardable()
 }
 

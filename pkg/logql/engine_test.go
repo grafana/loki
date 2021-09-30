@@ -43,7 +43,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		data   interface{}
 		params interface{}
 
-		expected promql_parser.Value
+		expected interface{}
 	}{
 		{
 			`{app="foo"}`, time.Unix(30, 0), logproto.FORWARD, 10,
@@ -636,7 +636,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))`,
+			`sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
 			logproto.FORWARD,
 			0,
@@ -669,6 +669,21 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "machine", Value: "fuzz"}}},
 			},
 		},
+		{
+			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Series{
+				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`), newSeries(testSize, identity, `{app="foo",machine="buzz"}`)},
+				{newSeries(testSize, identity, `{app="foo"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
+			},
+			errors.New("multiple matches for labels"),
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
@@ -683,10 +698,14 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				limit:     test.limit,
 			})
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
-			if err != nil {
-				t.Fatal(err)
+			if expectedError, ok := test.expected.(error); ok {
+				assert.Equal(t, expectedError.Error(), err.Error())
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				assert.Equal(t, test.expected, res.Data)
 			}
-			assert.Equal(t, test.expected, res.Data)
 		})
 	}
 }

@@ -586,7 +586,7 @@ func binOpStepEvaluator(
 				}
 				pair := pairs[hash]
 				if pair[i] != nil {
-					failStepEvaluator(eval, errors.New("multiple matches for labels"))
+					err = errors.New("multiple matches for labels")
 					return false, ts, nil
 				}
 				pair[i] = &promql.Sample{
@@ -619,6 +619,9 @@ func binOpStepEvaluator(
 		return lastError
 	}, func() error {
 		var errs []error
+		if err != nil {
+			errs = append(errs, err)
+		}
 		for _, ev := range []StepEvaluator{lhs, rhs} {
 			if err := ev.Error(); err != nil {
 				errs = append(errs, err)
@@ -1032,18 +1035,4 @@ func absentLabels(expr SampleExpr) labels.Labels {
 		m = labels.NewBuilder(m).Del(v).Labels()
 	}
 	return m
-}
-
-// failStepEvaluator marks the step evaluator as failed
-func failStepEvaluator(se StepEvaluator, err error) {
-	switch s := se.(type) {
-	case *stepEvaluator:
-		s.err = func() error {
-			return err
-		}
-	case *rangeVectorEvaluator:
-		s.err = err
-	case *absentRangeVectorEvaluator:
-		s.err = err
-	}
 }

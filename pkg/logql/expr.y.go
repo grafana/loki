@@ -1548,7 +1548,7 @@ exprdefault:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.BinOpModifier = exprDollar[1].BoolModifier
-			exprVAL.BinOpModifier.VectorMatching = &VectorMatching{On: true, Include: []string{}}
+			exprVAL.BinOpModifier.VectorMatching = &VectorMatching{On: true, Include: nil}
 		}
 	case 150:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
@@ -1560,7 +1560,7 @@ exprdefault:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.BinOpModifier = exprDollar[1].BoolModifier
-			exprVAL.BinOpModifier.VectorMatching = &VectorMatching{On: false, Include: []string{}}
+			exprVAL.BinOpModifier.VectorMatching = &VectorMatching{On: false, Include: nil}
 		}
 	case 152:
 		exprDollar = exprS[exprpt-0 : exprpt+1]
