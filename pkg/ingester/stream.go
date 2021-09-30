@@ -219,8 +219,8 @@ func (s *stream) Push(
 	}()
 
 	// This call uses a mutex under the hood, cache the result since we're checking the limit
-	// on each entry in the push (hot path) and we only use this value when logging entries that
-	// passed the rate limit.
+	// on each entry in the push (hot path) and we only use this value when logging entries
+	// over the rate limit.
 	limit := s.limiter.lim.Limit()
 
 	// Don't fail on the first append error - if samples are sent out of order,
