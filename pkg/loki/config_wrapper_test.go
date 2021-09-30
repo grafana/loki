@@ -3,6 +3,7 @@ package loki
 import (
 	"flag"
 	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,6 +18,10 @@ func Test_CommonConfig(t *testing.T) {
 		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
 		file, err := ioutil.TempFile("", "config.yaml")
+		defer func() {
+			os.Remove(file.Name())
+		}()
+
 		require.NoError(t, err)
 		_, err = file.WriteString(configFileString)
 		require.NoError(t, err)
