@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -49,8 +50,7 @@ var (
 )
 
 var (
-	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
-	ErrStreamRateLimit = errors.New("stream rate limit exceeded")
+	ErrEntriesExist = errors.New("duplicate push - entries already exist")
 )
 
 func init() {
@@ -218,6 +218,11 @@ func (s *stream) Push(
 		}
 	}()
 
+	// This call uses a mutex under the hood, cache the result since we're checking the limit
+	// on each entry in the push (hot path) and we only use this value when logging entries
+	// over the rate limit.
+	limit := s.limiter.lim.Limit()
+
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
 	for i := range entries {
@@ -240,7 +245,7 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
 			continue
@@ -318,14 +323,15 @@ func (s *stream) Push(
 
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && lastEntryWithErr.e != ErrStreamRateLimit {
+		_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
+		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && !ok {
 			return bytesAdded, lastEntryWithErr.e
 		}
 		var statusCode int
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			statusCode = http.StatusBadRequest
 		}
-		if lastEntryWithErr.e == ErrStreamRateLimit {
+		if ok {
 			statusCode = http.StatusTooManyRequests
 		}
 		// Return a http status 4xx request response with all failed entries.
