@@ -43,6 +43,9 @@ kubernetes_sd_configs:
 - role: pod
 relabel_configs:
 - source_labels:
+  - __meta_kubernetes_pod_label_app_kubernetes_io_name
+  target_label: __service__
+- source_labels:
   - __meta_kubernetes_pod_label_name
   target_label: __service__
 - source_labels:
