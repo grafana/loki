@@ -12,10 +12,6 @@ import (
 )
 
 func Test_CommonConfig(t *testing.T) {
-	// defaultYamlConfig := `---
-	// server:
-	// port: 8080
-	// `
 	testContext := func(configFileString string, args []string) (ConfigWrapper, ConfigWrapper) {
 		config := ConfigWrapper{}
 		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
