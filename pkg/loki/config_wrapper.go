@@ -50,10 +50,7 @@ func (c *ConfigWrapper) Clone() flagext.Registerer {
 // some values are set multiple times through the Loki config.
 func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 	defaults := ConfigWrapper{}
-	freshFlags := flag.NewFlagSet("config-file-defaults-loader", flag.PanicOnError)
-
-	//Do not need command line args to figure out defaults, so pass an empty slice here
-	defaultsUnmarshalError := cfg.DefaultUnmarshal(&defaults, []string{}, freshFlags)
+	flagext.DefaultValues(&defaults)
 
 	return func(dst cfg.Cloneable) error {
 		r, ok := dst.(*ConfigWrapper)
