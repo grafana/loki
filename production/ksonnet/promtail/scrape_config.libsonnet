@@ -72,6 +72,16 @@ config {
 
   promtail_config:: {
     scrape_configs: [
+      // Scrape config to scrape any pods with a 'app.kubernetes.io/name' label.
+      gen_scrape_config('kubernetes-pods-io-name', '__meta_kubernetes_pod_label_app_kubernetes_io_name') {
+        prelabel_config:: [
+          // Use name label as __service__.
+          {
+            source_labels: ['__meta_kubernetes_pod_label_app_kubernetes_io_name'],
+            target_label: '__service__',
+          },
+        ],
+      },
       // Scrape config to scrape any pods with a 'name' label.
       gen_scrape_config('kubernetes-pods-name', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
