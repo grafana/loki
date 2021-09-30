@@ -6,7 +6,6 @@ import (
 
 	"github.com/docker/docker/daemon/logger"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -72,7 +71,6 @@ func (l *loki) Log(m *logger.Message) error {
 	}
 
 	if len(bytes.Fields(m.Line)) == 0 {
-		level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
 	lbs := l.labels.Clone()
