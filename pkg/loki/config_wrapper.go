@@ -58,9 +58,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return errors.New("dst is not a Loki ConfigWrapper")
 		}
 
-		if defaultsUnmarshalError != nil {
-			return defaultsUnmarshalError
-		}
 
 		// Apply all our custom logic here to set values in the Loki config from values in the common config
 		if r.Common.PathPrefix != "" {
