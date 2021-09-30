@@ -418,7 +418,12 @@ func (t *Loki) setupModuleManager() error {
 		Compactor:                {Server, Overrides},
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Ruler},
+
+		// Virtual Targets
+		All:   {QueryFrontend, Querier, Ingester, Distributor, TableManager, Ruler},
+		Read:  {QueryFrontend, QueryScheduler, Querier},
+		Write: {Ingester, Distributor},
+		Async: {Ruler, TableManager, Compactor},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.

@@ -78,7 +78,12 @@ const (
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
 	QueryScheduler           string = "query-scheduler"
-	All                      string = "all"
+
+	// Virtual Targets
+	All   string = "all"
+	Read  string = "read"
+	Write string = "write"
+	Async string = "async"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -209,7 +214,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
 	}
 
-	var queryHandlers = map[string]http.Handler{
+	queryHandlers := map[string]http.Handler{
 		"/loki/api/v1/query_range":         http.HandlerFunc(t.Querier.RangeQueryHandler),
 		"/loki/api/v1/query":               http.HandlerFunc(t.Querier.InstantQueryHandler),
 		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
