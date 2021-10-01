@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"flag"
-	"os"
 	"reflect"
 
 	"github.com/grafana/dskit/flagext"
@@ -44,27 +43,11 @@ func Unmarshal(dst Cloneable, sources ...Source) error {
 	return nil
 }
 
-// Parse is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
-func Parse(dst Cloneable) error {
-	return dParse(dst,
-		dDefaults(flag.CommandLine),
-		YAMLFlag(os.Args[1:], "config.file"),
-		Flags(),
-	)
-}
-
-// dParse is the same as Parse, but with dependency injection for testing
-func dParse(dst Cloneable, defaults, yaml, flags Source) error {
-	// check dst is a pointer
-	v := reflect.ValueOf(dst)
-	if v.Kind() != reflect.Ptr {
-		return ErrNotPointer
-	}
-
-	// unmarshal config
+// DefaultUnmarshal is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
+func DefaultUnmarshal(dst Cloneable, args []string, fs *flag.FlagSet) error {
 	return Unmarshal(dst,
-		defaults,
-		yaml,
-		flags,
+		Defaults(fs),
+		YAMLFlag(args, "config.file"),
+		Flags(args, fs),
 	)
 }
