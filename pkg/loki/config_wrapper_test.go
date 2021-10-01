@@ -108,9 +108,9 @@ memberlist:
 
 			config, _ := testContext(configFileString, nil)
 
-			assert.EqualValues(t, "memberlist", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, "memberlist", config.Distributor.DistributorRing.KVStore.Store)
-			assert.EqualValues(t, "memberlist", config.Ruler.Ring.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.Distributor.DistributorRing.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.Ruler.Ring.KVStore.Store)
 		})
 
 		t.Run("explicit ring configs provided via config file are preserved", func(t *testing.T) {
@@ -127,8 +127,8 @@ distributor:
 
 			assert.EqualValues(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
 
-			assert.EqualValues(t, "memberlist", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, "memberlist", config.Ruler.Ring.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.Ruler.Ring.KVStore.Store)
 		})
 
 		t.Run("explicit ring configs provided via command line are preserved", func(t *testing.T) {
@@ -141,8 +141,8 @@ memberlist:
 
 			assert.EqualValues(t, "inmemory", config.Ruler.Ring.KVStore.Store)
 
-			assert.EqualValues(t, "memberlist", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, "memberlist", config.Distributor.DistributorRing.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.Distributor.DistributorRing.KVStore.Store)
 		})
 	})
 }
