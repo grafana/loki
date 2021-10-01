@@ -29,8 +29,8 @@ jobs:
         only-new-issues: true
         args: --timeout=2m
 
-  build-controller:
-    name: Build Controller
+  build-manager:
+    name: Build Manager
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -45,12 +45,12 @@ jobs:
         go-version: ${{ matrix.go }}
       id: go
     - uses: actions/checkout@v2
-    - name: Build operator
+    - name: Build Manager
       run: |-
-        make manager
+        make manager && git diff --exit-code
 
-  build-loki-broker:
-    name: Build Loki Broker
+  build-broker:
+    name: Build Broker
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -65,9 +65,9 @@ jobs:
         go-version: ${{ matrix.go }}
       id: go
     - uses: actions/checkout@v2
-    - name: Build loki-broker
+    - name: Build Broker
       run: |-
-        make bin/loki-broker
+        make bin/loki-broker && git diff --exit-code
 
   test:
     name: test
