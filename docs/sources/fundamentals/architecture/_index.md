@@ -1,6 +1,8 @@
 ---
 title: Architecture
-weight: 1000
+weight: 200
+aliases:
+    - /docs/loki/latest/architecture/
 ---
 # Loki's Architecture
 
@@ -173,7 +175,7 @@ Logs from each unique set of labels are built up into "chunks" in memory and
 then flushed to the backing storage backend.
 
 If an ingester process crashes or exits abruptly, all the data that has not yet
-been flushed could be lost. Loki is usually configured with a [Write Ahead Log](../operations/storage/wal) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
+been flushed could be lost. Loki is usually configured with a [Write Ahead Log](../../operations/storage/wal) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
 
 When not configured to accept out-of-order writes,
 all lines pushed to Loki for a given stream (unique combination of
@@ -189,7 +191,7 @@ nanosecond timestamps:
    different content, the log line is accepted. This means it is possible to
    have two different log lines for the same timestamp.
 
-#### Handoff - Deprecated in favor of the [WAL](../operations/storage/wal)
+#### Handoff - Deprecated in favor of the [WAL](../../operations/storage/wal)
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
 it will wait to see if a new ingester tries to enter before flushing and will
@@ -243,7 +245,7 @@ Caching log (filter, regexp) queries are under active development.
 
 ### Querier
 
-The **querier** service handles queries using the [LogQL](../logql/) query
+The **querier** service handles queries using the [LogQL](../../logql/) query
 language, fetching logs both from the ingesters and from long-term storage.
 
 Queriers query all ingesters for in-memory data before falling back to

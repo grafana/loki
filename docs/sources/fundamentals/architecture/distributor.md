@@ -4,8 +4,6 @@ weight: 1000
 ---
 # Distributor Component
 
-This document builds upon the information in the [Loki Architecture](./) page.
-
 Distributors are stateless and communicate with ingesters via [gRPC](https://grpc.io). The quantity of distributors can be increased or decreased as needed.
 
 ## Where does it live?
@@ -26,7 +24,7 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 
 The distributor can also rate limit incoming logs based on the maximum per-tenant bitrate. It does this by checking a per tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/second before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`! This is how global limits allow much simpler and safer operation of the Loki cluster.
 
-**Note: The distributor uses the `ring` component under the hood to register itself amongst it's peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring config](../../configuration#distributor_config).**
+**Note: The distributor uses the `ring` component under the hood to register itself amongst it's peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration](../../../configuration#distributor_config).**
 
 ### Forwarding
 
