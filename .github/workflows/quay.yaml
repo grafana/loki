@@ -34,7 +34,7 @@ jobs:
        id: image_tags
        run: |
          echo -n ::set-output name=IMAGE_TAGS::
-         TAGS=('$IMAGE_ORGANIZATION/$IAMGE_OPERATOR_NAME:latest')
+         TAGS=("$IMAGE_ORGANIZATION/$IAMGE_OPERATOR_NAME:latest")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
@@ -71,7 +71,7 @@ jobs:
        id: image_tags
        run: |
          echo -n ::set-output name=IMAGE_TAGS::
-         TAGS=('$IMAGE_ORGANIZATION/$IMAGE_BUNDLE_NAME:latest')
+         TAGS=("$IMAGE_ORGANIZATION/$IMAGE_BUNDLE_NAME:latest")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
