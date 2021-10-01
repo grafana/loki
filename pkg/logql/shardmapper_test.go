@@ -192,6 +192,14 @@ func TestMappingStrings(t *testing.T) {
 			in:  `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m]))`,
 			out: `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m]))`,
 		},
+		{
+			in:  `sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m]))`,
+			out: `(sumby(cluster)(downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=1_of_2>)+ignoring(machine)sumby(cluster,machine)(downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=1_of_2>))`,
+		},
+		{
+			in:  `sum by (cluster) (sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m])))`,
+			out: `sumby(cluster)((sumby(cluster)(downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster)(rate({foo="bar"}[5m])),shard=1_of_2>)+ignoring(machine)sumby(cluster,machine)(downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=0_of_2>++downstream<sumby(cluster,machine)(rate({foo="bar"}[5m])),shard=1_of_2>)))`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
