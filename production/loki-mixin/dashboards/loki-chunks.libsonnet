@@ -1,7 +1,6 @@
-local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
-{
+(import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
 
@@ -54,16 +53,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
         },
       ],
     } +
-    g.dashboard('Loki / Chunks')
+    $.dashboard('Loki / Chunks')
+    .addClusterSelectorTemplates(false)
     .addRow(
-      g.row('Active Series / Chunks')
+      $.row('Active Series / Chunks')
       .addPanel(
-        g.panel('Series') +
-        g.queryPanel('sum(loki_ingester_memory_chunks{%s})' % dashboards['loki-chunks.json'].ingesterSelector, 'series'),
+        $.panel('Series') +
+        $.queryPanel('sum(loki_ingester_memory_chunks{%s})' % dashboards['loki-chunks.json'].ingesterSelector, 'series'),
       )
       .addPanel(
-        g.panel('Chunks per series') +
-        g.queryPanel(
+        $.panel('Chunks per series') +
+        $.queryPanel(
           'sum(loki_ingester_memory_chunks{%s}) / sum(loki_ingester_memory_streams{%s})' % [
             dashboards['loki-chunks.json'].ingesterSelector,
             dashboards['loki-chunks.json'].ingesterSelectorOnly,
@@ -73,27 +73,27 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('Flush Stats')
+      $.row('Flush Stats')
       .addPanel(
-        g.panel('Utilization') +
-        g.latencyPanel('loki_ingester_chunk_utilization', '{%s}' % dashboards['loki-chunks.json'].ingesterSelector, multiplier='1') +
-        { yaxes: g.yaxes('percentunit') },
+        $.panel('Utilization') +
+        $.latencyPanel('loki_ingester_chunk_utilization', '{%s}' % dashboards['loki-chunks.json'].ingesterSelector, multiplier='1') +
+        { yaxes: $.yaxes('percentunit') },
       )
       .addPanel(
-        g.panel('Age') +
-        g.latencyPanel('loki_ingester_chunk_age_seconds', '{%s}' % dashboards['loki-chunks.json'].ingesterSelector),
+        $.panel('Age') +
+        $.latencyPanel('loki_ingester_chunk_age_seconds', '{%s}' % dashboards['loki-chunks.json'].ingesterSelector),
       ),
     )
     .addRow(
-      g.row('Flush Stats')
+      $.row('Flush Stats')
       .addPanel(
-        g.panel('Size') +
-        g.latencyPanel('loki_ingester_chunk_entries', '{%s}' % dashboards['loki-chunks.json'].ingesterSelector, multiplier='1') +
-        { yaxes: g.yaxes('short') },
+        $.panel('Size') +
+        $.latencyPanel('loki_ingester_chunk_entries', '{%s}' % dashboards['loki-chunks.json'].ingesterSelector, multiplier='1') +
+        { yaxes: $.yaxes('short') },
       )
       .addPanel(
-        g.panel('Entries') +
-        g.queryPanel(
+        $.panel('Entries') +
+        $.queryPanel(
           'sum(rate(loki_chunk_store_index_entries_per_chunk_sum{%s}[5m])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{%s}[5m]))' % [
             dashboards['loki-chunks.json'].ingesterSelector,
             dashboards['loki-chunks.json'].ingesterSelector,
@@ -103,21 +103,21 @@ local utils = import 'mixin-utils/utils.libsonnet';
       ),
     )
     .addRow(
-      g.row('Flush Stats')
+      $.row('Flush Stats')
       .addPanel(
-        g.panel('Queue Length') +
-        g.queryPanel('cortex_ingester_flush_queue_length{%s}' % dashboards['loki-chunks.json'].ingesterSelector, '{{pod}}'),
+        $.panel('Queue Length') +
+        $.queryPanel('cortex_ingester_flush_queue_length{%s}' % dashboards['loki-chunks.json'].ingesterSelector, '{{pod}}'),
       )
       .addPanel(
-        g.panel('Flush Rate') +
-        g.qpsPanel('loki_ingester_chunk_age_seconds_count{%s}' % dashboards['loki-chunks.json'].ingesterSelector,),
+        $.panel('Flush Rate') +
+        $.qpsPanel('loki_ingester_chunk_age_seconds_count{%s}' % dashboards['loki-chunks.json'].ingesterSelector,),
       ),
     )
     .addRow(
-      g.row('Duration')
+      $.row('Duration')
       .addPanel(
-        g.panel('Chunk Duration hours (end-start)') +
-        g.queryPanel(
+        $.panel('Chunk Duration hours (end-start)') +
+        $.queryPanel(
           [
             'histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[5m])) by (le))' % dashboards['loki-chunks.json'].ingesterSelector,
             'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[5m])) by (le))' % dashboards['loki-chunks.json'].ingesterSelector,

@@ -3,7 +3,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'grafana-builder/grafana.libsonnet') {
   // Override the dashboard constructor to add:
   // - default tags,
-  // - some links that propagate the selectred cluster.
+  // - some links that propagate the selected cluster.
   dashboard(title, uid='')::
     super.dashboard(title, uid) + {
       addRowIf(condition, row)::
