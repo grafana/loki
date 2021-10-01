@@ -34,11 +34,12 @@ jobs:
        id: image_tags
        run: |
          echo -n ::set-output name=IMAGE_TAGS::
-         TAGS=("$IMAGE_ORGANIZATION/$IAMGE_OPERATOR_NAME:latest")
+         PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_OPERATOR_NAME"
+         TAGS=("$PULLSPEC:latest")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
-         TAGS+=("$IMAGE_ORGANIZATION/$IAMGE_OPERATOR_NAME:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
+         TAGS+=("$PULLSPEC:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
          ( IFS=$','; echo "${TAGS[*]}" )
 
      - name: Build and publish image on quay.io
@@ -71,11 +72,12 @@ jobs:
        id: image_tags
        run: |
          echo -n ::set-output name=IMAGE_TAGS::
-         TAGS=("$IMAGE_ORGANIZATION/$IMAGE_BUNDLE_NAME:latest")
+         PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_BUNDLE_NAME"
+         TAGS=("$PULLSPEC:latest")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
-         TAGS+=("$IMAGE_ORGANIZATION/$IMAGE_BUNDLE_NAME:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
+         TAGS+=("$PULLSPEC:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
          ( IFS=$','; echo "${TAGS[*]}" )
 
      - name: Build and publish image on quay.io
