@@ -84,4 +84,65 @@ common:
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 		})
 	})
+
+	t.Run("common memberlist config", func(t *testing.T) {
+		// components with rings
+		// * ingester
+		// * distributor
+		// * ruler
+
+		t.Run("does not automatically configure memberlist when no top-level memberlist config is provided", func(t *testing.T) {
+			configFileString := `---`
+			config, defaults := testContext(configFileString, nil)
+
+			assert.EqualValues(t, defaults.Ingester.LifecyclerConfig.RingConfig.KVStore.Store, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, defaults.Distributor.DistributorRing.KVStore.Store, config.Distributor.DistributorRing.KVStore.Store)
+			assert.EqualValues(t, defaults.Ruler.Ring.KVStore.Store, config.Ruler.Ring.KVStore.Store)
+		})
+
+		t.Run("when top-level memberlist join_members are provided, all applicable rings are defaulted to use memberlist", func(t *testing.T) {
+			configFileString := `---
+memberlist:
+  join_members:
+    - foo.bar.example.com`
+
+			config, _ := testContext(configFileString, nil)
+
+			assert.EqualValues(t, "memberlist", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, "memberlist", config.Distributor.DistributorRing.KVStore.Store)
+			assert.EqualValues(t, "memberlist", config.Ruler.Ring.KVStore.Store)
+		})
+
+		t.Run("explicit ring configs provided via config file are preserved", func(t *testing.T) {
+			configFileString := `---
+memberlist:
+  join_members:
+    - foo.bar.example.com
+distributor:
+  ring:
+    kvstore:
+      store: etcd`
+
+			config, _ := testContext(configFileString, nil)
+
+			assert.EqualValues(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+
+			assert.EqualValues(t, "memberlist", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, "memberlist", config.Ruler.Ring.KVStore.Store)
+		})
+
+		t.Run("explicit ring configs provided via command line are preserved", func(t *testing.T) {
+			configFileString := `---
+memberlist:
+  join_members:
+    - foo.bar.example.com`
+
+			config, _ := testContext(configFileString, []string{"-ruler.ring.store", "inmemory"})
+
+			assert.EqualValues(t, "inmemory", config.Ruler.Ring.KVStore.Store)
+
+			assert.EqualValues(t, "memberlist", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, "memberlist", config.Distributor.DistributorRing.KVStore.Store)
+		})
+	})
 }
