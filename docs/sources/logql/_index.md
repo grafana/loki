@@ -149,18 +149,18 @@ The syntax:
 ```logql
 <vector expr> <bin-op> ignoring(<labels>) <vector expr>
 ```
-Example:
+This example will return the machines which total count within the last minutes exceed average value for app `foo`.
 ```logql
-sum by(machine) (count_over_time({app="foo"}[1m])) > bool ignoring(machine) sum(count_over_time({app="bar"}[1m]))
+max by(machine) (count_over_time({app="foo"}[1m])) > bool ignoring(machine) avg(count_over_time({app="foo"}[1m]))
 ```
 The on keyword reduces the set of considered labels to a specified list.
 The syntax:
 ```logql
 <vector expr> <bin-op> on(<labels>) <vector expr>
 ```
-Example:
+This example will return every machine total count within the last minutes ratio in app `foo`:
 ```logql
-sum by(app,machine) (count_over_time({app="foo"}[1m])) + on(app) sum by (app) (count_over_time({app="bar"}[1m]))
+sum by(machine) (count_over_time({app="foo"}[1m])) / on() sum(count_over_time({app="foo"}[1m]))
 ```
 
 ## Comments
