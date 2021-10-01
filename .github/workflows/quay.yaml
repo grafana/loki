@@ -30,7 +30,7 @@ jobs:
          registry: ${{ env.IMAGE_REGISTRY }}
          repository: ${{ env.IMAGE_ORGANIZATION }}/loki-operator
          username: ${{ secrets.OPENSHIFT_LOGGING_USER }}
-         passowrd: ${{ secrets.OPENSHIFT_LOGGING_PASS }}
+         password: ${{ secrets.OPENSHIFT_LOGGING_PASS }}
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
 
  publish-bundle:
@@ -55,5 +55,5 @@ jobs:
          registry: ${{ env.IMAGE_REGISTRY }}
          repository: ${{ env.IMAGE_ORGANIZATION }}/loki-operator-bundle
          username: ${{ secrets.OPENSHIFT_LOGGING_USER }}
-         passowrd: ${{ secrets.OPENSHIFT_LOGGING_PASS }}
+         password: ${{ secrets.OPENSHIFT_LOGGING_PASS }}
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
