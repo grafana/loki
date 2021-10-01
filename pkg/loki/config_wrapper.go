@@ -69,6 +69,12 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			}
 		}
 
+		if len(r.MemberlistKV.JoinMembers) > 0 {
+			r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = "memberlist"
+			r.Distributor.DistributorRing.KVStore.Store = "memberlist"
+			r.Ruler.Ring.KVStore.Store = "memberlist"
+		}
+
 		return nil
 	}
 }
