@@ -24,9 +24,9 @@ jobs:
          TAGS+=("$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
          ( IFS=$','; echo "${TAGS[*]}" )
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v2
+       uses: docker/build-push-action@v1
        with:
-         context: .
+         path: .
          registry: ${{ env.IMAGE_REGISTRY }}
          repository: ${{ env.IMAGE_ORGANIZATION }}/loki-operator
          username: ${{ secrets.OPENSHIFT_LOGGING_USER }}
@@ -48,10 +48,10 @@ jobs:
          TAGS+=("$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
          ( IFS=$','; echo "${TAGS[*]}" )
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v2
+       uses: docker/build-push-action@v1
        with:
-         context: .
-         file: bundle.Dockerfile
+         path: .
+         dockerfile: bundle.Dockerfile
          registry: ${{ env.IMAGE_REGISTRY }}
          repository: ${{ env.IMAGE_ORGANIZATION }}/loki-operator-bundle
          username: ${{ secrets.OPENSHIFT_LOGGING_USER }}
