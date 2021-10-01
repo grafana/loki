@@ -1,0 +1,59 @@
+name: quay
+on:
+  push:
+    branches:
+      - master
+
+env:
+  IMAGE_REGISTRY: quay.io
+  IMAGE_ORGANIZATION: openshift-logging
+
+jobs:
+ publish-manager:
+   runs-on: ubuntu-latest
+   steps:
+     - uses: actions/checkout@master
+     - name: Get image tags
+       id: image_tags
+       run: |
+         echo -n ::set-output name=IMAGE_TAGS::
+         TAGS=('latest')
+         BUILD_DATE="$(date -u +'%Y-%m-%d')"
+         VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+         VCS_REF="$(git rev-parse --short HEAD)"
+         TAGS+=("$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
+         ( IFS=$','; echo "${TAGS[*]}" )
+     - name: Build and publish image on quay.io
+       uses: docker/build-push-action@v2
+       with:
+         context: .
+         registry: ${{ env.IMAGE_REGISTRY }}
+         repository: ${{ env.IMAGE_ORGANIZATION }}/loki-operator
+         username: ${{ secrets.OPENSHIFT_LOGGING_USER }}
+         passowrd: ${{ secrets.OPENSHIFT_LOGGING_PASS }}
+         tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
+
+ publish-bundle:
+   runs-on: ubuntu-latest
+   steps:
+     - uses: actions/checkout@master
+     - name: Get image tags
+       id: image_tags
+       run: |
+         echo -n ::set-output name=IMAGE_TAGS::
+         TAGS=('latest')
+         BUILD_DATE="$(date -u +'%Y-%m-%d')"
+         VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+         VCS_REF="$(git rev-parse --short HEAD)"
+         TAGS+=("$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
+         ( IFS=$','; echo "${TAGS[*]}" )
+     - name: Build and publish image on quay.io
+       uses: docker/build-push-action@v2
+       with:
+         context: .
+         file: bundle.Dockerfile
+         registry: ${{ env.IMAGE_REGISTRY }}
+         repository: ${{ env.IMAGE_ORGANIZATION }}/loki-operator-bundle
+         username: ${{ secrets.OPENSHIFT_LOGGING_USER }}
+         passowrd: ${{ secrets.OPENSHIFT_LOGGING_PASS }}
+         tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
