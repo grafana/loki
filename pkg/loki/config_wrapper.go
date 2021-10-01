@@ -43,6 +43,8 @@ func (c *ConfigWrapper) Clone() flagext.Registerer {
 	}(*c)
 }
 
+const memberlistStr = "memberlist"
+
 // ApplyDynamicConfig satisfies WithCommonCloneable interface, and applies all rules for setting Loki
 // config values from the common section of the Loki config file.
 // This method's purpose is to simplify Loki's config in an opinionated way so that Loki can be run
@@ -70,9 +72,9 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		if len(r.MemberlistKV.JoinMembers) > 0 {
-			r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = "memberlist"
-			r.Distributor.DistributorRing.KVStore.Store = "memberlist"
-			r.Ruler.Ring.KVStore.Store = "memberlist"
+			r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+			r.Distributor.DistributorRing.KVStore.Store = memberlistStr
+			r.Ruler.Ring.KVStore.Store = memberlistStr
 		}
 
 		return nil
