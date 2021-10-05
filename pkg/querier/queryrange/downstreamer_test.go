@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -344,4 +345,35 @@ func TestInstanceDownstream(t *testing.T) {
 
 	require.Nil(t, err)
 	require.Equal(t, []logqlmodel.Result{expected}, results)
+}
+
+func TestCancelWhileWaitingResponse(t *testing.T) {
+	mkIn := func() *instance { return DownstreamHandler{nil}.Downstreamer().(*instance) }
+	in := mkIn()
+
+	queries := make([]logql.DownstreamQuery, in.parallelism+1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Launch the For call in a goroutine because it blocks and we need to be able to cancel the context
+	// to prove it will exit when the context is canceled.
+	b := atomic.NewBool(false)
+	go func() {
+		_, _ = in.For(ctx, queries, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
+			// Intended to keep the For method from returning unless the context is canceled.
+			time.Sleep(100 * time.Second)
+			return logqlmodel.Result{}, nil
+		})
+		// Should only reach here if the For method returns after the context is canceled.
+		b.Store(true)
+	}()
+
+	// Cancel the parent call
+	cancel()
+	require.Eventually(t, func() bool {
+		return b.Load()
+	}, 5*time.Second, 10*time.Millisecond,
+		"The parent context calling the Downstreamer For method was canceled "+
+			"but the For method did not return as expected.")
+
 }
