@@ -36,6 +36,8 @@ var tokens = map[string]int{
 	"]":            CLOSE_BRACKET,
 	OpLabelReplace: LABEL_REPLACE,
 	OpOffset:       OFFSET,
+	OpOn:           ON,
+	OpIgnoring:     IGNORING,
 
 	// binops
 	OpTypeOr:     OR,
