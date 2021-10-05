@@ -2,9 +2,9 @@
 title: Configuration
 weight: 500
 ---
-# Configuring Loki
+# Configuring Grafana Loki
 
-Loki is configured in a YAML file (usually referred to as `loki.yaml` )
+Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 

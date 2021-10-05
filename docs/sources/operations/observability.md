@@ -2,9 +2,9 @@
 title: Observability
 weight: 20
 ---
-# Observing Loki
+# Observing Grafana Loki
 
-Both Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
+Both Grafana Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
 metrics. You will need a local Prometheus and add Loki and Promtail as targets.
 See [configuring
 Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration)

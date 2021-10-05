@@ -2,9 +2,9 @@
 title: Local
 weight: 40
 ---
-# Install and run Loki locally
+# Install and run Grafana Loki locally
 
-In order to log events with Loki, download and install both Promtail and Loki.
+In order to log events with Grafana Loki, download and install both Promtail and Loki.
 - Loki is the logging engine.
 - Promtail sends logs to Loki.
 

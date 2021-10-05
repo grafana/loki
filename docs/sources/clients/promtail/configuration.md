@@ -80,7 +80,7 @@ Where default_value is the value to use if the environment variable is undefined
 [server: <server_config>]
 
 # Describes how Promtail connects to multiple instances
-# of Loki, sending logs to each.
+# of Grafana Loki, sending logs to each.
 # WARNING: If one of the remote Loki servers fails to respond or responds
 # with any error which is retryable, this will impact sending logs to any
 # other configured remote Loki servers.  Sending is done on a single thread!

@@ -1,9 +1,9 @@
 ---
 title: Examples
 ---
-# Loki Configuration Examples
+# Grafana Loki Configuration Examples
 
-## Complete Local config
+## Complete Local configuration
 
 ```yaml
 auth_enabled: false

@@ -1,9 +1,10 @@
 ---
 title: Lambda Promtail
+weight: 20
 ---
 # Lambda Promtail
 
-Loki includes an [AWS SAM](https://aws.amazon.com/serverless/sam/) package template for shipping Cloudwatch logs to Loki via a [set of Promtails](https://github.com/grafana/loki/tree/master/tools/lambda-promtail). This is done via an intermediary [lambda function](https://aws.amazon.com/lambda/) which processes cloudwatch events and propagates them to a Promtail instance (or set of instances behind a load balancer) via the push-api [scrape config](../promtail/configuration#loki_push_api_config).
+Grafana Loki includes an [AWS SAM](https://aws.amazon.com/serverless/sam/) package template for shipping Cloudwatch logs to Loki via a [set of Promtails](https://github.com/grafana/loki/tree/master/tools/lambda-promtail). This is done via an intermediary [lambda function](https://aws.amazon.com/lambda/) which processes cloudwatch events and propagates them to a Promtail instance (or set of instances behind a load balancer) via the push-api [scrape config](../promtail/configuration#loki_push_api_config).
 
 ## Uses
 

@@ -16,7 +16,7 @@ All labels, including extracted ones, will be available for aggregations and gen
 ## Range Vector aggregation
 
 LogQL shares the [range vector](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors) concept of Prometheus.
-In Loki, the selected range of samples is a range of selected log or label values.
+In Grafana Loki, the selected range of samples is a range of selected log or label values.
 
 The aggregation is applied over a time duration.
 Loki defines [Time Durations](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-durations) with the same syntax as Prometheus.

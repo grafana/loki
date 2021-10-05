@@ -2,9 +2,9 @@
 title: Helm
 weight: 20
 ---
-# Install Loki with Helm
+# Install Grafana Loki with Helm
 
-The Helm installation runs the Loki cluster as a single binary.
+The Helm installation runs the Grafana Loki cluster as a single binary.
 
 ## Prerequisites
 

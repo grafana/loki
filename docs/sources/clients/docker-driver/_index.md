@@ -1,9 +1,10 @@
 ---
 title: Docker driver
+weight: 40
 ---
 # Docker Driver Client
 
-Loki officially supports a Docker plugin that will read logs from Docker
+Grafana Loki officially supports a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 

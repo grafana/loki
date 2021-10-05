@@ -4,7 +4,7 @@ weight: 700
 ---
 # LogQL: Log query language
 
-LogQL is Loki's PromQL-inspired query language.
+LogQL is Grafana Loki's PromQL-inspired query language.
 Queries act as if they are a distributed `grep` to aggregate log sources.
 LogQL uses labels and operators for filtering.
 

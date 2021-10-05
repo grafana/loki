@@ -2,9 +2,9 @@
 title: Best practices
 weight: 400
 ---
-# Loki label best practices
+# Grafana Loki label best practices
 
-Loki is under active development, and we are constantly working to improve performance. But here are some of the most current best practices for labels that will give you the best experience with Loki.
+Grafana Loki is under active development, and we are constantly working to improve performance. But here are some of the most current best practices for labels that will give you the best experience with Loki.
 
 ## Static labels are good
 
