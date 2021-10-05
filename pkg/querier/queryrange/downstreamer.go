@@ -133,6 +133,7 @@ func (in instance) For(
 	for i := 0; i < len(queries); i++ {
 		select {
 		case <-ctx.Done():
+			return nil, ctx.Err()
 		case resp := <-ch:
 			if resp.err != nil {
 				return nil, resp.err
