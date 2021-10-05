@@ -28,6 +28,9 @@ type Config struct {
 	UploadInterval time.Duration
 }
 
+// 实现数据的写入，将客户端发送的数据写入本地（以blugedb格式数据存储），然后将数据压缩返送往objectstore服务器端。数据是根据时间段，定时上传的，
+// 因为是定时上传所以，objectstore数据会有一段的时间差，所以objectstore加uploader数据才是完整的数据，如果要实现完整查询需要donwloder下载完整
+//objectstore数据实现查询，并利用uploader查询接口查询uploader尚未上传的数据，两者的并集才是完整的查询。
 type TableManager struct {
 	cfg           Config
 	storageClient StorageClient

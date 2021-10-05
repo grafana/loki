@@ -247,6 +247,7 @@ func (lt *Table) Upload(ctx context.Context, force bool) error {
 	return nil
 }
 
+// 将数据压缩打包 发往objectstore服务器。
 func (lt *Table) uploadDB(ctx context.Context, name string, db *bluge_db.BlugeDB) error {
 	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading db %s from table %s", name, lt.name))
 	var buf bytes.Buffer

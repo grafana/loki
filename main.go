@@ -2,17 +2,38 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"github.com/blugelabs/bluge"
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
+	//"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/prometheus/common/model"
 	"time"
 )
 
+const (
+	baseTableName     = "cortex_base"
+	tablePrefix       = "cortex_"
+	table2Prefix      = "cortex2_"
+	chunkTablePrefix  = "chunks_"
+	chunkTable2Prefix = "chunks2_"
+	tableRetention    = 2 * 7 * 24 * time.Hour
+	tablePeriod       = 7 * 24 * time.Hour
+	gracePeriod       = 15 * time.Minute
+	maxChunkAge       = 12 * time.Hour
+	inactiveWrite     = 1
+	inactiveRead      = 2
+	write             = 200
+	read              = 100
+	autoScaleLastN    = 2
+	autoScaleMin      = 50
+	autoScaleMax      = 500
+	autoScaleTarget   = 80
+)
+
 func main() {
-	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: "./obstore"})
-	fmt.Print(err)
+	fsObjectClient, _ := local.NewFSObjectClient(local.FSConfig{Directory: "./obstore"})
+	//
+	//fmt.Print(err)
 	//tb, _ := uploads.NewTable("/Users/mwang5/loki/snpseg", "uploader", fsObjectClient)
 	//w := bluge_db.TableWrites{Puts: map[string]string{"foo": "1", "bar": "2"}}
 	//tb.Write(context.Background(), w)
@@ -62,35 +83,77 @@ func main() {
 	//	}
 	//	return true
 	//})
-
-	config := shipper.Config{ActiveIndexDirectory: "snpsegindex",
-		SharedStoreType: "filesystem",
-		CacheLocation:   "dcache",
-		CacheTTL:        30 * time.Second,
-		ResyncInterval:  20 * time.Second,
-		IngesterName:    "wang",
-		Mode:            shipper.ModeReadWrite,
+	//
+	config := shipper.Config{
+		ActiveIndexDirectory: "snpsegindex",
+		SharedStoreType:      "filesystem",
+		CacheLocation:        "dcache",
+		CacheTTL:             30 * time.Second,
+		ResyncInterval:       20 * time.Second,
+		IngesterName:         "wang",
+		Mode:                 shipper.ModeReadWrite,
 	}
-	s, err := shipper.NewShipper(config, fsObjectClient, nil)
-	//wr := s.NewWriteBatch()
-	//wr.Add("mark", "test", []byte("test"), []byte("test"))
-	//s.BatchWrite(context.Background(), wr)
+
+	cfg := chunk.DefaultSchemaConfig("", "v10", 0)
+	ts, _ := time.Parse(time.RFC3339, "1970-09-16T00:00:00Z")
+	tbName := cfg.Configs[0].IndexTables.TableFor(model.TimeFromUnix(ts.Unix()))
+	s, _ := shipper.NewShipper(config, fsObjectClient, nil)
+	// new struct
+	wr := s.NewWriteBatch()
+	// create new table 没有对应表明创建
+	wr.Add(tbName, "test", []byte("test"), []byte("test"))
+	s.BatchWrite(context.Background(), wr)
 	//match := map[string]string{
 	//	"test": "test",
 	//}
-	qs := bluge_db.IndexQuery{
-		TableName: "mark",
-		Query:     bluge.NewMatchQuery("test").SetField("test"),
-	}
-	s.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
-		if field == "_id" {
-			fmt.Printf("match: %s\n", string(value))
-		}
-		fmt.Printf("field: %s\n", string(field))
-		fmt.Printf("value: %s\n", string(value))
-		return true
-	})
+	//qs := bluge_db.IndexQuery{
+	//	TableName: "mark",
+	//	Query:     bluge.NewMatchQuery("test").SetField("test"),
+	//}
+	//s.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
+	//	if field == "_id" {
+	//		fmt.Printf("match: %s\n", string(value))
+	//	}
+	//	fmt.Printf("field: %s\n", string(field))
+	//	fmt.Printf("value: %s\n", string(value))
+	//	return true
+	//})
 
+	// 控制表的生命周期如： 能读写 只读，对应实现es的生命周期
+	tbmConfig := chunk.TableManagerConfig{
+		CreationGracePeriod: gracePeriod,
+		PollInterval:        15 * time.Second,
+		IndexTables: chunk.ProvisionConfig{
+			ActiveTableProvisionConfig: chunk.ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+				//WriteScale:                 activeScalingConfig,
+			},
+			InactiveTableProvisionConfig: chunk.InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+				//InactiveWriteScale:      inactiveScalingConfig,
+				InactiveWriteScaleLastN: autoScaleLastN,
+			},
+		},
+		ChunkTables: chunk.ProvisionConfig{
+			ActiveTableProvisionConfig: chunk.ActiveTableProvisionConfig{
+				ProvisionedWriteThroughput: write,
+				ProvisionedReadThroughput:  read,
+			},
+			InactiveTableProvisionConfig: chunk.InactiveTableProvisionConfig{
+				InactiveWriteThroughput: inactiveWrite,
+				InactiveReadThroughput:  inactiveRead,
+			},
+		},
+	}
+	// MustParseDayTime("2021-09-16")
+
+	//a, _ := cfg.IndexTables..ChunkTableFor(model.TimeFromUnix(ts.Unix()))
+	tableClient := shipper.NewBoltDBShipperTableClient(fsObjectClient)
+	tableManager, _ := chunk.NewTableManager(tbmConfig, cfg, maxChunkAge, tableClient, nil, nil, nil)
+
+	tableManager.SyncTables(context.Background())
 	//tableManager.QueryPages(context.Background(), []bluge_db.IndexQuery{qs}, func(field string, value []byte) bool {
 	//	if field == "_id" {
 	//		fmt.Printf("match: %s\n", string(value))
@@ -99,13 +162,21 @@ func main() {
 	//})
 	//wr := bluge_db.NewWriteBatch()
 	//wr.Add("mark", "test", []byte("test"), []byte("test"))
-	//tableManager.BatchWrite(context.Background(), wr)
-	fmt.Print(s)
+	// tableManager.BatchWrite(context.Background(), wr)
+	//fmt.Print(s)
 	select {
 	case <-time.Tick(2000000000 * time.Second):
 		//t.Fatal("failed to initialize table in time")
 	}
 	//fmt.Print(tableManager)
+}
+
+func MustParseDayTime(s string) chunk.DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return chunk.DayTime{model.TimeFromUnix(t.Unix())}
 }
 
 //func main() {

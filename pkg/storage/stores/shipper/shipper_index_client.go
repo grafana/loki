@@ -73,6 +73,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 }
 
+// brige 桥接uploadsManager downloadsManager 提供分装好的统一接口
 type Shipper struct {
 	cfg              Config
 	uploadsManager   *uploads.TableManager
@@ -138,6 +139,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 	return nil
 }
 
+// 创建新文件uploader作为UploaderName，避免重启时名字变了
 // we would persist uploader name in <active-index-directory>/uploader/name file so that we use same name on subsequent restarts to
 // avoid uploading same files again with different name. If the filed does not exist we would create one with uploader name set to
 // ingester name and startup timestamp so that we randomise the name and do not override files from other ingesters.
@@ -194,6 +196,7 @@ func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error 
 	})
 }
 
+// 整合uploadsManager downloadsManager Query，提供统一接口。
 func (s *Shipper) QueryPages(ctx context.Context, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	return instrument.CollectedRequest(ctx, "QUERY", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		spanLogger := spanlogger.FromContext(ctx)

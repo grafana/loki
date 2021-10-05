@@ -38,6 +38,8 @@ type TableManager struct {
 	wg     sync.WaitGroup
 }
 
+// 将object store 数据定时缓存到本地，提供查询接口供查询
+// 根据 最后被使用时间（被查询），计算ttl实现缓存的自动过期。
 func NewTableManager(cfg Config, storageClient StorageClient, registerer prometheus.Registerer) (*TableManager, error) {
 	// cleanup existing directory and re-create it since we do not use existing files in it.
 	if err := os.RemoveAll(cfg.CacheDir); err != nil {
@@ -58,7 +60,7 @@ func NewTableManager(cfg Config, storageClient StorageClient, registerer prometh
 		cancel:        cancel,
 	}
 
-	tm.getOrCreateTable(context.Background(), "snpseg")
+	// tm.getOrCreateTable(context.Background(), "snpseg")
 	go tm.loop()
 	return tm, nil
 }

@@ -28,6 +28,7 @@ func QueriesByTable(queries []bluge_db.IndexQuery) map[string][]bluge_db.IndexQu
 	return queriesByTable
 }
 
+// 实现并发查询 最大queries数为100
 func DoParallelQueries(ctx context.Context, tableQuerier TableQuerier, queries []bluge_db.IndexQuery, callback segment.StoredFieldVisitor) error {
 	errs := make(chan error)
 
