@@ -3,9 +3,9 @@ title: Upgrading
 weight: 250
 ---
 
-# Upgrading Loki
+# Upgrading Grafana Loki
 
-Every attempt is made to keep Loki backwards compatible, such that upgrades should be low risk and low friction.
+Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 
 Unfortunately Loki is software and software is hard and sometimes we are forced to make decisions between ease of use and ease of maintenance.
 

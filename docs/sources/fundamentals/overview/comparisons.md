@@ -3,7 +3,7 @@ title: Comparisons
 ---
 # Loki compared to other log systems
 
-## Loki / Promtail / Grafana vs EFK
+## Grafana Loki / Promtail / Grafana vs EFK
 
 The EFK (Elasticsearch, Fluentd, Kibana) stack is used to ingest, visualize, and
 query for logs from various sources.
@@ -13,7 +13,7 @@ keys for each object and the contents of each key are indexed. Data can then be
 queried using a JSON object to define a query (called the Query DSL) or through
 the Lucene query language.
 
-In comparison, Loki in single-binary mode can store data on-disk, but in
+In comparison, Grafana Loki in single-binary mode can store data on-disk, but in
 horizontally-scalable mode data is stored in a cloud storage system such as S3,
 GCS, or Cassandra. Logs are stored in plaintext form tagged with a set of label
 names and values, where only the label pairs are indexed. This tradeoff makes it

@@ -25,7 +25,7 @@ Before we start you'll need:
 
 - The [AWS CLI][aws cli] configured (run `aws configure`).
 - [kubectl][kubectl] and [eksctl][eksctl] installed.
-- A Grafana instance with a Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
+- A Grafana instance with a Grafana Loki data source already configured, you can use [GrafanaCloud][GrafanaCloud] free trial.
 
 For the sake of simplicity we'll use a [GrafanaCloud][GrafanaCloud] Loki and Grafana instances, you can get an free account for this tutorial on our [website][GrafanaCloud], but all the steps are the same if you're running your own Open Source version of Loki and Grafana instances.
 

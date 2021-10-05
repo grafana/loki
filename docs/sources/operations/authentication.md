@@ -2,9 +2,9 @@
 title: Authentication
 weight: 10
 ---
-# Authentication with Loki
+# Authentication with Grafana Loki
 
-Loki does not come with any included authentication layer. Operators are
+Grafana Loki does not come with any included authentication layer. Operators are
 expected to run an authenticating reverse proxy in front of your services, such
 as NGINX using basic auth or an OAuth2 proxy.
 

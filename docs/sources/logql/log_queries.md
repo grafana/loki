@@ -49,7 +49,7 @@ A stream may contain other pairs of labels and values,
 but only the specified pairs within the stream selector are used to determine
 which streams will be included within the query results.
 
-The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki log stream selectors.
+The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Grafana Loki log stream selectors.
 
 The `=` operator after the label name is a **label matching operator**.
 The following label matching operators are supported:

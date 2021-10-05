@@ -33,7 +33,7 @@ There are different types of labels present in Promtail:
 - Labels starting with `__` (two underscores) are internal labels. They usually
   come from dynamic sources like service discovery. Once relabeling is done,
   they are removed from the label set. To persist internal labels so they're
-  sent to Loki, rename them so they don't start with `__`. See
+  sent to Grafana Loki, rename them so they don't start with `__`. See
   [Relabeling](#relabeling) for more information.
 
 - Labels starting with `__meta_kubernetes_pod_label_*` are "meta labels" which

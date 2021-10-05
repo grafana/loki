@@ -3,9 +3,9 @@ title: HTTP API
 weight: 900
 ---
 
-# Loki HTTP API
+# Grafana Loki HTTP API
 
-Loki exposes an HTTP API for pushing, querying, and tailing log data.
+Grafana Loki exposes an HTTP API for pushing, querying, and tailing log data.
 Note that [authenticating](../operations/authentication/) against the API is
 out of scope for Loki.
 
