@@ -2168,7 +2168,6 @@ multi_kv_config:
     mirror-enabled: false
     primary: consul
 ```
-### Generic placeholders
 
 ## Accept out-of-order writes
 
