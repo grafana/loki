@@ -131,11 +131,14 @@ func (in instance) For(
 
 	results := make([]logqlmodel.Result, len(queries))
 	for i := 0; i < len(queries); i++ {
-		resp := <-ch
-		if resp.err != nil {
-			return nil, resp.err
+		select {
+		case <-ctx.Done():
+		case resp := <-ch:
+			if resp.err != nil {
+				return nil, resp.err
+			}
+			results[resp.i] = resp.res
 		}
-		results[resp.i] = resp.res
 	}
 	return results, nil
 }
