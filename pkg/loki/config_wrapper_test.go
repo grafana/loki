@@ -60,6 +60,7 @@ common:
 
 			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
+			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via config file", func(t *testing.T) {
@@ -72,6 +73,7 @@ ruler:
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
+			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via the command line", func(t *testing.T) {
@@ -82,6 +84,7 @@ common:
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
+			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
 	})
 

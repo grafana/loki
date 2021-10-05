@@ -69,6 +69,10 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
 				r.Ingester.WAL.Dir = fmt.Sprintf("%s/wal", r.Common.PathPrefix)
 			}
+
+			if r.CompactorConfig.WorkingDirectory == defaults.CompactorConfig.WorkingDirectory {
+				r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", r.Common.PathPrefix)
+			}
 		}
 
 		if len(r.MemberlistKV.JoinMembers) > 0 {
