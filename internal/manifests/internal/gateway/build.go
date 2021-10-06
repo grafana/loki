@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"text/template"
 
-	"github.com/ViaQ/loki-operator/api/v1beta1"
+	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 
 	"github.com/ViaQ/logerr/kverrors"
 )
@@ -22,6 +22,14 @@ const (
 	LokiGatewayMountDir = "/etc/lokistack-gateway"
 	// LokiGatewayTLSDir is the path that is mounted from the configmap for TLS
 	LokiGatewayTLSDir = "/var/run/tls"
+	// LokiGatewayCABundleDir is the path that is mounted from the configmap for TLS
+	LokiGatewayCABundleDir = "/var/run/ca"
+	// LokiGatewayCAFile is the file name of the certificate authority file
+	LokiGatewayCAFile = "service-ca.crt"
+	// LokiGatewayCertFile is the file of the X509 server certificate file
+	LokiGatewayCertFile = "tls.crt"
+	// LokiGatewayKeyFile is the file name of the server private key
+	LokiGatewayKeyFile = "tls.key"
 )
 
 var (
@@ -64,7 +72,7 @@ func Build(opts Options) (rbacCfg []byte, tenantsCfg []byte, regoCfg []byte, err
 		return nil, nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
 	// Build loki gateway observatorium rego for static mode
-	if opts.Stack.Tenants.Mode == v1beta1.Static {
+	if opts.Stack.Tenants.Mode == lokiv1beta1.Static {
 		w = bytes.NewBuffer(nil)
 		err = lokiStackGatewayRegoTmpl.Execute(w, opts)
 		if err != nil {

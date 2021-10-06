@@ -10,6 +10,7 @@ spec:
       containers:
         - name: manager
           args:
+          - "--with-lokistack-gateway"
           - "--with-cert-signing-service"
           - "--with-service-monitors"
           - "--with-tls-service-monitors"

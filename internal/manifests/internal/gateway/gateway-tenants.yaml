@@ -17,24 +17,22 @@ tenants:
     issuerCAPath: {{ $secret.IssuerCAPath }}
     {{- end -}}
     {{- end -}}
-    {{- end -}}
-    {{ print "\n" }}
+    {{- end }}
     issuerURL: {{ $spec.OIDC.IssuerURL }}
     redirectURL: {{ $spec.OIDC.RedirectURL }}
     {{ if $spec.OIDC.UsernameClaim }}
     usernameClaim: {{ $spec.OIDC.UsernameClaim }}
     {{- end -}}
-    {{ if $spec.OIDC.GroupClaim }}
+    {{- if $spec.OIDC.GroupClaim }}
     groupClaim: {{ $spec.OIDC.GroupClaim }}
-    {{- end -}}
-  {{ print "\n" }}
+    {{- end }}
   opa:
     query: data.lokistack.allow
     paths:
     - /etc/lokistack-gateway/rbac.yaml
     - /etc/lokistack-gateway/lokistack-gateway.rego
 {{- end -}}
-{{- else if eq $l.Stack.Tenants.Mode "dynamic" -}}
+{{- else -}}
 {{- if $tenant := $l.Stack.Tenants -}}
 {{- range $spec := $tenant.Authentication }}
 - name: {{ $spec.TenantName }}
@@ -45,65 +43,25 @@ tenants:
     {{ if $secret.ClientID }}
     clientID: {{ $secret.ClientID }}
     {{- end -}}
-    {{ if $secret.ClientID }}
+    {{ if $secret.ClientSecret }}
     clientSecret: {{ $secret.ClientSecret }}
     {{- end -}}
-    {{ if $secret.ClientID }}
+    {{ if $secret.IssuerCAPath }}
     issuerCAPath: {{ $secret.IssuerCAPath }}
     {{- end -}}
     {{- end -}}
-    {{- end -}}
-    {{ print "\n" }}
+    {{- end }}
     issuerURL: {{ $spec.OIDC.IssuerURL }}
     redirectURL: {{ $spec.OIDC.RedirectURL }}
-    {{ if $spec.OIDC.UsernameClaim }}
+    {{- if $spec.OIDC.UsernameClaim }}
     usernameClaim: {{ $spec.OIDC.UsernameClaim }}
     {{- end -}}
-    {{ if $spec.OIDC.GroupClaim }}
+    {{- if $spec.OIDC.GroupClaim }}
     groupClaim: {{ $spec.OIDC.GroupClaim }}
-    {{- end -}}
-  {{ print "\n" }}
+    {{- end }}
   opa:
     url: {{ $tenant.Authorization.OPA.URL }}
 {{- end -}}
 {{- end -}}
-{{- else -}}
-{{ print "\n" }}
-- name: application
-  id: 32e45e3e-b760-43a2-a7e1-02c5631e56e9
-  oidc:
-    clientID: test
-    # TODO - these need to be replaced once we integrate dex into lokistack-gateway.
-    clientSecret: ZXhhbXBsZS1hcHAtc2VjcmV0
-    issuerCAPath: ./tmp/certs/ca.pem
-    issuerURL: https://127.0.0.1:5556/dex
-    redirectURL: https://localhost:8443/oidc/application/callback
-    usernameClaim: name
-  opa:
-    url: http://127.0.0.1:8080/v1/data/lokistack/allow
-- name: infrastructure
-  id: 40de0532-10a2-430c-9a00-62c46455c118
-  oidc:
-    clientID: test
-    # TODO - these need to be replaced once we integrate dex into lokistack-gateway.
-    clientSecret: ZXhhbXBsZS1hcHAtc2VjcmV0
-    issuerCAPath: ./tmp/certs/ca.pem
-    issuerURL: https://127.0.0.1:5556/dex
-    redirectURL: https://localhost:8443/oidc/infrastructure/callback
-    usernameClaim: name
-  opa:
-    url: http://127.0.0.1:8080/v1/data/lokistack/allow
-- name: audit
-  id: 26d7c49d-182e-4d93-bade-510c6cc3243d
-  oidc:
-    clientID: test
-    # TODO - these need to be replaced once we integrate dex into lokistack-gateway.
-    clientSecret: ZXhhbXBsZS1hcHAtc2VjcmV0
-    issuerCAPath: ./tmp/certs/ca.pem
-    issuerURL: https://127.0.0.1:5556/dex
-    redirectURL: https://localhost:8443/oidc/audit/callback
-    usernameClaim: name
-  opa:
-    url: http://127.0.0.1:8080/v1/data/lokistack/allow
 {{- end -}}
 {{- end -}}

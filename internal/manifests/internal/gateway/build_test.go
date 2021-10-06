@@ -205,16 +205,62 @@ tenants:
 		Stack: lokiv1beta1.LokiStackSpec{
 			Tenants: &lokiv1beta1.TenantsSpec{
 				Mode: lokiv1beta1.OpenshiftLogging,
+				Authentication: []lokiv1beta1.AuthenticationSpec{
+					{
+						TenantName: "application",
+						TenantID:   "32e45e3e-b760-43a2-a7e1-02c5631e56e9",
+						OIDC: &lokiv1beta1.OIDCSpec{
+							IssuerURL:     "https://127.0.0.1:5556/dex",
+							RedirectURL:   "https://localhost:8443/oidc/application/callback",
+							UsernameClaim: "name",
+						},
+					},
+					{
+						TenantName: "infrastructure",
+						TenantID:   "40de0532-10a2-430c-9a00-62c46455c118",
+						OIDC: &lokiv1beta1.OIDCSpec{
+							IssuerURL:     "https://127.0.0.1:5556/dex",
+							RedirectURL:   "https://localhost:8443/oidc/infrastructure/callback",
+							UsernameClaim: "name",
+						},
+					},
+					{
+						TenantName: "audit",
+						TenantID:   "26d7c49d-182e-4d93-bade-510c6cc3243d",
+						OIDC: &lokiv1beta1.OIDCSpec{
+							IssuerURL:     "https://127.0.0.1:5556/dex",
+							RedirectURL:   "https://localhost:8443/oidc/audit/callback",
+							UsernameClaim: "name",
+						},
+					},
+				},
+				Authorization: &lokiv1beta1.AuthorizationSpec{
+					OPA: &lokiv1beta1.OPASpec{
+						URL: "http://127.0.0.1:8080/v1/data/lokistack/allow",
+					},
+				},
 			},
 		},
 		Namespace: "test-ns",
 		Name:      "test",
 		TenantSecrets: []*Secret{
 			{
-				TenantName:   "test-a",
+				TenantName:   "application",
 				ClientID:     "test",
-				ClientSecret: "test123",
-				IssuerCAPath: "/tmp/ca/path",
+				ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+				IssuerCAPath: "./tmp/certs/ca.pem",
+			},
+			{
+				TenantName:   "infrastructure",
+				ClientID:     "test",
+				ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+				IssuerCAPath: "./tmp/certs/ca.pem",
+			},
+			{
+				TenantName:   "audit",
+				ClientID:     "test",
+				ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+				IssuerCAPath: "./tmp/certs/ca.pem",
 			},
 		},
 	}

@@ -13,6 +13,21 @@ const (
 	httpPort    = 3100
 	grpcPort    = 9095
 	protocolTCP = "TCP"
+
+	lokiHTTPPortName   = "metrics"
+	lokiGRPCPortName   = "grpc"
+	lokiGossipPortName = "gossip-ring"
+
+	gatewayHTTPPort        = 8080
+	gatewayInternalPort    = 8081
+	gatewayOPAHTTPPort     = 8082
+	gatewayOPAInternalPort = 8083
+
+	gatewayHTTPPortName        = "public"
+	gatewayInternalPortName    = "metrics"
+	gatewayOPAHTTPPortName     = "public"
+	gatewayOPAInternalPortName = "opa-metrics"
+
 	// DefaultContainerImage declares the default fallback for loki image.
 	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
 
@@ -26,9 +41,7 @@ const (
 
 	// labelJobComponent is a ServiceMonitor.Spec.JobLabel.
 	labelJobComponent string = "loki.grafana.com/component"
-)
 
-const (
 	// LabelCompactorComponent is the label value for the compactor component
 	LabelCompactorComponent string = "compactor"
 	// LabelDistributorComponent is the label value for the distributor component
@@ -41,6 +54,8 @@ const (
 	LabelQueryFrontendComponent string = "query-frontend"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
+
+	openShiftServingCertKey = "service.beta.openshift.io/serving-cert-secret-name"
 )
 
 var (
@@ -65,7 +80,7 @@ func commonLabels(stackName string) map[string]string {
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
 	annotations := map[string]string{}
 	if enableSigningService {
-		annotations["service.beta.openshift.io/serving-cert-secret-name"] = signingServiceSecretName(serviceName)
+		annotations[openShiftServingCertKey] = signingServiceSecretName(serviceName)
 	}
 	return annotations
 }
@@ -181,12 +196,12 @@ func serviceMonitorTLSConfig(serviceName, namespace string) monitoringv1.TLSConf
 	}
 }
 
-// serviceMonitorLokiEndPoint returns the loki endpoint for service monitors.
-func serviceMonitorLokiEndPoint(stackName, serviceName, namespace string, enableTLS bool) monitoringv1.Endpoint {
+// serviceMonitorEndpoint returns the lokistack endpoint for service monitors.
+func serviceMonitorEndpoint(portName, serviceName, namespace string, enableTLS bool) monitoringv1.Endpoint {
 	if enableTLS {
 		tlsConfig := serviceMonitorTLSConfig(serviceName, namespace)
 		return monitoringv1.Endpoint{
-			Port:            stackName,
+			Port:            portName,
 			Path:            "/metrics",
 			Scheme:          "https",
 			BearerTokenFile: BearerTokenFile,
@@ -195,7 +210,7 @@ func serviceMonitorLokiEndPoint(stackName, serviceName, namespace string, enable
 	}
 
 	return monitoringv1.Endpoint{
-		Port:   stackName,
+		Port:   portName,
 		Path:   "/metrics",
 		Scheme: "http",
 	}

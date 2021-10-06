@@ -89,17 +89,17 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 				},
 				Ports: []corev1.ContainerPort{
 					{
-						Name:          "metrics",
+						Name:          lokiHTTPPortName,
 						ContainerPort: httpPort,
 						Protocol:      protocolTCP,
 					},
 					{
-						Name:          "grpc",
+						Name:          lokiGRPCPortName,
 						ContainerPort: grpcPort,
 						Protocol:      protocolTCP,
 					},
 					{
-						Name:          "gossip-ring",
+						Name:          lokiGossipPortName,
 						ContainerPort: gossipPort,
 						Protocol:      protocolTCP,
 					},
@@ -197,7 +197,7 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 			ClusterIP: "None",
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "grpc",
+					Name:       lokiGRPCPortName,
 					Port:       grpcPort,
 					Protocol:   protocolTCP,
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
@@ -227,7 +227,7 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "http",
+					Name:       lokiHTTPPortName,
 					Port:       httpPort,
 					Protocol:   protocolTCP,
 					TargetPort: intstr.IntOrString{IntVal: httpPort},

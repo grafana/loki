@@ -14,30 +14,43 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 )
 
+const (
+	tlsMetricsSercetVolume = "tls-metrics-secret"
+)
+
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
 func BuildGateway(opts Options) ([]client.Object, error) {
-	gatewayCm, sha1C, err := gatewayConfigMap(opts)
+	cm, sha1C, err := gatewayConfigMap(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	deployment := NewGatewayDeployment(opts, sha1C)
+	dpl := NewGatewayDeployment(opts, sha1C)
+	svc := NewGatewayHTTPService(opts)
+
 	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureGatewayMetricsPKI(&deployment.Spec.Template.Spec); err != nil {
+		serviceName := serviceNameGatewayHTTP(opts.Name)
+		if err := configureGatewayMetricsPKI(&dpl.Spec.Template.Spec, serviceName); err != nil {
 			return nil, err
 		}
 	}
 
-	return []client.Object{
-		gatewayCm,
-		deployment,
-		NewGatewayHTTPService(opts),
-	}, nil
+	if opts.Stack.Tenants != nil {
+		mode := opts.Stack.Tenants.Mode
+		if err := configureDeploymentForMode(&dpl.Spec, mode, opts.Flags); err != nil {
+			return nil, err
+		}
+
+		if err := configureServiceForMode(&svc.Spec, mode); err != nil {
+			return nil, err
+		}
+	}
+
+	return []client.Object{cm, dpl, svc}, nil
 }
 
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
@@ -85,8 +98,9 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 				},
 				Args: []string{
 					fmt.Sprintf("--debug.name=%s", LabelGatewayComponent),
-					"--web.listen=0.0.0.0:8080",
-					"--web.internal.listen=0.0.0.0:8081",
+					fmt.Sprintf("--web.listen=0.0.0.0:%d", gatewayHTTPPort),
+					fmt.Sprintf("--web.internal.listen=0.0.0.0:%d", gatewayInternalPort),
+					fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
 					"--log.level=debug",
 					fmt.Sprintf("--logs.read.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.tail.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
@@ -96,16 +110,12 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 				},
 				Ports: []corev1.ContainerPort{
 					{
-						Name:          "internal",
-						ContainerPort: 8081,
+						Name:          gatewayInternalPortName,
+						ContainerPort: gatewayInternalPort,
 					},
 					{
-						Name:          "public",
-						ContainerPort: 8080,
-					},
-					{
-						Name:          "metrics",
-						ContainerPort: httpPort,
+						Name:          gatewayHTTPPortName,
+						ContainerPort: gatewayHTTPPort,
 					},
 				},
 				VolumeMounts: []corev1.VolumeMount{
@@ -132,7 +142,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
 							Path:   "/live",
-							Port:   intstr.FromInt(8081),
+							Port:   intstr.FromInt(gatewayInternalPort),
 							Scheme: corev1.URISchemeHTTP,
 						},
 					},
@@ -144,7 +154,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
 							Path:   "/ready",
-							Port:   intstr.FromInt(8081),
+							Port:   intstr.FromInt(gatewayInternalPort),
 							Scheme: corev1.URISchemeHTTP,
 						},
 					},
@@ -171,12 +181,12 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 		Spec: appsv1.DeploymentSpec{
 			Replicas: pointer.Int32Ptr(1),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: labels.Merge(l, GossipLabels()),
+				MatchLabels: l,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        GatewayName(opts.Name),
-					Labels:      labels.Merge(l, GossipLabels()),
+					Labels:      l,
 					Annotations: a,
 				},
 				Spec: podSpec,
@@ -207,8 +217,12 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
-					Name: "metrics",
-					Port: httpPort,
+					Name: gatewayHTTPPortName,
+					Port: gatewayHTTPPort,
+				},
+				{
+					Name: gatewayInternalPortName,
+					Port: gatewayInternalPort,
 				},
 			},
 			Selector: l,
@@ -269,24 +283,26 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	}
 }
 
-func configureGatewayMetricsPKI(podSpec *corev1.PodSpec) error {
+func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) error {
+	var gwIndex int
+	for i, c := range podSpec.Containers {
+		if c.Name == LabelGatewayComponent {
+			gwIndex = i
+			break
+		}
+	}
+
+	secretName := signingServiceSecretName(serviceName)
+	certFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayCertFile)
+	keyFile := path.Join(gateway.LokiGatewayTLSDir, gateway.LokiGatewayKeyFile)
+
 	secretVolumeSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
-				Name: "tls-secret",
+				Name: tlsMetricsSercetVolume,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: LabelGatewayComponent,
-					},
-				},
-			},
-			{
-				Name: "tls-configmap",
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: LabelGatewayComponent,
-						},
+						SecretName: secretName,
 					},
 				},
 			},
@@ -295,28 +311,14 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec) error {
 	secretContainerSpec := corev1.Container{
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      "tls-secret",
+				Name:      tlsMetricsSercetVolume,
 				ReadOnly:  true,
-				MountPath: path.Join(gateway.LokiGatewayTLSDir, "cert"),
-				SubPath:   "cert",
-			},
-			{
-				Name:      "tls-secret",
-				ReadOnly:  true,
-				MountPath: path.Join(gateway.LokiGatewayTLSDir, "key"),
-				SubPath:   "key",
-			},
-			{
-				Name:      "tls-configmap",
-				ReadOnly:  true,
-				MountPath: path.Join(gateway.LokiGatewayTLSDir, "ca"),
-				SubPath:   "ca",
+				MountPath: gateway.LokiGatewayTLSDir,
 			},
 		},
 		Args: []string{
-			fmt.Sprintf("--tls.internal.server.cert-file=%s", path.Join(gateway.LokiGatewayTLSDir, "cert")),
-			fmt.Sprintf("--tls.internal.server.key-file=%s", path.Join(gateway.LokiGatewayTLSDir, "key")),
-			fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", path.Join(gateway.LokiGatewayTLSDir, "ca")),
+			fmt.Sprintf("--tls.internal.server.cert-file=%s", certFile),
+			fmt.Sprintf("--tls.internal.server.key-file=%s", keyFile),
 		},
 	}
 	uriSchemeContainerSpec := corev1.Container{
@@ -340,11 +342,11 @@ func configureGatewayMetricsPKI(podSpec *corev1.PodSpec) error {
 		return kverrors.Wrap(err, "failed to merge volumes")
 	}
 
-	if err := mergo.Merge(&podSpec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
+	if err := mergo.Merge(&podSpec.Containers[gwIndex], secretContainerSpec, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 
-	if err := mergo.Merge(&podSpec.Containers[0], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
+	if err := mergo.Merge(&podSpec.Containers[gwIndex], uriSchemeContainerSpec, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge container")
 	}
 

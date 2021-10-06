@@ -7,6 +7,8 @@ import (
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	appsv1 "k8s.io/api/apps/v1"
 )
 
 func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -101,4 +103,30 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 	_, sha1C, err := gatewayConfigMap(opts)
 	require.NoError(t, err)
 	require.NotEmpty(t, sha1C)
+}
+
+func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
+	objs, err := BuildGateway(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Flags: FeatureFlags{
+			EnableGateway: true,
+		},
+		Stack: lokiv1beta1.LokiStackSpec{
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Gateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1beta1.TenantsSpec{
+				Mode: lokiv1beta1.OpenshiftLogging,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+
+	d, ok := objs[1].(*appsv1.Deployment)
+	require.True(t, ok)
+	require.Len(t, d.Spec.Template.Spec.Containers, 2)
 }

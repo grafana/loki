@@ -101,17 +101,17 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 				},
 				Ports: []corev1.ContainerPort{
 					{
-						Name:          "metrics",
+						Name:          lokiHTTPPortName,
 						ContainerPort: httpPort,
 						Protocol:      protocolTCP,
 					},
 					{
-						Name:          "grpc",
+						Name:          lokiGRPCPortName,
 						ContainerPort: grpcPort,
 						Protocol:      protocolTCP,
 					},
 					{
-						Name:          "gossip-ring",
+						Name:          lokiGossipPortName,
 						ContainerPort: gossipPort,
 						Protocol:      protocolTCP,
 					},
@@ -189,7 +189,7 @@ func NewDistributorGRPCService(opts Options) *corev1.Service {
 			ClusterIP: "None",
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "grpc",
+					Name:       lokiGRPCPortName,
 					Port:       grpcPort,
 					Protocol:   protocolTCP,
 					TargetPort: intstr.IntOrString{IntVal: grpcPort},
@@ -219,7 +219,7 @@ func NewDistributorHTTPService(opts Options) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "metrics",
+					Name:       lokiHTTPPortName,
 					Port:       httpPort,
 					Protocol:   protocolTCP,
 					TargetPort: intstr.IntOrString{IntVal: httpPort},

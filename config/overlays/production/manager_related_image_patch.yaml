@@ -12,3 +12,5 @@ spec:
           env:
           - name: RELATED_IMAGE_LOKI
             value: docker.io/grafana/loki:2.2.0
+          - name: RELATED_IMAGE_OPA
+            value: quay.io/observatorium/opa-openshift:latest

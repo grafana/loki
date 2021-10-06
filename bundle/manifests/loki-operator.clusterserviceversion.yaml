@@ -536,6 +536,7 @@ spec:
             spec:
               containers:
               - args:
+                - --with-lokistack-gateway
                 - --with-cert-signing-service
                 - --with-service-monitors
                 - --with-tls-service-monitors
@@ -544,6 +545,8 @@ spec:
                 env:
                 - name: RELATED_IMAGE_LOKI
                   value: quay.io/openshift-logging/loki:v2.2.0-10
+                - name: RELATED_IMAGE_OPA
+                  value: quay.io/observatorium/opa-openshift:latest
                 image: quay.io/openshift-logging/loki-operator:v0.0.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:

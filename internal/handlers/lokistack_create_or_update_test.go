@@ -722,6 +722,10 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 		},
 	}
 
+	ff := manifests.FeatureFlags{
+		EnableGateway: true,
+	}
+
 	stack := &lokiv1beta1.LokiStack{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "LokiStack",
@@ -772,7 +776,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.NoError(t, err)
@@ -790,6 +794,10 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	ff := manifests.FeatureFlags{
+		EnableGateway: true,
 	}
 
 	stack := &lokiv1beta1.LokiStack{
@@ -846,7 +854,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.NoError(t, err)
@@ -864,6 +872,10 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
+	}
+
+	ff := manifests.FeatureFlags{
+		EnableGateway: true,
 	}
 
 	stack := &lokiv1beta1.LokiStack{
@@ -924,7 +936,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, flags)
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.NoError(t, err)

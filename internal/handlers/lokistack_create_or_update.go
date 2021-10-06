@@ -64,7 +64,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	}
 
 	var tenantSecrets []*manifests.TenantSecrets
-	if stack.Spec.Tenants != nil {
+	if flags.EnableGateway && stack.Spec.Tenants != nil {
 		if err = gateway.ValidateModes(stack); err != nil {
 			return status.SetDegradedCondition(ctx, k, req,
 				fmt.Sprintf("Invalid tenants configuration: %s", err),
@@ -72,31 +72,9 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 			)
 		}
 
-		if stack.Spec.Tenants.Mode != lokiv1beta1.OpenshiftLogging {
-			var gatewaySecret corev1.Secret
-			for _, tenant := range stack.Spec.Tenants.Authentication {
-				key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: stack.Namespace}
-				if err = k.Get(ctx, key, &gatewaySecret); err != nil {
-					if apierrors.IsNotFound(err) {
-						return status.SetDegradedCondition(ctx, k, req,
-							fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
-							lokiv1beta1.ReasonMissingGatewayTenantSecret,
-						)
-					}
-					return kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
-						"name", key)
-				}
-
-				var ts *manifests.TenantSecrets
-				ts, err = secrets.ExtractGatewaySecret(&gatewaySecret, tenant.TenantID)
-				if err != nil {
-					return status.SetDegradedCondition(ctx, k, req,
-						"Invalid gateway tenant secret contents",
-						lokiv1beta1.ReasonInvalidGatewayTenantSecret,
-					)
-				}
-				tenantSecrets = append(tenantSecrets, ts)
-			}
+		tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, s, &stack)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -116,6 +94,13 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
 		ll.Error(optErr, "failed to conform options to build settings")
 		return optErr
+	}
+
+	if flags.EnableGateway {
+		if optErr := manifests.ApplyGatewayDefaultOptions(&opts); optErr != nil {
+			ll.Error(optErr, "failed to apply defaults options to gateway settings ")
+			return err
+		}
 	}
 
 	objects, err := manifests.BuildAll(opts)

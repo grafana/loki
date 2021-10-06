@@ -9,6 +9,7 @@ import (
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Test that all serviceMonitor match the labels of their services so that we know all serviceMonitor
@@ -94,4 +95,34 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServiceMonitorEndpoints_ForOpenShiftLoggingMode(t *testing.T) {
+	flags := FeatureFlags{
+		EnableGateway:                   true,
+		EnableCertificateSigningService: true,
+		EnableServiceMonitors:           true,
+		EnableTLSServiceMonitorConfig:   true,
+	}
+
+	opt := Options{
+		Name:      "test",
+		Namespace: "test",
+		Image:     "test",
+		Flags:     flags,
+		Stack: lokiv1beta1.LokiStackSpec{
+			Size: lokiv1beta1.SizeOneXExtraSmall,
+			Tenants: &lokiv1beta1.TenantsSpec{
+				Mode: lokiv1beta1.OpenshiftLogging,
+			},
+			Template: &lokiv1beta1.LokiTemplateSpec{
+				Gateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	}
+
+	sm := NewGatewayServiceMonitor(opt)
+	require.Len(t, sm.Spec.Endpoints, 2)
 }

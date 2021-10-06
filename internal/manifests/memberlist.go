@@ -24,7 +24,7 @@ func BuildLokiGossipRingService(stackName string) *corev1.Service {
 			ClusterIP: "None",
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "gossip",
+					Name:       lokiGossipPortName,
 					Port:       gossipPort,
 					Protocol:   protocolTCP,
 					TargetPort: intstr.IntOrString{IntVal: gossipPort},
