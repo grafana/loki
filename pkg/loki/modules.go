@@ -83,7 +83,6 @@ const (
 	All   string = "all"
 	Read  string = "read"
 	Write string = "write"
-	Async string = "async"
 )
 
 func (t *Loki) initServer() (services.Service, error) {

@@ -421,9 +421,8 @@ func (t *Loki) setupModuleManager() error {
 
 		// Virtual Targets
 		All:   {QueryFrontend, Querier, Ingester, Distributor, TableManager, Ruler},
-		Read:  {QueryFrontend, QueryScheduler, Querier},
+		Read:  {QueryFrontend, QueryScheduler, Querier, Ruler},
 		Write: {Ingester, Distributor},
-		Async: {Ruler, Compactor},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
