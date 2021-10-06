@@ -36,7 +36,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           query:: 'loki',
         },
         {
-          name:: 'metrics',
+          name:: 'datasource',
           type:: 'datasource',
           query:: 'prometheus',
         },
@@ -46,7 +46,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
             variable:: 'cluster',
             label:: cfg.clusterLabel,
             query:: 'kube_pod_container_info{image=~".*loki.*", container!="loki-canary"}',
-            datasource:: '$metrics',
+            datasource:: '$datasource',
             type:: 'query',
           },
         ] else []
@@ -55,7 +55,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           variable:: 'namespace',
           label:: 'namespace',
           query:: cfg.namespaceQuery,
-          datasource:: '$metrics',
+          datasource:: '$datasource',
           type:: cfg.namespaceType,
         },
       ],
@@ -149,7 +149,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
       local selectDatasource(ds) =
         if ds == null || ds == '' then ds
-        else if ds == '$datasource' then '$metrics'
+        else if ds == '$datasource' then '$datasource'
         else '$logs',
 
       panels: [
@@ -238,6 +238,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
           if l.type == 'query' || l.type == 'custom'
         ],
       },
+    } + {
+      // ugly hack, copy pasta the tag/link
+      // code from the loki-mixin
+      tags: ['loki'],
+      links+: [
+        {
+          asDropdown: true,
+          icon: 'external link',
+          includeVars: true,
+          keepTime: true,
+          tags: $._config.tags,
+          targetBlank: false,
+          title: 'Loki Dashboards',
+          type: 'dashboards',
+        },
+      ],
     },
   },
 }
