@@ -114,7 +114,7 @@ per_tenant_override_period: 230s
 
 func TestOverwriteMarshalingStringMapJSON(t *testing.T) {
 	m := OverwriteMarshalingStringMap{
-		m: map[string]string{"foo": "bar"},
+		M: map[string]string{"foo": "bar"},
 	}
 
 	require.Nil(t, json.Unmarshal([]byte(`{"bazz": "buzz"}`), &m))
@@ -128,7 +128,7 @@ func TestOverwriteMarshalingStringMapJSON(t *testing.T) {
 
 func TestOverwriteMarshalingStringMapYAML(t *testing.T) {
 	m := OverwriteMarshalingStringMap{
-		m: map[string]string{"foo": "bar"},
+		M: map[string]string{"foo": "bar"},
 	}
 
 	require.Nil(t, yaml.Unmarshal([]byte(`{"bazz": "buzz"}`), &m))

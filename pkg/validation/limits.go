@@ -535,17 +535,17 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 // OverwriteMarshalingStringMap will overwrite the src map when unmarshaling
 // as opposed to merging.
 type OverwriteMarshalingStringMap struct {
-	m map[string]string
+	M map[string]string
 }
 
 func (sm *OverwriteMarshalingStringMap) Map() map[string]string {
-	return sm.m
+	return sm.M
 }
 
 // MarshalJSON explicitly uses the the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalJSON() ([]byte, error) {
-	return json.Marshal(sm.m)
+	return json.Marshal(sm.M)
 }
 
 func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
@@ -553,7 +553,7 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 	if err := json.Unmarshal(val, &def); err != nil {
 		return err
 	}
-	sm.m = def
+	sm.M = def
 
 	return nil
 
@@ -562,7 +562,7 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 // MarshalYAML explicitly uses the the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
-	return sm.m, nil
+	return sm.M, nil
 }
 
 func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -572,7 +572,7 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 	if err != nil {
 		return err
 	}
-	sm.m = def
+	sm.M = def
 
 	return nil
 }
