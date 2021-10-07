@@ -60,6 +60,13 @@ steps:
   depends_on:
   - loki
 
+- name: check-example-config-doc
+  image: grafana/loki-build-image:0.17.0
+  commands:
+  - make BUILD_IN_CONTAINER=false check-example-config-doc
+  depends_on:
+  - clone
+
 ---
 kind: pipeline
 name: docker-amd64
@@ -987,6 +994,6 @@ get:
 
 ---
 kind: signature
-hmac: b86209659200c59388bec4ba2706d95f2514e1b34a91a85d2547143aae735e19
+hmac: f1681daaa15376eb15eae5dd623a3ec19544b0447506aba2d59a92f0fd8fee49
 
 ...

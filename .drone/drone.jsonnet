@@ -286,6 +286,7 @@ local manifest(apps) = pipeline('manifest') {
       },
       make('loki', container=false) { depends_on: ['clone'] },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
+      make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
   },
 ] + [
