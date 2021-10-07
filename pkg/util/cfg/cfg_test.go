@@ -69,17 +69,18 @@ tls:
 }
 
 func TestDefaultUnmarshal(t *testing.T) {
-	t.Run("with an empty config file and no command line args, defaults are use", func(t *testing.T) {
+	t.Run("with an empty config file and no command line args, defaults are used", func(t *testing.T) {
 		file, err := ioutil.TempFile("", "config.yaml")
 		defer func() {
 			os.Remove(file.Name())
 		}()
 		require.NoError(t, err)
 
-		configFileString := `---`
+		configFileString := `---
+required: foo`
 		_, err = file.WriteString(configFileString)
 		require.NoError(t, err)
-		config := TestConfigWrapper{}
+		var config TestConfigWrapper
 
 		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 		args := []string{"-config.file", file.Name()}
@@ -137,8 +138,9 @@ func (c *TestConfigWrapper) Clone() flagext.Registerer {
 }
 
 type TestConfig struct {
-	Name string `yaml:"name"`
-	Role Role   `yaml:"role"`
+	Required string `yaml:"required"`
+	Name     string `yaml:"name"`
+	Role     Role   `yaml:"role"`
 }
 
 func (c *TestConfig) RegisterFlags(f *flag.FlagSet) {
