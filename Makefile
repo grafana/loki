@@ -636,6 +636,10 @@ format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
 		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
 
+###################
+# Example Configs #
+###################
+
 # Validate the example configurations that we provide in ./docs/sources/configuration/examples
 validate-example-configs: loki
 	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
