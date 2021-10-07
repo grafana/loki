@@ -45,15 +45,13 @@ func newFakeLimits() fakeLimits {
 				RulerRemoteWriteDisabled: true,
 			},
 			additionalHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.OverwriteMarshalingStringMap{
-					M: map[string]string{
-						user.OrgIDHeaderName:                         "overridden",
-						fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
-						strings.ToLower(user.OrgIDHeaderName):        "overridden-lower",
-						strings.ToUpper(user.OrgIDHeaderName):        "overridden-upper",
-						"Additional":                                 "Header",
-					},
-				},
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
+					user.OrgIDHeaderName:                         "overridden",
+					fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
+					strings.ToLower(user.OrgIDHeaderName):        "overridden-lower",
+					strings.ToUpper(user.OrgIDHeaderName):        "overridden-upper",
+					"Additional":                                 "Header",
+				}),
 			},
 			customRelabelsTenant: {
 				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
