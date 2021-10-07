@@ -232,7 +232,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	overrides.Client.MetadataConfig = config.MetadataConfig{Send: false}
 	overrides.Client.SigV4Config = nil
 
-	if v := r.overrides.RulerRemoteWriteDisabled(tenant); v {
+	if r.overrides.RulerRemoteWriteDisabled(tenant) {
 		overrides.Enabled = false
 	}
 
