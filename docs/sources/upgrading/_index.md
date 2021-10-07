@@ -61,6 +61,27 @@ ruler:
         host: consul.namespace.svc.cluster.local:8500
 ```
 
+#### Changed defaults for some GRPC server settings
+* [4435](https://github.com/grafana/loki/pull/4435) **trevorwhitney**: Change default values for two GRPC settings so querier can connect to frontend/scheduler
+
+This changes two default values, `grpc_server_min_time_between_pings` and `grpc_server_ping_without_stream_allowed` used by the GRPC server.
+
+*Previous Values*:
+```
+server:
+  grpc_server_min_time_between_pings: '5m'
+  grpc_server_ping_without_stream_allowed: false
+```
+
+*New Values*:
+```
+server:
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+```
+
+Please manually provide the values of `5m` and `true` (respectively) in your config if you rely on those values.
+
 -_add changes here which are unreleased_
 
 
