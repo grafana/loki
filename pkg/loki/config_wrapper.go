@@ -43,6 +43,8 @@ func (c *ConfigWrapper) Clone() flagext.Registerer {
 	}(*c)
 }
 
+const memberlistStr = "memberlist"
+
 // ApplyDynamicConfig satisfies WithCommonCloneable interface, and applies all rules for setting Loki
 // config values from the common section of the Loki config file.
 // This method's purpose is to simplify Loki's config in an opinionated way so that Loki can be run
@@ -69,6 +71,21 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			}
 		}
 
+		applyMemberlistConfig(r)
+
 		return nil
+	}
+}
+
+// applyMemberlistConfig will change the default ingester, distributor, and ruler ring configurations to use memberlist
+// if the -memberlist.join_members config is provided. The idea here is that if a user explicitly configured the
+// memberlist configuration section, they probably want to be using memberlist for all their ring configurations.
+// Since a user can still explicitly override a specific ring configuration (for example, use consul for the distributor),
+// it seems harmless to take a guess at better defaults here.
+func applyMemberlistConfig(r *ConfigWrapper) {
+	if len(r.MemberlistKV.JoinMembers) > 0 {
+		r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+		r.Distributor.DistributorRing.KVStore.Store = memberlistStr
+		r.Ruler.Ring.KVStore.Store = memberlistStr
 	}
 }
