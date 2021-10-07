@@ -103,12 +103,12 @@ Please manually provide the values of `5m` and `true` (respectively) in your con
 
 #### Change of some default limits to common values
 
-PR [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: the default value of some limits were changed to protects users from overwhelming their cluster with ingestion load caused by relying on default configs.
+PR [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: the default value of some limits were changed to protect users from overwhelming their cluster with ingestion load caused by relying on default configs.
 
-We suggest you to double check if in your Loki config the following parameters are not
-present: `ingestion_rate_strategy`, `max_global_streams_per_user`
+We suggest you double check if the following parameters are
+present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_user`
 `max_query_length` `max_query_parallelism` `max_streams_per_user`
-`reject_old_samples` `reject_old_samples_max_age`. If they are not, although the new values are more sane and will more probably help you, we recommend you to check the impacts of these new values. The changes are:
+`reject_old_samples` `reject_old_samples_max_age`. If they are not present, we recommend you double check that the new values will not negatively impact your system. The changes are:
 
 | config | new default | old default |
 | --- | --- | --- |
