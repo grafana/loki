@@ -249,7 +249,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	}
 
 	// overwrite, do not merge
-	if v := r.overrides.RulerRemoteWriteHeaders(tenant); len(v) > 0 {
+	if v := r.overrides.RulerRemoteWriteHeaders(tenant); v != nil {
 		overrides.Client.Headers = v
 	}
 

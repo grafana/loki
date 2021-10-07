@@ -28,6 +28,7 @@ import (
 const enabledRWTenant = "enabled"
 const disabledRWTenant = "disabled"
 const additionalHeadersRWTenant = "additional-headers"
+const noHeadersRWTenant = "no-headers"
 const customRelabelsTenant = "custom-relabels"
 const badRelabelsTenant = "bad-relabels"
 const nilRelabelsTenant = "nil-relabels"
@@ -52,6 +53,9 @@ func newFakeLimits() fakeLimits {
 					strings.ToUpper(user.OrgIDHeaderName):        "overridden-upper",
 					"Additional":                                 "Header",
 				}),
+			},
+			noHeadersRWTenant: {
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{}),
 			},
 			customRelabelsTenant: {
 				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
@@ -192,6 +196,38 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 
 	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+}
+
+func TestTenantRemoteWriteHeadersReset(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(noHeadersRWTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
+	// the original header must be removed
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
+}
+
+func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+	// the original header must be present
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
 }
 
 func TestRelabelConfigOverrides(t *testing.T) {
