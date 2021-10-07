@@ -25,11 +25,13 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
-const enabledRWTenant = "12345"
-const disabledRWTenant = "54321"
-const additionalHeadersRWTenant = "55443"
-const customRelabelsTenant = "98765"
-const badRelabelsTenant = "45677"
+const enabledRWTenant = "enabled"
+const disabledRWTenant = "disabled"
+const additionalHeadersRWTenant = "additional-headers"
+const customRelabelsTenant = "custom-relabels"
+const badRelabelsTenant = "bad-relabels"
+const nilRelabelsTenant = "nil-relabels"
+const emptySliceRelabelsTenant = "empty-slice-relabels"
 
 const defaultCapacity = 1000
 
@@ -65,6 +67,11 @@ func newFakeLimits() fakeLimits {
 					},
 				},
 			},
+			nilRelabelsTenant: {}, // zero value will be nil
+			emptySliceRelabelsTenant: {
+				// zero value will be nil
+				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{},
+			},
 			badRelabelsTenant: {
 				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
 					{
@@ -92,6 +99,8 @@ func setupRegistry(t *testing.T, dir string) *walRegistry {
 						SourceLabels: []model.LabelName{"__name__"},
 						Regex:        relabel.MustNewRegexp("ALERTS.*"),
 						Action:       "drop",
+						Separator:    ";",
+						Replacement:  "$1",
 					},
 				},
 			},
@@ -193,6 +202,35 @@ func TestRelabelConfigOverrides(t *testing.T) {
 
 	// it should also override the default label configs
 	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
+}
+
+func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
+	require.NoError(t, err)
+
+	// if there are no relabel configs defined for the tenant, it should not override
+	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, reg.config.RemoteWrite.Client.WriteRelabelConfigs)
+}
+
+func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfgNil, err := reg.getTenantConfig(nilRelabelsTenant)
+	require.NotNil(t, tenantCfgNil)
+
+	tenantCfg, err := reg.getTenantConfig(emptySliceRelabelsTenant)
+	require.NoError(t, err)
+
+	// if there is an empty slice of relabel configs, it should clear existing relabel configs
+	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
 }
 
 func TestRelabelConfigOverridesWithErrors(t *testing.T) {

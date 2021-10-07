@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/imdario/mergo"
 	"github.com/prometheus/client_golang/prometheus"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -220,14 +219,38 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 }
 
 func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWriteConfig) (*RemoteWriteConfig, error) {
-	copy, err := base.Clone()
+	overrides, err := base.Clone()
 	if err != nil {
 		return nil, fmt.Errorf("error generating tenant remote-write config: %w", err)
 	}
 
-	u, err := url.Parse(r.overrides.RulerRemoteWriteURL(tenant))
-	if err != nil {
-		return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
+	overrides.Client.Name = fmt.Sprintf("%s-rw", tenant)
+	overrides.Client.SendExemplars = false
+	// TODO(dannyk): configure HTTP client overrides
+	overrides.Client.HTTPClientConfig = promConfig.HTTPClientConfig{}
+	// metadata is only used by prometheus scrape configs
+	overrides.Client.MetadataConfig = config.MetadataConfig{Send: false}
+	overrides.Client.SigV4Config = nil
+
+	if v := r.overrides.RulerRemoteWriteDisabled(tenant); v {
+		overrides.Enabled = false
+	}
+
+	if v := r.overrides.RulerRemoteWriteURL(tenant); v != "" {
+		u, err := url.Parse(v)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
+		}
+		overrides.Client.URL = &promConfig.URL{u}
+	}
+
+	if v := r.overrides.RulerRemoteWriteTimeout(tenant); v > 0 {
+		overrides.Client.RemoteTimeout = model.Duration(v)
+	}
+
+	// TODO: this will override not merge
+	if v := r.overrides.RulerRemoteWriteHeaders(tenant); len(v) > 0 {
+		overrides.Client.Headers = v
 	}
 
 	relabelConfigs, err := r.createRelabelConfigs(tenant)
@@ -235,46 +258,46 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		return nil, fmt.Errorf("failed to parse relabel configs: %w", err)
 	}
 
-	overrides := RemoteWriteConfig{
-		Client: config.RemoteWriteConfig{
-			URL:                 &promConfig.URL{u},
-			RemoteTimeout:       model.Duration(r.overrides.RulerRemoteWriteTimeout(tenant)),
-			Headers:             r.overrides.RulerRemoteWriteHeaders(tenant),
-			WriteRelabelConfigs: relabelConfigs,
-			Name:                fmt.Sprintf("%s-rw", tenant),
-			SendExemplars:       false,
-			// TODO(dannyk): configure HTTP client overrides
-			HTTPClientConfig: promConfig.HTTPClientConfig{},
-			QueueConfig: config.QueueConfig{
-				Capacity:          r.overrides.RulerRemoteWriteQueueCapacity(tenant),
-				MaxShards:         r.overrides.RulerRemoteWriteQueueMaxShards(tenant),
-				MinShards:         r.overrides.RulerRemoteWriteQueueMinShards(tenant),
-				MaxSamplesPerSend: r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant),
-				BatchSendDeadline: model.Duration(r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant)),
-				MinBackoff:        model.Duration(r.overrides.RulerRemoteWriteQueueMinBackoff(tenant)),
-				MaxBackoff:        model.Duration(r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant)),
-				RetryOnRateLimit:  r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant),
-			},
-			MetadataConfig: config.MetadataConfig{
-				Send: false,
-			},
-			SigV4Config: nil,
-		},
-		Enabled: true,
+	// if any relabel configs are defined for a tenant, override all base relabel configs,
+	// even if an empty list is configured; however if this value is not overridden for a tenant,
+	// it should retain the base value
+	if relabelConfigs != nil {
+		overrides.Client.WriteRelabelConfigs = relabelConfigs
 	}
 
-	err = mergo.Merge(copy, overrides, mergo.WithOverride, mergo.WithOverrideEmptySlice)
-	if err != nil {
-		return nil, err
+	if v := r.overrides.RulerRemoteWriteQueueCapacity(tenant); v > 0 {
+		overrides.Client.QueueConfig.Capacity = v
 	}
 
-	// we can't use mergo.WithOverwriteWithEmptyValue since that will set all the default values, so here we
-	// explicitly apply some config options that might be set to their type's zero value
-	if r.overrides.RulerRemoteWriteDisabled(tenant) {
-		copy.Enabled = false
+	if v := r.overrides.RulerRemoteWriteQueueMinShards(tenant); v > 0 {
+		overrides.Client.QueueConfig.MinShards = v
 	}
 
-	return copy, nil
+	if v := r.overrides.RulerRemoteWriteQueueMaxShards(tenant); v > 0 {
+		overrides.Client.QueueConfig.MaxShards = v
+	}
+
+	if v := r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant); v > 0 {
+		overrides.Client.QueueConfig.MaxSamplesPerSend = v
+	}
+
+	if v := r.overrides.RulerRemoteWriteQueueMinBackoff(tenant); v > 0 {
+		overrides.Client.QueueConfig.MinBackoff = model.Duration(v)
+	}
+
+	if v := r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant); v > 0 {
+		overrides.Client.QueueConfig.MaxBackoff = model.Duration(v)
+	}
+
+	if v := r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant); v > 0 {
+		overrides.Client.QueueConfig.BatchSendDeadline = model.Duration(v)
+	}
+
+	if v := r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant); v {
+		overrides.Client.QueueConfig.RetryOnRateLimit = v
+	}
+
+	return overrides, nil
 }
 
 // createRelabelConfigs converts the util.RelabelConfig into relabel.Config to allow for
@@ -282,8 +305,14 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, error) {
 	configs := r.overrides.RulerRemoteWriteRelabelConfigs(tenant)
 
-	var relabelConfigs []*relabel.Config
-	for _, config := range configs {
+	// zero value is nil, which we want to treat as "no override"
+	if configs == nil {
+		return nil, nil
+	}
+
+	// we want to treat an empty slice as "no relabel configs"
+	relabelConfigs := make([]*relabel.Config, len(configs))
+	for i, config := range configs {
 		out, err := yaml.Marshal(config)
 		if err != nil {
 			return nil, err
@@ -294,7 +323,7 @@ func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, er
 			return nil, err
 		}
 
-		relabelConfigs = append(relabelConfigs, &rc)
+		relabelConfigs[i] = &rc
 	}
 
 	return relabelConfigs, nil
