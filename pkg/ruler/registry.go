@@ -248,15 +248,9 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		overrides.Client.RemoteTimeout = model.Duration(v)
 	}
 
-	// merge headers with the base
+	// overwrite, do not merge
 	if v := r.overrides.RulerRemoteWriteHeaders(tenant); len(v) > 0 {
-		if overrides.Client.Headers == nil {
-			overrides.Client.Headers = make(map[string]string, len(v))
-		}
-
-		for k, val := range v {
-			overrides.Client.Headers[k] = val
-		}
+		overrides.Client.Headers = v
 	}
 
 	relabelConfigs, err := r.createRelabelConfigs(tenant)

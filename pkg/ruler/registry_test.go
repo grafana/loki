@@ -179,13 +179,13 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
 	require.NoError(t, err)
 
-	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 3)
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
 	// ensure that tenant cannot override X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], additionalHeadersRWTenant)
-	// and that the base header defined is set
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
 	// but that the additional header defined is set
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Additional"], "Header")
+	// the original header must be removed
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
 
 	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
