@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
@@ -99,7 +100,12 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(ctx context.Context, 
 		}
 
 		if err := sp.querierLoop(c, address); err != nil {
-			level.Error(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
+			// E.Welch I don't know how to do this any better but context cancelations seem common,
+			// likely because of an underlying connection being close,
+			// they are noisy and I don't think they communicate anything useful.
+			if !strings.Contains(err.Error(), "context canceled") {
+				level.Error(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
+			}
 			backoff.Wait()
 			continue
 		}

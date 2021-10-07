@@ -18,8 +18,8 @@ import (
 
 var (
 	processorBackoffConfig = backoff.Config{
-		MinBackoff: 50 * time.Millisecond,
-		MaxBackoff: 1 * time.Second,
+		MinBackoff: 500 * time.Millisecond,
+		MaxBackoff: 5 * time.Second,
 	}
 )
 

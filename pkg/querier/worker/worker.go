@@ -7,6 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -15,8 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 type Config struct {
@@ -37,7 +39,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SchedulerAddress, "querier.scheduler-address", "", "Hostname (and port) of scheduler that querier will periodically resolve, connect to and receive queries from. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
 	f.StringVar(&cfg.FrontendAddress, "querier.frontend-address", "", "Address of query frontend service, in host:port format. If -querier.scheduler-address is set as well, querier will use scheduler instead. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
 
-	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS for query-frontend or query-scheduler address.")
+	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 3*time.Second, "How often to query DNS for query-frontend or query-scheduler address. Also used to determine how often to poll the scheduler-ring for addresses if the scheduler-ring is configured.")
 
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query-frontend or query-scheduler.")
 	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.")
@@ -77,8 +79,8 @@ type processor interface {
 type querierWorker struct {
 	*services.BasicService
 
-	cfg Config
-	log log.Logger
+	cfg    Config
+	logger log.Logger
 
 	processor processor
 
@@ -89,7 +91,7 @@ type querierWorker struct {
 	managers map[string]*processorManager
 }
 
-func NewQuerierWorker(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (services.Service, error) {
+func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer) (services.Service, error) {
 	if cfg.QuerierID == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
@@ -103,29 +105,31 @@ func NewQuerierWorker(cfg Config, handler RequestHandler, log log.Logger, reg pr
 	var address string
 
 	switch {
+	case rng != nil:
+		level.Info(logger).Log("msg", "Starting querier worker using query-scheduler and scheduler ring for addresses")
+		processor, servs = newSchedulerProcessor(cfg, handler, logger, reg)
 	case cfg.SchedulerAddress != "":
-		level.Info(log).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.SchedulerAddress)
+		level.Info(logger).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.SchedulerAddress)
 
 		address = cfg.SchedulerAddress
-		processor, servs = newSchedulerProcessor(cfg, handler, log, reg)
+		processor, servs = newSchedulerProcessor(cfg, handler, logger, reg)
 
 	case cfg.FrontendAddress != "":
-		level.Info(log).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.FrontendAddress)
+		level.Info(logger).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.FrontendAddress)
 
 		address = cfg.FrontendAddress
-		processor = newFrontendProcessor(cfg, handler, log)
-
+		processor = newFrontendProcessor(cfg, handler, logger)
 	default:
-		return nil, errors.New("no query-scheduler or query-frontend address")
+		return nil, errors.New("unable to start the querier worker, need to configure one of frontend_address, scheduler_address, or a ring config in the query_scheduler config block")
 	}
 
-	return newQuerierWorkerWithProcessor(cfg, log, processor, address, servs)
+	return newQuerierWorkerWithProcessor(cfg, logger, processor, address, rng, servs)
 }
 
-func newQuerierWorkerWithProcessor(cfg Config, log log.Logger, processor processor, address string, servs []services.Service) (*querierWorker, error) {
+func newQuerierWorkerWithProcessor(cfg Config, logger log.Logger, processor processor, address string, ring ring.ReadRing, servs []services.Service) (*querierWorker, error) {
 	f := &querierWorker{
 		cfg:       cfg,
-		log:       log,
+		logger:    logger,
 		managers:  map[string]*processorManager{},
 		processor: processor,
 	}
@@ -137,6 +141,14 @@ func newQuerierWorkerWithProcessor(cfg Config, log log.Logger, processor process
 			return nil, err
 		}
 
+		servs = append(servs, w)
+	}
+
+	if ring != nil {
+		w, err := lokiutil.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		if err != nil {
+			return nil, err
+		}
 		servs = append(servs, w)
 	}
 
@@ -190,10 +202,10 @@ func (w *querierWorker) AddressAdded(address string) {
 		return
 	}
 
-	level.Info(w.log).Log("msg", "adding connection", "addr", address)
+	level.Info(w.logger).Log("msg", "adding connection", "addr", address)
 	conn, err := w.connect(context.Background(), address)
 	if err != nil {
-		level.Error(w.log).Log("msg", "error connecting", "addr", address, "err", err)
+		level.Error(w.logger).Log("msg", "error connecting", "addr", address, "err", err)
 		return
 	}
 
@@ -203,7 +215,7 @@ func (w *querierWorker) AddressAdded(address string) {
 }
 
 func (w *querierWorker) AddressRemoved(address string) {
-	level.Info(w.log).Log("msg", "removing connection", "addr", address)
+	level.Info(w.logger).Log("msg", "removing connection", "addr", address)
 
 	w.mu.Lock()
 	p := w.managers[address]
@@ -232,7 +244,7 @@ func (w *querierWorker) resetConcurrency() {
 			// to receive an extra connection.  Frontend addresses were shuffled above so this will be a
 			// random selection of frontends.
 			if index < w.cfg.MaxConcurrentRequests%len(w.managers) {
-				level.Warn(w.log).Log("msg", "max concurrency is not evenly divisible across targets, adding an extra connection", "addr", m.address)
+				level.Warn(w.logger).Log("msg", "max concurrency is not evenly divisible across targets, adding an extra connection", "addr", m.address)
 				concurrency++
 			}
 		} else {
@@ -253,7 +265,7 @@ func (w *querierWorker) resetConcurrency() {
 	}
 
 	if totalConcurrency > w.cfg.MaxConcurrentRequests {
-		level.Warn(w.log).Log("msg", "total worker concurrency is greater than promql max concurrency. Queries may be queued in the querier which reduces QOS")
+		level.Warn(w.logger).Log("msg", "total worker concurrency is greater than promql max concurrency. Queries may be queued in the querier which reduces QOS")
 	}
 }
 

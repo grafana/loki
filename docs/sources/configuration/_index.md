@@ -97,6 +97,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # just the querier.
 [querier: <querier_config>]
 
+# The query_scheduler block configures the Loki query scheduler.
+# When configured it separates the tenant query queues from the query-frontend
+[query_scheduler: <query_scheduler_config>]
+
 # The query_frontend_config configures the Loki query-frontend.
 [frontend: <query_frontend_config>]
 
@@ -282,6 +286,106 @@ engine:
   [max_look_back_period: <duration> | default = 30s]
 ```
 
+## query_scheduler_config
+
+The `query_scheduler_config` block configures the Loki query scheduler.
+  
+```yaml
+# Maximum number of outstanding requests per tenant per query-scheduler.
+# In-flight requests above this limit will fail with HTTP response status code
+# 429.
+# CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
+[max_outstanding_requests_per_tenant: <int> | default = 100]
+
+# This configures the gRPC client used to report errors back to the
+# query-frontend.
+[grpc_client_config: <grpc_client_config>]
+ 
+# Set to true to have the query schedulers create and place themselves in a ring.
+# If no frontend_address or scheduler_address are present 
+# any where else in the config Loki will toggle this value to true.
+[use_scheduler_ring: <boolean> | default = false]
+
+# The hash ring configuration. This option is required only if use_scheduler_ring is true
+scheduler_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -scheduler.ring.store
+    [store: <string> | default = "memberlist"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -scheduler.ring.prefix
+    [prefix: <string> | default = "schedulers/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: scheduler.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: scheduler.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -scheduler.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -scheduler.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -scheduler.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -scheduler.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -scheduler.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which store gateways are considered unhealthy
+  # within the ring. 0 = never (timeout disabled). This option needs be set both
+  # on the store-gateway and querier when running in microservices mode.
+  # CLI flag: -scheduler.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -scheduler.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # True to enable zone-awareness and replicate blocks across different
+  # availability zones.
+  # CLI flag: -scheduler.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # Name of network interface to read address from.
+  # CLI flag: -scheduler.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # IP address to advertise in the ring.
+  # CLI flag: -scheduler.ring.instance-addr
+  [instance_addr: <list of string> | default = first from instance_interface_names]
+
+  # Port to advertise in the ring
+  # CLI flag: -scheduler.ring.instance-port
+  [instance_port: <list of string> | default = server.grpc-listen-port]
+
+  # Instance ID to register in the ring.
+  # CLI flag: -scheduler.ring.instance-id
+  [instance_id: <list of string> | default = os.Hostname()]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -scheduler.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+```
+
 ## query_frontend_config
 
 The query_frontend_config configures the Loki query-frontend.
@@ -315,8 +419,9 @@ The query_frontend_config configures the Loki query-frontend.
 
 # How often to resolve the scheduler-address, in order to look for new
 # query-scheduler instances.
+# Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -frontend.scheduler-dns-lookup-period
-[scheduler_dns_lookup_period: <duration> | default = 10s]
+[scheduler_dns_lookup_period: <duration> | default = 3s]
 
 # Number of concurrent workers forwarding queries to single query-scheduler.
 # CLI flag: -frontend.scheduler-worker-concurrency
@@ -776,9 +881,10 @@ The `frontend_worker_config` configures the worker - running within the Loki que
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
 
-# How often to query DNS.
+# How often to query the frontend_address DNS to resolve frontend addresses
+# Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -querier.dns-lookup-period
-[dns_lookup_duration: <duration> | default = 10s]
+[dns_lookup_duration: <duration> | default = 3s]
 
 # The CLI flags prefix for this block config is: querier.frontend-client
 [grpc_client_config: <grpc_client_config>]

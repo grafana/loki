@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
@@ -16,13 +17,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
+
+	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 type frontendSchedulerWorkers struct {
 	services.Service
 
 	cfg             Config
-	log             log.Logger
+	logger          log.Logger
 	frontendAddress string
 
 	// Channel with requests that should be forwarded to the scheduler.
@@ -35,21 +38,32 @@ type frontendSchedulerWorkers struct {
 	workers map[string]*frontendSchedulerWorker
 }
 
-func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, requestsCh <-chan *frontendRequest, log log.Logger) (*frontendSchedulerWorkers, error) {
+func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.ReadRing, requestsCh <-chan *frontendRequest, logger log.Logger) (*frontendSchedulerWorkers, error) {
 	f := &frontendSchedulerWorkers{
 		cfg:             cfg,
-		log:             log,
+		logger:          logger,
 		frontendAddress: frontendAddress,
 		requestsCh:      requestsCh,
 		workers:         map[string]*frontendSchedulerWorker{},
 	}
 
-	w, err := util.NewDNSWatcher(cfg.SchedulerAddress, cfg.DNSLookupPeriod, f)
-	if err != nil {
-		return nil, err
+	switch {
+	case ring != nil:
+		// Use the scheduler ring and RingWatcher to find schedulers.
+		w, err := lokiutil.NewRingWatcher(log.With(logger, "component", "frontend-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		if err != nil {
+			return nil, err
+		}
+		f.watcher = w
+	default:
+		// If there is no ring config fallback on using DNS for the frontend scheduler worker to find the schedulers.
+		w, err := util.NewDNSWatcher(cfg.SchedulerAddress, cfg.DNSLookupPeriod, f)
+		if err != nil {
+			return nil, err
+		}
+		f.watcher = w
 	}
 
-	f.watcher = w
 	f.Service = services.NewIdleService(f.starting, f.stopping)
 	return f, nil
 }
@@ -83,15 +97,15 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 		return
 	}
 
-	level.Info(f.log).Log("msg", "adding connection to scheduler", "addr", address)
+	level.Info(f.logger).Log("msg", "adding connection to scheduler", "addr", address)
 	conn, err := f.connectToScheduler(context.Background(), address)
 	if err != nil {
-		level.Error(f.log).Log("msg", "error connecting to scheduler", "addr", address, "err", err)
+		level.Error(f.logger).Log("msg", "error connecting to scheduler", "addr", address, "err", err)
 		return
 	}
 
 	// No worker for this address yet, start a new one.
-	w = newFrontendSchedulerWorker(conn, address, f.frontendAddress, f.requestsCh, f.cfg.WorkerConcurrency, f.log)
+	w = newFrontendSchedulerWorker(conn, address, f.frontendAddress, f.requestsCh, f.cfg.WorkerConcurrency, f.logger)
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -104,7 +118,7 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 }
 
 func (f *frontendSchedulerWorkers) AddressRemoved(address string) {
-	level.Info(f.log).Log("msg", "removing connection to scheduler", "addr", address)
+	level.Info(f.logger).Log("msg", "removing connection to scheduler", "addr", address)
 
 	f.mu.Lock()
 	// This works fine if f.workers is nil already.
@@ -198,8 +212,8 @@ func (w *frontendSchedulerWorker) stop() {
 
 func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb.SchedulerForFrontendClient) {
 	backoffConfig := backoff.Config{
-		MinBackoff: 50 * time.Millisecond,
-		MaxBackoff: 1 * time.Second,
+		MinBackoff: 500 * time.Millisecond,
+		MaxBackoff: 5 * time.Second,
 	}
 
 	backoff := backoff.New(ctx, backoffConfig)

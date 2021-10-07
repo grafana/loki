@@ -73,6 +73,14 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			}
 		}
 
+		// If nobody has defined any frontend address or scheduler address
+		// we can default to using the query scheduler ring for scheduler discovery.
+		if r.Worker.FrontendAddress == "" &&
+			r.Worker.SchedulerAddress == "" &&
+			r.Frontend.FrontendV2.SchedulerAddress == "" {
+			r.QueryScheduler.UseSchedulerRing = true
+		}
+
 		applyMemberlistConfig(r)
 		applyStorageConfig(r, &defaults)
 
@@ -80,7 +88,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 	}
 }
 
-// applyMemberlistConfig will change the default ingester, distributor, and ruler ring configurations to use memberlist
+// applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist
 // if the -memberlist.join_members config is provided. The idea here is that if a user explicitly configured the
 // memberlist configuration section, they probably want to be using memberlist for all their ring configurations.
 // Since a user can still explicitly override a specific ring configuration (for example, use consul for the distributor),
@@ -90,6 +98,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 		r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 		r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 		r.Ruler.Ring.KVStore.Store = memberlistStr
+		r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	}
 }
 
