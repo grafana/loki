@@ -47,10 +47,11 @@ func newFakeLimits() fakeLimits {
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteHeaders: validation.OverwriteMarshalingStringMap{
 					M: map[string]string{
-						user.OrgIDHeaderName:                  "overridden",
-						strings.ToLower(user.OrgIDHeaderName): "overridden-lower",
-						strings.ToUpper(user.OrgIDHeaderName): "overridden-upper",
-						"Additional":                          "Header",
+						user.OrgIDHeaderName:                         "overridden",
+						fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
+						strings.ToLower(user.OrgIDHeaderName):        "overridden-lower",
+						strings.ToUpper(user.OrgIDHeaderName):        "overridden-upper",
+						"Additional":                                 "Header",
 					},
 				},
 			},
@@ -67,9 +68,8 @@ func newFakeLimits() fakeLimits {
 					},
 				},
 			},
-			nilRelabelsTenant: {}, // zero value will be nil
+			nilRelabelsTenant: {},
 			emptySliceRelabelsTenant: {
-				// zero value will be nil
 				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{},
 			},
 			badRelabelsTenant: {
@@ -93,6 +93,9 @@ func setupRegistry(t *testing.T, dir string) *walRegistry {
 				URL: &promConfig.URL{URL: u},
 				QueueConfig: config.QueueConfig{
 					Capacity: defaultCapacity,
+				},
+				Headers: map[string]string{
+					"Base": "value",
 				},
 				WriteRelabelConfigs: []*relabel.Config{
 					{
@@ -178,9 +181,11 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
 	require.NoError(t, err)
 
-	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 3)
 	// ensure that tenant cannot override X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], additionalHeadersRWTenant)
+	// and that the base header defined is set
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
 	// but that the additional header defined is set
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Additional"], "Header")
 
@@ -222,9 +227,6 @@ func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
 	require.NoError(t, err)
 	reg := setupRegistry(t, walDir)
 	defer os.RemoveAll(walDir)
-
-	tenantCfgNil, err := reg.getTenantConfig(nilRelabelsTenant)
-	require.NotNil(t, tenantCfgNil)
 
 	tenantCfg, err := reg.getTenantConfig(emptySliceRelabelsTenant)
 	require.NoError(t, err)

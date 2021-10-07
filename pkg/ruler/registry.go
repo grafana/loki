@@ -199,7 +199,7 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 
 		// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
 		for k, _ := range rwCfg.Client.Headers {
-			if strings.ToLower(user.OrgIDHeaderName) == strings.ToLower(k) {
+			if strings.ToLower(user.OrgIDHeaderName) == strings.ToLower(strings.TrimSpace(k)) {
 				delete(rwCfg.Client.Headers, k)
 			}
 		}
@@ -248,9 +248,15 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		overrides.Client.RemoteTimeout = model.Duration(v)
 	}
 
-	// TODO: this will override not merge
+	// merge headers with the base
 	if v := r.overrides.RulerRemoteWriteHeaders(tenant); len(v) > 0 {
-		overrides.Client.Headers = v
+		if overrides.Client.Headers == nil {
+			overrides.Client.Headers = make(map[string]string, len(v))
+		}
+
+		for k, val := range v {
+			overrides.Client.Headers[k] = val
+		}
 	}
 
 	relabelConfigs, err := r.createRelabelConfigs(tenant)
