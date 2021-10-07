@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -108,4 +110,136 @@ per_tenant_override_period: 230s
 	require.NoError(t, err, "expected to be able to unmarshal from JSON")
 
 	assert.Equal(t, limitsYAML, limitsJSON)
+}
+
+func TestOverwriteMarshalingStringMapJSON(t *testing.T) {
+	m := OverwriteMarshalingStringMap{
+		M: map[string]string{"foo": "bar"},
+	}
+
+	require.Nil(t, json.Unmarshal([]byte(`{"bazz": "buzz"}`), &m))
+	require.Equal(t, map[string]string{"bazz": "buzz"}, m.Map())
+	out, err := json.Marshal(m)
+	require.Nil(t, err)
+	var back OverwriteMarshalingStringMap
+	require.Nil(t, json.Unmarshal(out, &back))
+	require.Equal(t, m, back)
+}
+
+func TestOverwriteMarshalingStringMapYAML(t *testing.T) {
+	m := OverwriteMarshalingStringMap{
+		M: map[string]string{"foo": "bar"},
+	}
+
+	require.Nil(t, yaml.Unmarshal([]byte(`{"bazz": "buzz"}`), &m))
+	require.Equal(t, map[string]string{"bazz": "buzz"}, m.Map())
+	out, err := yaml.Marshal(m)
+	require.Nil(t, err)
+	var back OverwriteMarshalingStringMap
+	require.Nil(t, yaml.Unmarshal(out, &back))
+	require.Equal(t, m, back)
+}
+
+func TestLimitsDoesNotMutate(t *testing.T) {
+	initialDefault := defaultLimits
+	defer func() {
+		defaultLimits = initialDefault
+	}()
+
+	// Set new defaults with non-nil values for non-scalar types
+	newDefaults := Limits{
+		RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+		StreamRetention: []StreamRetention{
+			{
+				Period:   model.Duration(24 * time.Hour),
+				Selector: `{a="b"}`,
+			},
+		},
+	}
+	SetDefaultLimitsForYAMLUnmarshalling(newDefaults)
+
+	for _, tc := range []struct {
+		desc string
+		yaml string
+		exp  Limits
+	}{
+		{
+			desc: "map",
+			yaml: `
+ruler_remote_write_headers:
+  foo: "bar"
+`,
+			exp: Limits{
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"foo": "bar"}},
+
+				// Rest from new defaults
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{a="b"}`,
+					},
+				},
+			},
+		},
+		{
+			desc: "empty map overrides defaults",
+			yaml: `
+ruler_remote_write_headers:
+`,
+			exp: Limits{
+
+				// Rest from new defaults
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{a="b"}`,
+					},
+				},
+			},
+		},
+		{
+			desc: "slice",
+			yaml: `
+retention_stream:
+  - period: '24h'
+    selector: '{foo="bar"}'
+`,
+			exp: Limits{
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{foo="bar"}`,
+					},
+				},
+
+				// Rest from new defaults
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+			},
+		},
+		{
+			desc: "scalar field",
+			yaml: `
+reject_old_samples: true
+`,
+			exp: Limits{
+				RejectOldSamples: true,
+
+				// Rest from new defaults
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{a="b"}`,
+					},
+				},
+			},
+		},
+	} {
+
+		t.Run(tc.desc, func(t *testing.T) {
+			var out Limits
+			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
+			require.Equal(t, tc.exp, out)
+		})
+	}
 }
