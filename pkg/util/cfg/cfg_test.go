@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
 )
 
 func TestParse(t *testing.T) {
@@ -69,22 +68,33 @@ tls:
 }
 
 func TestDefaultUnmarshal(t *testing.T) {
-	t.Run("with an empty config file and no command line args, defaults are used", func(t *testing.T) {
+	testContext := func(yamlString string, args []string) TestConfigWrapper {
 		file, err := ioutil.TempFile("", "config.yaml")
 		defer func() {
 			os.Remove(file.Name())
 		}()
 		require.NoError(t, err)
 
+		_, err = file.WriteString(yamlString)
+		require.NoError(t, err)
+
+		configFileArgs := []string{"-config.file", file.Name()}
+		if args == nil {
+			args = configFileArgs
+		} else {
+			args = append(args, configFileArgs...)
+		}
+
+		var config TestConfigWrapper
+		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		DefaultUnmarshal(&config, args, flags)
+
+		return config
+	}
+	t.Run("with an empty config file and no command line args, defaults are used", func(t *testing.T) {
 		configFileString := `---
 required: foo`
-		_, err = file.WriteString(configFileString)
-		require.NoError(t, err)
-		var config TestConfigWrapper
-
-		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
-		args := []string{"-config.file", file.Name()}
-		DefaultUnmarshal(&config, args, flags)
+		config := testContext(configFileString, nil)
 
 		assert.Equal(t, "Jerry", config.Name)
 		assert.Equal(t, true, config.Role.Sings)
@@ -92,55 +102,22 @@ required: foo`
 	})
 
 	t.Run("values provided in config file take precedence over defaults", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "config.yaml")
-		defer func() {
-			os.Remove(file.Name())
-		}()
-		require.NoError(t, err)
-
 		configFileString := `---
 required: foo
 name: Phil`
-		_, err = file.WriteString(configFileString)
-		require.NoError(t, err)
-
-		buf, err := ioutil.ReadFile(file.Name())
-		require.NoError(t, err)
-
-		strictYamlConfig := TestConfigWrapper{}
-		yaml.UnmarshalStrict(buf, &strictYamlConfig)
-		assert.Equal(t, "Phil", strictYamlConfig.Name)
-
-		config := TestConfigWrapper{}
-
-		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
-		args := []string{"-config.file", file.Name()}
-		DefaultUnmarshal(&config, args, flags)
+		config := testContext(configFileString, nil)
 
 		assert.Equal(t, "Phil", config.Name)
 		assert.Equal(t, true, config.Role.Sings)
 	})
 
 	t.Run("partial structs can be provided in the config file, with defaults filling zeros", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "config.yaml")
-		defer func() {
-			os.Remove(file.Name())
-		}()
-		require.NoError(t, err)
-
 		configFileString := `---
 required: foo
 name: Phil
 role:
   instrument: bass`
-		_, err = file.WriteString(configFileString)
-		require.NoError(t, err)
-
-		config := TestConfigWrapper{}
-		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
-		args := []string{"-config.file", file.Name()}
-		DefaultUnmarshal(&config, args, flags)
-		require.NoError(t, err)
+		config := testContext(configFileString, nil)
 
 		assert.Equal(t, "Phil", config.Name)
 		assert.Equal(t, "bass", config.Role.Instrument)
@@ -149,26 +126,13 @@ role:
 	})
 
 	t.Run("values can be explicitly zeroed out in config file", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "config.yaml")
-		defer func() {
-			os.Remove(file.Name())
-		}()
-		require.NoError(t, err)
-
 		configFileString := `---
 required: foo
 name: Mickey
 role:
   sings: false
   instrument: drums`
-		_, err = file.WriteString(configFileString)
-		require.NoError(t, err)
-
-		config := TestConfigWrapper{}
-		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
-		args := []string{"-config.file", file.Name()}
-		DefaultUnmarshal(&config, args, flags)
-		require.NoError(t, err)
+		config := testContext(configFileString, nil)
 
 		assert.Equal(t, "Mickey", config.Name)
 		assert.Equal(t, "drums", config.Role.Instrument)
@@ -176,24 +140,13 @@ role:
 	})
 
 	t.Run("values passed by command line take precedence", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "config.yaml")
-		defer func() {
-			os.Remove(file.Name())
-		}()
-		require.NoError(t, err)
-
 		configFileString := `---
 name: Mickey
 role:
   sings: false`
-		_, err = file.WriteString(configFileString)
-		require.NoError(t, err)
 
-		config := TestConfigWrapper{}
-		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
-		args := []string{"-config.file", file.Name(), "-name", "Bob", "-role.sings=true", "-role.instrument", "piano"}
-		DefaultUnmarshal(&config, args, flags)
-		require.NoError(t, err)
+		args := []string{"-name", "Bob", "-role.sings=true", "-role.instrument", "piano"}
+		config := testContext(configFileString, args)
 
 		assert.Equal(t, "Bob", config.Name)
 		assert.Equal(t, true, config.Role.Sings)
@@ -218,8 +171,8 @@ func (c *TestConfigWrapper) Clone() flagext.Registerer {
 }
 
 type TestConfig struct {
-  //Add a parameter that will always be there, as the yaml parser exhibits
-  //weird behavior when a config file is completely empty
+	//Add a parameter that will always be there, as the yaml parser exhibits
+	//weird behavior when a config file is completely empty
 	Required string `yaml:"required"`
 	Name     string `yaml:"name"`
 	Role     Role   `yaml:"role"`
