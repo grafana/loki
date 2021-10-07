@@ -146,3 +146,36 @@ memberlist:
 		})
 	})
 }
+
+// Can't use a totally empty yaml file or it causes weird behavior in the unmarhsalling
+const minimalConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      schema: v11
+ 
+memberlist: 
+  join_members: 
+    - loki.loki-dev-single-binary.svc.cluster.local`
+
+func TestDefaultUnmarshal(t *testing.T) {
+	t.Run("with an empty config file and no command line args, defaults are use", func(t *testing.T) {
+		file, err := ioutil.TempFile("", "config.yaml")
+		defer func() {
+			os.Remove(file.Name())
+		}()
+		require.NoError(t, err)
+
+		_, err = file.WriteString(minimalConfig)
+		require.NoError(t, err)
+		var config ConfigWrapper
+
+		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		args := []string{"-config.file", file.Name()}
+		cfg.DefaultUnmarshal(&config, args, flags)
+
+		assert.True(t, config.AuthEnabled)
+		assert.Equal(t, 80, config.Server.HTTPListenPort)
+		assert.Equal(t, 9095, config.Server.GRPCListenPort)
+	})
+}
