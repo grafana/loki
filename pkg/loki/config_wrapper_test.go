@@ -159,7 +159,7 @@ memberlist:
     - loki.loki-dev-single-binary.svc.cluster.local`
 
 func TestDefaultUnmarshal(t *testing.T) {
-	t.Run("with an empty config file and no command line args, defaults are use", func(t *testing.T) {
+	t.Run("with a minimal config file and no command line args, defaults are use", func(t *testing.T) {
 		file, err := ioutil.TempFile("", "config.yaml")
 		defer func() {
 			os.Remove(file.Name())

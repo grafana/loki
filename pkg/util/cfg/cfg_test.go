@@ -99,6 +99,7 @@ required: foo`
 		require.NoError(t, err)
 
 		configFileString := `---
+required: foo
 name: Phil`
 		_, err = file.WriteString(configFileString)
 		require.NoError(t, err)
@@ -119,6 +120,85 @@ name: Phil`
 		assert.Equal(t, "Phil", config.Name)
 		assert.Equal(t, true, config.Role.Sings)
 	})
+
+	t.Run("partial structs can be provided in the config file, with defaults filling zeros", func(t *testing.T) {
+		file, err := ioutil.TempFile("", "config.yaml")
+		defer func() {
+			os.Remove(file.Name())
+		}()
+		require.NoError(t, err)
+
+		configFileString := `---
+required: foo
+name: Phil
+role:
+  instrument: bass`
+		_, err = file.WriteString(configFileString)
+		require.NoError(t, err)
+
+		config := TestConfigWrapper{}
+		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		args := []string{"-config.file", file.Name()}
+		DefaultUnmarshal(&config, args, flags)
+		require.NoError(t, err)
+
+		assert.Equal(t, "Phil", config.Name)
+		assert.Equal(t, "bass", config.Role.Instrument)
+		//zero value overridden by default
+		assert.Equal(t, true, config.Role.Sings)
+	})
+
+	t.Run("values can be explicitly zeroed out in config file", func(t *testing.T) {
+		file, err := ioutil.TempFile("", "config.yaml")
+		defer func() {
+			os.Remove(file.Name())
+		}()
+		require.NoError(t, err)
+
+		configFileString := `---
+required: foo
+name: Mickey
+role:
+  sings: false
+  instrument: drums`
+		_, err = file.WriteString(configFileString)
+		require.NoError(t, err)
+
+		config := TestConfigWrapper{}
+		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		args := []string{"-config.file", file.Name()}
+		DefaultUnmarshal(&config, args, flags)
+		require.NoError(t, err)
+
+		assert.Equal(t, "Mickey", config.Name)
+		assert.Equal(t, "drums", config.Role.Instrument)
+		assert.Equal(t, false, config.Role.Sings)
+	})
+
+	t.Run("values passed by command line take precedence", func(t *testing.T) {
+		file, err := ioutil.TempFile("", "config.yaml")
+		defer func() {
+			os.Remove(file.Name())
+		}()
+		require.NoError(t, err)
+
+		configFileString := `---
+name: Mickey
+role:
+  sings: false`
+		_, err = file.WriteString(configFileString)
+		require.NoError(t, err)
+
+		config := TestConfigWrapper{}
+		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		args := []string{"-config.file", file.Name(), "-name", "Bob", "-role.sings=true", "-role.instrument", "piano"}
+		DefaultUnmarshal(&config, args, flags)
+		require.NoError(t, err)
+
+		assert.Equal(t, "Bob", config.Name)
+		assert.Equal(t, true, config.Role.Sings)
+		assert.Equal(t, "piano", config.Role.Instrument)
+	})
 }
 
 type TestConfigWrapper struct {
@@ -138,6 +218,8 @@ func (c *TestConfigWrapper) Clone() flagext.Registerer {
 }
 
 type TestConfig struct {
+  //Add a parameter that will always be there, as the yaml parser exhibits
+  //weird behavior when a config file is completely empty
 	Required string `yaml:"required"`
 	Name     string `yaml:"name"`
 	Role     Role   `yaml:"role"`
@@ -154,6 +236,6 @@ type Role struct {
 }
 
 func (c *Role) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.Sings, "sings", true, "Do they sing?")
-	f.StringVar(&c.Instrument, "instrument", "guitar", "What instrument do they play?")
+	f.BoolVar(&c.Sings, "role.sings", true, "Do they sing?")
+	f.StringVar(&c.Instrument, "role.instrument", "guitar", "What instrument do they play?")
 }
