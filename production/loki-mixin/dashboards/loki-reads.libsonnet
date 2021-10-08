@@ -1,99 +1,194 @@
 local utils = import 'mixin-utils/utils.libsonnet';
 
-{
+(import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
 
     local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
     local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs',
 
-    'loki-reads.json':
-      ($.dashboard('Loki / Reads'))
-      .addClusterSelectorTemplates()
-      .addRow(
-        $.row('Frontend (cortex_gw)')
-        .addPanel(
-          $.panel('QPS') +
-          $.qpsPanel('loki_request_duration_seconds_count{%s, route=~"%s"}' % [$.jobMatcher($._config.job_names.gateway), http_routes])
-        )
-        .addPanel(
-          $.panel('Latency') +
-          utils.latencyRecordingRulePanel(
-            'loki_request_duration_seconds',
-            $.jobSelector($._config.job_names.gateway) + [utils.selector.re('route', http_routes)],
-            sum_by=['route']
-          )
+    'loki-reads.json': {
+      local cfg = self,
+
+      showMultiCluster:: true,
+      clusterLabel:: 'cluster',
+      clusterMatchers::
+        if cfg.showMultiCluster then
+          [utils.selector.re(cfg.clusterLabel, '$cluster')]
+        else
+          [],
+
+      namespaceType:: 'query',
+      namespaceQuery::
+        if cfg.showMultiCluster then
+          'kube_pod_container_info{cluster="$cluster", image=~".*loki.*"}'
+        else
+          'kube_pod_container_info{image=~".*loki.*"}',
+
+      assert (cfg.namespaceType == 'custom' || cfg.namespaceType == 'query') : "Only types 'query' and 'custom' are allowed for dashboard variable 'namespace'",
+
+      matchers:: {
+        cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
+        queryFrontend: [utils.selector.re('job', '($namespace)/query-frontend')],
+        querier: [utils.selector.re('job', '($namespace)/querier')],
+        ingester: [utils.selector.re('job', '($namespace)/ingester')],
+        querierOrIndexGateway: [utils.selector.re('job', '($namespace)/(querier|index-gateway)')],
+      },
+
+      local selector(matcherId) =
+        local ms = (cfg.clusterMatchers + cfg.matchers[matcherId]);
+        if std.length(ms) > 0 then
+          std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in ms]) + ','
+        else '',
+
+      cortexGwSelector:: selector('cortexgateway'),
+      queryFrontendSelector:: selector('queryFrontend'),
+      querierSelector:: selector('querier'),
+      ingesterSelector:: selector('ingester'),
+      querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
+
+      templateLabels:: (
+        if cfg.showMultiCluster then [
+          {
+            variable:: 'cluster',
+            label:: cfg.clusterLabel,
+            query:: 'kube_pod_container_info{image=~".*loki.*"}',
+            type:: 'query',
+          },
+        ] else []
+      ) + [
+        {
+          variable:: 'namespace',
+          label:: 'namespace',
+          query:: cfg.namespaceQuery,
+          type:: cfg.namespaceType,
+        },
+      ],
+    } +
+    $.dashboard('Loki / Reads')
+    .addClusterSelectorTemplates(false)
+    .addRow(
+      $.row('Frontend (cortex_gw)')
+      .addPanel(
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].cortexGwSelector, http_routes])
+      )
+      .addPanel(
+        $.panel('Latency') +
+        utils.latencyRecordingRulePanel(
+          'loki_request_duration_seconds',
+          dashboards['loki-reads.json'].matchers.cortexgateway + [utils.selector.re('route', http_routes)],
+          extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+          sum_by=['route']
         )
       )
-      .addRow(
-        $.row('Frontend (query-frontend)')
-        .addPanel(
-          $.panel('QPS') +
-          $.qpsPanel('loki_request_duration_seconds_count{%s, route=~"%s"}' % [$.jobMatcher($._config.job_names.query_frontend), http_routes])
-        )
-        .addPanel(
-          $.panel('Latency') +
-          utils.latencyRecordingRulePanel(
-            'loki_request_duration_seconds',
-            $.jobSelector($._config.job_names.query_frontend) + [utils.selector.re('route', http_routes)],
-            sum_by=['route']
-          )
+    )
+    .addRow(
+      $.row('Frontend (query-frontend)')
+      .addPanel(
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])
+      )
+      .addPanel(
+        $.panel('Latency') +
+        utils.latencyRecordingRulePanel(
+          'loki_request_duration_seconds',
+          dashboards['loki-reads.json'].matchers.queryFrontend + [utils.selector.re('route', http_routes)],
+          extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+          sum_by=['route']
         )
       )
-      .addRow(
-        $.row('Querier')
-        .addPanel(
-          $.panel('QPS') +
-          $.qpsPanel('loki_request_duration_seconds_count{%s, route=~"%s"}' % [$.jobMatcher($._config.job_names.querier), http_routes])
-        )
-        .addPanel(
-          $.panel('Latency') +
-          utils.latencyRecordingRulePanel(
-            'loki_request_duration_seconds',
-            $.jobSelector($._config.job_names.querier) + [utils.selector.re('route', http_routes)],
-            sum_by=['route']
-          )
+    )
+    .addRow(
+      $.row('Querier')
+      .addPanel(
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].querierSelector, http_routes])
+      )
+      .addPanel(
+        $.panel('Latency') +
+        utils.latencyRecordingRulePanel(
+          'loki_request_duration_seconds',
+          dashboards['loki-reads.json'].matchers.querier + [utils.selector.re('route', http_routes)],
+          extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+          sum_by=['route']
         )
       )
-      .addRow(
-        $.row('Ingester')
-        .addPanel(
-          $.panel('QPS') +
-          $.qpsPanel('loki_request_duration_seconds_count{%s, route=~"%s"}' % [$.jobMatcher($._config.job_names.ingester), grpc_routes])
-        )
-        .addPanel(
-          $.panel('Latency') +
-          utils.latencyRecordingRulePanel(
-            'loki_request_duration_seconds',
-            $.jobSelector($._config.job_names.ingester) + [utils.selector.re('route', grpc_routes)],
-            sum_by=['route']
-          )
+    )
+    .addRow(
+      $.row('Ingester')
+      .addPanel(
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterSelector, grpc_routes])
+      )
+      .addPanel(
+        $.panel('Latency') +
+        utils.latencyRecordingRulePanel(
+          'loki_request_duration_seconds',
+          dashboards['loki-reads.json'].matchers.ingester + [utils.selector.re('route', grpc_routes)],
+          extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+          sum_by=['route']
         )
       )
-      .addRow(
-        $.row('BigTable')
-        .addPanel(
-          $.panel('QPS') +
-          $.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s, operation="/google.bigtable.v2.Bigtable/ReadRows"}' % $.jobMatcher($._config.job_names.querier))
-        )
-        .addPanel(
-          $.panel('Latency') +
-          utils.latencyRecordingRulePanel(
-            'cortex_bigtable_request_duration_seconds',
-            $.jobSelector($._config.job_names.querier) + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
-          )
+    )
+    .addRow(
+      $.row('BigTable')
+      .addPanel(
+        $.panel('QPS') +
+        $.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
+      )
+      .addPanel(
+        $.panel('Latency') +
+        utils.latencyRecordingRulePanel(
+          'cortex_bigtable_request_duration_seconds',
+          dashboards['loki-reads.json'].matchers.querier + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
         )
       )
-      .addRow(
-        $.row('BoltDB Shipper')
-        .addPanel(
-          $.panel('QPS') +
-          $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s, operation="QUERY"}' % $.jobMatcher($._config.job_names.index_gateway))
-        )
-        .addPanel(
-          $.panel('Latency') +
-          $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s, operation="QUERY"}' % $.jobMatcher($._config.job_names.index_gateway))
-        )
-      ),
+    )
+    .addRow(
+      $.row('BoltDB Shipper')
+      .addPanel(
+        $.panel('QPS') +
+        $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+      )
+      .addPanel(
+        $.panel('Latency') +
+        $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+      )
+    ){
+      templating+: {
+        list+: [
+          {
+            allValue: null,
+            current:
+              if l.type == 'custom' then {
+                text: l.query,
+                value: l.query,
+              } else {},
+            datasource: '$datasource',
+            hide: 0,
+            includeAll: false,
+            label: l.variable,
+            multi: false,
+            name: l.variable,
+            options: [],
+            query:
+              if l.type == 'query' then
+                'label_values(%s, %s)' % [l.query, l.label]
+              else
+                l.query,
+            refresh: 1,
+            regex: '',
+            sort: 2,
+            tagValuesQuery: '',
+            tags: [],
+            tagsQuery: '',
+            type: l.type,
+            useTags: false,
+          }
+          for l in dashboards['loki-reads.json'].templateLabels
+        ],
+      },
+    },
   },
 }
