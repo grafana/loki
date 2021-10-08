@@ -7,7 +7,7 @@ title: Examples
 
 ```yaml
 # This is a configuration to deploy Loki depending only on a storage solution 
-# e.g. an S3-compatible API like minio. 
+# for example, an S3-compatible API like MinIO. 
 # The ring configuration is based on the gossip memberlist and the index is shipped to storage 
 # via Single Store (boltdb-shipper)
 
@@ -98,13 +98,14 @@ storage_config:
     s3: s3://region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://region
+      
 ```
 
 
 ## aws-basic-config.yaml
 
 ```yaml
-# This is a partial config that uses S3 for chunk storage and DynamoDB for index storage
+# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
 
 schema_config:
   configs:
@@ -119,6 +120,7 @@ storage_config:
     s3: s3://access_key:secret_access_key@region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://access_key:secret_access_key@region
+      
 ```
 
 
@@ -147,6 +149,7 @@ storage_config:
 
   filesystem:
     directory: /tmp/loki/chunks
+    
 ```
 
 
@@ -196,7 +199,7 @@ limits_config:
 ## example-schema-config.yaml
 
 ```yaml
-# Additional example schema configs for Cassandra
+# Additional example schema configuration for Cassandra
 
 schema_config:
   configs:
@@ -219,13 +222,14 @@ schema_config:
     index:
         period: 168h
         prefix: index_
+        
 ```
 
 
 ## google-cloud-storage-config.yaml
 
 ```yaml
-# This is a partial config that uses GCS for chunk storage and BigTable for index storage
+# This partial configuration uses GCS for chunk storage and uses BigTable for index storage
 
 schema_config:
   configs:
@@ -243,14 +247,15 @@ storage_config:
     project: BIGTABLE_PROJECT
   gcs:
     bucket_name: GCS_BUCKET_NAME
+    
 ```
 
 
 ## s3-compatible-apis.yaml
 
 ```yaml
-# S3-compatible APIs (e.g. Ceph Object Storage with an S3-compatible API) can be used.
-# If the API supports path-style URL rather than virtual hosted bucket addressing,
+# S3-compatible APIs such as Ceph Object Storage with an S3-compatible API, can be used.
+# If the API supports path-style URLs rather than virtual hosted bucket addressing,
 # configure the URL in `storage_config` with the custom endpoint
 
 schema_config:
@@ -266,14 +271,15 @@ storage_config:
     s3: s3://access_key:secret_access_key@region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://access_key:secret_access_key@region
+      
 ```
 
 
 ## s3-expanded-config.yaml
 
 ```yaml
-# S3 config now supports expanded config. 
-# Either `s3` endpoint URL can be used or expanded config can be used
+# S3 configuration supports an expanded configuration. 
+# Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
 
 schema_config:
   configs:
@@ -297,5 +303,6 @@ storage_config:
       response_header_timeout: 0s
       insecure_skip_verify: false
     s3forcepathstyle: true
+    
 ```
 
