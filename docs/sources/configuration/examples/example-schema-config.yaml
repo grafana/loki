@@ -1,4 +1,4 @@
-# Additional example schema configs for Cassandra
+# Additional example schema configuration for Cassandra
 
 schema_config:
   configs:
@@ -21,3 +21,4 @@ schema_config:
     index:
         period: 168h
         prefix: index_
+        

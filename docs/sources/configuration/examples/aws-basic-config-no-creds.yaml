@@ -14,3 +14,4 @@ storage_config:
     s3: s3://region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://region
+      

@@ -1,4 +1,4 @@
-# This is a partial config that uses GCS for chunk storage and BigTable for index storage
+# This partial configuration uses GCS for chunk storage and uses BigTable for index storage
 
 schema_config:
   configs:
@@ -16,3 +16,4 @@ storage_config:
     project: BIGTABLE_PROJECT
   gcs:
     bucket_name: GCS_BUCKET_NAME
+    

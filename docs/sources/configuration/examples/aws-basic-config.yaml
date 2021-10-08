@@ -1,4 +1,4 @@
-# This is a partial config that uses S3 for chunk storage and DynamoDB for index storage
+# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
 
 schema_config:
   configs:
@@ -13,3 +13,4 @@ storage_config:
     s3: s3://access_key:secret_access_key@region/bucket_name
     dynamodb:
       dynamodb_url: dynamodb://access_key:secret_access_key@region
+      
