@@ -46,6 +46,27 @@ steps:
   commands:
   - apk add make bash && make lint-scripts
 
+- name: loki
+  image: grafana/loki-build-image:0.17.0
+  commands:
+  - make BUILD_IN_CONTAINER=false loki
+  depends_on:
+  - clone
+
+- name: validate-example-configs
+  image: grafana/loki-build-image:0.17.0
+  commands:
+  - make BUILD_IN_CONTAINER=false validate-example-configs
+  depends_on:
+  - loki
+
+- name: check-example-config-doc
+  image: grafana/loki-build-image:0.17.0
+  commands:
+  - make BUILD_IN_CONTAINER=false check-example-config-doc
+  depends_on:
+  - clone
+
 ---
 kind: pipeline
 name: docker-amd64
@@ -973,6 +994,6 @@ get:
 
 ---
 kind: signature
-hmac: b70be41d1a7f91c11af945a34bdbdc7a4f7613cf830c13f5438dba0bf33a1ec5
+hmac: f1681daaa15376eb15eae5dd623a3ec19544b0447506aba2d59a92f0fd8fee49
 
 ...

@@ -1,0 +1,16 @@
+# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: aws
+    object_store: s3
+    schema: v11
+    index:
+      prefix: loki_
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    dynamodb:
+      dynamodb_url: dynamodb://access_key:secret_access_key@region
+      
