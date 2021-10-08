@@ -656,7 +656,7 @@ generate-example-config-doc: validate-example-configs
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
