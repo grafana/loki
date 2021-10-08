@@ -7,6 +7,7 @@
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
+.PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 
 SHELL = /usr/bin/env bash
 
@@ -654,8 +655,8 @@ generate-example-config-doc: validate-example-configs
 	for f in ./docs/sources/configuration/examples/*.yaml; do echo -e "\n## $$(basename $$f)\n\n\`\`\`yaml\n$$(cat $$f)\n\`\`\`\n" >> ./docs/sources/configuration/examples.md; done
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
-check-example-config-doc:
-	@if (git diff --exit-code ./docs/sources/configuation/examples/*) && ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+check-example-config-doc: generate-example-config-doc
+	@if (git diff --exit-code ./docs/sources/configuration/examples.md); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
