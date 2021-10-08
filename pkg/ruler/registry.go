@@ -227,7 +227,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	overrides.Client.Name = fmt.Sprintf("%s-rw", tenant)
 	overrides.Client.SendExemplars = false
 	// TODO(dannyk): configure HTTP client overrides
-	overrides.Client.HTTPClientConfig = promConfig.HTTPClientConfig{}
 	// metadata is only used by prometheus scrape configs
 	overrides.Client.MetadataConfig = config.MetadataConfig{Send: false}
 	overrides.Client.SigV4Config = nil
