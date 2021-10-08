@@ -1,3 +1,4 @@
+local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
@@ -22,20 +23,20 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
         )
         .addRow(
-          $.row('Churn')
+          g.row('Churn')
           .addPanel(
-            $.panel('Delete Requests Received / Day') +
-            $.queryPanel('sum(increase(loki_compactor_delete_requests_received_total{%s}[1d]))' % $.namespaceMatcher(), 'received'),
+            g.panel('Delete Requests Received / Day') +
+            g.queryPanel('sum(increase(loki_compactor_delete_requests_received_total{%s}[1d]))' % $.namespaceMatcher(), 'received'),
           )
           .addPanel(
-            $.panel('Delete Requests Processed / Day') +
-            $.queryPanel('sum(increase(loki_compactor_delete_requests_processed_total{%s}[1d]))' % $.namespaceMatcher(), 'processed'),
+            g.panel('Delete Requests Processed / Day') +
+            g.queryPanel('sum(increase(loki_compactor_delete_requests_processed_total{%s}[1d]))' % $.namespaceMatcher(), 'processed'),
           )
         ).addRow(
-          $.row('Failures')
+          g.row('Failures')
           .addPanel(
-            $.panel('Failures in Loading Delete Requests / Hour') +
-            $.queryPanel('sum(increase(loki_compactor_load_pending_requests_attempts_total{status="fail", %s}[1h]))' % $.namespaceMatcher(), 'failures'),
+            g.panel('Failures in Loading Delete Requests / Hour') +
+            g.queryPanel('sum(increase(loki_compactor_load_pending_requests_attempts_total{status="fail", %s}[1h]))' % $.namespaceMatcher(), 'failures'),
           )
         ),
     },
