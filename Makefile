@@ -647,7 +647,7 @@ validate-example-configs: loki
 
 # Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
-generate-example-config-doc: validate-example-configs
+generate-example-config-doc:
 	echo "Removing existing doc at loki/docs/configuration/examples.md and re-generating. . ."
 	# Title and Heading
 	echo -e "---\ntitle: Examples\n---\n # Loki Configuration Examples" > ./docs/sources/configuration/examples.md
