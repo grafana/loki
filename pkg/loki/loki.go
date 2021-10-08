@@ -88,7 +88,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
-	c.registerDistributorFlagsWithChangedDefaultValues(f)
+	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
@@ -123,25 +123,6 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		case "server.grpc.keepalive.ping-without-stream-allowed":
 			_ = f.Value.Set("true")
-		}
-
-		fs.Var(f.Value, f.Name, f.Usage)
-	})
-}
-
-func (c *Config) registerDistributorFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
-	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-
-	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
-	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
-	c.Distributor.RegisterFlags(throwaway)
-
-	throwaway.VisitAll(func(f *flag.Flag) {
-		// Ignore errors when setting new values. We have a test to verify that it works.
-
-		switch f.Name {
-		case "distributor.ring.store":
-			_ = f.Value.Set("inmemory")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
