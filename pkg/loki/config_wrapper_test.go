@@ -172,7 +172,8 @@ func TestDefaultUnmarshal(t *testing.T) {
 
 		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 		args := []string{"-config.file", file.Name()}
-		cfg.DefaultUnmarshal(&config, args, flags)
+		err = cfg.DefaultUnmarshal(&config, args, flags)
+		require.NoError(t, err)
 
 		assert.True(t, config.AuthEnabled)
 		assert.Equal(t, 80, config.Server.HTTPListenPort)

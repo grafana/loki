@@ -87,7 +87,8 @@ func TestDefaultUnmarshal(t *testing.T) {
 
 		var config TestConfigWrapper
 		flags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
-		DefaultUnmarshal(&config, args, flags)
+		err = DefaultUnmarshal(&config, args, flags)
+		require.NoError(t, err)
 
 		return config
 	}
