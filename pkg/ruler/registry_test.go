@@ -96,6 +96,12 @@ func setupRegistry(t *testing.T, dir string) *walRegistry {
 				QueueConfig: config.QueueConfig{
 					Capacity: defaultCapacity,
 				},
+				HTTPClientConfig: promConfig.HTTPClientConfig{
+					BasicAuth: &promConfig.BasicAuth{
+						Password: "bar",
+						Username: "foo",
+					},
+				},
 				Headers: map[string]string{
 					"Base": "value",
 				},
@@ -172,6 +178,20 @@ func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
 
 	// this tenant has remote-write disabled
 	assert.Len(t, tenantCfg.RemoteWrite, 0)
+}
+
+func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
+	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username, "foo")
+	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password, promConfig.Secret("<secret>"))
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
