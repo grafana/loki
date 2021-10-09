@@ -683,10 +683,8 @@ github.com/klauspost/cpuid
 ## explicit
 github.com/klauspost/pgzip
 # github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
-## explicit
 github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
-## explicit
 github.com/lann/ps
 # github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165
 github.com/leodido/ragel-machinery
@@ -1237,8 +1235,6 @@ go.opentelemetry.io/proto/otlp/trace/v1
 # go.uber.org/atomic v1.9.0
 ## explicit
 go.uber.org/atomic
-# go.uber.org/automaxprocs v1.4.0
-## explicit
 # go.uber.org/goleak v1.1.10
 ## explicit
 go.uber.org/goleak
