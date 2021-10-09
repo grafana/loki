@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"mime"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -79,7 +79,14 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		req              logproto.PushRequest
 	)
 
-	if strings.Contains(contentType, applicationJSON) {
+	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	switch contentType {
+	case applicationJSON:
+
 		var err error
 
 		// todo once https://github.com/weaveworks/common/commit/73225442af7da93ec8f6a6e2f7c8aafaee3f8840 is in Loki.
@@ -93,7 +100,8 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		if err != nil {
 			return nil, err
 		}
-	} else {
+
+	default:
 		// When no content-type header is set or when it is set to
 		// `application/x-protobuf`: expect snappy compression.
 		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
