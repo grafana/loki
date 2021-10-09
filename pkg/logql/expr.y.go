@@ -15,7 +15,7 @@ type exprSymType struct {
 	yys                   int
 	Expr                  Expr
 	Filter                labels.MatchType
-	Grouping              *grouping
+	Grouping              *Grouping
 	Labels                []string
 	LogExpr               LogSelectorExpr
 	LogRangeExpr          *LogRange
@@ -1720,22 +1720,22 @@ exprdefault:
 	case 183:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.Grouping = &grouping{without: false, groups: exprDollar[3].Labels}
+			exprVAL.Grouping = &Grouping{Without: false, Groups: exprDollar[3].Labels}
 		}
 	case 184:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.Grouping = &grouping{without: true, groups: exprDollar[3].Labels}
+			exprVAL.Grouping = &Grouping{Without: true, Groups: exprDollar[3].Labels}
 		}
 	case 185:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.Grouping = &grouping{without: false, groups: nil}
+			exprVAL.Grouping = &Grouping{Without: false, Groups: nil}
 		}
 	case 186:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.Grouping = &grouping{without: true, groups: nil}
+			exprVAL.Grouping = &Grouping{Without: true, Groups: nil}
 		}
 	}
 	goto exprstack /* stack new state and value */

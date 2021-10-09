@@ -205,7 +205,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *sh
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
 	if !expr.Shardable() {
-		subMapped, err := m.Map(expr.left, r)
+		subMapped, err := m.Map(expr.Left, r)
 		if err != nil {
 			return nil, err
 		}
@@ -215,38 +215,38 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *sh
 		}
 
 		return &VectorAggregationExpr{
-			left:      sampleExpr,
-			grouping:  expr.grouping,
-			params:    expr.params,
-			operation: expr.operation,
+			Left:      sampleExpr,
+			Grouping:  expr.Grouping,
+			Params:    expr.Params,
+			Operation: expr.Operation,
 		}, nil
 
 	}
 
-	switch expr.operation {
+	switch expr.Operation {
 	case OpTypeSum:
 		// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
 		return &VectorAggregationExpr{
-			left:      m.mapSampleExpr(expr, r),
-			grouping:  expr.grouping,
-			params:    expr.params,
-			operation: expr.operation,
+			Left:      m.mapSampleExpr(expr, r),
+			Grouping:  expr.Grouping,
+			Params:    expr.Params,
+			Operation: expr.Operation,
 		}, nil
 
 	case OpTypeAvg:
 		// avg(x) -> sum(x)/count(x)
 		lhs, err := m.mapVectorAggregationExpr(&VectorAggregationExpr{
-			left:      expr.left,
-			grouping:  expr.grouping,
-			operation: OpTypeSum,
+			Left:      expr.Left,
+			Grouping:  expr.Grouping,
+			Operation: OpTypeSum,
 		}, r)
 		if err != nil {
 			return nil, err
 		}
 		rhs, err := m.mapVectorAggregationExpr(&VectorAggregationExpr{
-			left:      expr.left,
-			grouping:  expr.grouping,
-			operation: OpTypeCount,
+			Left:      expr.Left,
+			Grouping:  expr.Grouping,
+			Operation: OpTypeCount,
 		}, r)
 		if err != nil {
 			return nil, err
@@ -255,35 +255,35 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *VectorAggregationExpr, r *sh
 		return &BinOpExpr{
 			SampleExpr: lhs,
 			RHS:        rhs,
-			op:         OpTypeDiv,
+			Op:         OpTypeDiv,
 		}, nil
 
 	case OpTypeCount:
 		// count(x) -> sum(count(x, shard=1) ++ count(x, shard=2)...)
 		sharded := m.mapSampleExpr(expr, r)
 		return &VectorAggregationExpr{
-			left:      sharded,
-			grouping:  expr.grouping,
-			operation: OpTypeSum,
+			Left:      sharded,
+			Grouping:  expr.Grouping,
+			Operation: OpTypeSum,
 		}, nil
 	default:
 		// this should not be reachable. If an operation is shardable it should
 		// have an optimization listed.
 		level.Warn(util_log.Logger).Log(
 			"msg", "unexpected operation which appears shardable, ignoring",
-			"operation", expr.operation,
+			"operation", expr.Operation,
 		)
 		return expr, nil
 	}
 }
 
 func (m ShardMapper) mapLabelReplaceExpr(expr *LabelReplaceExpr, r *shardRecorder) (SampleExpr, error) {
-	subMapped, err := m.Map(expr.left, r)
+	subMapped, err := m.Map(expr.Left, r)
 	if err != nil {
 		return nil, err
 	}
 	cpy := *expr
-	cpy.left = subMapped.(SampleExpr)
+	cpy.Left = subMapped.(SampleExpr)
 	return &cpy, nil
 }
 
@@ -295,7 +295,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr, r *shar
 		// Since we currently support only concatenation as merge strategy, we skip those queries.
 		return expr
 	}
-	switch expr.operation {
+	switch expr.Operation {
 	case OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeBytesRate, OpRangeTypeBytes:
 		// count_over_time(x) -> count_over_time(x, shard=1) ++ count_over_time(x, shard=2)...
 		// rate(x) -> rate(x, shard=1) ++ rate(x, shard=2)...
@@ -309,11 +309,11 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *RangeAggregationExpr, r *shar
 // hasLabelModifier tells if an expression contains pipelines that can modify stream labels
 // parsers introduce new labels but does not alter original one for instance.
 func hasLabelModifier(expr *RangeAggregationExpr) bool {
-	switch ex := expr.left.left.(type) {
+	switch ex := expr.Left.Left.(type) {
 	case *MatchersExpr:
 		return false
 	case *PipelineExpr:
-		for _, p := range ex.pipeline {
+		for _, p := range ex.MultiStages {
 			if _, ok := p.(*LabelFmtExpr); ok {
 				return true
 			}
