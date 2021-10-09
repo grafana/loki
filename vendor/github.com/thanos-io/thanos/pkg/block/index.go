@@ -111,12 +111,9 @@ func (i HealthStats) Issue347OutsideChunksErr() error {
 	return nil
 }
 
-// CriticalErr returns error if stats indicates critical block issue, that might solved only by manual repair procedure.
-func (i HealthStats) CriticalErr() error {
-	var errMsg []string
-
-	if i.OutOfOrderSeries > 0 {
-		errMsg = append(errMsg, fmt.Sprintf(
+func (i HealthStats) OutOfOrderChunksErr() error {
+	if i.OutOfOrderChunks > 0 {
+		return errors.New(fmt.Sprintf(
 			"%d/%d series have an average of %.3f out-of-order chunks: "+
 				"%.3f of these are exact duplicates (in terms of data and time range)",
 			i.OutOfOrderSeries,
@@ -125,6 +122,12 @@ func (i HealthStats) CriticalErr() error {
 			float64(i.DuplicatedChunks)/float64(i.OutOfOrderChunks),
 		))
 	}
+	return nil
+}
+
+// CriticalErr returns error if stats indicates critical block issue, that might solved only by manual repair procedure.
+func (i HealthStats) CriticalErr() error {
+	var errMsg []string
 
 	n := i.OutsideChunks - (i.CompleteOutsideChunks + i.Issue347OutsideChunks)
 	if n > 0 {
@@ -155,6 +158,10 @@ func (i HealthStats) AnyErr() error {
 	}
 
 	if err := i.PrometheusIssue5372Err(); err != nil {
+		errMsg = append(errMsg, err.Error())
+	}
+
+	if err := i.OutOfOrderChunksErr(); err != nil {
 		errMsg = append(errMsg, err.Error())
 	}
 

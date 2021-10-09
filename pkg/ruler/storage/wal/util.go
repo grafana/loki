@@ -129,6 +129,8 @@ func (c *walDataCollector) StoreSeries(series []record.RefSeries, _ int) {
 
 func (c *walDataCollector) SeriesReset(_ int) {}
 
+func (c *walDataCollector) UpdateSeriesSegment(_ []record.RefSeries, _ int) {}
+
 // SubDirectory returns the subdirectory within a Storage directory used for
 // the Prometheus WAL.
 func SubDirectory(base string) string {

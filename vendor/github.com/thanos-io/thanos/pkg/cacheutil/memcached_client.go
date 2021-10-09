@@ -21,6 +21,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
+	memcacheDiscovery "github.com/thanos-io/thanos/pkg/discovery/memcache"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/model"
@@ -53,6 +54,7 @@ var (
 		MaxGetMultiConcurrency:    100,
 		MaxGetMultiBatchSize:      0,
 		DNSProviderUpdateInterval: 10 * time.Second,
+		AutoDiscovery:             false,
 	}
 )
 
@@ -114,6 +116,9 @@ type MemcachedClientConfig struct {
 
 	// DNSProviderUpdateInterval specifies the DNS discovery update interval.
 	DNSProviderUpdateInterval time.Duration `yaml:"dns_provider_update_interval"`
+
+	// AutoDiscovery configures memached client to perform auto-discovery instead of DNS resolution
+	AutoDiscovery bool `yaml:"auto_discovery"`
 }
 
 func (c *MemcachedClientConfig) validate() error {
@@ -153,8 +158,8 @@ type memcachedClient struct {
 	// Name provides an identifier for the instantiated Client
 	name string
 
-	// DNS provider used to keep the memcached servers list updated.
-	dnsProvider *dns.Provider
+	// Address provider used to keep the memcached servers list updated.
+	addressProvider AddressProvider
 
 	// Channel used to notify internal goroutines when they should quit.
 	stop chan struct{}
@@ -175,6 +180,15 @@ type memcachedClient struct {
 	skipped    *prometheus.CounterVec
 	duration   *prometheus.HistogramVec
 	dataSize   *prometheus.HistogramVec
+}
+
+// AddressProvider performs node address resolution given a list of clusters.
+type AddressProvider interface {
+	// Resolves the provided list of memcached cluster to the actual nodes
+	Resolve(context.Context, []string) error
+
+	// Returns the nodes
+	Addresses() []string
 }
 
 type memcachedGetMultiResult struct {
@@ -220,20 +234,31 @@ func newMemcachedClient(
 	reg prometheus.Registerer,
 	name string,
 ) (*memcachedClient, error) {
-	dnsProvider := dns.NewProvider(
-		logger,
-		extprom.WrapRegistererWithPrefix("thanos_memcached_", reg),
-		dns.GolangResolverType,
-	)
+	promRegisterer := extprom.WrapRegistererWithPrefix("thanos_memcached_", reg)
+
+	var addressProvider AddressProvider
+	if config.AutoDiscovery {
+		addressProvider = memcacheDiscovery.NewProvider(
+			logger,
+			promRegisterer,
+			config.Timeout,
+		)
+	} else {
+		addressProvider = dns.NewProvider(
+			logger,
+			extprom.WrapRegistererWithPrefix("thanos_memcached_", reg),
+			dns.MiekgdnsResolverType,
+		)
+	}
 
 	c := &memcachedClient{
-		logger:      log.With(logger, "name", name),
-		config:      config,
-		client:      client,
-		selector:    selector,
-		dnsProvider: dnsProvider,
-		asyncQueue:  make(chan func(), config.MaxAsyncBufferSize),
-		stop:        make(chan struct{}, 1),
+		logger:          log.With(logger, "name", name),
+		config:          config,
+		client:          client,
+		selector:        selector,
+		addressProvider: addressProvider,
+		asyncQueue:      make(chan func(), config.MaxAsyncBufferSize),
+		stop:            make(chan struct{}, 1),
 		getMultiGate: gate.New(
 			extprom.WrapRegistererWithPrefix("thanos_memcached_getmulti_", reg),
 			config.MaxGetMultiConcurrency,
@@ -561,11 +586,11 @@ func (c *memcachedClient) resolveAddrs() error {
 	defer cancel()
 
 	// If some of the dns resolution fails, log the error.
-	if err := c.dnsProvider.Resolve(ctx, c.config.Addresses); err != nil {
+	if err := c.addressProvider.Resolve(ctx, c.config.Addresses); err != nil {
 		level.Error(c.logger).Log("msg", "failed to resolve addresses for memcached", "addresses", strings.Join(c.config.Addresses, ","), "err", err)
 	}
 	// Fail in case no server address is resolved.
-	servers := c.dnsProvider.Addresses()
+	servers := c.addressProvider.Addresses()
 	if len(servers) == 0 {
 		return fmt.Errorf("no server address resolved for %s", c.name)
 	}

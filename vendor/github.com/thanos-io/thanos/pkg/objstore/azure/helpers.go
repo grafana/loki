@@ -16,6 +16,8 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	blob "github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 // DirDelim is the delimiter used to model a directory structure in an object store bucket.
@@ -34,24 +36,29 @@ func init() {
 	pipeline.SetForceLogEnabled(false)
 }
 
-func getAzureStorageCredentials(conf Config) (blob.Credential, error) {
+func getAzureStorageCredentials(logger log.Logger, conf Config) (blob.Credential, error) {
 	if conf.MSIResource != "" {
 		msiConfig := auth.NewMSIConfig()
 		msiConfig.Resource = conf.MSIResource
 
-		azureServicePrincipalToken, err := msiConfig.ServicePrincipalToken()
+		spt, err := msiConfig.ServicePrincipalToken()
 		if err != nil {
 			return nil, err
 		}
-
-		// Get a new token.
-		err = azureServicePrincipalToken.Refresh()
-		if err != nil {
+		if err := spt.Refresh(); err != nil {
 			return nil, err
 		}
-		token := azureServicePrincipalToken.Token()
 
-		return blob.NewTokenCredential(token.AccessToken, nil), nil
+		return blob.NewTokenCredential(spt.Token().AccessToken, func(tc blob.TokenCredential) time.Duration {
+			err := spt.Refresh()
+			if err != nil {
+				level.Error(logger).Log("msg", "could not refresh MSI token", "err", err)
+				// Retry later as the error can be related to API throttling
+				return 30 * time.Second
+			}
+			tc.SetToken(spt.Token().AccessToken)
+			return spt.Token().Expires().Sub(time.Now().Add(2 * time.Minute))
+		}), nil
 	}
 
 	credential, err := blob.NewSharedKeyCredential(conf.StorageAccountName, conf.StorageAccountKey)
@@ -61,9 +68,8 @@ func getAzureStorageCredentials(conf Config) (blob.Credential, error) {
 	return credential, nil
 }
 
-func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error) {
-
-	credentials, err := getAzureStorageCredentials(conf)
+func getContainerURL(ctx context.Context, logger log.Logger, conf Config) (blob.ContainerURL, error) {
+	credentials, err := getAzureStorageCredentials(logger, conf)
 
 	if err != nil {
 		return blob.ContainerURL{}, err
@@ -134,8 +140,8 @@ func DefaultTransport(config Config) *http.Transport {
 	}
 }
 
-func getContainer(ctx context.Context, conf Config) (blob.ContainerURL, error) {
-	c, err := getContainerURL(ctx, conf)
+func getContainer(ctx context.Context, logger log.Logger, conf Config) (blob.ContainerURL, error) {
+	c, err := getContainerURL(ctx, logger, conf)
 	if err != nil {
 		return blob.ContainerURL{}, err
 	}
@@ -144,8 +150,8 @@ func getContainer(ctx context.Context, conf Config) (blob.ContainerURL, error) {
 	return c, err
 }
 
-func createContainer(ctx context.Context, conf Config) (blob.ContainerURL, error) {
-	c, err := getContainerURL(ctx, conf)
+func createContainer(ctx context.Context, logger log.Logger, conf Config) (blob.ContainerURL, error) {
+	c, err := getContainerURL(ctx, logger, conf)
 	if err != nil {
 		return blob.ContainerURL{}, err
 	}
@@ -156,12 +162,8 @@ func createContainer(ctx context.Context, conf Config) (blob.ContainerURL, error
 	return c, err
 }
 
-func getBlobURL(ctx context.Context, conf Config, blobName string) (blob.BlockBlobURL, error) {
-	c, err := getContainerURL(ctx, conf)
-	if err != nil {
-		return blob.BlockBlobURL{}, err
-	}
-	return c.NewBlockBlobURL(blobName), nil
+func getBlobURL(blobName string, c blob.ContainerURL) blob.BlockBlobURL {
+	return c.NewBlockBlobURL(blobName)
 }
 
 func parseError(errorCode string) string {

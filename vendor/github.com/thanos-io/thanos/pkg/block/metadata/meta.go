@@ -114,6 +114,7 @@ func (m *Matchers) UnmarshalYAML(value *yaml.Node) (err error) {
 type DeletionRequest struct {
 	Matchers  Matchers             `json:"matchers" yaml:"matchers"`
 	Intervals tombstones.Intervals `json:"intervals,omitempty" yaml:"intervals,omitempty"`
+	RequestID string               `json:"request_id,omitempty" yaml:"request_id,omitempty"`
 }
 
 type File struct {

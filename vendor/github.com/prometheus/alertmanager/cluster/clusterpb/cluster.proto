@@ -16,3 +16,14 @@ message Part {
 message FullState {
   repeated Part parts = 1 [(gogoproto.nullable) = false];
 }
+
+message MemberlistMessage {
+  string version = 1;
+  enum Kind {
+    STREAM = 0;
+    PACKET = 1;
+  }
+  Kind kind = 2;
+  string from_addr = 3;
+  bytes msg = 4;
+}

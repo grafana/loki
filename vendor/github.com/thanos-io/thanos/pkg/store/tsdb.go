@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"math"
+	"sort"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
@@ -194,7 +195,7 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 	return nil
 }
 
-// LabelNames returns all known label names.
+// LabelNames returns all known label names constrained with the given matchers.
 func (s *TSDBStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (
 	*storepb.LabelNamesResponse, error,
 ) {
@@ -204,10 +205,23 @@ func (s *TSDBStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest
 	}
 	defer runutil.CloseWithLogOnErr(s.logger, q, "close tsdb querier label names")
 
-	res, _, err := q.LabelNames()
+	promMatchers, err := storepb.MatchersToPromMatchers(r.Matchers...)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	res, _, err := q.LabelNames(promMatchers...)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if len(res) > 0 {
+		for _, lbl := range s.extLset {
+			res = append(res, lbl.Name)
+		}
+		sort.Strings(res)
+	}
+
 	return &storepb.LabelNamesResponse{Names: res}, nil
 }
 

@@ -138,7 +138,7 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 		// * The endpoint is a host:port (or dns:///host:port).
 		// * Credentials are obtained via GCE metadata server, using the default
 		//   service account.
-		if o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && isTokenSourceDirectPathCompatible(creds.TokenSource) && metadata.OnGCE() {
+		if o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && isTokenSourceDirectPathCompatible(creds.TokenSource, o) && metadata.OnGCE() {
 			if !strings.HasPrefix(endpoint, "dns:///") {
 				endpoint = "dns:///" + endpoint
 			}
@@ -228,7 +228,7 @@ func (ts grpcTokenSource) GetRequestMetadata(ctx context.Context, uri ...string)
 	return metadata, nil
 }
 
-func isTokenSourceDirectPathCompatible(ts oauth2.TokenSource) bool {
+func isTokenSourceDirectPathCompatible(ts oauth2.TokenSource, o *internal.DialSettings) bool {
 	if ts == nil {
 		return false
 	}
@@ -238,6 +238,9 @@ func isTokenSourceDirectPathCompatible(ts oauth2.TokenSource) bool {
 	}
 	if tok == nil {
 		return false
+	}
+	if o.AllowNonDefaultServiceAccount {
+		return true
 	}
 	if source, _ := tok.Extra("oauth2.google.tokenSource").(string); source != "compute-metadata" {
 		return false

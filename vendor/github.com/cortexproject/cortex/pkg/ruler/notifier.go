@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	gklog "github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	gklog "github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"

@@ -25,7 +25,13 @@ type UserAgent struct {
 	prepend []string
 }
 
-type RetryFunc func(context.Context, *ErrUnexpectedResponseCode, error, uint) error
+type RetryBackoffFunc func(context.Context, *ErrUnexpectedResponseCode, error, uint) error
+
+// RetryFunc is a catch-all function for retrying failed API requests.
+// If it returns nil, the request will be retried.  If it returns an error,
+// the request method will exit with that error.  failCount is the number of
+// times the request has failed (starting at 1).
+type RetryFunc func(context context.Context, method, url string, options *RequestOpts, err error, failCount uint) error
 
 // Prepend prepends a user-defined string to the default User-Agent string. Users
 // may pass in one or more strings to prepend.
@@ -85,11 +91,15 @@ type ProviderClient struct {
 	// Context is the context passed to the HTTP request.
 	Context context.Context
 
-	// Retry backoff func
-	RetryBackoffFunc RetryFunc
+	// Retry backoff func is called when rate limited.
+	RetryBackoffFunc RetryBackoffFunc
 
 	// MaxBackoffRetries set the maximum number of backoffs. When not set, defaults to DefaultMaxBackoffRetries
 	MaxBackoffRetries uint
+
+	// A general failed request handler method - this is always called in the end if a request failed. Leave as nil
+	// to abort when an error is encountered.
+	RetryFunc RetryFunc
 
 	// mut is a mutex for the client. It protects read and write access to client attributes such as getting
 	// and setting the TokenID.
@@ -416,6 +426,16 @@ func (client *ProviderClient) doRequest(method, url string, options *RequestOpts
 	// Issue the request.
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
+		if client.RetryFunc != nil {
+			var e error
+			state.retries = state.retries + 1
+			e = client.RetryFunc(client.Context, method, url, options, err, state.retries)
+			if e != nil {
+				return nil, e
+			}
+
+			return client.doRequest(method, url, options, state)
+		}
 		return nil, err
 	}
 
@@ -550,6 +570,17 @@ func (client *ProviderClient) doRequest(method, url string, options *RequestOpts
 			err = respErr
 		}
 
+		if err != nil && client.RetryFunc != nil {
+			var e error
+			state.retries = state.retries + 1
+			e = client.RetryFunc(client.Context, method, url, options, err, state.retries)
+			if e != nil {
+				return resp, e
+			}
+
+			return client.doRequest(method, url, options, state)
+		}
+
 		return resp, err
 	}
 
@@ -563,6 +594,16 @@ func (client *ProviderClient) doRequest(method, url string, options *RequestOpts
 			return resp, err
 		}
 		if err := json.NewDecoder(resp.Body).Decode(options.JSONResponse); err != nil {
+			if client.RetryFunc != nil {
+				var e error
+				state.retries = state.retries + 1
+				e = client.RetryFunc(client.Context, method, url, options, err, state.retries)
+				if e != nil {
+					return resp, e
+				}
+
+				return client.doRequest(method, url, options, state)
+			}
 			return nil, err
 		}
 	}

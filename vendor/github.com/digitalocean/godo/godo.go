@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.62.0"
+	libraryVersion = "1.65.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -77,6 +77,7 @@ type Client struct {
 	Databases         DatabasesService
 	VPCs              VPCsService
 	OneClick          OneClickService
+	Monitoring        MonitoringService
 
 	// Optional function called after every successful request made to the DO APIs
 	onRequestCompleted RequestCompletionCallback
@@ -110,6 +111,8 @@ type Response struct {
 	Meta *Meta
 
 	// Monitoring URI
+	// Deprecated: This field is not populated. To poll for the status of a
+	// newly created Droplet, use Links.Actions[0].HREF
 	Monitor string
 
 	Rate
@@ -219,6 +222,7 @@ func NewClient(httpClient *http.Client) *Client {
 	c.Databases = &DatabasesServiceOp{client: c}
 	c.VPCs = &VPCsServiceOp{client: c}
 	c.OneClick = &OneClickServiceOp{client: c}
+	c.Monitoring = &MonitoringServiceOp{client: c}
 
 	c.headers = make(map[string]string)
 

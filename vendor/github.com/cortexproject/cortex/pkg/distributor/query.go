@@ -59,7 +59,7 @@ func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, m
 		}
 
 		// We ask for all ingesters without passing matchers because exemplar queries take in an array of array of label matchers.
-		replicationSet, err := d.GetIngestersForQuery(ctx, nil)
+		replicationSet, err := d.GetIngestersForQuery(ctx)
 		if err != nil {
 			return err
 		}
