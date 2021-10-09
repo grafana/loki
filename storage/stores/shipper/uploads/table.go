@@ -3,7 +3,6 @@ package uploads
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	segment "github.com/blugelabs/bluge_segment_api"
@@ -192,7 +191,7 @@ func (lt *Table) RemoveDB(name string) error {
 
 	delete(lt.dbs, name)
 
-	return os.Remove(filepath.Join(lt.path, name))
+	return os.RemoveAll(filepath.Join(lt.path, name))
 }
 
 // Upload uploads all the dbs which are never uploaded or have been modified since the last batch was uploaded.
@@ -284,9 +283,7 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bluge_db.BlugeDB
 }
 
 func (lt *Table) compress(src string, buf io.Writer) error {
-	// tar > gzip > buf
-	zr := gzip.NewWriter(buf)
-	tw := tar.NewWriter(zr)
+	tw := tar.NewWriter(buf)
 
 	// is file a folder?
 	fi, err := os.Stat(src)
@@ -350,16 +347,12 @@ func (lt *Table) compress(src string, buf io.Writer) error {
 	if err := tw.Close(); err != nil {
 		return err
 	}
-	// produce gzip
-	if err := zr.Close(); err != nil {
-		return err
-	}
-	//
 	return nil
 }
 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
 // This is to avoid keeping all the files forever in the ingesters.
+// 清理已经上传的 并且最后修改时间超过dbRetainPeriod的db
 func (lt *Table) Cleanup() error {
 	level.Info(util.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted dbs from table %s", lt.name))
 
@@ -417,6 +410,7 @@ func loadBlugeDBsFromDir(dir string) (map[string]*bluge_db.BlugeDB, error) {
 	}
 
 	for _, fileInfo := range filesInfo {
+		// todo: DS_Store only for mac
 		if !fileInfo.IsDir() || fileInfo.Name() == ".DS_Store" {
 			continue
 		}

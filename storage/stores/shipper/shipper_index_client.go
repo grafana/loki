@@ -44,7 +44,8 @@ const (
 	StorageKeyPrefix = "index/"
 
 	// UploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
-	UploadInterval = 15 * time.Minute
+	// todo: temp for test UploadInterval = 15 * time.Minute
+	UploadInterval = 15 * time.Second
 )
 
 type boltDBIndexClient interface {
