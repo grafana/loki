@@ -67,6 +67,11 @@ Options for the logging driver can also be configured with `log-opts` in the
 After changing `daemon.json`, restart the Docker daemon for the changes to take
 effect. All **newly created** containers from that host will then send logs to Loki via the driver.
 
+> **Warning**: It's not a good idea to run Loki via docker and configure the same docker's
+> logging driver to send logs to said Loki instance. That Loki instance might not always
+> be running, and Docker doesn't behave very well when it cannot connect to the driver.
+> Basically yours docker instance might get into an unstable state.
+
 ## Configure the logging driver for a Swarm service or Compose
 
 You can also configure the logging driver for a [swarm service](https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/)
