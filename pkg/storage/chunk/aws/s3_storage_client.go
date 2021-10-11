@@ -30,6 +30,7 @@ import (
 
 	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -75,6 +76,7 @@ type S3Config struct {
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
 	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
+	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -115,6 +117,10 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
 	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "s3.min-backoff", 100*time.Millisecond, "Minimum backoff time")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "s3.max-backoff", 50*time.Second, "Maximum backoff time")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, "s3.max-retries", 20, "Maximum number of times to retry an operation")
+
 }
 
 // Validate config and returns error on failure
@@ -126,6 +132,7 @@ func (cfg *S3Config) Validate() error {
 }
 
 type S3ObjectClient struct {
+	cfg         S3Config
 	bucketNames []string
 	S3          s3iface.S3API
 	sseConfig   *SSEParsedConfig
@@ -155,6 +162,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	}
 
 	client := S3ObjectClient{
+		cfg:         cfg,
 		S3:          s3Client,
 		bucketNames: bucketNames,
 		sseConfig:   sseCfg,
@@ -333,14 +341,19 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	// Map the key into a bucket
 	bucket := a.bucketFromKey(objectKey)
 
-	err := instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		var err error
-		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(objectKey),
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	var err error = nil
+	for retries.Ongoing() {
+		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			var err error
+			resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(objectKey),
+			})
+			return err
 		})
-		return err
-	})
+		retries.Wait()
+	}
 	if err != nil {
 		return nil, err
 	}
