@@ -352,6 +352,9 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			})
 			return err
 		})
+		if err == nil {
+			break
+		}
 		retries.Wait()
 	}
 	if err != nil {
