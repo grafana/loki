@@ -342,8 +342,11 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	bucket := a.bucketFromKey(objectKey)
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
-	err := ctx.Err()
+	var err error
 	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var err error
 			resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
