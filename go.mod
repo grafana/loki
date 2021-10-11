@@ -44,9 +44,8 @@ require (
 	github.com/google/go-cmp v0.5.6
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/grafana/dskit v0.0.0-20210914144857-dbbb3701e01d
+	github.com/grafana/dskit v0.0.0-20211007183133-4c566019f311
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20191002090509-6af20e3a5340 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.9.1
 	github.com/hashicorp/golang-lru v0.5.4
@@ -86,7 +85,7 @@ require (
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/weaveworks/common v0.0.0-20210901124008-1fa3f9fa874c
+	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/atomic v1.9.0
 	go.uber.org/goleak v1.1.10

@@ -15,11 +15,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
-	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/runtimeconfig"
@@ -275,7 +275,7 @@ func (t *Loki) Run() error {
 	// before starting servers, register /ready handler. It should reflect entire Loki.
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
-	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthcheck.New(sm))
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
 	// This adds a way to see the config and the changes compared to the defaults
 	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))

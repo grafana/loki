@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/hashicorp/go-sockaddr"
 	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"
@@ -21,8 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
+	dstls "github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/kvtls"
 )
 
 type messageType uint8
@@ -58,7 +58,7 @@ type TCPTransportConfig struct {
 	MetricsNamespace  string                `yaml:"-"`
 
 	TLSEnabled bool               `yaml:"tls_enabled"`
-	TLS        kvtls.ClientConfig `yaml:",inline"`
+	TLS        dstls.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.
