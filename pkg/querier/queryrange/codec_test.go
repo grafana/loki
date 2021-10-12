@@ -123,6 +123,21 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
+			"matrix-empty-streams",
+			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixStringEmptyResult))},
+			nil,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     make([]queryrange.SampleStream, 0), // shouldn't be nil.
+					},
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
 			"streams v1", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
 			&LokiResponse{
@@ -902,6 +917,14 @@ var (
 			]
 		}
 	  ]
+	},
+	"status": "success"
+  }`
+	matrixStringEmptyResult = `{
+	"data": {
+	  ` + statsResultString + `
+	  "resultType": "matrix",
+	  "result": []
 	},
 	"status": "success"
   }`
