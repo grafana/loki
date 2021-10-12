@@ -138,6 +138,21 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
+			"vector-empty-streams",
+			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(vectorStringEmptyResult))},
+			nil,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeVector,
+						Result:     make([]queryrange.SampleStream, 0), // shouldn't be nil.
+					},
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
 			"streams v1", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
 			&LokiResponse{
@@ -928,6 +943,15 @@ var (
 	},
 	"status": "success"
   }`
+	vectorStringEmptyResult = `{
+	"data": {
+	  ` + statsResultString + `
+	  "resultType": "vector",
+	  "result": []
+	},
+	"status": "success"
+  }`
+
 	sampleStreams = []queryrange.SampleStream{
 		{
 			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
