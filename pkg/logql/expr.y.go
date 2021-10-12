@@ -862,12 +862,12 @@ exprdefault:
 	case 10:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.LogExpr = newMatcherExpr(exprDollar[1].Selector)
+			exprVAL.LogExpr = NewMatcherExpr(exprDollar[1].Selector)
 		}
 	case 11:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LogExpr = newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr)
+			exprVAL.LogExpr = NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr)
 		}
 	case 12:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -877,122 +877,122 @@ exprdefault:
 	case 13:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, nil, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, nil, nil)
 		}
 	case 14:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, nil, exprDollar[3].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, nil, exprDollar[3].OffsetExpr)
 		}
 	case 15:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, nil, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, nil, nil)
 		}
 	case 16:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, nil, exprDollar[5].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, nil, exprDollar[5].OffsetExpr)
 		}
 	case 17:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, exprDollar[3].UnwrapExpr, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, exprDollar[3].UnwrapExpr, nil)
 		}
 	case 18:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, exprDollar[4].UnwrapExpr, exprDollar[3].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].duration, exprDollar[4].UnwrapExpr, exprDollar[3].OffsetExpr)
 		}
 	case 19:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, exprDollar[5].UnwrapExpr, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, exprDollar[5].UnwrapExpr, nil)
 		}
 	case 20:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, exprDollar[6].UnwrapExpr, exprDollar[5].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[2].Selector), exprDollar[4].duration, exprDollar[6].UnwrapExpr, exprDollar[5].OffsetExpr)
 		}
 	case 21:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].duration, exprDollar[2].UnwrapExpr, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[1].Selector), exprDollar[3].duration, exprDollar[2].UnwrapExpr, nil)
 		}
 	case 22:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].duration, exprDollar[2].UnwrapExpr, exprDollar[4].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[1].Selector), exprDollar[3].duration, exprDollar[2].UnwrapExpr, exprDollar[4].OffsetExpr)
 		}
 	case 23:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[5].duration, exprDollar[3].UnwrapExpr, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[2].Selector), exprDollar[5].duration, exprDollar[3].UnwrapExpr, nil)
 		}
 	case 24:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newMatcherExpr(exprDollar[2].Selector), exprDollar[5].duration, exprDollar[3].UnwrapExpr, exprDollar[6].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewMatcherExpr(exprDollar[2].Selector), exprDollar[5].duration, exprDollar[3].UnwrapExpr, exprDollar[6].OffsetExpr)
 		}
 	case 25:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[3].duration, nil, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[3].duration, nil, nil)
 		}
 	case 26:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[3].duration, nil, exprDollar[4].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[3].duration, nil, exprDollar[4].OffsetExpr)
 		}
 	case 27:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[5].duration, nil, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[5].duration, nil, nil)
 		}
 	case 28:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[5].duration, nil, exprDollar[6].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[5].duration, nil, exprDollar[6].OffsetExpr)
 		}
 	case 29:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[4].duration, exprDollar[3].UnwrapExpr, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[4].duration, exprDollar[3].UnwrapExpr, nil)
 		}
 	case 30:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[4].duration, exprDollar[3].UnwrapExpr, exprDollar[5].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[2].PipelineExpr), exprDollar[4].duration, exprDollar[3].UnwrapExpr, exprDollar[5].OffsetExpr)
 		}
 	case 31:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[6].duration, exprDollar[4].UnwrapExpr, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[6].duration, exprDollar[4].UnwrapExpr, nil)
 		}
 	case 32:
 		exprDollar = exprS[exprpt-7 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[6].duration, exprDollar[4].UnwrapExpr, exprDollar[7].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[2].Selector), exprDollar[3].PipelineExpr), exprDollar[6].duration, exprDollar[4].UnwrapExpr, exprDollar[7].OffsetExpr)
 		}
 	case 33:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, nil, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, nil, nil)
 		}
 	case 34:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[4].PipelineExpr), exprDollar[2].duration, nil, exprDollar[3].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[4].PipelineExpr), exprDollar[2].duration, nil, exprDollar[3].OffsetExpr)
 		}
 	case 35:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, exprDollar[4].UnwrapExpr, nil)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[3].PipelineExpr), exprDollar[2].duration, exprDollar[4].UnwrapExpr, nil)
 		}
 	case 36:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(exprDollar[1].Selector), exprDollar[4].PipelineExpr), exprDollar[2].duration, exprDollar[5].UnwrapExpr, exprDollar[3].OffsetExpr)
+			exprVAL.LogRangeExpr = NewLogRange(NewPipelineExpr(NewMatcherExpr(exprDollar[1].Selector), exprDollar[4].PipelineExpr), exprDollar[2].duration, exprDollar[5].UnwrapExpr, exprDollar[3].OffsetExpr)
 		}
 	case 37:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1002,12 +1002,12 @@ exprdefault:
 	case 39:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.UnwrapExpr = newUnwrapExpr(exprDollar[3].str, "")
+			exprVAL.UnwrapExpr = NewUnwrapExpr(exprDollar[3].str, "")
 		}
 	case 40:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.UnwrapExpr = newUnwrapExpr(exprDollar[5].str, exprDollar[3].ConvOp)
+			exprVAL.UnwrapExpr = NewUnwrapExpr(exprDollar[5].str, exprDollar[3].ConvOp)
 		}
 	case 41:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1032,57 +1032,57 @@ exprdefault:
 	case 45:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, nil, nil)
+			exprVAL.RangeAggregationExpr = NewRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, nil, nil)
 		}
 	case 46:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, nil, &exprDollar[3].str)
+			exprVAL.RangeAggregationExpr = NewRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, nil, &exprDollar[3].str)
 		}
 	case 47:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[5].Grouping, nil)
+			exprVAL.RangeAggregationExpr = NewRangeAggregationExpr(exprDollar[3].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[5].Grouping, nil)
 		}
 	case 48:
 		exprDollar = exprS[exprpt-7 : exprpt+1]
 		{
-			exprVAL.RangeAggregationExpr = newRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[7].Grouping, &exprDollar[3].str)
+			exprVAL.RangeAggregationExpr = NewRangeAggregationExpr(exprDollar[5].LogRangeExpr, exprDollar[1].RangeOp, exprDollar[7].Grouping, &exprDollar[3].str)
 		}
 	case 49:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, nil, nil)
+			exprVAL.VectorAggregationExpr = NewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, nil, nil)
 		}
 	case 50:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[4].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, nil)
+			exprVAL.VectorAggregationExpr = NewVectorAggregationExpr(exprDollar[4].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, nil)
 		}
 	case 51:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, exprDollar[5].Grouping, nil)
+			exprVAL.VectorAggregationExpr = NewVectorAggregationExpr(exprDollar[3].MetricExpr, exprDollar[1].VectorOp, exprDollar[5].Grouping, nil)
 		}
 	case 52:
 		exprDollar = exprS[exprpt-6 : exprpt+1]
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, nil, &exprDollar[3].str)
+			exprVAL.VectorAggregationExpr = NewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, nil, &exprDollar[3].str)
 		}
 	case 53:
 		exprDollar = exprS[exprpt-7 : exprpt+1]
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, exprDollar[7].Grouping, &exprDollar[3].str)
+			exprVAL.VectorAggregationExpr = NewVectorAggregationExpr(exprDollar[5].MetricExpr, exprDollar[1].VectorOp, exprDollar[7].Grouping, &exprDollar[3].str)
 		}
 	case 54:
 		exprDollar = exprS[exprpt-7 : exprpt+1]
 		{
-			exprVAL.VectorAggregationExpr = mustNewVectorAggregationExpr(exprDollar[6].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, &exprDollar[4].str)
+			exprVAL.VectorAggregationExpr = NewVectorAggregationExpr(exprDollar[6].MetricExpr, exprDollar[1].VectorOp, exprDollar[2].Grouping, &exprDollar[4].str)
 		}
 	case 55:
 		exprDollar = exprS[exprpt-12 : exprpt+1]
 		{
-			exprVAL.LabelReplaceExpr = mustNewLabelReplaceExpr(exprDollar[3].MetricExpr, exprDollar[5].str, exprDollar[7].str, exprDollar[9].str, exprDollar[11].str)
+			exprVAL.LabelReplaceExpr = NewLabelReplaceExpr(exprDollar[3].MetricExpr, exprDollar[5].str, exprDollar[7].str, exprDollar[9].str, exprDollar[11].str)
 		}
 	case 56:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
@@ -1196,12 +1196,12 @@ exprdefault:
 	case 78:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LineFilter = newLineFilterExpr(exprDollar[1].Filter, "", exprDollar[2].str)
+			exprVAL.LineFilter = NewLineFilterExpr(exprDollar[1].Filter, "", exprDollar[2].str)
 		}
 	case 79:
 		exprDollar = exprS[exprpt-5 : exprpt+1]
 		{
-			exprVAL.LineFilter = newLineFilterExpr(exprDollar[1].Filter, exprDollar[2].FilterOp, exprDollar[4].str)
+			exprVAL.LineFilter = NewLineFilterExpr(exprDollar[1].Filter, exprDollar[2].FilterOp, exprDollar[4].str)
 		}
 	case 80:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
@@ -1211,7 +1211,7 @@ exprdefault:
 	case 81:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LineFilters = newNestedLineFilterExpr(exprDollar[1].LineFilters, exprDollar[2].LineFilter)
+			exprVAL.LineFilters = NewNestedLineFilterExpr(exprDollar[1].LineFilters, exprDollar[2].LineFilter)
 		}
 	case 82:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
@@ -1241,12 +1241,12 @@ exprdefault:
 	case 87:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.JSONExpressionParser = newJSONExpressionParser(exprDollar[2].JSONExpressionList)
+			exprVAL.JSONExpressionParser = NewJSONExpressionParser(exprDollar[2].JSONExpressionList)
 		}
 	case 88:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LineFormatExpr = newLineFmtExpr(exprDollar[2].str)
+			exprVAL.LineFormatExpr = NewLineFmtExpr(exprDollar[2].str)
 		}
 	case 89:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
@@ -1271,7 +1271,7 @@ exprdefault:
 	case 94:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LabelFormatExpr = newLabelFmtExpr(exprDollar[2].LabelsFormat)
+			exprVAL.LabelFormatExpr = NewLabelFmtExpr(exprDollar[2].LabelsFormat)
 		}
 	case 95:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
@@ -1461,77 +1461,77 @@ exprdefault:
 	case 132:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("or", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("or", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 133:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("and", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("and", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 134:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("unless", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("unless", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 135:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("+", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("+", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 136:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("-", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("-", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 137:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("*", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("*", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 138:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("/", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("/", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 139:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("%", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("%", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 140:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("^", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("^", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 141:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("==", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("==", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 142:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("!=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("!=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 143:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr(">", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr(">", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 144:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr(">=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr(">=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 145:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("<", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("<", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 146:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr("<=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
+			exprVAL.BinOpExpr = NewBinOpExpr("<=", exprDollar[3].BinOpModifier, exprDollar[1].Expr, exprDollar[4].Expr)
 		}
 	case 147:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
@@ -1575,17 +1575,17 @@ exprdefault:
 	case 154:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[1].str, false)
+			exprVAL.LiteralExpr = NewLiteralExpr(exprDollar[1].str, false)
 		}
 	case 155:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[2].str, false)
+			exprVAL.LiteralExpr = NewLiteralExpr(exprDollar[2].str, false)
 		}
 	case 156:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LiteralExpr = mustNewLiteralExpr(exprDollar[2].str, true)
+			exprVAL.LiteralExpr = NewLiteralExpr(exprDollar[2].str, true)
 		}
 	case 157:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
@@ -1705,7 +1705,7 @@ exprdefault:
 	case 180:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.OffsetExpr = newOffsetExpr(exprDollar[2].duration)
+			exprVAL.OffsetExpr = NewOffsetExpr(exprDollar[2].duration)
 		}
 	case 181:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
