@@ -27,7 +27,7 @@ RUN apk add --no-cache docker-cli
 # however we need a commit which hasn't been released yet: https://github.com/drone/drone-cli/commit/1fad337d74ca0ecf420993d9d2d7229a1c99f054
 # Read the comment below regarding GO111MODULE=on and why it is necessary
 FROM golang:1.16.6 as drone
-RUN GO111MODULE=on go get github.com/drone/drone-cli/drone@1fad337d74ca0ecf420993d9d2d7229a1c99f054
+RUN GO111MODULE=on go get github.com/drone/drone-cli/drone@v1.4.0
 
 # Install faillint used to lint go imports in CI.
 # This collisions with the version of go tools used in the base image, thus we install it in its own image and copy it over.
