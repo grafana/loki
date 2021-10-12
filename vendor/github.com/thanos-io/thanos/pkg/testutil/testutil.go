@@ -100,7 +100,7 @@ func typeAndKind(v interface{}) (reflect.Type, reflect.Kind) {
 
 // diff returns a diff of both values as long as both are of the same type and
 // are a struct, map, slice, array or string. Otherwise it returns an empty string.
-func diff(expected interface{}, actual interface{}) string {
+func diff(expected, actual interface{}) string {
 	if expected == nil || actual == nil {
 		return ""
 	}
@@ -143,7 +143,7 @@ func diff(expected interface{}, actual interface{}) string {
 }
 
 // GatherAndCompare compares the metrics of a Gatherers pair.
-func GatherAndCompare(t *testing.T, g1 prometheus.Gatherer, g2 prometheus.Gatherer, filter string) {
+func GatherAndCompare(t *testing.T, g1, g2 prometheus.Gatherer, filter string) {
 	g1m, err := g1.Gather()
 	Ok(t, err)
 	g2m, err := g2.Gather()

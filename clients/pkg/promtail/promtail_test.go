@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -30,12 +30,14 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/config"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -647,8 +649,20 @@ func Test_DryRun(t *testing.T) {
 	_, err = New(config.Config{}, true)
 	require.Error(t, err)
 
+	// Set the minimum config needed to start a server. We need to do this since we
+	// aren't doing any CLI parsing ala RegisterFlags and thus don't get the defaults.
+	// Required because a hardcoded value became a configuration setting in this commit
+	// https://github.com/weaveworks/common/commit/c44eeb028a671c5931b047976f9a0171910571ce
+	serverCfg := server.Config{
+		Config: serverww.Config{
+			HTTPListenNetwork: serverww.DefaultNetwork,
+			GRPCListenNetwork: serverww.DefaultNetwork,
+		},
+	}
+
 	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
 	_, err = New(config.Config{
+		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
 			PositionsFile: f.Name(),
@@ -660,6 +674,7 @@ func Test_DryRun(t *testing.T) {
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
 	p, err := New(config.Config{
+		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
 			PositionsFile: f.Name(),

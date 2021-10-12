@@ -2,16 +2,19 @@ package syslog
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/influxdata/go-syslog/v3"
 	"github.com/influxdata/go-syslog/v3/rfc5424"
 	"github.com/mwitkow/go-conntrack"
@@ -33,7 +36,7 @@ var (
 )
 
 // SyslogTarget listens to syslog messages.
-// nolint:golint
+// nolint:revive
 type SyslogTarget struct {
 	metrics       *Metrics
 	logger        log.Logger
@@ -89,10 +92,20 @@ func (t *SyslogTarget) run() error {
 	l, err := net.Listen("tcp", t.config.ListenAddress)
 	l = conntrack.NewListener(l, conntrack.TrackWithName("syslog_target/"+t.config.ListenAddress))
 	if err != nil {
-		return fmt.Errorf("error setting up syslog target %w", err)
+		return fmt.Errorf("error setting up syslog target: %w", err)
 	}
+
+	tlsEnabled := t.config.TLSConfig.CertFile != "" || t.config.TLSConfig.KeyFile != "" || t.config.TLSConfig.CAFile != ""
+	if tlsEnabled {
+		tlsConfig, err := newTLSConfig(t.config.TLSConfig.CertFile, t.config.TLSConfig.KeyFile, t.config.TLSConfig.CAFile)
+		if err != nil {
+			return fmt.Errorf("error setting up syslog target: %w", err)
+		}
+		l = tls.NewListener(l, tlsConfig)
+	}
+
 	t.listener = l
-	level.Info(t.logger).Log("msg", "syslog listening on address", "address", t.ListenAddress().String())
+	level.Info(t.logger).Log("msg", "syslog listening on address", "address", t.ListenAddress().String(), "tls", tlsEnabled)
 
 	t.openConnections.Add(1)
 	go t.acceptConnections()
@@ -100,12 +113,44 @@ func (t *SyslogTarget) run() error {
 	return nil
 }
 
+func newTLSConfig(certFile string, keyFile string, caFile string) (*tls.Config, error) {
+	if certFile == "" || keyFile == "" {
+		return nil, fmt.Errorf("certificate and key files are required")
+	}
+
+	certs, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("unable to load server certificate or key: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{certs},
+	}
+
+	if caFile != "" {
+		caCert, err := ioutil.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load client CA certificate: %w", err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		if ok := caCertPool.AppendCertsFromPEM(caCert); !ok {
+			return nil, fmt.Errorf("unable to parse client CA certificate")
+		}
+
+		tlsConfig.ClientCAs = caCertPool
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return tlsConfig, nil
+}
+
 func (t *SyslogTarget) acceptConnections() {
 	defer t.openConnections.Done()
 
 	l := log.With(t.logger, "address", t.listener.Addr().String())
 
-	backoff := util.NewBackoff(t.ctx, util.BackoffConfig{
+	backoff := backoff.New(t.ctx, backoff.Config{
 		MinBackoff: 5 * time.Millisecond,
 		MaxBackoff: 1 * time.Second,
 	})

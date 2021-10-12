@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -91,7 +92,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	loader := func(_ io.Reader) (interface{}, error) {
 		return loadRuntimeConfig(strings.NewReader(yaml))
 	}
-	cfg := runtimeconfig.ManagerConfig{
+	cfg := runtimeconfig.Config{
 		ReloadPeriod: 1 * time.Second,
 		Loader:       loader,
 		LoadPath:     path,
@@ -102,7 +103,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	require.NoError(t, flagset.Parse(nil))
 	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
 
-	runtimeConfig, err := runtimeconfig.NewRuntimeConfigManager(cfg, prometheus.DefaultRegisterer)
+	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, runtimeConfig.StartAsync(context.Background()))

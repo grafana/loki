@@ -2,9 +2,9 @@
 title: Observability
 weight: 20
 ---
-# Observing Loki
+# Observing Grafana Loki
 
-Both Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
+Both Grafana Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
 metrics. You will need a local Prometheus and add Loki and Promtail as targets.
 See [configuring
 Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration)
@@ -31,7 +31,7 @@ The Loki Ingesters expose the following metrics:
 | Metric Name                                  | Metric Type | Description                                                                                               |
 | -------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
 | `cortex_ingester_flush_queue_length`         | Gauge       | The total number of series pending in the flush queue.                                                    |
-| `cortex_chunk_store_index_entries_per_chunk` | Histogram   | Number of index entries written to storage per chunk.                                                     |
+| `loki_chunk_store_index_entries_per_chunk`   | Histogram   | Number of index entries written to storage per chunk.                                                     |
 | `loki_ingester_memory_chunks`                | Gauge       | The total number of chunks in memory.                                                                     |
 | `loki_ingester_memory_streams`               | Gauge       | The total number of streams in memory.                                                                    |
 | `loki_ingester_chunk_age_seconds`            | Histogram   | Distribution of chunk ages when flushed.                                                                  |

@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
-// nolint: golint
+// nolint:revive
 type GcplogTargetManager struct {
 	logger  log.Logger
 	targets map[string]*GcplogTarget

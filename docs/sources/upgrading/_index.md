@@ -3,9 +3,9 @@ title: Upgrading
 weight: 250
 ---
 
-# Upgrading Loki
+# Upgrading Grafana Loki
 
-Every attempt is made to keep Loki backwards compatible, such that upgrades should be low risk and low friction.
+Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 
 Unfortunately Loki is software and software is hard and sometimes we are forced to make decisions between ease of use and ease of maintenance.
 
@@ -17,7 +17,52 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ## Master / Unreleased
 
+### Loki
+
+#### Memberlist config now automatically applies to all non-configured rings
+PR [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
+
+This change affects the behavior of the ingester, distributor, and ruler rings. Previously, if you wanted to use memberlist for all of these rings, you
+had to provide a `memberlist` configuration as well as specify `store: memberlist` for the `kvstore` of each of the rings you wanted to use memberlist.
+For example, your configuration might look something like this:
+
+```yaml
+memberlist:
+  join_members:
+    - loki.namespace.svc.cluster.local
+distributor:
+  ring:
+    kvstore:
+      store: memberlist
+ingester:
+    lifecycler:
+      ring:
+        kvstore:
+          store: memberlist
+ruler:
+  ring:
+    kvstore:
+      store: memberlist
+```
+
+Now, if your provide a `memberlist` configuration with at least one `join_members`, loki will default all rings to use a `kvstore` of type `memberlist`.
+You can change this behavior by overriding specific configurations. For example, if you wanted to use `consul` for you `ruler` rings, but `memberlist`
+for the `ingester` and `distributor`, you could do so with the following config:
+
+```yaml
+memberlist:
+  join_members:
+    - loki.namespace.svc.cluster.local
+ruler:
+  ring:
+    kvstore:
+      store: consul
+      consul:
+        host: consul.namespace.svc.cluster.local:8500
+```
+
 -_add changes here which are unreleased_
+
 
 ## 2.3.0
 

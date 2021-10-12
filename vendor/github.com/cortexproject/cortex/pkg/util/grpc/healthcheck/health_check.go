@@ -4,10 +4,9 @@ import (
 	"context"
 
 	"github.com/gogo/status"
+	"github.com/grafana/dskit/services"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // HealthCheck fulfills the grpc_health_v1.HealthServer interface by ensuring

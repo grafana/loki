@@ -2,41 +2,22 @@ package shipper
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
-	"github.com/go-kit/kit/log/level"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/util"
-)
-
-const (
-	delimiter = "/"
 )
 
 type boltDBShipperTableClient struct {
-	objectClient chunk.ObjectClient
+	indexStorageClient storage.Client
 }
 
 func NewBoltDBShipperTableClient(objectClient chunk.ObjectClient, storageKeyPrefix string) chunk.TableClient {
-	return &boltDBShipperTableClient{util.NewPrefixedObjectClient(objectClient, storageKeyPrefix)}
+	return &boltDBShipperTableClient{storage.NewIndexStorageClient(objectClient, storageKeyPrefix)}
 }
 
 func (b *boltDBShipperTableClient) ListTables(ctx context.Context) ([]string, error) {
-	_, dirs, err := b.objectClient.List(ctx, "", delimiter)
-	if err != nil {
-		return nil, err
-	}
-
-	tables := make([]string, len(dirs))
-	for i, dir := range dirs {
-		tables[i] = strings.TrimSuffix(string(dir), delimiter)
-	}
-
-	return tables, nil
+	return b.indexStorageClient.ListTables(ctx)
 }
 
 func (b *boltDBShipperTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
@@ -44,21 +25,17 @@ func (b *boltDBShipperTableClient) CreateTable(ctx context.Context, desc chunk.T
 }
 
 func (b *boltDBShipperTableClient) Stop() {
-	b.objectClient.Stop()
+	b.indexStorageClient.Stop()
 }
 
-func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, name string) error {
-	objects, dirs, err := b.objectClient.List(ctx, name+delimiter, delimiter)
+func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, tableName string) error {
+	files, err := b.indexStorageClient.ListFiles(ctx, tableName)
 	if err != nil {
 		return err
 	}
 
-	if len(dirs) != 0 {
-		level.Error(util_log.Logger).Log("msg", fmt.Sprintf("unexpected directories in %s folder, not touching them", name), "directories", fmt.Sprint(dirs))
-	}
-
-	for _, object := range objects {
-		err := b.objectClient.DeleteObject(ctx, object.Key)
+	for _, file := range files {
+		err := b.indexStorageClient.DeleteFile(ctx, tableName, file.Name)
 		if err != nil {
 			return err
 		}

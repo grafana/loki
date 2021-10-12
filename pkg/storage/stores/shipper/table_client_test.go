@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
-	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
 func TestBoltDBShipperTableClient(t *testing.T) {
@@ -34,12 +33,10 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 		"table3": {"file5", "file6"},
 	}
 
-	// we need to use prefixed object client while creating files/folder
-	prefixedObjectClient := util.NewPrefixedObjectClient(objectClient, "index/")
-
 	for folder, files := range foldersWithFiles {
 		for _, fileName := range files {
-			err := prefixedObjectClient.PutObject(context.Background(), path.Join(folder, fileName), bytes.NewReader([]byte{}))
+			// we will use "index/" prefix for all the objects
+			err := objectClient.PutObject(context.Background(), path.Join("index", folder, fileName), bytes.NewReader([]byte{}))
 			require.NoError(t, err)
 		}
 	}

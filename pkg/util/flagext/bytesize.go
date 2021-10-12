@@ -1,6 +1,7 @@
 package flagext
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/c2h5oh/datasize"
@@ -43,4 +44,26 @@ func (bs *ByteSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	return bs.Set(str)
+}
+
+// MarshalYAML implements yaml.Marshaller.
+// Use a string representation for consistency
+func (bs *ByteSize) MarshalYAML() (interface{}, error) {
+	return bs.String(), nil
+}
+
+// UnmarshalJSON implements json.Unmarsal interface to work with JSON.
+func (bs *ByteSize) UnmarshalJSON(val []byte) error {
+	var str string
+
+	if err := json.Unmarshal(val, &str); err != nil {
+		return err
+	}
+
+	return bs.Set(str)
+}
+
+// Use a string representation for consistency
+func (bs *ByteSize) MarshalJSON() ([]byte, error) {
+	return json.Marshal(bs.String())
 }

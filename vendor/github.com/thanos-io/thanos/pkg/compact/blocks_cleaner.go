@@ -26,7 +26,7 @@ type BlocksCleaner struct {
 }
 
 // NewBlocksCleaner creates a new BlocksCleaner.
-func NewBlocksCleaner(logger log.Logger, bkt objstore.Bucket, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, deleteDelay time.Duration, blocksCleaned prometheus.Counter, blockCleanupFailures prometheus.Counter) *BlocksCleaner {
+func NewBlocksCleaner(logger log.Logger, bkt objstore.Bucket, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, deleteDelay time.Duration, blocksCleaned, blockCleanupFailures prometheus.Counter) *BlocksCleaner {
 	return &BlocksCleaner{
 		logger:                   logger,
 		ignoreDeletionMarkFilter: ignoreDeletionMarkFilter,

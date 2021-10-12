@@ -73,6 +73,7 @@ If you are querying metrics and just want the most recent data point
 the "instant-query" command instead.`)
 	rangeQuery = newQuery(false, queryCmd)
 	tail       = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
+	follow     = queryCmd.Flag("follow", "Alias for --tail").Short('f').Default("false").Bool()
 	delayFor   = queryCmd.Flag("delay-for", "Delay in tailing by number of seconds to accumulate logs for re-ordering").Default("0").Int()
 
 	instantQueryCmd = app.Command("instant-query", `Run an instant LogQL query.
@@ -155,7 +156,7 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		if *tail {
+		if *tail || *follow {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
 			rangeQuery.DoQuery(queryClient, out, *statistics)

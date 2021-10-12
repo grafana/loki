@@ -1933,7 +1933,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"distributor.*\"}",
+              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"distributor.*\"}",
               "intervalFactor": 3,
               "legendFormat": "{{pod}}-{{container}}",
               "refId": "A"
@@ -2597,7 +2597,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"ingester.*\"}",
+              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"ingester.*\"}",
               "intervalFactor": 3,
               "legendFormat": "{{pod}}-{{container}}",
               "refId": "A"
@@ -3203,7 +3203,7 @@
               "refId": "A"
             },
             {
-              "expr": "sum(increase(cortex_chunk_store_deduped_chunks_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m]))/sum(increase(loki_ingester_chunks_flushed_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m])) < 1",
+              "expr": "sum(increase(loki_chunk_store_deduped_chunks_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m]))/sum(increase(loki_ingester_chunks_flushed_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m])) < 1",
               "interval": "",
               "legendFormat": "De-Dupe Ratio",
               "refId": "B"
@@ -3543,7 +3543,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"querier.*\"}",
+              "expr": "node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"querier.*\"}",
               "intervalFactor": 3,
               "legendFormat": "{{pod}}-{{container}}",
               "refId": "A"
@@ -6588,14 +6588,14 @@
       {
         "allValue": null,
         "datasource": "$datasource",
-        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", container!=\"loki-canary\"}, cluster)",
+        "definition": "label_values(kube_pod_container_info{image=~\".*(loki|logs).*\", container!=\"loki-canary\"}, cluster)",
         "hide": 0,
         "includeAll": false,
         "label": null,
         "multi": false,
         "name": "cluster",
         "options": [],
-        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", container!=\"loki-canary\"}, cluster)",
+        "query": "label_values(kube_pod_container_info{image=~\".*(loki|logs).*\", container!=\"loki-canary\"}, cluster)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -6609,14 +6609,14 @@
       {
         "allValue": null,
         "datasource": "$datasource",
-        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
+        "definition": "label_values(kube_pod_container_info{image=~\".*(loki|logs).*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
         "hide": 0,
         "includeAll": false,
         "label": null,
         "multi": false,
         "name": "namespace",
         "options": [],
-        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
+        "query": "label_values(kube_pod_container_info{image=~\".*(loki|logs).*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

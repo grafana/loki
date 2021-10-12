@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 )
 
 type (
@@ -53,8 +54,8 @@ type deleteRequestsStore struct {
 }
 
 // NewDeleteStore creates a store for managing delete requests.
-func NewDeleteStore(workingDirectory string, objectClient chunk.ObjectClient) (DeleteRequestsStore, error) {
-	indexClient, err := newDeleteRequestsTable(workingDirectory, objectClient)
+func NewDeleteStore(workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
+	indexClient, err := newDeleteRequestsTable(workingDirectory, indexStorageClient)
 	if err != nil {
 		return nil, err
 	}

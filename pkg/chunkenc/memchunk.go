@@ -724,6 +724,20 @@ func (c *MemChunk) reorder() error {
 	return nil
 }
 
+func (c *MemChunk) ConvertHead(desired HeadBlockFmt) error {
+
+	if c.head != nil && c.head.Format() != desired {
+		newH, err := c.head.Convert(desired)
+		if err != nil {
+			return err
+		}
+
+		c.head = newH
+	}
+	c.headFmt = desired
+	return nil
+}
+
 // cut a new block and add it to finished blocks.
 func (c *MemChunk) cut() error {
 	if c.head.IsEmpty() {

@@ -319,7 +319,7 @@ func (x *PartialResponseStrategy) UnmarshalJSON(entry []byte) error {
 		return errors.Wrapf(err, fmt.Sprintf("failed to unqote %v, in order to unmarshal as 'partial_response_strategy'. Possible values are %s", string(entry), strings.Join(PartialResponseStrategyValues, ",")))
 	}
 
-	if len(fieldStr) == 0 {
+	if fieldStr == "" {
 		// NOTE: For Rule default is abort as this is recommended for alerting.
 		*x = PartialResponseStrategy_ABORT
 		return nil

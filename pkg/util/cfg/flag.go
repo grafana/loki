@@ -3,22 +3,15 @@ package cfg
 import (
 	"flag"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 )
 
-// Defaults registers flags to the command line using dst as the
-// flagext.Registerer
-func Defaults() Source {
-	return dDefaults(flag.CommandLine)
-}
-
-// dDefaults registers flags to the flagSet using dst as the flagext.Registerer
-func dDefaults(fs *flag.FlagSet) Source {
+// Defaults registers flags to the flagSet using dst as the flagext.Registerer
+func Defaults(fs *flag.FlagSet) Source {
 	return func(dst Cloneable) error {
 		r, ok := dst.(flagext.Registerer)
 		if !ok {
@@ -33,9 +26,9 @@ func dDefaults(fs *flag.FlagSet) Source {
 
 // Flags parses the flag from the command line, setting only user-supplied
 // values on the flagext.Registerer passed to Defaults()
-func Flags() Source {
-	flag.Usage = categorizedUsage(flag.CommandLine)
-	return dFlags(flag.CommandLine, os.Args[1:])
+func Flags(args []string, fs *flag.FlagSet) Source {
+	flag.Usage = categorizedUsage(fs)
+	return dFlags(fs, args)
 }
 
 // dFlags parses the flagset, applying all values set on the slice

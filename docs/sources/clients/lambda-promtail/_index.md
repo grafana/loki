@@ -1,9 +1,10 @@
 ---
 title: Lambda Promtail
+weight: 20
 ---
 # Lambda Promtail
 
-Loki includes an [AWS SAM](https://aws.amazon.com/serverless/sam/) package template for shipping Cloudwatch logs to Loki via a [set of Promtails](https://github.com/grafana/loki/tree/master/tools/lambda-promtail). This is done via an intermediary [lambda function](https://aws.amazon.com/lambda/) which processes cloudwatch events and propagates them to a Promtail instance (or set of instances behind a load balancer) via the push-api [scrape config](../promtail/configuration#loki_push_api_config).
+Grafana Loki includes an [AWS SAM](https://aws.amazon.com/serverless/sam/) package template for shipping Cloudwatch logs to Loki via a [set of Promtails](https://github.com/grafana/loki/tree/master/tools/lambda-promtail). This is done via an intermediary [lambda function](https://aws.amazon.com/lambda/) which processes cloudwatch events and propagates them to a Promtail instance (or set of instances behind a load balancer) via the push-api [scrape config](../promtail/configuration#loki_push_api_config).
 
 ## Uses
 
@@ -16,9 +17,9 @@ Ephemeral jobs can quite easily run afoul of cardinality best practices. During 
 Instead we can pipeline Cloudwatch logs to a set of Promtails, which can mitigate these problem in two ways:
 
 1) Using Promtail's push api along with the `use_incoming_timestamp: false` config, we let Promtail determine the timestamp based on when it ingests the logs, not the timestamp assigned by cloudwatch. Obviously, this means that we lose the origin timestamp because Promtail now assigns it, but this is a relatively small difference in a real time ingestion system like this.
-2) In conjunction with (1), Promtail can coalesce logs across  Cloudwatch log streams because it's no longer susceptible to `out-of-order` errors when combining multiple sources (lambda invocations).
+2) In conjunction with (1), Promtail can coalesce logs across  Cloudwatch log streams because it's no longer susceptible to out-of-order errors when combining multiple sources (lambda invocations).
 
-One important aspect to keep in mind when running with a set of Promtails behind a load balancer is that we're effectively moving the cardinality problems from the `number_of_log_streams` -> `number_of_promtails`. You'll need to assign a Promtail specific label on each Promtail so that you don't run into `out-of-order` errors when the Promtails send data for the same log groups to Loki. This can easily be done via a config like `--client.external-labels=promtail=${HOSTNAME}` passed to Promtail.
+One important aspect to keep in mind when running with a set of Promtails behind a load balancer is that we're effectively moving the cardinality problems from the  number of log streams -> number of Promtails. If you have not configured Loki to [accept out-of-order writes](../../configuration#accept-out-of-order-writes), you'll need to assign a Promtail-specific label on each Promtail so that you don't run into out-of-order errors when the Promtails send data for the same log groups to Loki. This can easily be done via a configuration like `--client.external-labels=promtail=${HOSTNAME}` passed to Promtail.
 
 ### Proof of concept Loki deployments
 

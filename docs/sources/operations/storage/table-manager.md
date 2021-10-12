@@ -3,7 +3,7 @@ title: Table manager
 ---
 # Table Manager
 
-Loki supports storing indexes and chunks in table-based data storages. When
+Grafana Loki supports storing indexes and chunks in table-based data storages. When
 such a storage type is used, multiple tables are created over the time: each
 table - also called periodic table - contains the data for a specific time
 range.

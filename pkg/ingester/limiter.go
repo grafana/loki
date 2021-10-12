@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -24,30 +27,43 @@ type Limiter struct {
 	limits            *validation.Overrides
 	ring              RingCount
 	replicationFactor int
+	metrics           *ingesterMetrics
 
 	mtx      sync.RWMutex
 	disabled bool
 }
 
-func (l *Limiter) Disable() {
+func (l *Limiter) DisableForWALReplay() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.disabled = true
+	l.metrics.limiterEnabled.Set(0)
 }
 
 func (l *Limiter) Enable() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.disabled = false
+	l.metrics.limiterEnabled.Set(1)
 }
 
 // NewLimiter makes a new limiter
-func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor int) *Limiter {
+func NewLimiter(limits *validation.Overrides, metrics *ingesterMetrics, ring RingCount, replicationFactor int) *Limiter {
 	return &Limiter{
 		limits:            limits,
 		ring:              ring,
 		replicationFactor: replicationFactor,
+		metrics:           metrics,
 	}
+}
+
+func (l *Limiter) UnorderedWrites(userID string) bool {
+	// WAL replay should not discard previously ack'd writes,
+	// so allow out of order writes while the limiter is disabled.
+	if l.disabled {
+		return true
+	}
+	return l.limits.UnorderedWrites(userID)
 }
 
 // AssertMaxStreamsPerUser ensures limit has not been reached compared to the current
@@ -111,4 +127,55 @@ func (l *Limiter) minNonZero(first, second int) int {
 	}
 
 	return first
+}
+
+type RateLimiterStrategy interface {
+	RateLimit(tenant string) validation.RateLimit
+}
+
+func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
+	if l.disabled {
+		return validation.Unlimited
+	}
+
+	return l.limits.PerStreamRateLimit(tenant)
+}
+
+type StreamRateLimiter struct {
+	recheckPeriod time.Duration
+	recheckAt     time.Time
+	strategy      RateLimiterStrategy
+	tenant        string
+	lim           *rate.Limiter
+}
+
+func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
+	rl := strategy.RateLimit(tenant)
+	return &StreamRateLimiter{
+		recheckPeriod: recheckPeriod,
+		strategy:      strategy,
+		tenant:        tenant,
+		lim:           rate.NewLimiter(rl.Limit, rl.Burst),
+	}
+}
+
+func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
+	now := time.Now()
+	if now.After(l.recheckAt) {
+		l.recheckAt = now.Add(l.recheckPeriod)
+
+		oldLim := l.lim.Limit()
+		oldBurst := l.lim.Burst()
+
+		next := l.strategy.RateLimit(l.tenant)
+
+		if oldLim != next.Limit || oldBurst != next.Burst {
+			// Edge case: rate.Inf doesn't advance nicely when reconfigured.
+			// To simplify, we just create a new limiter after reconfiguration rather
+			// than alter the existing one.
+			l.lim = rate.NewLimiter(next.Limit, next.Burst)
+		}
+	}
+
+	return l.lim.AllowN(at, n)
 }

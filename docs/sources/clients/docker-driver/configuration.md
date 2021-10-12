@@ -8,7 +8,7 @@ each container will use the default driver unless configured otherwise.
 
 ## Installation
 
-Before configuring the plugin, [install or upgrade the Loki Docker Driver Client](../../docker-driver/)
+Before configuring the plugin, [install or upgrade the Grafana Loki Docker Driver Client](../../docker-driver/)
 
 ## Change the logging driver for a container
 
@@ -115,7 +115,7 @@ Custom labels can be added using the `loki-external-labels`, `loki-pipeline-stag
 `loki-pipeline-stage-file`, `labels`, `env`, and `env-regex` options. See the
 next section for all supported options.
 
-`loki-external-labels` have the default value of `container_name={{.Name}}`. If you have custom value for `loki-external-labels` then that will replace the default value, meaning you won't have `container_name` label unless you explcity add it (e.g: `loki-external-lables: "job=docker,container_name={{.Name}}"`.
+`loki-external-labels` have the default value of `container_name={{.Name}}`. If you have custom value for `loki-external-labels` then that will replace the default value, meaning you won't have `container_name` label unless you explcity add it (e.g: `loki-external-labels: "job=docker,container_name={{.Name}}"`.
 
 ## Pipeline stages
 

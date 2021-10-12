@@ -6,7 +6,6 @@ import (
 
 	"github.com/docker/docker/daemon/logger"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -44,7 +43,7 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 		return nil, err
 	}
 	var handler api.EntryHandler = c
-	var stop func() = func() {}
+	var stop = func() {}
 	if len(cfg.pipeline.PipelineStages) != 0 {
 		pipeline, err := stages.NewPipeline(logger, cfg.pipeline.PipelineStages, &jobName, prometheus.DefaultRegisterer)
 		if err != nil {
@@ -72,7 +71,6 @@ func (l *loki) Log(m *logger.Message) error {
 	}
 
 	if len(bytes.Fields(m.Line)) == 0 {
-		level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
 	lbs := l.labels.Clone()

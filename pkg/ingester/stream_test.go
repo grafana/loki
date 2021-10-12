@@ -18,6 +18,8 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -42,12 +44,17 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 		{"unlimited", 0, numLogs},
 	}
 
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := defaultConfig()
 			cfg.MaxReturnedErrors = tc.limit
 			s := newStream(
 				cfg,
+				limiter,
 				"fake",
 				model.Fingerprint(0),
 				labels.Labels{
@@ -86,8 +93,13 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 }
 
 func TestPushDeduplication(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
 	s := newStream(
 		defaultConfig(),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -110,8 +122,13 @@ func TestPushDeduplication(t *testing.T) {
 }
 
 func TestPushRejectOldCounter(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
 	s := newStream(
 		defaultConfig(),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -122,7 +139,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 	)
 
 	// counter should be 2 now since the first line will be deduped
-	_, err := s.Push(context.Background(), []logproto.Entry{
+	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
@@ -199,8 +216,13 @@ func TestStreamIterator(t *testing.T) {
 func TestUnorderedPush(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.MaxChunkAge = 10 * time.Second
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
 	s := newStream(
 		&cfg,
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -287,6 +309,36 @@ func TestUnorderedPush(t *testing.T) {
 	require.Equal(t, false, sItr.Next())
 }
 
+func TestPushRateLimit(t *testing.T) {
+	l := validation.Limits{
+		PerStreamRateLimit:      10,
+		PerStreamRateLimitBurst: 10,
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	s := newStream(
+		defaultConfig(),
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NilMetrics,
+	)
+
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
+	}
+	// Counter should be 2 now since the first line will be deduped.
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0)
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+}
+
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
@@ -304,7 +356,12 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "job", Value: "loki-dev/ingester"},
 		labels.Label{Name: "container", Value: "ingester"},
 	}
-	s := newStream(&Config{}, "fake", model.Fingerprint(0), ls, true, NilMetrics)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(b, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	s := newStream(&Config{}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 

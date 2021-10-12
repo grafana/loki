@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
-
+	gokitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -30,7 +30,6 @@ func TestTransferOut(t *testing.T) {
 	f := newTestIngesterFactory(t)
 
 	ing := f.getIngester(time.Duration(0), t)
-	ing.cfg.UnorderedWrites = false // enforce ordered writes on old testware (transfers are deprecated).
 
 	// Push some data into our original ingester
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -127,7 +126,7 @@ type testIngesterFactory struct {
 }
 
 func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil, gokitlog.NewNopLogger())
 	require.NoError(t, err)
 
 	return &testIngesterFactory{

@@ -156,7 +156,7 @@ func (r *LazyBinaryReader) IndexVersion() (int, error) {
 }
 
 // PostingsOffset implements Reader.
-func (r *LazyBinaryReader) PostingsOffset(name string, value string) (index.Range, error) {
+func (r *LazyBinaryReader) PostingsOffset(name, value string) (index.Range, error) {
 	r.readerMx.RLock()
 	defer r.readerMx.RUnlock()
 

@@ -1,10 +1,13 @@
 ---
 title: Docker
+weight: 30
 ---
-# Install Loki with Docker or Docker Compose
+# Install Grafana Loki with Docker or Docker Compose
 
-You can install Loki and Promtail with Docker or Docker Compose if you are evaluating, testing, or developing Loki.
+You can install Grafana Loki and Promtail with Docker or Docker Compose if you are evaluating, testing, or developing Loki.
 For production, we recommend installing with Tanka or Helm.
+
+The configuration acquired with these installation instructions run Loki as a single binary.
 
 ## Prerequisites
 
@@ -19,16 +22,16 @@ Copy and paste the commands below into your command line.
 
 ```bash
 wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-docker run -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:2.3.0 -config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
-docker run -v $(pwd):/mnt/config -v /var/log:/var/log grafana/promtail:2.3.0 -config.file=/mnt/config/promtail-config.yaml
+docker run --name loki -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:2.3.0 -config.file=/mnt/config/loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+docker run -v $(pwd):/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.3.0 -config.file=/mnt/config/promtail-config.yaml
 ```
 
 When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.
 
 Navigate to http://localhost:3100/metrics to view the metrics and http://localhost:3100/ready for readiness.
 
-As of v1.6.0, image is configured to run by default as user loki with  UID `10001` and GID `10001`. You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with numeric UID suited to your needs.
+The image is configured to run by default as user loki with  UID `10001` and GID `10001`. You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with numeric UID suited to your needs.
 
 **Windows**
 
@@ -37,9 +40,9 @@ Copy and paste the commands below into your terminal. Note that you will need to
 ```bash
 cd "<local-path>"
 wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-docker run -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:2.3.0 --config.file=/mnt/config/loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
-docker run -v <local-path>:/mnt/config -v /var/log:/var/log grafana/promtail:2.3.0 --config.file=/mnt/config/promtail-config.yaml
+docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:2.3.0 --config.file=/mnt/config/loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v2.3.0/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:2.3.0 --config.file=/mnt/config/promtail-config.yaml
 ```
 
 When finished, `loki-config.yaml` and `promtail-config.yaml` are downloaded in the directory you chose. Docker containers are running Loki and Promtail using those config files.

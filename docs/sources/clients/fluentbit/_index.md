@@ -1,9 +1,10 @@
 ---
 title: Fluentbit
+weight: 50
 ---
 # Fluentbit Loki Output Plugin
 
-[Fluent Bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
+[Fluent Bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Grafana Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
 
 ## Usage
 
@@ -142,25 +143,27 @@ If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log li
 
 ### Buffering
 
-Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. Loki output plugin in certain situation can be blocked by loki client because of its design:
+Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. The Loki output plugin can be blocked by the Loki client because of its design:
 
-- BatchSize is over limit, output plugin pause receiving new records until the pending batch is successfully sent to the server
-- Loki server is unreachable (retry 429s, 500s and connection-level errors), output plugin blocks new records until loki server will be available again and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
+- If the BatchSize is over the limit, the output plugin pauses receiving new records until the pending batch is successfully sent to the server
+- If the Loki server is unreachable (retry 429s, 500s and connection-level errors), the output plugin blocks new records until the Loki server is available again, and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
 
-The blocking state with some of the input plugins is not acceptable because it can have a undesirable side effects on the part that generates the logs. Fluent Bit implements buffering mechanism that is based on parallel processing and it cannot send logs in order which is loki requirement (loki logs must be in increasing time order per stream).
+The blocking state with some of the input plugins is not acceptable, because it can have an undesirable side effect on the part that generates the logs. Fluent Bit implements a buffering mechanism that is based on parallel processing. Therefore, it cannot send logs in order. There are two ways of handling the out-of-order logs: 
 
-Loki output plugin has buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque) which is compatible with loki server strict time ordering and can be set up by configuration flag:
+- Configure Loki to [accept out-of-order writes](../../configuration/#accept-out-of-order-writes).
 
-```properties
-[Output]
-    Name grafana-loki
-    Match *
-    Url http://localhost:3100/loki/api/v1/push
-    Buffer true
-    DqueSegmentSize 8096
-    DqueDir /tmp/flb-storage/buffer
-    DqueName loki.0
-```
+- Configure the Loki output plugin to use the buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque), which is compatible with the Loki server strict time ordering:
+
+    ```properties
+    [Output]
+        Name grafana-loki
+        Match *
+        Url http://localhost:3100/loki/api/v1/push
+        Buffer true
+        DqueSegmentSize 8096
+        DqueDir /tmp/flb-storage/buffer
+        DqueName loki.0
+    ```
 
 ### Configuration examples
 

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // LazyChunk loads the chunk when it is accessed.
@@ -67,7 +69,15 @@ func (c *LazyChunk) Iterator(
 			continue
 		}
 		if nextChunk != nil {
-			delete(c.overlappingBlocks, b.Offset())
+			if cache, ok := c.overlappingBlocks[b.Offset()]; ok {
+				delete(c.overlappingBlocks, b.Offset())
+				if err := cache.Wrapped().Close(); err != nil {
+					level.Warn(util_log.Logger).Log(
+						"msg", "failed to close cache block iterator",
+						"err", err,
+					)
+				}
+			}
 		}
 		// non-overlapping block with the next chunk are not cached.
 		its = append(its, b.Iterator(ctx, pipeline))
@@ -140,7 +150,15 @@ func (c *LazyChunk) SampleIterator(
 			continue
 		}
 		if nextChunk != nil {
-			delete(c.overlappingSampleBlocks, b.Offset())
+			if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
+				delete(c.overlappingSampleBlocks, b.Offset())
+				if err := cache.Wrapped().Close(); err != nil {
+					level.Warn(util_log.Logger).Log(
+						"msg", "failed to close cache block sample iterator",
+						"err", err,
+					)
+				}
+			}
 		}
 		// non-overlapping block with the next chunk are not cached.
 		its = append(its, b.SampleIterator(ctx, extractor))

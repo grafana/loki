@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
@@ -7,6 +7,7 @@
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
+.PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 
 SHELL = /usr/bin/env bash
 
@@ -248,10 +249,10 @@ cmd/migrate/migrate: $(APP_GO_FILES) cmd/migrate/main.go
 GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -263,6 +264,8 @@ publish: dist
 # Lint #
 ########
 
+# To run this efficiently on your workstation, run this from the root dir:
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
 lint:
 	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
@@ -572,7 +575,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
 	drone lint .drone/drone.yml
-	drone sign --save grafana/loki .drone/drone.yml
+	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
 endif
 
 
@@ -627,3 +630,36 @@ endif
 test-fuzz:
 	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
 		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
+
+format:
+	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
+		-type f -name '*.go' -exec gofmt -w -s {} \;
+	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
+		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+
+###################
+# Example Configs #
+###################
+
+# Validate the example configurations that we provide in ./docs/sources/configuration/examples
+validate-example-configs: loki
+	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+
+# Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
+# This target should be run if any of our example configs change.
+generate-example-config-doc:
+	echo "Removing existing doc at loki/docs/configuration/examples.md and re-generating. . ."
+	# Title and Heading
+	echo -e "---\ntitle: Examples\n---\n # Loki Configuration Examples" > ./docs/sources/configuration/examples.md
+	# Append each configuration and its file name to examples.md
+	for f in ./docs/sources/configuration/examples/*.yaml; do echo -e "\n## $$(basename $$f)\n\n\`\`\`yaml\n$$(cat $$f)\n\`\`\`\n" >> ./docs/sources/configuration/examples.md; done
+
+# Fail our CI build if changes are made to example configurations but our doc is not updated
+check-example-config-doc: generate-example-config-doc
+	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+		echo -e "\nChanges found in generated example configuration doc"; \
+		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
+		echo "If you are actively developing these files you can ignore this error"; \
+		echo -e "(Don't forget to check in the generated files when finished)\n"; \
+		exit 1; \
+	fi

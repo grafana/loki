@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/util/grpc/naming"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Notifications about address resolution. All notifications are sent on the same goroutine.

@@ -938,10 +938,10 @@ func TestParse(t *testing.T) {
 			`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
-				BinOpOptions{},
+				&BinOpOptions{},
 				mustNewBinOpExpr(
 					OpTypeDiv,
-					BinOpOptions{},
+					&BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							left: &MatchersExpr{
@@ -1001,10 +1001,10 @@ func TestParse(t *testing.T) {
 					`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
-				BinOpOptions{},
+				&BinOpOptions{},
 				mustNewBinOpExpr(
 					OpTypePow,
-					BinOpOptions{},
+					&BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							left: &MatchersExpr{
@@ -1065,7 +1065,7 @@ func TestParse(t *testing.T) {
 					`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
-				BinOpOptions{},
+				&BinOpOptions{},
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
 					&LogRange{
 						left: &MatchersExpr{
@@ -1084,7 +1084,7 @@ func TestParse(t *testing.T) {
 				),
 				mustNewBinOpExpr(
 					OpTypeDiv,
-					BinOpOptions{},
+					&BinOpOptions{},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							left: &MatchersExpr{
@@ -1128,7 +1128,7 @@ func TestParse(t *testing.T) {
 						)`,
 			exp: mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
-					BinOpOptions{},
+					&BinOpOptions{},
 					newRangeAggregationExpr(
 						&LogRange{
 							left: newPipelineExpr(
@@ -1156,9 +1156,9 @@ func TestParse(t *testing.T) {
 						/
 							count_over_time({namespace="tns"}[5m])
 						) * 100`,
-			exp: mustNewBinOpExpr(OpTypeMul, BinOpOptions{}, mustNewVectorAggregationExpr(
+			exp: mustNewBinOpExpr(OpTypeMul, &BinOpOptions{}, mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
-					BinOpOptions{},
+					&BinOpOptions{},
 					newRangeAggregationExpr(
 						&LogRange{
 							left: newPipelineExpr(
@@ -1187,7 +1187,7 @@ func TestParse(t *testing.T) {
 			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
-				BinOpOptions{},
+				&BinOpOptions{},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						&LogRange{
@@ -1213,9 +1213,9 @@ func TestParse(t *testing.T) {
 			in: `1 + -2 / 1`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
-				BinOpOptions{},
+				&BinOpOptions{},
 				&LiteralExpr{value: 1},
-				mustNewBinOpExpr(OpTypeDiv, BinOpOptions{}, &LiteralExpr{value: -2}, &LiteralExpr{value: 1}),
+				mustNewBinOpExpr(OpTypeDiv, &BinOpOptions{}, &LiteralExpr{value: -2}, &LiteralExpr{value: 1}),
 			),
 		},
 		{
@@ -1223,8 +1223,8 @@ func TestParse(t *testing.T) {
 			in: `1 + 1 - -1`,
 			exp: mustNewBinOpExpr(
 				OpTypeSub,
-				BinOpOptions{},
-				mustNewBinOpExpr(OpTypeAdd, BinOpOptions{}, &LiteralExpr{value: 1}, &LiteralExpr{value: 1}),
+				&BinOpOptions{},
+				mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{}, &LiteralExpr{value: 1}, &LiteralExpr{value: 1}),
 				&LiteralExpr{value: -1},
 			),
 		},
@@ -2109,7 +2109,7 @@ func TestParse(t *testing.T) {
 										) by (namespace,instance)
 							) by (foo,bar)
 					`,
-			exp: mustNewBinOpExpr(OpTypeAdd, BinOpOptions{ReturnBool: false},
+			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						newLogRange(&PipelineExpr{
@@ -2178,6 +2178,168 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `
+			sum by (foo,bar) (
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)
+					+ ignoring (bar)
+					avg(
+						avg_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+							| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+										) by (namespace,instance)
+							) by (foo)
+					`,
+			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false, VectorMatching: &VectorMatching{On: false, Include: []string{"bar"}}},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&PipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiStageExpr{
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&LabelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", ""),
+							nil),
+						OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					),
+					OpTypeSum,
+					&grouping{groups: []string{"foo", "bar"}},
+					nil,
+				),
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&PipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiStageExpr{
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&LabelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", ""),
+							nil),
+						OpRangeTypeAvg, &grouping{without: false, groups: []string{"namespace", "instance"}}, nil,
+					),
+					OpTypeAvg,
+					&grouping{groups: []string{"foo"}},
+					nil,
+				),
+			),
+		},
+		{
+			in: `
+			sum by (foo,bar) (
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)
+					+ on (foo)
+					avg(
+						avg_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+							| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+										) by (namespace,instance)
+							) by (foo)
+					`,
+			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false, VectorMatching: &VectorMatching{On: true, Include: []string{"foo"}}},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&PipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiStageExpr{
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&LabelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", ""),
+							nil),
+						OpRangeTypeQuantile, &grouping{without: false, groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					),
+					OpTypeSum,
+					&grouping{groups: []string{"foo", "bar"}},
+					nil,
+				),
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&PipelineExpr{
+							left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							pipeline: MultiStageExpr{
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&LabelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", ""),
+							nil),
+						OpRangeTypeAvg, &grouping{without: false, groups: []string{"namespace", "instance"}}, nil,
+					),
+					OpTypeAvg,
+					&grouping{groups: []string{"foo"}},
+					nil,
+				),
+			),
+		},
+		{
+			in: `
 			label_replace(
 				sum by (foo,bar) (
 					quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
@@ -2196,7 +2358,7 @@ func TestParse(t *testing.T) {
 				"(.*)"
 				)`,
 			exp: mustNewLabelReplaceExpr(
-				mustNewBinOpExpr(OpTypeAdd, BinOpOptions{ReturnBool: false},
+				mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false},
 					mustNewVectorAggregationExpr(
 						newRangeAggregationExpr(
 							newLogRange(&PipelineExpr{
@@ -2333,6 +2495,10 @@ func TestParse(t *testing.T) {
 			in: `count_over_time({ foo ="bar" }[12m]) > count_over_time({ foo = "bar" }[12m])`,
 			exp: &BinOpExpr{
 				op: OpTypeGT,
+				opts: &BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: nil,
+				},
 				SampleExpr: &RangeAggregationExpr{
 					left: &LogRange{
 						left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
@@ -2353,6 +2519,10 @@ func TestParse(t *testing.T) {
 			in: `count_over_time({ foo = "bar" }[12m]) > 1`,
 			exp: &BinOpExpr{
 				op: OpTypeGT,
+				opts: &BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: nil,
+				},
 				SampleExpr: &RangeAggregationExpr{
 					left: &LogRange{
 						left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
@@ -2372,6 +2542,10 @@ func TestParse(t *testing.T) {
 			in: `count_over_time({ foo = "bar" }[12m]) or count_over_time({ foo = "bar" }[12m]) > 1`,
 			exp: &BinOpExpr{
 				op: OpTypeOr,
+				opts: &BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: nil,
+				},
 				SampleExpr: &RangeAggregationExpr{
 					left: &LogRange{
 						left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
@@ -2381,6 +2555,10 @@ func TestParse(t *testing.T) {
 				},
 				RHS: &BinOpExpr{
 					op: OpTypeGT,
+					opts: &BinOpOptions{
+						ReturnBool:     false,
+						VectorMatching: nil,
+					},
 					SampleExpr: &RangeAggregationExpr{
 						left: &LogRange{
 							left:     &MatchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},

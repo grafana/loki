@@ -5,13 +5,17 @@ package azure
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	blob "github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
 )
 
 // DirDelim is the delimiter used to model a directory structure in an object store bucket.
@@ -30,20 +34,53 @@ func init() {
 	pipeline.SetForceLogEnabled(false)
 }
 
+func getAzureStorageCredentials(conf Config) (blob.Credential, error) {
+	if conf.MSIResource != "" {
+		msiConfig := auth.NewMSIConfig()
+		msiConfig.Resource = conf.MSIResource
+
+		azureServicePrincipalToken, err := msiConfig.ServicePrincipalToken()
+		if err != nil {
+			return nil, err
+		}
+
+		// Get a new token.
+		err = azureServicePrincipalToken.Refresh()
+		if err != nil {
+			return nil, err
+		}
+		token := azureServicePrincipalToken.Token()
+
+		return blob.NewTokenCredential(token.AccessToken, nil), nil
+	}
+
+	credential, err := blob.NewSharedKeyCredential(conf.StorageAccountName, conf.StorageAccountKey)
+	if err != nil {
+		return nil, err
+	}
+	return credential, nil
+}
+
 func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error) {
-	c, err := blob.NewSharedKeyCredential(conf.StorageAccountName, conf.StorageAccountKey)
+
+	credentials, err := getAzureStorageCredentials(conf)
+
 	if err != nil {
 		return blob.ContainerURL{}, err
 	}
 
 	retryOptions := blob.RetryOptions{
-		MaxTries: int32(conf.MaxRetries),
+		MaxTries:      conf.PipelineConfig.MaxTries,
+		TryTimeout:    time.Duration(conf.PipelineConfig.TryTimeout),
+		RetryDelay:    time.Duration(conf.PipelineConfig.RetryDelay),
+		MaxRetryDelay: time.Duration(conf.PipelineConfig.MaxRetryDelay),
 	}
+
 	if deadline, ok := ctx.Deadline(); ok {
 		retryOptions.TryTimeout = time.Until(deadline)
 	}
 
-	p := blob.NewPipeline(c, blob.PipelineOptions{
+	p := blob.NewPipeline(credentials, blob.PipelineOptions{
 		Retry:     retryOptions,
 		Telemetry: blob.TelemetryOptions{Value: "Thanos"},
 		RequestLog: blob.RequestLogOptions{
@@ -54,6 +91,17 @@ func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error
 		Log: pipeline.LogOptions{
 			ShouldLog: nil,
 		},
+		HTTPSender: pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+				client := http.Client{
+					Transport: DefaultTransport(conf),
+				}
+
+				resp, err := client.Do(request.WithContext(ctx))
+
+				return pipeline.NewHTTPResponse(resp), err
+			}
+		}),
 	})
 	u, err := url.Parse(fmt.Sprintf("https://%s.%s", conf.StorageAccountName, conf.Endpoint))
 	if err != nil {
@@ -62,6 +110,28 @@ func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error
 	service := blob.NewServiceURL(*u, p)
 
 	return service.NewContainerURL(conf.ContainerName), nil
+}
+
+func DefaultTransport(config Config) *http.Transport {
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+
+		MaxIdleConns:          config.HTTPConfig.MaxIdleConns,
+		MaxIdleConnsPerHost:   config.HTTPConfig.MaxIdleConnsPerHost,
+		IdleConnTimeout:       time.Duration(config.HTTPConfig.IdleConnTimeout),
+		MaxConnsPerHost:       config.HTTPConfig.MaxConnsPerHost,
+		TLSHandshakeTimeout:   time.Duration(config.HTTPConfig.TLSHandshakeTimeout),
+		ExpectContinueTimeout: time.Duration(config.HTTPConfig.ExpectContinueTimeout),
+
+		ResponseHeaderTimeout: time.Duration(config.HTTPConfig.ResponseHeaderTimeout),
+		DisableCompression:    config.HTTPConfig.DisableCompression,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: config.HTTPConfig.InsecureSkipVerify},
+	}
 }
 
 func getContainer(ctx context.Context, conf Config) (blob.ContainerURL, error) {

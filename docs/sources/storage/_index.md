@@ -4,7 +4,7 @@ weight: 1010
 ---
 # Storage
 
-Unlike other logging systems, Loki is built around the idea of only indexing
+Unlike other logging systems, Grafana Loki is built around the idea of only indexing
 metadata about your logs: labels (just like Prometheus labels). Log data itself
 is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
@@ -67,6 +67,10 @@ DynamoDB is susceptible to rate limiting, particularly due to overconsuming what
 ### BoltDB
 
 BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](../operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
+
+### Azure Storage Account
+
+An Azure storage account contains all of your Azure Storage data objects: blobs, file shares, queues, tables, and disks.
 
 ## Schema Configs
 
@@ -280,4 +284,34 @@ schema_config:
       index:
         prefix: index_
         period: 24h
+```
+
+### Azure Storage Account
+
+```yaml
+schema_config:
+  configs:
+  - from: "2020-12-11"
+    index:
+      period: 24h
+      prefix: index_
+    object_store: azure
+    schema: v11
+    store: boltdb-shipper
+storage_config:
+  azure:
+    # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
+    account_key: <account-key>
+    # Your azure account name
+    account_name: <account-name>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <container-name>
+    request_timeout: 0
+  boltdb_shipper:
+    active_index_directory: /data/loki/boltdb-shipper-active
+    cache_location: /data/loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: azure
+  filesystem:
+    directory: /data/loki/chunks
 ```

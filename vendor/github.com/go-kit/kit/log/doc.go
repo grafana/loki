@@ -39,8 +39,8 @@
 //
 // A contextual logger stores keyvals that it includes in all log events.
 // Building appropriate contextual loggers reduces repetition and aids
-// consistency in the resulting log output. With and WithPrefix add context to
-// a logger. We can use With to improve the RunTask example.
+// consistency in the resulting log output. With, WithPrefix, and WithSuffix
+// add context to a logger. We can use With to improve the RunTask example.
 //
 //    func RunTask(task Task, logger log.Logger) string {
 //        logger = log.With(logger, "taskID", task.ID)

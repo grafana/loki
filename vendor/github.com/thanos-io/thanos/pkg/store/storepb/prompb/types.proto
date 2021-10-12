@@ -28,9 +28,38 @@ option (gogoproto.goproto_unkeyed_all) = false;
 option (gogoproto.goproto_unrecognized_all) = false;
 option (gogoproto.goproto_sizecache_all) = false;
 
+message MetricMetadata {
+  enum MetricType {
+    UNKNOWN = 0;
+    COUNTER = 1;
+    GAUGE = 2;
+    HISTOGRAM = 3;
+    GAUGEHISTOGRAM = 4;
+    SUMMARY = 5;
+    INFO = 6;
+    STATESET = 7;
+  }
+
+  // Represents the metric type, these match the set from Prometheus.
+  // Refer to pkg/textparse/interface.go for details.
+  MetricType type = 1;
+  string metric_family_name = 2;
+  string help = 4;
+  string unit = 5;
+}
+
 message Sample {
-  double value    = 1;
+  double value = 1;
   int64 timestamp = 2;
+}
+
+message Exemplar {
+  // Optional, can be empty.
+  repeated thanos.Label labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
+  double value = 2;
+  // timestamp is in ms format, see pkg/timestamp/timestamp.go for
+  // conversion from time.Time to Prometheus timestamp.
+  int64 timestamp = 3;
 }
 
 // TimeSeries represents samples and labels for a single time series.
@@ -38,19 +67,20 @@ message TimeSeries {
   // Labels have to be sorted by label names and without duplicated label names.
   // TODO(bwplotka): Don't use zero copy ZLabels, see https://github.com/thanos-io/thanos/pull/3279 for details.
   repeated thanos.Label labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
-  repeated Sample samples      = 2 [(gogoproto.nullable) = false];
+  repeated Sample samples = 2 [(gogoproto.nullable) = false];
+  repeated Exemplar exemplars = 3 [(gogoproto.nullable) = false];
 }
 
 // Matcher specifies a rule, which can match or set of labels or not.
 message LabelMatcher {
   enum Type {
-    EQ  = 0;
+    EQ = 0;
     NEQ = 1;
-    RE  = 2;
+    RE = 2;
     NRE = 3;
   }
-  Type type    = 1;
-  string name  = 2;
+  Type type = 1;
+  string name = 2;
   string value = 3;
 }
 
@@ -73,10 +103,10 @@ message Chunk {
   // We require this to match chunkenc.Encoding.
   enum Encoding {
     UNKNOWN = 0;
-    XOR     = 1;
+    XOR = 1;
   }
-  Encoding type  = 3;
-  bytes data     = 4;
+  Encoding type = 3;
+  bytes data = 4;
 }
 
 // ChunkedSeries represents single, encoded time series.

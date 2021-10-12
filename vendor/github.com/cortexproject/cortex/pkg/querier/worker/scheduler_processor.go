@@ -6,16 +6,17 @@ import (
 	"net/http"
 	"time"
 
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/weaveworks/common/user"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/services"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -23,12 +24,10 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
@@ -87,7 +86,7 @@ func (sp *schedulerProcessor) notifyShutdown(ctx context.Context, conn *grpc.Cli
 func (sp *schedulerProcessor) processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string) {
 	schedulerClient := schedulerpb.NewSchedulerForQuerierClient(conn)
 
-	backoff := util.NewBackoff(ctx, processorBackoffConfig)
+	backoff := backoff.New(ctx, processorBackoffConfig)
 	for backoff.Ongoing() {
 		c, err := schedulerClient.QuerierLoop(ctx)
 		if err == nil {

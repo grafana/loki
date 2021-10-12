@@ -3,7 +3,7 @@ title: EC2
 ---
 # Running Promtail on AWS EC2
 
-In this tutorial we're going to setup [Promtail](../../promtail/) on an AWS EC2 instance and configure it to sends all its logs to a Loki instance.
+In this tutorial we're going to setup [Promtail](../../promtail/) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
 
 <!-- TOC -->
 

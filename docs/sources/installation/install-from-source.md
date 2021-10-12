@@ -1,9 +1,10 @@
 ---
 title: Build from source
+weight: 50
 ---
 # Build from source
 
-Clone the Loki repository and use the provided `Makefile`
+Clone the Grafana Loki repository and use the provided `Makefile`
 to build Loki from source.
 
 ## Prerequisites

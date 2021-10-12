@@ -2,7 +2,6 @@ package ring
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -11,16 +10,17 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 	perrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -157,7 +157,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	store, err := kv.NewClient(
 		cfg.RingConfig.KVStore,
 		codec,
-		kv.RegistererWithKVName(reg, ringName+"-lifecycler"),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), ringName+"-lifecycler"),
+		log.Logger,
 	)
 	if err != nil {
 		return nil, err
@@ -576,7 +577,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
-		// If the ingester failed to clean it's ring entry up in can leave it's state in LEAVING.
+		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
+		// OR unregister_on_shutdown=false
 		// Move it into ACTIVE to ensure the ingester joins the ring.
 		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
 			instanceDesc.State = ACTIVE
@@ -588,6 +590,17 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.setTokens(tokens)
 
 		level.Info(log.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
+
+		// Update the ring if the instance has been changed and the heartbeat is disabled.
+		// We dont need to update KV here when heartbeat is enabled as this info will eventually be update on KV
+		// on the next heartbeat
+		if i.cfg.HeartbeatPeriod == 0 && !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
+			// Update timestamp to give gossiping client a chance register ring change.
+			instanceDesc.Timestamp = time.Now().Unix()
+			ringDesc.Ingesters[i.ID] = instanceDesc
+			return ringDesc, true, nil
+		}
+
 		// we haven't modified the ring, don't try to store it.
 		return nil, true, nil
 	})

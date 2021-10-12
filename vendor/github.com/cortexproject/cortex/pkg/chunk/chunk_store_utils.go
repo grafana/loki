@@ -86,6 +86,7 @@ type Fetcher struct {
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
+	quit           chan struct{}
 }
 
 type decodeRequest struct {
@@ -105,6 +106,7 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, storage Client) (*Fetc
 		cache:          cacher,
 		cacheStubs:     cacheStubs,
 		decodeRequests: make(chan decodeRequest),
+		quit:           make(chan struct{}),
 	}
 
 	c.wait.Add(chunkDecodeParallelism)
@@ -117,7 +119,12 @@ func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, storage Client) (*Fetc
 
 // Stop the ChunkFetcher.
 func (c *Fetcher) Stop() {
-	close(c.decodeRequests)
+	select {
+	case <-c.quit:
+	default:
+		close(c.quit)
+	}
+
 	c.wait.Wait()
 	c.cache.Stop()
 }
@@ -125,14 +132,19 @@ func (c *Fetcher) Stop() {
 func (c *Fetcher) worker() {
 	defer c.wait.Done()
 	decodeContext := NewDecodeContext()
-	for req := range c.decodeRequests {
-		err := req.chunk.Decode(decodeContext, req.buf)
-		if err != nil {
-			cacheCorrupt.Inc()
-		}
-		req.responses <- decodeResponse{
-			chunk: req.chunk,
-			err:   err,
+	for {
+		select {
+		case <-c.quit:
+			return
+		case req := <-c.decodeRequests:
+			err := req.chunk.Decode(decodeContext, req.buf)
+			if err != nil {
+				cacheCorrupt.Inc()
+			}
+			req.responses <- decodeResponse{
+				chunk: req.chunk,
+				err:   err,
+			}
 		}
 	}
 }
@@ -230,7 +242,11 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 
 	go func() {
 		for _, request := range requests {
-			c.decodeRequests <- request
+			select {
+			case <-c.quit:
+				return
+			case c.decodeRequests <- request:
+			}
 		}
 	}()
 
@@ -238,14 +254,19 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 		err   error
 		found []Chunk
 	)
-	for i := 0; i < len(requests); i++ {
-		response := <-responses
 
-		// Don't exit early, as we don't want to block the workers.
-		if response.err != nil {
-			err = response.err
-		} else {
-			found = append(found, response.chunk)
+loopResponses:
+	for i := 0; i < len(requests); i++ {
+		select {
+		case <-c.quit:
+			break loopResponses
+		case response := <-responses:
+			// Don't exit early, as we don't want to block the workers.
+			if response.err != nil {
+				err = response.err
+			} else {
+				found = append(found, response.chunk)
+			}
 		}
 	}
 	return found, missing, err

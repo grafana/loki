@@ -41,7 +41,7 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 	switch {
 	case cfg.DownstreamURL != "":
 		// If the user has specified a downstream Prometheus, then we should use that.
-		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL)
+		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL, http.DefaultTransport)
 		return rt, nil, nil, err
 
 	case cfg.FrontendV2.SchedulerAddress != "":

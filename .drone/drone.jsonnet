@@ -284,6 +284,9 @@ local manifest(apps) = pipeline('manifest') {
         image: 'koalaman/shellcheck-alpine:stable',
         commands: ['apk add make bash && make lint-scripts'],
       },
+      make('loki', container=false) { depends_on: ['clone'] },
+      make('validate-example-configs', container=false) { depends_on: ['loki'] },
+      make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
   },
 ] + [

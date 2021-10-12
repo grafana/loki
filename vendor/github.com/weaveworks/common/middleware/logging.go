@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/common/user"
 )
 
@@ -21,7 +22,7 @@ type Log struct {
 // logWithRequest information from the request and context as fields.
 func (l Log) logWithRequest(r *http.Request) logging.Interface {
 	localLog := l.Log
-	traceID, ok := ExtractTraceID(r.Context())
+	traceID, ok := tracing.ExtractTraceID(r.Context())
 	if ok {
 		localLog = localLog.WithField("traceID", traceID)
 	}

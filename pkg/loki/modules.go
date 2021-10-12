@@ -11,30 +11,26 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-
-	"github.com/cortexproject/cortex/pkg/cortex"
-	cortex_querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
-	"github.com/cortexproject/cortex/pkg/util/services"
-
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/kv/codec"
+	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/runtimeconfig"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
+	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
@@ -125,7 +121,7 @@ func (t *Loki) initServer() (services.Service, error) {
 
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -152,7 +148,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
 
 	var err error
-	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
+	t.runtimeConfig, err = runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), util_log.Logger)
 	return t.runtimeConfig, err
 }
 
@@ -170,14 +166,16 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 
 func (t *Loki) initDistributor() (services.Service, error) {
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	var err error
 	t.distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.tenantConfigs, t.ring, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 
-	if !t.Cfg.isModuleEnabled(All) {
+	// Register the distributor to receive Push requests over GRPC
+	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
+	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
@@ -192,69 +190,64 @@ func (t *Loki) initDistributor() (services.Service, error) {
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
-	var (
-		worker services.Service
-		err    error
-	)
-
-	// NewQuerierWorker now expects Frontend (or Scheduler) address to be set.
-	if t.Cfg.Worker.FrontendAddress != "" || t.Cfg.Worker.SchedulerAddress != "" {
-		t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
-		level.Debug(util_log.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.Cfg.Worker))
-		worker, err = cortex_querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), util_log.Logger, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
+
+	var err error
 	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
 	}
 
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-		t.HTTPAuthMiddleware,
-		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
-	)
-	t.Server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.RangeQueryHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.InstantQueryHandler)))
-	// Prometheus compatibility requires `loki/api/v1/labels` however we already released `loki/api/v1/label`
-	// which is a little more consistent with `/loki/api/v1/label/{name}/values` so we are going to handle both paths.
-	t.Server.HTTP.Handle("/loki/api/v1/label", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/labels", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/tail", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.TailHandler)))
-	t.Server.HTTP.Handle("/loki/api/v1/series", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.SeriesHandler)))
+	querierWorkerServiceConfig := querier.WorkerServiceConfig{
+		AllEnabled:            t.Cfg.isModuleEnabled(All),
+		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
+		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
+		QuerierWorkerConfig:   &t.Cfg.Worker,
+		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
+		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
+	}
 
-	t.Server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LogQueryHandler)))
-	t.Server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LabelHandler)))
-	t.Server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.TailHandler)))
-	t.Server.HTTP.Handle("/api/prom/series", httpMiddleware.Wrap(http.HandlerFunc(t.Querier.SeriesHandler)))
-	return worker, nil // ok if worker is nil here
+	var queryHandlers = map[string]http.Handler{
+		"/loki/api/v1/query_range":         http.HandlerFunc(t.Querier.RangeQueryHandler),
+		"/loki/api/v1/query":               http.HandlerFunc(t.Querier.InstantQueryHandler),
+		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
+		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
+		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
+		"/loki/api/v1/tail":                http.HandlerFunc(t.Querier.TailHandler),
+		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+
+		"/api/prom/query":               http.HandlerFunc(t.Querier.LogQueryHandler),
+		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
+		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
+		"/api/prom/tail":                http.HandlerFunc(t.Querier.TailHandler),
+		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
+	}
+	return querier.InitWorkerService(
+		querierWorkerServiceConfig, queryHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+	)
 }
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
-
 	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
-	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, t.Ingester)
-	t.Server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.Ingester.FlushHandler))
-	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(http.HandlerFunc(t.Ingester.ShutdownHandler))
+
+	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+	)
+	t.Server.HTTP.Path("/flush").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)))
+	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)))
+
 	return t.Ingester, nil
 }
 
@@ -554,7 +547,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	}
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
 	if err != nil {
 		return nil, err
@@ -608,13 +601,23 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 }
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
+	reg := prometheus.DefaultRegisterer
 	t.Cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
 
-	t.memberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger)
-	return t.memberlistKV, nil
+	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
+		"cortex_",
+		prometheus.WrapRegistererWith(
+			prometheus.Labels{"name": "memberlist"},
+			reg,
+		),
+	)
+	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
+
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider, reg)
+	return t.MemberlistKV, nil
 }
 
 func (t *Loki) initCompactor() (services.Service, error) {

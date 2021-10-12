@@ -99,7 +99,7 @@ func IsDynamicNode(addr string) bool {
 
 // GetQTypeName splits the provided addr into two parts: the QType (if any)
 // and the name.
-func GetQTypeName(addr string) (qtype string, name string) {
+func GetQTypeName(addr string) (qtype, name string) {
 	qtypeAndName := strings.SplitN(addr, "+", 2)
 	if len(qtypeAndName) != 2 {
 		return "", addr

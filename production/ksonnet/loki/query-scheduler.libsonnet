@@ -1,18 +1,28 @@
-
 local k = import 'ksonnet-util/kausal.libsonnet';
 
 {
+  local max_outstanding = if $._config.queryFrontend.sharded_queries_enabled then 1024 else 256,
+
   // Override frontend and querier configuration
-  _config +:: {
+  _config+:: {
     loki+: if $._config.query_scheduler_enabled then {
       frontend+: {
-        scheduler_address: 'query-scheduler.%s.svc.cluster.local:9095' % $._config.namespace,
+        scheduler_address: 'query-scheduler-discovery.%s.svc.cluster.local:9095' % $._config.namespace,
       },
       frontend_worker+: {
-        frontend_address: '',
-        scheduler_address: 'query-scheduler.%s.svc.cluster.local:9095' % $._config.namespace,
+        scheduler_address: 'query-scheduler-discovery.%s.svc.cluster.local:9095' % $._config.namespace,
       },
-    } else {},
+      query_scheduler+: {
+        max_outstanding_requests_per_tenant: max_outstanding,
+      },
+    } else {
+      frontend+: {
+        max_outstanding_per_tenant: max_outstanding,
+      },
+      frontend_worker+: {
+        frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
+      },
+    },
   },
 
   query_scheduler_args:: if $._config.query_scheduler_enabled then
@@ -24,7 +34,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   local container = k.core.v1.container,
   query_scheduler_container:: if $._config.query_scheduler_enabled then
-    container.new('query-scheduler', $._images.query_frontend) +
+    container.new('query-scheduler', $._images.query_scheduler) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +
@@ -45,7 +55,11 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   else {},
 
   local service = k.core.v1.service,
-  query_scheduler_service: if $._config.query_scheduler_enabled then
-    k.util.serviceFor($.query_scheduler_deployment)
-  else {},
+
+  // Headless to make sure resolution gets IP address of target pods, and not service IP.
+  query_scheduler_discovery_service: if !$._config.query_scheduler_enabled then {} else
+    k.util.serviceFor($.query_scheduler_deployment) +
+    service.mixin.spec.withPublishNotReadyAddresses(true) +
+    service.mixin.spec.withClusterIp('None') +
+    service.mixin.metadata.withName('query-scheduler-discovery'),
 }

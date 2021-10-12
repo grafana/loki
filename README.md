@@ -110,7 +110,7 @@ $ ./loki -config.file=./cmd/loki/loki-local-config.yaml
 To build Promtail on non-Linux platforms, use the following command:
 
 ```bash
-$ go build ./cmd/promtail
+$ go build ./clients/cmd/promtail
 ```
 
 On Linux, Promtail requires the systemd headers to be installed for
@@ -120,21 +120,21 @@ With Journal support on Ubuntu, run with the following commands:
 
 ```bash
 $ sudo apt install -y libsystemd-dev
-$ go build ./cmd/promtail
+$ go build ./clients/cmd/promtail
 ```
 
 With Journal support on CentOS, run with the following commands:
 
 ```bash
 $ sudo yum install -y systemd-devel
-$ go build ./cmd/promtail
+$ go build ./clients/cmd/promtail
 ```
 
 Otherwise, to build Promtail without Journal support, run `go build`
 with CGO disabled:
 
 ```bash
-$ CGO_ENABLED=0 go build ./cmd/promtail
+$ CGO_ENABLED=0 go build ./clients/cmd/promtail
 ```
 
 ## License

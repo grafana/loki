@@ -1,7 +1,9 @@
 package lokipush
 
 import (
+	"bufio"
 	"flag"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -92,7 +94,8 @@ func (t *PushTarget) run() error {
 	}
 
 	t.server = srv
-	t.server.HTTP.Handle("/loki/api/v1/push", http.HandlerFunc(t.handle))
+	t.server.HTTP.Handle("/loki/api/v1/push", http.HandlerFunc(t.handleLoki))
+	t.server.HTTP.Handle("/promtail/api/v1/raw", http.HandlerFunc(t.handlePlaintext))
 
 	go func() {
 		err := srv.Run()
@@ -104,7 +107,7 @@ func (t *PushTarget) run() error {
 	return nil
 }
 
-func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
+func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	userID, _ := tenant.TenantID(r.Context())
 	req, err := push.ParseRequest(logger, userID, r, nil)
@@ -165,6 +168,40 @@ func (t *PushTarget) handle(w http.ResponseWriter, r *http.Request) {
 		level.Warn(t.logger).Log("msg", "at least one entry in the push request failed to process", "err", lastErr.Error())
 		http.Error(w, lastErr.Error(), http.StatusBadRequest)
 		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handlePlaintext handles newline delimited input such as plaintext or NDJSON.
+func (t *PushTarget) handlePlaintext(w http.ResponseWriter, r *http.Request) {
+	entries := t.handler.Chan()
+	defer r.Body.Close()
+	body := bufio.NewReader(r.Body)
+	for {
+		line, err := body.ReadString('\n')
+		if err != nil && err != io.EOF {
+			level.Warn(t.logger).Log("msg", "failed to read incoming push request", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			if err == io.EOF {
+				break
+			}
+			continue
+		}
+		entries <- api.Entry{
+			Labels: t.Labels().Clone(),
+			Entry: logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      line,
+			},
+		}
+		if err == io.EOF {
+			break
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)

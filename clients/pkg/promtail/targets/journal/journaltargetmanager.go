@@ -1,3 +1,4 @@
+//go:build !linux || !cgo
 // +build !linux !cgo
 
 package journal
@@ -14,7 +15,7 @@ import (
 )
 
 // JournalTargetManager manages a series of JournalTargets.
-// nolint:golint
+// nolint:revive
 type JournalTargetManager struct{}
 
 // NewJournalTargetManager returns nil as JournalTargets are not supported

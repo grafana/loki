@@ -7,13 +7,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/gcp"
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
 

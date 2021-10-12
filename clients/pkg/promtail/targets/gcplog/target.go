@@ -17,7 +17,7 @@ import (
 
 // GcplogTarget represents the target specific to GCP project.
 // It collects logs from GCP and push it to Loki.
-// nolint:golint
+// nolint:revive
 type GcplogTarget struct {
 	metrics       *Metrics
 	logger        log.Logger
@@ -41,7 +41,7 @@ type GcplogTarget struct {
 // and push it Loki via given `api.EntryHandler.`
 // It starts the `run` loop to consume log entries that can be
 // stopped via `target.Stop()`
-// nolint:golint,govet
+// nolint:revive,govet
 func NewGcplogTarget(
 	metrics *Metrics,
 	logger log.Logger,
@@ -66,7 +66,7 @@ func NewGcplogTarget(
 	return target, nil
 }
 
-// nolint: golint
+// nolint:revive
 func newGcplogTarget(
 	metrics *Metrics,
 	logger log.Logger,
@@ -108,9 +108,9 @@ func (t *GcplogTarget) run() error {
 			t.msgs <- m
 		})
 		if err != nil {
-			// TODO(kavi): Add proper error propagation maybe?
-			level.Error(t.logger).Log("error", err)
+			level.Error(t.logger).Log("msg", "failed to receive pubsub messages", "error", err)
 			t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
+			t.metrics.gcplogTargetLastSuccessScrape.WithLabelValues(t.config.ProjectID, t.config.Subscription).SetToCurrentTime()
 		}
 	}()
 
@@ -138,7 +138,11 @@ func (t *GcplogTarget) Type() target.TargetType {
 }
 
 func (t *GcplogTarget) Ready() bool {
-	return t.ctx.Err() == nil
+	// Return true just like all other targets.
+	// Rationale is gcplog scraping shouldn't stop because of some transient timeout errors.
+	// This transient failure can cause promtail readyness probe to fail which may prevent pod from starting.
+	// We have metrics now to track if scraping failed (`gcplog_target_last_success_scrape`).
+	return true
 }
 
 func (t *GcplogTarget) DiscoveredLabels() model.LabelSet {

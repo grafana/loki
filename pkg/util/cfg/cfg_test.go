@@ -22,8 +22,8 @@ tls:
 	flagSource := dFlags(fs, []string{"-verbose", "-server.port=21"})
 
 	data := Data{}
-	err := dParse(&data,
-		dDefaults(fs),
+	err := Unmarshal(&data,
+		Defaults(fs),
 		yamlSource,
 		flagSource,
 	)
@@ -55,8 +55,8 @@ tls:
 	flagSource := dFlags(fs, []string{"-verbose", "-server.port=21"})
 
 	data := Data{}
-	err := dParse(&data,
-		dDefaults(fs),
+	err := Unmarshal(&data,
+		Defaults(fs),
 		yamlSource,
 		flagSource,
 	)

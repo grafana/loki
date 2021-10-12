@@ -712,6 +712,9 @@ const (
 	OpUnwrap = "unwrap"
 	OpOffset = "offset"
 
+	OpOn       = "on"
+	OpIgnoring = "ignoring"
+
 	// conversion Op
 	OpConvBytes           = "bytes"
 	OpConvDuration        = "duration"
@@ -959,26 +962,46 @@ func (e *VectorAggregationExpr) Walk(f WalkFn) {
 	e.left.Walk(f)
 }
 
+type VectorMatching struct {
+	On      bool
+	Include []string
+}
+
 type BinOpOptions struct {
-	ReturnBool bool
+	ReturnBool     bool
+	VectorMatching *VectorMatching
 }
 
 type BinOpExpr struct {
 	SampleExpr
 	RHS  SampleExpr
 	op   string
-	opts BinOpOptions
+	opts *BinOpOptions
 }
 
 func (e *BinOpExpr) String() string {
-	if e.opts.ReturnBool {
-		return fmt.Sprintf("(%s %s bool %s)", e.SampleExpr.String(), e.op, e.RHS.String())
+	op := e.op
+	if e.opts != nil {
+		if e.opts.ReturnBool {
+			op = fmt.Sprintf("%s bool", op)
+		}
+		if e.opts.VectorMatching != nil {
+			if e.opts.VectorMatching.On {
+				op = fmt.Sprintf("%s %s (%s)", op, OpOn, strings.Join(e.opts.VectorMatching.Include, ","))
+			} else {
+				op = fmt.Sprintf("%s %s (%s)", op, OpIgnoring, strings.Join(e.opts.VectorMatching.Include, ","))
+			}
+		}
 	}
-	return fmt.Sprintf("(%s %s %s)", e.SampleExpr.String(), e.op, e.RHS.String())
+	return fmt.Sprintf("(%s %s %s)", e.SampleExpr.String(), op, e.RHS.String())
 }
 
 // impl SampleExpr
 func (e *BinOpExpr) Shardable() bool {
+	if e.opts != nil && e.opts.VectorMatching != nil {
+		// prohibit sharding when we're changing the label groupings, such as on or ignoring
+		return false
+	}
 	return shardableOps[e.op] && e.SampleExpr.Shardable() && e.RHS.Shardable()
 }
 
@@ -986,7 +1009,7 @@ func (e *BinOpExpr) Walk(f WalkFn) {
 	walkAll(f, e.SampleExpr, e.RHS)
 }
 
-func mustNewBinOpExpr(op string, opts BinOpOptions, lhs, rhs Expr) SampleExpr {
+func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
 		panic(logqlmodel.NewParseError(fmt.Sprintf(

@@ -7,7 +7,7 @@ weight: 700
 
 # Rules and the Ruler
 
-Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
+Grafana Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
 This example configuration sources rules from a local disk.
 
@@ -255,7 +255,7 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the [configuration documentation](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-experimental.Ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 

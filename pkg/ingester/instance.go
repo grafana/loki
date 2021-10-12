@@ -132,7 +132,7 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 	if !ok {
 
 		sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(ls), fp)
-		stream = newStream(i.cfg, i.instanceID, fp, sortedLabels, i.limiter.limits.UnorderedWrites(i.instanceID), i.metrics)
+		stream = newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
 		i.streamsByFP[fp] = stream
 		i.streams[stream.labelsString] = stream
 		i.streamsCreatedTotal.Inc()
@@ -243,7 +243,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(cortexpb.FromLabelsToLabelAdapters(labels), fp)
-	stream = newStream(i.cfg, i.instanceID, fp, sortedLabels, i.limiter.limits.UnorderedWrites(i.instanceID), i.metrics)
+	stream = newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.metrics)
 	i.streams[pushReqStream.Labels] = stream
 	i.streamsByFP[fp] = stream
 
@@ -271,6 +271,15 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	}
 
 	return stream, nil
+}
+
+// removeStream removes a stream from the instance. The streamsMtx must be held.
+func (i *instance) removeStream(s *stream) {
+	delete(i.streamsByFP, s.fp)
+	delete(i.streams, s.labelsString)
+	i.index.Delete(s.labels, s.fp)
+	i.streamsRemovedTotal.Inc()
+	memoryStreams.WithLabelValues(i.instanceID).Dec()
 }
 
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {

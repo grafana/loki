@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -25,7 +26,7 @@ const (
 	objectsStorageDirName = "objects"
 )
 
-func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, *local.FSObjectClient) {
+func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, StorageClient) {
 	indexPath := filepath.Join(path, indexDirName)
 
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: indexPath})
@@ -35,7 +36,7 @@ func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, *local
 	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 	require.NoError(t, err)
 
-	return boltDBIndexClient, fsObjectClient
+	return boltDBIndexClient, storage.NewIndexStorageClient(fsObjectClient, "")
 }
 
 type stopFunc func()
@@ -222,10 +223,10 @@ func compareTableWithStorage(t *testing.T, table *Table, storageDir string) {
 	}()
 
 	for name, db := range table.dbs {
-		objectKey := table.buildObjectKey(name)
+		fileName := table.buildFileName(name)
 
 		// open compressed file from storage
-		compressedFile, err := os.Open(filepath.Join(storageDir, objectKey))
+		compressedFile, err := os.Open(filepath.Join(storageDir, table.name, fileName))
 		require.NoError(t, err)
 
 		// get a compressed reader
@@ -233,7 +234,7 @@ func compareTableWithStorage(t *testing.T, table *Table, storageDir string) {
 		require.NoError(t, err)
 
 		// create a temp file for writing decompressed file
-		decompressedFilePath := filepath.Join(tempDir, filepath.Base(objectKey))
+		decompressedFilePath := filepath.Join(tempDir, filepath.Base(fileName))
 		decompressedFile, err := os.Create(decompressedFilePath)
 		require.NoError(t, err)
 
@@ -417,7 +418,8 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	}
 
 	// setup some dbs for a table at a path.
-	tablePath := testutil.SetupDBTablesAtPath(t, "test-table", indexPath, dbs, false)
+	tableName := "test-table"
+	tablePath := testutil.SetupDBTablesAtPath(t, tableName, indexPath, dbs, false)
 
 	table, err := LoadTable(tablePath, "test", storageClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
@@ -440,7 +442,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 
 	require.Len(t, uploadedDBs, len(expectedDBsToUpload))
 	for _, expectedDB := range expectedDBsToUpload {
-		require.FileExists(t, filepath.Join(objectStorageDir, table.buildObjectKey(fmt.Sprint(expectedDB))))
+		require.FileExists(t, filepath.Join(objectStorageDir, tableName, table.buildFileName(fmt.Sprint(expectedDB))))
 	}
 
 	// force upload of dbs
@@ -453,7 +455,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 
 	require.Len(t, uploadedDBs, len(expectedDBsToUpload))
 	for _, expectedDB := range expectedDBsToUpload {
-		require.FileExists(t, filepath.Join(objectStorageDir, table.buildObjectKey(fmt.Sprint(expectedDB))))
+		require.FileExists(t, filepath.Join(objectStorageDir, tableName, table.buildFileName(fmt.Sprint(expectedDB))))
 	}
 
 	// delete everything uploaded
@@ -468,7 +470,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 
 	// make sure nothing was re-uploaded
 	for _, expectedDB := range expectedDBsToUpload {
-		require.NoFileExists(t, filepath.Join(objectStorageDir, table.buildObjectKey(fmt.Sprint(expectedDB))))
+		require.NoFileExists(t, filepath.Join(objectStorageDir, tableName, table.buildFileName(fmt.Sprint(expectedDB))))
 	}
 }
 

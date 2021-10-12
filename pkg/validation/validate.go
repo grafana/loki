@@ -1,11 +1,15 @@
 package validation
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const (
-	reasonLabel = "reason"
+	ReasonLabel = "reason"
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
 	InvalidLabels = "invalid_labels"
 	MissingLabels = "missing_labels"
@@ -23,7 +27,10 @@ const (
 	// because the limit of active streams has been reached.
 	StreamLimit         = "stream_limit"
 	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased"
-	OutOfOrder          = "out_of_order"
+	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
+	// rather than the overall ingestion rate limit.
+	StreamRateLimit = "per_stream_rate_limit"
+	OutOfOrder      = "out_of_order"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
 	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v"
@@ -44,6 +51,19 @@ const (
 	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
 )
 
+type ErrStreamRateLimit struct {
+	RateLimit flagext.ByteSize
+	Labels    string
+	Bytes     flagext.ByteSize
+}
+
+func (e *ErrStreamRateLimit) Error() string {
+	return fmt.Sprintf("Per stream rate limit exceeded (limit: %s/sec) while attempting to ingest for stream '%s' totaling %s, consider splitting a stream via additional labels or contact your Loki administrator to see if the limt can be increased",
+		e.RateLimit.String(),
+		e.Labels,
+		e.Bytes.String())
+}
+
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
 var MutatedSamples = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
@@ -51,7 +71,7 @@ var MutatedSamples = prometheus.NewCounterVec(
 		Name:      "mutated_samples_total",
 		Help:      "The total number of samples that have been mutated.",
 	},
-	[]string{reasonLabel, "truncated"},
+	[]string{ReasonLabel, "truncated"},
 )
 
 // MutatedBytes is a metric of the total mutated bytes, by reason.
@@ -61,7 +81,7 @@ var MutatedBytes = prometheus.NewCounterVec(
 		Name:      "mutated_bytes_total",
 		Help:      "The total number of bytes that have been mutated.",
 	},
-	[]string{reasonLabel, "truncated"},
+	[]string{ReasonLabel, "truncated"},
 )
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
@@ -71,7 +91,7 @@ var DiscardedBytes = prometheus.NewCounterVec(
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
-	[]string{reasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -81,7 +101,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
-	[]string{reasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant"},
 )
 
 func init() {

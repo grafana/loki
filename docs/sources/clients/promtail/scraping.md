@@ -33,7 +33,7 @@ There are different types of labels present in Promtail:
 - Labels starting with `__` (two underscores) are internal labels. They usually
   come from dynamic sources like service discovery. Once relabeling is done,
   they are removed from the label set. To persist internal labels so they're
-  sent to Loki, rename them so they don't start with `__`. See
+  sent to Grafana Loki, rename them so they don't start with `__`. See
   [Relabeling](#relabeling) for more information.
 
 - Labels starting with `__meta_kubernetes_pod_label_*` are "meta labels" which
@@ -76,7 +76,7 @@ relabel_configs:
     target_label: '__host__'
 ```
 
-See [Relabeling](#relabeling) for more information.
+See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration](../configuration/#kubernetes_sd_config).
 
 ## Journal Scraping (Linux Only)
 
@@ -212,8 +212,8 @@ It also support `relabeling` and `pipeline` stages just like other targets.
 When Promtail receives GCP logs the labels that are set on the GCP resources are available as internal labels. Like in the example above, the `__project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`. See [Relabeling](#relabeling) for more information.
 
 Log entries scraped by `gcplog` will add an additional label called `promtail_instance`. This label uniquely identifies each Promtail instance trying to scrape gcplog (from a single `subscription_id`).
-We need this unique identifier to avoid out-of-order errors from Loki servers.
-Because say two Promtail instances rewrite timestamp of log entries(with same labelset) at the same time may reach Loki servers at different times can cause Loki servers to reject it.
+We need this unique identifier to avoid out-of-order errors from Loki servers when Loki is not configured to [accept out-of-order writes](../../../configuration/#accept-out-of-order-writes).
+If two Promtail instances rewrite the timestamp of log entries (with same labelset) at the same time, the log entries may reach Loki servers at different times. This can cause Loki servers to reject the out-of-order log entry.
 
 ## Syslog Receiver
 

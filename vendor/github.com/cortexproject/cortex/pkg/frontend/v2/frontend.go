@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,10 +23,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Config for a Frontend.

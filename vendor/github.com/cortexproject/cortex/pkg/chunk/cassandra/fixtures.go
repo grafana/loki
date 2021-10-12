@@ -5,9 +5,10 @@ import (
 	"io"
 	"os"
 
+	"github.com/grafana/dskit/flagext"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // GOCQL doesn't provide nice mocks, so we use a real Cassandra instance.

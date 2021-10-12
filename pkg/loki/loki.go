@@ -7,46 +7,45 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/querier/worker"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/felixge/fgprof"
-
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/validation"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/modules"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/signals"
-
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
-	"github.com/cortexproject/cortex/pkg/util/services"
-
+	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/modules"
+	"github.com/grafana/dskit/runtimeconfig"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"google.golang.org/grpc"
+	"github.com/weaveworks/common/signals"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
+	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // Config is the root config for Loki.
@@ -55,25 +54,26 @@ type Config struct {
 	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
-	Server           server.Config               `yaml:"server,omitempty"`
-	Distributor      distributor.Config          `yaml:"distributor,omitempty"`
-	Querier          querier.Config              `yaml:"querier,omitempty"`
-	IngesterClient   client.Config               `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config             `yaml:"ingester,omitempty"`
-	StorageConfig    storage.Config              `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig storage.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     storage.SchemaConfig        `yaml:"schema_config,omitempty"`
-	LimitsConfig     validation.Limits           `yaml:"limits_config,omitempty"`
-	TableManager     chunk.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	Worker           worker.Config               `yaml:"frontend_worker,omitempty"`
-	Frontend         lokifrontend.Config         `yaml:"frontend,omitempty"`
-	Ruler            ruler.Config                `yaml:"ruler,omitempty"`
-	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
-	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
-	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
-	Tracing          tracing.Config              `yaml:"tracing"`
-	CompactorConfig  compactor.Config            `yaml:"compactor,omitempty"`
-	QueryScheduler   scheduler.Config            `yaml:"query_scheduler"`
+	Common           common.Config            `yaml:"common,omitempty"`
+	Server           server.Config            `yaml:"server,omitempty"`
+	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
+	Querier          querier.Config           `yaml:"querier,omitempty"`
+	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
+	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
+	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig storage.ChunkStoreConfig `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     storage.SchemaConfig     `yaml:"schema_config,omitempty"`
+	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
+	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Worker           worker.Config            `yaml:"frontend_worker,omitempty"`
+	Frontend         lokifrontend.Config      `yaml:"frontend,omitempty"`
+	Ruler            ruler.Config             `yaml:"ruler,omitempty"`
+	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
+	RuntimeConfig    runtimeconfig.Config     `yaml:"runtime_config,omitempty"`
+	MemberlistKV     memberlist.KVConfig      `yaml:"memberlist"`
+	Tracing          tracing.Config           `yaml:"tracing"`
+	CompactorConfig  compactor.Config         `yaml:"compactor,omitempty"`
+	QueryScheduler   scheduler.Config         `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -200,7 +200,7 @@ type Loki struct {
 	rulerAPI                 *cortex_ruler.API
 	stopper                  queryrange.Stopper
 	runtimeConfig            *runtimeconfig.Manager
-	memberlistKV             *memberlist.KVInitService
+	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware cortex_tripper.Tripperware
 
@@ -214,6 +214,7 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
+	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
@@ -223,31 +224,24 @@ func New(cfg Config) (*Loki, error) {
 }
 
 func (t *Loki) setupAuthMiddleware() {
-	t.Cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
-	t.Cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
-	if t.Cfg.AuthEnabled {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
-		t.HTTPAuthMiddleware = middleware.AuthenticateUser
-	} else {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
-		t.HTTPAuthMiddleware = fakeHTTPAuthMiddleware
-	}
-}
-
-var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	switch info.FullMethod {
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
-	//
-	// Also don't check auth /frontend.Frontend/Process, as this handles
-	// queries for multiple users.
-	case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
-		return handler(srv, ss)
-	default:
-		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-	}
+	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
+		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
+		[]string{
+			"/grpc.health.v1.Health/Check",
+			"/logproto.Ingester/TransferChunks",
+			"/frontend.Frontend/Process",
+			"/frontend.Frontend/NotifyClientShutdown",
+			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
+			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
+			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
+		})
+}
+
+func (t *Loki) setupGRPCRecoveryMiddleware() {
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, serverutil.RecoveryGRPCUnaryInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, serverutil.RecoveryGRPCStreamInterceptor)
 }
 
 func newDefaultConfig() *Config {
@@ -281,6 +275,8 @@ func (t *Loki) Run() error {
 	// before starting servers, register /ready handler. It should reflect entire Loki.
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
+
 	// This adds a way to see the config and the changes compared to the defaults
 	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
 
@@ -299,7 +295,7 @@ func (t *Loki) Run() error {
 		// let's find out which module failed
 		for m, s := range serviceMap {
 			if s == service {
-				if service.FailureCase() == util.ErrStopProcess {
+				if service.FailureCase() == modules.ErrStopProcess {
 					level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
 				} else {
 					level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
@@ -335,7 +331,7 @@ func (t *Loki) Run() error {
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {
-				if f.FailureCase() != util.ErrStopProcess {
+				if f.FailureCase() != modules.ErrStopProcess {
 					// Details were reported via failure listener before
 					err = errors.New("failed services")
 					break
@@ -384,7 +380,7 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 }
 
 func (t *Loki) setupModuleManager() error {
-	mm := modules.NewManager()
+	mm := modules.NewManager(util_log.Logger)
 
 	mm.RegisterModule(Server, t.initServer)
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig)
@@ -424,7 +420,7 @@ func (t *Loki) setupModuleManager() error {
 		Compactor:                {Server, Overrides},
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
-		All:                      {Querier, Ingester, Distributor, TableManager, Ruler},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Ruler},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.

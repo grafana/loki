@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -270,7 +271,7 @@ pushJobsLoop:
 // scanUserBlocksWithRetries runs scanUserBlocks() retrying multiple times
 // in case of error.
 func (d *BucketScanBlocksFinder) scanUserBlocksWithRetries(ctx context.Context, userID string) (metas bucketindex.Blocks, deletionMarks map[ulid.ULID]*bucketindex.BlockDeletionMark, err error) {
-	retries := util.NewBackoff(ctx, util.BackoffConfig{
+	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Second,
 		MaxBackoff: 30 * time.Second,
 		MaxRetries: 3,

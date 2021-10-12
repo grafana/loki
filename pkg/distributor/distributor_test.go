@@ -14,12 +14,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-
+	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -273,7 +273,8 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
 
 			// Init a shared KVStore
-			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Start all expected distributors
 			distributors := make([]*Distributor, testData.distributors)
