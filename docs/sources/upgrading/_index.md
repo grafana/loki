@@ -99,6 +99,27 @@ Please manually provide the values of `5m` and `true` (respectively) in your con
 
 -_add changes here which are unreleased_
 
+### Loki Config
+
+#### Change of some default limits to common values
+
+PR [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: the default value of some limits were changed to protect users from overwhelming their cluster with ingestion load caused by relying on default configs.
+
+We suggest you double check if the following parameters are
+present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_user`
+`max_query_length` `max_query_parallelism` `max_streams_per_user`
+`reject_old_samples` `reject_old_samples_max_age`. If they are not present, we recommend you double check that the new values will not negatively impact your system. The changes are:
+
+| config | new default | old default |
+| --- | --- | --- |
+| ingestion_rate_strategy | "global" | "local" |
+| max_global_streams_per_user | 5000 | 0 (no limit) |
+| max_query_length | "721h" | "0h" (no limit) |
+| max_query_parallelism | 32 | 14 |
+| max_streams_per_user | 0 (no limit) | 10000 |
+| reject_old_samples | true | false |
+| reject_old_samples_max_age | "168h" | "336h" |
+
 ## 2.3.0
 
 ### Loki
@@ -144,7 +165,7 @@ This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrad
 
 **Read this if you use the query-frontend and have `sharded_queries_enabled: true`**
 
-We discovered query scheduling related to sharded queries over long time ranges could lead to unfair work scheduling by one single query in the per tenant work queue. 
+We discovered query scheduling related to sharded queries over long time ranges could lead to unfair work scheduling by one single query in the per tenant work queue.
 
 The `max_query_parallelism` setting is designed to limit how many split and sharded units of 'work' for a single query are allowed to be put into the per tenant work queue at one time. The previous behavior would split the query by time using the `split_queries_by_interval` and compare this value to `max_query_parallelism` when filling the queue, however with sharding enabled, every split was then sharded into 16 additional units of work after the `max_query_parallelism` limit was applied.
 

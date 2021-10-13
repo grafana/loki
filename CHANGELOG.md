@@ -3,6 +3,7 @@
 * [4435](https://github.com/grafana/loki/pull/4435) **trevorwhitney**: Change default values for two GRPC settings so querier can connect to frontend/scheduler
 * [4440](https://github.com/grafana/loki/pull/4440) **DylanGuedes**: Config: Override distributor's default ring KV store
 * [4443](https://github.com/grafana/loki/pull/4443) **DylanGuedes**: Loki: Change how push API checks for contentType
+* [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: Change default limits to common values
 
 # 2.3.0 (2021/08/06)
 
