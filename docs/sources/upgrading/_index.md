@@ -19,6 +19,21 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ### Loki
 
+#### Distributor now stores ring in memory by default instead of Consul
+
+PR [4440](https://github.com/grafana/loki/pull/4440) **DylanGuedes**: Config: Override distributor's default ring KV store
+
+This change sets `inmemory` as the new default storage for the Distributor ring (previously `consul`).
+The motivation is making the Distributor easier to run with default configs, by not requiring Consul anymore.
+In any case, if you prefer to use Consul as the ring storage, you can set it by using the following config:
+
+```yaml
+distributor:
+  ring:
+    kvstore:
+      store: consul
+```
+
 #### Memberlist config now automatically applies to all non-configured rings
 PR [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
 
@@ -83,7 +98,6 @@ server:
 Please manually provide the values of `5m` and `true` (respectively) in your config if you rely on those values.
 
 -_add changes here which are unreleased_
-
 
 ## 2.3.0
 
