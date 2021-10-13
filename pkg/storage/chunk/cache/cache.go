@@ -25,6 +25,7 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
+	autoEnableFifo  bool
 	EnableFifoCache bool `yaml:"enable_fifocache"`
 
 	DefaultValidity time.Duration `yaml:"default_validity"`
@@ -43,15 +44,21 @@ type Config struct {
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet, autoEnableFifo bool) {
+	cfg.autoEnableFifo = autoEnableFifo
 	cfg.Background.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Memcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
+	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
 
-	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache.")
-	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", 0, description+"The default validity of entries for caches unless overridden.")
+	enableFifoDescription := "Enable in-memory cache"
+	if cfg.autoEnableFifo {
+		enableFifoDescription += " (auto-enabled if no other cache is configured)"
+	}
+	enableFifoDescription += "."
+	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+enableFifoDescription)
 
 	cfg.Prefix = prefix
 }
@@ -67,16 +74,6 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 	}
 
 	caches := []Cache{}
-
-	if cfg.EnableFifoCache {
-		if cfg.Fifocache.Validity == 0 && cfg.DefaultValidity != 0 {
-			cfg.Fifocache.Validity = cfg.DefaultValidity
-		}
-
-		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
-			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
-		}
-	}
 
 	if (cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "") && cfg.Redis.Endpoint != "" {
 		return nil, errors.New("use of multiple cache storage systems is not supported")
@@ -101,6 +98,16 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		cacheName := cfg.Prefix + "redis"
 		cache := NewRedisCache(cacheName, NewRedisClient(&cfg.Redis), logger)
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
+	}
+
+	if cfg.EnableFifoCache || (cfg.autoEnableFifo && len(caches) == 0) {
+		if cfg.Fifocache.Validity == 0 && cfg.DefaultValidity != 0 {
+			cfg.Fifocache.Validity = cfg.DefaultValidity
+		}
+
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
+			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
+		}
 	}
 
 	cache := NewTiered(caches)
