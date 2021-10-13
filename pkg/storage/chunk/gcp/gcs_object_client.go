@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -40,6 +41,16 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.ChunkBufferSize, prefix+"gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enabled OpenCensus (OC) instrumentation for all requests.")
+}
+
+func (cfg *GCSConfig) ToCortexGCSConfig() cortex_gcp.GCSConfig {
+	return cortex_gcp.GCSConfig{
+		BucketName:       cfg.BucketName,
+		ChunkBufferSize:  cfg.ChunkBufferSize,
+		RequestTimeout:   cfg.RequestTimeout,
+		EnableOpenCensus: cfg.EnableOpenCensus,
+	}
+
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.

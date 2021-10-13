@@ -3,10 +3,12 @@ package loki
 import (
 	"flag"
 	"fmt"
+	"reflect"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
@@ -72,8 +74,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyMemberlistConfig(r)
-
-		return nil
+		err := applyObjectStoreConfig(r, &defaults)
+		return err
 	}
 }
 
@@ -87,5 +89,98 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 		r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 		r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 		r.Ruler.Ring.KVStore.Store = memberlistStr
+	}
+}
+
+// applyObjectStoreConfig will attempt to apply a common object storage config for either
+// s3, gcs, azure, or swift to all the places we create an object storage client.
+// If any specific configs for an object storage client have been provided, applyObjectStoreConfig will
+// avoid setting any other properties in that section to prevent, for example, having both an S3 and
+// GCS configuration present for the ruler's object storage client.
+func applyObjectStoreConfig(cfg, defaults *ConfigWrapper) (err error) {
+	if multipleCommonObjStoresProvided(cfg) {
+		return errors.New("only one common object store config can be provided")
+	}
+
+	if cfg.Common.ObjectStore.S3 != nil {
+		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "s3"
+			r.Ruler.StoreConfig.S3 = r.Common.ObjectStore.S3.ToCortexS3Config()
+		})
+
+		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.ObjectStore.S3
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeS3
+		})
+
+	}
+
+	if cfg.Common.ObjectStore.GCS != nil {
+		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "gcs"
+			r.Ruler.StoreConfig.GCS = r.Common.ObjectStore.GCS.ToCortexGCSConfig()
+		})
+
+		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.StorageConfig.GCSConfig = *r.Common.ObjectStore.GCS
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeGCS
+		})
+	}
+
+	if cfg.Common.ObjectStore.Azure != nil {
+		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "azure"
+			r.Ruler.StoreConfig.Azure = r.Common.ObjectStore.Azure.ToCortexAzureConfig()
+		})
+
+		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.StorageConfig.AzureStorageConfig = *r.Common.ObjectStore.Azure
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeAzure
+		})
+	}
+
+	if cfg.Common.ObjectStore.Swift != nil {
+		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "swift"
+			r.Ruler.StoreConfig.Swift = r.Common.ObjectStore.Swift.ToCortexSwiftConfig()
+		})
+
+		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
+			r.StorageConfig.Swift = *r.Common.ObjectStore.Swift
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeSwift
+		})
+	}
+
+	return nil
+}
+
+func multipleCommonObjStoresProvided(r *ConfigWrapper) bool {
+	numConfigs := 0
+
+	if r.Common.ObjectStore.S3 != nil {
+		numConfigs++
+	}
+	if r.Common.ObjectStore.GCS != nil {
+		numConfigs++
+	}
+	if r.Common.ObjectStore.Azure != nil {
+		numConfigs++
+	}
+	if r.Common.ObjectStore.Swift != nil {
+		numConfigs++
+	}
+
+	return numConfigs > 1
+}
+
+func applyRulerStoreConfig(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
+	if reflect.DeepEqual(cfg.Ruler.StoreConfig, defaults.Ruler.StoreConfig) {
+		apply(cfg)
+	}
+}
+
+func applyStorageConfig(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
+	if reflect.DeepEqual(cfg.StorageConfig, defaults.StorageConfig) {
+		apply(cfg)
 	}
 }
