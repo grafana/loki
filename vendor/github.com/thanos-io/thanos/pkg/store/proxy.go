@@ -38,13 +38,13 @@ const StoreMatcherKey = ctxKey(0)
 
 // Client holds meta information about a store.
 type Client interface {
-	// Client to access the store.
+	// StoreClient to access the store.
 	storepb.StoreClient
 
 	// LabelSets that each apply to some data exposed by the backing store.
 	LabelSets() []labels.Labels
 
-	// Minimum and maximum time range of data in the store.
+	// TimeRange returns minimum and maximum time range of data in the store.
 	TimeRange() (mint int64, maxt int64)
 
 	String() string
@@ -243,20 +243,27 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
 
-			// This is used to cancel this stream when one operations takes too long.
+			// This is used to cancel this stream when one operation takes too long.
 			seriesCtx, closeSeries := context.WithCancel(gctx)
 			seriesCtx = grpc_opentracing.ClientAddContextTags(seriesCtx, opentracing.Tags{
 				"target": st.Addr(),
 			})
 			defer closeSeries()
 
+			storeID := labelpb.PromLabelSetsToString(st.LabelSets())
+			if storeID == "" {
+				storeID = "Store Gateway"
+			}
+			span, seriesCtx := tracing.StartSpan(seriesCtx, "proxy.series", tracing.Tags{
+				"store.id":   storeID,
+				"store.addr": st.Addr(),
+			})
+
 			sc, err := st.Series(seriesCtx, r)
 			if err != nil {
-				storeID := labelpb.PromLabelSetsToString(st.LabelSets())
-				if storeID == "" {
-					storeID = "Store Gateway"
-				}
 				err = errors.Wrapf(err, "fetch series for %s %s", storeID, st)
+				span.SetTag("err", err.Error())
+				span.Finish()
 				if r.PartialResponseDisabled {
 					level.Error(reqLogger).Log("err", err, "msg", "partial response disabled; aborting request")
 					return err
@@ -267,7 +274,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 
 			// Schedule streamSeriesSet that translates gRPC streamed response
 			// into seriesSet (if series) or respCh if warnings.
-			seriesSet = append(seriesSet, startStreamSeriesSet(seriesCtx, reqLogger, closeSeries,
+			seriesSet = append(seriesSet, startStreamSeriesSet(seriesCtx, reqLogger, span, closeSeries,
 				wg, sc, respSender, st.String(), !r.PartialResponseDisabled, s.responseTimeout, s.metrics.emptyStreamResponses))
 		}
 
@@ -354,6 +361,7 @@ func frameCtx(responseTimeout time.Duration) (context.Context, context.CancelFun
 func startStreamSeriesSet(
 	ctx context.Context,
 	logger log.Logger,
+	span tracing.Span,
 	closeSeries context.CancelFunc,
 	wg *sync.WaitGroup,
 	stream storepb.Store_SeriesClient,
@@ -377,8 +385,18 @@ func startStreamSeriesSet(
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		defer close(s.recvCh)
+		seriesStats := &storepb.SeriesStatsCounter{}
+		bytesProcessed := 0
+
+		defer func() {
+			span.SetTag("processed.series", seriesStats.Series)
+			span.SetTag("processed.chunks", seriesStats.Chunks)
+			span.SetTag("processed.samples", seriesStats.Samples)
+			span.SetTag("processed.bytes", bytesProcessed)
+			span.Finish()
+			close(s.recvCh)
+			wg.Done()
+		}()
 
 		numResponses := 0
 		defer func() {
@@ -424,12 +442,15 @@ func startStreamSeriesSet(
 				return
 			}
 			numResponses++
+			bytesProcessed += rr.r.Size()
 
 			if w := rr.r.GetWarning(); w != "" {
 				s.warnCh.send(storepb.NewWarnSeriesResponse(errors.New(w)))
 			}
 
 			if series := rr.r.GetSeries(); series != nil {
+				seriesStats.Count(series)
+
 				select {
 				case s.recvCh <- series:
 				case <-ctx.Done():
@@ -568,6 +589,7 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 				PartialResponseDisabled: r.PartialResponseDisabled,
 				Start:                   r.Start,
 				End:                     r.End,
+				Matchers:                r.Matchers,
 			})
 			if err != nil {
 				err = errors.Wrapf(err, "fetch label names from store %s", st)

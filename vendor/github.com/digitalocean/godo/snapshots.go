@@ -10,7 +10,7 @@ const snapshotBasePath = "v2/snapshots"
 
 // SnapshotsService is an interface for interfacing with the snapshots
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#snapshots
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Snapshots
 type SnapshotsService interface {
 	List(context.Context, *ListOptions) ([]Snapshot, *Response, error)
 	ListVolume(context.Context, *ListOptions) ([]Snapshot, *Response, error)

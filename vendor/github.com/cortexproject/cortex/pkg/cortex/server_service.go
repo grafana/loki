@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/weaveworks/common/server"
 

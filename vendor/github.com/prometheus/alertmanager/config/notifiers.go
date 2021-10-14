@@ -20,9 +20,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/sigv4"
 
 	commoncfg "github.com/prometheus/common/config"
+	"github.com/prometheus/common/sigv4"
 )
 
 var (
@@ -455,16 +455,17 @@ type OpsGenieConfig struct {
 
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
-	APIKey      Secret                    `yaml:"api_key,omitempty" json:"api_key,omitempty"`
-	APIURL      *URL                      `yaml:"api_url,omitempty" json:"api_url,omitempty"`
-	Message     string                    `yaml:"message,omitempty" json:"message,omitempty"`
-	Description string                    `yaml:"description,omitempty" json:"description,omitempty"`
-	Source      string                    `yaml:"source,omitempty" json:"source,omitempty"`
-	Details     map[string]string         `yaml:"details,omitempty" json:"details,omitempty"`
-	Responders  []OpsGenieConfigResponder `yaml:"responders,omitempty" json:"responders,omitempty"`
-	Tags        string                    `yaml:"tags,omitempty" json:"tags,omitempty"`
-	Note        string                    `yaml:"note,omitempty" json:"note,omitempty"`
-	Priority    string                    `yaml:"priority,omitempty" json:"priority,omitempty"`
+	APIKey       Secret                    `yaml:"api_key,omitempty" json:"api_key,omitempty"`
+	APIURL       *URL                      `yaml:"api_url,omitempty" json:"api_url,omitempty"`
+	Message      string                    `yaml:"message,omitempty" json:"message,omitempty"`
+	Description  string                    `yaml:"description,omitempty" json:"description,omitempty"`
+	Source       string                    `yaml:"source,omitempty" json:"source,omitempty"`
+	Details      map[string]string         `yaml:"details,omitempty" json:"details,omitempty"`
+	Responders   []OpsGenieConfigResponder `yaml:"responders,omitempty" json:"responders,omitempty"`
+	Tags         string                    `yaml:"tags,omitempty" json:"tags,omitempty"`
+	Note         string                    `yaml:"note,omitempty" json:"note,omitempty"`
+	Priority     string                    `yaml:"priority,omitempty" json:"priority,omitempty"`
+	UpdateAlerts bool                      `yaml:"update_alerts,omitempty" json:"update_alerts,omitempty"`
 }
 
 const opsgenieValidTypesRe = `^(team|user|escalation|schedule)$`
