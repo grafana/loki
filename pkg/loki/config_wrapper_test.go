@@ -528,8 +528,20 @@ storage_config:
 			}
 		})
 
-    //TODO: test that compactor shared store type is not overriden if specified
-    //TODO: add comments to PR about things that could be moved to dskit
+		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
+			configString := `common:
+  object_store:
+    s3:
+      s3: s3://foo-bucket/example
+      access_key_id: abc123
+      secret_access_key: def789
+compactor:
+  shared_store: aws`
+			err, config, _ := testContext(configString, nil)
+			require.NoError(t, err)
+
+			assert.Equal(t, "aws", config.CompactorConfig.SharedStoreType)
+		})
 	})
 }
 
