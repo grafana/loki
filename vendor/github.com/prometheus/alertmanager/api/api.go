@@ -32,7 +32,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 )
 
 // API represents all APIs of Alertmanager.

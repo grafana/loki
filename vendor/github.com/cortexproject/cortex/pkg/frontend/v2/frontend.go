@@ -9,9 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -23,8 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 )
 
 // Config for a Frontend.
@@ -162,7 +162,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
-		carrier := (*grpcutil.HttpgrpcHeadersCarrier)(req)
+		carrier := (*httpgrpcutil.HttpgrpcHeadersCarrier)(req)
 		if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier); err != nil {
 			return nil, err
 		}

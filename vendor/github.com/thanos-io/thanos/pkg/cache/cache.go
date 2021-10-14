@@ -18,4 +18,6 @@ type Cache interface {
 	// Fetch multiple keys from cache. Returns map of input keys to data.
 	// If key isn't in the map, data for given key was not found.
 	Fetch(ctx context.Context, keys []string) map[string][]byte
+
+	Name() string
 }

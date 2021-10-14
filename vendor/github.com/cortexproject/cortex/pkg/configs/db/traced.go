@@ -7,7 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 )
 
 // traced adds log trace lines on each db call

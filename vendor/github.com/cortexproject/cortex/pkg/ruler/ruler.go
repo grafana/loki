@@ -12,9 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -33,8 +35,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -651,7 +651,7 @@ func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx)
+		return r.getShardedRules(ctx, userID)
 	}
 
 	return r.getLocalRules(userID)
@@ -744,8 +744,14 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	rulers, err := r.ring.GetReplicationSetForOperation(RingOp)
+func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+	ring := ring.ReadRing(r.ring)
+
+	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		ring = r.ring.ShuffleShard(userID, shardSize)
+	}
+
+	rulers, err := ring.GetReplicationSetForOperation(RingOp)
 	if err != nil {
 		return nil, err
 	}

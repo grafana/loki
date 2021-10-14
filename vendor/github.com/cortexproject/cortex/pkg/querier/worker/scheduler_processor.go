@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/grpcclient"
+	dsmiddleware "github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -24,10 +26,8 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
@@ -132,7 +132,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 
 			tracer := opentracing.GlobalTracer()
 			// Ignore errors here. If we cannot get parent span, we just don't create new one.
-			parentSpanContext, _ := grpcutil.GetParentSpanForRequest(tracer, request.HttpRequest)
+			parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request.HttpRequest)
 			if parentSpanContext != nil {
 				queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "querier_processor_runRequest", opentracing.ChildOf(parentSpanContext))
 				defer queueSpan.Finish()
@@ -198,7 +198,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 	opts, err := sp.grpcConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
-		cortex_middleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
+		dsmiddleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
 	}, nil)
 
 	if err != nil {

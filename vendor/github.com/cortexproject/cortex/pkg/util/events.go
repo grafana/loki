@@ -3,7 +3,7 @@ package util
 import (
 	"os"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"go.uber.org/atomic"
 )
 

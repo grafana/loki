@@ -88,7 +88,7 @@ const (
 // help make these entities distinct from Databases in godo, we refer to them
 // here as DatabaseDBs.
 //
-// See: https://developers.digitalocean.com/documentation/v2#databases
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Databases
 type DatabasesService interface {
 	List(context.Context, *ListOptions) ([]Database, *Response, error)
 	Get(context.Context, string) (*Database, *Response, error)

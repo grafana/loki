@@ -6,10 +6,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/runutil"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )

@@ -3,7 +3,7 @@ package gcs
 import (
 	"context"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/gcs"
 	yaml "gopkg.in/yaml.v2"

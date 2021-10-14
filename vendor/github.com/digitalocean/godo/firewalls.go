@@ -10,7 +10,7 @@ import (
 const firewallsBasePath = "/v2/firewalls"
 
 // FirewallsService is an interface for managing Firewalls with the DigitalOcean API.
-// See: https://developers.digitalocean.com/documentation/v2/#firewalls
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Firewalls
 type FirewallsService interface {
 	Get(context.Context, string) (*Firewall, *Response, error)
 	Create(context.Context, *FirewallRequest) (*Firewall, *Response, error)

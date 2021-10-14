@@ -62,6 +62,12 @@ func (r *Service) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Server represents an instance running on the hypervisor
+type Server struct {
+	Name string `json:"name"`
+	UUID string `json:"uuid"`
+}
+
 // Hypervisor represents a hypervisor in the OpenStack cloud.
 type Hypervisor struct {
 	// A structure that contains cpu information like arch, model, vendor,
@@ -122,6 +128,10 @@ type Hypervisor struct {
 
 	// Service is the service this hypervisor represents.
 	Service Service `json:"service"`
+
+	// Servers is a list of Server object.
+	// The requires microversion 2.53 or later.
+	Servers *[]Server `json:"servers"`
 
 	// VCPUs is the total number of vcpus on the hypervisor.
 	VCPUs int `json:"vcpus"`

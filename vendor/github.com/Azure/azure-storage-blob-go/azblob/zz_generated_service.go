@@ -25,6 +25,98 @@ func newServiceClient(url url.URL, p pipeline.Pipeline) serviceClient {
 	return serviceClient{newManagementClient(url, p)}
 }
 
+// FilterBlobs the Filter Blobs operation enables callers to list blobs across all containers whose tags match a given
+// search expression.  Filter blobs searches across all containers within a storage account but can be scoped within
+// the expression to a single container.
+//
+// timeout is the timeout parameter is expressed in seconds. For more information, see <a
+// href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
+// Timeouts for Blob Service Operations.</a> requestID is provides a client-generated, opaque value with a 1 KB
+// character limit that is recorded in the analytics logs when storage analytics logging is enabled. where is filters
+// the results to return only to return only blobs whose tags match the specified expression. marker is a string value
+// that identifies the portion of the list of containers to be returned with the next listing operation. The operation
+// returns the NextMarker value within the response body if the listing operation did not return all containers
+// remaining to be listed with the current page. The NextMarker value can be used as the value for the marker parameter
+// in a subsequent call to request the next page of list items. The marker value is opaque to the client. maxresults is
+// specifies the maximum number of containers to return. If the request does not specify maxresults, or specifies a
+// value greater than 5000, the server will return up to 5000 items. Note that if the listing operation crosses a
+// partition boundary, then the service will return a continuation token for retrieving the remainder of the results.
+// For this reason, it is possible that the service will return fewer results than specified by maxresults, or than the
+// default of 5000.
+func (client serviceClient) FilterBlobs(ctx context.Context, timeout *int32, requestID *string, where *string, marker *string, maxresults *int32) (*FilterBlobSegment, error) {
+	if err := validate([]validation{
+		{targetValue: timeout,
+			constraints: []constraint{{target: "timeout", name: null, rule: false,
+				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}},
+		{targetValue: maxresults,
+			constraints: []constraint{{target: "maxresults", name: null, rule: false,
+				chain: []constraint{{target: "maxresults", name: inclusiveMinimum, rule: 1, chain: nil}}}}}}); err != nil {
+		return nil, err
+	}
+	req, err := client.filterBlobsPreparer(timeout, requestID, where, marker, maxresults)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Pipeline().Do(ctx, responderPolicyFactory{responder: client.filterBlobsResponder}, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*FilterBlobSegment), err
+}
+
+// filterBlobsPreparer prepares the FilterBlobs request.
+func (client serviceClient) filterBlobsPreparer(timeout *int32, requestID *string, where *string, marker *string, maxresults *int32) (pipeline.Request, error) {
+	req, err := pipeline.NewRequest("GET", client.url, nil)
+	if err != nil {
+		return req, pipeline.NewError(err, "failed to create request")
+	}
+	params := req.URL.Query()
+	if timeout != nil {
+		params.Set("timeout", strconv.FormatInt(int64(*timeout), 10))
+	}
+	if where != nil && len(*where) > 0 {
+		params.Set("where", *where)
+	}
+	if marker != nil && len(*marker) > 0 {
+		params.Set("marker", *marker)
+	}
+	if maxresults != nil {
+		params.Set("maxresults", strconv.FormatInt(int64(*maxresults), 10))
+	}
+	params.Set("comp", "blobs")
+	req.URL.RawQuery = params.Encode()
+	req.Header.Set("x-ms-version", ServiceVersion)
+	if requestID != nil {
+		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	return req, nil
+}
+
+// filterBlobsResponder handles the response to the FilterBlobs request.
+func (client serviceClient) filterBlobsResponder(resp pipeline.Response) (pipeline.Response, error) {
+	err := validateResponse(resp, http.StatusOK)
+	if resp == nil {
+		return nil, err
+	}
+	result := &FilterBlobSegment{rawResponse: resp.Response()}
+	if err != nil {
+		return result, err
+	}
+	defer resp.Response().Body.Close()
+	b, err := ioutil.ReadAll(resp.Response().Body)
+	if err != nil {
+		return result, err
+	}
+	if len(b) > 0 {
+		b = removeBOM(b)
+		err = xml.Unmarshal(b, result)
+		if err != nil {
+			return result, NewResponseError(err, resp.Response(), "failed to unmarshal response body")
+		}
+	}
+	return result, nil
+}
+
 // GetAccountInfo returns the sku name and account kind
 func (client serviceClient) GetAccountInfo(ctx context.Context) (*ServiceGetAccountInfoResponse, error) {
 	req, err := client.getAccountInfoPreparer()
@@ -203,7 +295,7 @@ func (client serviceClient) getStatisticsResponder(resp pipeline.Response) (pipe
 	return result, nil
 }
 
-// GetUserDelegationKey retrieves a user delgation key for the Blob service. This is only a valid operation when using
+// GetUserDelegationKey retrieves a user delegation key for the Blob service. This is only a valid operation when using
 // bearer token authentication.
 //
 // timeout is the timeout parameter is expressed in seconds. For more information, see <a
@@ -300,7 +392,7 @@ func (client serviceClient) getUserDelegationKeyResponder(resp pipeline.Response
 // href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
 // Timeouts for Blob Service Operations.</a> requestID is provides a client-generated, opaque value with a 1 KB
 // character limit that is recorded in the analytics logs when storage analytics logging is enabled.
-func (client serviceClient) ListContainersSegment(ctx context.Context, prefix *string, marker *string, maxresults *int32, include ListContainersIncludeType, timeout *int32, requestID *string) (*ListContainersSegmentResponse, error) {
+func (client serviceClient) ListContainersSegment(ctx context.Context, prefix *string, marker *string, maxresults *int32, include []ListContainersIncludeType, timeout *int32, requestID *string) (*ListContainersSegmentResponse, error) {
 	if err := validate([]validation{
 		{targetValue: maxresults,
 			constraints: []constraint{{target: "maxresults", name: null, rule: false,
@@ -322,7 +414,7 @@ func (client serviceClient) ListContainersSegment(ctx context.Context, prefix *s
 }
 
 // listContainersSegmentPreparer prepares the ListContainersSegment request.
-func (client serviceClient) listContainersSegmentPreparer(prefix *string, marker *string, maxresults *int32, include ListContainersIncludeType, timeout *int32, requestID *string) (pipeline.Request, error) {
+func (client serviceClient) listContainersSegmentPreparer(prefix *string, marker *string, maxresults *int32, include []ListContainersIncludeType, timeout *int32, requestID *string) (pipeline.Request, error) {
 	req, err := pipeline.NewRequest("GET", client.url, nil)
 	if err != nil {
 		return req, pipeline.NewError(err, "failed to create request")
@@ -337,8 +429,8 @@ func (client serviceClient) listContainersSegmentPreparer(prefix *string, marker
 	if maxresults != nil {
 		params.Set("maxresults", strconv.FormatInt(int64(*maxresults), 10))
 	}
-	if include != ListContainersIncludeNone {
-		params.Set("include", string(include))
+	if include != nil && len(include) > 0 {
+		params.Set("include", joinConst(include, ","))
 	}
 	if timeout != nil {
 		params.Set("timeout", strconv.FormatInt(int64(*timeout), 10))
@@ -464,4 +556,63 @@ func (client serviceClient) setPropertiesResponder(resp pipeline.Response) (pipe
 	io.Copy(ioutil.Discard, resp.Response().Body)
 	resp.Response().Body.Close()
 	return &ServiceSetPropertiesResponse{rawResponse: resp.Response()}, err
+}
+
+// SubmitBatch the Batch operation allows multiple API calls to be embedded into a single HTTP request.
+//
+// body is initial data body will be closed upon successful return. Callers should ensure closure when receiving an
+// error.contentLength is the length of the request. multipartContentType is required. The value of this header must be
+// multipart/mixed with a batch boundary. Example header value: multipart/mixed; boundary=batch_<GUID> timeout is the
+// timeout parameter is expressed in seconds. For more information, see <a
+// href="https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/setting-timeouts-for-blob-service-operations">Setting
+// Timeouts for Blob Service Operations.</a> requestID is provides a client-generated, opaque value with a 1 KB
+// character limit that is recorded in the analytics logs when storage analytics logging is enabled.
+func (client serviceClient) SubmitBatch(ctx context.Context, body io.ReadSeeker, contentLength int64, multipartContentType string, timeout *int32, requestID *string) (*SubmitBatchResponse, error) {
+	if err := validate([]validation{
+		{targetValue: body,
+			constraints: []constraint{{target: "body", name: null, rule: true, chain: nil}}},
+		{targetValue: timeout,
+			constraints: []constraint{{target: "timeout", name: null, rule: false,
+				chain: []constraint{{target: "timeout", name: inclusiveMinimum, rule: 0, chain: nil}}}}}}); err != nil {
+		return nil, err
+	}
+	req, err := client.submitBatchPreparer(body, contentLength, multipartContentType, timeout, requestID)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Pipeline().Do(ctx, responderPolicyFactory{responder: client.submitBatchResponder}, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*SubmitBatchResponse), err
+}
+
+// submitBatchPreparer prepares the SubmitBatch request.
+func (client serviceClient) submitBatchPreparer(body io.ReadSeeker, contentLength int64, multipartContentType string, timeout *int32, requestID *string) (pipeline.Request, error) {
+	req, err := pipeline.NewRequest("POST", client.url, body)
+	if err != nil {
+		return req, pipeline.NewError(err, "failed to create request")
+	}
+	params := req.URL.Query()
+	if timeout != nil {
+		params.Set("timeout", strconv.FormatInt(int64(*timeout), 10))
+	}
+	params.Set("comp", "batch")
+	req.URL.RawQuery = params.Encode()
+	req.Header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	req.Header.Set("Content-Type", multipartContentType)
+	req.Header.Set("x-ms-version", ServiceVersion)
+	if requestID != nil {
+		req.Header.Set("x-ms-client-request-id", *requestID)
+	}
+	return req, nil
+}
+
+// submitBatchResponder handles the response to the SubmitBatch request.
+func (client serviceClient) submitBatchResponder(resp pipeline.Response) (pipeline.Response, error) {
+	err := validateResponse(resp, http.StatusOK)
+	if resp == nil {
+		return nil, err
+	}
+	return &SubmitBatchResponse{rawResponse: resp.Response()}, err
 }

@@ -37,7 +37,7 @@ import (
 
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/Azure/go-autorest/logger"
-	"github.com/form3tech-oss/jwt-go"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 const (

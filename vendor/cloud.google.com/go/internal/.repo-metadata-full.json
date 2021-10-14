@@ -148,7 +148,7 @@
     "description": "BigQuery Connection API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/connection/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/connection/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -157,7 +157,7 @@
     "description": "BigQuery Connection API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/connection/apiv1beta1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/connection/apiv1beta1",
     "release_level": "beta",
     "library_type": ""
   },
@@ -166,7 +166,7 @@
     "description": "BigQuery Data Transfer API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/datatransfer/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/datatransfer/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -175,7 +175,7 @@
     "description": "BigQuery Reservation API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/reservation/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/reservation/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -184,7 +184,7 @@
     "description": "BigQuery Reservation API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/reservation/apiv1beta1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/reservation/apiv1beta1",
     "release_level": "beta",
     "library_type": ""
   },
@@ -193,7 +193,7 @@
     "description": "BigQuery Storage API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/storage/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/storage/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -202,7 +202,7 @@
     "description": "BigQuery Storage API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/storage/apiv1beta1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/storage/apiv1beta1",
     "release_level": "beta",
     "library_type": ""
   },
@@ -211,7 +211,7 @@
     "description": "BigQuery Storage API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/bigquery/storage/apiv1beta2",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/storage/apiv1beta2",
     "release_level": "beta",
     "library_type": ""
   },
@@ -377,6 +377,15 @@
     "release_level": "beta",
     "library_type": ""
   },
+  "cloud.google.com/go/datafusion/apiv1": {
+    "distribution_name": "cloud.google.com/go/datafusion/apiv1",
+    "description": "Cloud Data Fusion API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/datafusion/apiv1",
+    "release_level": "beta",
+    "library_type": ""
+  },
   "cloud.google.com/go/datalabeling/apiv1beta1": {
     "distribution_name": "cloud.google.com/go/datalabeling/apiv1beta1",
     "description": "Data Labeling API",
@@ -427,7 +436,7 @@
     "description": "Cloud Datastore API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/datastore/admin/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/datastore/latest/admin/apiv1",
     "release_level": "alpha",
     "library_type": ""
   },
@@ -562,7 +571,7 @@
     "description": "Cloud Firestore API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/firestore/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/firestore/latest/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -571,7 +580,7 @@
     "description": "Cloud Firestore API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/firestore/apiv1/admin",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/firestore/latest/apiv1/admin",
     "release_level": "ga",
     "library_type": ""
   },
@@ -656,6 +665,15 @@
     "release_level": "ga",
     "library_type": ""
   },
+  "cloud.google.com/go/iap/apiv1": {
+    "distribution_name": "cloud.google.com/go/iap/apiv1",
+    "description": "Cloud Identity-Aware Proxy API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/iap/apiv1",
+    "release_level": "beta",
+    "library_type": ""
+  },
   "cloud.google.com/go/iot/apiv1": {
     "distribution_name": "cloud.google.com/go/iot/apiv1",
     "description": "Cloud IoT API",
@@ -715,7 +733,7 @@
     "description": "Cloud Logging API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/logging/apiv2",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/logging/latest/apiv2",
     "release_level": "ga",
     "library_type": ""
   },
@@ -958,7 +976,7 @@
     "description": "Cloud Pub/Sub API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/pubsub/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/pubsub/latest/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -976,7 +994,7 @@
     "description": "Pub/Sub Lite API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/pubsublite/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/pubsublite/latest/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -1237,7 +1255,7 @@
     "description": "Cloud Spanner Database Admin API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/spanner/admin/database/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/spanner/latest/admin/database/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -1246,7 +1264,7 @@
     "description": "Cloud Spanner Instance Admin API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/spanner/admin/instance/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/spanner/latest/admin/instance/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -1255,7 +1273,7 @@
     "description": "Cloud Spanner API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/spanner/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/spanner/latest/apiv1",
     "release_level": "ga",
     "library_type": ""
   },
@@ -1286,13 +1304,22 @@
     "release_level": "ga",
     "library_type": "GAPIC_MANUAL"
   },
-  "cloud.google.com/go/storage/internal/apiv1": {
-    "distribution_name": "cloud.google.com/go/storage/internal/apiv1",
+  "cloud.google.com/go/storage/internal/apiv2": {
+    "distribution_name": "cloud.google.com/go/storage/internal/apiv2",
     "description": "Cloud Storage API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/storage/internal/apiv1",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/storage/latest/internal/apiv2",
     "release_level": "alpha",
+    "library_type": ""
+  },
+  "cloud.google.com/go/storagetransfer/apiv1": {
+    "distribution_name": "cloud.google.com/go/storagetransfer/apiv1",
+    "description": "Storage Transfer API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/storagetransfer/latest/apiv1",
+    "release_level": "beta",
     "library_type": ""
   },
   "cloud.google.com/go/talent/apiv4": {

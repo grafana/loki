@@ -41,6 +41,7 @@ type InMemoryCache struct {
 	logger           log.Logger
 	maxSizeBytes     uint64
 	maxItemSizeBytes uint64
+	name             string
 
 	mtx         sync.Mutex
 	curSize     uint64
@@ -100,6 +101,7 @@ func NewInMemoryCacheWithConfig(name string, logger log.Logger, reg prometheus.R
 		logger:           logger,
 		maxSizeBytes:     uint64(config.MaxSize),
 		maxItemSizeBytes: uint64(config.MaxItemSize),
+		name:             name,
 	}
 
 	c.evicted = promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -302,4 +304,8 @@ func (c *InMemoryCache) Fetch(ctx context.Context, keys []string) map[string][]b
 		}
 	}
 	return results
+}
+
+func (c *InMemoryCache) Name() string {
+	return c.name
 }

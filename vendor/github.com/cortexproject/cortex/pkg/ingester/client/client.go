@@ -3,13 +3,12 @@ package client
 import (
 	"flag"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{

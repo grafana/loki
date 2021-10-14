@@ -1,6 +1,6 @@
-[![GoDoc](https://godoc.org/github.com/go-logfmt/logfmt?status.svg)](https://godoc.org/github.com/go-logfmt/logfmt)
+[![Go Reference](https://pkg.go.dev/badge/github.com/go-logfmt/logfmt.svg)](https://pkg.go.dev/github.com/go-logfmt/logfmt)
 [![Go Report Card](https://goreportcard.com/badge/go-logfmt/logfmt)](https://goreportcard.com/report/go-logfmt/logfmt)
-[![TravisCI](https://travis-ci.org/go-logfmt/logfmt.svg?branch=master)](https://travis-ci.org/go-logfmt/logfmt)
+[![Github Actions](https://github.com/go-logfmt/logfmt/actions/workflows/test.yml/badge.svg)](https://github.com/go-logfmt/logfmt/actions/workflows/test.yml)
 [![Coverage Status](https://coveralls.io/repos/github/go-logfmt/logfmt/badge.svg?branch=master)](https://coveralls.io/github/go-logfmt/logfmt?branch=master)
 
 # logfmt

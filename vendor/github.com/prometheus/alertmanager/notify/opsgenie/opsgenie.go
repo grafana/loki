@@ -21,8 +21,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -80,20 +80,33 @@ type opsGenieCloseMessage struct {
 	Source string `json:"source"`
 }
 
+type opsGenieUpdateMessageMessage struct {
+	Message string `json:"message,omitempty"`
+}
+
+type opsGenieUpdateDescriptionMessage struct {
+	Description string `json:"description,omitempty"`
+}
+
 // Notify implements the Notifier interface.
 func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
-	req, retry, err := n.createRequest(ctx, as...)
+	requests, retry, err := n.createRequests(ctx, as...)
 	if err != nil {
 		return retry, err
 	}
 
-	resp, err := n.client.Do(req)
-	if err != nil {
-		return true, err
+	for _, req := range requests {
+		resp, err := n.client.Do(req)
+		if err != nil {
+			return true, err
+		}
+		shouldRetry, err := n.retrier.Check(resp.StatusCode, resp.Body)
+		notify.Drain(resp)
+		if err != nil {
+			return shouldRetry, err
+		}
 	}
-	defer notify.Drain(resp)
-
-	return n.retrier.Check(resp.StatusCode, resp.Body)
+	return true, nil
 }
 
 // Like Split but filter out empty strings.
@@ -109,14 +122,14 @@ func safeSplit(s string, sep string) []string {
 }
 
 // Create requests for a list of alerts.
-func (n *Notifier) createRequest(ctx context.Context, as ...*types.Alert) (*http.Request, bool, error) {
+func (n *Notifier) createRequests(ctx context.Context, as ...*types.Alert) ([]*http.Request, bool, error) {
 	key, err := notify.ExtractGroupKey(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	data := notify.GetTemplateData(ctx, n.tmpl, as, n.logger)
 
-	level.Debug(n.logger).Log("incident", key)
+	level.Debug(n.logger).Log("alert", key)
 
 	tmpl := notify.TmplText(n.tmpl, data, &err)
 
@@ -130,26 +143,37 @@ func (n *Notifier) createRequest(ctx context.Context, as ...*types.Alert) (*http
 		details[k] = tmpl(v)
 	}
 
+	requests := []*http.Request{}
+
 	var (
-		msg    interface{}
-		apiURL = n.conf.APIURL.Copy()
 		alias  = key.Hash()
 		alerts = types.Alerts(as...)
 	)
 	switch alerts.Status() {
 	case model.AlertResolved:
-		apiURL.Path += fmt.Sprintf("v2/alerts/%s/close", alias)
-		q := apiURL.Query()
+		resolvedEndpointURL := n.conf.APIURL.Copy()
+		resolvedEndpointURL.Path += fmt.Sprintf("v2/alerts/%s/close", alias)
+		q := resolvedEndpointURL.Query()
 		q.Set("identifierType", "alias")
-		apiURL.RawQuery = q.Encode()
-		msg = &opsGenieCloseMessage{Source: tmpl(n.conf.Source)}
+		resolvedEndpointURL.RawQuery = q.Encode()
+		var msg = &opsGenieCloseMessage{Source: tmpl(n.conf.Source)}
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(msg); err != nil {
+			return nil, false, err
+		}
+		req, err := http.NewRequest("POST", resolvedEndpointURL.String(), &buf)
+		if err != nil {
+			return nil, true, err
+		}
+		requests = append(requests, req.WithContext(ctx))
 	default:
 		message, truncated := notify.Truncate(tmpl(n.conf.Message), 130)
 		if truncated {
-			level.Debug(n.logger).Log("msg", "truncated message", "truncated_message", message, "incident", key)
+			level.Debug(n.logger).Log("msg", "truncated message", "truncated_message", message, "alert", key)
 		}
 
-		apiURL.Path += "v2/alerts"
+		createEndpointURL := n.conf.APIURL.Copy()
+		createEndpointURL.Path += "v2/alerts"
 
 		var responders []opsGenieCreateMessageResponder
 		for _, r := range n.conf.Responders {
@@ -169,7 +193,7 @@ func (n *Notifier) createRequest(ctx context.Context, as ...*types.Alert) (*http
 			responders = append(responders, responder)
 		}
 
-		msg = &opsGenieCreateMessage{
+		var msg = &opsGenieCreateMessage{
 			Alias:       alias,
 			Message:     message,
 			Description: tmpl(n.conf.Description),
@@ -180,6 +204,54 @@ func (n *Notifier) createRequest(ctx context.Context, as ...*types.Alert) (*http
 			Note:        tmpl(n.conf.Note),
 			Priority:    tmpl(n.conf.Priority),
 		}
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(msg); err != nil {
+			return nil, false, err
+		}
+		req, err := http.NewRequest("POST", createEndpointURL.String(), &buf)
+		if err != nil {
+			return nil, true, err
+		}
+		requests = append(requests, req.WithContext(ctx))
+
+		if n.conf.UpdateAlerts {
+			updateMessageEndpointUrl := n.conf.APIURL.Copy()
+			updateMessageEndpointUrl.Path += fmt.Sprintf("v2/alerts/%s/message", alias)
+			q := updateMessageEndpointUrl.Query()
+			q.Set("identifierType", "alias")
+			updateMessageEndpointUrl.RawQuery = q.Encode()
+			updateMsgMsg := &opsGenieUpdateMessageMessage{
+				Message: msg.Message,
+			}
+			var updateMessageBuf bytes.Buffer
+			if err := json.NewEncoder(&updateMessageBuf).Encode(updateMsgMsg); err != nil {
+				return nil, false, err
+			}
+			req, err := http.NewRequest("PUT", updateMessageEndpointUrl.String(), &updateMessageBuf)
+			if err != nil {
+				return nil, true, err
+			}
+			requests = append(requests, req)
+
+			updateDescriptionEndpointURL := n.conf.APIURL.Copy()
+			updateDescriptionEndpointURL.Path += fmt.Sprintf("v2/alerts/%s/description", alias)
+			q = updateDescriptionEndpointURL.Query()
+			q.Set("identifierType", "alias")
+			updateDescriptionEndpointURL.RawQuery = q.Encode()
+			updateDescMsg := &opsGenieUpdateDescriptionMessage{
+				Description: msg.Description,
+			}
+
+			var updateDescriptionBuf bytes.Buffer
+			if err := json.NewEncoder(&updateDescriptionBuf).Encode(updateDescMsg); err != nil {
+				return nil, false, err
+			}
+			req, err = http.NewRequest("PUT", updateDescriptionEndpointURL.String(), &updateDescriptionBuf)
+			if err != nil {
+				return nil, true, err
+			}
+			requests = append(requests, req.WithContext(ctx))
+		}
 	}
 
 	apiKey := tmpl(string(n.conf.APIKey))
@@ -188,16 +260,10 @@ func (n *Notifier) createRequest(ctx context.Context, as ...*types.Alert) (*http
 		return nil, false, errors.Wrap(err, "templating error")
 	}
 
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(msg); err != nil {
-		return nil, false, err
+	for _, req := range requests {
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", fmt.Sprintf("GenieKey %s", apiKey))
 	}
 
-	req, err := http.NewRequest("POST", apiURL.String(), &buf)
-	if err != nil {
-		return nil, true, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("GenieKey %s", apiKey))
-	return req.WithContext(ctx), true, nil
+	return requests, true, nil
 }

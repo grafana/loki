@@ -7,7 +7,7 @@ Godo is a Go client library for accessing the DigitalOcean V2 API.
 
 You can view the client API docs here: [http://godoc.org/github.com/digitalocean/godo](http://godoc.org/github.com/digitalocean/godo)
 
-You can view DigitalOcean API docs here: [https://developers.digitalocean.com/documentation/v2/](https://developers.digitalocean.com/documentation/v2/)
+You can view DigitalOcean API docs here: [https://docs.digitalocean.com/reference/api/api-reference/](https://docs.digitalocean.com/reference/api/api-reference/)
 
 ## Install
 ```sh
@@ -127,7 +127,7 @@ To see the list of past versions, run `git tag`.
 
 ## Documentation
 
-For a comprehensive list of examples, check out the [API documentation](https://developers.digitalocean.com/documentation/v2/).
+For a comprehensive list of examples, check out the [API documentation](https://docs.digitalocean.com/reference/api/api-reference/#tag/SSH-Keys).
 
 For details on all the functionality in this library, see the [GoDoc](http://godoc.org/github.com/digitalocean/godo) documentation.
 

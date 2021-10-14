@@ -10,7 +10,7 @@ const keysBasePath = "v2/account/keys"
 
 // KeysService is an interface for interfacing with the keys
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#keys
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/SSH-Keys
 type KeysService interface {
 	List(context.Context, *ListOptions) ([]Key, *Response, error)
 	GetByID(context.Context, int) (*Key, *Response, error)

@@ -703,8 +703,7 @@ type StoreClient interface {
 	/// There is no requirements on chunk sorting, however it is recommended to have chunk sorted by chunk min time.
 	/// This heavily optimizes the resource usage on Querier / Federated Queries.
 	Series(ctx context.Context, in *SeriesRequest, opts ...grpc.CallOption) (Store_SeriesClient, error)
-	/// LabelNames returns all label names that is available.
-	/// Currently unimplemented in all Thanos implementations, because Query API does not implement this either.
+	/// LabelNames returns all label names constrained by the given matchers.
 	LabelNames(ctx context.Context, in *LabelNamesRequest, opts ...grpc.CallOption) (*LabelNamesResponse, error)
 	/// LabelValues returns all label values for given label name.
 	LabelValues(ctx context.Context, in *LabelValuesRequest, opts ...grpc.CallOption) (*LabelValuesResponse, error)
@@ -792,8 +791,7 @@ type StoreServer interface {
 	/// There is no requirements on chunk sorting, however it is recommended to have chunk sorted by chunk min time.
 	/// This heavily optimizes the resource usage on Querier / Federated Queries.
 	Series(*SeriesRequest, Store_SeriesServer) error
-	/// LabelNames returns all label names that is available.
-	/// Currently unimplemented in all Thanos implementations, because Query API does not implement this either.
+	/// LabelNames returns all label names constrained by the given matchers.
 	LabelNames(context.Context, *LabelNamesRequest) (*LabelNamesResponse, error)
 	/// LabelValues returns all label values for given label name.
 	LabelValues(context.Context, *LabelValuesRequest) (*LabelValuesResponse, error)

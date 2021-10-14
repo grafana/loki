@@ -27,6 +27,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -109,9 +110,23 @@ func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // MarshalYAML implements the yaml.Marshaler interface for URLs.
 func (u URL) MarshalYAML() (interface{}, error) {
 	if u.URL != nil {
-		return u.String(), nil
+		return u.Redacted(), nil
 	}
 	return nil, nil
+}
+
+// Redacted returns the URL but replaces any password with "xxxxx".
+func (u URL) Redacted() string {
+	if u.URL == nil {
+		return ""
+	}
+
+	ru := *u.URL
+	if _, ok := ru.User.Password(); ok {
+		// We can not use secretToken because it would be escaped.
+		ru.User = url.UserPassword(ru.User.Username(), "xxxxx")
+	}
+	return ru.String()
 }
 
 // UnmarshalJSON implements the json.Marshaler interface for URL.
@@ -379,18 +394,24 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 			ExpectContinueTimeout: 1 * time.Second,
 			DialContext:           dialContext,
 		}
-		if opts.http2Enabled {
-			// HTTP/2 support is golang has many problematic cornercases where
+		if opts.http2Enabled && os.Getenv("PROMETHEUS_COMMON_DISABLE_HTTP2") == "" {
+			// HTTP/2 support is golang had many problematic cornercases where
 			// dead connections would be kept and used in connection pools.
 			// https://github.com/golang/go/issues/32388
 			// https://github.com/golang/go/issues/39337
 			// https://github.com/golang/go/issues/39750
-			// TODO: Re-Enable HTTP/2 once upstream issue is fixed.
-			// TODO: use ForceAttemptHTTP2 when we move to Go 1.13+.
-			err := http2.ConfigureTransport(rt.(*http.Transport))
+
+			// Do not enable HTTP2 if the environment variable
+			// PROMETHEUS_COMMON_DISABLE_HTTP2 is set to a non-empty value.
+			// This allows users to easily disable HTTP2 in case they run into
+			// issues again, but will be removed once we are confident that
+			// things work as expected.
+
+			http2t, err := http2.ConfigureTransports(rt.(*http.Transport))
 			if err != nil {
 				return nil, err
 			}
+			http2t.ReadIdleTimeout = time.Minute
 		}
 
 		// If a authorization_credentials is provided, create a round tripper that will set the

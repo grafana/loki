@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -83,22 +83,25 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.Select")
 	defer log.Span.Finish()
 
-	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
-	// which needs only metadata. For this specific case we shouldn't apply the queryIngestersWithin
+	minT, maxT := q.mint, q.maxt
+	if sp != nil {
+		minT, maxT = sp.Start, sp.End
+	}
+
+	// If the querier receives a 'series' query, it means only metadata is needed.
+	// For this specific case we shouldn't apply the queryIngestersWithin
 	// time range manipulation, otherwise we'll end up returning no series at all for
 	// older time ranges (while in Cortex we do ignore the start/end and always return
 	// series in ingesters).
 	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
-	if sp == nil || sp.Func == "series" {
+	if sp != nil && sp.Func == "series" {
 		ms, err := q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
 		return series.MetricsToSeriesSet(ms)
 	}
-
-	minT, maxT := sp.Start, sp.End
 
 	// If queryIngestersWithin is enabled, we do manipulate the query mint to query samples up until
 	// now - queryIngestersWithin, because older time ranges are covered by the storage. This

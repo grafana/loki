@@ -17,6 +17,18 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
+// ReaderPoolMetrics holds metrics tracked by ReaderPool.
+type ReaderPoolMetrics struct {
+	lazyReader *LazyBinaryReaderMetrics
+}
+
+// NewReaderPoolMetrics makes new ReaderPoolMetrics.
+func NewReaderPoolMetrics(reg prometheus.Registerer) *ReaderPoolMetrics {
+	return &ReaderPoolMetrics{
+		lazyReader: NewLazyBinaryReaderMetrics(reg),
+	}
+}
+
 // ReaderPool is used to istantiate new index-header readers and keep track of them.
 // When the lazy reader is enabled, the pool keeps track of all instantiated readers
 // and automatically close them once the idle timeout is reached. A closed lazy reader
@@ -24,8 +36,8 @@ import (
 type ReaderPool struct {
 	lazyReaderEnabled     bool
 	lazyReaderIdleTimeout time.Duration
-	lazyReaderMetrics     *LazyBinaryReaderMetrics
 	logger                log.Logger
+	metrics               *ReaderPoolMetrics
 
 	// Channel used to signal once the pool is closing.
 	close chan struct{}
@@ -36,12 +48,12 @@ type ReaderPool struct {
 }
 
 // NewReaderPool makes a new ReaderPool.
-func NewReaderPool(logger log.Logger, lazyReaderEnabled bool, lazyReaderIdleTimeout time.Duration, reg prometheus.Registerer) *ReaderPool {
+func NewReaderPool(logger log.Logger, lazyReaderEnabled bool, lazyReaderIdleTimeout time.Duration, metrics *ReaderPoolMetrics) *ReaderPool {
 	p := &ReaderPool{
 		logger:                logger,
+		metrics:               metrics,
 		lazyReaderEnabled:     lazyReaderEnabled,
 		lazyReaderIdleTimeout: lazyReaderIdleTimeout,
-		lazyReaderMetrics:     NewLazyBinaryReaderMetrics(reg),
 		lazyReaders:           make(map[*LazyBinaryReader]struct{}),
 		close:                 make(chan struct{}),
 	}
@@ -73,7 +85,7 @@ func (p *ReaderPool) NewBinaryReader(ctx context.Context, logger log.Logger, bkt
 	var err error
 
 	if p.lazyReaderEnabled {
-		reader, err = NewLazyBinaryReader(ctx, logger, bkt, dir, id, postingOffsetsInMemSampling, p.lazyReaderMetrics, p.onLazyReaderClosed)
+		reader, err = NewLazyBinaryReader(ctx, logger, bkt, dir, id, postingOffsetsInMemSampling, p.metrics.lazyReader, p.onLazyReaderClosed)
 	} else {
 		reader, err = NewBinaryReader(ctx, logger, bkt, dir, id, postingOffsetsInMemSampling)
 	}

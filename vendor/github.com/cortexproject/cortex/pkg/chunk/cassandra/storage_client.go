@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"

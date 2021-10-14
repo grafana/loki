@@ -816,7 +816,7 @@ func (sc *serverConn) serve() {
 	})
 	sc.unackedSettings++
 
-	// Each connection starts with intialWindowSize inflow tokens.
+	// Each connection starts with initialWindowSize inflow tokens.
 	// If a higher value is configured, we add more tokens.
 	if diff := sc.srv.initialConnRecvWindowSize() - initialWindowSize; diff > 0 {
 		sc.sendWindowUpdate(nil, int(diff))
@@ -856,6 +856,15 @@ func (sc *serverConn) serve() {
 		case res := <-sc.wroteFrameCh:
 			sc.wroteFrame(res)
 		case res := <-sc.readFrameCh:
+			// Process any written frames before reading new frames from the client since a
+			// written frame could have triggered a new stream to be started.
+			if sc.writingFrameAsync {
+				select {
+				case wroteRes := <-sc.wroteFrameCh:
+					sc.wroteFrame(wroteRes)
+				default:
+				}
+			}
 			if !sc.processFrameFromReader(res) {
 				return
 			}

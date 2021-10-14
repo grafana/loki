@@ -27,6 +27,7 @@ func (t TracingCache) Store(ctx context.Context, data map[string][]byte, ttl tim
 
 func (t TracingCache) Fetch(ctx context.Context, keys []string) (result map[string][]byte) {
 	tracing.DoWithSpan(ctx, "cache_fetch", func(spanCtx context.Context, span opentracing.Span) {
+		span.SetTag("name", t.Name())
 		span.LogKV("requested keys", len(keys))
 
 		result = t.c.Fetch(spanCtx, keys)
@@ -38,4 +39,8 @@ func (t TracingCache) Fetch(ctx context.Context, keys []string) (result map[stri
 		span.LogKV("returned keys", len(result), "returned bytes", bytes)
 	})
 	return
+}
+
+func (t TracingCache) Name() string {
+	return t.c.Name()
 }
