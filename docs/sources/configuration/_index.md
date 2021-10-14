@@ -1798,7 +1798,7 @@ logs in Loki.
 #   The global strategy requires the distributors to form their own ring, which
 #   is used to keep track of the current number of healthy distributor replicas.
 # CLI flag: -distributor.ingestion-rate-limit-strategy
-[ingestion_rate_strategy: <string> | default = "local"]
+[ingestion_rate_strategy: <string> | default = "global"]
 
 # Per-user ingestion rate limit in sample size per second. Units in MB.
 # CLI flag: -distributor.ingestion-rate-limit-mb
@@ -1825,11 +1825,11 @@ logs in Loki.
 
 # Whether or not old samples will be rejected.
 # CLI flag: -validation.reject-old-samples
-[reject_old_samples: <bool> | default = false]
+[reject_old_samples: <bool> | default = true]
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
-[reject_old_samples_max_age: <duration> | default = 336h]
+[reject_old_samples_max_age: <duration> | default = 168h]
 
 # Duration for a table to be created/deleted before/after it's
 # needed. Samples won't be accepted before this time.
@@ -1842,7 +1842,7 @@ logs in Loki.
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
-[max_streams_per_user: <int> | default = 10000]
+[max_streams_per_user: <int> | default = 0]
 
 # Maximum line size on ingestion path. Example: 256kb.
 # There is no limit when unset.
@@ -1862,7 +1862,7 @@ logs in Loki.
 # local limit based on the replication factor and the current number of healthy
 # ingesters, and is kept updated whenever the number of ingesters change.
 # CLI flag: -ingester.max-global-streams-per-user
-[max_global_streams_per_user: <int> | default = 0]
+[max_global_streams_per_user: <int> | default = 5000]
 
 # When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
@@ -1874,11 +1874,11 @@ logs in Loki.
 
 # The limit to length of chunk store queries. 0 to disable.
 # CLI flag: -store.max-query-length
-[max_query_length: <duration> | default = 0]
+[max_query_length: <duration> | default = 721h]
 
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
-[max_query_parallelism: <int> | default = 14]
+[max_query_parallelism: <int> | default = 32]
 
 # Limit the maximum of unique series that is returned by a metric query.
 # When the limit is reached an error is returned.
