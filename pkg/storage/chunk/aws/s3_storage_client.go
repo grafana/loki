@@ -120,7 +120,6 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, "s3.max-retries", 5, "Maximum number of times to retry when s3 get Object")
-
 }
 
 // Validate config and returns error on failure
@@ -343,28 +342,27 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	err := ctx.Err()
+	if err != nil {
+		return nil, errors.Wrap(err, "ctx related error during s3 getObject")
+	}
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-			var err error
-			resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+			var requestErr error
+			resp, requestErr = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
 				Key:    aws.String(objectKey),
 			})
-			return err
+			return requestErr
 		})
 		if err == nil {
-			break
+			return resp.Body, nil
 		}
 		retries.Wait()
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	return resp.Body, nil
+	return nil, errors.Wrap(err, "failed to get s3 object")
 }
 
 // PutObject into the store
