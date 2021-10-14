@@ -527,6 +527,9 @@ storage_config:
 				assert.Equal(t, tt.expected, config.CompactorConfig.SharedStoreType)
 			}
 		})
+
+    //TODO: test that compactor shared store type is not overriden if specified
+    //TODO: add comments to PR about things that could be moved to dskit
 	})
 }
 
