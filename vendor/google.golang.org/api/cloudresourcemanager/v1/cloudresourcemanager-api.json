@@ -365,7 +365,7 @@
           "parameterOrder": [],
           "parameters": {
             "pageSize": {
-              "description": "The maximum number of items to return. This is a suggestion for the server.",
+              "description": "The maximum number of items to return. This is a suggestion for the server. The server can return fewer liens than requested. If unspecified, server picks an appropriate default.",
               "format": "int32",
               "location": "query",
               "type": "integer"
@@ -1171,7 +1171,7 @@
       }
     }
   },
-  "revision": "20210815",
+  "revision": "20210830",
   "rootUrl": "https://cloudresourcemanager.googleapis.com/",
   "schemas": {
     "Ancestor": {
@@ -2128,7 +2128,7 @@
           "type": "string"
         },
         "pageSize": {
-          "description": "The maximum number of Organizations to return in the response. This field is optional.",
+          "description": "The maximum number of Organizations to return in the response. The server can return fewer organizations than requested. If unspecified, server picks an appropriate default.",
           "format": "int32",
           "type": "integer"
         },

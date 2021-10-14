@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	cloud.google.com/go/bigtable v1.3.0
+	cloud.google.com/go/kms v1.0.0 // indirect
 	cloud.google.com/go/pubsub v1.3.1
 	cloud.google.com/go/storage v1.10.0
 	github.com/Azure/azure-pipeline-go v0.2.3
@@ -84,18 +85,16 @@ require (
 	github.com/thanos-io/thanos v0.22.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
-	github.com/ugorji/go v1.1.7 // indirect
 	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6
-	go.opentelemetry.io/otel v0.20.0 // indirect
 	go.uber.org/atomic v1.9.0
 	go.uber.org/goleak v1.1.10
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
 	golang.org/x/net v0.0.0-20210903162142-ad29c8ab022f
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20210906170528-6f6e22806c34
+	golang.org/x/sys v0.0.0-20210908233432-aa78b53d3365
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
-	google.golang.org/api v0.56.0
+	google.golang.org/api v0.57.0
 	google.golang.org/grpc v1.40.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7

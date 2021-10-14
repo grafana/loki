@@ -28139,7 +28139,7 @@
           ]
         },
         "wait": {
-          "description": "Waits for the specified Operation resource to return as `DONE` or for the request to approach the 2 minute deadline, and retrieves the specified Operation resource. This method differs from the `GET` method in that it waits for no more than the default deadline (2 minutes) and then returns the current state of the operation, which might be `DONE` or still in progress. This method is called on a best-effort basis. Specifically: - In uncommon cases, when the server is overloaded, the request might return before the default deadline is reached, or might return after zero seconds. - If the default deadline is reached, there is no guarantee that the operation is actually done when the method returns. Be prepared to retry if the operation is not `DONE`. ",
+          "description": "Waits for the specified Operation resource to return as `DONE` or for the request to approach the 2 minute deadline, and retrieves the specified Operation resource. This method waits for no more than the 2 minutes and then returns the current state of the operation, which might be `DONE` or still in progress. This method is called on a best-effort basis. Specifically: - In uncommon cases, when the server is overloaded, the request might return before the default deadline is reached, or might return after zero seconds. - If the default deadline is reached, there is no guarantee that the operation is actually done when the method returns. Be prepared to retry if the operation is not `DONE`. ",
           "flatPath": "projects/{project}/zones/{zone}/operations/{operation}/wait",
           "httpMethod": "POST",
           "id": "compute.zoneOperations.wait",
@@ -28278,7 +28278,7 @@
       }
     }
   },
-  "revision": "20210812",
+  "revision": "20210907",
   "rootUrl": "https://compute.googleapis.com/",
   "schemas": {
     "AcceleratorConfig": {
@@ -32291,7 +32291,7 @@
         },
         "diskEncryptionKey": {
           "$ref": "CustomerEncryptionKey",
-          "description": "Encrypts the disk using a customer-supplied encryption key. After you encrypt a disk with a customer-supplied key, you must provide the same key if you use the disk later (e.g. to create a disk snapshot, to create a disk image, to create a machine image, or to attach the disk to a virtual machine). Customer-supplied encryption keys do not protect access to metadata of the disk. If you do not provide an encryption key when creating the disk, then the disk will be encrypted using an automatically generated key and you do not need to provide a key to use the disk later."
+          "description": "Encrypts the disk using a customer-supplied encryption key or a customer-managed encryption key. Encryption keys do not protect access to metadata of the disk. After you encrypt a disk with a customer-supplied key, you must provide the same key if you use the disk later. For example, to create a disk snapshot, to create a disk image, to create a machine image, or to attach the disk to a virtual machine. After you encrypt a disk with a customer-managed key, the diskEncryptionKey.kmsKeyName is set to a key *version* name once the disk is created. The disk is encrypted with this version of the key. In the response, diskEncryptionKey.kmsKeyName appears in the following format: \"diskEncryptionKey.kmsKeyName\": \"projects/kms_project_id/locations/region/keyRings/ key_region/cryptoKeys/key /cryptoKeysVersions/version If you do not provide an encryption key when creating the disk, then the disk is encrypted using an automatically generated key and you don't need to provide a key to use the disk later."
         },
         "guestOsFeatures": {
           "description": "A list of features to enable on the guest operating system. Applicable only for bootable images. Read Enabling guest operating system features to see a list of available options.",
@@ -34102,7 +34102,7 @@
           "type": "string"
         },
         "displayName": {
-          "description": "Deprecated, please use short name instead. User-provided name of the Organization firewall plicy. The name should be unique in the organization in which the firewall policy is created. This name must be set on creation and cannot be changed. The name must be 1-63 characters long, and comply with RFC1035. Specifically, the name must be 1-63 characters long and match the regular expression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first character must be a lowercase letter, and all following characters must be a dash, lowercase letter, or digit, except the last character, which cannot be a dash.",
+          "description": "Deprecated, please use short name instead. User-provided name of the Organization firewall policy. The name should be unique in the organization in which the firewall policy is created. This name must be set on creation and cannot be changed. The name must be 1-63 characters long, and comply with RFC1035. Specifically, the name must be 1-63 characters long and match the regular expression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first character must be a lowercase letter, and all following characters must be a dash, lowercase letter, or digit, except the last character, which cannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
           "type": "string"
         },
@@ -47716,10 +47716,12 @@
             "BACKEND_SERVICES",
             "C2D_CPUS",
             "C2_CPUS",
+            "C3_CPUS",
             "COMMITMENTS",
             "COMMITTED_A2_CPUS",
             "COMMITTED_C2D_CPUS",
             "COMMITTED_C2_CPUS",
+            "COMMITTED_C3_CPUS",
             "COMMITTED_CPUS",
             "COMMITTED_E2_CPUS",
             "COMMITTED_LICENSES",
@@ -47832,6 +47834,8 @@
             "XPN_SERVICE_PROJECTS"
           ],
           "enumDescriptions": [
+            "",
+            "",
             "",
             "",
             "",
@@ -51033,6 +51037,10 @@
           "format": "uint32",
           "type": "integer"
         },
+        "bfd": {
+          "$ref": "RouterBgpPeerBfd",
+          "description": "BFD configuration for the BGP peering."
+        },
         "enable": {
           "description": "The status of the BGP peer connection. If set to FALSE, any active session with the peer is terminated and all associated routing information is removed. If set to TRUE, the peer connection can be established with routing information. The default is TRUE.",
           "enum": [
@@ -51088,6 +51096,45 @@
         "peerIpAddress": {
           "description": "IP address of the BGP interface outside Google Cloud Platform. Only IPv4 is supported.",
           "type": "string"
+        },
+        "routerApplianceInstance": {
+          "description": "URI of the VM instance that is used as third-party router appliances such as Next Gen Firewalls, Virtual Routers, or Router Appliances. The VM instance must be located in zones contained in the same region as this Cloud Router. The VM instance is the peer side of the BGP session.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RouterBgpPeerBfd": {
+      "id": "RouterBgpPeerBfd",
+      "properties": {
+        "minReceiveInterval": {
+          "description": "The minimum interval, in milliseconds, between BFD control packets received from the peer router. The actual value is negotiated between the two routers and is equal to the greater of this value and the transmit interval of the other router. If set, this value must be between 1000 and 30000. The default is 1000.",
+          "format": "uint32",
+          "type": "integer"
+        },
+        "minTransmitInterval": {
+          "description": "The minimum interval, in milliseconds, between BFD control packets transmitted to the peer router. The actual value is negotiated between the two routers and is equal to the greater of this value and the corresponding receive interval of the other router. If set, this value must be between 1000 and 30000. The default is 1000.",
+          "format": "uint32",
+          "type": "integer"
+        },
+        "multiplier": {
+          "description": "The number of consecutive BFD packets that must be missed before BFD declares that a peer is unavailable. If set, the value must be a value between 5 and 16. The default is 5.",
+          "format": "uint32",
+          "type": "integer"
+        },
+        "sessionInitializationMode": {
+          "description": "The BFD session initialization mode for this BGP peer. If set to ACTIVE, the Cloud Router will initiate the BFD session for this BGP peer. If set to PASSIVE, the Cloud Router will wait for the peer router to initiate the BFD session for this BGP peer. If set to DISABLED, BFD is disabled for this BGP peer. The default is PASSIVE.",
+          "enum": [
+            "ACTIVE",
+            "DISABLED",
+            "PASSIVE"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
         }
       },
       "type": "object"
@@ -51127,6 +51174,19 @@
           },
           "description": "Name of this interface entry. The name must be 1-63 characters long, and comply with RFC1035. Specifically, the name must be 1-63 characters long and match the regular expression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first character must be a lowercase letter, and all following characters must be a dash, lowercase letter, or digit, except the last character, which cannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+          "type": "string"
+        },
+        "privateIpAddress": {
+          "description": "The regional private internal IP address that is used to establish BGP sessions to a VM instance acting as a third-party Router Appliance, such as a Next Gen Firewall, a Virtual Router, or an SD-WAN VM.",
+          "type": "string"
+        },
+        "redundantInterface": {
+          "description": "Name of the interface that will be redundant with the current interface you are creating. The redundantInterface must belong to the same Cloud Router as the interface here. To establish the BGP session to a Router Appliance VM, you must create two BGP peers. The two BGP peers must be attached to two separate interfaces that are redundant with each other. The redundant_interface must be 1-63 characters long, and comply with RFC1035. Specifically, the redundant_interface must be 1-63 characters long and match the regular expression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first character must be a lowercase letter, and all following characters must be a dash, lowercase letter, or digit, except the last character, which cannot be a dash.",
+          "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+          "type": "string"
+        },
+        "subnetwork": {
+          "description": "The URI of the subnetwork resource that this interface belongs to, which must be in the same region as the Cloud Router. When you establish a BGP session to a VM instance using this interface, the VM instance must belong to the same subnetwork as the subnetwork specified here.",
           "type": "string"
         }
       },
@@ -51464,6 +51524,10 @@
         },
         "peerIpAddress": {
           "description": "IP address of the remote BGP interface.",
+          "type": "string"
+        },
+        "routerApplianceInstance": {
+          "description": "[Output only] URI of the VM instance that is used as third-party router appliances such as Next Gen Firewalls, Virtual Routers, or Router Appliances. The VM instance is the peer side of the BGP session.",
           "type": "string"
         },
         "state": {
@@ -54073,7 +54137,7 @@
           "type": "string"
         },
         "network": {
-          "description": "The URL of the network to which this subnetwork belongs, provided by the client when initially creating the subnetwork. Only networks that are in the distributed mode can have subnetworks. This field can be set only at resource creation time.",
+          "description": "The URL of the network to which this subnetwork belongs, provided by the client when initially creating the subnetwork. This field can be set only at resource creation time.",
           "type": "string"
         },
         "privateIpGoogleAccess": {
@@ -55634,6 +55698,10 @@
           "enumDescriptions": [
             "No NAT performed."
           ],
+          "type": "string"
+        },
+        "network": {
+          "description": "The URL of the network this target instance uses to forward traffic. If not specified, the traffic will be forwarded to the network that the default network interface belongs to.",
           "type": "string"
         },
         "selfLink": {
