@@ -116,6 +116,8 @@ replace k8s.io/client-go => k8s.io/client-go v0.21.0
 
 replace k8s.io/api => k8s.io/api v0.21.0
 
+replace k8s.io/apimachinery => k8s.io/apimachinery v0.21.0
+
 replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.

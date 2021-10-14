@@ -31,15 +31,12 @@ import (
 )
 
 var (
-	unaryOperators = []string{
-		string(selection.Exists), string(selection.DoesNotExist),
-	}
-	binaryOperators = []string{
+	validRequirementOperators = []string{
 		string(selection.In), string(selection.NotIn),
 		string(selection.Equals), string(selection.DoubleEquals), string(selection.NotEquals),
+		string(selection.Exists), string(selection.DoesNotExist),
 		string(selection.GreaterThan), string(selection.LessThan),
 	}
-	validRequirementOperators = append(binaryOperators, unaryOperators...)
 )
 
 // Requirements is AND of all requirements.
@@ -143,7 +140,7 @@ type Requirement struct {
 
 // NewRequirement is the constructor for a Requirement.
 // If any of these rules is violated, an error is returned:
-// (1) The operator can only be In, NotIn, Equals, DoubleEquals, Gt, Lt, NotEquals, Exists, or DoesNotExist.
+// (1) The operator can only be In, NotIn, Equals, DoubleEquals, NotEquals, Exists, or DoesNotExist.
 // (2) If the operator is In or NotIn, the values set must be non-empty.
 // (3) If the operator is Equals, DoubleEquals, or NotEquals, the values set must contain one value.
 // (4) If the operator is Exists or DoesNotExist, the value set must be empty.
@@ -367,9 +364,13 @@ func safeSort(in []string) []string {
 
 // Add adds requirements to the selector. It copies the current selector returning a new one
 func (s internalSelector) Add(reqs ...Requirement) Selector {
-	ret := make(internalSelector, 0, len(s)+len(reqs))
-	ret = append(ret, s...)
-	ret = append(ret, reqs...)
+	var ret internalSelector
+	for ix := range s {
+		ret = append(ret, s[ix])
+	}
+	for _, r := range reqs {
+		ret = append(ret, r)
+	}
 	sort.Sort(ByKey(ret))
 	return ret
 }
@@ -752,7 +753,7 @@ func (p *Parser) parseOperator() (op selection.Operator, err error) {
 	case NotEqualsToken:
 		op = selection.NotEquals
 	default:
-		return "", fmt.Errorf("found '%s', expected: %v", lit, strings.Join(binaryOperators, ", "))
+		return "", fmt.Errorf("found '%s', expected: '=', '!=', '==', 'in', notin'", lit)
 	}
 	return op, nil
 }
