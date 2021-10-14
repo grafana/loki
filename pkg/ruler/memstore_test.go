@@ -38,11 +38,12 @@ func testStore(queryFunc rules.QueryFunc) *MemStore {
 }
 
 func TestSelectRestores(t *testing.T) {
+	forDuration := time.Minute
 	ars := []*rules.AlertingRule{
 		rules.NewAlertingRule(
 			ruleName,
 			&parser.StringLiteral{Val: "unused"},
-			time.Minute,
+			forDuration,
 			labels.FromMap(map[string]string{"foo": "bar"}),
 			nil,
 			nil,
@@ -84,7 +85,8 @@ func TestSelectRestores(t *testing.T) {
 	store := testStore(fn)
 	store.Start(MockRuleIter(ars))
 
-	now := util.TimeToMillis(time.Now())
+	tNow := time.Now()
+	now := util.TimeToMillis(tNow)
 
 	q, err := store.Querier(context.Background(), 0, now)
 	require.Nil(t, err)
@@ -103,7 +105,7 @@ func TestSelectRestores(t *testing.T) {
 	require.Equal(t, true, iter.Next())
 	ts, v := iter.At()
 	require.Equal(t, now, ts)
-	require.Equal(t, float64(now), v)
+	require.Equal(t, float64(tNow.Add(-forDuration).Unix()), v)
 	require.Equal(t, false, iter.Next())
 	require.Equal(t, false, sset.Next())
 
@@ -120,7 +122,7 @@ func TestSelectRestores(t *testing.T) {
 	require.Equal(t, true, iter.Next())
 	ts, v = iter.At()
 	require.Equal(t, now, ts)
-	require.Equal(t, float64(now), v)
+	require.Equal(t, float64(tNow.Add(-forDuration).Unix()), v)
 	require.Equal(t, false, iter.Next())
 	require.Equal(t, false, sset.Next())
 	require.Equal(t, 1, callCount)
