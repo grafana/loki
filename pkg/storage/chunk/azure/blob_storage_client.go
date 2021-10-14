@@ -31,6 +31,7 @@ const (
 
 var (
 	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
+	noClientKey           = azblob.ClientProvidedKeyOptions{}
 	endpoints             = map[string]struct{ blobURLFmt, containerURLFmt string }{
 		azureGlobal: {
 			"https://%s.blob.core.windows.net/%s/%s",
@@ -136,7 +137,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 	}
 
 	// Request access to the blob
-	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
+	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, noClientKey)
 	if err != nil {
 		return nil, err
 	}

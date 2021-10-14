@@ -9,7 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -312,6 +312,7 @@ func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
 			"__alert_"+rl.Alert.Value,
 			tmplData,
 			model.Time(timestamp.FromTime(time.Now())),
+			nil,
 			nil,
 			nil,
 		)
