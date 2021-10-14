@@ -32,6 +32,8 @@ local secret(name, vault_path, vault_key) = {
 };
 local docker_username_secret = secret('docker_username', 'infra/data/ci/docker_hub', 'username');
 local docker_password_secret = secret('docker_password', 'infra/data/ci/docker_hub', 'password');
+local ecr_key = secret('ecr_key', 'infra/data/ci/loki/aws-credentials', 'access_key_id');
+local ecr_secret_key = secret('ecr_secret_key', 'infra/data/ci/loki/aws-credentials', 'secret_access_key');
 local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.dockerconfigjson');
 local github_secret = secret('github_token', 'infra/data/ci/github/grafanabot', 'pat');
 
@@ -70,6 +72,24 @@ local clients_docker(arch, app) = {
     username: { from_secret: docker_username_secret.name },
     password: { from_secret: docker_password_secret.name },
     dry_run: false,
+  },
+};
+
+local lambda_promtail_ecr(app) = {
+  name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
+  image: 'cstyan/ecr',
+  privileged: true,
+  settings: {
+    repo: 'lambda-promtail',
+    registry: 'public.ecr.aws/grafana',
+    dockerfile: 'tools/%s/Dockerfile' % app,
+    access_key: { from_secret: ecr_key.name },
+    secret_key: { from_secret: ecr_secret_key.name },
+    dry_run: false,
+    region: 'us-east-1',
+  },
+  environment: {
+    DOCKER_LAUNCH_DEBUG: true,
   },
 };
 
@@ -207,6 +227,28 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
     },
   ],
   depends_on: ['check'],
+};
+
+local lambda_promtail() = pipeline('lambda-promtail'){
+  steps+: [
+    lambda_promtail_ecr('lambda-promtail') {
+      // depends_on: ['image-tag'],
+      when: condition('exclude').tagMain,
+      settings+: {
+        dry_run: true,
+      },
+    },
+  ] + [
+    // publish for tag or main
+    lambda_promtail_ecr('lambda-promtail') {
+      // depends_on: ['image-tag'],
+      when: condition('include').tagMain,
+      settings+: {
+        build_args: ['TOUCH_PROTOS=1'],
+      },
+    },
+  ],
+  // depends_on: ['check'],
 };
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
@@ -355,4 +397,5 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [promtail_win()]
-+ [github_secret, pull_secret, docker_username_secret, docker_password_secret, deploy_configuration]
++ [lambda_promtail()]
++ [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]
