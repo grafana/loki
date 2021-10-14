@@ -1215,6 +1215,7 @@ aws:
     # endpoint.
     # CLI flag: -s3.http.ca-file
     [ca_file: <string> | default = ""]
+
   # Configures backoff when s3 get Object.
   backoff_config:
     # Minimum delay when backing off.
