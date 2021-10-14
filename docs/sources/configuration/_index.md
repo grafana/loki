@@ -1227,7 +1227,7 @@ aws:
   
     # Number of times to backoff and retry before failing.
     # CLI flag: -s3.backoff-retries
-    [max_retries: <int> | default = 3]
+    [max_retries: <int> | default = 5]
 
   # Configure the DynamoDB connection
   dynamodb:
