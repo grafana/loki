@@ -12,7 +12,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -22,6 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+
+	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
 var (
@@ -153,7 +154,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
-		carrier := (*grpcutil.HttpgrpcHeadersCarrier)(req)
+		carrier := (*lokigrpc.HttpgrpcHeadersCarrier)(req)
 		err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
 		if err != nil {
 			return nil, err

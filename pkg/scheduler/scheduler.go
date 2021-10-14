@@ -14,11 +14,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
@@ -30,6 +29,8 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+
+	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
 var (
@@ -340,7 +341,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	// Extract tracing information from headers in HTTP request. FrontendContext doesn't have the correct tracing
 	// information, since that is a long-running request.
 	tracer := opentracing.GlobalTracer()
-	parentSpanContext, err := grpcutil.GetParentSpanForRequest(tracer, msg.HttpRequest)
+	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg.HttpRequest)
 	if err != nil {
 		return err
 	}
