@@ -17,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/kv/memberlist"

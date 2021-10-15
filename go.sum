@@ -733,8 +733,9 @@ github.com/go-kit/kit v0.9.0/go.mod h1:xBxKIO96dXMWWy0MnWVtmwkA9/13aqxPnvrjFYMA2
 github.com/go-kit/kit v0.10.0/go.mod h1:xUsJbQ/Fp4kEt7AFgCuvyX4a71u8h9jB8tj/ORgOZ7o=
 github.com/go-kit/kit v0.11.0 h1:IGmIEl7aHTYh6E2HlT+ptILBotjo4xl8PMDl852etiI=
 github.com/go-kit/kit v0.11.0/go.mod h1:73/6Ixaufkvb5Osvkls8C79vuQ49Ba1rUEUYNSf+FUw=
-github.com/go-kit/log v0.1.0 h1:DGJh0Sm43HbOeYDNnVZFl8BvcYVvjD5bqYJvp0REbwQ=
 github.com/go-kit/log v0.1.0/go.mod h1:zbhenjAZHb184qTLMA9ZjW7ThYL0H2mk7Q6pNt4vbaY=
+github.com/go-kit/log v0.2.0 h1:7i2K3eKTos3Vc0enKCfnVcgHh2olr/MyfboYq7cAcFw=
+github.com/go-kit/log v0.2.0/go.mod h1:NwTd00d/i8cPZ3xOwwiv2PO5MOcx78fFErGNcVmBjv0=
 github.com/go-ldap/ldap v3.0.2+incompatible/go.mod h1:qfd9rJvER9Q0/D/Sqn1DfHRoBp40uXYvFoEVrNEPqRc=
 github.com/go-logfmt/logfmt v0.3.0/go.mod h1:Qt1PoO58o5twSAckw1HlFXLmHsOX5/0LbT9GBnD5lWE=
 github.com/go-logfmt/logfmt v0.4.0/go.mod h1:3RMwSq7FuexP4Kalkev3ejPJsZTpXXBr9+V4qmtdjCk=
@@ -2084,8 +2085,9 @@ github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec/go.mod h1:ykzWac
 github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120/go.mod h1:ykzWac1LtVfOxdCK+jD754at1Ws9dKCwFeUzkFBffPs=
 github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624/go.mod h1:ykzWac1LtVfOxdCK+jD754at1Ws9dKCwFeUzkFBffPs=
 github.com/weaveworks/common v0.0.0-20210722103813-e649eff5ab4a/go.mod h1:YU9FvnS7kUnRt6HY10G+2qHkwzP3n3Vb1XsXDsJTSp8=
-github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78 h1:UqH2ncSWwCIhZ6bf2Wz1ifmxorIWFUm0GAfk7xv5c8s=
 github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78/go.mod h1:YU9FvnS7kUnRt6HY10G+2qHkwzP3n3Vb1XsXDsJTSp8=
+github.com/weaveworks/common v0.0.0-20211015155308-ebe5bdc2c89e h1:B0gVGyVpjfWJWSRe027EkhmEype0a0Dt2uHVxcPrhfs=
+github.com/weaveworks/common v0.0.0-20211015155308-ebe5bdc2c89e/go.mod h1:GWX2dQ7yjrgvqH0+d3kCJC5bsY8oOFwqjxFMHaRK4/k=
 github.com/weaveworks/promrus v1.2.0 h1:jOLf6pe6/vss4qGHjXmGz4oDJQA+AOCqEL3FvvZGz7M=
 github.com/weaveworks/promrus v1.2.0/go.mod h1:SaE82+OJ91yqjrE1rsvBWVzNZKcHYFtMUyS1+Ogs/KA=
 github.com/willf/bitset v1.1.3/go.mod h1:RjeCKbqT1RxIR/KWY6phxZiaY1IyutSBfGjNPySAYV4=

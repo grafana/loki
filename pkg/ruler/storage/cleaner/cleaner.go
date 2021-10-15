@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	promwal "github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/grafana/loki/pkg/ruler/storage/instance"

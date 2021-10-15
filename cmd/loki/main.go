@@ -6,7 +6,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
