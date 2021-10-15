@@ -154,7 +154,7 @@ type MatchersExpr struct {
 	implicit
 }
 
-func NewMatcherExpr(matchers []*labels.Matcher) *MatchersExpr {
+func newMatcherExpr(matchers []*labels.Matcher) *MatchersExpr {
 	return &MatchersExpr{matchers: matchers}
 }
 
@@ -197,7 +197,7 @@ type PipelineExpr struct {
 	implicit
 }
 
-func NewPipelineExpr(left *MatchersExpr, pipeline MultiStageExpr) LogSelectorExpr {
+func newPipelineExpr(left *MatchersExpr, pipeline MultiStageExpr) LogSelectorExpr {
 	return &PipelineExpr{
 		Left:        left,
 		MultiStages: pipeline,
@@ -265,7 +265,7 @@ type LineFilterExpr struct {
 	implicit
 }
 
-func NewLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
+func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 	return &LineFilterExpr{
 		Ty:    ty,
 		Match: match,
@@ -273,7 +273,7 @@ func NewLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 	}
 }
 
-func NewNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
 	return &LineFilterExpr{
 		Left:  left,
 		Ty:    right.Ty,
@@ -292,10 +292,10 @@ func (e *LineFilterExpr) Walk(f WalkFn) {
 
 // AddFilterExpr adds a filter expression to a logselector expression.
 func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) (LogSelectorExpr, error) {
-	filter := NewLineFilterExpr(ty, op, match)
+	filter := newLineFilterExpr(ty, op, match)
 	switch e := expr.(type) {
 	case *MatchersExpr:
-		return NewPipelineExpr(e, MultiStageExpr{filter}), nil
+		return newPipelineExpr(e, MultiStageExpr{filter}), nil
 	case *PipelineExpr:
 		e.MultiStages = append(e.MultiStages, filter)
 		return e, nil
@@ -424,7 +424,7 @@ type LabelFilterExpr struct {
 	implicit
 }
 
-func NewLabelFilterExpr(filterer log.LabelFilterer) *LabelFilterExpr {
+func newLabelFilterExpr(filterer log.LabelFilterer) *LabelFilterExpr {
 	return &LabelFilterExpr{
 		LabelFilterer: filterer,
 	}
@@ -451,7 +451,7 @@ type LineFmtExpr struct {
 	implicit
 }
 
-func NewLineFmtExpr(value string) *LineFmtExpr {
+func newLineFmtExpr(value string) *LineFmtExpr {
 	return &LineFmtExpr{
 		Value: value,
 	}
@@ -475,7 +475,7 @@ type LabelFmtExpr struct {
 	implicit
 }
 
-func NewLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
+func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 	return &LabelFmtExpr{
 		Formats: fmts,
 	}
@@ -513,7 +513,7 @@ type JSONExpressionParser struct {
 	implicit
 }
 
-func NewJSONExpressionParser(expressions []log.JSONExpression) *JSONExpressionParser {
+func newJSONExpressionParser(expressions []log.JSONExpression) *JSONExpressionParser {
 	return &JSONExpressionParser{
 		Expressions: expressions,
 	}
@@ -583,7 +583,7 @@ func (u *UnwrapExpr) addPostFilter(f log.LabelFilterer) *UnwrapExpr {
 	return u
 }
 
-func NewUnwrapExpr(id string, operation string) *UnwrapExpr {
+func newUnwrapExpr(id string, operation string) *UnwrapExpr {
 	return &UnwrapExpr{Identifier: id, Operation: operation}
 }
 
@@ -622,7 +622,7 @@ func (r *LogRange) Walk(f WalkFn) {
 	r.Left.Walk(f)
 }
 
-func NewLogRange(left LogSelectorExpr, interval time.Duration, u *UnwrapExpr, o *OffsetExpr) *LogRange {
+func newLogRange(left LogSelectorExpr, interval time.Duration, u *UnwrapExpr, o *OffsetExpr) *LogRange {
 	var offset time.Duration
 	if o != nil {
 		offset = o.Offset
@@ -645,7 +645,7 @@ func (o *OffsetExpr) String() string {
 	return sb.String()
 }
 
-func NewOffsetExpr(offset time.Duration) *OffsetExpr {
+func newOffsetExpr(offset time.Duration) *OffsetExpr {
 	return &OffsetExpr{
 		Offset: offset,
 	}
@@ -764,7 +764,7 @@ type RangeAggregationExpr struct {
 	implicit
 }
 
-func NewRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string) SampleExpr {
+func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
 		if operation != OpRangeTypeQuantile {
@@ -884,7 +884,7 @@ type VectorAggregationExpr struct {
 	implicit
 }
 
-func NewVectorAggregationExpr(left SampleExpr, operation string, gr *Grouping, params *string) SampleExpr {
+func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Grouping, params *string) SampleExpr {
 	var p int
 	var err error
 	switch operation {
@@ -1011,7 +1011,7 @@ func (e *BinOpExpr) Walk(f WalkFn) {
 	walkAll(f, e.SampleExpr, e.RHS)
 }
 
-func NewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
+func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
 		panic(logqlmodel.NewParseError(fmt.Sprintf(
@@ -1083,7 +1083,7 @@ type LiteralExpr struct {
 	implicit
 }
 
-func NewLiteralExpr(s string, invert bool) *LiteralExpr {
+func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0))
@@ -1146,7 +1146,7 @@ type LabelReplaceExpr struct {
 	implicit
 }
 
-func NewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex string) *LabelReplaceExpr {
+func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex string) *LabelReplaceExpr {
 	re, err := regexp.Compile("^(?:" + regex + ")$")
 	if err != nil {
 		panic(logqlmodel.NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0))
