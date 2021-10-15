@@ -1216,17 +1216,17 @@ aws:
     # CLI flag: -s3.http.ca-file
     [ca_file: <string> | default = ""]
 
-  # Configures backoff when s3 get Object.
+  # Configures back off when s3 get Object.
   backoff_config:
-    # Minimum delay when backing off.
+    # Minimum duration to back off.
     # CLI flag: -s3.backoff-min-period
     [min_period: <duration> | default = 100ms]
   
-    # The maximum delay when backing off.
+    # The duration to back off.
     # CLI flag: -s3.backoff-max-period
     [max_period: <duration> | default = 3s]
   
-    # Number of times to backoff and retry before failing.
+    # Number of times to back off and retry before failing.
     # CLI flag: -s3.backoff-retries
     [max_retries: <int> | default = 5]
 
