@@ -241,25 +241,9 @@ func splitByTime(req queryrange.Request, interval time.Duration) []queryrange.Re
 			})
 		})
 
-		for i, interval := range reqs {
-			// Reset the start and end for the first/last interval to the original
-			// times so that we don't receive data we didn't ask for.
-			if interval.GetStart() == start {
-				r, ok := reqs[i].(*LokiRequest)
-				if ok {
-					r.StartTs = ogStart
-				}
-				reqs[i] = r
-
-			}
-			if interval.GetEnd() == end {
-				r, ok := reqs[i].(*LokiRequest)
-				if ok {
-					r.EndTs = ogEnd
-				}
-				reqs[i] = r
-			}
-		}
+		// Forcefully clamp end and start.
+		reqs[0].(*LokiRequest).StartTs = ogStart
+		reqs[len(reqs)-1].(*LokiRequest).EndTs = ogEnd
 	case *LokiSeriesRequest:
 		forInterval(interval, r.StartTs, r.EndTs, func(start, end time.Time) {
 			reqs = append(reqs, &LokiSeriesRequest{

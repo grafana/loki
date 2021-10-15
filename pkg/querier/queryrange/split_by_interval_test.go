@@ -601,7 +601,7 @@ func Test_alignedIntervals(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.response, splitByTime(tt.request, l.QuerySplitDuration("1")))
+			assert.Equal(t, tt.response, splitByTime(tt.request, time.Hour))
 		})
 	}
 }
