@@ -3,6 +3,7 @@ package logql
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"time"
@@ -547,71 +548,56 @@ func binOpStepEvaluator(
 	}
 
 	// we have two non literal legs
-	lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+	lse, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 	if err != nil {
 		return nil, err
 	}
-	rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
+	rse, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
 	if err != nil {
 		return nil, err
 	}
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		pairs := map[uint64][2]*promql.Sample{}
-		var ts int64
-
-		// populate pairs
-		for i, eval := range []StepEvaluator{lhs, rhs} {
-			next, timestamp, vec := eval.Next()
-
-			ts = timestamp
-
-			// These should _always_ happen at the same step on each evaluator.
-			if !next {
-				return next, ts, nil
-			}
-
-			for _, sample := range vec {
-				// TODO(owen-d): this seems wildly inefficient: we're calculating
-				// the hash on each sample & step per evaluator.
-				// We seem limited to this approach due to using the StepEvaluator ifc.
-
-				var hash uint64
-				if expr.Opts == nil || expr.Opts.VectorMatching == nil {
-					hash = sample.Metric.Hash()
-				} else if expr.Opts.VectorMatching.On {
-					hash = sample.Metric.WithLabels(expr.Opts.VectorMatching.Include...).Hash()
-				} else {
-					hash = sample.Metric.WithoutLabels(expr.Opts.VectorMatching.Include...).Hash()
-				}
-				pair := pairs[hash]
-				if pair[i] != nil {
-					err = errors.New("multiple matches for labels")
-					return false, ts, nil
-				}
-				pair[i] = &promql.Sample{
-					Metric: sample.Metric,
-					Point:  sample.Point,
-				}
-				pairs[hash] = pair
-			}
+		var (
+			ts       int64
+			next     bool
+			lhs, rhs promql.Vector
+		)
+		next, ts, rhs = rse.Next()
+		// These should _always_ happen at the same step on each evaluator.
+		if !next {
+			return next, ts, nil
+		}
+		// build matching signature for each sample in right vector
+		rsigs := make([]uint64, len(rhs))
+		for i, sample := range rhs {
+			rsigs[i] = matchingSignature(sample, expr.Opts)
 		}
 
-		results := make(promql.Vector, 0, len(pairs))
-		for _, pair := range pairs {
-			// merge
-			filter := true
-			if expr.Opts != nil && expr.Opts.ReturnBool {
-				filter = false
-			}
-			if merged := mergeBinOp(expr.Op, pair[0], pair[1], filter, IsComparisonOperator(expr.Op)); merged != nil {
-				results = append(results, *merged)
-			}
+		next, ts, lhs = lse.Next()
+		if !next {
+			return next, ts, nil
+		}
+		// build matching signature for each sample in left vector
+		lsigs := make([]uint64, len(lhs))
+		for i, sample := range lhs {
+			lsigs[i] = matchingSignature(sample, expr.Opts)
 		}
 
+		var results promql.Vector
+		switch expr.Op {
+		case OpTypeAnd:
+			results = vectorAnd(expr.Opts, lhs, rhs, lsigs, rsigs)
+		case OpTypeOr:
+			results = vectorOr(expr.Opts, lhs, rhs, lsigs, rsigs)
+		case OpTypeUnless:
+			results = vectorUnless(expr.Opts, lhs, rhs, lsigs, rsigs)
+		default:
+			results, err = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
+		}
 		return true, ts, results
 	}, func() (lastError error) {
-		for _, ev := range []StepEvaluator{lhs, rhs} {
+		for _, ev := range []StepEvaluator{lse, rse} {
 			if err := ev.Close(); err != nil {
 				lastError = err
 			}
@@ -622,7 +608,7 @@ func binOpStepEvaluator(
 		if err != nil {
 			errs = append(errs, err)
 		}
-		for _, ev := range []StepEvaluator{lhs, rhs} {
+		for _, ev := range []StepEvaluator{lse, rse} {
 			if err := ev.Error(); err != nil {
 				errs = append(errs, err)
 			}
@@ -638,37 +624,208 @@ func binOpStepEvaluator(
 	})
 }
 
+func matchingSignature(sample promql.Sample, opts *BinOpOptions) uint64 {
+	if opts == nil || opts.VectorMatching == nil {
+		return sample.Metric.Hash()
+	} else if opts.VectorMatching.On {
+		return sample.Metric.WithLabels(opts.VectorMatching.MatchingLabels...).Hash()
+	} else {
+		return sample.Metric.WithoutLabels(opts.VectorMatching.MatchingLabels...).Hash()
+	}
+}
+
+func vectorBinop(op string, opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
+	// handle one-to-one or many-to-one matching
+	//for one-to-many, swap
+	if opts != nil && opts.VectorMatching.Card == CardOneToMany {
+		lhs, rhs = rhs, lhs
+		lsigs, rsigs = rsigs, lsigs
+	}
+	rightSigs := make(map[uint64]*promql.Sample)
+	matchedSigs := make(map[uint64]map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	// Add all rhs samples to a map so we can easily find matches later.
+	for i, sample := range rhs {
+		sig := rsigs[i]
+		if rightSigs[sig] != nil {
+			side := "right"
+			if opts.VectorMatching.Card == CardOneToMany {
+				side = "left"
+			}
+			return nil, fmt.Errorf("found duplicate series on the %s hand-side"+
+				";many-to-many matching not allowed: matching labels must be unique on one side", side)
+		}
+		rightSigs[sig] = &promql.Sample{
+			Metric: sample.Metric,
+			Point:  sample.Point,
+		}
+	}
+
+	for i, sample := range lhs {
+		ls := &sample
+		sig := lsigs[i]
+		rs, found := rightSigs[sig] // Look for a match in the rhs Vector.
+		if !found {
+			continue
+		}
+
+		metric := resultMetric(ls.Metric, rs.Metric, opts)
+		insertedSigs, exists := matchedSigs[sig]
+		filter := true
+		if opts != nil {
+			if opts.VectorMatching.Card == CardOneToOne {
+				if exists {
+					return nil, errors.New("multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)")
+				}
+				matchedSigs[sig] = nil
+			} else {
+				insertSig := metric.Hash()
+				if !exists {
+					insertedSigs = map[uint64]struct{}{}
+					matchedSigs[sig] = insertedSigs
+				} else if _, duplicate := insertedSigs[insertSig]; duplicate {
+					return nil, errors.New("multiple matches for labels: grouping labels must ensure unique matches")
+				}
+				insertedSigs[insertSig] = struct{}{}
+			}
+			// merge
+			if opts.ReturnBool {
+				filter = false
+			}
+			// swap back before apply binary operator
+			if opts.VectorMatching.Card == CardOneToMany {
+				ls, rs = rs, ls
+			}
+		}
+
+		if merged := mergeBinOp(op, ls, rs, filter, IsComparisonOperator(op)); merged != nil {
+			// replace with labels specified by expr
+			merged.Metric = metric
+			results = append(results, *merged)
+		}
+	}
+	return results, nil
+}
+
+func vectorAnd(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
+	if opts.VectorMatching.Card != CardManyToMany {
+		panic("set operations must only use many-to-many matching")
+	}
+	if len(lhs) == 0 || len(rhs) == 0 {
+		return nil // Short-circuit: AND with nothing is nothing.
+	}
+
+	rightSigs := make(map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	for _, sig := range rsigs {
+		rightSigs[sig] = struct{}{}
+	}
+	for i, ls := range lhs {
+		if _, ok := rightSigs[lsigs[i]]; ok {
+			results = append(results, ls)
+		}
+	}
+	return results
+}
+
+func vectorOr(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
+	if opts.VectorMatching.Card != CardManyToMany {
+		panic("set operations must only use many-to-many matching")
+	}
+	if len(lhs) == 0 {
+		return rhs
+	} else if len(rhs) == 0 {
+		return lhs
+	}
+
+	leftSigs := make(map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	for i, ls := range lhs {
+		leftSigs[lsigs[i]] = struct{}{}
+		results = append(results, ls)
+	}
+	for i, rs := range rhs {
+		if _, ok := leftSigs[rsigs[i]]; !ok {
+			results = append(results, rs)
+		}
+	}
+	return results
+}
+
+func vectorUnless(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
+	if opts.VectorMatching.Card != CardManyToMany {
+		panic("set operations must only use many-to-many matching")
+	}
+	if len(lhs) == 0 || len(rhs) == 0 {
+		return lhs
+	}
+
+	rightSigs := make(map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	for _, sig := range rsigs {
+		rightSigs[sig] = struct{}{}
+	}
+
+	for i, ls := range lhs {
+		if _, ok := rightSigs[lsigs[i]]; !ok {
+			results = append(results, ls)
+		}
+	}
+	return results
+}
+
+// resultMetric returns the metric for the given sample(s) based on the Vector
+// binary operation and the matching options.
+func resultMetric(lhs, rhs labels.Labels, opts *BinOpOptions) labels.Labels {
+	lb := labels.NewBuilder(lhs)
+
+	if opts != nil {
+		matching := opts.VectorMatching
+		if matching.Card == CardOneToOne {
+			if matching.On {
+			Outer:
+				for _, l := range lhs {
+					for _, n := range matching.MatchingLabels {
+						if l.Name == n {
+							continue Outer
+						}
+					}
+					lb.Del(l.Name)
+				}
+			} else {
+				lb.Del(matching.MatchingLabels...)
+			}
+		}
+		for _, ln := range matching.Include {
+			// Included labels from the `group_x` modifier are taken from the "one"-side.
+			if v := rhs.Get(ln); v != "" {
+				lb.Set(ln, v)
+			} else {
+				lb.Del(ln)
+			}
+		}
+	}
+
+	return lb.Labels()
+}
+
+// IsSetOperator returns whether the op corresponds to a set operator.
+func IsSetOperator(op string) bool {
+	switch op {
+	case OpTypeAnd, OpTypeOr, OpTypeUnless:
+		return true
+	}
+	return false
+}
+
 func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
-	case OpTypeOr:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			// return the left entry found (prefers left hand side)
-			if left != nil {
-				return left
-			}
-			return right
-		}
-
-	case OpTypeAnd:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			// return left sample if there's a second sample for that label set
-			if left != nil && right != nil {
-				return left
-			}
-			return nil
-		}
-
-	case OpTypeUnless:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			// return left sample if there's not a second sample for that label set
-			if right == nil {
-				return left
-			}
-			return nil
-		}
-
 	case OpTypeAdd:
 		merger = func(left, right *promql.Sample) *promql.Sample {
 			if left == nil || right == nil {
@@ -901,20 +1058,6 @@ func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 		if res != nil {
 			return left
 		}
-
-		// otherwise it's been filtered out
-		return res
-	}
-
-	// This only leaves vector comparisons which are not filters.
-	// If we could not find a match but we have a left node to compare, create an entry with a 0 value.
-	// This can occur when we don't find a matching label set in the vectors.
-	if res == nil && left != nil && right == nil {
-		res = &promql.Sample{
-			Metric: left.Metric,
-			Point:  left.Point,
-		}
-		res.Point.V = 0
 	}
 	return res
 }
