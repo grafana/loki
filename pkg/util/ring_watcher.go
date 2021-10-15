@@ -52,7 +52,6 @@ func (w *ringWatcher) watchLoop(servCtx context.Context) error {
 }
 
 func (w *ringWatcher) lookupAddresses() {
-
 	addrs, err := w.getAddresses()
 	if err != nil {
 		level.Error(w.log).Log("msg", "error getting addresses from ring", "err", err)
@@ -63,7 +62,6 @@ func (w *ringWatcher) lookupAddresses() {
 	}
 	toAdd := make([]string, 0, len(addrs))
 	for i, newAddr := range addrs {
-		level.Debug(w.log).Log("msg", "found scheduler", "addr", newAddr)
 		alreadyExists := false
 		for _, currAddr := range w.addresses {
 			if currAddr == newAddr {

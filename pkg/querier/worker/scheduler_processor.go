@@ -12,7 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
+	dskit_middleware "github.com/grafana/dskit/middleware"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -204,7 +204,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 	opts, err := sp.grpcConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
-		cortex_middleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
+		dskit_middleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
 	}, nil)
 
 	if err != nil {
