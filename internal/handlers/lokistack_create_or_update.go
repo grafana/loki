@@ -17,6 +17,7 @@ import (
 	"github.com/ViaQ/loki-operator/internal/metrics"
 	"github.com/ViaQ/loki-operator/internal/status"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -25,7 +26,7 @@ import (
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
-func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme, flags manifests.FeatureFlags) error {
+func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme, host string, flags manifests.FeatureFlags) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
 	var stack lokiv1beta1.LokiStack
@@ -38,9 +39,14 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	img := os.Getenv("RELATED_IMAGE_LOKI")
+	img := os.Getenv(manifests.EnvRelatedImageLoki)
 	if img == "" {
 		img = manifests.DefaultContainerImage
+	}
+
+	gwImg := os.Getenv(manifests.EnvRelatedImageGateway)
+	if gwImg == "" {
+		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
 
 	var s3secret corev1.Secret
@@ -72,9 +78,11 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 			)
 		}
 
-		tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, s, &stack)
-		if err != nil {
-			return err
+		if stack.Spec.Tenants.Mode != lokiv1beta1.OpenshiftLogging {
+			tenantSecrets, err = gateway.GetTenantSecrets(ctx, k, req, &stack)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -83,6 +91,8 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		Name:          req.Name,
 		Namespace:     req.Namespace,
 		Image:         img,
+		GatewayImage:  gwImg,
+		GatewayHost:   host,
 		Stack:         stack.Spec,
 		Flags:         flags,
 		ObjectStorage: *storage,
@@ -118,12 +128,14 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 			"object_kind", obj.GetObjectKind(),
 		)
 
-		obj.SetNamespace(req.Namespace)
+		if isNamespaceScoped(obj) {
+			obj.SetNamespace(req.Namespace)
 
-		if err := ctrl.SetControllerReference(&stack, obj, s); err != nil {
-			l.Error(err, "failed to set controller owner reference to resource")
-			errCount++
-			continue
+			if err := ctrl.SetControllerReference(&stack, obj, s); err != nil {
+				l.Error(err, "failed to set controller owner reference to resource")
+				errCount++
+				continue
+			}
 		}
 
 		desired := obj.DeepCopyObject().(client.Object)
@@ -150,4 +162,13 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	}
 
 	return nil
+}
+
+func isNamespaceScoped(obj client.Object) bool {
+	switch obj.(type) {
+	case *rbacv1.ClusterRole, *rbacv1.ClusterRoleBinding:
+		return false
+	default:
+		return true
+	}
 }

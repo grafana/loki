@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
+	"github.com/ViaQ/loki-operator/internal/manifests/openshift"
 	"github.com/stretchr/testify/require"
 )
 
@@ -169,76 +170,64 @@ func TestBuild_OpenshiftLoggingMode(t *testing.T) {
 tenants:
 - name: application
   id: 32e45e3e-b760-43a2-a7e1-02c5631e56e9
-  oidc:
-    clientID: test
-    clientSecret: ZXhhbXBsZS1hcHAtc2VjcmV0
-    issuerCAPath: ./tmp/certs/ca.pem
-    issuerURL: https://127.0.0.1:5556/dex
-    redirectURL: https://localhost:8443/oidc/application/callback
-    usernameClaim: name
+  openshift:
+    serviceAccount: lokistack-gateway
+    redirectURL: https://localhost:8443/openshift/application/callback
+    cookieSecret: abcd
   opa:
     url: http://127.0.0.1:8080/v1/data/lokistack/allow
+    withAccessToken: true
 - name: infrastructure
   id: 40de0532-10a2-430c-9a00-62c46455c118
-  oidc:
-    clientID: test
-    clientSecret: ZXhhbXBsZS1hcHAtc2VjcmV0
-    issuerCAPath: ./tmp/certs/ca.pem
-    issuerURL: https://127.0.0.1:5556/dex
-    redirectURL: https://localhost:8443/oidc/infrastructure/callback
-    usernameClaim: name
+  openshift:
+    serviceAccount: lokistack-gateway
+    redirectURL: https://localhost:8443/openshift/infrastructure/callback
+    cookieSecret: efgh
   opa:
     url: http://127.0.0.1:8080/v1/data/lokistack/allow
+    withAccessToken: true
 - name: audit
   id: 26d7c49d-182e-4d93-bade-510c6cc3243d
-  oidc:
-    clientID: test
-    clientSecret: ZXhhbXBsZS1hcHAtc2VjcmV0
-    issuerCAPath: ./tmp/certs/ca.pem
-    issuerURL: https://127.0.0.1:5556/dex
-    redirectURL: https://localhost:8443/oidc/audit/callback
-    usernameClaim: name
+  openshift:
+    serviceAccount: lokistack-gateway
+    redirectURL: https://localhost:8443/openshift/audit/callback
+    cookieSecret: deadbeef
   opa:
     url: http://127.0.0.1:8080/v1/data/lokistack/allow
+    withAccessToken: true
 `
 	opts := Options{
 		Stack: lokiv1beta1.LokiStackSpec{
 			Tenants: &lokiv1beta1.TenantsSpec{
 				Mode: lokiv1beta1.OpenshiftLogging,
-				Authentication: []lokiv1beta1.AuthenticationSpec{
-					{
-						TenantName: "application",
-						TenantID:   "32e45e3e-b760-43a2-a7e1-02c5631e56e9",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							IssuerURL:     "https://127.0.0.1:5556/dex",
-							RedirectURL:   "https://localhost:8443/oidc/application/callback",
-							UsernameClaim: "name",
-						},
-					},
-					{
-						TenantName: "infrastructure",
-						TenantID:   "40de0532-10a2-430c-9a00-62c46455c118",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							IssuerURL:     "https://127.0.0.1:5556/dex",
-							RedirectURL:   "https://localhost:8443/oidc/infrastructure/callback",
-							UsernameClaim: "name",
-						},
-					},
-					{
-						TenantName: "audit",
-						TenantID:   "26d7c49d-182e-4d93-bade-510c6cc3243d",
-						OIDC: &lokiv1beta1.OIDCSpec{
-							IssuerURL:     "https://127.0.0.1:5556/dex",
-							RedirectURL:   "https://localhost:8443/oidc/audit/callback",
-							UsernameClaim: "name",
-						},
-					},
+			},
+		},
+		OpenShiftOptions: openshift.Options{
+			Authentication: []openshift.AuthenticationSpec{
+				{
+					TenantName:     "application",
+					TenantID:       "32e45e3e-b760-43a2-a7e1-02c5631e56e9",
+					ServiceAccount: "lokistack-gateway",
+					RedirectURL:    "https://localhost:8443/openshift/application/callback",
+					CookieSecret:   "abcd",
 				},
-				Authorization: &lokiv1beta1.AuthorizationSpec{
-					OPA: &lokiv1beta1.OPASpec{
-						URL: "http://127.0.0.1:8080/v1/data/lokistack/allow",
-					},
+				{
+					TenantName:     "infrastructure",
+					TenantID:       "40de0532-10a2-430c-9a00-62c46455c118",
+					ServiceAccount: "lokistack-gateway",
+					RedirectURL:    "https://localhost:8443/openshift/infrastructure/callback",
+					CookieSecret:   "efgh",
 				},
+				{
+					TenantName:     "audit",
+					TenantID:       "26d7c49d-182e-4d93-bade-510c6cc3243d",
+					ServiceAccount: "lokistack-gateway",
+					RedirectURL:    "https://localhost:8443/openshift/audit/callback",
+					CookieSecret:   "deadbeef",
+				},
+			},
+			Authorization: openshift.AuthorizationSpec{
+				OPAUrl: "http://127.0.0.1:8080/v1/data/lokistack/allow",
 			},
 		},
 		Namespace: "test-ns",
@@ -264,6 +253,7 @@ tenants:
 			},
 		},
 	}
+
 	rbacConfig, tenantsConfig, regoCfg, err := Build(opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expTntCfg, string(tenantsConfig))

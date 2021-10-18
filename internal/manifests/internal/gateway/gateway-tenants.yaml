@@ -32,7 +32,7 @@ tenants:
     - /etc/lokistack-gateway/rbac.yaml
     - /etc/lokistack-gateway/lokistack-gateway.rego
 {{- end -}}
-{{- else -}}
+{{- else if eq $l.Stack.Tenants.Mode "dynamic" -}}
 {{- if $tenant := $l.Stack.Tenants -}}
 {{- range $spec := $tenant.Authentication }}
 - name: {{ $spec.TenantName }}
@@ -61,6 +61,20 @@ tenants:
     {{- end }}
   opa:
     url: {{ $tenant.Authorization.OPA.URL }}
+{{- end -}}
+{{- end -}}
+{{- else if eq $l.Stack.Tenants.Mode "openshift-logging" -}}
+{{- if $tenant := $l.OpenShiftOptions.Authentication -}}
+{{- range $spec := $l.OpenShiftOptions.Authentication }}
+- name: {{ $spec.TenantName }}
+  id: {{ $spec.TenantID }}
+  openshift:
+    serviceAccount: {{ $spec.ServiceAccount }}
+    redirectURL: {{ $spec.RedirectURL }}
+    cookieSecret: {{ $spec.CookieSecret }}
+  opa:
+    url: {{ $l.OpenShiftOptions.Authorization.OPAUrl }}
+    withAccessToken: true
 {{- end -}}
 {{- end -}}
 {{- end -}}

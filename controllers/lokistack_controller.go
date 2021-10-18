@@ -26,9 +26,12 @@ import (
 	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/ViaQ/loki-operator/internal/status"
 	"github.com/go-logr/logr"
+	routev1 "github.com/openshift/api/route/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -73,12 +76,19 @@ var (
 	})
 )
 
+// LokiStackReconcilerConfig represents a set of
+// configuration options to setup the reconciler.
+type LokiStackReconcilerConfig struct {
+	Host  string
+	Flags manifests.FeatureFlags
+}
+
 // LokiStackReconciler reconciles a LokiStack object
 type LokiStackReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
-	Flags  manifests.FeatureFlags
+	Config LokiStackReconcilerConfig
 }
 
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
@@ -113,7 +123,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Flags)
+	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Config.Host, r.Config.Flags)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,
@@ -142,8 +152,13 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	return bld.
 		For(&lokiv1beta1.LokiStack{}, createOrUpdateOnlyPred).
 		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
+		Owns(&corev1.ServiceAccount{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.Service{}, updateOrDeleteOnlyPred).
 		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
 		Owns(&appsv1.StatefulSet{}, updateOrDeleteOnlyPred).
+		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
+		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
+		Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred).
+		Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
 		Complete(r)
 }

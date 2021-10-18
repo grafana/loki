@@ -8,6 +8,7 @@ import (
 
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/gateway"
+	"github.com/ViaQ/loki-operator/internal/manifests/openshift"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -59,6 +60,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 		{
 			desc: "openshift-logging mode",
 			opts: &Options{
+				Name:        "lokistack-ocp",
+				Namespace:   "stack-ns",
+				GatewayHost: "http://api.example.com",
 				Stack: lokiv1beta1.LokiStackSpec{
 					Tenants: &lokiv1beta1.TenantsSpec{
 						Mode: lokiv1beta1.OpenshiftLogging,
@@ -66,43 +70,45 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 			},
 			want: &Options{
+				Name:        "lokistack-ocp",
+				Namespace:   "stack-ns",
+				GatewayHost: "http://api.example.com",
 				Stack: lokiv1beta1.LokiStackSpec{
 					Tenants: &lokiv1beta1.TenantsSpec{
 						Mode: lokiv1beta1.OpenshiftLogging,
-						Authentication: []lokiv1beta1.AuthenticationSpec{
-							{
-								TenantName: "application",
-								TenantID:   "",
-								OIDC: &lokiv1beta1.OIDCSpec{
-									IssuerURL:     "https://127.0.0.1:5556/dex",
-									RedirectURL:   "http://localhost:8080/oidc/application/callback",
-									UsernameClaim: "name",
-								},
-							},
-							{
-								TenantName: "infrastructure",
-								TenantID:   "",
-								OIDC: &lokiv1beta1.OIDCSpec{
-									IssuerURL:     "https://127.0.0.1:5556/dex",
-									RedirectURL:   "http://localhost:8080/oidc/infrastructure/callback",
-									UsernameClaim: "name",
-								},
-							},
-							{
-								TenantName: "audit",
-								TenantID:   "",
-								OIDC: &lokiv1beta1.OIDCSpec{
-									IssuerURL:     "https://127.0.0.1:5556/dex",
-									RedirectURL:   "http://localhost:8080/oidc/audit/callback",
-									UsernameClaim: "name",
-								},
-							},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:        "lokistack-ocp",
+						GatewayName:          "lokistack-gateway-lokistack-ocp",
+						GatewayNamespace:     "stack-ns",
+						GatewaySvcName:       "lokistack-gateway-http-lokistack-ocp",
+						GatewaySvcTargetPort: "public",
+						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+					},
+					Authentication: []openshift.AuthenticationSpec{
+						{
+							TenantName:     "application",
+							TenantID:       "",
+							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
 						},
-						Authorization: &lokiv1beta1.AuthorizationSpec{
-							OPA: &lokiv1beta1.OPASpec{
-								URL: "http://localhost:8082/data/lokistack/allow",
-							},
+						{
+							TenantName:     "infrastructure",
+							TenantID:       "",
+							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
 						},
+						{
+							TenantName:     "audit",
+							TenantID:       "",
+							ServiceAccount: "lokistack-gateway-lokistack-ocp",
+							RedirectURL:    "http://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
+						},
+					},
+					Authorization: openshift.AuthorizationSpec{
+						OPAUrl: "http://localhost:8082/v1/data/lokistack/allow",
 					},
 				},
 			},
@@ -115,9 +121,15 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 			err := ApplyGatewayDefaultOptions(tc.opts)
 			require.NoError(t, err)
 
-			for i, a := range tc.opts.Stack.Tenants.Authentication {
+			for i, a := range tc.opts.OpenShiftOptions.Authentication {
+				require.NotEmpty(t, a.TenantID)
+				require.NotEmpty(t, a.CookieSecret)
+				require.Len(t, a.CookieSecret, 32)
+
 				a.TenantID = ""
-				tc.opts.Stack.Tenants.Authentication[i] = a
+				a.CookieSecret = ""
+				tc.opts.OpenShiftOptions.Authentication[i] = a
+				tc.opts.OpenShiftOptions.Authentication[i] = a
 			}
 
 			require.Equal(t, tc.want, tc.opts)
@@ -156,7 +168,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 					Spec: corev1.PodSpec{
 						Containers: []corev1.Container{
 							{
-								Name:  "opa-openshift",
+								Name:  "opa",
 								Image: "quay.io/observatorium/opa-openshift:latest",
 								Args: []string{
 									"--log.level=warn",
@@ -170,13 +182,13 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								},
 								Ports: []corev1.ContainerPort{
 									{
-										Name:          gatewayOPAHTTPPortName,
-										ContainerPort: gatewayOPAHTTPPort,
+										Name:          openshift.GatewayOPAHTTPPortName,
+										ContainerPort: openshift.GatewayOPAHTTPPort,
 										Protocol:      corev1.ProtocolTCP,
 									},
 									{
-										Name:          gatewayOPAInternalPortName,
-										ContainerPort: gatewayOPAInternalPort,
+										Name:          openshift.GatewayOPAInternalPortName,
+										ContainerPort: openshift.GatewayOPAInternalPort,
 										Protocol:      corev1.ProtocolTCP,
 									},
 								},
@@ -184,7 +196,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Handler: corev1.Handler{
 										HTTPGet: &corev1.HTTPGetAction{
 											Path:   "/live",
-											Port:   intstr.FromInt(gatewayOPAInternalPort),
+											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
 											Scheme: corev1.URISchemeHTTP,
 										},
 									},
@@ -196,7 +208,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Handler: corev1.Handler{
 										HTTPGet: &corev1.HTTPGetAction{
 											Path:   "/ready",
-											Port:   intstr.FromInt(gatewayOPAInternalPort),
+											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
 											Scheme: corev1.URISchemeHTTP,
 										},
 									},
@@ -222,7 +234,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 					Spec: corev1.PodSpec{
 						Containers: []corev1.Container{
 							{
-								Name:  "opa-openshift",
+								Name:  "opa",
 								Image: "quay.io/observatorium/opa-openshift:latest",
 								Args: []string{
 									"--log.level=warn",
@@ -238,13 +250,13 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								},
 								Ports: []corev1.ContainerPort{
 									{
-										Name:          gatewayOPAHTTPPortName,
-										ContainerPort: gatewayOPAHTTPPort,
+										Name:          openshift.GatewayOPAHTTPPortName,
+										ContainerPort: openshift.GatewayOPAHTTPPort,
 										Protocol:      corev1.ProtocolTCP,
 									},
 									{
-										Name:          gatewayOPAInternalPortName,
-										ContainerPort: gatewayOPAInternalPort,
+										Name:          openshift.GatewayOPAInternalPortName,
+										ContainerPort: openshift.GatewayOPAInternalPort,
 										Protocol:      corev1.ProtocolTCP,
 									},
 								},
@@ -252,7 +264,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Handler: corev1.Handler{
 										HTTPGet: &corev1.HTTPGetAction{
 											Path:   "/live",
-											Port:   intstr.FromInt(gatewayOPAInternalPort),
+											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
 											Scheme: corev1.URISchemeHTTPS,
 										},
 									},
@@ -264,7 +276,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Handler: corev1.Handler{
 										HTTPGet: &corev1.HTTPGetAction{
 											Path:   "/ready",
-											Port:   intstr.FromInt(gatewayOPAInternalPort),
+											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
 											Scheme: corev1.URISchemeHTTPS,
 										},
 									},
@@ -325,8 +337,8 @@ func TestConfigureServiceForMode(t *testing.T) {
 			want: &corev1.ServiceSpec{
 				Ports: []corev1.ServicePort{
 					{
-						Name: opaMetricsPortName,
-						Port: gatewayOPAInternalPort,
+						Name: openshift.GatewayOPAInternalPortName,
+						Port: openshift.GatewayOPAInternalPort,
 					},
 				},
 			},
@@ -373,7 +385,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							Port:   opaMetricsPortName,
+							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
 							Scheme: "http",
 						},
@@ -411,7 +423,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 							},
 						},
 						{
-							Port:            opaMetricsPortName,
+							Port:            openshift.GatewayOPAInternalPortName,
 							Path:            "/metrics",
 							Scheme:          "https",
 							BearerTokenFile: BearerTokenFile,

@@ -9,15 +9,18 @@ import (
 	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/external/k8s/k8sfakes"
+	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/require"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var scheme = runtime.NewScheme()
@@ -39,6 +42,7 @@ func TestMain(m *testing.M) {
 
 	// Register the clientgo and CRD schemes
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(routev1.AddToScheme(scheme))
 	utilruntime.Must(lokiv1beta1.AddToScheme(scheme))
 
 	log.Init("testing")
@@ -77,7 +81,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 	require.NoError(t, err)
 
 	// Require Owns-Calls for all owned resources
-	require.Equal(t, 4, b.OwnsCallCount())
+	require.Equal(t, 9, b.OwnsCallCount())
 
 	// Require owned resources
 	type test struct {
@@ -90,6 +94,10 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			pred: updateOrDeleteOnlyPred,
 		},
 		{
+			obj:  &corev1.ServiceAccount{},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
 			obj:  &corev1.Service{},
 			pred: updateOrDeleteOnlyPred,
 		},
@@ -99,6 +107,22 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		},
 		{
 			obj:  &appsv1.StatefulSet{},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:  &rbacv1.ClusterRole{},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:  &rbacv1.ClusterRoleBinding{},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:  &networkingv1.Ingress{},
+			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			obj:  &routev1.Route{},
 			pred: updateOrDeleteOnlyPred,
 		},
 	}

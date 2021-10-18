@@ -8,14 +8,16 @@ import (
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/imdario/mergo"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
+	gw "github.com/ViaQ/loki-operator/internal/manifests/gateway"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/gateway"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -31,6 +33,13 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	dpl := NewGatewayDeployment(opts, sha1C)
 	svc := NewGatewayHTTPService(opts)
+
+	ing, err := NewGatewayIngress(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	objs := []client.Object{cm, dpl, svc, ing}
 
 	if opts.Flags.EnableTLSServiceMonitorConfig {
 		serviceName := serviceNameGatewayHTTP(opts.Name)
@@ -48,14 +57,17 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		if err := configureServiceForMode(&svc.Spec, mode); err != nil {
 			return nil, err
 		}
+
+		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	return []client.Object{cm, dpl, svc}, nil
+	return objs, nil
 }
 
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
+		ServiceAccountName: GatewayName(opts.Name),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -90,8 +102,8 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 		},
 		Containers: []corev1.Container{
 			{
-				Name:  LabelGatewayComponent,
-				Image: DefaultLokiStackGatewayImage,
+				Name:  gatewayContainerName,
+				Image: opts.GatewayImage,
 				Resources: corev1.ResourceRequirements{
 					Limits:   opts.ResourceRequirements.Gateway.Limits,
 					Requests: opts.ResourceRequirements.Gateway.Requests,
@@ -101,7 +113,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					fmt.Sprintf("--web.listen=0.0.0.0:%d", gatewayHTTPPort),
 					fmt.Sprintf("--web.internal.listen=0.0.0.0:%d", gatewayInternalPort),
 					fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", gatewayHTTPPort),
-					"--log.level=debug",
+					"--log.level=warn",
 					fmt.Sprintf("--logs.read.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.tail.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.write.endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
@@ -230,6 +242,58 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 	}
 }
 
+// NewGatewayIngress creates a k8s Ingress object for accessing
+// the lokistack-gateway from public.
+func NewGatewayIngress(opts Options) (*networkingv1.Ingress, error) {
+	pt := networkingv1.PathTypePrefix
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+
+	h, err := gw.IngressHost(opts.Name, opts.Namespace, opts.GatewayHost)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed to parse ingress host")
+	}
+
+	ingBackend := networkingv1.IngressBackend{
+		Service: &networkingv1.IngressServiceBackend{
+			Name: serviceNameGatewayHTTP(opts.Name),
+			Port: networkingv1.ServiceBackendPort{
+				Name: gatewayHTTPPortName,
+			},
+		},
+	}
+
+	return &networkingv1.Ingress{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Ingress",
+			APIVersion: networkingv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      opts.Name,
+			Namespace: opts.Namespace,
+		},
+		Spec: networkingv1.IngressSpec{
+			DefaultBackend: &ingBackend,
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: h,
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: &pt,
+									Backend:  ingBackend,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
 // gatewayConfigMap creates a configMap for rbac.yaml and tenants.yaml
 func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 	cfg := gatewayConfigOptions(opt)
@@ -276,10 +340,11 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	}
 
 	return gateway.Options{
-		Stack:         opt.Stack,
-		Namespace:     opt.Namespace,
-		Name:          opt.Name,
-		TenantSecrets: gatewaySecrets,
+		Stack:            opt.Stack,
+		Namespace:        opt.Namespace,
+		Name:             opt.Name,
+		OpenShiftOptions: opt.OpenShiftOptions,
+		TenantSecrets:    gatewaySecrets,
 	}
 }
 

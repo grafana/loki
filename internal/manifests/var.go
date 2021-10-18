@@ -3,6 +3,7 @@ package manifests
 import (
 	"fmt"
 
+	"github.com/ViaQ/loki-operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -18,15 +19,16 @@ const (
 	lokiGRPCPortName   = "grpc"
 	lokiGossipPortName = "gossip-ring"
 
-	gatewayHTTPPort        = 8080
-	gatewayInternalPort    = 8081
-	gatewayOPAHTTPPort     = 8082
-	gatewayOPAInternalPort = 8083
+	gatewayContainerName    = "gateway"
+	gatewayHTTPPort         = 8080
+	gatewayInternalPort     = 8081
+	gatewayHTTPPortName     = "public"
+	gatewayInternalPortName = "metrics"
 
-	gatewayHTTPPortName        = "public"
-	gatewayInternalPortName    = "metrics"
-	gatewayOPAHTTPPortName     = "public"
-	gatewayOPAInternalPortName = "opa-metrics"
+	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
+	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
+	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
+	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
 	DefaultContainerImage = "docker.io/grafana/loki:2.2.1"
@@ -54,8 +56,6 @@ const (
 	LabelQueryFrontendComponent string = "query-frontend"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
-
-	openShiftServingCertKey = "service.beta.openshift.io/serving-cert-secret-name"
 )
 
 var (
@@ -80,7 +80,7 @@ func commonLabels(stackName string) map[string]string {
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
 	annotations := map[string]string{}
 	if enableSigningService {
-		annotations[openShiftServingCertKey] = signingServiceSecretName(serviceName)
+		annotations[openshift.ServingCertKey] = signingServiceSecretName(serviceName)
 	}
 	return annotations
 }
