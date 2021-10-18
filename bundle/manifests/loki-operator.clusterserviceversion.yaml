@@ -62,10 +62,19 @@ spec:
       - kind: Deployment
         name: ""
         version: v1
+      - kind: Ingress
+        name: ""
+        version: v1
       - kind: PersistentVolumeClaims
         name: ""
         version: v1
+      - kind: Route
+        name: ""
+        version: v1
       - kind: Service
+        name: ""
+        version: v1
+      - kind: ServiceAccount
         name: ""
         version: v1
       - kind: ServiceMonitor
@@ -370,7 +379,7 @@ spec:
         path: components.querier
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
-      - description: QueryFrontend is a mpa to the per pod status of the query frontend
+      - description: QueryFrontend is a map to the per pod status of the query frontend
           deployment.
         displayName: Query Frontend
         path: components.queryFrontend
@@ -379,6 +388,12 @@ spec:
       - description: Compactor is a map to the pod status of the compactor pod.
         displayName: Compactor
         path: components.compactor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Gateway is a map to the per pod status of the lokistack gateway
+          deployment.
+        displayName: Gateway
+        path: components.gateway
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
       - description: Conditions of the Loki deployment health.
@@ -411,6 +426,7 @@ spec:
           - endpoints
           - nodes
           - pods
+          - serviceaccounts
           - services
           verbs:
           - create
@@ -440,6 +456,14 @@ spec:
           - list
           - patch
           - update
+          - watch
+        - apiGroups:
+          - config.openshift.io
+          resources:
+          - dnses
+          verbs:
+          - get
+          - list
           - watch
         - apiGroups:
           - coordination.k8s.io
@@ -486,6 +510,16 @@ spec:
           - update
           - watch
         - apiGroups:
+          - networking.k8s.io
+          resources:
+          - ingresses
+          verbs:
+          - create
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
           - rbac.authorization.k8s.io
           resources:
           - clusterrolebindings
@@ -496,6 +530,16 @@ spec:
           - get
           - list
           - patch
+          - update
+          - watch
+        - apiGroups:
+          - route.openshift.io
+          resources:
+          - routes
+          verbs:
+          - create
+          - get
+          - list
           - update
           - watch
         - apiGroups:

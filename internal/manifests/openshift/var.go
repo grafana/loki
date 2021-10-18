@@ -29,6 +29,10 @@ func clusterRoleName(opts Options) string {
 	return opts.BuildOpts.GatewayName
 }
 
+func ingressHost(stackName, namespace, baseDomain string) string {
+	return fmt.Sprintf("%s-%s.apps.%s", stackName, namespace, baseDomain)
+}
+
 func routeName(opts Options) string {
 	return opts.BuildOpts.LokiStackName
 }

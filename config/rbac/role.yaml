@@ -13,6 +13,7 @@ rules:
   - endpoints
   - nodes
   - pods
+  - serviceaccounts
   - services
   verbs:
   - create
@@ -42,6 +43,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - dnses
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - coordination.k8s.io
@@ -88,6 +97,16 @@ rules:
   - update
   - watch
 - apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - clusterrolebindings
@@ -98,5 +117,15 @@ rules:
   - get
   - list
   - patch
+  - update
+  - watch
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - create
+  - get
+  - list
   - update
   - watch

@@ -60,9 +60,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 		{
 			desc: "openshift-logging mode",
 			opts: &Options{
-				Name:        "lokistack-ocp",
-				Namespace:   "stack-ns",
-				GatewayHost: "http://api.example.com",
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
 				Stack: lokiv1beta1.LokiStackSpec{
 					Tenants: &lokiv1beta1.TenantsSpec{
 						Mode: lokiv1beta1.OpenshiftLogging,
@@ -70,9 +70,9 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 			},
 			want: &Options{
-				Name:        "lokistack-ocp",
-				Namespace:   "stack-ns",
-				GatewayHost: "http://api.example.com",
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
 				Stack: lokiv1beta1.LokiStackSpec{
 					Tenants: &lokiv1beta1.TenantsSpec{
 						Mode: lokiv1beta1.OpenshiftLogging,

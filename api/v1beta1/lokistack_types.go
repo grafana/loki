@@ -564,6 +564,8 @@ const (
 	ReasonInvalidGatewayTenantSecret LokiStackConditionReason = "InvalidGatewayTenantSecret"
 	// ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
+	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
+	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
@@ -600,12 +602,19 @@ type LokiStackComponentStatus struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Querier",order=3
 	Querier PodStatusMap `json:"querier,omitempty"`
 
-	// QueryFrontend is a mpa to the per pod status of the query frontend deployment.
+	// QueryFrontend is a map to the per pod status of the query frontend deployment.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Query Frontend",order=4
 	QueryFrontend PodStatusMap `json:"queryFrontend,omitempty"`
+
+	// Gateway is a map to the per pod status of the lokistack gateway deployment.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Gateway",order=5
+	Gateway PodStatusMap `json:"gateway,omitempty"`
 }
 
 // LokiStackStatus defines the observed state of LokiStack
@@ -631,7 +640,7 @@ type LokiStackStatus struct {
 
 // LokiStack is the Schema for the lokistacks API
 //
-// +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Service,v1},{PersistentVolumeClaims,v1},{ServiceMonitor,v1}}
+// +operator-sdk:csv:customresourcedefinitions:displayName="LokiStack",resources={{Deployment,v1},{StatefulSet,v1},{ConfigMap,v1},{Ingress,v1},{Service,v1},{ServiceAccount,v1},{PersistentVolumeClaims,v1},{Route,v1},{ServiceMonitor,v1}}
 type LokiStack struct {
 	Spec              LokiStackSpec   `json:"spec,omitempty"`
 	Status            LokiStackStatus `json:"status,omitempty"`

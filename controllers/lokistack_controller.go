@@ -76,30 +76,26 @@ var (
 	})
 )
 
-// LokiStackReconcilerConfig represents a set of
-// configuration options to setup the reconciler.
-type LokiStackReconcilerConfig struct {
-	Host  string
-	Flags manifests.FeatureFlags
-}
-
 // LokiStackReconciler reconciles a LokiStack object
 type LokiStackReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
-	Config LokiStackReconcilerConfig
+	Flags  manifests.FeatureFlags
 }
 
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -123,7 +119,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Config.Host, r.Config.Flags)
+	err = handlers.CreateOrUpdateLokiStack(ctx, req, r.Client, r.Scheme, r.Flags)
 	if err != nil {
 		return ctrl.Result{
 			Requeue:      true,

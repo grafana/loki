@@ -8,7 +8,6 @@ import (
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/imdario/mergo"
 
-	gw "github.com/ViaQ/loki-operator/internal/manifests/gateway"
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -248,11 +247,6 @@ func NewGatewayIngress(opts Options) (*networkingv1.Ingress, error) {
 	pt := networkingv1.PathTypePrefix
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
 
-	h, err := gw.IngressHost(opts.Name, opts.Namespace, opts.GatewayHost)
-	if err != nil {
-		return nil, kverrors.Wrap(err, "failed to parse ingress host")
-	}
-
 	ingBackend := networkingv1.IngressBackend{
 		Service: &networkingv1.IngressServiceBackend{
 			Name: serviceNameGatewayHTTP(opts.Name),
@@ -276,12 +270,11 @@ func NewGatewayIngress(opts Options) (*networkingv1.Ingress, error) {
 			DefaultBackend: &ingBackend,
 			Rules: []networkingv1.IngressRule{
 				{
-					Host: h,
 					IngressRuleValue: networkingv1.IngressRuleValue{
 						HTTP: &networkingv1.HTTPIngressRuleValue{
 							Paths: []networkingv1.HTTPIngressPath{
 								{
-									Path:     "/",
+									Path:     "/api/logs/v1",
 									PathType: &pt,
 									Backend:  ingBackend,
 								},

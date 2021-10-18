@@ -5,28 +5,26 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ViaQ/loki-operator/internal/handlers/internal/gateway"
-
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/ViaQ/logerr/log"
-
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/external/k8s"
+	"github.com/ViaQ/loki-operator/internal/handlers/internal/gateway"
 	"github.com/ViaQ/loki-operator/internal/handlers/internal/secrets"
 	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/ViaQ/loki-operator/internal/metrics"
 	"github.com/ViaQ/loki-operator/internal/status"
+
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
-func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme, host string, flags manifests.FeatureFlags) error {
+func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client, s *runtime.Scheme, flags manifests.FeatureFlags) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
 	var stack lokiv1beta1.LokiStack
@@ -69,7 +67,10 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		)
 	}
 
-	var tenantSecrets []*manifests.TenantSecrets
+	var (
+		baseDomain    string
+		tenantSecrets []*manifests.TenantSecrets
+	)
 	if flags.EnableGateway && stack.Spec.Tenants != nil {
 		if err = gateway.ValidateModes(stack); err != nil {
 			return status.SetDegradedCondition(ctx, k, req,
@@ -84,19 +85,26 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 				return err
 			}
 		}
+
+		if stack.Spec.Tenants.Mode == lokiv1beta1.OpenshiftLogging {
+			baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
+			if err != nil {
+				return nil
+			}
+		}
 	}
 
 	// Here we will translate the lokiv1beta1.LokiStack options into manifest options
 	opts := manifests.Options{
-		Name:          req.Name,
-		Namespace:     req.Namespace,
-		Image:         img,
-		GatewayImage:  gwImg,
-		GatewayHost:   host,
-		Stack:         stack.Spec,
-		Flags:         flags,
-		ObjectStorage: *storage,
-		TenantSecrets: tenantSecrets,
+		Name:              req.Name,
+		Namespace:         req.Namespace,
+		Image:             img,
+		GatewayImage:      gwImg,
+		GatewayBaseDomain: baseDomain,
+		Stack:             stack.Spec,
+		Flags:             flags,
+		ObjectStorage:     *storage,
+		TenantSecrets:     tenantSecrets,
 	}
 
 	ll.Info("begin building manifests")

@@ -31,6 +31,7 @@ import (
 	"github.com/ViaQ/loki-operator/controllers"
 	"github.com/ViaQ/loki-operator/internal/manifests"
 	"github.com/ViaQ/loki-operator/internal/metrics"
+	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
@@ -84,11 +85,11 @@ func main() {
 	}
 
 	if enableGateway {
+		utilruntime.Must(configv1.AddToScheme(scheme))
 		utilruntime.Must(routev1.AddToScheme(scheme))
 	}
 
-	c := ctrl.GetConfigOrDie()
-	mgr, err := ctrl.NewManager(c, ctrl.Options{
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
 		Port:                   9443,
@@ -112,10 +113,7 @@ func main() {
 		Client: mgr.GetClient(),
 		Log:    log.WithName("controllers").WithName("LokiStack"),
 		Scheme: mgr.GetScheme(),
-		Config: controllers.LokiStackReconcilerConfig{
-			Host:  c.Host,
-			Flags: featureFlags,
-		},
+		Flags:  featureFlags,
 	}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to create controller", "controller", "LokiStack")
 		os.Exit(1)

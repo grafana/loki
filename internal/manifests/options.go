@@ -9,12 +9,12 @@ import (
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
 // Most of this should be provided - either directly or indirectly - by the user.
 type Options struct {
-	Name         string
-	Namespace    string
-	Image        string
-	GatewayImage string
-	GatewayHost  string
-	ConfigSHA1   string
+	Name              string
+	Namespace         string
+	Image             string
+	GatewayImage      string
+	GatewayBaseDomain string
+	ConfigSHA1        string
 
 	Flags FeatureFlags
 

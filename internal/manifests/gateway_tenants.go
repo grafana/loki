@@ -23,18 +23,15 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		return nil // continue using user input
 
 	case lokiv1beta1.OpenshiftLogging:
-		defaults, err := openshift.NewOptions(
+		defaults := openshift.NewOptions(
 			opts.Name,
 			GatewayName(opts.Name),
 			opts.Namespace,
-			opts.GatewayHost,
+			opts.GatewayBaseDomain,
 			serviceNameGatewayHTTP(opts.Name),
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 		)
-		if err != nil {
-			return kverrors.Wrap(err, "failed to create new openshift options")
-		}
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
 			return kverrors.Wrap(err, "failed to merge defaults for mode openshift logging")

@@ -12,8 +12,7 @@ import (
 )
 
 func TestBuild_ServiceAccountRefMatches(t *testing.T) {
-	opts, err := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{})
-	require.NoError(t, err)
+	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{})
 
 	objs := Build(opts)
 	sa := objs[1].(*corev1.ServiceAccount)
@@ -25,8 +24,7 @@ func TestBuild_ServiceAccountRefMatches(t *testing.T) {
 }
 
 func TestBuild_ClusterRoleRefMatches(t *testing.T) {
-	opts, err := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{})
-	require.NoError(t, err)
+	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{})
 
 	objs := Build(opts)
 	cr := objs[2].(*rbacv1.ClusterRole)
@@ -37,8 +35,7 @@ func TestBuild_ClusterRoleRefMatches(t *testing.T) {
 }
 
 func TestBuild_ServiceAccountAnnotationsRouteRefMatches(t *testing.T) {
-	opts, err := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{})
-	require.NoError(t, err)
+	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{})
 
 	objs := Build(opts)
 	rt := objs[0].(*routev1.Route)

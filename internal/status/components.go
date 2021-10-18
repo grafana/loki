@@ -50,6 +50,11 @@ func SetComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) er
 	if err != nil {
 		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelIngesterComponent)
 	}
+
+	s.Status.Components.Gateway, err = appendPodStatus(ctx, k, manifests.LabelGatewayComponent, s.Name, s.Namespace)
+	if err != nil {
+		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelGatewayComponent)
+	}
 	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
 }
 

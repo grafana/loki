@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/ViaQ/loki-operator/internal/manifests/gateway"
 	"github.com/google/uuid"
 )
 
@@ -46,11 +45,8 @@ type BuildOptions struct {
 }
 
 // NewOptions returns an openshift options struct.
-func NewOptions(stackName, gwName, gwNamespace, gwHost, gwSvcName, gwPortName string, gwLabels map[string]string) (Options, error) {
-	host, err := gateway.IngressHost(stackName, gwNamespace, gwHost)
-	if err != nil {
-		return Options{}, err
-	}
+func NewOptions(stackName, gwName, gwNamespace, gwBaseDomain, gwSvcName, gwPortName string, gwLabels map[string]string) Options {
+	host := ingressHost(stackName, gwNamespace, gwBaseDomain)
 
 	var authn []AuthenticationSpec
 	for _, name := range defaultTenants {
@@ -76,7 +72,7 @@ func NewOptions(stackName, gwName, gwNamespace, gwHost, gwSvcName, gwPortName st
 		Authorization: AuthorizationSpec{
 			OPAUrl: fmt.Sprintf("http://localhost:%d/v1/data/%s/allow", GatewayOPAHTTPPort, opaDefaultPackage),
 		},
-	}, nil
+	}
 }
 
 func newCookieSecret() string {
