@@ -132,34 +132,34 @@ func (c *LazyChunk) SampleIterator(
 	its := make([]iter.SampleIterator, 0, len(blocks))
 
 	for _, b := range blocks {
-		// if we have already processed and cache block let's use it.
-		if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
-			cache.Reset()
-			its = append(its, cache)
-			continue
-		}
+		// // if we have already processed and cache block let's use it.
+		// if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
+		// 	cache.Reset()
+		// 	its = append(its, cache)
+		// 	continue
+		// }
 		// if the block is overlapping cache it with the next chunk boundaries.
-		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
-			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
-			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractor), b.Entries())
-			its = append(its, it)
-			if c.overlappingSampleBlocks == nil {
-				c.overlappingSampleBlocks = make(map[int]iter.CacheSampleIterator)
-			}
-			c.overlappingSampleBlocks[b.Offset()] = it
-			continue
-		}
-		if nextChunk != nil {
-			if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
-				delete(c.overlappingSampleBlocks, b.Offset())
-				if err := cache.Wrapped().Close(); err != nil {
-					level.Warn(util_log.Logger).Log(
-						"msg", "failed to close cache block sample iterator",
-						"err", err,
-					)
-				}
-			}
-		}
+		// if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
+		// 	// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
+		// 	it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractor), b.Entries())
+		// 	its = append(its, it)
+		// 	if c.overlappingSampleBlocks == nil {
+		// 		c.overlappingSampleBlocks = make(map[int]iter.CacheSampleIterator)
+		// 	}
+		// 	c.overlappingSampleBlocks[b.Offset()] = it
+		// 	continue
+		// }
+		// if nextChunk != nil {
+		// 	if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
+		// 		delete(c.overlappingSampleBlocks, b.Offset())
+		// 		if err := cache.Wrapped().Close(); err != nil {
+		// 			level.Warn(util_log.Logger).Log(
+		// 				"msg", "failed to close cache block sample iterator",
+		// 				"err", err,
+		// 			)
+		// 		}
+		// 	}
+		// }
 		// non-overlapping block with the next chunk are not cached.
 		its = append(its, b.SampleIterator(ctx, extractor))
 	}
