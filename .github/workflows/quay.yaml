@@ -35,7 +35,7 @@ jobs:
        run: |
          echo -n ::set-output name=IMAGE_TAGS::
          PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_OPERATOR_NAME"
-         TAGS=("$PULLSPEC:latest")
+         TAGS=("$PULLSPEC:latest", "$PULLSPEC:v0.0.1")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
@@ -73,7 +73,7 @@ jobs:
        run: |
          echo -n ::set-output name=IMAGE_TAGS::
          PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_BUNDLE_NAME"
-         TAGS=("$PULLSPEC:latest")
+         TAGS=("$PULLSPEC:latest", "$PULLSPEC:v0.0.1")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
