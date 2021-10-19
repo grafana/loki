@@ -168,14 +168,14 @@ func (ev *DefaultEvaluator) StepEvaluator(
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *VectorAggregationExpr:
-		if rangExpr, ok := e.left.(*RangeAggregationExpr); ok && e.operation == OpTypeSum {
+		if rangExpr, ok := e.Left.(*RangeAggregationExpr); ok && e.Operation == OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
 			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr SampleExpr, p Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.left.interval).Add(-rangExpr.left.offset),
-						End:      q.End().Add(-rangExpr.left.offset),
+						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
+						End:      q.End().Add(-rangExpr.Left.Offset),
 						Selector: e.String(), // intentionally send the the vector for reducing labels.
 						Shards:   q.Shards(),
 					},
@@ -183,15 +183,15 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				if err != nil {
 					return nil, err
 				}
-				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.left.offset)
+				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.left.interval).Add(-e.left.offset),
-				End:      q.End().Add(-e.left.offset),
+				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				End:      q.End().Add(-e.Left.Offset),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
 			},
@@ -199,7 +199,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.left.offset)
+		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *BinOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	case *LabelReplaceExpr:
@@ -215,13 +215,13 @@ func vectorAggEvaluator(
 	expr *VectorAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
-	sort.Strings(expr.grouping.groups)
+	sort.Strings(expr.Grouping.Groups)
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
 
@@ -229,8 +229,8 @@ func vectorAggEvaluator(
 			return false, 0, promql.Vector{}
 		}
 		result := map[uint64]*groupedAggregation{}
-		if expr.operation == OpTypeTopK || expr.operation == OpTypeBottomK {
-			if expr.params < 1 {
+		if expr.Operation == OpTypeTopK || expr.Operation == OpTypeBottomK {
+			if expr.Params < 1 {
 				return next, ts, promql.Vector{}
 			}
 		}
@@ -238,25 +238,25 @@ func vectorAggEvaluator(
 			metric := s.Metric
 
 			var groupingKey uint64
-			if expr.grouping.without {
-				groupingKey, buf = metric.HashWithoutLabels(buf, expr.grouping.groups...)
+			if expr.Grouping.Without {
+				groupingKey, buf = metric.HashWithoutLabels(buf, expr.Grouping.Groups...)
 			} else {
-				groupingKey, buf = metric.HashForLabels(buf, expr.grouping.groups...)
+				groupingKey, buf = metric.HashForLabels(buf, expr.Grouping.Groups...)
 			}
 			group, ok := result[groupingKey]
 			// Add a new group if it doesn't exist.
 			if !ok {
 				var m labels.Labels
 
-				if expr.grouping.without {
+				if expr.Grouping.Without {
 					lb.Reset(metric)
-					lb.Del(expr.grouping.groups...)
+					lb.Del(expr.Grouping.Groups...)
 					lb.Del(labels.MetricName)
 					m = lb.Labels()
 				} else {
-					m = make(labels.Labels, 0, len(expr.grouping.groups))
+					m = make(labels.Labels, 0, len(expr.Grouping.Groups))
 					for _, l := range metric {
-						for _, n := range expr.grouping.groups {
+						for _, n := range expr.Grouping.Groups {
 							if l.Name == n {
 								m = append(m, l)
 								break
@@ -273,19 +273,19 @@ func vectorAggEvaluator(
 				}
 
 				inputVecLen := len(vec)
-				resultSize := expr.params
-				if expr.params > inputVecLen {
+				resultSize := expr.Params
+				if expr.Params > inputVecLen {
 					resultSize = inputVecLen
 				}
-				if expr.operation == OpTypeStdvar || expr.operation == OpTypeStddev {
+				if expr.Operation == OpTypeStdvar || expr.Operation == OpTypeStddev {
 					result[groupingKey].value = 0.0
-				} else if expr.operation == OpTypeTopK {
+				} else if expr.Operation == OpTypeTopK {
 					result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
 					heap.Push(&result[groupingKey].heap, &promql.Sample{
 						Point:  promql.Point{V: s.V},
 						Metric: s.Metric,
 					})
-				} else if expr.operation == OpTypeBottomK {
+				} else if expr.Operation == OpTypeBottomK {
 					result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
 					heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 						Point:  promql.Point{V: s.V},
@@ -294,7 +294,7 @@ func vectorAggEvaluator(
 				}
 				continue
 			}
-			switch expr.operation {
+			switch expr.Operation {
 			case OpTypeSum:
 				group.value += s.V
 
@@ -322,8 +322,8 @@ func vectorAggEvaluator(
 				group.value += delta * (s.V - group.mean)
 
 			case OpTypeTopK:
-				if len(group.heap) < expr.params || group.heap[0].V < s.V || math.IsNaN(group.heap[0].V) {
-					if len(group.heap) == expr.params {
+				if len(group.heap) < expr.Params || group.heap[0].V < s.V || math.IsNaN(group.heap[0].V) {
+					if len(group.heap) == expr.Params {
 						heap.Pop(&group.heap)
 					}
 					heap.Push(&group.heap, &promql.Sample{
@@ -333,8 +333,8 @@ func vectorAggEvaluator(
 				}
 
 			case OpTypeBottomK:
-				if len(group.reverseHeap) < expr.params || group.reverseHeap[0].V > s.V || math.IsNaN(group.reverseHeap[0].V) {
-					if len(group.reverseHeap) == expr.params {
+				if len(group.reverseHeap) < expr.Params || group.reverseHeap[0].V > s.V || math.IsNaN(group.reverseHeap[0].V) {
+					if len(group.reverseHeap) == expr.Params {
 						heap.Pop(&group.reverseHeap)
 					}
 					heap.Push(&group.reverseHeap, &promql.Sample{
@@ -343,12 +343,12 @@ func vectorAggEvaluator(
 					})
 				}
 			default:
-				panic(errors.Errorf("expected aggregation operator but got %q", expr.operation))
+				panic(errors.Errorf("expected aggregation operator but got %q", expr.Operation))
 			}
 		}
 		vec = vec[:0]
 		for _, aggr := range result {
-			switch expr.operation {
+			switch expr.Operation {
 			case OpTypeAvg:
 				aggr.value = aggr.mean
 
@@ -414,11 +414,11 @@ func rangeAggEvaluator(
 	}
 	iter := newRangeVectorIterator(
 		it,
-		expr.left.interval.Nanoseconds(),
+		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 	)
-	if expr.operation == OpRangeTypeAbsent {
+	if expr.Operation == OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{
 			iter: iter,
 			lbs:  absentLabels(expr),
@@ -525,11 +525,11 @@ func binOpStepEvaluator(
 			return nil, err
 		}
 		return literalStepEvaluator(
-			expr.op,
+			expr.Op,
 			leftLit,
 			rhs,
 			false,
-			expr.opts.ReturnBool,
+			expr.Opts.ReturnBool,
 		)
 	}
 	if rOk {
@@ -538,11 +538,11 @@ func binOpStepEvaluator(
 			return nil, err
 		}
 		return literalStepEvaluator(
-			expr.op,
+			expr.Op,
 			rightLit,
 			lhs,
 			true,
-			expr.opts.ReturnBool,
+			expr.Opts.ReturnBool,
 		)
 	}
 
@@ -577,12 +577,12 @@ func binOpStepEvaluator(
 				// We seem limited to this approach due to using the StepEvaluator ifc.
 
 				var hash uint64
-				if expr.opts == nil || expr.opts.VectorMatching == nil {
+				if expr.Opts == nil || expr.Opts.VectorMatching == nil {
 					hash = sample.Metric.Hash()
-				} else if expr.opts.VectorMatching.On {
-					hash = sample.Metric.WithLabels(expr.opts.VectorMatching.Include...).Hash()
+				} else if expr.Opts.VectorMatching.On {
+					hash = sample.Metric.WithLabels(expr.Opts.VectorMatching.Include...).Hash()
 				} else {
-					hash = sample.Metric.WithoutLabels(expr.opts.VectorMatching.Include...).Hash()
+					hash = sample.Metric.WithoutLabels(expr.Opts.VectorMatching.Include...).Hash()
 				}
 				pair := pairs[hash]
 				if pair[i] != nil {
@@ -601,10 +601,10 @@ func binOpStepEvaluator(
 		for _, pair := range pairs {
 			// merge
 			filter := true
-			if expr.opts != nil && expr.opts.ReturnBool {
+			if expr.Opts != nil && expr.Opts.ReturnBool {
 				filter = false
 			}
-			if merged := mergeBinOp(expr.op, pair[0], pair[1], filter, IsComparisonOperator(expr.op)); merged != nil {
+			if merged := mergeBinOp(expr.Op, pair[0], pair[1], filter, IsComparisonOperator(expr.Op)); merged != nil {
 				results = append(results, *merged)
 			}
 		}
@@ -968,7 +968,7 @@ func labelReplaceEvaluator(
 	expr *LabelReplaceExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -989,18 +989,18 @@ func labelReplaceEvaluator(
 				vec[i].Metric = labels
 				continue
 			}
-			src := s.Metric.Get(expr.src)
-			indexes := expr.re.FindStringSubmatchIndex(src)
+			src := s.Metric.Get(expr.Src)
+			indexes := expr.Re.FindStringSubmatchIndex(src)
 			if indexes == nil {
 				// If there is no match, no replacement should take place.
 				labelCache[hash] = s.Metric
 				continue
 			}
-			res := expr.re.ExpandString([]byte{}, expr.replacement, src, indexes)
+			res := expr.Re.ExpandString([]byte{}, expr.Replacement, src, indexes)
 
-			lb := labels.NewBuilder(s.Metric).Del(expr.dst)
+			lb := labels.NewBuilder(s.Metric).Del(expr.Dst)
 			if len(res) > 0 {
-				lb.Set(expr.dst, string(res))
+				lb.Set(expr.Dst, string(res))
 			}
 			outLbs := lb.Labels()
 			labelCache[hash] = outLbs
