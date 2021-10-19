@@ -166,6 +166,34 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 
 	// store change funcs in slices and apply all at once, because once we change the
 	// config we can no longer compare it to the default, this allows us to only
+=======
+	if cfg.Common.ObjectStore.S3 != nil {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "s3"
+			r.Ruler.StoreConfig.S3 = r.Common.ObjectStore.S3.ToCortexS3Config()
+		})
+
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.ObjectStore.S3
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeS3
+		})
+	}
+
+	if cfg.Common.ObjectStore.Swift != nil {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "swift"
+			r.Ruler.StoreConfig.Swift = r.Common.ObjectStore.Swift.ToCortexSwiftConfig()
+		})
+
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+			r.StorageConfig.Swift = *r.Common.ObjectStore.Swift
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeSwift
+		})
+	}
+
+	// store changes in slices and apply all at once, because once we change the
+	// config we can no longer compare it to the default, so this allows us to only
+>>>>>>> 5e561ba47 (changes from PR review)
 	// do that comparison once
 	applyRulerStoreConfigs(cfg, defaults, rulerStoreConfigsToApply)
 	applyChunkStorageConfigs(cfg, defaults, chunkStorageConfigsToApply)
