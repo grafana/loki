@@ -49,7 +49,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureDeploymentForMode(&dpl.Spec, mode, opts.Flags); err != nil {
+		if err := configureDeploymentForMode(dpl, mode, opts.Flags); err != nil {
 			return nil, err
 		}
 
@@ -344,7 +344,7 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 func configureGatewayMetricsPKI(podSpec *corev1.PodSpec, serviceName string) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
-		if c.Name == LabelGatewayComponent {
+		if c.Name == gatewayContainerName {
 			gwIndex = i
 			break
 		}

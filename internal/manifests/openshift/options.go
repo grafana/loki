@@ -36,16 +36,22 @@ type AuthorizationSpec struct {
 // extra lokistack gateway k8s objects (e.g. ServiceAccount, Route, RBAC)
 // on openshift.
 type BuildOptions struct {
-	LokiStackName        string
-	GatewayName          string
-	GatewayNamespace     string
-	GatewaySvcName       string
-	GatewaySvcTargetPort string
-	Labels               map[string]string
+	LokiStackName                   string
+	GatewayName                     string
+	GatewayNamespace                string
+	GatewaySvcName                  string
+	GatewaySvcTargetPort            string
+	Labels                          map[string]string
+	EnableCertificateSigningService bool
 }
 
 // NewOptions returns an openshift options struct.
-func NewOptions(stackName, gwName, gwNamespace, gwBaseDomain, gwSvcName, gwPortName string, gwLabels map[string]string) Options {
+func NewOptions(
+	stackName string,
+	gwName, gwNamespace, gwBaseDomain, gwSvcName, gwPortName string,
+	gwLabels map[string]string,
+	enableCertSigningService bool,
+) Options {
 	host := ingressHost(stackName, gwNamespace, gwBaseDomain)
 
 	var authn []AuthenticationSpec
@@ -61,12 +67,13 @@ func NewOptions(stackName, gwName, gwNamespace, gwBaseDomain, gwSvcName, gwPortN
 
 	return Options{
 		BuildOpts: BuildOptions{
-			LokiStackName:        stackName,
-			GatewayName:          gwName,
-			GatewayNamespace:     gwNamespace,
-			GatewaySvcName:       gwSvcName,
-			GatewaySvcTargetPort: gwPortName,
-			Labels:               gwLabels,
+			LokiStackName:                   stackName,
+			GatewayName:                     gwName,
+			GatewayNamespace:                gwNamespace,
+			GatewaySvcName:                  gwSvcName,
+			GatewaySvcTargetPort:            gwPortName,
+			Labels:                          gwLabels,
+			EnableCertificateSigningService: enableCertSigningService,
 		},
 		Authentication: authn,
 		Authorization: AuthorizationSpec{

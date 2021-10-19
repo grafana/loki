@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildServiceAccount_AnnotationsMatchDefaultTenants(t *testing.T) {
-	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{})
+	opts := NewOptions("abc", "abc", "efgh", "example.com", "abc", "abc", map[string]string{}, false)
 
 	sa := BuildServiceAccount(opts)
 	require.Len(t, sa.GetAnnotations(), len(defaultTenants))

@@ -20,9 +20,17 @@ var (
 	cookieSecretLength = 32
 	allowedRunes       = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
-	// ServingCertKey is the annotation key for using the cert-signing service
-	// on k8s service objects.
+	defaultConfigMapMode = int32(420)
+
+	// ServingCertKey is the annotation key for services used the
+	// cert-signing service to create a new key/cert pair signed
+	// by the service CA stored in a secret with the same name
+	// as the annotated service.
 	ServingCertKey = "service.beta.openshift.io/serving-cert-secret-name"
+	// InjectCABundleKey is the annotation key for configmaps used by the
+	// cert-signing service to inject the service CA into the annotated
+	// configmap.
+	InjectCABundleKey = "service.beta.openshift.io/inject-cabundle"
 )
 
 func clusterRoleName(opts Options) string {
@@ -39,6 +47,10 @@ func routeName(opts Options) string {
 
 func serviceAccountName(opts Options) string {
 	return opts.BuildOpts.GatewayName
+}
+
+func serviceCABundleName(opts Options) string {
+	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.GatewayName)
 }
 
 func serviceAccountAnnotations(opts Options) map[string]string {

@@ -12,6 +12,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -142,79 +143,106 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		desc  string
 		mode  lokiv1beta1.ModeType
 		flags FeatureFlags
-		dpl   *appsv1.DeploymentSpec
-		want  *appsv1.DeploymentSpec
+		dpl   *appsv1.Deployment
+		want  *appsv1.Deployment
 	}
 
 	tc := []tt{
 		{
 			desc: "static mode",
 			mode: lokiv1beta1.Static,
-			dpl:  &appsv1.DeploymentSpec{},
-			want: &appsv1.DeploymentSpec{},
+			dpl:  &appsv1.Deployment{},
+			want: &appsv1.Deployment{},
 		},
 		{
 			desc: "dynamic mode",
 			mode: lokiv1beta1.Dynamic,
-			dpl:  &appsv1.DeploymentSpec{},
-			want: &appsv1.DeploymentSpec{},
+			dpl:  &appsv1.Deployment{},
+			want: &appsv1.Deployment{},
 		},
 		{
 			desc: "openshift-logging mode",
 			mode: lokiv1beta1.OpenshiftLogging,
-			dpl:  &appsv1.DeploymentSpec{},
-			want: &appsv1.DeploymentSpec{
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{
-							{
-								Name:  "opa",
-								Image: "quay.io/observatorium/opa-openshift:latest",
-								Args: []string{
-									"--log.level=warn",
-									"--opa.package=lokistack",
-									"--web.listen=:8082",
-									"--web.internal.listen=:8083",
-									"--web.healthchecks.url=http://localhost:8082",
-									`--openshift.mappings=application=loki.openshift.io`,
-									`--openshift.mappings=infrastructure=loki.openshift.io`,
-									`--openshift.mappings=audit=loki.openshift.io`,
-								},
-								Ports: []corev1.ContainerPort{
-									{
-										Name:          openshift.GatewayOPAHTTPPortName,
-										ContainerPort: openshift.GatewayOPAHTTPPort,
-										Protocol:      corev1.ProtocolTCP,
-									},
-									{
-										Name:          openshift.GatewayOPAInternalPortName,
-										ContainerPort: openshift.GatewayOPAInternalPort,
-										Protocol:      corev1.ProtocolTCP,
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.read.endpoint=http://example.com",
+										"--logs.tail.endpoint=http://example.com",
+										"--logs.write.endpoint=http://example.com",
 									},
 								},
-								LivenessProbe: &corev1.Probe{
-									Handler: corev1.Handler{
-										HTTPGet: &corev1.HTTPGetAction{
-											Path:   "/live",
-											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-											Scheme: corev1.URISchemeHTTP,
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.read.endpoint=http://example.com",
+										"--logs.tail.endpoint=http://example.com",
+										"--logs.write.endpoint=http://example.com",
+									},
+								},
+								{
+									Name:  "opa",
+									Image: "quay.io/observatorium/opa-openshift:latest",
+									Args: []string{
+										"--log.level=warn",
+										"--opa.package=lokistack",
+										"--web.listen=:8082",
+										"--web.internal.listen=:8083",
+										"--web.healthchecks.url=http://localhost:8082",
+										`--openshift.mappings=application=loki.openshift.io`,
+										`--openshift.mappings=infrastructure=loki.openshift.io`,
+										`--openshift.mappings=audit=loki.openshift.io`,
+									},
+									Ports: []corev1.ContainerPort{
+										{
+											Name:          openshift.GatewayOPAHTTPPortName,
+											ContainerPort: openshift.GatewayOPAHTTPPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+										{
+											Name:          openshift.GatewayOPAInternalPortName,
+											ContainerPort: openshift.GatewayOPAInternalPort,
+											Protocol:      corev1.ProtocolTCP,
 										},
 									},
-									TimeoutSeconds:   2,
-									PeriodSeconds:    30,
-									FailureThreshold: 10,
-								},
-								ReadinessProbe: &corev1.Probe{
-									Handler: corev1.Handler{
-										HTTPGet: &corev1.HTTPGetAction{
-											Path:   "/ready",
-											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-											Scheme: corev1.URISchemeHTTP,
+									LivenessProbe: &corev1.Probe{
+										Handler: corev1.Handler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/live",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
 										},
+										TimeoutSeconds:   2,
+										PeriodSeconds:    30,
+										FailureThreshold: 10,
 									},
-									TimeoutSeconds:   1,
-									PeriodSeconds:    5,
-									FailureThreshold: 12,
+									ReadinessProbe: &corev1.Probe{
+										Handler: corev1.Handler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/ready",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+										TimeoutSeconds:   1,
+										PeriodSeconds:    5,
+										FailureThreshold: 12,
+									},
 								},
 							},
 						},
@@ -228,67 +256,246 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			flags: FeatureFlags{
 				EnableTLSServiceMonitorConfig: true,
 			},
-			dpl: &appsv1.DeploymentSpec{},
-			want: &appsv1.DeploymentSpec{
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{
-							{
-								Name:  "opa",
-								Image: "quay.io/observatorium/opa-openshift:latest",
-								Args: []string{
-									"--log.level=warn",
-									"--opa.package=lokistack",
-									"--web.listen=:8082",
-									"--web.internal.listen=:8083",
-									"--web.healthchecks.url=http://localhost:8082",
-									"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
-									"--tls.internal.server.key-file=/var/run/tls/tls.key",
-									`--openshift.mappings=application=loki.openshift.io`,
-									`--openshift.mappings=infrastructure=loki.openshift.io`,
-									`--openshift.mappings=audit=loki.openshift.io`,
-								},
-								Ports: []corev1.ContainerPort{
-									{
-										Name:          openshift.GatewayOPAHTTPPortName,
-										ContainerPort: openshift.GatewayOPAHTTPPort,
-										Protocol:      corev1.ProtocolTCP,
-									},
-									{
-										Name:          openshift.GatewayOPAInternalPortName,
-										ContainerPort: openshift.GatewayOPAInternalPort,
-										Protocol:      corev1.ProtocolTCP,
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.read.endpoint=http://example.com",
+										"--logs.tail.endpoint=http://example.com",
+										"--logs.write.endpoint=http://example.com",
 									},
 								},
-								LivenessProbe: &corev1.Probe{
-									Handler: corev1.Handler{
-										HTTPGet: &corev1.HTTPGetAction{
-											Path:   "/live",
-											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-											Scheme: corev1.URISchemeHTTPS,
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.read.endpoint=http://example.com",
+										"--logs.tail.endpoint=http://example.com",
+										"--logs.write.endpoint=http://example.com",
+									},
+								},
+								{
+									Name:  "opa",
+									Image: "quay.io/observatorium/opa-openshift:latest",
+									Args: []string{
+										"--log.level=warn",
+										"--opa.package=lokistack",
+										"--web.listen=:8082",
+										"--web.internal.listen=:8083",
+										"--web.healthchecks.url=http://localhost:8082",
+										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/tls.key",
+										`--openshift.mappings=application=loki.openshift.io`,
+										`--openshift.mappings=infrastructure=loki.openshift.io`,
+										`--openshift.mappings=audit=loki.openshift.io`,
+									},
+									Ports: []corev1.ContainerPort{
+										{
+											Name:          openshift.GatewayOPAHTTPPortName,
+											ContainerPort: openshift.GatewayOPAHTTPPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+										{
+											Name:          openshift.GatewayOPAInternalPortName,
+											ContainerPort: openshift.GatewayOPAInternalPort,
+											Protocol:      corev1.ProtocolTCP,
 										},
 									},
-									TimeoutSeconds:   2,
-									PeriodSeconds:    30,
-									FailureThreshold: 10,
-								},
-								ReadinessProbe: &corev1.Probe{
-									Handler: corev1.Handler{
-										HTTPGet: &corev1.HTTPGetAction{
-											Path:   "/ready",
-											Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
-											Scheme: corev1.URISchemeHTTPS,
+									LivenessProbe: &corev1.Probe{
+										Handler: corev1.Handler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/live",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
+										TimeoutSeconds:   2,
+										PeriodSeconds:    30,
+										FailureThreshold: 10,
+									},
+									ReadinessProbe: &corev1.Probe{
+										Handler: corev1.Handler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/ready",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
+										TimeoutSeconds:   1,
+										PeriodSeconds:    5,
+										FailureThreshold: 12,
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      tlsMetricsSercetVolume,
+											ReadOnly:  true,
+											MountPath: gateway.LokiGatewayTLSDir,
 										},
 									},
-									TimeoutSeconds:   1,
-									PeriodSeconds:    5,
-									FailureThreshold: 12,
 								},
-								VolumeMounts: []corev1.VolumeMount{
-									{
-										Name:      tlsMetricsSercetVolume,
-										ReadOnly:  true,
-										MountPath: gateway.LokiGatewayTLSDir,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging mode with-cert-signing-service",
+			mode: lokiv1beta1.OpenshiftLogging,
+			flags: FeatureFlags{
+				EnableTLSServiceMonitorConfig:   true,
+				EnableCertificateSigningService: true,
+			},
+			dpl: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gateway",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{
+										"--other.args=foo-bar",
+										"--logs.read.endpoint=http://example.com",
+										"--logs.tail.endpoint=http://example.com",
+										"--logs.write.endpoint=http://example.com",
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "tls-secret",
+											ReadOnly:  true,
+											MountPath: "/var/run/tls",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "tls-secret-volume",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "gateway",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{
+										"--other.args=foo-bar",
+										"--logs.read.endpoint=https://example.com",
+										"--logs.tail.endpoint=https://example.com",
+										"--logs.write.endpoint=https://example.com",
+										"--logs.tls.ca-file=/var/run/ca/service-ca.crt",
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "tls-secret",
+											ReadOnly:  true,
+											MountPath: "/var/run/tls",
+										},
+										{
+											Name:      "gateway-ca-bundle",
+											ReadOnly:  true,
+											MountPath: "/var/run/ca",
+										},
+									},
+								},
+								{
+									Name:  "opa",
+									Image: "quay.io/observatorium/opa-openshift:latest",
+									Args: []string{
+										"--log.level=warn",
+										"--opa.package=lokistack",
+										"--web.listen=:8082",
+										"--web.internal.listen=:8083",
+										"--web.healthchecks.url=http://localhost:8082",
+										"--tls.internal.server.cert-file=/var/run/tls/tls.crt",
+										"--tls.internal.server.key-file=/var/run/tls/tls.key",
+										`--openshift.mappings=application=loki.openshift.io`,
+										`--openshift.mappings=infrastructure=loki.openshift.io`,
+										`--openshift.mappings=audit=loki.openshift.io`,
+									},
+									Ports: []corev1.ContainerPort{
+										{
+											Name:          openshift.GatewayOPAHTTPPortName,
+											ContainerPort: openshift.GatewayOPAHTTPPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+										{
+											Name:          openshift.GatewayOPAInternalPortName,
+											ContainerPort: openshift.GatewayOPAInternalPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										Handler: corev1.Handler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/live",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
+										TimeoutSeconds:   2,
+										PeriodSeconds:    30,
+										FailureThreshold: 10,
+									},
+									ReadinessProbe: &corev1.Probe{
+										Handler: corev1.Handler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/ready",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTPS,
+											},
+										},
+										TimeoutSeconds:   1,
+										PeriodSeconds:    5,
+										FailureThreshold: 12,
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      tlsMetricsSercetVolume,
+											ReadOnly:  true,
+											MountPath: gateway.LokiGatewayTLSDir,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "tls-secret-volume",
+								},
+								{
+									Name: "gateway-ca-bundle",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											DefaultMode: &defaultConfigMapMode,
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "gateway-ca-bundle",
+											},
+										},
 									},
 								},
 							},

@@ -1,13 +1,16 @@
 package openshift
 
 import (
+	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/imdario/mergo"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 )
 
 const (
@@ -19,33 +22,93 @@ const (
 	tenantAudit = "audit"
 )
 
-// defaultTenants represents the slice of all supported LokiStack on OpenShift.
-var defaultTenants = []string{
-	tenantApplication,
-	tenantInfrastructure,
-	tenantAudit,
-}
-
-// ConfigureDeployment merges an OpenPolicyAgent sidecar into the deployment spec.
-// With this, the deployment will route authorization request to the OpenShift
-// apiserver through the sidecar.
-func ConfigureDeployment(d *appsv1.DeploymentSpec, sercretVolumeName, tlsDir, certFile, keyFile string, withTLS bool) error {
-	p := corev1.PodSpec{
-		Containers: []corev1.Container{
-			newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile, withTLS),
-		},
+var (
+	// defaultTenants represents the slice of all supported LokiStack on OpenShift.
+	defaultTenants = []string{
+		tenantApplication,
+		tenantInfrastructure,
+		tenantAudit,
 	}
 
-	if err := mergo.Merge(&d.Template.Spec, p, mergo.WithAppendSlice); err != nil {
+	logsEndpointRe = regexp.MustCompile(`.*logs..*.endpoint.*`)
+)
+
+// ConfigureGatewayDeployment merges an OpenPolicyAgent sidecar into the deployment spec.
+// With this, the deployment will route authorization request to the OpenShift
+// apiserver through the sidecar.
+func ConfigureGatewayDeployment(
+	d *appsv1.Deployment,
+	gwContainerName string,
+	sercretVolumeName, tlsDir, certFile, keyFile string,
+	caDir, caFile string,
+	withTLS, withCertSigningService bool,
+) error {
+	var gwIndex int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == gwContainerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	gwContainer := d.Spec.Template.Spec.Containers[gwIndex].DeepCopy()
+	gwArgs := gwContainer.Args
+	gwVolumes := d.Spec.Template.Spec.Volumes
+
+	if withCertSigningService {
+		for i, a := range gwArgs {
+			if logsEndpointRe.MatchString(a) {
+				gwContainer.Args[i] = strings.Replace(a, "http", "https", 1)
+			}
+		}
+
+		gwArgs = append(gwArgs, fmt.Sprintf("--logs.tls.ca-file=%s/%s", caDir, caFile))
+
+		caBundleVolumeName := serviceCABundleName(Options{
+			BuildOpts: BuildOptions{
+				GatewayName: d.GetName(),
+			},
+		})
+
+		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      caBundleVolumeName,
+			ReadOnly:  true,
+			MountPath: caDir,
+		})
+
+		gwVolumes = append(gwVolumes, corev1.Volume{
+			Name: caBundleVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: caBundleVolumeName,
+					},
+				},
+			},
+		})
+	}
+
+	gwContainer.Args = gwArgs
+
+	p := corev1.PodSpec{
+		Containers: []corev1.Container{
+			*gwContainer,
+			newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile, withTLS),
+		},
+		Volumes: gwVolumes,
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
 	}
 
 	return nil
 }
 
-// ConfigureService merges the OpenPolicyAgent sidecar metrics port into
+// ConfigureGatewayService merges the OpenPolicyAgent sidecar metrics port into
 // the service spec. With this the metrics are exposed through the same service.
-func ConfigureService(s *corev1.ServiceSpec) error {
+func ConfigureGatewayService(s *corev1.ServiceSpec) error {
 	spec := corev1.ServiceSpec{
 		Ports: []corev1.ServicePort{
 			{
@@ -62,22 +125,10 @@ func ConfigureService(s *corev1.ServiceSpec) error {
 	return nil
 }
 
-// ConfigureIngress merges the OpenShift Route-specific annotations to
-// the lokistack gateway ingress object.
-func ConfigureIngress(i *networkingv1.Ingress) error {
-	ing := networkingv1.Ingress{}
-
-	if err := mergo.Merge(i, ing); err != nil {
-		return kverrors.Wrap(err, "failed to merge ingress config")
-	}
-
-	return nil
-}
-
-// ConfigureServiceMonitor merges the OpenPolicyAgent sidecar endpoint into
+// ConfigureGatewayServiceMonitor merges the OpenPolicyAgent sidecar endpoint into
 // the service monitor. With this cluster-monitoring prometheus can scrape
 // the sidecar metrics.
-func ConfigureServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS bool) error {
+func ConfigureGatewayServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS bool) error {
 	var opaEndpoint monitoringv1.Endpoint
 
 	if withTLS {

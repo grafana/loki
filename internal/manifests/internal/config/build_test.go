@@ -10,7 +10,7 @@ import (
 func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
 	expCfg := `
 ---
-auth_enabled: false
+auth_enabled: true
 chunk_store_config:
   chunk_cache_config:
     enable_fifocache: yes
@@ -207,7 +207,7 @@ overrides:
 func TestBuild_ConfigAndRuntimeConfig_BothGenerated(t *testing.T) {
 	expCfg := `
 ---
-auth_enabled: false
+auth_enabled: true
 chunk_store_config:
   chunk_cache_config:
     enable_fifocache: yes

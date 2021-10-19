@@ -31,6 +31,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			serviceNameGatewayHTTP(opts.Name),
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
+			opts.Flags.EnableCertificateSigningService,
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
@@ -41,18 +42,22 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureDeploymentForMode(d *appsv1.DeploymentSpec, mode lokiv1beta1.ModeType, flags FeatureFlags) error {
+func configureDeploymentForMode(d *appsv1.Deployment, mode lokiv1beta1.ModeType, flags FeatureFlags) error {
 	switch mode {
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1beta1.OpenshiftLogging:
-		return openshift.ConfigureDeployment(
+		return openshift.ConfigureGatewayDeployment(
 			d,
+			gatewayContainerName,
 			tlsMetricsSercetVolume,
 			gateway.LokiGatewayTLSDir,
 			gateway.LokiGatewayCertFile,
 			gateway.LokiGatewayKeyFile,
+			gateway.LokiGatewayCABundleDir,
+			gateway.LokiGatewayCAFile,
 			flags.EnableTLSServiceMonitorConfig,
+			flags.EnableCertificateSigningService,
 		)
 	}
 
@@ -64,7 +69,7 @@ func configureServiceForMode(s *corev1.ServiceSpec, mode lokiv1beta1.ModeType) e
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1beta1.OpenshiftLogging:
-		return openshift.ConfigureService(s)
+		return openshift.ConfigureGatewayService(s)
 	}
 
 	return nil
@@ -101,7 +106,7 @@ func configureServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, mode lokiv1
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1beta1.OpenshiftLogging:
-		return openshift.ConfigureServiceMonitor(sm, flags.EnableTLSServiceMonitorConfig)
+		return openshift.ConfigureGatewayServiceMonitor(sm, flags.EnableTLSServiceMonitorConfig)
 	}
 
 	return nil
