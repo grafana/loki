@@ -50,7 +50,6 @@ func (cfg *GCSConfig) ToCortexGCSConfig() cortex_gcp.GCSConfig {
 		RequestTimeout:   cfg.RequestTimeout,
 		EnableOpenCensus: cfg.EnableOpenCensus,
 	}
-
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.

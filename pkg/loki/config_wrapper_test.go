@@ -21,7 +21,7 @@ import (
 )
 
 func Test_CommonConfig(t *testing.T) {
-	testContext := func(configFileString string, args []string) (error, ConfigWrapper, ConfigWrapper) {
+	testContext := func(configFileString string, args []string) (ConfigWrapper, ConfigWrapper) {
 		config := ConfigWrapper{}
 		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
@@ -41,17 +41,14 @@ func Test_CommonConfig(t *testing.T) {
 			args = append(args, configFileArgs...)
 		}
 		err = cfg.DynamicUnmarshal(&config, args, fs)
-		if err != nil {
-			empty := ConfigWrapper{}
-			return err, empty, empty
-		}
+		require.NoError(t, err)
 
 		defaults := ConfigWrapper{}
 		freshFlags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 		err = cfg.DefaultUnmarshal(&defaults, args, freshFlags)
 		require.NoError(t, err)
 
-		return nil, config, defaults
+		return config, defaults
 	}
 
 	//the unmarshaller overwrites default values with 0s when a completely empty
@@ -62,8 +59,7 @@ server:
 
 	t.Run("common path prefix config", func(t *testing.T) {
 		t.Run("does not override defaults for file paths when not provided", func(t *testing.T) {
-			err, config, defaults := testContext(emptyConfigString, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(emptyConfigString, nil)
 
 			assert.EqualValues(t, defaults.Ruler.RulePath, config.Ruler.RulePath)
 			assert.EqualValues(t, defaults.Ingester.WAL.Dir, config.Ingester.WAL.Dir)
@@ -73,8 +69,7 @@ server:
 			configFileString := `---
 common:
   path_prefix: /opt/loki`
-			err, config, _ := testContext(configFileString, nil)
-			require.NoError(t, err)
+			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
@@ -86,8 +81,7 @@ common:
   path_prefix: /opt/loki
 ruler:
   rule_path: /etc/ruler/rules`
-			err, config, _ := testContext(configFileString, nil)
-			require.NoError(t, err)
+			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
@@ -97,8 +91,7 @@ ruler:
 			configFileString := `---
 common:
   path_prefix: /opt/loki`
-			err, config, _ := testContext(configFileString, []string{"-ruler.rule-path", "/etc/ruler/rules"})
-			require.NoError(t, err)
+			config, _ := testContext(configFileString, []string{"-ruler.rule-path", "/etc/ruler/rules"})
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
@@ -112,8 +105,7 @@ common:
 		// * ruler
 
 		t.Run("does not automatically configure memberlist when no top-level memberlist config is provided", func(t *testing.T) {
-			err, config, defaults := testContext(emptyConfigString, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(emptyConfigString, nil)
 
 			assert.EqualValues(t, defaults.Ingester.LifecyclerConfig.RingConfig.KVStore.Store, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, defaults.Distributor.DistributorRing.KVStore.Store, config.Distributor.DistributorRing.KVStore.Store)
@@ -126,8 +118,7 @@ memberlist:
   join_members:
     - foo.bar.example.com`
 
-			err, config, _ := testContext(configFileString, nil)
-			require.NoError(t, err)
+			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.Distributor.DistributorRing.KVStore.Store)
@@ -144,8 +135,7 @@ distributor:
     kvstore:
       store: etcd`
 
-			err, config, _ := testContext(configFileString, nil)
-			require.NoError(t, err)
+			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
 
@@ -159,8 +149,7 @@ memberlist:
   join_members:
     - foo.bar.example.com`
 
-			err, config, _ := testContext(configFileString, []string{"-ruler.ring.store", "inmemory"})
-			require.NoError(t, err)
+			config, _ := testContext(configFileString, []string{"-ruler.ring.store", "inmemory"})
 
 			assert.EqualValues(t, "inmemory", config.Ruler.Ring.KVStore.Store)
 
@@ -173,14 +162,13 @@ memberlist:
 		//config file structure
 		//common:
 		//  object_store:
-		//    s3: aws.S3Config
-		//    gcs: gcp.GCSConfig
 		//    azure: azure.BlobStorageConfig
+		//    gcs: gcp.GCSConfig
+		//    s3: aws.S3Config
 		//    swift: openstack.SwiftConfig
 
 		t.Run("does not automatically configure cloud object storage", func(t *testing.T) {
-			err, config, defaults := testContext(emptyConfigString, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(emptyConfigString, nil)
 
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Type, config.Ruler.StoreConfig.Type)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
@@ -194,7 +182,7 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 		})
 
-		t.Run("returns an error if multiple object storage configs are provided", func(t *testing.T) {
+		t.Run("when multiple configs are provided, the last (alphabetically) is used as the ruler store type", func(t *testing.T) {
 			multipleConfig := `common:
   object_store:
     s3:
@@ -208,8 +196,14 @@ memberlist:
       chunk_buffer_size: 27
       request_timeout: 5m`
 
-			err, _, _ := testContext(multipleConfig, nil)
-			assert.Error(t, err)
+			config, _ := testContext(multipleConfig, nil)
+			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
+
+			assert.Equal(t, "s3://foo-bucket", config.Ruler.StoreConfig.S3.Endpoint)
+			assert.Equal(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
+
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
+			assert.Equal(t, "foobar", config.StorageConfig.GCSConfig.BucketName)
 		})
 
 		t.Run("when common s3 object_store config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -227,8 +221,7 @@ memberlist:
         idle_conn_timeout: 5m
         response_header_timeout: 5m`
 
-			err, config, defaults := testContext(s3Config, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(s3Config, nil)
 
 			expected, err := url.Parse("s3://foo-bucket/example")
 			require.NoError(t, err)
@@ -275,8 +268,7 @@ memberlist:
       request_timeout: 5m
       enable_opencensus: true`
 
-			err, config, defaults := testContext(gcsConfig, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(gcsConfig, nil)
 
 			assert.Equal(t, "gcs", config.Ruler.StoreConfig.Type)
 
@@ -317,8 +309,7 @@ memberlist:
       min_retry_delay: 10s
       max_retry_delay: 10m`
 
-			err, config, defaults := testContext(azureConfig, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(azureConfig, nil)
 
 			assert.Equal(t, "azure", config.Ruler.StoreConfig.Type)
 
@@ -373,8 +364,7 @@ memberlist:
       connect_timeout: 5m
       request_timeout: 5s`
 
-			err, config, defaults := testContext(swiftConfig, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(swiftConfig, nil)
 
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
@@ -428,8 +418,7 @@ ruler:
       region: us-east1
       access_key_id: abc123
       secret_access_key: def789`
-			err, config, defaults := testContext(specificRulerConfig, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(specificRulerConfig, nil)
 
 			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
 			assert.Equal(t, "s3://foo-bucket", config.Ruler.StoreConfig.S3.Endpoint)
@@ -463,8 +452,7 @@ storage_config:
     access_key_id: abc123
     secret_access_key: def789`
 
-			err, config, defaults := testContext(specificRulerConfig, nil)
-			require.NoError(t, err)
+			config, defaults := testContext(specificRulerConfig, nil)
 
 			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
 			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
@@ -521,8 +509,7 @@ storage_config:
 					expected: storage.StorageTypeSwift,
 				},
 			} {
-				err, config, _ := testContext(tt.configString, nil)
-				require.NoError(t, err)
+				config, _ := testContext(tt.configString, nil)
 
 				assert.Equal(t, tt.expected, config.CompactorConfig.SharedStoreType)
 			}
@@ -536,11 +523,10 @@ storage_config:
       access_key_id: abc123
       secret_access_key: def789
 compactor:
-  shared_store: aws`
-			err, config, _ := testContext(configString, nil)
-			require.NoError(t, err)
+  shared_store: gcs`
+			config, _ := testContext(configString, nil)
 
-			assert.Equal(t, "aws", config.CompactorConfig.SharedStoreType)
+			assert.Equal(t, "gcs", config.CompactorConfig.SharedStoreType)
 		})
 	})
 }

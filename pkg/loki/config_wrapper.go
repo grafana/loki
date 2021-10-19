@@ -74,8 +74,9 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyMemberlistConfig(r)
-		err := applyObjectStoreConfig(r, &defaults)
-		return err
+		applyObjectStorageConfig(r, &defaults)
+
+		return nil
 	}
 }
 
@@ -92,95 +93,84 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	}
 }
 
-// applyObjectStoreConfig will attempt to apply a common object storage config for either
+// applyObjectStorageConfig will attempt to apply a common object storage config for either
 // s3, gcs, azure, or swift to all the places we create an object storage client.
-// If any specific configs for an object storage client have been provided, applyObjectStoreConfig will
-// avoid setting any other properties in that section to prevent, for example, having both an S3 and
-// GCS configuration present for the ruler's object storage client.
-func applyObjectStoreConfig(cfg, defaults *ConfigWrapper) (err error) {
-	if multipleCommonObjStoresProvided(cfg) {
-		return errors.New("only one common object store config can be provided")
-	}
-
-	if cfg.Common.ObjectStore.S3 != nil {
-		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "s3"
-			r.Ruler.StoreConfig.S3 = r.Common.ObjectStore.S3.ToCortexS3Config()
-		})
-
-		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
-			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.ObjectStore.S3
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeS3
-		})
-
-	}
-
-	if cfg.Common.ObjectStore.GCS != nil {
-		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "gcs"
-			r.Ruler.StoreConfig.GCS = r.Common.ObjectStore.GCS.ToCortexGCSConfig()
-		})
-
-		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
-			r.StorageConfig.GCSConfig = *r.Common.ObjectStore.GCS
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeGCS
-		})
-	}
+// If any specific configs for an object storage client have been provided elsewhere in the
+// configuration file, applyObjectStorageConfig will not override them.
+// If multiple object storage configurations are provided, applyObjectStorageConfig will apply
+// all of them, and will set the value for the Ruler's StoreConfig `type` to the
+// last one (alphabetically) that was defined.
+func applyObjectStorageConfig(cfg, defaults *ConfigWrapper) {
+	rulerStoreConfigsToApply := make([]func(*ConfigWrapper), 0, 4)
+	chunkStorageConfigsToApply := make([]func(*ConfigWrapper), 0, 4)
 
 	if cfg.Common.ObjectStore.Azure != nil {
-		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "azure"
 			r.Ruler.StoreConfig.Azure = r.Common.ObjectStore.Azure.ToCortexAzureConfig()
 		})
 
-		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.AzureStorageConfig = *r.Common.ObjectStore.Azure
 			r.CompactorConfig.SharedStoreType = storage.StorageTypeAzure
 		})
 	}
 
+	if cfg.Common.ObjectStore.GCS != nil {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "gcs"
+			r.Ruler.StoreConfig.GCS = r.Common.ObjectStore.GCS.ToCortexGCSConfig()
+		})
+
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+			r.StorageConfig.GCSConfig = *r.Common.ObjectStore.GCS
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeGCS
+		})
+	}
+
+	if cfg.Common.ObjectStore.S3 != nil {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "s3"
+			r.Ruler.StoreConfig.S3 = r.Common.ObjectStore.S3.ToCortexS3Config()
+		})
+
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.ObjectStore.S3
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeS3
+		})
+	}
+
 	if cfg.Common.ObjectStore.Swift != nil {
-		applyRulerStoreConfig(cfg, defaults, func(r *ConfigWrapper) {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "swift"
 			r.Ruler.StoreConfig.Swift = r.Common.ObjectStore.Swift.ToCortexSwiftConfig()
 		})
 
-		applyStorageConfig(cfg, defaults, func(r *ConfigWrapper) {
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.Swift = *r.Common.ObjectStore.Swift
 			r.CompactorConfig.SharedStoreType = storage.StorageTypeSwift
 		})
 	}
 
-	return nil
+	// store changes in slices and apply all at once, because once we change the
+	// config we can no longer compare it to the default, so this allows us to only
+	// do that comparison once
+	applyRulerStoreConfigs(cfg, defaults, rulerStoreConfigsToApply)
+	applyChunkStorageConfigs(cfg, defaults, chunkStorageConfigsToApply)
 }
 
-func multipleCommonObjStoresProvided(r *ConfigWrapper) bool {
-	numConfigs := 0
-
-	if r.Common.ObjectStore.S3 != nil {
-		numConfigs++
-	}
-	if r.Common.ObjectStore.GCS != nil {
-		numConfigs++
-	}
-	if r.Common.ObjectStore.Azure != nil {
-		numConfigs++
-	}
-	if r.Common.ObjectStore.Swift != nil {
-		numConfigs++
-	}
-
-	return numConfigs > 1
-}
-
-func applyRulerStoreConfig(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
+func applyRulerStoreConfigs(cfg, defaults *ConfigWrapper, apply []func(*ConfigWrapper)) {
 	if reflect.DeepEqual(cfg.Ruler.StoreConfig, defaults.Ruler.StoreConfig) {
-		apply(cfg)
+		for _, ap := range apply {
+			ap(cfg)
+		}
 	}
 }
 
-func applyStorageConfig(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
+func applyChunkStorageConfigs(cfg, defaults *ConfigWrapper, apply []func(*ConfigWrapper)) {
 	if reflect.DeepEqual(cfg.StorageConfig, defaults.StorageConfig) {
-		apply(cfg)
+		for _, ap := range apply {
+			ap(cfg)
+		}
 	}
 }
