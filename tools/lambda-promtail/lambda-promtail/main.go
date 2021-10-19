@@ -29,9 +29,11 @@ const (
 	maxErrMsgLen = 1024
 )
 
-var writeAddress *url.URL
-var username, password string
-var keepStream = false
+var (
+	writeAddress       *url.URL
+	username, password string
+	keepStream         bool
+)
 
 func init() {
 	addr := os.Getenv("WRITE_ADDRESS")
@@ -55,7 +57,7 @@ func init() {
 
 	keep := os.Getenv("KEEP_STREAM")
 	// Anything other than case-insensitive 'true' is treated as 'false'.
-	if keep != "" && strings.EqualFold(keep, "true") {
+	if strings.EqualFold(keep, "true") {
 		keepStream = true
 	}
 	fmt.Println("keep stream: ", keepStream)
