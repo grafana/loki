@@ -161,7 +161,7 @@ memberlist:
 	t.Run("common object store config", func(t *testing.T) {
 		//config file structure
 		//common:
-		//  object_store:
+		//  storage:
 		//    azure: azure.BlobStorageConfig
 		//    gcs: gcp.GCSConfig
 		//    s3: aws.S3Config
@@ -184,7 +184,7 @@ memberlist:
 
 		t.Run("when multiple configs are provided, the last (alphabetically) is used as the ruler store type", func(t *testing.T) {
 			multipleConfig := `common:
-  object_store:
+  storage:
     s3:
       s3: s3://foo-bucket/example
       endpoint: s3://foo-bucket
@@ -206,9 +206,9 @@ memberlist:
 			assert.Equal(t, "foobar", config.StorageConfig.GCSConfig.BucketName)
 		})
 
-		t.Run("when common s3 object_store config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+		t.Run("when common s3 storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
 			s3Config := `common:
-  object_store:
+  storage:
     s3:
       s3: s3://foo-bucket/example
       endpoint: s3://foo-bucket
@@ -259,9 +259,9 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 		})
 
-		t.Run("when common gcs object_store config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+		t.Run("when common gcs storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
 			gcsConfig := `common:
-  object_store:
+  storage:
     gcs:
       bucket_name: foobar
       chunk_buffer_size: 27
@@ -293,9 +293,9 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 		})
 
-		t.Run("when common azure object_store config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+		t.Run("when common azure storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
 			azureConfig := `common:
-  object_store:
+  storage:
     azure:
       environment: earth
       container_name: milkyway
@@ -341,9 +341,9 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 		})
 
-		t.Run("when common swift object_store config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+		t.Run("when common swift storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
 			swiftConfig := `common:
-  object_store:
+  storage:
     swift:
       auth_version: 3
       auth_url: http://example.com
@@ -405,7 +405,7 @@ memberlist:
 
 		t.Run("explicit ruler storage object storage configuration provided via config file is preserved", func(t *testing.T) {
 			specificRulerConfig := `common:
-  object_store:
+  storage:
     gcs:
       bucket_name: foobar
       chunk_buffer_size: 27
@@ -440,7 +440,7 @@ ruler:
 
 		t.Run("explicit storage config provided via config file is preserved", func(t *testing.T) {
 			specificRulerConfig := `common:
-  object_store:
+  storage:
     gcs:
       bucket_name: foobar
       chunk_buffer_size: 27
@@ -478,7 +478,7 @@ storage_config:
 			}{
 				{
 					configString: `common:
-  object_store:
+  storage:
     s3:
       s3: s3://foo-bucket/example
       access_key_id: abc123
@@ -487,14 +487,14 @@ storage_config:
 				},
 				{
 					configString: `common:
-  object_store:
+  storage:
     gcs:
       bucket_name: foobar`,
 					expected: storage.StorageTypeGCS,
 				},
 				{
 					configString: `common:
-  object_store:
+  storage:
     azure:
       account_name: 3rd_planet
       account_key: water`,
@@ -502,7 +502,7 @@ storage_config:
 				},
 				{
 					configString: `common:
-  object_store:
+  storage:
     swift:
       username: steve
       password: supersecret`,
@@ -517,7 +517,7 @@ storage_config:
 
 		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
 			configString := `common:
-  object_store:
+  storage:
     s3:
       s3: s3://foo-bucket/example
       access_key_id: abc123

@@ -9,11 +9,11 @@ import (
 
 // Config holds common config that can be shared between multiple other config sections
 type Config struct {
-	PathPrefix  string      `yaml:"path_prefix"`
-	ObjectStore ObjectStore `yaml:"object_store"`
+	PathPrefix string  `yaml:"path_prefix"`
+	Storage    Storage `yaml:"storage"`
 }
 
-type ObjectStore struct {
+type Storage struct {
 	S3    *aws.S3Config            `yaml:"s3"`
 	GCS   *gcp.GCSConfig           `yaml:"gcs"`
 	Azure *azure.BlobStorageConfig `yaml:"azure"`
