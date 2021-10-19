@@ -128,6 +128,18 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 		})
 	}
 
+	if cfg.Common.Storage.FSConfig != nil {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "local"
+			r.Ruler.StoreConfig.Local = r.Common.Storage.FSConfig.ToCortexLocalConfig()
+		})
+
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+			r.StorageConfig.FSConfig = *r.Common.Storage.FSConfig
+			r.CompactorConfig.SharedStoreType = storage.StorageTypeFileSystem
+		})
+	}
+
 	if cfg.Common.Storage.S3 != nil {
 		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"

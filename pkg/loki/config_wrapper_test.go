@@ -14,6 +14,7 @@ import (
 	cortex_aws "github.com/cortexproject/cortex/pkg/chunk/aws"
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
+	cortex_local "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
@@ -175,11 +176,13 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 		})
 
 		t.Run("when multiple configs are provided, the last (alphabetically) is used as the ruler store type", func(t *testing.T) {
@@ -252,11 +255,13 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 
 			//should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 		})
 
 		t.Run("when common gcs storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -286,11 +291,12 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
-
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			//should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 		})
 
 		t.Run("when common azure storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -334,11 +340,13 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 
 			//should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 		})
 
 		t.Run("when common swift storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -396,11 +404,43 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 
 			//should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+		})
+
+		t.Run("when common filesystem/local config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+			fsConfig := `common:
+  storage:
+    filesystem:
+      directory: /tmp/foo`
+
+			config, defaults := testContext(fsConfig, nil)
+
+			assert.Equal(t, "local", config.Ruler.StoreConfig.Type)
+
+			for _, actual := range []cortex_local.Config{
+				config.Ruler.StoreConfig.Local,
+				config.StorageConfig.FSConfig.ToCortexLocalConfig(),
+			} {
+				assert.Equal(t, "/tmp/foo", actual.Directory)
+			}
+
+			//should remain empty
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+
+			//should remain empty
+			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 		})
 
 		t.Run("explicit ruler storage object storage configuration provided via config file is preserved", func(t *testing.T) {
@@ -507,6 +547,13 @@ storage_config:
       username: steve
       password: supersecret`,
 					expected: storage.StorageTypeSwift,
+				},
+				{
+					configString: `common:
+  storage:
+    filesystem:
+      directory: /tmp/foo`,
+					expected: storage.StorageTypeFileSystem,
 				},
 			} {
 				config, _ := testContext(tt.configString, nil)
