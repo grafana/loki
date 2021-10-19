@@ -94,7 +94,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 }
 
 // applyStorageConfig will attempt to apply a common storage config for either
-// s3, gcs, azure, or swift to all the places we create an object storage client.
+// s3, gcs, azure, or swift to all the places we create a storage client.
 // If any specific configs for an object storage client have been provided elsewhere in the
 // configuration file, applyStorageConfig will not override them.
 // If multiple storage configurations are provided, applyStorageConfig will apply
@@ -140,32 +140,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 		})
 	}
 
-	if cfg.Common.Storage.S3 != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "s3"
-			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3.ToCortexS3Config()
-		})
-
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
-			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.Storage.S3
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeS3
-		})
-	}
-
-	if cfg.Common.Storage.Swift != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "swift"
-			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift.ToCortexSwiftConfig()
-		})
-
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
-			r.StorageConfig.Swift = *r.Common.Storage.Swift
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeSwift
-		})
-	}
-
-	// store change funcs in slices and apply all at once, because once we change the
-	// config we can no longer compare it to the default, this allows us to only
 	if cfg.Common.Storage.S3 != nil {
 		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"
