@@ -2,9 +2,10 @@ package bluge_db
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"github.com/blugelabs/bluge"
 	segment "github.com/blugelabs/bluge_segment_api"
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"log"
 )
 
@@ -21,7 +22,7 @@ type BlugeWriteBatch struct {
 	Writes map[string]TableWrites
 }
 
-func NewWriteBatch() chunk.WriteBatch {
+func NewWriteBatch() *BlugeWriteBatch {
 	return &BlugeWriteBatch{
 		Writes: map[string]TableWrites{},
 	}
@@ -31,7 +32,7 @@ func (b *BlugeWriteBatch) getOrCreateTableWrites(tableName string) TableWrites {
 	writes, ok := b.Writes[tableName]
 	if !ok {
 		writes = TableWrites{
-			Puts: map[string]string{},
+			Puts: map[string]interface{}{},
 		}
 		b.Writes[tableName] = writes
 	}
@@ -50,8 +51,13 @@ func (b *BlugeWriteBatch) Add(tableName, hashValue string, rangeValue []byte, va
 	writes.Puts[key] = string(value)
 }
 
+func (b *BlugeWriteBatch) AddJson(tableName string, data []byte) {
+	writes := b.getOrCreateTableWrites(tableName)
+	json.Unmarshal(data, &writes.Puts)
+}
+
 type TableWrites struct {
-	Puts map[string]string
+	Puts map[string]interface{} // puts map[string][]byte
 	//deletes map[string]struct{}
 }
 
@@ -66,7 +72,18 @@ func (b *BlugeDB) WriteToDB(ctx context.Context, writes TableWrites) error {
 	doc := bluge.NewDocument("example") // can use server name
 
 	for key, value := range writes.Puts {
-		doc = doc.AddField(bluge.NewTextField(key, value).StoreValue())
+		switch v := value.(type) {
+		case nil:
+			fmt.Println("x is nil") // here v has type interface{}
+		case float64:
+			fmt.Println("x is", v) // here v has type int
+		case string:
+			doc = doc.AddField(bluge.NewTextField(key, value.(string)).StoreValue())
+		case bool:
+			fmt.Println("x is bool or string") // here v has type interface{}
+		default:
+			fmt.Println("type unknown") // here v has type interface{}
+		}
 	}
 
 	err = writer.Update(doc.ID(), doc)

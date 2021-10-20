@@ -24,6 +24,7 @@ import (
 
 const (
 	// create a new db sharded by time based on when write request is received
+	// shardDBsByDuration = 15 * time.Minute  15分钟创建一个shardDB 不上传当前db（新建的不足15分钟）
 	shardDBsByDuration = 15 * time.Minute
 
 	// retain dbs for specified duration after they are modified to avoid keeping them locally forever.
@@ -147,7 +148,9 @@ func (lt *Table) Write(ctx context.Context, writes bluge_db.TableWrites) error {
 // If a db file does not exist for a shard it gets created.
 func (lt *Table) write(ctx context.Context, tm time.Time, writes bluge_db.TableWrites) error {
 	// do not write to files older than init time otherwise we might endup modifying file which was already created and uploaded before last shutdown.
+	// 每次重启会新建一个文件，因为每次关闭的时候强制上传文件，老文件即使在15分钟内实际已经被上传了，所以每次重启需要创建一个新的文件
 	shard := tm.Truncate(shardDBsByDuration).Unix()
+	// modifyShardsSince time.now shard 跨过上次启动的时间
 	if shard < lt.modifyShardsSince {
 		shard = lt.modifyShardsSince
 	}

@@ -103,7 +103,23 @@ func main() {
 	// new struct
 	wr := s.NewWriteBatch()
 	// create new table 没有对应表明创建
-	wr.Add(tbName, "test", []byte("test"), []byte("test"))
+	// wr.Add(tbName, "test", []byte("test"), []byte("test"))
+	data := []byte(`
+	{
+		"id": 123,
+		"fname": "John",
+		"height": 1.75,
+		"male": true,
+		"languages": null,
+		"subjects": [ "Math", "Science" ],
+		"profile": {
+			"uname": "johndoe91",
+			"f_count": 1975
+		}
+	}`)
+
+	wr.AddJson(tbName, data)
+
 	s.BatchWrite(context.Background(), wr)
 	//match := map[string]string{
 	//	"test": "test",

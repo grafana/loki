@@ -187,11 +187,11 @@ func (s *Shipper) stop() {
 	//s.boltDBIndexClient.Stop()
 }
 
-func (s *Shipper) NewWriteBatch() chunk.WriteBatch {
+func (s *Shipper) NewWriteBatch() *bluge_db.BlugeWriteBatch {
 	return bluge_db.NewWriteBatch()
 }
 
-func (s *Shipper) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+func (s *Shipper) BatchWrite(ctx context.Context, batch *bluge_db.BlugeWriteBatch) error {
 	return instrument.CollectedRequest(ctx, "WRITE", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
 		return s.uploadsManager.BatchWrite(ctx, batch)
 	})

@@ -237,6 +237,7 @@ func (c *client) run() {
 	}
 }
 
+//
 func (c *client) sendBatch(tenantID string, batch *batch) {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
