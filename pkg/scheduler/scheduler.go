@@ -634,6 +634,17 @@ func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
 	return float64(count)
 }
 
+// SafeReadRing does a nil check on the Scheduler before attempting to return it's ring
+// this is necessary as many callers of this function will only have a valid Scheduler
+// reference if the QueryScheduler target has been specified, which is not guaranteed
+func (s *Scheduler) SafeReadRing() ring.ReadRing {
+	if s == nil {
+		return nil
+	}
+
+	return s.ReadRing()
+}
+
 // ReadRing returns the scheduler ring as a ReadRing interface,
 // it returns nil if UseSchedulerRing == false
 func (s *Scheduler) ReadRing() ring.ReadRing {

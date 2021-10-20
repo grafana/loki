@@ -210,7 +210,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		QuerierWorkerConfig:   &t.Cfg.Worker,
 		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
 		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
-		SchedulerRing:         t.queryScheduler.ReadRing(),
+		SchedulerRing:         t.queryScheduler.SafeReadRing(),
 	}
 
 	var queryHandlers = map[string]http.Handler{
@@ -415,12 +415,20 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.Cfg.Frontend))
 
-	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
+	combinedCfg := frontend.CombinedFrontendConfig{
 		Handler:       t.Cfg.Frontend.Handler,
 		FrontendV1:    t.Cfg.Frontend.FrontendV1,
 		FrontendV2:    t.Cfg.Frontend.FrontendV2,
 		DownstreamURL: t.Cfg.Frontend.DownstreamURL,
-	}, t.queryScheduler.ReadRing(), disabledShuffleShardingLimits{}, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
+	}
+	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
+		combinedCfg,
+		t.queryScheduler.SafeReadRing(),
+		disabledShuffleShardingLimits{},
+		t.Cfg.Server.GRPCListenPort,
+		util_log.Logger,
+		prometheus.DefaultRegisterer)
+
 	if err != nil {
 		return nil, err
 	}
