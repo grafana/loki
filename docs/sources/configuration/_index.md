@@ -303,7 +303,7 @@ The `query_scheduler_config` block configures the Loki query scheduler.
  
 # Set to true to have the query schedulers create and place themselves in a ring.
 # If no frontend_address or scheduler_address are present 
-# any where else in the config Loki will toggle this value to true.
+# anywhere else in the configuration, Loki will toggle this value to true.
 [use_scheduler_ring: <boolean> | default = false]
 
 # The hash ring configuration. This option is required only if use_scheduler_ring is true
@@ -344,7 +344,7 @@ scheduler_ring:
       # CLI flag: -scheduler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Interval between heartbeats sent to the ring. 0 = disabled.
   # CLI flag: -scheduler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -354,8 +354,8 @@ scheduler_ring:
   # CLI flag: -scheduler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
-  # File path where tokens are stored. If empty, tokens are not stored at
-  # shutdown and restored at startup.
+  # File path where tokens are stored. If empty, tokens are neither stored at
+  # shutdown nor restored at startup.
   # CLI flag: -scheduler.ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
@@ -364,7 +364,7 @@ scheduler_ring:
   # CLI flag: -scheduler.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # Name of network interface to read address from.
+  # Name of network interface to read addresses from.
   # CLI flag: -scheduler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
 
@@ -881,7 +881,7 @@ The `frontend_worker_config` configures the worker - running within the Loki que
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
 
-# How often to query the frontend_address DNS to resolve frontend addresses
+# How often to query the frontend_address DNS to resolve frontend addresses.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -querier.dns-lookup-period
 [dns_lookup_duration: <duration> | default = 3s]
