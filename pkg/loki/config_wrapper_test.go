@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
-func Test_CommonConfig(t *testing.T) {
+func Test_ApplyDynamicConfig(t *testing.T) {
 	testContext := func(configFileString string, args []string) (ConfigWrapper, ConfigWrapper) {
 		config := ConfigWrapper{}
 		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
@@ -574,6 +574,81 @@ compactor:
 			config, _ := testContext(configString, nil)
 
 			assert.Equal(t, "gcs", config.CompactorConfig.SharedStoreType)
+		})
+	})
+
+	t.Run("when using boltdb storage type", func(t *testing.T) {
+		t.Run("default storage_config.boltdb.shared_store to the value of current_schema.object_store", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: s3
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+			config, _ := testContext(boltdbSchemaConfig, nil)
+
+			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+		})
+
+		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+			config, _ := testContext(boltdbSchemaConfig, nil)
+
+			assert.Equal(t, storage.StorageTypeGCS, config.CompactorConfig.SharedStoreType)
+		})
+
+		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  boltdb_shipper:
+    shared_store: s3
+
+compactor:
+  shared_store: s3`
+			config, _ := testContext(boltdbSchemaConfig, nil)
+
+			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+			assert.Equal(t, storage.StorageTypeS3, config.CompactorConfig.SharedStoreType)
+		})
+
+		t.Run("shared store types provided via command line take precedence", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+			config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+
+			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+			assert.Equal(t, storage.StorageTypeS3, config.CompactorConfig.SharedStoreType)
 		})
 	})
 }

@@ -8,7 +8,9 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	loki_storage "github.com/grafana/loki/pkg/storage"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
@@ -76,6 +78,10 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyMemberlistConfig(r)
 		applyStorageConfig(r, &defaults)
 
+		if loki_storage.UsingBoltdbShipper(r.SchemaConfig.Configs) {
+			betterBoltdbShipperDefaults(r, &defaults)
+		}
+
 		return nil
 	}
 }
@@ -112,7 +118,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 
 		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.AzureStorageConfig = *r.Common.Storage.Azure
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeAzure
+			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
 		})
 	}
 
@@ -124,7 +130,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 
 		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.GCSConfig = *r.Common.Storage.GCS
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeGCS
+			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
 		})
 	}
 
@@ -136,7 +142,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 
 		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.FSConfig = *r.Common.Storage.FSConfig
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeFileSystem
+			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
 		})
 	}
 
@@ -148,7 +154,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 
 		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.Storage.S3
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeS3
+			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
 		})
 	}
 
@@ -160,7 +166,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 
 		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.Swift = *r.Common.Storage.Swift
-			r.CompactorConfig.SharedStoreType = storage.StorageTypeSwift
+			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
 		})
 	}
 
@@ -184,5 +190,18 @@ func applyChunkStorageConfigs(cfg, defaults *ConfigWrapper, apply []func(*Config
 		for _, ap := range apply {
 			ap(cfg)
 		}
+	}
+}
+
+func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
+	currentSchemaIdx := loki_storage.ActivePeriodConfig(cfg.SchemaConfig.Configs)
+	currentSchema := cfg.SchemaConfig.Configs[currentSchemaIdx]
+
+	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
+		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = currentSchema.ObjectType
+	}
+
+	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
+		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
 	}
 }
