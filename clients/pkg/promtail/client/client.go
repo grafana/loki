@@ -322,9 +322,13 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 				for i := range lbls {
 					for _, lbl := range c.cfg.StreamLagLabels {
 						if lbls[i].Name == lbl {
-							lblSet = model.LabelSet{
-								model.LabelName(lbl): model.LabelValue(lbls[i].Value),
+							if lblSet == nil {
+								lblSet = model.LabelSet{}
 							}
+
+							lblSet = lblSet.Merge(model.LabelSet{
+								model.LabelName(lbl): model.LabelValue(lbls[i].Value),
+							})
 						}
 					}
 				}
