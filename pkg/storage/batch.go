@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -239,13 +240,18 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 
 			// when clipping the from it should never be before the start or equal to the end.
 			// Doing so would include entries not requested.
-			if from.Before(it.start) || from.Equal(it.end) {
-				from = it.start
+			if from.Equal(it.end) {
+				fmt.Println("clamp b from:", from.UnixNano())
+				from = it.end
+				fmt.Println("clamp after from:", from.UnixNano())
 			}
 		}
 
 		// it's possible that the current batch and the next batch are fully overlapping in which case
 		// we should keep adding more items until the batch boundaries difference is positive.
+		fmt.Println("through:", through.UnixNano())
+		fmt.Println("from:", from.UnixNano())
+
 		if through.Sub(from) > 0 {
 			break
 		}
@@ -275,6 +281,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 	if err != nil {
 		return &chunkBatch{err: err}
 	}
+	fmt.Println("batch")
 	return &chunkBatch{
 		chunksBySeries: chksBySeries,
 		err:            err,
