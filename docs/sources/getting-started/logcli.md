@@ -55,9 +55,8 @@ cortex-ops/cortex-gw
 
 $ logcli query '{job="cortex-ops/consul"}'
 https://logs-dev-ops-tools1.grafana.net/api/prom/query?query=%7Bjob%3D%22cortex-ops%2Fconsul%22%7D&limit=30&start=1529928228&end=1529931828&direction=backward&regexp=
-Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
-2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Snapshot to 475409 complete
-2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
+2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w", job="cortex-ops/consul", namespace="cortex-ops"} 2018/06/25 12:52:09 [INFO] raft: Snapshot to 475409 complete
+2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w", job="cortex-ops/consul", namespace="cortex-ops"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ...
 
 $ logcli series -q --match='{namespace="loki",container_name="loki"}'
@@ -157,8 +156,8 @@ Commands:
     raw" for the raw output format.
 
     The "query" command will output extra information about the query and its
-    results, such as the API URL, set of common labels, and set of excluded
-    labels. This extra information can be suppressed with the --quiet flag.
+    results, such as the API URL, and set of excluded labels.
+    This extra information can be suppressed with the --quiet flag.
 
     By default we look over the last hour of data; use --since to modify or
     provide specific start and end times with --from and --to respectively.
@@ -236,7 +235,7 @@ The output of the log can be specified with the "-o" flag, for example, "-o raw"
 for the raw output format.
 
 The "query" command will output extra information about the query and its
-results, such as the API URL, set of common labels, and set of excluded labels.
+results, such as the API URL, and set of excluded labels.
 This extra information can be suppressed with the --quiet flag.
 
 By default we look over the last hour of data; use --since to modify or provide

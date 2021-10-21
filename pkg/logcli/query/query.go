@@ -259,17 +259,6 @@ func (q *Query) isInstant() bool {
 }
 
 func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
-	common := commonLabels(streams)
-
-	// Remove the labels we want to show from common
-	if len(q.ShowLabelsKey) > 0 {
-		common = matchLabels(false, common, q.ShowLabelsKey)
-	}
-
-	if len(common) > 0 && !q.Quiet {
-		log.Println("Common labels:", color.RedString(common.String()))
-	}
-
 	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
 	}
@@ -278,12 +267,11 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastE
 		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
 	}
 
-	// Remove ignored and common labels from the cached labels and
+	// Remove ignored labels from the cached labels and
 	// calculate the max labels length
 	maxLabelsLen := q.FixedLabelsLen
 	for i, s := range streams {
-		// Remove common labels
-		ls := subtract(s.Labels, common)
+		ls := s.Labels
 
 		if len(q.ShowLabelsKey) > 0 {
 			ls = matchLabels(true, ls, q.ShowLabelsKey)

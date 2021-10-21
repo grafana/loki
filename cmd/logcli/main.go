@@ -46,9 +46,8 @@ The output of the log can be specified with the "-o" flag, for
 example, "-o raw" for the raw output format.
 
 The "query" command will output extra information about the query
-and its results, such as the API URL, set of common labels, and set
-of excluded labels. This extra information can be suppressed with the
---quiet flag.
+and its results, such as the API URL, and set of excluded labels.
+This extra information can be suppressed with the --quiet flag.
 
 By default we look over the last hour of data; use --since to modify
 or provide specific start and end times with --from and --to respectively.
