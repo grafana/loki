@@ -9,6 +9,7 @@ type OverridesExporter struct {
 	description  *prometheus.Desc
 }
 
+// TODO(jordanrushing): break out overrides from defaults?
 func NewOverridesExporter(tenantLimits TenantLimits) *OverridesExporter {
 	return &OverridesExporter{
 		tenantLimits: tenantLimits,
@@ -34,8 +35,8 @@ func (oe *OverridesExporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- oe.description
 }
 
+// TODO(jordanrushing): Add more limits. . . including durations?
 func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
-	// TODO(jordanrushing): Add more limits. . .
 	for tenant, limits := range oe.TenantLimitMap() {
 		// Distributor enforced limits
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, limits.IngestionRateMB, "ingestion_rate_mb", tenant)
@@ -57,5 +58,12 @@ func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxConcurrentTailRequests), "max_concurrent_tail_requests", tenant)
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxEntriesLimitPerQuery), "max_entries_limit_per_query", tenant)
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxQueriersPerTenant), "max_queriers_per_tenant", tenant)
+		// Ruler enforced limits
+		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerMaxRulesPerRuleGroup), "ruler_max_rules_per_rule_group", tenant)
+		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerMaxRuleGroupsPerTenant), "ruler_max_rule_groups_per_tenant", tenant)
+		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueCapacity), "ruler_remote_write_queue_capacity", tenant)
+		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueMinShards), "ruler_remote_write_queue_min_shards", tenant)
+		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueMaxShards), "ruler_remote_write_queue_max_shards", tenant)
+		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueMaxSamplesPerSend), "ruler_remote_write_queue_max_samples_per_send", tenant)
 	}
 }

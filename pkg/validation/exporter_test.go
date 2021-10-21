@@ -7,6 +7,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type mockTenantLimits struct {
+	limits map[string]*Limits
+}
+
+func newMockTenantLimits(limits map[string]*Limits) *mockTenantLimits {
+	return &mockTenantLimits{
+		limits: limits,
+	}
+}
+
+func (l *mockTenantLimits) TenantLimits(userID string) *Limits {
+	return l.limits[userID]
+}
+
+func (l *mockTenantLimits) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
+	for userID, tenantLimit := range l.limits {
+		callback(userID, tenantLimit)
+	}
+}
+
 func TestOverridesExporter_noConfig(t *testing.T) {
 	exporter := NewOverridesExporter(newMockTenantLimits(nil))
 	count := testutil.CollectAndCount(exporter, "loki_overrides")
