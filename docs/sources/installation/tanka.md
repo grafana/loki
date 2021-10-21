@@ -31,8 +31,8 @@ Download and install the Loki and Promtail module using `jb`:
 ```bash
 go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
 jb init  # not required if you already ran `tk init`
-jb install github.com/grafana/loki/production/ksonnet/loki
-jb install github.com/grafana/loki/production/ksonnet/promtail
+jb install github.com/MarkWang2/loki/production/ksonnet/loki
+jb install github.com/MarkWang2/loki/production/ksonnet/promtail
 ```
 
 > **Note:** As of 2020-08-13, we use some features that are not yet generally available. This step will be unnecessary in future Tanka releases. For now, install this library, which we'll use as an override:

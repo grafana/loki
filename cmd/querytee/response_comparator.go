@@ -7,7 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/MarkWang2/loki/pkg/loghttp"
 )
 
 func compareStreams(expectedRaw, actualRaw json.RawMessage, tolerance float64) error {

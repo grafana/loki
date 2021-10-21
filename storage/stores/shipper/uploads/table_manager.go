@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/MarkWang2/loki/storage/stores/shipper/bluge_db"
 	segment "github.com/blugelabs/bluge_segment_api"
-	"github.com/grafana/loki/storage/stores/shipper/bluge_db"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -19,7 +19,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/storage/stores/shipper/util"
+	"github.com/MarkWang2/loki/storage/stores/shipper/util"
 )
 
 type Config struct {

@@ -21,10 +21,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/syslog/syslogparser"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
+	"github.com/MarkWang2/loki/pkg/promtail/api"
+	"github.com/MarkWang2/loki/pkg/promtail/scrapeconfig"
+	"github.com/MarkWang2/loki/pkg/promtail/targets/syslog/syslogparser"
+	"github.com/MarkWang2/loki/pkg/promtail/targets/target"
 )
 
 var (

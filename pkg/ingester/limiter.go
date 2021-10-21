@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/MarkWang2/loki/pkg/util/validation"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 
-	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/MarkWang2/loki/pkg/promtail/client"
 )
 
 type bufferConfig struct {

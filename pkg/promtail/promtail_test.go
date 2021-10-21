@@ -29,13 +29,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/client"
-	"github.com/grafana/loki/pkg/promtail/config"
-	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	file2 "github.com/grafana/loki/pkg/promtail/targets/file"
+	"github.com/MarkWang2/loki/pkg/logentry/stages"
+	"github.com/MarkWang2/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/promtail/client"
+	"github.com/MarkWang2/loki/pkg/promtail/config"
+	"github.com/MarkWang2/loki/pkg/promtail/positions"
+	"github.com/MarkWang2/loki/pkg/promtail/scrapeconfig"
+	file2 "github.com/MarkWang2/loki/pkg/promtail/targets/file"
 )
 
 const httpTestPort = 9080

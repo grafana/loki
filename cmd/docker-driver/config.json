@@ -1,6 +1,6 @@
 {
     "description": "Loki Logging Driver",
-    "documentation": "https://github.com/grafana/loki",
+    "documentation": "https://github.com/MarkWang2/loki",
     "entrypoint": [
         "/bin/docker-driver"
     ],

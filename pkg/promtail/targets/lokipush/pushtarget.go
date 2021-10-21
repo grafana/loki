@@ -15,11 +15,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
+	"github.com/MarkWang2/loki/pkg/distributor"
+	"github.com/MarkWang2/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/promtail/api"
+	"github.com/MarkWang2/loki/pkg/promtail/scrapeconfig"
+	"github.com/MarkWang2/loki/pkg/promtail/targets/target"
 )
 
 type PushTarget struct {

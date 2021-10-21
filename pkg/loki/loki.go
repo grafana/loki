@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/MarkWang2/loki/pkg/storage/stores/shipper/compactor"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
@@ -31,17 +31,17 @@ import (
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/lokifrontend"
-	"github.com/grafana/loki/pkg/querier"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/ruler"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/tracing"
-	serverutil "github.com/grafana/loki/pkg/util/server"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/MarkWang2/loki/pkg/distributor"
+	"github.com/MarkWang2/loki/pkg/ingester"
+	"github.com/MarkWang2/loki/pkg/ingester/client"
+	"github.com/MarkWang2/loki/pkg/lokifrontend"
+	"github.com/MarkWang2/loki/pkg/querier"
+	"github.com/MarkWang2/loki/pkg/querier/queryrange"
+	"github.com/MarkWang2/loki/pkg/ruler"
+	"github.com/MarkWang2/loki/pkg/storage"
+	"github.com/MarkWang2/loki/pkg/tracing"
+	serverutil "github.com/MarkWang2/loki/pkg/util/server"
+	"github.com/MarkWang2/loki/pkg/util/validation"
 )
 
 // Config is the root config for Loki.

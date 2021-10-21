@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/logproto"
 )
 
 // covers requests to /loki/api/v1/push

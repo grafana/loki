@@ -23,8 +23,8 @@ import (
 	"github.com/weaveworks/common/user"
 	yaml "gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/logql"
 )
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function

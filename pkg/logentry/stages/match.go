@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/logql"
 )
 
 const (

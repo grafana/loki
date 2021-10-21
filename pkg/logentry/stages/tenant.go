@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/MarkWang2/loki/pkg/promtail/client"
 )
 
 const (

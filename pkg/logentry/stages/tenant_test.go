@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/promtail/client"
-	lokiutil "github.com/grafana/loki/pkg/util"
+	"github.com/MarkWang2/loki/pkg/promtail/client"
+	lokiutil "github.com/MarkWang2/loki/pkg/util"
 )
 
 var testTenantYaml = `

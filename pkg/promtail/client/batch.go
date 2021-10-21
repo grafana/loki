@@ -6,7 +6,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/logproto"
 )
 
 // batch holds pending log streams waiting to be sent to Loki, and it's used

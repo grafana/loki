@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/logproto"
 )
 
 type HealthAndIngesterClient interface {

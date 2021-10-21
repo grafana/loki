@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/MarkWang2/loki/pkg/loghttp"
 )
 
 func TestDefaultOutput_Format(t *testing.T) {

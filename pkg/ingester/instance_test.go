@@ -11,12 +11,12 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/chunkenc"
+	"github.com/MarkWang2/loki/pkg/logproto"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/MarkWang2/loki/pkg/util/validation"
 )
 
 var defaultFactory = func() chunkenc.Chunk {

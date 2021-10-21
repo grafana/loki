@@ -300,7 +300,7 @@ Use the `step` parameter when making metric queries to Loki, or queries which re
 
 Use the `interval` parameter when making log queries to Loki, or queries which return a stream response. It is evaluated by returning a log entry at `start`, then the next entry will be returned an entry with timestampe >= `start + interval`, and again at `start + interval + interval` and so on until `end` is reached.  It does not fill missing entries.
 
-**Note about the experimental nature of interval** This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time.  [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
+**Note about the experimental nature of interval** This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time.  [Issue 1779](https://github.com/MarkWang2/loki/issues/1779) was created to track the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
 
 
 
@@ -556,8 +556,8 @@ Response (streamed):
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf message:
 
-- [Protobuf definition](https://github.com/grafana/loki/tree/master/pkg/logproto/logproto.proto)
-- [Go client library](https://github.com/grafana/loki/tree/master/pkg/promtail/client/client.go)
+- [Protobuf definition](https://github.com/MarkWang2/loki/tree/master/pkg/logproto/logproto.proto)
+- [Go client library](https://github.com/MarkWang2/loki/tree/master/pkg/promtail/client/client.go)
 
 Alternatively, if the `Content-Type` header is set to `application/json`, a
 JSON post body can be sent in the following format:
@@ -794,8 +794,8 @@ $ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
 `/api/prom/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf message:
 
-- [Protobuf definition](https://github.com/grafana/loki/tree/master/pkg/logproto/logproto.proto)
-- [Go client library](https://github.com/grafana/loki/tree/master/pkg/promtail/client/client.go)
+- [Protobuf definition](https://github.com/MarkWang2/loki/tree/master/pkg/logproto/logproto.proto)
+- [Go client library](https://github.com/MarkWang2/loki/tree/master/pkg/promtail/client/client.go)
 
 Alternatively, if the `Content-Type` header is set to `application/json`, a
 JSON post body can be sent in the following format:

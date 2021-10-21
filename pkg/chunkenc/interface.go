@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/iter"
+	"github.com/MarkWang2/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/logql"
 )
 
 // Errors returned by the chunk interface.

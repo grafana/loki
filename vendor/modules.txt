@@ -168,6 +168,7 @@ github.com/blugelabs/bluge/search/collector
 github.com/blugelabs/bluge/search/searcher
 github.com/blugelabs/bluge/search/similarity
 # github.com/blugelabs/bluge_segment_api v0.2.0
+## explicit
 github.com/blugelabs/bluge_segment_api
 # github.com/blugelabs/ice v0.2.0
 github.com/blugelabs/ice
@@ -358,11 +359,19 @@ github.com/docker/go-metrics
 github.com/docker/go-plugins-helpers/sdk
 # github.com/docker/go-units v0.4.0
 github.com/docker/go-units
+# github.com/dop251/goja v0.0.0-20211019164913-00bb30d12573
+## explicit
+# github.com/dop251/goja_nodejs v0.0.0-20210920152751-582170a1676b
+## explicit
 # github.com/dustin/go-humanize v1.0.0
 ## explicit
 github.com/dustin/go-humanize
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
+# github.com/elastic/beats v7.6.2+incompatible
+## explicit
+# github.com/elastic/go-ucfg v0.8.3
+## explicit
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 github.com/facette/natsort
 # github.com/fatih/color v1.9.0
@@ -435,6 +444,8 @@ github.com/gocql/gocql/internal/streams
 # github.com/gofrs/flock v0.7.1
 ## explicit
 github.com/gofrs/flock
+# github.com/gofrs/uuid v4.1.0+incompatible
+## explicit
 # github.com/gogo/googleapis v1.1.0
 github.com/gogo/googleapis/google/rpc
 # github.com/gogo/protobuf v1.3.1
@@ -621,6 +632,8 @@ github.com/leodido/ragel-machinery/parser
 github.com/lib/pq
 github.com/lib/pq/oid
 github.com/lib/pq/scram
+# github.com/magefile/mage v1.11.0
+## explicit
 # github.com/mailru/easyjson v0.7.1
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
@@ -653,6 +666,8 @@ github.com/minio/minio-go/v7/pkg/tags
 github.com/minio/sha256-simd
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
+# github.com/mitchellh/hashstructure v1.1.0
+## explicit
 # github.com/mitchellh/mapstructure v1.2.2
 ## explicit
 github.com/mitchellh/mapstructure
@@ -1142,7 +1157,7 @@ golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/text v0.3.3
+# golang.org/x/text v0.3.6
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
@@ -1334,7 +1349,7 @@ gopkg.in/inf.v0
 gopkg.in/ini.v1
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
-# gopkg.in/yaml.v2 v2.3.0
+# gopkg.in/yaml.v2 v2.4.0
 ## explicit
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776

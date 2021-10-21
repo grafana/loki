@@ -18,12 +18,12 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
-	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
+	"github.com/MarkWang2/loki/pkg/helpers"
+	"github.com/MarkWang2/loki/pkg/logentry/stages"
+	"github.com/MarkWang2/loki/pkg/promtail/api"
+	"github.com/MarkWang2/loki/pkg/promtail/positions"
+	"github.com/MarkWang2/loki/pkg/promtail/scrapeconfig"
+	"github.com/MarkWang2/loki/pkg/promtail/targets/target"
 )
 
 const (

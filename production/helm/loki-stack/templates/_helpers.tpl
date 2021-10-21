@@ -33,7 +33,7 @@ Create chart name and version as used by the chart label.
 
 {{/*
 Override the naming defined by the prometheus chart.
-Added as a fix for https://github.com/grafana/loki/issues/1169
+Added as a fix for https://github.com/MarkWang2/loki/issues/1169
 */}}
 {{- define "prometheus.fullname" -}}
 {{- printf "%s-%s" .Release.Name "prometheus-server" | trunc 63 | trimSuffix "-" -}}

@@ -11,7 +11,7 @@ import (
 	"github.com/joncrlsn/dque"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/MarkWang2/loki/pkg/promtail/client"
 )
 
 type dqueConfig struct {

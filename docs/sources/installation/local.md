@@ -9,7 +9,7 @@ In order to log events with Loki, you must download and install both Promtail an
 
 ## Install and run
 
-1. Navigate to the [release page](https://github.com/grafana/loki/releases/).
+1. Navigate to the [release page](https://github.com/MarkWang2/loki/releases/).
 2. Scroll down to the Assets section under the version that you want to install.
 3. Download the Loki and Promtail .zip files that correspond to your system.
    **Note:** Do not download LogCLI or Loki Canary at this time. [LogCLI](../../getting-started/logcli/) allows you to run Loki queries in a command line interface. [Loki Canary](../../operations/loki-canary/) is a tool to audit Loki performance.
@@ -39,7 +39,7 @@ Congratulations, Loki is installed and running! Next, you might want edit the Pr
 ## Release binaries - openSUSE Linux only
 
 Every release includes binaries for Loki which can be found on the
-[Releases page](https://github.com/grafana/loki/releases).
+[Releases page](https://github.com/MarkWang2/loki/releases).
 
 ## Community openSUSE Linux packages
 

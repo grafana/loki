@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/chunkenc"
+	"github.com/MarkWang2/loki/pkg/iter"
+	"github.com/MarkWang2/loki/pkg/logproto"
 )
 
 func testIteratorForward(t *testing.T, iter iter.EntryIterator, from, through int64) {

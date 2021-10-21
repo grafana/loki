@@ -3,8 +3,8 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"github.com/MarkWang2/loki/pkg/storage/stores/shipper/bluge_db"
 	segment "github.com/blugelabs/bluge_segment_api"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
 	"io"
 	"os"
 	"path"
@@ -20,7 +20,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	shipper_util "github.com/MarkWang2/loki/pkg/storage/stores/shipper/util"
 )
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.

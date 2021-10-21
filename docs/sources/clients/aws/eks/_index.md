@@ -246,11 +246,11 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [blog ship log with fargate]: https://aws.amazon.com/blogs/containers/how-to-capture-application-logs-when-using-amazon-eks-on-aws-fargate/
 [correlate]: https://grafana.com/blog/2020/03/31/how-to-successfully-correlate-metrics-logs-and-traces-in-grafana/
 [tiller install]: https://v2.helm.sh/docs/using_helm/
-[default value file]: https://github.com/grafana/loki/blob/master/production/helm/promtail/values.yaml
-[systemd]: https://github.com/grafana/loki/tree/master/production/helm/promtail#run-promtail-with-systemd-journal-support
+[default value file]: https://github.com/MarkWang2/loki/blob/master/production/helm/promtail/values.yaml
+[systemd]: https://github.com/MarkWang2/loki/tree/master/production/helm/promtail#run-promtail-with-systemd-journal-support
 [grafana logs namespace]: namespace-grafana.png
 [relabel_configs]:https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
-[syslog]: https://github.com/grafana/loki/tree/master/production/helm/promtail#run-promtail-with-syslog-support
+[syslog]: https://github.com/MarkWang2/loki/tree/master/production/helm/promtail#run-promtail-with-syslog-support
 [Filters]: https://grafana.com/docs/loki/latest/logql/#filter-expression
 [kubelet]: https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/#:~:text=The%20kubelet%20works%20in%20terms,PodSpecs%20are%20running%20and%20healthy.
 [LogQL]: https://grafana.com/docs/loki/latest/logql/

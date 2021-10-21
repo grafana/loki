@@ -12,9 +12,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/MarkWang2/loki/pkg/loghttp"
+	"github.com/MarkWang2/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/logql/marshal"
 )
 
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.

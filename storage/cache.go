@@ -1,8 +1,8 @@
 package storage
 
 import (
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/iter"
+	"github.com/MarkWang2/loki/pkg/logproto"
 )
 
 // cachedIterator is an iterator that caches iteration to be replayed later on.

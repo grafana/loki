@@ -32,7 +32,7 @@ To address this we updated the docker image to add the NET_BIND_SERVICE capabili
 which allowed Loki to bind to port 80 as a non root user, so long as the underlying system allowed that 
 linux capability.
 
-This has proved to be a problem for many reasons and in PR [2294](https://github.com/grafana/loki/pull/2294/files)
+This has proved to be a problem for many reasons and in PR [2294](https://github.com/MarkWang2/loki/pull/2294/files)
 the capability was removed.
 
 It is now no longer possible for the Loki to be started with a port less than 1024 with the published docker image.
@@ -53,7 +53,7 @@ This will only affect reads(queries) and not writes and only for the duration of
 
 ### IMPORTANT: Scrape config changes to both Helm and Ksonnet will affect labels created by Promtail
 
-PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the promtail scrape config:
+PR [2091](https://github.com/MarkWang2/loki/pull/2091) Makes several changes to the promtail scrape config:
 
 ````
 This is triggered by https://github.com/grafana/jsonnet-libs/pull/261
@@ -80,7 +80,7 @@ The following label have been changed in both the Helm and Ksonnet Promtail scra
 
 ### Experimental boltdb-shipper changes
 
-PR [2166](https://github.com/grafana/loki/pull/2166) now forces the index to have a period of exactly `24h`:
+PR [2166](https://github.com/MarkWang2/loki/pull/2166) now forces the index to have a period of exactly `24h`:
 
 Loki will fail to start with an error if the active schema or upcoming schema are not set to a period of `24h`
 
@@ -179,7 +179,7 @@ Following fields were removed from YAML configuration completely: `claim_on_roll
 
 #### Test Your Config
 
-To see if your config needs to change, one way to quickly test is to download a 1.5.0 (or newer) binary from the [release page](https://github.com/grafana/loki/releases/tag/v1.5.0)
+To see if your config needs to change, one way to quickly test is to download a 1.5.0 (or newer) binary from the [release page](https://github.com/MarkWang2/loki/releases/tag/v1.5.0)
 
 Then run the binary providing your config file `./loki-linux-amd64 -config.file=myconfig.yaml`
 
@@ -257,7 +257,7 @@ exit
 docker run -d --name=loki --mount source=loki-data,target=/loki -p 3100:3100 grafana/loki:1.5.0
 ```
 
-Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/grafana/loki/tree/master/cmd/loki/loki-docker-config.yaml).
+Notice the change in the `target=/loki` for 1.5.0 to the new data directory location specified in the [included Loki config file](https://github.com/MarkWang2/loki/tree/master/cmd/loki/loki-docker-config.yaml).
 
 The intermediate step of using an ubuntu image to change the ownership of the Loki files to the new user might not be necessary if you can easily access these files to run the `chown` command directly.
 That is if you have access to `/var/lib/docker/volumes` or if you mounted to a different local filesystem directory, you can change the ownership directly without using a container.
@@ -350,7 +350,7 @@ OR
 1. Proceed with upgrading to v1.4.0
 1. Remove the config option (only do this after everything is running v1.4.0)
 
-**Note:** It's also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
+**Note:** It's also possible to enable this flag via config file, see the [`lifecycler_config`](https://github.com/MarkWang2/loki/tree/v1.3.0/docs/configuration#lifecycler_config) configuration option.
 
 If using the Helm Loki chart:
 
@@ -369,7 +369,7 @@ loki:
 
 #### What will go wrong
 
-If you attempt to add a v1.4.0 ingester to a ring created by Loki v1.2.0 or older which does not have the commandline argument `-ingester.normalise-tokens=true` (or configured via [config file](https://github.com/grafana/loki/tree/v1.3.0/docs/configuration#lifecycler_config)), the v1.4.0 ingester will remove all the entries in the ring for all the other ingesters as it cannot "see" them.
+If you attempt to add a v1.4.0 ingester to a ring created by Loki v1.2.0 or older which does not have the commandline argument `-ingester.normalise-tokens=true` (or configured via [config file](https://github.com/MarkWang2/loki/tree/v1.3.0/docs/configuration#lifecycler_config)), the v1.4.0 ingester will remove all the entries in the ring for all the other ingesters as it cannot "see" them.
 
 This will result in distributors failing to write and a general ingestion failure for the system.
 

@@ -228,8 +228,8 @@ That's it ! Make sure to checkout the [LogQL][logql] to learn more about Loki po
 [ecs iam]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 [arn]: https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html
 [task]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html
-[fluentd loki]: https://github.com/grafana/loki/tree/master/cmd/fluentd
-[fluentbit loki]: https://github.com/grafana/loki/tree/master/cmd/fluent-bit
+[fluentd loki]: https://github.com/MarkWang2/loki/tree/master/cmd/fluentd
+[fluentbit loki]: https://github.com/MarkWang2/loki/tree/master/cmd/fluent-bit
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki

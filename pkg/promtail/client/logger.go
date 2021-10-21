@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	lokiflag "github.com/MarkWang2/loki/pkg/util/flagext"
 )
 
 var (

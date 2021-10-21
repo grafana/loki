@@ -148,7 +148,7 @@ extraVolumeMounts:
     readOnly: true
 
 # Add extra Commandline args while starting up promtail.
-# more info : https://github.com/grafana/loki/pull/1530
+# more info : https://github.com/MarkWang2/loki/pull/1530
 
 extraCommandlineArgs: []
 # example:

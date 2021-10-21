@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/logql"
 )
 
 func Test_writeError(t *testing.T) {

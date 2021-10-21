@@ -15,18 +15,18 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/targets/target"
+	"github.com/MarkWang2/loki/pkg/promtail/positions"
+	"github.com/MarkWang2/loki/pkg/promtail/targets/target"
 
 	"github.com/go-kit/kit/log"
 
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
+	"github.com/MarkWang2/loki/pkg/promtail/scrapeconfig"
 
 	"github.com/coreos/go-systemd/sdjournal"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/MarkWang2/loki/pkg/promtail/api"
 )
 
 const (

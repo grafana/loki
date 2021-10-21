@@ -3,10 +3,10 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"github.com/MarkWang2/loki/pkg/storage/stores/shipper/bluge_db"
+	"github.com/MarkWang2/loki/pkg/storage/stores/shipper/util"
 	segment "github.com/blugelabs/bluge_segment_api"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bluge_db"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"os"
 	"sync"
 	"time"

@@ -17,13 +17,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/pkg/promtail/targets/testutils"
+	"github.com/MarkWang2/loki/pkg/promtail/scrapeconfig"
+	"github.com/MarkWang2/loki/pkg/promtail/targets/testutils"
 
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/MarkWang2/loki/pkg/promtail/positions"
 )
 
 type mockJournalReader struct {

@@ -15,8 +15,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/storage/stores/shipper"
-	"github.com/grafana/loki/storage/stores/util"
+	"github.com/MarkWang2/loki/storage/stores/shipper"
+	"github.com/MarkWang2/loki/storage/stores/util"
 )
 
 const delimiter = "/"

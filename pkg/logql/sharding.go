@@ -11,8 +11,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/MarkWang2/loki/pkg/iter"
+	"github.com/MarkWang2/loki/pkg/logql/stats"
 )
 
 /*

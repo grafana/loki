@@ -84,7 +84,7 @@ dashboard [10004](https://grafana.com/dashboards/10004).
 
 ## Mixins
 
-The Loki repository has a [mixin](https://github.com/grafana/loki/blob/master/production/loki-mixin) that includes a
+The Loki repository has a [mixin](https://github.com/MarkWang2/loki/blob/master/production/loki-mixin) that includes a
 set of dashboards, recording rules, and alerts. Together, the mixin gives you a
 comprehensive package for monitoring Loki in production.
 

@@ -11,12 +11,12 @@ import (
 	"github.com/prometheus/common/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	_ "github.com/grafana/loki/pkg/build"
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logcli/labelquery"
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/logcli/query"
-	"github.com/grafana/loki/pkg/logcli/seriesquery"
+	_ "github.com/MarkWang2/loki/pkg/build"
+	"github.com/MarkWang2/loki/pkg/logcli/client"
+	"github.com/MarkWang2/loki/pkg/logcli/labelquery"
+	"github.com/MarkWang2/loki/pkg/logcli/output"
+	"github.com/MarkWang2/loki/pkg/logcli/query"
+	"github.com/MarkWang2/loki/pkg/logcli/seriesquery"
 )
 
 var (
@@ -70,7 +70,7 @@ you should always use the "query" command when you are running log queries.
 For more information about log queries and metric queries, refer to the
 LogQL documentation:
 
-https://github.com/grafana/loki/blob/master/docs/logql.md`)
+https://github.com/MarkWang2/loki/blob/master/docs/logql.md`)
 	instantQuery = newQuery(true, instantQueryCmd)
 
 	labelsCmd   = app.Command("labels", "Find values for a given label.")

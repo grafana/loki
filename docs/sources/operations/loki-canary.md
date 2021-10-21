@@ -108,7 +108,7 @@ canary.  To stop or start the canary issue an HTTP GET request against the `/sus
 ### Binary
 
 Loki Canary is provided as a pre-compiled binary as part of the
-[Loki Releases](https://github.com/grafana/loki/releases) on GitHub.
+[Loki Releases](https://github.com/MarkWang2/loki/releases) on GitHub.
 
 ### Docker
 
@@ -132,7 +132,7 @@ Tanka setup for this in the `production` folder, you can import it using
 `jsonnet-bundler`:
 
 ```shell
-jb install github.com/grafana/loki-canary/production/ksonnet/loki-canary
+jb install github.com/MarkWang2/loki-canary/production/ksonnet/loki-canary
 ```
 
 Then in your Tanka environment's `main.jsonnet` you'll want something like
@@ -245,7 +245,7 @@ If the other options are not sufficient for your use case, you can compile
 
 ```bash
 # clone the source tree
-$ git clone https://github.com/grafana/loki
+$ git clone https://github.com/MarkWang2/loki
 
 # build the binary
 $ make loki-canary

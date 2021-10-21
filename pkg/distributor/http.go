@@ -8,10 +8,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/unmarshal"
-	unmarshal_legacy "github.com/grafana/loki/pkg/logql/unmarshal/legacy"
+	"github.com/MarkWang2/loki/pkg/loghttp"
+	"github.com/MarkWang2/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/logql/unmarshal"
+	unmarshal_legacy "github.com/MarkWang2/loki/pkg/logql/unmarshal/legacy"
 )
 
 var contentType = http.CanonicalHeaderKey("Content-Type")

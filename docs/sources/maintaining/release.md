@@ -57,7 +57,7 @@ export GPG_TTY=$(tty)
    update them to reference the new version.
 1. *Without creating a tag*, create a commit based on your changes and open a PR
    for updating the release notes.
-   1. Until [852](https://github.com/grafana/loki/issues/852) is fixed, updating
+   1. Until [852](https://github.com/MarkWang2/loki/issues/852) is fixed, updating
       Helm and Ksonnet configs needs to be done in a separate commit following
       the release tag so that Helm tests pass.
 1. Merge the changelog PR.
@@ -91,7 +91,7 @@ finished running all the release jobs.
 
 Once the previous two steps are completed, you can publish your draft!
 
-1. Go to the [GitHub releases page](https://github.com/grafana/loki/releases)
+1. Go to the [GitHub releases page](https://github.com/MarkWang2/loki/releases)
    and find the drafted release.
 1. Edit the drafted release, copying and pasting *notable changes* from the
    CHANGELOG. Add a link to the CHANGELOG, noting that the full list of changes

@@ -9,7 +9,7 @@ package main
 //	"context"
 //	"fmt"
 //	"github.com/cortexproject/cortex/pkg/chunk/local"
-//	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+//	shipper_util "github.com/MarkWang2/loki/pkg/storage/stores/shipper/util"
 //	"io"
 //	"io/ioutil"
 //	"log"

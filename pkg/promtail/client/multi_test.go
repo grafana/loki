@@ -11,10 +11,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/promtail/api"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/MarkWang2/loki/pkg/promtail/api"
+	lokiflag "github.com/MarkWang2/loki/pkg/util/flagext"
 
-	"github.com/grafana/loki/pkg/promtail/client/fake"
+	"github.com/MarkWang2/loki/pkg/promtail/client/fake"
 )
 
 func TestNewMulti(t *testing.T) {

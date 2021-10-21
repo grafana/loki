@@ -10,7 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 
-	"github.com/grafana/loki/storage/stores/util"
+	"github.com/MarkWang2/loki/storage/stores/util"
 )
 
 const (

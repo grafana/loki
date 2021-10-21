@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 
-	"github.com/grafana/loki/pkg/canary/reader"
+	"github.com/MarkWang2/loki/pkg/canary/reader"
 )
 
 const (

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/MarkWang2/loki/pkg/helpers"
+	"github.com/MarkWang2/loki/pkg/logproto"
+	"github.com/MarkWang2/loki/pkg/logql/stats"
 )
 
 // SampleIterator iterates over samples in time-order.

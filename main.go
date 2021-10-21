@@ -4,10 +4,10 @@ import (
 	"context"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
-	//"github.com/grafana/loki/pkg/storage/stores/shipper"
+	//"github.com/MarkWang2/loki/pkg/storage/stores/shipper"
 
-	"github.com/grafana/loki/storage/stores/shipper"
-	//"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/MarkWang2/loki/storage/stores/shipper"
+	//"github.com/MarkWang2/loki/pkg/storage/stores/shipper"
 	"github.com/prometheus/common/model"
 	"time"
 )

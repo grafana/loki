@@ -8,7 +8,7 @@ title: Helm
 Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm) and
 [deployed](https://helm.sh/docs/using_helm/#installing-tiller) to your cluster.
 
-Add [Loki's chart repository](https://github.com/grafana/loki/tree/master/production/helm/loki) to Helm:
+Add [Loki's chart repository](https://github.com/MarkWang2/loki/tree/master/production/helm/loki) to Helm:
 
 ```bash
 helm repo add loki https://grafana.github.io/loki/charts

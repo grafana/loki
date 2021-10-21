@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/MarkWang2/loki/pkg/chunkenc"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"

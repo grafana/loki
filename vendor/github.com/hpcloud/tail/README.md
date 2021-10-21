@@ -1,5 +1,5 @@
 
-**NOTE**: This fork is currently being maintained for use in the promtail agent of the [Loki](https://github.com/grafana/loki) project.
+**NOTE**: This fork is currently being maintained for use in the promtail agent of the [Loki](https://github.com/MarkWang2/loki) project.
 
 Use outside of that context is not tested or supported.
 

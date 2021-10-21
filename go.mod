@@ -1,4 +1,4 @@
-module github.com/grafana/loki
+module github.com/MarkWang2/loki
 
 go 1.14
 
@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-lambda-go v1.17.0
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/blugelabs/bluge v0.1.7
+	github.com/blugelabs/bluge_segment_api v0.2.0
 	github.com/bmatcuk/doublestar v1.2.2
 	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/cespare/xxhash/v2 v2.1.1
@@ -16,12 +17,17 @@ require (
 	github.com/docker/docker v17.12.0-ce-rc1.0.20201009160326-9c15e82f19b0+incompatible
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
+	github.com/dop251/goja v0.0.0-20211019164913-00bb30d12573 // indirect
+	github.com/dop251/goja_nodejs v0.0.0-20210920152751-582170a1676b // indirect
 	github.com/dustin/go-humanize v1.0.0
+	github.com/elastic/beats v7.6.2+incompatible // indirect
+	github.com/elastic/go-ucfg v0.8.3 // indirect
 	github.com/fatih/color v1.9.0
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/go-kit/kit v0.10.0
 	github.com/go-logfmt/logfmt v0.5.0
 	github.com/gofrs/flock v0.7.1 // indirect
+	github.com/gofrs/uuid v4.1.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.7.3
@@ -37,6 +43,8 @@ require (
 	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
 	github.com/json-iterator/go v1.1.10
 	github.com/klauspost/compress v1.9.5
+	github.com/magefile/mage v1.11.0 // indirect
+	github.com/mitchellh/hashstructure v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/moby/term v0.0.0-20200915141129-7f0af18e79f2 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
@@ -63,7 +71,7 @@ require (
 	google.golang.org/grpc v1.30.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
-	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 	k8s.io/klog v1.0.0
 )

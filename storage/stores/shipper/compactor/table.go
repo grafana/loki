@@ -15,7 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
-	shipper_util "github.com/grafana/loki/storage/stores/shipper/util"
+	shipper_util "github.com/MarkWang2/loki/storage/stores/shipper/util"
 )
 
 const (

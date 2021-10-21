@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = 'Output plugin to ship logs to a Grafana Loki server'
   spec.description   = 'Output plugin to ship logs to a Grafana Loki server'
-  spec.homepage      = 'https://github.com/grafana/loki/'
+  spec.homepage      = 'https://github.com/MarkWang2/loki/'
   spec.license       = 'Apache-2.0'
 
   # test_files, files  = `git ls-files -z`.split("\x0").partition do |f|

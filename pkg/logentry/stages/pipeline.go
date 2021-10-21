@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/MarkWang2/loki/pkg/promtail/api"
 )
 
 const dropLabel = "__drop__"

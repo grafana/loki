@@ -8,7 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/logql"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request

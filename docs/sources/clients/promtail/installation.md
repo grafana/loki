@@ -9,7 +9,7 @@ Promtail is distributed as a [binary](#binary), [Docker container](#docker), and
 ## Binary
 
 Every release includes binaries for Promtail which can be found on the
-[Releases page](https://github.com/grafana/loki/releases).
+[Releases page](https://github.com/MarkWang2/loki/releases).
 
 ## Docker
 

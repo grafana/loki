@@ -21,7 +21,7 @@ Choose from the assets below for the application and architecture matching your 
 Example for `Loki` on the `linux` operating system and `amd64` architecture:
 
 ```bash
-$ curl -O -L "https://github.com/grafana/loki/releases/download/${CIRCLE_TAG}/loki-linux-amd64.zip"
+$ curl -O -L "https://github.com/MarkWang2/loki/releases/download/${CIRCLE_TAG}/loki-linux-amd64.zip"
 # extract the binary
 $ unzip "loki-linux-amd64.zip"
 # make sure it is executable

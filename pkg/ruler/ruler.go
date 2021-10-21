@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/ruler/manager"
+	"github.com/MarkWang2/loki/pkg/logql"
+	"github.com/MarkWang2/loki/pkg/ruler/manager"
 )
 
 type Config struct {

@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/MarkWang2/loki/pkg/util/flagext"
 )
 
 const (

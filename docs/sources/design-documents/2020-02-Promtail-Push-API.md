@@ -88,7 +88,7 @@ and is essentially just code duplication.
 ### Option 2: gRPC Service
 
 The
-[logproto.Pusher](https://github.com/grafana/loki/blob/f7ee1c753c76ef63338d53cfba782188a165144d/pkg/logproto/logproto.proto#L8-L10)
+[logproto.Pusher](https://github.com/MarkWang2/loki/blob/f7ee1c753c76ef63338d53cfba782188a165144d/pkg/logproto/logproto.proto#L8-L10)
 service could be exposed through Promtail. This would enable clients stubs to be
 generated for languages that have gRPC support, and, for HTTP1 support, a
 [gRPC Gateway](https://github.com/grpc-ecosystem/grpc-gateway) would be embedded
@@ -128,7 +128,7 @@ may cause performance issues when trying to handle large volumes of traffic. As
 an alternative, this API could also be implemented by external tooling and be
 built on top of any of the other implementation options.
 
-An [example implementation](https://github.com/grafana/loki/pull/1270) was
+An [example implementation](https://github.com/MarkWang2/loki/pull/1270) was
 created and has received positive support for its simplicity and ease of
 integration.
 
