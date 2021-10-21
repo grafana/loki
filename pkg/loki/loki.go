@@ -423,7 +423,10 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+
 	mm.RegisterModule(All, nil)
+	mm.RegisterModule(Read, nil)
+	mm.RegisterModule(Write, nil)
 
 	// Add dependencies
 	deps := map[string][]string{
@@ -443,6 +446,8 @@ func (t *Loki) setupModuleManager() error {
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler},
+		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler},
+		Write:                    {Ingester, Distributor},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
