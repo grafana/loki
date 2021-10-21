@@ -1,22 +1,15 @@
 reviewers:
-- kakkoyun
-- paulfantom
-- s-urbaniak
-- squat
-- ewolinetz
-- jcantrill
-- lukas-vlcek
 - alanconway
 - igor-karpukhin
-- vimalk78
-- syedriko
+- jcantrill
+- lukas-vlcek
 - periklis
+- syedriko
+- shwetaap
+- vimalk78
 
 approvers:
-- kakkoyun
-- paulfantom
-- s-urbaniak
-- squat
+- alanconway
+- igor-karpukhin
+- jcantrill
 - periklis
-- ewolinetz
-- lukas-vlcek
