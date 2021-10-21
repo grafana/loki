@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"reflect"
 
+	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/pkg/errors"
 
-	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util/cfg"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
@@ -86,6 +86,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyMemberlistConfig(r)
+
 		if err := applyStorageConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -93,7 +94,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		if len(r.SchemaConfig.Configs) > 0 && loki_storage.UsingBoltdbShipper(r.SchemaConfig.Configs) {
 			betterBoltdbShipperDefaults(r, &defaults)
 		}
-		applyStorageConfig(r, &defaults)
+
 		applyFIFOCacheConfig(r)
 
 		return nil
@@ -235,6 +236,9 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 
 // applyFIFOCacheConfig turns on FIFO cache for the chunk store and for the query range results,
 // but only if no other cache storage is configured (redis or memcache).
+//
+// This behavior is only applied for the chunk store cache and for the query range results cache
+// (i.e: not applicable for the index queries cache or for the write dedupe cache).
 func applyFIFOCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
 	if !cache.IsRedisSet(chunkCacheConfig) && !cache.IsMemcacheSet(chunkCacheConfig) {

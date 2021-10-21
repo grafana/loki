@@ -82,6 +82,16 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 
 	caches := []Cache{}
 
+	if cfg.EnableFifoCache {
+		if cfg.Fifocache.Validity == 0 && cfg.DefaultValidity != 0 {
+			cfg.Fifocache.Validity = cfg.DefaultValidity
+		}
+
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
+			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
+		}
+	}
+
 	if IsMemcacheSet(cfg) && IsRedisSet(cfg) {
 		return nil, errors.New("use of multiple cache storage systems is not supported")
 	}
@@ -105,16 +115,6 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		cacheName := cfg.Prefix + "redis"
 		cache := NewRedisCache(cacheName, NewRedisClient(&cfg.Redis), logger)
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
-	}
-
-	if cfg.EnableFifoCache {
-		if cfg.Fifocache.Validity == 0 && cfg.DefaultValidity != 0 {
-			cfg.Fifocache.Validity = cfg.DefaultValidity
-		}
-
-		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache, reg, logger); cache != nil {
-			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache, reg))
-		}
 	}
 
 	cache := NewTiered(caches)
