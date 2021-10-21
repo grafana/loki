@@ -118,6 +118,14 @@ func (t *FileTarget) Stop() {
 	t.handler.Stop()
 }
 
+// UpdatePath updates the filetarget path
+// returns true if the path was changed
+func (t *FileTarget) UpdatePath(path string) bool {
+	curPath := t.path
+	t.path = path
+	return curPath != path
+}
+
 // Type implements a Target
 func (t *FileTarget) Type() target.TargetType {
 	return target.FileTargetType
