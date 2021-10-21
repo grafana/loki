@@ -122,18 +122,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 		})
 	}
 
-	if cfg.Common.Storage.GCS != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
-			r.Ruler.StoreConfig.Type = "gcs"
-			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS.ToCortexGCSConfig()
-		})
-
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
-			r.StorageConfig.GCSConfig = *r.Common.Storage.GCS
-			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
-		})
-	}
-
 	if cfg.Common.Storage.FSConfig != nil {
 		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
@@ -143,6 +131,18 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) {
 		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
 			r.StorageConfig.FSConfig = *r.Common.Storage.FSConfig
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
+		})
+	}
+
+	if cfg.Common.Storage.GCS != nil {
+		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "gcs"
+			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS.ToCortexGCSConfig()
+		})
+
+		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+			r.StorageConfig.GCSConfig = *r.Common.Storage.GCS
+			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
 		})
 	}
 
