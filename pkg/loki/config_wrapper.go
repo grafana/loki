@@ -76,7 +76,10 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyMemberlistConfig(r)
-		applyStorageConfig(r, &defaults)
+		err := applyStorageConfig(r, &defaults)
+		if err != nil {
+			return err
+		}
 
 		if len(r.SchemaConfig.Configs) > 0 && loki_storage.UsingBoltdbShipper(r.SchemaConfig.Configs) {
 			betterBoltdbShipperDefaults(r, &defaults)
@@ -99,97 +102,109 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	}
 }
 
+var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
+
 // applyStorageConfig will attempt to apply a common storage config for either
 // s3, gcs, azure, or swift to all the places we create a storage client.
 // If any specific configs for an object storage client have been provided elsewhere in the
 // configuration file, applyStorageConfig will not override them.
-// If multiple storage configurations are provided, applyStorageConfig will apply
-// all of them, and will set the value for the Ruler's StoreConfig `type` to the
-// last one (alphabetically) that was defined.
-func applyStorageConfig(cfg, defaults *ConfigWrapper) {
-	rulerStoreConfigsToApply := make([]func(*ConfigWrapper), 0, 4)
-	chunkStorageConfigsToApply := make([]func(*ConfigWrapper), 0, 4)
+// If multiple storage configurations are provided, applyStorageConfig will return an error
+func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
+	var applyRulerStoreConfig func(*ConfigWrapper)
+	var applyChunkStorageConfig func(*ConfigWrapper)
+
+	//only one config is allowed
+	configsFound := 0
 
 	if cfg.Common.Storage.Azure != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+		configsFound++
+
+		applyRulerStoreConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "azure"
 			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure.ToCortexAzureConfig()
-		})
+		}
 
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+		applyChunkStorageConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.AzureStorageConfig = *r.Common.Storage.Azure
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
-		})
+		}
 	}
 
 	if cfg.Common.Storage.FSConfig != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+		configsFound++
+
+		applyRulerStoreConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
 			r.Ruler.StoreConfig.Local = r.Common.Storage.FSConfig.ToCortexLocalConfig()
-		})
+		}
 
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+		applyChunkStorageConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.FSConfig = *r.Common.Storage.FSConfig
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
-		})
+		}
 	}
 
 	if cfg.Common.Storage.GCS != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+		configsFound++
+
+		applyRulerStoreConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "gcs"
 			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS.ToCortexGCSConfig()
-		})
+		}
 
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+		applyChunkStorageConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.GCSConfig = *r.Common.Storage.GCS
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
-		})
+		}
 	}
 
 	if cfg.Common.Storage.S3 != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+		configsFound++
+
+		applyRulerStoreConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3.ToCortexS3Config()
-		})
+		}
 
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+		applyChunkStorageConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.Storage.S3
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
-		})
+		}
 	}
 
 	if cfg.Common.Storage.Swift != nil {
-		rulerStoreConfigsToApply = append(rulerStoreConfigsToApply, func(r *ConfigWrapper) {
+		configsFound++
+
+		applyRulerStoreConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "swift"
 			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift.ToCortexSwiftConfig()
-		})
+		}
 
-		chunkStorageConfigsToApply = append(chunkStorageConfigsToApply, func(r *ConfigWrapper) {
+		applyChunkStorageConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.Swift = *r.Common.Storage.Swift
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
-		})
-	}
-
-	// store change funcs in slices and apply all at once, because once we change the
-	// config we can no longer compare it to the default, this allows us to only
-	// do that comparison once
-	applyRulerStoreConfigs(cfg, defaults, rulerStoreConfigsToApply)
-	applyChunkStorageConfigs(cfg, defaults, chunkStorageConfigsToApply)
-}
-
-func applyRulerStoreConfigs(cfg, defaults *ConfigWrapper, apply []func(*ConfigWrapper)) {
-	if reflect.DeepEqual(cfg.Ruler.StoreConfig, defaults.Ruler.StoreConfig) {
-		for _, ap := range apply {
-			ap(cfg)
 		}
 	}
+
+	if configsFound > 1 {
+		return ErrTooManyStorageConfigs
+	}
+
+	applyRulerStoreConfigs(cfg, defaults, applyRulerStoreConfig)
+	applyChunkStorageConfigs(cfg, defaults, applyChunkStorageConfig)
+
+	return nil
 }
 
-func applyChunkStorageConfigs(cfg, defaults *ConfigWrapper, apply []func(*ConfigWrapper)) {
-	if reflect.DeepEqual(cfg.StorageConfig, defaults.StorageConfig) {
-		for _, ap := range apply {
-			ap(cfg)
-		}
+func applyRulerStoreConfigs(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
+	if apply != nil && reflect.DeepEqual(cfg.Ruler.StoreConfig, defaults.Ruler.StoreConfig) {
+		apply(cfg)
+	}
+}
+
+func applyChunkStorageConfigs(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
+	if apply != nil && reflect.DeepEqual(cfg.StorageConfig, defaults.StorageConfig) {
+		apply(cfg)
 	}
 }
 
