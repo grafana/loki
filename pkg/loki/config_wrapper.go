@@ -78,7 +78,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyMemberlistConfig(r)
 		applyStorageConfig(r, &defaults)
 
-		if loki_storage.UsingBoltdbShipper(r.SchemaConfig.Configs) {
+		if len(r.SchemaConfig.Configs) > 0 && loki_storage.UsingBoltdbShipper(r.SchemaConfig.Configs) {
 			betterBoltdbShipperDefaults(r, &defaults)
 		}
 
