@@ -1,9 +1,5 @@
 reviewers:
-- kakkoyun
-- paulfantom
 - s-urbaniak
-- squat
-- ewolinetz
 - jcantrill
 - lukas-vlcek
 - alanconway
@@ -13,10 +9,6 @@ reviewers:
 - periklis
 
 approvers:
-- kakkoyun
-- paulfantom
 - s-urbaniak
-- squat
 - periklis
-- ewolinetz
 - lukas-vlcek
