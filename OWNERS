@@ -1,14 +1,14 @@
 reviewers:
-- s-urbaniak
-- jcantrill
-- lukas-vlcek
 - alanconway
-- igor-karpukhin
-- vimalk78
-- syedriko
+- btaani
+- jcantrill
 - periklis
+- sasagarw
+- shwetaap
+- syedriko
+- vimalk78
 
 approvers:
-- s-urbaniak
+- alanconway
+- jcantrill
 - periklis
-- lukas-vlcek
