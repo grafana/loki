@@ -25,7 +25,6 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	autoEnableFifo  bool
 	EnableFifoCache bool `yaml:"enable_fifocache"`
 
 	DefaultValidity time.Duration `yaml:"default_validity"`
@@ -44,21 +43,14 @@ type Config struct {
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet, autoEnableFifo bool) {
-	cfg.autoEnableFifo = autoEnableFifo
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet) {
 	cfg.Background.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Memcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
-
-	enableFifoDescription := "Enable in-memory cache"
-	if cfg.autoEnableFifo {
-		enableFifoDescription += " (auto-enabled if no other cache is configured)"
-	}
-	enableFifoDescription += "."
-	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+enableFifoDescription)
+	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled if no other cache is configured).")
 
 	cfg.Prefix = prefix
 }
