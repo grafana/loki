@@ -273,6 +273,12 @@ external_labels:
 
 # Maximum time to wait for a server to respond to a request
 [timeout: <duration> | default = 10s]
+
+# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
+# The default value is "filename". A "host" label is always included.
+# The stream lag metric indicates which streams are falling behind on writes to Loki;
+# be mindful about not using too many labels here as it can explode cardinality.
+[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## positions

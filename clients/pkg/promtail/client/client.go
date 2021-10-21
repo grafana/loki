@@ -320,14 +320,21 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 				}
 				var lblSet model.LabelSet
 				for i := range lbls {
-					if lbls[i].Name == LatencyLabel {
-						lblSet = model.LabelSet{
-							model.LabelName(HostLabel):    model.LabelValue(c.cfg.URL.Host),
-							model.LabelName(LatencyLabel): model.LabelValue(lbls[i].Value),
+					for _, lbl := range c.cfg.StreamLagLabels {
+						if lbls[i].Name == lbl {
+							if lblSet == nil {
+								lblSet = model.LabelSet{}
+							}
+
+							lblSet = lblSet.Merge(model.LabelSet{
+								model.LabelName(lbl): model.LabelValue(lbls[i].Value),
+							})
 						}
 					}
 				}
 				if lblSet != nil {
+					// always set host
+					lblSet = lblSet.Merge(model.LabelSet{model.LabelName(HostLabel): model.LabelValue(c.cfg.URL.Host)})
 					c.metrics.streamLag.With(lblSet).Set(time.Since(s.Entries[len(s.Entries)-1].Timestamp).Seconds())
 				}
 			}
