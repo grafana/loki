@@ -50,7 +50,6 @@ The following are supported for the chunks:
 
 When using S3 as object storage, the following permissions are needed:
 
-- `s3:ListObjects`
 - `s3:ListBucket`
 - `s3:PutObject`
 - `s3:GetObject`

@@ -12,7 +12,7 @@ const forwardingRulesPath = "forwarding_rules"
 const dropletsPath = "droplets"
 
 // LoadBalancersService is an interface for managing load balancers with the DigitalOcean API.
-// See: https://developers.digitalocean.com/documentation/v2#load-balancers
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Load-Balancers
 type LoadBalancersService interface {
 	Get(context.Context, string) (*LoadBalancer, *Response, error)
 	List(context.Context, *ListOptions) ([]LoadBalancer, *Response, error)

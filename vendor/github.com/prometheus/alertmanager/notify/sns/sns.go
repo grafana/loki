@@ -26,13 +26,14 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	commoncfg "github.com/prometheus/common/config"
+
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
-	commoncfg "github.com/prometheus/common/config"
 )
 
 // Notifier implements a Notifier for SNS notifications.
@@ -67,7 +68,7 @@ func (n *Notifier) Notify(ctx context.Context, alert ...*types.Alert) (bool, err
 		tmpl = notify.TmplText(n.tmpl, data, &err)
 	)
 
-	client, err := createSNSClient(n, tmpl)
+	client, err := createSNSClient(n.client, n, tmpl)
 	if err != nil {
 		if e, ok := err.(awserr.RequestFailure); ok {
 			return n.retrier.Check(e.StatusCode(), strings.NewReader(e.Message()))
@@ -95,7 +96,7 @@ func (n *Notifier) Notify(ctx context.Context, alert ...*types.Alert) (bool, err
 	return false, nil
 }
 
-func createSNSClient(n *Notifier, tmpl func(string) string) (*sns.SNS, error) {
+func createSNSClient(httpClient *http.Client, n *Notifier, tmpl func(string) string) (*sns.SNS, error) {
 	var creds *credentials.Credentials = nil
 	// If there are provided sigV4 credentials we want to use those to create a session.
 	if n.conf.Sigv4.AccessKey != "" && n.conf.Sigv4.SecretKey != "" {
@@ -132,7 +133,7 @@ func createSNSClient(n *Notifier, tmpl func(string) string) (*sns.SNS, error) {
 		creds = stscreds.NewCredentials(stsSess, n.conf.Sigv4.RoleARN)
 	}
 	// Use our generated session with credentials to create the SNS Client.
-	client := sns.New(sess, &aws.Config{Credentials: creds})
+	client := sns.New(sess, &aws.Config{Credentials: creds, HTTPClient: httpClient})
 	// We will always need a region to be set by either the local config or the environment.
 	if aws.StringValue(sess.Config.Region) == "" {
 		return nil, fmt.Errorf("region not configured in sns.sigv4.region or in default credentials chain")
@@ -197,14 +198,14 @@ func validateAndTruncateMessage(message string, maxMessageSizeInBytes int) (stri
 	if len(message) <= maxMessageSizeInBytes {
 		return message, false, nil
 	}
-	// if the message is larger than our specified size we have to truncate.
+	// If the message is larger than our specified size we have to truncate.
 	truncated := make([]byte, maxMessageSizeInBytes)
 	copy(truncated, message)
 	return string(truncated), true, nil
 }
 
 func createMessageAttributes(n *Notifier, tmpl func(string) string) map[string]*sns.MessageAttributeValue {
-	// Convert the given attributes map into the AWS Message Attributes Format
+	// Convert the given attributes map into the AWS Message Attributes Format.
 	attributes := make(map[string]*sns.MessageAttributeValue, len(n.conf.Attributes))
 	for k, v := range n.conf.Attributes {
 		attributes[tmpl(k)] = &sns.MessageAttributeValue{DataType: aws.String("String"), StringValue: aws.String(tmpl(v))}

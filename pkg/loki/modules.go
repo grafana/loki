@@ -21,12 +21,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/version"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -82,6 +83,8 @@ const (
 )
 
 func (t *Loki) initServer() (services.Service, error) {
+	prometheus.MustRegister(version.NewCollector("loki"))
+
 	// Loki handles signals on its own.
 	cortex.DisableSignalHandling(&t.Cfg.Server)
 	serv, err := server.New(t.Cfg.Server)

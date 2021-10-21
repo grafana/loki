@@ -7,6 +7,68 @@ import (
 	"time"
 )
 
+// AppAlert struct for AppAlert
+type AppAlert struct {
+	ID            string                  `json:"id,omitempty"`
+	ComponentName string                  `json:"component_name,omitempty"`
+	Spec          *AppAlertSpec           `json:"spec,omitempty"`
+	Emails        []string                `json:"emails,omitempty"`
+	SlackWebhooks []*AppAlertSlackWebhook `json:"slack_webhooks,omitempty"`
+	Phase         AppAlertPhase           `json:"phase,omitempty"`
+	Progress      *AppAlertProgress       `json:"progress,omitempty"`
+}
+
+// AppAlertPhase the model 'AppAlertPhase'
+type AppAlertPhase string
+
+// List of AppAlertPhase
+const (
+	AppAlertPhase_Unknown     AppAlertPhase = "UNKNOWN"
+	AppAlertPhase_Pending     AppAlertPhase = "PENDING"
+	AppAlertPhase_Configuring AppAlertPhase = "CONFIGURING"
+	AppAlertPhase_Active      AppAlertPhase = "ACTIVE"
+	AppAlertPhase_Error       AppAlertPhase = "ERROR"
+)
+
+// AppAlertProgress struct for AppAlertProgress
+type AppAlertProgress struct {
+	Steps []*AppAlertProgressStep `json:"steps,omitempty"`
+}
+
+// AppAlertProgressStep struct for AppAlertProgressStep
+type AppAlertProgressStep struct {
+	Name      string                      `json:"name,omitempty"`
+	Status    AppAlertProgressStepStatus  `json:"status,omitempty"`
+	Steps     []*AppAlertProgressStep     `json:"steps,omitempty"`
+	StartedAt time.Time                   `json:"started_at,omitempty"`
+	EndedAt   time.Time                   `json:"ended_at,omitempty"`
+	Reason    *AppAlertProgressStepReason `json:"reason,omitempty"`
+}
+
+// AppAlertProgressStepReason struct for AppAlertProgressStepReason
+type AppAlertProgressStepReason struct {
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// AppAlertProgressStepStatus the model 'AppAlertProgressStepStatus'
+type AppAlertProgressStepStatus string
+
+// List of AppAlertProgressStepStatus
+const (
+	AppAlertProgressStepStatus_Unknown AppAlertProgressStepStatus = "UNKNOWN"
+	AppAlertProgressStepStatus_Pending AppAlertProgressStepStatus = "PENDING"
+	AppAlertProgressStepStatus_Running AppAlertProgressStepStatus = "RUNNING"
+	AppAlertProgressStepStatus_Error   AppAlertProgressStepStatus = "ERROR"
+	AppAlertProgressStepStatus_Success AppAlertProgressStepStatus = "SUCCESS"
+)
+
+// AppAlertSlackWebhook struct for AppAlertSlackWebhook
+type AppAlertSlackWebhook struct {
+	URL     string `json:"url,omitempty"`
+	Channel string `json:"channel,omitempty"`
+}
+
 // App An application's configuration and status.
 type App struct {
 	ID                      string       `json:"id,omitempty"`
@@ -26,6 +88,52 @@ type App struct {
 	LiveDomain              string       `json:"live_domain,omitempty"`
 	Domains                 []*AppDomain `json:"domains,omitempty"`
 }
+
+// AppAlertSpec struct for AppAlertSpec
+type AppAlertSpec struct {
+	Rule     AppAlertSpecRule     `json:"rule,omitempty"`
+	Disabled bool                 `json:"disabled,omitempty"`
+	Operator AppAlertSpecOperator `json:"operator,omitempty"`
+	Value    float32              `json:"value,omitempty"`
+	Window   AppAlertSpecWindow   `json:"window,omitempty"`
+}
+
+// AppAlertSpecOperator the model 'AppAlertSpecOperator'
+type AppAlertSpecOperator string
+
+// List of AppAlertSpecOperator
+const (
+	AppAlertSpecOperator_UnspecifiedOperator AppAlertSpecOperator = "UNSPECIFIED_OPERATOR"
+	AppAlertSpecOperator_GreaterThan         AppAlertSpecOperator = "GREATER_THAN"
+	AppAlertSpecOperator_LessThan            AppAlertSpecOperator = "LESS_THAN"
+)
+
+// AppAlertSpecRule the model 'AppAlertSpecRule'
+type AppAlertSpecRule string
+
+// List of AppAlertSpecRule
+const (
+	AppAlertSpecRule_UnspecifiedRule  AppAlertSpecRule = "UNSPECIFIED_RULE"
+	AppAlertSpecRule_CPUUtilization   AppAlertSpecRule = "CPU_UTILIZATION"
+	AppAlertSpecRule_MemUtilization   AppAlertSpecRule = "MEM_UTILIZATION"
+	AppAlertSpecRule_RestartCount     AppAlertSpecRule = "RESTART_COUNT"
+	AppAlertSpecRule_DeploymentFailed AppAlertSpecRule = "DEPLOYMENT_FAILED"
+	AppAlertSpecRule_DeploymentLive   AppAlertSpecRule = "DEPLOYMENT_LIVE"
+	AppAlertSpecRule_DomainFailed     AppAlertSpecRule = "DOMAIN_FAILED"
+	AppAlertSpecRule_DomainLive       AppAlertSpecRule = "DOMAIN_LIVE"
+)
+
+// AppAlertSpecWindow the model 'AppAlertSpecWindow'
+type AppAlertSpecWindow string
+
+// List of AppAlertSpecWindow
+const (
+	AppAlertSpecWindow_UnspecifiedWindow AppAlertSpecWindow = "UNSPECIFIED_WINDOW"
+	AppAlertSpecWindow_FiveMinutes       AppAlertSpecWindow = "FIVE_MINUTES"
+	AppAlertSpecWindow_TenMinutes        AppAlertSpecWindow = "TEN_MINUTES"
+	AppAlertSpecWindow_ThirtyMinutes     AppAlertSpecWindow = "THIRTY_MINUTES"
+	AppAlertSpecWindow_OneHour           AppAlertSpecWindow = "ONE_HOUR"
+)
 
 // AppDatabaseSpec struct for AppDatabaseSpec
 type AppDatabaseSpec struct {
@@ -52,10 +160,11 @@ type AppDatabaseSpecEngine string
 
 // List of AppDatabaseSpecEngine
 const (
-	AppDatabaseSpecEngine_Unset AppDatabaseSpecEngine = "UNSET"
-	AppDatabaseSpecEngine_MySQL AppDatabaseSpecEngine = "MYSQL"
-	AppDatabaseSpecEngine_PG    AppDatabaseSpecEngine = "PG"
-	AppDatabaseSpecEngine_Redis AppDatabaseSpecEngine = "REDIS"
+	AppDatabaseSpecEngine_Unset   AppDatabaseSpecEngine = "UNSET"
+	AppDatabaseSpecEngine_MySQL   AppDatabaseSpecEngine = "MYSQL"
+	AppDatabaseSpecEngine_PG      AppDatabaseSpecEngine = "PG"
+	AppDatabaseSpecEngine_Redis   AppDatabaseSpecEngine = "REDIS"
+	AppDatabaseSpecEngine_MongoDB AppDatabaseSpecEngine = "MONGODB"
 )
 
 // AppDomainSpec struct for AppDomainSpec
@@ -99,9 +208,10 @@ type AppJobSpec struct {
 	// A list of environment variables made available to the component.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
 	// The instance size to use for this component.
-	InstanceSizeSlug string         `json:"instance_size_slug,omitempty"`
-	InstanceCount    int64          `json:"instance_count,omitempty"`
-	Kind             AppJobSpecKind `json:"kind,omitempty"`
+	InstanceSizeSlug string          `json:"instance_size_slug,omitempty"`
+	InstanceCount    int64           `json:"instance_count,omitempty"`
+	Kind             AppJobSpecKind  `json:"kind,omitempty"`
+	Alerts           []*AppAlertSpec `json:"alerts,omitempty"`
 }
 
 // AppJobSpecKind  - UNSPECIFIED: Default job type, will auto-complete to POST_DEPLOY kind.  - PRE_DEPLOY: Indicates a job that runs before an app deployment.  - POST_DEPLOY: Indicates a job that runs after an app deployment.  - FAILED_DEPLOY: Indicates a job that runs after a component fails to deploy.
@@ -150,7 +260,8 @@ type AppServiceSpec struct {
 	HealthCheck *AppServiceSpecHealthCheck `json:"health_check,omitempty"`
 	CORS        *AppCORSPolicy             `json:"cors,omitempty"`
 	// The ports on which this service will listen for internal traffic.
-	InternalPorts []int64 `json:"internal_ports,omitempty"`
+	InternalPorts []int64         `json:"internal_ports,omitempty"`
+	Alerts        []*AppAlertSpec `json:"alerts,omitempty"`
 }
 
 // AppServiceSpecHealthCheck struct for AppServiceSpecHealthCheck
@@ -189,7 +300,8 @@ type AppSpec struct {
 	Domains []*AppDomainSpec `json:"domains,omitempty"`
 	Region  string           `json:"region,omitempty"`
 	// A list of environment variables made available to all components in the app.
-	Envs []*AppVariableDefinition `json:"envs,omitempty"`
+	Envs   []*AppVariableDefinition `json:"envs,omitempty"`
+	Alerts []*AppAlertSpec          `json:"alerts,omitempty"`
 }
 
 // AppStaticSiteSpec struct for AppStaticSiteSpec
@@ -252,8 +364,31 @@ type AppWorkerSpec struct {
 	// A list of environment variables made available to the component.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
 	// The instance size to use for this component.
-	InstanceSizeSlug string `json:"instance_size_slug,omitempty"`
-	InstanceCount    int64  `json:"instance_count,omitempty"`
+	InstanceSizeSlug string          `json:"instance_size_slug,omitempty"`
+	InstanceCount    int64           `json:"instance_count,omitempty"`
+	Alerts           []*AppAlertSpec `json:"alerts,omitempty"`
+}
+
+// DeploymentCauseDetailsDigitalOceanUser struct for DeploymentCauseDetailsDigitalOceanUser
+type DeploymentCauseDetailsDigitalOceanUser struct {
+	UUID     string `json:"uuid,omitempty"`
+	Email    string `json:"email,omitempty"`
+	FullName string `json:"full_name,omitempty"`
+}
+
+// DeploymentCauseDetailsDigitalOceanUserAction struct for DeploymentCauseDetailsDigitalOceanUserAction
+type DeploymentCauseDetailsDigitalOceanUserAction struct {
+	User *DeploymentCauseDetailsDigitalOceanUser          `json:"user,omitempty"`
+	Name DeploymentCauseDetailsDigitalOceanUserActionName `json:"name,omitempty"`
+}
+
+// DeploymentCauseDetailsGitPush struct for DeploymentCauseDetailsGitPush
+type DeploymentCauseDetailsGitPush struct {
+	GitHub       *GitHubSourceSpec `json:"github,omitempty"`
+	GitLab       *GitLabSourceSpec `json:"gitlab,omitempty"`
+	Username     string            `json:"username,omitempty"`
+	CommitAuthor string            `json:"commit_author,omitempty"`
+	CommitSHA    string            `json:"commit_sha,omitempty"`
 }
 
 // AppCORSPolicy struct for AppCORSPolicy
@@ -272,23 +407,50 @@ type AppCORSPolicy struct {
 	AllowCredentials bool `json:"allow_credentials,omitempty"`
 }
 
+// AppCreateRequest struct for AppCreateRequest
+type AppCreateRequest struct {
+	Spec *AppSpec `json:"spec"`
+}
+
 // Deployment struct for Deployment
 type Deployment struct {
-	ID                 string                  `json:"id,omitempty"`
-	Spec               *AppSpec                `json:"spec,omitempty"`
-	Services           []*DeploymentService    `json:"services,omitempty"`
-	StaticSites        []*DeploymentStaticSite `json:"static_sites,omitempty"`
-	Workers            []*DeploymentWorker     `json:"workers,omitempty"`
-	Jobs               []*DeploymentJob        `json:"jobs,omitempty"`
-	PhaseLastUpdatedAt time.Time               `json:"phase_last_updated_at,omitempty"`
-	CreatedAt          time.Time               `json:"created_at,omitempty"`
-	UpdatedAt          time.Time               `json:"updated_at,omitempty"`
-	Cause              string                  `json:"cause,omitempty"`
-	ClonedFrom         string                  `json:"cloned_from,omitempty"`
-	Progress           *DeploymentProgress     `json:"progress,omitempty"`
-	Phase              DeploymentPhase         `json:"phase,omitempty"`
-	TierSlug           string                  `json:"tier_slug,omitempty"`
+	ID                   string                  `json:"id,omitempty"`
+	Spec                 *AppSpec                `json:"spec,omitempty"`
+	Services             []*DeploymentService    `json:"services,omitempty"`
+	StaticSites          []*DeploymentStaticSite `json:"static_sites,omitempty"`
+	Workers              []*DeploymentWorker     `json:"workers,omitempty"`
+	Jobs                 []*DeploymentJob        `json:"jobs,omitempty"`
+	PhaseLastUpdatedAt   time.Time               `json:"phase_last_updated_at,omitempty"`
+	CreatedAt            time.Time               `json:"created_at,omitempty"`
+	UpdatedAt            time.Time               `json:"updated_at,omitempty"`
+	Cause                string                  `json:"cause,omitempty"`
+	ClonedFrom           string                  `json:"cloned_from,omitempty"`
+	Progress             *DeploymentProgress     `json:"progress,omitempty"`
+	Phase                DeploymentPhase         `json:"phase,omitempty"`
+	TierSlug             string                  `json:"tier_slug,omitempty"`
+	PreviousDeploymentID string                  `json:"previous_deployment_id,omitempty"`
+	CauseDetails         *DeploymentCauseDetails `json:"cause_details,omitempty"`
 }
+
+// DeploymentCauseDetails struct for DeploymentCauseDetails
+type DeploymentCauseDetails struct {
+	DigitalOceanUserAction *DeploymentCauseDetailsDigitalOceanUserAction `json:"digitalocean_user_action,omitempty"`
+	GitPush                *DeploymentCauseDetailsGitPush                `json:"git_push,omitempty"`
+	Internal               bool                                          `json:"internal,omitempty"`
+	Type                   DeploymentCauseDetailsType                    `json:"type,omitempty"`
+}
+
+// DeploymentCauseDetailsType - MANUAL: A deployment that was manually created  - DEPLOY_ON_PUSH: A deployment that was automatically created by a Deploy on Push hook  - MAINTENANCE: A deployment created for App Platform maintenance  - AUTO_ROLLBACK: An automatic rollback deployment created as a result of a previous deployment failing
+type DeploymentCauseDetailsType string
+
+// List of DeploymentCauseDetailsType
+const (
+	DeploymentCauseDetailsType_Unknown      DeploymentCauseDetailsType = "UNKNOWN"
+	DeploymentCauseDetailsType_Manual       DeploymentCauseDetailsType = "MANUAL"
+	DeploymentCauseDetailsType_DeployOnPush DeploymentCauseDetailsType = "DEPLOY_ON_PUSH"
+	DeploymentCauseDetailsType_Maintenance  DeploymentCauseDetailsType = "MAINTENANCE"
+	DeploymentCauseDetailsType_AutoRollback DeploymentCauseDetailsType = "AUTO_ROLLBACK"
+)
 
 // DeploymentJob struct for DeploymentJob
 type DeploymentJob struct {
@@ -371,6 +533,16 @@ type DeploymentWorker struct {
 	Name             string `json:"name,omitempty"`
 	SourceCommitHash string `json:"source_commit_hash,omitempty"`
 }
+
+// DeploymentCauseDetailsDigitalOceanUserActionName the model 'CauseDetailsDigitalOceanUserActionName'
+type DeploymentCauseDetailsDigitalOceanUserActionName string
+
+// List of DeploymentCauseDetailsDigitalOceanUserActionName
+const (
+	DeploymentCauseDetailsDigitalOceanUserActionName_Unknown          DeploymentCauseDetailsDigitalOceanUserActionName = "UNKNOWN"
+	DeploymentCauseDetailsDigitalOceanUserActionName_CreateDeployment DeploymentCauseDetailsDigitalOceanUserActionName = "CREATE_DEPLOYMENT"
+	DeploymentCauseDetailsDigitalOceanUserActionName_UpdateSpec       DeploymentCauseDetailsDigitalOceanUserActionName = "UPDATE_SPEC"
+)
 
 // AppDomain struct for AppDomain
 type AppDomain struct {

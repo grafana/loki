@@ -9,7 +9,7 @@ import (
 const certificatesBasePath = "/v2/certificates"
 
 // CertificatesService is an interface for managing certificates with the DigitalOcean API.
-// See: https://developers.digitalocean.com/documentation/v2/#certificates
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Certificates
 type CertificatesService interface {
 	Get(context.Context, string) (*Certificate, *Response, error)
 	List(context.Context, *ListOptions) ([]Certificate, *Response, error)

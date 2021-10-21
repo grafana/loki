@@ -2,11 +2,13 @@ package queryrange
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/weaveworks/common/httpgrpc"
 )
 
 type IntervalFn func(r Request) time.Duration
@@ -89,7 +91,7 @@ func splitQuery(r Request, interval time.Duration) ([]Request, error) {
 func evaluateAtModifierFunction(query string, start, end int64) (string, error) {
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
-		return "", err
+		return "", httpgrpc.Errorf(http.StatusBadRequest, "%s", err)
 	}
 	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
 		if selector, ok := n.(*parser.VectorSelector); ok {

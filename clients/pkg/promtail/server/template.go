@@ -52,6 +52,7 @@ func executeTemplate(ctx context.Context, w http.ResponseWriter, tmplOpts templa
 		model.Now(),
 		nil,
 		tmplOpts.ExternalURL,
+		nil,
 	)
 
 	tmpl.Funcs(tmplOpts.tmplFuncs())

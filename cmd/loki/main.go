@@ -6,8 +6,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
@@ -20,10 +19,6 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
-
-func init() {
-	prometheus.MustRegister(version.NewCollector("loki"))
-}
 
 func main() {
 	var config loki.ConfigWrapper

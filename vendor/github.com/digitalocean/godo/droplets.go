@@ -14,7 +14,7 @@ var errNoNetworks = errors.New("no networks have been defined")
 
 // DropletsService is an interface for interfacing with the Droplet
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#droplets
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Droplets
 type DropletsService interface {
 	List(context.Context, *ListOptions) ([]Droplet, *Response, error)
 	ListByTag(context.Context, string, *ListOptions) ([]Droplet, *Response, error)

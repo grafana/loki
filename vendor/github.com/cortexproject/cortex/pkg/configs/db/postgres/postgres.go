@@ -12,7 +12,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Import the postgres migrations driver
 	_ "github.com/golang-migrate/migrate/v4/source/file"       // Import the postgres migrations driver

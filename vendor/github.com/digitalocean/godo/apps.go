@@ -36,7 +36,7 @@ type AppsService interface {
 	ListDeployments(ctx context.Context, appID string, opts *ListOptions) ([]*Deployment, *Response, error)
 	CreateDeployment(ctx context.Context, appID string, create ...*DeploymentCreateRequest) (*Deployment, *Response, error)
 
-	GetLogs(ctx context.Context, appID, deploymentID, component string, logType AppLogType, follow bool) (*AppLogs, *Response, error)
+	GetLogs(ctx context.Context, appID, deploymentID, component string, logType AppLogType, follow bool, tailLines int) (*AppLogs, *Response, error)
 
 	ListRegions(ctx context.Context) ([]*AppRegion, *Response, error)
 
@@ -45,17 +45,15 @@ type AppsService interface {
 
 	ListInstanceSizes(ctx context.Context) ([]*AppInstanceSize, *Response, error)
 	GetInstanceSize(ctx context.Context, slug string) (*AppInstanceSize, *Response, error)
+
+	ListAlerts(ctx context.Context, appID string) ([]*AppAlert, *Response, error)
+	UpdateAlertDestinations(ctx context.Context, appID, alertID string, update *AlertDestinationUpdateRequest) (*AppAlert, *Response, error)
 }
 
 // AppLogs represent app logs.
 type AppLogs struct {
 	LiveURL      string   `json:"live_url"`
 	HistoricURLs []string `json:"historic_urls"`
-}
-
-// AppCreateRequest represents a request to create an app.
-type AppCreateRequest struct {
-	Spec *AppSpec `json:"spec"`
 }
 
 // AppUpdateRequest represents a request to update an app.
@@ -66,6 +64,12 @@ type AppUpdateRequest struct {
 // DeploymentCreateRequest represents a request to create a deployment.
 type DeploymentCreateRequest struct {
 	ForceBuild bool `json:"force_build"`
+}
+
+// AlertDestinationUpdateRequest represents a request to update alert destinations.
+type AlertDestinationUpdateRequest struct {
+	Emails        []string                `json:"emails"`
+	SlackWebhooks []*AppAlertSlackWebhook `json:"slack_webhooks"`
 }
 
 type appRoot struct {
@@ -106,6 +110,14 @@ type instanceSizesRoot struct {
 
 type appRegionsRoot struct {
 	Regions []*AppRegion `json:"regions"`
+}
+
+type appAlertsRoot struct {
+	Alerts []*AppAlert `json:"alerts"`
+}
+
+type appAlertRoot struct {
+	Alert *AppAlert `json:"alert"`
 }
 
 // AppsServiceOp handles communication with Apps methods of the DigitalOcean API.
@@ -285,8 +297,8 @@ func (s *AppsServiceOp) CreateDeployment(ctx context.Context, appID string, crea
 }
 
 // GetLogs retrieves app logs.
-func (s *AppsServiceOp) GetLogs(ctx context.Context, appID, deploymentID, component string, logType AppLogType, follow bool) (*AppLogs, *Response, error) {
-	url := fmt.Sprintf("%s/%s/deployments/%s/logs?type=%s&follow=%t", appsBasePath, appID, deploymentID, logType, follow)
+func (s *AppsServiceOp) GetLogs(ctx context.Context, appID, deploymentID, component string, logType AppLogType, follow bool, tailLines int) (*AppLogs, *Response, error) {
+	url := fmt.Sprintf("%s/%s/deployments/%s/logs?type=%s&follow=%t&tail_lines=%d", appsBasePath, appID, deploymentID, logType, follow, tailLines)
 	if component != "" {
 		url = fmt.Sprintf("%s&component_name=%s", url, component)
 	}
@@ -376,4 +388,34 @@ func (s *AppsServiceOp) GetInstanceSize(ctx context.Context, slug string) (*AppI
 		return nil, resp, err
 	}
 	return root.InstanceSize, resp, nil
+}
+
+// ListAlerts retrieves a list of alerts on an app
+func (s *AppsServiceOp) ListAlerts(ctx context.Context, appID string) ([]*AppAlert, *Response, error) {
+	path := fmt.Sprintf("%s/%s/alerts", appsBasePath, appID)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(appAlertsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Alerts, resp, nil
+}
+
+// UpdateAlertDestinations updates the alert destinations of an app's alert
+func (s *AppsServiceOp) UpdateAlertDestinations(ctx context.Context, appID, alertID string, update *AlertDestinationUpdateRequest) (*AppAlert, *Response, error) {
+	path := fmt.Sprintf("%s/%s/alerts/%s/destinations", appsBasePath, appID, alertID)
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, update)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(appAlertRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Alert, resp, nil
 }
