@@ -5,12 +5,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
+
+	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 )
 
 func Test_InitQuerierService(t *testing.T) {
