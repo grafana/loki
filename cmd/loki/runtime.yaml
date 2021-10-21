@@ -4,3 +4,4 @@ overrides:
   "user1":
     ingestion_burst_size_mb: 350000
     ingestion_rate_mb: 350000
+    max_query_series: 1000
