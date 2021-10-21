@@ -280,7 +280,6 @@ func (t *Loki) Run() error {
 	}
 
 	t.serviceMap = serviceMap
-
 	t.Server.HTTP.Handle("/services", http.HandlerFunc(t.servicesHandler))
 
 	// get all services, create service manager and tell it to start

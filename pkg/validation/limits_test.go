@@ -12,6 +12,26 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type mockTenantLimits struct {
+	limits map[string]*Limits
+}
+
+func newMockTenantLimits(limits map[string]*Limits) *mockTenantLimits {
+	return &mockTenantLimits{
+		limits: limits,
+	}
+}
+
+func (l *mockTenantLimits) TenantLimits(userID string) *Limits {
+	return l.limits[userID]
+}
+
+func (l *mockTenantLimits) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
+	for userID, tenantLimit := range l.limits {
+		callback(userID, tenantLimit)
+	}
+}
+
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
 	limits := reflect.TypeOf(Limits{})
 	n := limits.NumField()

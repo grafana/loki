@@ -165,17 +165,15 @@ func (t *Loki) initOverrides() (_ services.Service, err error) {
 func (t *Loki) initOverridesExporter() (services.Service, error) {
 	tenantLimits := newtenantLimitsFromRuntimeConfig(t.runtimeConfig)
 	if t.Cfg.isModuleEnabled(OverridesExporter) && tenantLimits == nil {
-		// This target isn't enabled by default ("all") and requires per-tenant limits to
-		// work. Fail if it can't be setup correctly since the user explicitly wanted this
-		// target to run.
+		// This target isn't enabled by default ("all") and requires per-tenant limits to run.
 		return nil, errors.New("overrides-exporter has been enabled, but no runtime configuration file was configured")
 	}
 
 	exporter := validation.NewOverridesExporter(tenantLimits)
 	prometheus.MustRegister(exporter)
 
-	// the overrides exporter has no state and reads overrides for runtime configuration each time it
-	// is collected so there is no need to return any service
+	// The overrides-exporter has no state and reads overrides for runtime configuration each time it
+	// is collected so there is no need to return any service.
 	return nil, nil
 }
 
