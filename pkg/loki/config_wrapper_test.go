@@ -21,8 +21,8 @@ import (
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
-func Test_CommonConfig(t *testing.T) {
-	testContext := func(configFileString string, args []string) (ConfigWrapper, ConfigWrapper) {
+func Test_ApplyDynamicConfig(t *testing.T) {
+	testContextExposingErrs := func(configFileString string, args []string) (error, ConfigWrapper, ConfigWrapper) {
 		config := ConfigWrapper{}
 		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
@@ -42,11 +42,20 @@ func Test_CommonConfig(t *testing.T) {
 			args = append(args, configFileArgs...)
 		}
 		err = cfg.DynamicUnmarshal(&config, args, fs)
-		require.NoError(t, err)
+		if err != nil {
+			return err, ConfigWrapper{}, ConfigWrapper{}
+		}
 
 		defaults := ConfigWrapper{}
 		freshFlags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 		err = cfg.DefaultUnmarshal(&defaults, args, freshFlags)
+		require.NoError(t, err)
+
+		return nil, config, defaults
+	}
+
+	testContext := func(configFileString string, args []string) (ConfigWrapper, ConfigWrapper) {
+		err, config, defaults := testContextExposingErrs(configFileString, args)
 		require.NoError(t, err)
 
 		return config, defaults
@@ -185,7 +194,7 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 		})
 
-		t.Run("when multiple configs are provided, the last (alphabetically) is used as the ruler store type", func(t *testing.T) {
+		t.Run("when multiple configs are provided, an error is returned", func(t *testing.T) {
 			multipleConfig := `common:
   storage:
     s3:
@@ -199,14 +208,8 @@ memberlist:
       chunk_buffer_size: 27
       request_timeout: 5m`
 
-			config, _ := testContext(multipleConfig, nil)
-			assert.Equal(t, "s3", config.Ruler.StoreConfig.Type)
-
-			assert.Equal(t, "s3://foo-bucket", config.Ruler.StoreConfig.S3.Endpoint)
-			assert.Equal(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
-
-			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
-			assert.Equal(t, "foobar", config.StorageConfig.GCSConfig.BucketName)
+			err, _, _ := testContextExposingErrs(multipleConfig, nil)
+			assert.ErrorIs(t, err, ErrTooManyStorageConfigs)
 		})
 
 		t.Run("when common s3 storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -574,6 +577,81 @@ compactor:
 			config, _ := testContext(configString, nil)
 
 			assert.Equal(t, "gcs", config.CompactorConfig.SharedStoreType)
+		})
+	})
+
+	t.Run("when using boltdb storage type", func(t *testing.T) {
+		t.Run("default storage_config.boltdb.shared_store to the value of current_schema.object_store", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: s3
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+			config, _ := testContext(boltdbSchemaConfig, nil)
+
+			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+		})
+
+		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+			config, _ := testContext(boltdbSchemaConfig, nil)
+
+			assert.Equal(t, storage.StorageTypeGCS, config.CompactorConfig.SharedStoreType)
+		})
+
+		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  boltdb_shipper:
+    shared_store: s3
+
+compactor:
+  shared_store: s3`
+			config, _ := testContext(boltdbSchemaConfig, nil)
+
+			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+			assert.Equal(t, storage.StorageTypeS3, config.CompactorConfig.SharedStoreType)
+		})
+
+		t.Run("shared store types provided via command line take precedence", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+			config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+
+			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
+			assert.Equal(t, storage.StorageTypeS3, config.CompactorConfig.SharedStoreType)
 		})
 	})
 }
