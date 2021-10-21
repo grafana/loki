@@ -280,6 +280,7 @@ func (t *Loki) Run() error {
 	}
 
 	t.serviceMap = serviceMap
+
 	t.Server.HTTP.Handle("/services", http.HandlerFunc(t.servicesHandler))
 
 	// get all services, create service manager and tell it to start
@@ -408,6 +409,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
@@ -428,6 +430,7 @@ func (t *Loki) setupModuleManager() error {
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Overrides:                {RuntimeConfig},
+		OverridesExporter:        {RuntimeConfig},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs},
 		Store:                    {Overrides},

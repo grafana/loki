@@ -63,6 +63,7 @@ const (
 	Ring                     string = "ring"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
+	OverridesExporter        string = "overrides-exporter"
 	TenantConfigs            string = "tenant-configs"
 	Server                   string = "server"
 	Distributor              string = "distributor"
@@ -159,6 +160,23 @@ func (t *Loki) initOverrides() (_ services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, newtenantLimitsFromRuntimeConfig(t.runtimeConfig))
 	// overrides are not a service, since they don't have any operational state.
 	return nil, err
+}
+
+func (t *Loki) initOverridesExporter() (services.Service, error) {
+	tenantLimits := newtenantLimitsFromRuntimeConfig(t.runtimeConfig)
+	if t.Cfg.isModuleEnabled(OverridesExporter) && tenantLimits == nil {
+		// This target isn't enabled by default ("all") and requires per-tenant limits to
+		// work. Fail if it can't be setup correctly since the user explicitly wanted this
+		// target to run.
+		return nil, errors.New("overrides-exporter has been enabled, but no runtime configuration file was configured")
+	}
+
+	exporter := validation.NewOverridesExporter(tenantLimits)
+	prometheus.MustRegister(exporter)
+
+	// the overrides exporter has no state and reads overrides for runtime configuration each time it
+	// is collected so there is no need to return any service
+	return nil, nil
 }
 
 func (t *Loki) initTenantConfigs() (_ services.Service, err error) {

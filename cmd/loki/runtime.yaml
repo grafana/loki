@@ -1,0 +1,6 @@
+# file: runtime.yaml
+# In this example, we're overriding ingestion limits for a single tenant.
+overrides:
+  "user1":
+    ingestion_burst_size_mb: 350000
+    ingestion_rate_mb: 350000
