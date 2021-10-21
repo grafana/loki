@@ -21,6 +21,7 @@ import (
 
 type WorkerServiceConfig struct {
 	AllEnabled            bool
+	ReadEnabled           bool
 	GrpcListenPort        int
 	QuerierMaxConcurrent  int
 	QuerierWorkerConfig   *querier_worker.Config
@@ -144,12 +145,13 @@ func registerRoutesExternally(routes []string, externalRouter *mux.Router, inter
 }
 
 func querierRunningStandalone(cfg WorkerServiceConfig) bool {
-	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.AllEnabled
+	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.ReadEnabled && !cfg.AllEnabled
 	level.Debug(util_log.Logger).Log(
 		"msg", "determining if querier is running as standalone target",
 		"runningStandalone", runningStandalone,
 		"queryFrontendEnabled", cfg.QueryFrontendEnabled,
 		"queryScheduleEnabled", cfg.QuerySchedulerEnabled,
+		"readEnabled", cfg.ReadEnabled,
 		"allEnabled", cfg.AllEnabled,
 	)
 
