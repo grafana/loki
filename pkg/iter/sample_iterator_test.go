@@ -252,12 +252,12 @@ type alwaysErrorIterator struct {
 }
 
 func (alwaysErrorIterator) Close() error {
-	return errors.New("I always error!")
+	return errors.New("i always error")
 }
 
 func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
 	closeFn := func() error {
-		return errors.New("I'm broken")
+		return errors.New("i broke")
 	}
 	ei := alwaysErrorIterator{}
 	it := SampleIteratorWithClose(ei, closeFn)
@@ -265,8 +265,8 @@ func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
 	// Verify that a proper multi error is returned when both the iterator and the close function return errors
 	if me, ok := err.(util.MultiError); ok {
 		assert.True(t, len(me) == 2, "Expected 2 errors, one from the iterator and one from the close function")
-		assert.EqualError(t, me[0], "I always error!")
-		assert.EqualError(t, me[1], "I'm broken")
+		assert.EqualError(t, me[0], "i always error")
+		assert.EqualError(t, me[1], "i broke")
 	} else {
 		t.Error("Expected returned error to be of type util.MultiError")
 	}
