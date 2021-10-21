@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/templates"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -71,7 +71,7 @@ var (
 	defaultClientConfig = client.Config{
 		BatchWait: client.BatchWait,
 		BatchSize: client.BatchSize,
-		BackoffConfig: cortex_util.BackoffConfig{
+		BackoffConfig: backoff.Config{
 			MinBackoff: client.MinBackoff,
 			MaxBackoff: client.MaxBackoff,
 			MaxRetries: client.MaxRetries,
@@ -180,9 +180,6 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	// parse http & tls config
 	if tlsCAFile, ok := logCtx.Config[cfgTLSCAFileKey]; ok {
 		clientConfig.Client.TLSConfig.CAFile = tlsCAFile
-	}
-	if tlsCertFile, ok := logCtx.Config[cfgTLSCertFileKey]; ok {
-		clientConfig.Client.TLSConfig.CertFile = tlsCertFile
 	}
 	if tlsCertFile, ok := logCtx.Config[cfgTLSCertFileKey]; ok {
 		clientConfig.Client.TLSConfig.CertFile = tlsCertFile

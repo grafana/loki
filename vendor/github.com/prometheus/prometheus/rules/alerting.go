@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	yaml "gopkg.in/yaml.v2"
@@ -121,6 +121,8 @@ type AlertingRule struct {
 	annotations labels.Labels
 	// External labels from the global config.
 	externalLabels map[string]string
+	// The external URL from the --web.external-url flag.
+	externalURL string
 	// true if old state has been restored. We start persisting samples for ALERT_FOR_STATE
 	// only after the restoration.
 	restored bool
@@ -144,7 +146,7 @@ type AlertingRule struct {
 // NewAlertingRule constructs a new AlertingRule.
 func NewAlertingRule(
 	name string, vec parser.Expr, hold time.Duration,
-	labels, annotations, externalLabels labels.Labels,
+	labels, annotations, externalLabels labels.Labels, externalURL string,
 	restored bool, logger log.Logger,
 ) *AlertingRule {
 	el := make(map[string]string, len(externalLabels))
@@ -159,6 +161,7 @@ func NewAlertingRule(
 		labels:         labels,
 		annotations:    annotations,
 		externalLabels: el,
+		externalURL:    externalURL,
 		health:         HealthUnknown,
 		active:         map[uint64]*Alert{},
 		logger:         logger,
@@ -294,11 +297,9 @@ const resolvedRetention = 15 * time.Minute
 
 // Eval evaluates the rule expression and then creates pending alerts and fires
 // or removes previously pending alerts accordingly.
-func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, externalURL *url.URL) (promql.Vector, error) {
+func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, externalURL *url.URL, limit int) (promql.Vector, error) {
 	res, err := query(ctx, r.vector.String(), ts)
 	if err != nil {
-		r.SetHealth(HealthBad)
-		r.SetLastError(err)
 		return nil, err
 	}
 
@@ -318,12 +319,13 @@ func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, 
 			l[lbl.Name] = lbl.Value
 		}
 
-		tmplData := template.AlertTemplateData(l, r.externalLabels, smpl.V)
+		tmplData := template.AlertTemplateData(l, r.externalLabels, r.externalURL, smpl.V)
 		// Inject some convenience variables that are easier to remember for users
 		// who are not used to Go's templating system.
 		defs := []string{
 			"{{$labels := .Labels}}",
 			"{{$externalLabels := .ExternalLabels}}",
+			"{{$externalURL := .ExternalURL}}",
 			"{{$value := .Value}}",
 		}
 
@@ -336,6 +338,7 @@ func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, 
 				model.Time(timestamp.FromTime(ts)),
 				template.QueryFunc(query),
 				externalURL,
+				nil,
 			)
 			result, err := tmpl.Expand()
 			if err != nil {
@@ -362,12 +365,7 @@ func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, 
 		resultFPs[h] = struct{}{}
 
 		if _, ok := alerts[h]; ok {
-			err = fmt.Errorf("vector contains metrics with the same labelset after applying alert labels")
-			// We have already acquired the lock above hence using SetHealth and
-			// SetLastError will deadlock.
-			r.health = HealthBad
-			r.lastError = err
-			return nil, err
+			return nil, fmt.Errorf("vector contains metrics with the same labelset after applying alert labels")
 		}
 
 		alerts[h] = &Alert{
@@ -417,10 +415,12 @@ func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, 
 		}
 	}
 
-	// We have already acquired the lock above hence using SetHealth and
-	// SetLastError will deadlock.
-	r.health = HealthGood
-	r.lastError = err
+	numActive := len(r.active)
+	if limit != 0 && numActive > limit {
+		r.active = map[uint64]*Alert{}
+		return nil, errors.Errorf("exceeded limit of %d with %d alerts", limit, numActive)
+	}
+
 	return vec, nil
 }
 

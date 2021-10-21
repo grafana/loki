@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/limiter"
+	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,10 +34,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -73,7 +73,8 @@ type Distributor struct {
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances
-	distributorsRing *ring.Lifecycler
+	distributorsLifeCycler *ring.Lifecycler
+	distributorsRing       *ring.Ring
 
 	// For handling HA replicas.
 	HATracker *haTracker
@@ -93,8 +94,10 @@ type Distributor struct {
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
 	receivedSamples                  *prometheus.CounterVec
+	receivedExemplars                *prometheus.CounterVec
 	receivedMetadata                 *prometheus.CounterVec
 	incomingSamples                  *prometheus.CounterVec
+	incomingExemplars                *prometheus.CounterVec
 	incomingMetadata                 *prometheus.CounterVec
 	nonHASamples                     *prometheus.CounterVec
 	dedupedSamples                   *prometheus.CounterVec
@@ -202,44 +205,55 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	// it's an internal dependency and can't join the distributors ring, we skip rate
 	// limiting.
 	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var distributorsRing *ring.Lifecycler
+	var distributorsLifeCycler *ring.Lifecycler
+	var distributorsRing *ring.Ring
 
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true, reg)
+		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true, reg)
 		if err != nil {
 			return nil, err
 		}
 
-		subservices = append(subservices, distributorsRing)
+		distributorsRing, err = ring.New(cfg.DistributorRing.ToRingConfig(), "distributor", ring.DistributorRingKey, reg)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to initialize distributors' ring client")
+		}
+		subservices = append(subservices, distributorsLifeCycler, distributorsRing)
 
-		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsLifeCycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
 	}
 
 	d := &Distributor{
-		cfg:                  cfg,
-		log:                  log,
-		ingestersRing:        ingestersRing,
-		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
-		distributorsRing:     distributorsRing,
-		limits:               limits,
-		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		HATracker:            haTracker,
-		ingestionRate:        util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                    cfg,
+		log:                    log,
+		ingestersRing:          ingestersRing,
+		ingesterPool:           NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
+		distributorsLifeCycler: distributorsLifeCycler,
+		distributorsRing:       distributorsRing,
+		limits:                 limits,
+		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		HATracker:              haTracker,
+		ingestionRate:          util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "distributor_query_duration_seconds",
-			Help:      "Time spent executing expression queries.",
+			Help:      "Time spent executing expression and exemplar queries.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
 		}, []string{"method", "status_code"})),
 		receivedSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_received_samples_total",
 			Help:      "The total number of received samples, excluding rejected and deduped samples.",
+		}, []string{"user"}),
+		receivedExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_received_exemplars_total",
+			Help:      "The total number of received exemplars, excluding rejected and deduped exemplars.",
 		}, []string{"user"}),
 		receivedMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -250,6 +264,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Namespace: "cortex",
 			Name:      "distributor_samples_in_total",
 			Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
+		}, []string{"user"}),
+		incomingExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_exemplars_in_total",
+			Help:      "The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.",
 		}, []string{"user"}),
 		incomingMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -281,7 +300,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Namespace: "cortex",
 			Name:      "distributor_ingester_append_failures_total",
 			Help:      "The total number of failed batch appends sent to ingesters.",
-		}, []string{"ingester", "type"}),
+		}, []string{"ingester", "type", "status"}),
 		ingesterQueries: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_ingester_queries_total",
@@ -375,8 +394,10 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 	d.HATracker.cleanupHATrackerMetricsForUser(userID)
 
 	d.receivedSamples.DeleteLabelValues(userID)
+	d.receivedExemplars.DeleteLabelValues(userID)
 	d.receivedMetadata.DeleteLabelValues(userID)
 	d.incomingSamples.DeleteLabelValues(userID)
+	d.incomingExemplars.DeleteLabelValues(userID)
 	d.incomingMetadata.DeleteLabelValues(userID)
 	d.nonHASamples.DeleteLabelValues(userID)
 	d.latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
@@ -483,18 +504,39 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		return emptyPreallocSeries, err
 	}
 
-	samples := make([]cortexpb.Sample, 0, len(ts.Samples))
-	for _, s := range ts.Samples {
-		if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
-			return emptyPreallocSeries, err
+	var samples []cortexpb.Sample
+	if len(ts.Samples) > 0 {
+		// Only alloc when data present
+		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
+		for _, s := range ts.Samples {
+			if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
+				return emptyPreallocSeries, err
+			}
+			samples = append(samples, s)
 		}
-		samples = append(samples, s)
+	}
+
+	var exemplars []cortexpb.Exemplar
+	if len(ts.Exemplars) > 0 {
+		// Only alloc when data present
+		exemplars = make([]cortexpb.Exemplar, 0, len(ts.Exemplars))
+		for _, e := range ts.Exemplars {
+			if err := validation.ValidateExemplar(userID, ts.Labels, e); err != nil {
+				// An exemplar validation error prevents ingesting samples
+				// in the same series object. However because the current Prometheus
+				// remote write implementation only populates one or the other,
+				// there never will be any.
+				return emptyPreallocSeries, err
+			}
+			exemplars = append(exemplars, e)
+		}
 	}
 
 	return cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
-				Labels:  ts.Labels,
-				Samples: samples,
+				Labels:    ts.Labels,
+				Samples:   samples,
+				Exemplars: exemplars,
 			},
 		},
 		nil
@@ -530,11 +572,14 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	removeReplica := false
 
 	numSamples := 0
+	numExemplars := 0
 	for _, ts := range req.Timeseries {
 		numSamples += len(ts.Samples)
+		numExemplars += len(ts.Exemplars)
 	}
 	// Count the total samples in, prior to validation or deduplication, for comparison with other metrics.
 	d.incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
+	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
@@ -546,6 +591,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	metadataKeys := make([]uint32, 0, len(req.Metadata))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
+	validatedExemplars := 0
 
 	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
@@ -642,6 +688,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		seriesKeys = append(seriesKeys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)
+		validatedExemplars += len(ts.Exemplars)
 	}
 
 	for _, m := range req.Metadata {
@@ -660,6 +707,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	d.receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
+	d.receivedExemplars.WithLabelValues(userID).Add((float64(validatedExemplars)))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
 	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
@@ -669,15 +717,17 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return &cortexpb.WriteResponse{}, firstPartialErr
 	}
 
-	totalN := validatedSamples + len(validatedMetadata)
+	totalN := validatedSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)
 
-		// Return a 4xx here to have the client discard the data and not retry. If a client
-		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
+		validation.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
+		// Return a 429 here to tell the client it is going too fast.
+		// Client may discard the data or slow down and re-send.
+		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}
 
@@ -769,17 +819,27 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	if len(metadata) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata, getErrorStatus(err)).Inc()
 		}
 	}
 	if len(timeseries) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples).Inc()
+			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples, getErrorStatus(err)).Inc()
 		}
 	}
 
 	return err
+}
+
+func getErrorStatus(err error) string {
+	status := "5xx"
+	httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+	if ok && httpResp.Code/100 == 4 {
+		status = "4xx"
+	}
+
+	return status
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.
@@ -1028,4 +1088,24 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	}
 
 	return response, nil
+}
+
+func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if d.distributorsRing != nil {
+		d.distributorsRing.ServeHTTP(w, req)
+	} else {
+		var ringNotEnabledPage = `
+			<!DOCTYPE html>
+			<html>
+				<head>
+					<meta charset="UTF-8">
+					<title>Cortex Distributor Status</title>
+				</head>
+				<body>
+					<h1>Cortex Distributor Status</h1>
+					<p>Distributor is not running with global limits enabled</p>
+				</body>
+			</html>`
+		util.WriteHTMLResponse(w, ringNotEnabledPage)
+	}
 }

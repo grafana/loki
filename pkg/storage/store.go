@@ -7,22 +7,22 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_local "github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -83,6 +83,7 @@ type ChunkStoreConfig struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreConfig.RegisterFlags(f)
+	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "This flag is deprecated. Use -querier.max-query-lookback instead.")
 }
 
 func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
@@ -137,7 +138,7 @@ func NewStore(cfg Config, schemaCfg SchemaConfig, chunkStore chunk.Store, regist
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 	if name == shipper.BoltDBShipperType {
 		name = "boltdb"
-		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
+		cfg.FSConfig = chunk_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
 	}
 	return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
 }
@@ -157,11 +158,22 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 		return nil, 0, 0, err
 	}
 	matchers = append(matchers, nameLabelMatcher)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	matchers, err = injectShardLabel(req.GetShards(), matchers)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	from, through := util.RoundToMilliseconds(req.GetStart(), req.GetEnd())
+	return matchers, from, through, nil
+}
 
-	if shards := req.GetShards(); shards != nil {
+func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Matcher, error) {
+	if shards != nil {
 		parsed, err := logql.ParseShards(shards)
 		if err != nil {
-			return nil, 0, 0, err
+			return nil, err
 		}
 		for _, s := range parsed {
 			shardMatcher, err := labels.NewMatcher(
@@ -170,19 +182,13 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 				s.String(),
 			)
 			if err != nil {
-				return nil, 0, 0, err
+				return nil, err
 			}
 			matchers = append(matchers, shardMatcher)
-
-			// TODO(owen-d): passing more than one shard will require
-			// a refactor to cortex to support it. We're leaving this codepath in
-			// preparation of that but will not pass more than one until it's supported.
 			break // nolint:staticcheck
 		}
 	}
-
-	from, through := util.RoundToMilliseconds(req.GetStart(), req.GetEnd())
-	return matchers, from, through, nil
+	return matchers, nil
 }
 
 func (s *store) SetChunkFilterer(chunkFilterer RequestChunkFilterer) {
@@ -191,7 +197,7 @@ func (s *store) SetChunkFilterer(chunkFilterer RequestChunkFilterer) {
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
 func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +244,10 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 			return nil, err
 		}
 		matchers = []*labels.Matcher{nameLabelMatcher}
+		matchers, err = injectShardLabel(req.GetShards(), matchers)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		var err error
 		matchers, from, through, err = decodeReq(req)
@@ -403,6 +413,16 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 	storage.RegisterIndexStore(shipper.BoltDBShipperType, func() (chunk.IndexClient, error) {
 		if boltDBIndexClientWithShipper != nil {
 			return boltDBIndexClientWithShipper, nil
+		}
+
+		if cfg.BoltDBShipperConfig.Mode == shipper.ModeReadOnly && cfg.BoltDBShipperConfig.IndexGatewayClientConfig.Address != "" {
+			gateway, err := shipper.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer)
+			if err != nil {
+				return nil, err
+			}
+
+			boltDBIndexClientWithShipper = gateway
+			return gateway, nil
 		}
 
 		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)

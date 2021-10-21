@@ -199,6 +199,13 @@ func Test_ParserHints(t *testing.T) {
 			`{cluster_extracted="us-east-west"}`,
 		},
 		{
+			`sum by (cluster_extracted)(count_over_time({app="nginx"} | unpack[1m]))`,
+			packedLine,
+			true,
+			1.0,
+			`{cluster_extracted="us-east-west"}`,
+		},
+		{
 			`sum(rate({app="nginx"} | unpack | nonexistant_field="foo" [1m]))`,
 			packedLine,
 			false,

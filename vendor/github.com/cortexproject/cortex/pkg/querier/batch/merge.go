@@ -31,8 +31,8 @@ func newMergeIterator(cs []GenericChunk) *mergeIterator {
 	c := &mergeIterator{
 		its:        its,
 		h:          make(iteratorHeap, 0, len(its)),
-		batches:    make(batchStream, 0, len(its)*2*promchunk.BatchSize),
-		batchesBuf: make(batchStream, len(its)*2*promchunk.BatchSize),
+		batches:    make(batchStream, 0, len(its)),
+		batchesBuf: make(batchStream, len(its)),
 	}
 
 	for _, iter := range c.its {
@@ -112,8 +112,7 @@ func (c *mergeIterator) buildNextBatch(size int) bool {
 	for len(c.h) > 0 && (len(c.batches) == 0 || c.nextBatchEndTime() >= c.h[0].AtTime()) {
 		c.nextBatchBuf[0] = c.h[0].Batch()
 		c.batchesBuf = mergeStreams(c.batches, c.nextBatchBuf[:], c.batchesBuf, size)
-		copy(c.batches[:len(c.batchesBuf)], c.batchesBuf)
-		c.batches = c.batches[:len(c.batchesBuf)]
+		c.batches = append(c.batches[:0], c.batchesBuf...)
 
 		if c.h[0].Next(size) {
 			heap.Fix(&c.h, 0)

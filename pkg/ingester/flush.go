@@ -9,18 +9,20 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
+
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	loki_util "github.com/grafana/loki/pkg/util"
 )
 
@@ -134,7 +136,6 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 
 	i.flushQueuesDone.Wait()
 	level.Debug(util_log.Logger).Log("msg", "flush queues have drained")
-
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
@@ -326,16 +327,12 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 	i.replayController.Sub(int64(subtracted))
 
 	if mayRemoveStream && len(stream.chunks) == 0 {
-		delete(instance.streamsByFP, stream.fp)
-		delete(instance.streams, stream.labelsString)
-		instance.index.Delete(stream.labels, stream.fp)
-		instance.streamsRemovedTotal.Inc()
-		memoryStreams.WithLabelValues(instance.instanceID).Dec()
+		instance.removeStream(stream)
 	}
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}

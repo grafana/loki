@@ -107,6 +107,7 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 type RuleGroup struct {
 	Name     string         `yaml:"name"`
 	Interval model.Duration `yaml:"interval,omitempty"`
+	Limit    int            `yaml:"limit,omitempty"`
 	Rules    []RuleNode     `yaml:"rules"`
 }
 
@@ -223,10 +224,11 @@ func testTemplateParsing(rl *RuleNode) (errs []error) {
 	}
 
 	// Trying to parse templates.
-	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, 0)
+	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", 0)
 	defs := []string{
 		"{{$labels := .Labels}}",
 		"{{$externalLabels := .ExternalLabels}}",
+		"{{$externalURL := .ExternalURL}}",
 		"{{$value := .Value}}",
 	}
 	parseTest := func(text string) error {
@@ -236,6 +238,7 @@ func testTemplateParsing(rl *RuleNode) (errs []error) {
 			"__alert_"+rl.Alert.Value,
 			tmplData,
 			model.Time(timestamp.FromTime(time.Now())),
+			nil,
 			nil,
 			nil,
 		)

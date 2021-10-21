@@ -12,21 +12,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/clients/pkg/logentry/metric"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
-
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 )
 
 const (
@@ -125,7 +123,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 func mustRegisterOrGet(reg prometheus.Registerer, c prometheus.Collector) prometheus.Collector {
 	if err := reg.Register(c); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			return are.ExistingCollector.(prometheus.Collector)
+			return are.ExistingCollector
 		}
 		panic(err)
 	}
@@ -301,7 +299,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	bufBytes := float64(len(buf))
 	c.metrics.encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 
-	backoff := util.NewBackoff(c.ctx, c.cfg.BackoffConfig)
+	backoff := backoff.New(c.ctx, c.cfg.BackoffConfig)
 	var status int
 	for {
 		start := time.Now()

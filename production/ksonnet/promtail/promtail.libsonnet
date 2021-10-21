@@ -5,14 +5,20 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 // backwards compatibility with ksonnet
 local envVar = if std.objectHasAll(k.core.v1, 'envVar') then k.core.v1.envVar else k.core.v1.container.envType;
 
-k + config + scrape_config {
+config + scrape_config {
   namespace:
-    $.core.v1.namespace.new($._config.namespace),
+    k.core.v1.namespace.new($._config.namespace),
 
-  local policyRule = $.rbac.v1beta1.policyRule,
+  // The RBAC functions in kausal.libsonnet require namespace to be set
+  local namespaced_k = k {
+    _config+:: { namespace: $._config.namespace },
+  },
+
+  local policyRule = k.rbac.v1beta1.policyRule,
+
 
   promtail_rbac:
-    $.util.rbac($._config.promtail_cluster_role_name, [
+    namespaced_k.util.rbac($._config.promtail_cluster_role_name, [
       policyRule.new() +
       policyRule.withApiGroups(['']) +
       policyRule.withResources(['nodes', 'nodes/proxy', 'services', 'endpoints', 'pods']) +
@@ -33,24 +39,24 @@ k + config + scrape_config {
     clients: std.map(client_config, $._config.promtail_config.clients),
   },
 
-  local configMap = $.core.v1.configMap,
+  local configMap = k.core.v1.configMap,
 
   promtail_config_map:
     configMap.new($._config.promtail_configmap_name) +
     configMap.withData({
-      'promtail.yml': $.util.manifestYaml($.promtail_config),
+      'promtail.yml': k.util.manifestYaml($.promtail_config),
     }),
 
   promtail_args:: {
     'config.file': '/etc/promtail/promtail.yml',
   },
 
-  local container = $.core.v1.container,
+  local container = k.core.v1.container,
 
   promtail_container::
     container.new('promtail', $._images.promtail) +
-    container.withPorts($.core.v1.containerPort.new(name='http-metrics', port=80)) +
-    container.withArgsMixin($.util.mapToFlags($.promtail_args)) +
+    container.withPorts(k.core.v1.containerPort.new(name='http-metrics', port=80)) +
+    container.withArgsMixin(k.util.mapToFlags($.promtail_args)) +
     container.withEnv([
       envVar.fromFieldPath('HOSTNAME', 'spec.nodeName'),
     ]) +
@@ -61,12 +67,12 @@ k + config + scrape_config {
     container.mixin.securityContext.withPrivileged(true) +
     container.mixin.securityContext.withRunAsUser(0),
 
-  local daemonSet = $.apps.v1.daemonSet,
+  local daemonSet = k.apps.v1.daemonSet,
 
   promtail_daemonset:
     daemonSet.new($._config.promtail_pod_name, [$.promtail_container]) +
     daemonSet.mixin.spec.template.spec.withServiceAccount($._config.promtail_cluster_role_name) +
-    $.util.configMapVolumeMount($.promtail_config_map, '/etc/promtail') +
-    $.util.hostVolumeMount('varlog', '/var/log', '/var/log') +
-    $.util.hostVolumeMount('varlibdockercontainers', $._config.promtail_config.container_root_path + '/containers', $._config.promtail_config.container_root_path + '/containers', readOnly=true),
+    k.util.configMapVolumeMount($.promtail_config_map, '/etc/promtail') +
+    k.util.hostVolumeMount('varlog', '/var/log', '/var/log') +
+    k.util.hostVolumeMount('varlibdockercontainers', $._config.promtail_config.container_root_path + '/containers', $._config.promtail_config.container_root_path + '/containers', readOnly=true),
 }

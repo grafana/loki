@@ -1,3 +1,4 @@
+//go:build linux && cgo
 // +build linux,cgo
 
 package journal
@@ -7,11 +8,12 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-systemd/sdjournal"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -45,8 +47,10 @@ type journalReader interface {
 }
 
 // Abstracted functions for interacting with the journal, used for mocking in tests:
-type journalReaderFunc func(sdjournal.JournalReaderConfig) (journalReader, error)
-type journalEntryFunc func(cfg sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error)
+type (
+	journalReaderFunc func(sdjournal.JournalReaderConfig) (journalReader, error)
+	journalEntryFunc  func(cfg sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error)
+)
 
 // Default implementations of abstracted functions:
 var defaultJournalReaderFunc = func(c sdjournal.JournalReaderConfig) (journalReader, error) {
@@ -84,7 +88,7 @@ var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor strin
 }
 
 // JournalTarget tails systemd journal entries.
-// nolint(golint)
+// nolint
 type JournalTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
@@ -180,11 +184,16 @@ func journalTargetWithReader(
 		for {
 			err := t.r.Follow(until, ioutil.Discard)
 			if err != nil {
-				if err == sdjournal.ErrExpired || err == io.EOF {
+				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
+
+				if err == sdjournal.ErrExpired || err == syscall.EBADMSG || err == io.EOF {
+					level.Error(t.logger).Log("msg", "unable to follow journal", "err", err.Error())
 					return
 				}
-				level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
 			}
+
+			// prevent tight loop
+			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 

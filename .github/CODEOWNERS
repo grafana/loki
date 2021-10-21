@@ -10,7 +10,8 @@
 
 # In each subsection folders are ordered first by depth, then alphabetically.
 # This should make it easy to add new rules without breaking existing ones.
+* @grafana/loki-team
 
 # Documentation owner: Grafana Docs Squad
 # Grafana Docs Squad does not own the content, but assists with editing and updates.
-/docs/ @grafana/docs-squad
+/docs/ @grafana/docs-squad @KMiller-Grafana

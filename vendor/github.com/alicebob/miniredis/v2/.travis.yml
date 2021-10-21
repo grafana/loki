@@ -1,0 +1,16 @@
+language: go
+arch:
+  - ppc64le
+  - amd64
+os: linux
+
+before_script:
+  - (cd ./integration && ./get_redis.sh)
+
+install: go get -t
+
+script: make test testrace int
+
+go:
+  - "1.14"
+  - "1.15"

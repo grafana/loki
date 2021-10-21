@@ -2,13 +2,14 @@ package stages
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"regexp"
 	"text/template"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -159,6 +160,9 @@ func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]inter
 				extracted[name] = v
 			}
 		}
+	}
+	if Debug {
+		level.Debug(r.logger).Log("msg", "extracted data debug in replace stage", "extracted data", fmt.Sprintf("%v", extracted))
 	}
 }
 

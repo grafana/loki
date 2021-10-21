@@ -6,7 +6,7 @@ title: Write Ahead Log
 
 Ingesters temporarily store data in memory. In the event of a crash, there could be data loss. The WAL helps fill this gap in reliability.
 
-The WAL in Loki records incoming data and stores it on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash. Upon restart, Loki will "replay" all of the data in the log before registering itself as ready for subsequent writes. This allows Loki to maintain the performance & cost benefits of buffering data in memory _and_ durability benefits (it won't lose data once a write has been acknowledged).
+The WAL in Grafana Loki records incoming data and stores it on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash. Upon restart, Loki will "replay" all of the data in the log before registering itself as ready for subsequent writes. This allows Loki to maintain the performance & cost benefits of buffering data in memory _and_ durability benefits (it won't lose data once a write has been acknowledged).
 
 This section will use Kubernetes as a reference deployment paradigm in the examples.
 
@@ -41,8 +41,6 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
     * `--ingester.wal-enabled` to `true` which enables writing to WAL during ingestion.
     * `--ingester.wal-dir` to the directory where the WAL data should be stored and/or recovered from. Note that this should be on the mounted volume.
     * `--ingester.checkpoint-duration` to the interval at which checkpoints should be created.
-    * `--ingester.recover-from-wal` to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
-        * If you are going to enable WAL, it is advisable to always set this to `true`.
     * `--ingester.wal-replay-memory-ceiling` (default 4GB) may be set higher/lower depending on your resource settings. It handles memory pressure during WAL replays, allowing a WAL many times larger than available memory to be replayed. This is provided to minimize reconciliation time after very bad situations, i.e. an outage, and will likely not impact regular operations/rollouts _at all_. We suggest setting this to a high percentage (~75%) of available memory.
 
 ## Changes in lifecycle when WAL is enabled

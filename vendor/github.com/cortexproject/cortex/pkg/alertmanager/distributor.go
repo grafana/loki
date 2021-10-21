@@ -10,8 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,7 +25,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Distributor forwards requests to individual alertmanagers.
@@ -94,13 +94,23 @@ func (d *Distributor) isQuorumReadPath(p string) (bool, merger.Merger) {
 	if strings.HasSuffix(p, "/v2/alerts/groups") {
 		return true, merger.V2AlertGroups{}
 	}
+	if strings.HasSuffix(p, "/v1/silences") {
+		return true, merger.V1Silences{}
+	}
+	if strings.HasSuffix(path.Dir(p), "/v1/silence") {
+		return true, merger.V1SilenceID{}
+	}
+	if strings.HasSuffix(p, "/v2/silences") {
+		return true, merger.V2Silences{}
+	}
+	if strings.HasSuffix(path.Dir(p), "/v2/silence") {
+		return true, merger.V2SilenceID{}
+	}
 	return false, nil
 }
 
 func (d *Distributor) isUnaryReadPath(p string) bool {
-	return strings.HasSuffix(p, "/silences") ||
-		strings.HasSuffix(path.Dir(p), "/silence") ||
-		strings.HasSuffix(p, "/status") ||
+	return strings.HasSuffix(p, "/status") ||
 		strings.HasSuffix(p, "/receivers")
 }
 

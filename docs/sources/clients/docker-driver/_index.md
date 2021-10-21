@@ -1,9 +1,10 @@
 ---
 title: Docker driver
+weight: 40
 ---
 # Docker Driver Client
 
-Loki officially supports a Docker plugin that will read logs from Docker
+Grafana Loki officially supports a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 
@@ -57,3 +58,38 @@ To cleanly uninstall the plugin, disable and remove it:
 docker plugin disable loki --force
 docker plugin rm loki
 ```
+
+# Know Issues
+
+The driver keeps all logs in memory and will drop log entries if Loki is not reachable and if the quantity of `max_retries` has been exceeded. To avoid the dropping of log entries, setting `max_retries` to zero allows unlimited retries; the drive will continue trying forever until Loki is again reachable. Trying forever may have undesired consequences, because the Docker daemon will wait for the Loki driver to process all logs of a container, until the container is removed. Thus, the Docker daemon might wait forever if the container is stuck.
+
+This issue is avoided by using  [Promtail](../promtail) with this configuration:
+
+```yaml
+server:
+  disable: true
+
+positions:
+  filename: loki-positions.yml
+
+clients:
+  - url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+    # If using basic auth, configures the username and password sent.
+    basic_auth:
+      # The username to use for basic auth
+      username: <string>
+      # The password to use for basic auth
+      password: <string>
+
+scrape_configs:
+  - job_name: system 
+    pipeline_stages:
+      - docker: {}
+    static_configs:
+      - labels:
+          job: docker
+          __path__: /var/lib/docker/containers/*/*-json.log
+
+```
+
+This will enable Promtail to tail *all* Docker container logs and publish them to Loki.

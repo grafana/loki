@@ -137,7 +137,7 @@ However it would _not_ drop this log line:
 
 In this example the current time is 2020-08-12T12:00:00Z and `older_than` is 24h. All log lines which have a timestamp older than 2020-08-11T12:00:00Z will be dropped.
 
-All lines dropped by this drop stage would also increment the `logentry_drop_lines_total` metric with a label `reason="line_too_old"`
+All lines dropped by this drop stage would also increment the `logentry_dropped_lines_total` metric with a label `reason="line_too_old"`
 
 #### Dropping long log lines
 
@@ -151,7 +151,7 @@ Given the pipeline:
 
 Would drop any log line longer than 8kb bytes, this is useful when Loki would reject a line for being too long.
 
-All lines dropped by this drop stage would also increment the `logentry_drop_lines_total` metric with a label `reason="line_too_long"`
+All lines dropped by this drop stage would also increment the `logentry_dropped_lines_total` metric with a label `reason="line_too_long"`
 
 ### Complex drops
 

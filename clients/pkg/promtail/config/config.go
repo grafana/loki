@@ -2,6 +2,9 @@ package config
 
 import (
 	"flag"
+	"fmt"
+
+	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
@@ -33,4 +36,12 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c Config) String() string {
+	b, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Sprintf("<error creating config string: %s>", err)
+	}
+	return string(b)
 }

@@ -1,9 +1,10 @@
 package retention
 
 import (
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type userSeries struct {
@@ -43,20 +44,42 @@ func (us *userSeries) Reset(seriesID []byte, userID []byte) {
 	us.seriesIDLen = len(seriesID)
 }
 
-type userSeriesMap map[string]userSeries
+type userSeriesInfo struct {
+	userSeries
+	isDeleted bool
+	lbls      labels.Labels
+}
+
+type userSeriesMap map[string]userSeriesInfo
 
 func newUserSeriesMap() userSeriesMap {
 	return make(userSeriesMap)
 }
 
-func (u userSeriesMap) Add(seriesID []byte, userID []byte) {
+func (u userSeriesMap) Add(seriesID []byte, userID []byte, lbls labels.Labels) {
 	us := newUserSeries(seriesID, userID)
-	u[us.Key()] = us
+	if _, ok := u[us.Key()]; ok {
+		return
+	}
+
+	u[us.Key()] = userSeriesInfo{
+		userSeries: us,
+		isDeleted:  true,
+		lbls:       lbls,
+	}
 }
 
-func (u userSeriesMap) ForEach(callback func(seriesID []byte, userID []byte) error) error {
+// MarkSeriesNotDeleted is used to mark series not deleted when it still has some chunks left in the store
+func (u userSeriesMap) MarkSeriesNotDeleted(seriesID []byte, userID []byte) {
+	us := newUserSeries(seriesID, userID)
+	usi := u[us.Key()]
+	usi.isDeleted = false
+	u[us.Key()] = usi
+}
+
+func (u userSeriesMap) ForEach(callback func(info userSeriesInfo) error) error {
 	for _, v := range u {
-		if err := callback(v.SeriesID(), v.UserID()); err != nil {
+		if err := callback(v); err != nil {
 			return err
 		}
 	}

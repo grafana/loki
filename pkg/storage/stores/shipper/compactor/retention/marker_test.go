@@ -160,3 +160,21 @@ func Test_markerProcessor_availablePath(t *testing.T) {
 		})
 	}
 }
+
+func Test_MarkFileRotation(t *testing.T) {
+	dir := t.TempDir()
+	p, err := newMarkerStorageReader(dir, 150, 0, sweepMetrics)
+	require.NoError(t, err)
+	w, err := NewMarkerStorageWriter(dir)
+	require.NoError(t, err)
+	totalMarks := int64(2 * int(maxMarkPerFile))
+	for i := int64(0); i < totalMarks; i++ {
+		require.NoError(t, w.Put([]byte(fmt.Sprintf("%d", i))))
+	}
+	require.NoError(t, w.Close())
+	paths, _, err := p.availablePath()
+	require.NoError(t, err)
+
+	require.Len(t, paths, 2)
+	require.Equal(t, totalMarks, w.Count())
+}

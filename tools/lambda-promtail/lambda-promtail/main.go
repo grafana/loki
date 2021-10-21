@@ -28,24 +28,34 @@ const (
 	maxErrMsgLen = 1024
 )
 
-var promtailAddress *url.URL
+var writeAddress *url.URL
+var username, password string
 
 func init() {
-	addr := os.Getenv("PROMTAIL_ADDRESS")
+	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
-		panic(errors.New("required environmental variable PROMTAIL_ADDRESS not present"))
+		panic(errors.New("required environmental variable WRITE_ADDRESS not present"))
 	}
 	var err error
-	promtailAddress, err = url.Parse(addr)
+	writeAddress, err = url.Parse(addr)
 	if err != nil {
 		panic(err)
+	}
+	fmt.Println("write address: ", writeAddress.String())
+
+	username = os.Getenv("USERNAME")
+	password = os.Getenv("PASSWORD")
+
+	// If either username or password is set then both must be.
+	if (username != "" && password == "") || (username == "" && password != "") {
+		panic("both username and password must be set if either one is set")
 	}
 }
 
 func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
-
 	data, err := ev.AWSLogs.Parse()
 	if err != nil {
+		fmt.Println("error parsing log event: ", err)
 		return err
 	}
 
@@ -75,14 +85,22 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 
 	// Push to promtail
 	buf = snappy.Encode(nil, buf)
-	req, err := http.NewRequest("POST", promtailAddress.String(), bytes.NewReader(buf))
+	req, err := http.NewRequest("POST", writeAddress.String(), bytes.NewReader(buf))
 	if err != nil {
+		fmt.Println("error: ", err)
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)
 
+	// If either is not empty both should be (see initS), but just to be safe.
+	if username != "" && password != "" {
+		fmt.Println("adding basic auth to request")
+		req.SetBasicAuth(username, password)
+	}
+
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
+		fmt.Println("error: ", err)
 		return err
 	}
 
@@ -93,8 +111,8 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 			line = scanner.Text()
 		}
 		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
+		fmt.Println("error:", err)
 	}
-
 	return err
 }
 

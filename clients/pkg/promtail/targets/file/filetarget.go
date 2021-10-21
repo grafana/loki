@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
@@ -44,7 +44,7 @@ func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 }
 
 // FileTarget describes a particular set of logs.
-// nolint:golint
+// nolint:revive
 type FileTarget struct {
 	metrics *Metrics
 	logger  log.Logger

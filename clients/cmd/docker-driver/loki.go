@@ -2,10 +2,11 @@ package main
 
 import (
 	"bytes"
+	"sync"
 
 	"github.com/docker/docker/daemon/logger"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -24,6 +25,9 @@ type loki struct {
 	labels  model.LabelSet
 	logger  log.Logger
 
+	closed bool
+	mutex  sync.RWMutex
+
 	stop func()
 }
 
@@ -39,7 +43,7 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 		return nil, err
 	}
 	var handler api.EntryHandler = c
-	var stop func() = func() {}
+	var stop = func() {}
 	if len(cfg.pipeline.PipelineStages) != 0 {
 		pipeline, err := stages.NewPipeline(logger, cfg.pipeline.PipelineStages, &jobName, prometheus.DefaultRegisterer)
 		if err != nil {
@@ -59,8 +63,14 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 
 // Log implements `logger.Logger`
 func (l *loki) Log(m *logger.Message) error {
+	l.mutex.RLock()
+	defer l.mutex.RUnlock()
+
+	if l.closed {
+		return errors.New("client closed")
+	}
+
 	if len(bytes.Fields(m.Line)) == 0 {
-		level.Debug(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
 	lbs := l.labels.Clone()
@@ -84,7 +94,10 @@ func (l *loki) Name() string {
 
 // Log implements `logger.Logger`
 func (l *loki) Close() error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
 	l.stop()
 	l.client.StopNow()
+	l.closed = true
 	return nil
 }

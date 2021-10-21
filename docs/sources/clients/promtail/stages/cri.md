@@ -44,6 +44,6 @@ Given the following log line:
 
 The following key-value pairs would be created in the set of extracted data:
 
-- `output`: `message`
+- `content`: `message`
 - `stream`: `stdout`
 - `timestamp`: `2019-04-30T02:12:41.8443515`

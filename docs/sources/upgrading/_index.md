@@ -3,9 +3,9 @@ title: Upgrading
 weight: 250
 ---
 
-# Upgrading Loki
+# Upgrading Grafana Loki
 
-Every attempt is made to keep Loki backwards compatible, such that upgrades should be low risk and low friction.
+Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 
 Unfortunately Loki is software and software is hard and sometimes we are forced to make decisions between ease of use and ease of maintenance.
 
@@ -17,7 +17,144 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ## Master / Unreleased
 
+### Loki
+
+#### Distributor now stores ring in memory by default instead of Consul
+
+PR [4440](https://github.com/grafana/loki/pull/4440) **DylanGuedes**: Config: Override distributor's default ring KV store
+
+This change sets `inmemory` as the new default storage for the Distributor ring (previously `consul`).
+The motivation is making the Distributor easier to run with default configs, by not requiring Consul anymore.
+In any case, if you prefer to use Consul as the ring storage, you can set it by using the following config:
+
+```yaml
+distributor:
+  ring:
+    kvstore:
+      store: consul
+```
+
+#### Memberlist config now automatically applies to all non-configured rings
+PR [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
+
+This change affects the behavior of the ingester, distributor, and ruler rings. Previously, if you wanted to use memberlist for all of these rings, you
+had to provide a `memberlist` configuration as well as specify `store: memberlist` for the `kvstore` of each of the rings you wanted to use memberlist.
+For example, your configuration might look something like this:
+
+```yaml
+memberlist:
+  join_members:
+    - loki.namespace.svc.cluster.local
+distributor:
+  ring:
+    kvstore:
+      store: memberlist
+ingester:
+    lifecycler:
+      ring:
+        kvstore:
+          store: memberlist
+ruler:
+  ring:
+    kvstore:
+      store: memberlist
+```
+
+Now, if your provide a `memberlist` configuration with at least one `join_members`, loki will default all rings to use a `kvstore` of type `memberlist`.
+You can change this behavior by overriding specific configurations. For example, if you wanted to use `consul` for you `ruler` rings, but `memberlist`
+for the `ingester` and `distributor`, you could do so with the following config:
+
+```yaml
+memberlist:
+  join_members:
+    - loki.namespace.svc.cluster.local
+ruler:
+  ring:
+    kvstore:
+      store: consul
+      consul:
+        host: consul.namespace.svc.cluster.local:8500
+```
+
+#### Changed defaults for some GRPC server settings
+* [4435](https://github.com/grafana/loki/pull/4435) **trevorwhitney**: Change default values for two GRPC settings so querier can connect to frontend/scheduler
+
+This changes two default values, `grpc_server_min_time_between_pings` and `grpc_server_ping_without_stream_allowed` used by the GRPC server.
+
+*Previous Values*:
+```
+server:
+  grpc_server_min_time_between_pings: '5m'
+  grpc_server_ping_without_stream_allowed: false
+```
+
+*New Values*:
+```
+server:
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+```
+
+Please manually provide the values of `5m` and `true` (respectively) in your config if you rely on those values.
+
 -_add changes here which are unreleased_
+
+### Loki Config
+
+#### Change of some default limits to common values
+
+PR [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: the default value of some limits were changed to protect users from overwhelming their cluster with ingestion load caused by relying on default configs.
+
+We suggest you double check if the following parameters are
+present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_user`
+`max_query_length` `max_query_parallelism` `max_streams_per_user`
+`reject_old_samples` `reject_old_samples_max_age`. If they are not present, we recommend you double check that the new values will not negatively impact your system. The changes are:
+
+| config | new default | old default |
+| --- | --- | --- |
+| ingestion_rate_strategy | "global" | "local" |
+| max_global_streams_per_user | 5000 | 0 (no limit) |
+| max_query_length | "721h" | "0h" (no limit) |
+| max_query_parallelism | 32 | 14 |
+| max_streams_per_user | 0 (no limit) | 10000 |
+| reject_old_samples | true | false |
+| reject_old_samples_max_age | "168h" | "336h" |
+
+#### Some metric prefixes have changed from `cortex_` to `loki_`
+
+PR [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com/grafana/loki/pull/4253) **jordanrushing**: Metrics related to chunk storage and runtime config have changed their prefixes from `cortex_` to `loki_`.
+
+- `cortex_runtime_config*` -> `loki_runtime_config*`
+- `cortex_chunks_store*` -> `loki_chunks_store*`
+
+-_add changes here which are unreleased_
+
+## 2.3.0
+
+### Loki
+
+#### Query restriction introduced for queries which do not have at least one equality matcher
+
+PR [3216](https://github.com/grafana/loki/pull/3216) **sandeepsukhani**: check for stream selectors to have at least one equality matcher
+
+This change now rejects any query which does not contain at least one equality matcher, an example may better illustrate:
+
+`{namespace=~".*"}`
+
+This query will now be rejected, however there are several ways to modify it for it to succeed:
+
+Add at least one equals label matcher:
+
+`{cluster="us-east-1",namespace=~".*"}`
+
+Use `.+` instead of `.*`
+
+`{namespace=~".+"}`
+
+This difference may seem subtle but if we break it down `.` matches any character, `*` matches zero or more of the preceding character and `+` matches one or more of the preceding character. The `.*` case will match empty values where `.+` will not, this is the important difference. `{namespace=""}` is an invalid request (unless you add another equals label matcher like the example above)
+
+The reasoning for this change has to do with how index lookups work in Loki, if you don't have at least one equality matcher Loki has to perform a complete index table scan which is an expensive and slow operation.
+
 
 ## 2.2.0
 
@@ -37,7 +174,7 @@ This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrad
 
 **Read this if you use the query-frontend and have `sharded_queries_enabled: true`**
 
-We discovered query scheduling related to sharded queries over long time ranges could lead to unfair work scheduling by one single query in the per tenant work queue. 
+We discovered query scheduling related to sharded queries over long time ranges could lead to unfair work scheduling by one single query in the per tenant work queue.
 
 The `max_query_parallelism` setting is designed to limit how many split and sharded units of 'work' for a single query are allowed to be put into the per tenant work queue at one time. The previous behavior would split the query by time using the `split_queries_by_interval` and compare this value to `max_query_parallelism` when filling the queue, however with sharding enabled, every split was then sharded into 16 additional units of work after the `max_query_parallelism` limit was applied.
 
@@ -213,7 +350,7 @@ There are 2 significant changes warranting the backup of this data because they 
 * A compactor is included which will take existing index files and compact them to one per day and remove non compacted files
 * All index files are now gzipped before uploading
 
-The second part is important because 1.6.0 does not understand how to read the gzipped files, so any new files uploaded or any files compacted become unreadable to 1.6.0 or ealier.
+The second part is important because 1.6.0 does not understand how to read the gzipped files, so any new files uploaded or any files compacted become unreadable to 1.6.0 or earlier.
 
 _THIS BEING SAID_ we are not expecting problems, our testing so far has not uncovered any problems, but some extra precaution might save data loss in unforeseen circumstances!
 
@@ -311,7 +448,7 @@ This will only affect reads(queries) and not writes and only for the duration of
 
 ### IMPORTANT: Scrape config changes to both Helm and Ksonnet will affect labels created by Promtail
 
-PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the promtail scrape config:
+PR [2091](https://github.com/grafana/loki/pull/2091) Makes several changes to the Promtail scrape config:
 
 ````
 This is triggered by https://github.com/grafana/jsonnet-libs/pull/261
@@ -362,7 +499,7 @@ schema_config:
         prefix: index_
         period: 24h   <--- This must be 24h
 ```
-If you are not on `schema: v11` this would be a good oportunity to make that change _in the new schema config_ also.
+If you are not on `schema: v11` this would be a good opportunity to make that change _in the new schema config_ also.
 
 **NOTE** If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
 
@@ -545,7 +682,7 @@ table_manager:
 
 ### Promtail Config Changes
 
-The underlying backoff library used in promtail had a config change which wasn't originally noted in the release notes:
+The underlying backoff library used in Promtail had a config change which wasn't originally noted in the release notes:
 
 If you get this error:
 

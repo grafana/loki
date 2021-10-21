@@ -7,7 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -99,6 +99,7 @@ type ingesterRecoverer struct {
 }
 
 func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
+
 	return &ingesterRecoverer{
 		ing:  i,
 		done: make(chan struct{}),
@@ -125,10 +126,16 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		bytesAdded, entriesAdded, err := stream.setChunks(series.Chunks)
 		stream.lastLine.ts = series.To
 		stream.lastLine.content = series.LastLine
+		stream.entryCt = series.EntryCt
+		stream.highestTs = series.HighestTs
+		// Always set during replay, then reset to desired value afterward.
+		// This allows replaying unordered WALs into ordered configurations.
+		stream.unorderedWrites = true
 
 		if err != nil {
 			return err
 		}
+		memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))
@@ -190,14 +197,59 @@ func (r *ingesterRecoverer) Push(userID string, entries RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, _ := s.(*stream).Push(context.Background(), entries.Entries, nil)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter)
 		r.ing.replayController.Add(int64(bytesAdded))
+		if err != nil && err == ErrEntriesExist {
+			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
+		}
 		return nil
 	})
 }
 
 func (r *ingesterRecoverer) Close() {
+	// Ensure this is only run once.
+	select {
+	case <-r.done:
+		return
+	default:
+	}
+
 	close(r.done)
+
+	// Enable the limiter here to accurately reflect tenant limits after recovery.
+	r.ing.limiter.Enable()
+
+	for _, inst := range r.ing.getInstances() {
+		inst.forAllStreams(context.Background(), func(s *stream) error {
+			s.chunkMtx.Lock()
+			defer s.chunkMtx.Unlock()
+
+			// reset all the incrementing stream counters after a successful WAL replay.
+			s.resetCounter()
+
+			if len(s.chunks) == 0 {
+				inst.removeStream(s)
+				return nil
+			}
+
+			// If we've replayed a WAL with unordered writes, but the new
+			// configuration disables them, convert all streams/head blocks
+			// to ensure unordered writes are disabled after the replay,
+			// but without dropping any previously accepted data.
+			isAllowed := r.ing.limiter.UnorderedWrites(s.tenant)
+			old := s.unorderedWrites
+			s.unorderedWrites = isAllowed
+
+			if !isAllowed && old {
+				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+	}
 }
 
 func (r *ingesterRecoverer) Done() <-chan struct{} {

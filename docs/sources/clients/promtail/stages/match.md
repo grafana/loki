@@ -104,7 +104,7 @@ label of `app` whose value is `pokey`. This does **not** match in our case, so
 the nested `json` stage is not ran.
 
 The fifth stage will drop any entries from the application `promtail` that matches
-the regex `.*noisy error`. and will also increment the `logentry_drop_lines_total` 
+the regex `.*noisy error`. and will also increment the `logentry_dropped_lines_total` 
 metric with a label `reason="promtail_noisy_error"`
 
 The final `output` stage changes the contents of the log line to be the value of

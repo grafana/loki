@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
@@ -369,6 +369,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						labels.FromMap(rl.Labels),
 						labels.FromMap(rl.Annotations),
 						nil,
+						"",
 						true,
 						log.With(util_log.Logger, "alert", rl.Alert.Value),
 					))
@@ -417,7 +418,14 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 				}
 
 				rule = rules.NewAlertingRule(
-					r.Name, expr, r.Duration, r.Labels, r.Annotations, nil, true,
+					r.Name,
+					expr,
+					r.Duration,
+					r.Labels,
+					r.Annotations,
+					nil,
+					"",
+					true,
 					log.With(util_log.Logger, "alert", r.Name),
 				)
 

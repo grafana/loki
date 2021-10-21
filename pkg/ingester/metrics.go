@@ -3,6 +3,8 @@ package ingester
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type ingesterMetrics struct {
@@ -13,18 +15,26 @@ type ingesterMetrics struct {
 	checkpointDuration         prometheus.Summary
 	checkpointLoggedBytesTotal prometheus.Counter
 
-	walDiskFullFailures prometheus.Counter
-	walReplayDuration   prometheus.Gauge
-	walCorruptionsTotal *prometheus.CounterVec
-	walLoggedBytesTotal prometheus.Counter
-	walRecordsLogged    prometheus.Counter
+	walDiskFullFailures     prometheus.Counter
+	walReplayActive         prometheus.Gauge
+	walReplayDuration       prometheus.Gauge
+	walReplaySamplesDropped *prometheus.CounterVec
+	walReplayBytesDropped   *prometheus.CounterVec
+	walCorruptionsTotal     *prometheus.CounterVec
+	walLoggedBytesTotal     prometheus.Counter
+	walRecordsLogged        prometheus.Counter
 
 	recoveredStreamsTotal prometheus.Counter
 	recoveredChunksTotal  prometheus.Counter
 	recoveredEntriesTotal prometheus.Counter
+	duplicateEntriesTotal prometheus.Counter
 	recoveredBytesTotal   prometheus.Counter
 	recoveryBytesInUse    prometheus.Gauge
 	recoveryIsFlushing    prometheus.Gauge
+
+	limiterEnabled prometheus.Gauge
+
+	autoForgetUnhealthyIngestersTotal prometheus.Counter
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -39,6 +49,8 @@ func (m *ingesterMetrics) setRecoveryBytesInUse(v int64) {
 const (
 	walTypeCheckpoint = "checkpoint"
 	walTypeSegment    = "segment"
+
+	duplicateReason = "duplicate"
 )
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
@@ -47,10 +59,22 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Name: "loki_ingester_wal_disk_full_failures_total",
 			Help: "Total number of wal write failures due to full disk.",
 		}),
+		walReplayActive: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_wal_replay_active",
+			Help: "Whether the WAL is replaying",
+		}),
 		walReplayDuration: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_ingester_wal_replay_duration_seconds",
 			Help: "Time taken to replay the checkpoint and the WAL.",
 		}),
+		walReplaySamplesDropped: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_discarded_samples_total",
+			Help: "WAL segment entries discarded during replay",
+		}, []string{validation.ReasonLabel}),
+		walReplayBytesDropped: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_discarded_bytes_total",
+			Help: "WAL segment bytes discarded during replay",
+		}, []string{validation.ReasonLabel}),
 		walCorruptionsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_corruptions_total",
 			Help: "Total number of WAL corruptions encountered.",
@@ -100,6 +124,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Name: "loki_ingester_wal_recovered_entries_total",
 			Help: "Total number of entries recovered from the WAL.",
 		}),
+		duplicateEntriesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_duplicate_entries_total",
+			Help: "Entries discarded during WAL replay due to existing in checkpoints.",
+		}),
 		recoveredBytesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_recovered_bytes_total",
 			Help: "Total number of bytes recovered from the WAL.",
@@ -111,6 +139,14 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 		recoveryIsFlushing: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_ingester_wal_replay_flushing",
 			Help: "Whether the wal replay is in a flushing phase due to backpressure",
+		}),
+		limiterEnabled: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_limiter_enabled",
+			Help: "Whether the ingester's limiter is enabled",
+		}),
+		autoForgetUnhealthyIngestersTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_ingester_autoforget_unhealthy_ingesters_total",
+			Help: "Total number of ingesters automatically forgotten",
 		}),
 	}
 }

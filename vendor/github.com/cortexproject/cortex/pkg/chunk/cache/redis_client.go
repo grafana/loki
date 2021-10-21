@@ -9,9 +9,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
 	"github.com/go-redis/redis/v8"
+	"github.com/grafana/dskit/flagext"
 )
 
 // RedisConfig defines how a RedisCache should be constructed.
@@ -110,17 +109,38 @@ func (c *RedisClient) MGet(ctx context.Context, keys []string) ([][]byte, error)
 		defer cancel()
 	}
 
-	cmd := c.rdb.MGet(ctx, keys...)
-	if err := cmd.Err(); err != nil {
-		return nil, err
-	}
-
 	ret := make([][]byte, len(keys))
-	for i, val := range cmd.Val() {
-		if val != nil {
-			ret[i] = StringToBytes(val.(string))
+
+	// redis.UniversalClient can take redis.Client and redis.ClusterClient.
+	// if redis.Client is set, then Single node or sentinel configuration. mget is always supported.
+	// if redis.ClusterClient is set, then Redis Cluster configuration. mget may not be supported.
+	_, isCluster := c.rdb.(*redis.ClusterClient)
+
+	if isCluster {
+		for i, key := range keys {
+			cmd := c.rdb.Get(ctx, key)
+			err := cmd.Err()
+			if err == redis.Nil {
+				// if key not found, response nil
+				continue
+			} else if err != nil {
+				return nil, err
+			}
+			ret[i] = StringToBytes(cmd.Val())
+		}
+	} else {
+		cmd := c.rdb.MGet(ctx, keys...)
+		if err := cmd.Err(); err != nil {
+			return nil, err
+		}
+
+		for i, val := range cmd.Val() {
+			if val != nil {
+				ret[i] = StringToBytes(val.(string))
+			}
 		}
 	}
+
 	return ret, nil
 }
 

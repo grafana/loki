@@ -14,8 +14,11 @@ import (
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strconv "strconv"
 	strings "strings"
@@ -32,7 +35,7 @@ var _ = time.Kitchen
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type Direction int32
 
@@ -72,7 +75,7 @@ func (m *PushRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return xxx_messageInfo_PushRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +110,7 @@ func (m *PushResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_PushResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +151,7 @@ func (m *QueryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_QueryRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +232,7 @@ func (m *SampleQueryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return xxx_messageInfo_SampleQueryRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +296,7 @@ func (m *SampleQueryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return xxx_messageInfo_SampleQueryResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +332,7 @@ func (m *QueryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_QueryResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -368,7 +371,7 @@ func (m *LabelRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_LabelRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +435,7 @@ func (m *LabelResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_LabelResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -476,7 +479,7 @@ func (m *StreamAdapter) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_StreamAdapter.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -527,7 +530,7 @@ func (m *EntryAdapter) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_EntryAdapter.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -579,7 +582,7 @@ func (m *Sample) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Sample.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -637,7 +640,7 @@ func (m *Series) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Series.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -690,7 +693,7 @@ func (m *TailRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return xxx_messageInfo_TailRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -755,7 +758,7 @@ func (m *TailResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_TailResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -785,6 +788,7 @@ type SeriesRequest struct {
 	Start  time.Time `protobuf:"bytes,1,opt,name=start,proto3,stdtime" json:"start"`
 	End    time.Time `protobuf:"bytes,2,opt,name=end,proto3,stdtime" json:"end"`
 	Groups []string  `protobuf:"bytes,3,rep,name=groups,proto3" json:"groups,omitempty"`
+	Shards []string  `protobuf:"bytes,4,rep,name=shards,proto3" json:"shards,omitempty"`
 }
 
 func (m *SeriesRequest) Reset()      { *m = SeriesRequest{} }
@@ -800,7 +804,7 @@ func (m *SeriesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_SeriesRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -840,6 +844,13 @@ func (m *SeriesRequest) GetGroups() []string {
 	return nil
 }
 
+func (m *SeriesRequest) GetShards() []string {
+	if m != nil {
+		return m.Shards
+	}
+	return nil
+}
+
 type SeriesResponse struct {
 	Series []SeriesIdentifier `protobuf:"bytes,1,rep,name=series,proto3" json:"series"`
 }
@@ -857,7 +868,7 @@ func (m *SeriesResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return xxx_messageInfo_SeriesResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -900,7 +911,7 @@ func (m *SeriesIdentifier) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return xxx_messageInfo_SeriesIdentifier.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -945,7 +956,7 @@ func (m *DroppedStream) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_DroppedStream.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1005,7 +1016,7 @@ func (m *TimeSeriesChunk) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return xxx_messageInfo_TimeSeriesChunk.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1070,7 +1081,7 @@ func (m *LabelPair) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_LabelPair.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1120,7 +1131,7 @@ func (m *Chunk) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Chunk.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1162,7 +1173,7 @@ func (m *TransferChunksResponse) XXX_Marshal(b []byte, deterministic bool) ([]by
 		return xxx_messageInfo_TransferChunksResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1197,7 +1208,7 @@ func (m *TailersCountRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return xxx_messageInfo_TailersCountRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1233,7 +1244,7 @@ func (m *TailersCountResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte
 		return xxx_messageInfo_TailersCountResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1278,7 +1289,7 @@ func (m *GetChunkIDsRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return xxx_messageInfo_GetChunkIDsRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1335,7 +1346,7 @@ func (m *GetChunkIDsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return xxx_messageInfo_GetChunkIDsResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -1395,93 +1406,93 @@ func init() {
 func init() { proto.RegisterFile("pkg/logproto/logproto.proto", fileDescriptor_c28a5f14f1f4c79a) }
 
 var fileDescriptor_c28a5f14f1f4c79a = []byte{
-	// 1366 bytes of a gzipped FileDescriptorProto
+	// 1370 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x57, 0x4b, 0x8f, 0x13, 0xc7,
-	0x13, 0x77, 0xfb, 0x31, 0xb6, 0xcb, 0x0f, 0xac, 0xde, 0x65, 0xd7, 0x7f, 0x03, 0x63, 0xab, 0x85,
+	0x13, 0x77, 0xfb, 0x31, 0xb6, 0xcb, 0x0f, 0xac, 0xde, 0x65, 0xd7, 0x7f, 0x03, 0x63, 0x6b, 0x84,
 	0xc0, 0xfa, 0x87, 0x78, 0x83, 0xf3, 0xe2, 0x91, 0x87, 0xd6, 0x6c, 0x08, 0x4b, 0x50, 0x80, 0x01,
-	0x09, 0x09, 0x29, 0x42, 0xb3, 0x76, 0xaf, 0x3d, 0x5a, 0x7b, 0xc6, 0xcc, 0xb4, 0x91, 0xf6, 0x96,
-	0x0f, 0x90, 0x48, 0xdc, 0x72, 0xe0, 0x9a, 0x43, 0x94, 0x43, 0x3e, 0x07, 0x47, 0x94, 0x13, 0xca,
-	0xc1, 0x09, 0xe6, 0x12, 0xad, 0x72, 0xe0, 0x23, 0x44, 0xfd, 0x98, 0x99, 0xb6, 0xd9, 0x4d, 0x30,
-	0x97, 0x5c, 0x3c, 0x5d, 0xd5, 0xd5, 0xd5, 0x55, 0xbf, 0xfe, 0x55, 0x75, 0x1b, 0x4e, 0x8c, 0xf7,
-	0xfa, 0x1b, 0x43, 0xaf, 0x3f, 0xf6, 0x3d, 0xe6, 0x45, 0x83, 0x96, 0xf8, 0xc5, 0xb9, 0x50, 0xae,
-	0xd5, 0xfb, 0x9e, 0xd7, 0x1f, 0xd2, 0x0d, 0x21, 0xed, 0x4c, 0x76, 0x37, 0x98, 0x33, 0xa2, 0x01,
-	0xb3, 0x47, 0x63, 0x69, 0x5a, 0x7b, 0xb7, 0xef, 0xb0, 0xc1, 0x64, 0xa7, 0xd5, 0xf5, 0x46, 0x1b,
-	0x7d, 0xaf, 0xef, 0xc5, 0x96, 0x5c, 0x92, 0xde, 0xf9, 0x48, 0x9a, 0x93, 0x7b, 0x50, 0xb8, 0x35,
-	0x09, 0x06, 0x16, 0x7d, 0x38, 0xa1, 0x01, 0xc3, 0xd7, 0x20, 0x1b, 0x30, 0x9f, 0xda, 0xa3, 0xa0,
-	0x8a, 0x1a, 0xa9, 0x66, 0xa1, 0xbd, 0xde, 0x8a, 0x42, 0xb9, 0x23, 0x26, 0x36, 0x7b, 0xf6, 0x98,
-	0x51, 0xbf, 0x73, 0xfc, 0xb7, 0x69, 0xdd, 0x90, 0xaa, 0x83, 0x69, 0x3d, 0x5c, 0x65, 0x85, 0x03,
-	0x52, 0x86, 0xa2, 0x74, 0x1c, 0x8c, 0x3d, 0x37, 0xa0, 0xe4, 0x49, 0x12, 0x8a, 0xb7, 0x27, 0xd4,
-	0xdf, 0x0f, 0xb7, 0xaa, 0x41, 0x2e, 0xa0, 0x43, 0xda, 0x65, 0x9e, 0x5f, 0x45, 0x0d, 0xd4, 0xcc,
-	0x5b, 0x91, 0x8c, 0x57, 0x21, 0x33, 0x74, 0x46, 0x0e, 0xab, 0x26, 0x1b, 0xa8, 0x59, 0xb2, 0xa4,
-	0x80, 0x2f, 0x41, 0x26, 0x60, 0xb6, 0xcf, 0xaa, 0xa9, 0x06, 0x6a, 0x16, 0xda, 0xb5, 0x96, 0xc4,
-	0xa2, 0x15, 0x66, 0xd8, 0xba, 0x1b, 0x62, 0xd1, 0xc9, 0x3d, 0x9d, 0xd6, 0x13, 0x8f, 0x7f, 0xaf,
-	0x23, 0x4b, 0x2e, 0xc1, 0x1f, 0x41, 0x8a, 0xba, 0xbd, 0x6a, 0x7a, 0x89, 0x95, 0x7c, 0x01, 0x3e,
-	0x0f, 0xf9, 0x9e, 0xe3, 0xd3, 0x2e, 0x73, 0x3c, 0xb7, 0x9a, 0x69, 0xa0, 0x66, 0xb9, 0xbd, 0x12,
-	0x43, 0xb2, 0x15, 0x4e, 0x59, 0xb1, 0x15, 0x3e, 0x07, 0x46, 0x30, 0xb0, 0xfd, 0x5e, 0x50, 0xcd,
-	0x36, 0x52, 0xcd, 0x7c, 0x67, 0xf5, 0x60, 0x5a, 0xaf, 0x48, 0xcd, 0x39, 0x6f, 0xe4, 0x30, 0x3a,
-	0x1a, 0xb3, 0x7d, 0x4b, 0xd9, 0x5c, 0x4f, 0xe7, 0x8c, 0x4a, 0x96, 0xfc, 0x8a, 0x00, 0xdf, 0xb1,
-	0x47, 0xe3, 0x21, 0x7d, 0x63, 0x8c, 0x22, 0x34, 0x92, 0x6f, 0x8d, 0x46, 0x6a, 0x59, 0x34, 0xe2,
-	0xd4, 0xd2, 0xff, 0x9e, 0x1a, 0xb9, 0x09, 0x2b, 0x73, 0x39, 0x49, 0x26, 0xe0, 0x0b, 0x60, 0x04,
-	0xd4, 0x77, 0x68, 0x48, 0xb1, 0x8a, 0x46, 0x31, 0xa1, 0xef, 0x94, 0x9f, 0x4e, 0xeb, 0x48, 0xf0,
-	0x4b, 0xc8, 0x96, 0xb2, 0x27, 0x16, 0x94, 0xe6, 0x5d, 0x6d, 0xbe, 0x31, 0x5d, 0x63, 0x97, 0x42,
-	0x1d, 0xf3, 0xf4, 0x17, 0x04, 0xc5, 0x1b, 0xf6, 0x0e, 0x1d, 0x86, 0x98, 0x63, 0x48, 0xbb, 0xf6,
-	0x88, 0x2a, 0xbc, 0xc5, 0x18, 0xaf, 0x81, 0xf1, 0xc8, 0x1e, 0x4e, 0x68, 0x20, 0xc0, 0xce, 0x59,
-	0x4a, 0x5a, 0x96, 0x91, 0xe8, 0xad, 0x19, 0x89, 0xa2, 0x33, 0x20, 0x67, 0xa1, 0xa4, 0xe2, 0x55,
-	0x20, 0xc4, 0xc1, 0x71, 0x0c, 0xf2, 0x61, 0x70, 0xe4, 0x11, 0x94, 0xe6, 0x30, 0xc0, 0x04, 0x8c,
-	0x21, 0x5f, 0x19, 0xc8, 0xdc, 0x3a, 0x70, 0x30, 0xad, 0x2b, 0x8d, 0xa5, 0xbe, 0x1c, 0x51, 0xea,
-	0x32, 0x71, 0x3a, 0x49, 0x81, 0xe8, 0x5a, 0x8c, 0xe8, 0x17, 0x2e, 0xf3, 0xf7, 0x43, 0x40, 0x8f,
-	0x71, 0x66, 0xf0, 0xca, 0x57, 0xe6, 0x56, 0x38, 0x20, 0x8f, 0xa0, 0xa8, 0x5b, 0xe2, 0x6b, 0x90,
-	0x8f, 0x9a, 0x94, 0xd8, 0xf9, 0x9f, 0xd3, 0x2d, 0x2b, 0xc7, 0x49, 0x16, 0x88, 0xa4, 0xe3, 0xc5,
-	0xf8, 0x24, 0xa4, 0x87, 0x8e, 0x4b, 0xc5, 0x21, 0xe4, 0x3b, 0xb9, 0x83, 0x69, 0x5d, 0xc8, 0x96,
-	0xf8, 0x25, 0x23, 0x30, 0x24, 0xdd, 0xf0, 0xe9, 0xc5, 0x1d, 0x53, 0x1d, 0x43, 0x7a, 0xd4, 0xbd,
-	0xd5, 0x21, 0x23, 0x90, 0x12, 0xee, 0x50, 0x27, 0x7f, 0x30, 0xad, 0x4b, 0x85, 0x25, 0x3f, 0x7c,
-	0xbb, 0x81, 0x1d, 0x0c, 0xc4, 0xe1, 0xa6, 0xe5, 0x76, 0x5c, 0xb6, 0xc4, 0x2f, 0x71, 0x40, 0xd1,
-	0xf3, 0x8d, 0x70, 0xbd, 0x0c, 0xd9, 0x40, 0x04, 0x17, 0xe2, 0xaa, 0xb3, 0x5e, 0x4c, 0xc4, 0x88,
-	0x2a, 0x43, 0x2b, 0x1c, 0x90, 0x1f, 0x10, 0x14, 0xee, 0xda, 0x4e, 0x44, 0xd1, 0x55, 0xc8, 0x3c,
-	0xe4, 0x75, 0xa0, 0x38, 0x2a, 0x05, 0xde, 0x2c, 0x7a, 0x74, 0x68, 0xef, 0x5f, 0xf5, 0x7c, 0x11,
-	0x72, 0xc9, 0x8a, 0xe4, 0xb8, 0xa1, 0xa6, 0x0f, 0x6d, 0xa8, 0x99, 0xa5, 0x5b, 0xc8, 0xf5, 0x74,
-	0x2e, 0x59, 0x49, 0x91, 0xef, 0x10, 0x14, 0x65, 0x64, 0x8a, 0x8c, 0x97, 0xc1, 0x90, 0x95, 0xa5,
-	0x4e, 0xfa, 0xc8, 0x82, 0x04, 0xad, 0x18, 0xd5, 0x12, 0xfc, 0x39, 0x94, 0x7b, 0xbe, 0x37, 0x1e,
-	0xd3, 0xde, 0x1d, 0x55, 0xd5, 0xc9, 0xc5, 0xaa, 0xde, 0xd2, 0xe7, 0xad, 0x05, 0x73, 0xf2, 0x04,
-	0x41, 0x49, 0xf5, 0x0c, 0x05, 0x55, 0x94, 0x22, 0x7a, 0xeb, 0x2e, 0x99, 0x5c, 0xb6, 0x4b, 0xae,
-	0x81, 0xd1, 0xf7, 0xbd, 0xc9, 0x38, 0xa8, 0xa6, 0x64, 0x41, 0x4a, 0x89, 0x5c, 0x87, 0x72, 0x18,
-	0xdc, 0x11, 0xad, 0xb0, 0xb6, 0xd8, 0x0a, 0xb7, 0x7b, 0xd4, 0x65, 0xce, 0xae, 0x43, 0xfd, 0x4e,
-	0x9a, 0x6f, 0x12, 0xb5, 0xc2, 0xef, 0x11, 0x54, 0x16, 0x4d, 0xf0, 0x67, 0x1a, 0x11, 0xb9, 0xbb,
-	0x33, 0x47, 0xbb, 0x6b, 0x89, 0x1e, 0x12, 0x88, 0x42, 0x0d, 0x49, 0x5a, 0xbb, 0x08, 0x05, 0x4d,
-	0x8d, 0x2b, 0x90, 0xda, 0xa3, 0x21, 0xc9, 0xf8, 0x90, 0xd3, 0x28, 0x2e, 0x99, 0xbc, 0xaa, 0x93,
-	0x4b, 0xc9, 0x0b, 0x88, 0x53, 0xb4, 0x34, 0x77, 0x36, 0xf8, 0x02, 0xa4, 0x77, 0x7d, 0x6f, 0xb4,
-	0x14, 0xf0, 0x62, 0x05, 0xfe, 0x00, 0x92, 0xcc, 0x5b, 0x0a, 0xf6, 0x24, 0xf3, 0x38, 0xea, 0x2a,
-	0xf9, 0x94, 0x08, 0x4e, 0x49, 0xe4, 0x67, 0x04, 0xc7, 0xf8, 0x1a, 0x89, 0xc0, 0x95, 0xc1, 0xc4,
-	0xdd, 0xc3, 0x4d, 0xa8, 0xf0, 0x9d, 0x1e, 0x38, 0x6e, 0x9f, 0x06, 0x8c, 0xfa, 0x0f, 0x9c, 0x9e,
-	0x4a, 0xb3, 0xcc, 0xf5, 0xdb, 0x4a, 0xbd, 0xdd, 0xc3, 0xeb, 0x90, 0x9d, 0x04, 0xd2, 0x40, 0xe6,
-	0x6c, 0x70, 0x71, 0xbb, 0x87, 0xdf, 0xd1, 0xb6, 0xe3, 0x58, 0x6b, 0xaf, 0x02, 0x81, 0xe1, 0x2d,
-	0xdb, 0xf1, 0xa3, 0xea, 0x3f, 0x0b, 0x46, 0x97, 0x6f, 0x2c, 0xef, 0xcd, 0x42, 0xfb, 0x58, 0x6c,
-	0x2c, 0x02, 0xb2, 0xd4, 0x34, 0xf9, 0x10, 0xf2, 0xd1, 0xea, 0x43, 0x6f, 0xa2, 0x43, 0x4f, 0x80,
-	0x9c, 0x80, 0x8c, 0x4c, 0x0c, 0x43, 0xba, 0x67, 0x33, 0x5b, 0x2c, 0x29, 0x5a, 0x62, 0x4c, 0xaa,
-	0xb0, 0x76, 0xd7, 0xb7, 0xdd, 0x60, 0x97, 0xfa, 0xc2, 0x28, 0xa2, 0x1f, 0x39, 0x0e, 0x2b, 0xbc,
-	0x78, 0xa9, 0x1f, 0x5c, 0xf1, 0x26, 0x2e, 0x53, 0x35, 0x43, 0xce, 0xc1, 0xea, 0xbc, 0x5a, 0xb1,
-	0x75, 0x15, 0x32, 0x5d, 0xae, 0x10, 0xde, 0x4b, 0x96, 0x14, 0xc8, 0x8f, 0x08, 0xf0, 0x97, 0x94,
-	0x09, 0xd7, 0xdb, 0x5b, 0x81, 0xf6, 0x74, 0x19, 0xd9, 0xac, 0x3b, 0xa0, 0x7e, 0x10, 0x3e, 0x5d,
-	0x42, 0xf9, 0xbf, 0x78, 0xba, 0x90, 0xf3, 0xb0, 0x32, 0x17, 0xa5, 0xca, 0xa9, 0x06, 0xb9, 0xae,
-	0xd2, 0xa9, 0xeb, 0x33, 0x92, 0xff, 0x7f, 0x06, 0xf2, 0xd1, 0x03, 0x0f, 0x17, 0x20, 0x7b, 0xf5,
-	0xa6, 0x75, 0x6f, 0xd3, 0xda, 0xaa, 0x24, 0x70, 0x11, 0x72, 0x9d, 0xcd, 0x2b, 0x5f, 0x09, 0x09,
-	0xb5, 0x37, 0xc1, 0xe0, 0x4f, 0x5d, 0xea, 0xe3, 0x8f, 0x21, 0xcd, 0x47, 0xf8, 0x78, 0x7c, 0xbe,
-	0xda, 0xeb, 0xba, 0xb6, 0xb6, 0xa8, 0x56, 0xe7, 0x90, 0x68, 0xff, 0x95, 0x82, 0x2c, 0x7f, 0xda,
-	0xf0, 0x2a, 0xfe, 0x04, 0x32, 0xe2, 0x95, 0x83, 0x35, 0x73, 0xfd, 0x55, 0x58, 0x5b, 0x7f, 0x4d,
-	0x1f, 0xfa, 0x79, 0x0f, 0xe1, 0xaf, 0xa1, 0x20, 0x94, 0xea, 0x2a, 0x3c, 0xb9, 0x78, 0xcd, 0xcc,
-	0x79, 0x3a, 0x75, 0xc4, 0xac, 0xe6, 0xef, 0x12, 0x64, 0x04, 0x23, 0xf5, 0x68, 0xf4, 0xf7, 0x92,
-	0x1e, 0xcd, 0xdc, 0xbb, 0x84, 0x24, 0xf0, 0x45, 0x48, 0x73, 0x22, 0xe9, 0x70, 0x68, 0xd7, 0x98,
-	0x0e, 0x87, 0x7e, 0x87, 0x88, 0x6d, 0x3f, 0x8d, 0x6e, 0xd7, 0xf5, 0xc5, 0x26, 0x16, 0x2e, 0xaf,
-	0xbe, 0x3e, 0x11, 0xed, 0x7c, 0x53, 0x5e, 0x4b, 0x21, 0x85, 0xf1, 0xa9, 0xf9, 0xad, 0x16, 0x18,
-	0x5f, 0x33, 0x8f, 0x9a, 0x8e, 0x1c, 0xde, 0x80, 0x82, 0x46, 0x1f, 0x1d, 0xd6, 0xd7, 0xb9, 0xaf,
-	0xc3, 0x7a, 0x08, 0xe7, 0x48, 0xa2, 0xfd, 0x0d, 0xe4, 0xc2, 0x1e, 0x83, 0x6f, 0x43, 0x79, 0xbe,
-	0x3c, 0xf1, 0xff, 0xb4, 0x68, 0xe6, 0x1b, 0x57, 0xad, 0xa1, 0x4d, 0x1d, 0x5e, 0xd3, 0x89, 0x26,
-	0xea, 0xdc, 0x7f, 0xf6, 0xc2, 0x4c, 0x3c, 0x7f, 0x61, 0x26, 0x5e, 0xbd, 0x30, 0xd1, 0xb7, 0x33,
-	0x13, 0xfd, 0x34, 0x33, 0xd1, 0xd3, 0x99, 0x89, 0x9e, 0xcd, 0x4c, 0xf4, 0xc7, 0xcc, 0x44, 0x7f,
-	0xce, 0xcc, 0xc4, 0xab, 0x99, 0x89, 0x1e, 0xbf, 0x34, 0x13, 0xcf, 0x5e, 0x9a, 0x89, 0xe7, 0x2f,
-	0xcd, 0xc4, 0xfd, 0xd3, 0xfa, 0x3f, 0x47, 0xdf, 0xde, 0xb5, 0x5d, 0x7b, 0x63, 0xe8, 0xed, 0x39,
-	0x1b, 0xfa, 0x3f, 0xd3, 0x1d, 0x43, 0x7c, 0xde, 0xff, 0x3b, 0x00, 0x00, 0xff, 0xff, 0xf0, 0x21,
-	0xc8, 0x3d, 0xb0, 0x0e, 0x00, 0x00,
+	0x09, 0x09, 0x29, 0x42, 0xb3, 0x76, 0xaf, 0x3d, 0x5a, 0x7b, 0xc6, 0x4c, 0xb7, 0x91, 0xf6, 0x96,
+	0x0f, 0x90, 0x48, 0xdc, 0x72, 0xc8, 0x35, 0x87, 0x28, 0x87, 0x7c, 0x0e, 0x72, 0x43, 0x39, 0xa1,
+	0x1c, 0x9c, 0x60, 0x2e, 0xd1, 0x2a, 0x07, 0x3e, 0x42, 0xd4, 0x8f, 0x99, 0x69, 0x9b, 0xdd, 0x04,
+	0x73, 0xc9, 0xc5, 0xd3, 0x55, 0x5d, 0x5d, 0x5d, 0xf5, 0xeb, 0x5f, 0x55, 0xb7, 0xe1, 0xc4, 0x78,
+	0xaf, 0xbf, 0x31, 0xf4, 0xfb, 0xe3, 0xc0, 0x67, 0x7e, 0x34, 0x68, 0x89, 0x5f, 0x9c, 0x0b, 0xe5,
+	0x5a, 0xbd, 0xef, 0xfb, 0xfd, 0x21, 0xd9, 0x10, 0xd2, 0xce, 0x64, 0x77, 0x83, 0xb9, 0x23, 0x42,
+	0x99, 0x33, 0x1a, 0x4b, 0xd3, 0xda, 0xdb, 0x7d, 0x97, 0x0d, 0x26, 0x3b, 0xad, 0xae, 0x3f, 0xda,
+	0xe8, 0xfb, 0x7d, 0x3f, 0xb6, 0xe4, 0x92, 0xf4, 0xce, 0x47, 0xd2, 0xdc, 0xba, 0x07, 0x85, 0x5b,
+	0x13, 0x3a, 0xb0, 0xc9, 0xc3, 0x09, 0xa1, 0x0c, 0x5f, 0x83, 0x2c, 0x65, 0x01, 0x71, 0x46, 0xb4,
+	0x8a, 0x1a, 0xa9, 0x66, 0xa1, 0xbd, 0xde, 0x8a, 0x42, 0xb9, 0x23, 0x26, 0x36, 0x7b, 0xce, 0x98,
+	0x91, 0xa0, 0x73, 0xfc, 0xb7, 0x69, 0xdd, 0x90, 0xaa, 0x83, 0x69, 0x3d, 0x5c, 0x65, 0x87, 0x03,
+	0xab, 0x0c, 0x45, 0xe9, 0x98, 0x8e, 0x7d, 0x8f, 0x12, 0xeb, 0xfb, 0x24, 0x14, 0x6f, 0x4f, 0x48,
+	0xb0, 0x1f, 0x6e, 0x55, 0x83, 0x1c, 0x25, 0x43, 0xd2, 0x65, 0x7e, 0x50, 0x45, 0x0d, 0xd4, 0xcc,
+	0xdb, 0x91, 0x8c, 0x57, 0x21, 0x33, 0x74, 0x47, 0x2e, 0xab, 0x26, 0x1b, 0xa8, 0x59, 0xb2, 0xa5,
+	0x80, 0x2f, 0x41, 0x86, 0x32, 0x27, 0x60, 0xd5, 0x54, 0x03, 0x35, 0x0b, 0xed, 0x5a, 0x4b, 0x62,
+	0xd1, 0x0a, 0x33, 0x6c, 0xdd, 0x0d, 0xb1, 0xe8, 0xe4, 0x9e, 0x4c, 0xeb, 0x89, 0xc7, 0xbf, 0xd7,
+	0x91, 0x2d, 0x97, 0xe0, 0x0f, 0x20, 0x45, 0xbc, 0x5e, 0x35, 0xbd, 0xc4, 0x4a, 0xbe, 0x00, 0x9f,
+	0x87, 0x7c, 0xcf, 0x0d, 0x48, 0x97, 0xb9, 0xbe, 0x57, 0xcd, 0x34, 0x50, 0xb3, 0xdc, 0x5e, 0x89,
+	0x21, 0xd9, 0x0a, 0xa7, 0xec, 0xd8, 0x0a, 0x9f, 0x03, 0x83, 0x0e, 0x9c, 0xa0, 0x47, 0xab, 0xd9,
+	0x46, 0xaa, 0x99, 0xef, 0xac, 0x1e, 0x4c, 0xeb, 0x15, 0xa9, 0x39, 0xe7, 0x8f, 0x5c, 0x46, 0x46,
+	0x63, 0xb6, 0x6f, 0x2b, 0x9b, 0xeb, 0xe9, 0x9c, 0x51, 0xc9, 0x5a, 0xbf, 0x22, 0xc0, 0x77, 0x9c,
+	0xd1, 0x78, 0x48, 0x5e, 0x1b, 0xa3, 0x08, 0x8d, 0xe4, 0x1b, 0xa3, 0x91, 0x5a, 0x16, 0x8d, 0x38,
+	0xb5, 0xf4, 0xbf, 0xa7, 0x66, 0xdd, 0x84, 0x95, 0xb9, 0x9c, 0x24, 0x13, 0xf0, 0x05, 0x30, 0x28,
+	0x09, 0x5c, 0x12, 0x52, 0xac, 0xa2, 0x51, 0x4c, 0xe8, 0x3b, 0xe5, 0x27, 0xd3, 0x3a, 0x12, 0xfc,
+	0x12, 0xb2, 0xad, 0xec, 0x2d, 0x1b, 0x4a, 0xf3, 0xae, 0x36, 0x5f, 0x9b, 0xae, 0xb1, 0x4b, 0xa1,
+	0x8e, 0x79, 0xfa, 0x33, 0x82, 0xe2, 0x0d, 0x67, 0x87, 0x0c, 0x43, 0xcc, 0x31, 0xa4, 0x3d, 0x67,
+	0x44, 0x14, 0xde, 0x62, 0x8c, 0xd7, 0xc0, 0x78, 0xe4, 0x0c, 0x27, 0x84, 0x0a, 0xb0, 0x73, 0xb6,
+	0x92, 0x96, 0x65, 0x24, 0x7a, 0x63, 0x46, 0xa2, 0xe8, 0x0c, 0xac, 0xb3, 0x50, 0x52, 0xf1, 0x2a,
+	0x10, 0xe2, 0xe0, 0x38, 0x06, 0xf9, 0x30, 0x38, 0xeb, 0x11, 0x94, 0xe6, 0x30, 0xc0, 0x16, 0x18,
+	0x43, 0xbe, 0x92, 0xca, 0xdc, 0x3a, 0x70, 0x30, 0xad, 0x2b, 0x8d, 0xad, 0xbe, 0x1c, 0x51, 0xe2,
+	0x31, 0x71, 0x3a, 0x49, 0x81, 0xe8, 0x5a, 0x8c, 0xe8, 0x67, 0x1e, 0x0b, 0xf6, 0x43, 0x40, 0x8f,
+	0x71, 0x66, 0xf0, 0xca, 0x57, 0xe6, 0x76, 0x38, 0xb0, 0x1e, 0x41, 0x51, 0xb7, 0xc4, 0xd7, 0x20,
+	0x1f, 0x35, 0x29, 0xb1, 0xf3, 0x3f, 0xa7, 0x5b, 0x56, 0x8e, 0x93, 0x8c, 0x8a, 0xa4, 0xe3, 0xc5,
+	0xf8, 0x24, 0xa4, 0x87, 0xae, 0x47, 0xc4, 0x21, 0xe4, 0x3b, 0xb9, 0x83, 0x69, 0x5d, 0xc8, 0xb6,
+	0xf8, 0xb5, 0x46, 0x60, 0x48, 0xba, 0xe1, 0xd3, 0x8b, 0x3b, 0xa6, 0x3a, 0x86, 0xf4, 0xa8, 0x7b,
+	0xab, 0x43, 0x46, 0x20, 0x25, 0xdc, 0xa1, 0x4e, 0xfe, 0x60, 0x5a, 0x97, 0x0a, 0x5b, 0x7e, 0xf8,
+	0x76, 0x03, 0x87, 0x0e, 0xc4, 0xe1, 0xa6, 0xe5, 0x76, 0x5c, 0xb6, 0xc5, 0xaf, 0xe5, 0x82, 0xa2,
+	0xe7, 0x6b, 0xe1, 0x7a, 0x19, 0xb2, 0x54, 0x04, 0x17, 0xe2, 0xaa, 0xb3, 0x5e, 0x4c, 0xc4, 0x88,
+	0x2a, 0x43, 0x3b, 0x1c, 0x58, 0xdf, 0x21, 0x28, 0xdc, 0x75, 0xdc, 0x88, 0xa2, 0xab, 0x90, 0x79,
+	0xc8, 0xeb, 0x40, 0x71, 0x54, 0x0a, 0xbc, 0x59, 0xf4, 0xc8, 0xd0, 0xd9, 0xbf, 0xea, 0x07, 0x22,
+	0xe4, 0x92, 0x1d, 0xc9, 0x71, 0x43, 0x4d, 0x1f, 0xda, 0x50, 0x33, 0x4b, 0xb7, 0x90, 0xeb, 0xe9,
+	0x5c, 0xb2, 0x92, 0xb2, 0xbe, 0x41, 0x50, 0x94, 0x91, 0x29, 0x32, 0x5e, 0x06, 0x43, 0x56, 0x96,
+	0x3a, 0xe9, 0x23, 0x0b, 0x12, 0xb4, 0x62, 0x54, 0x4b, 0xf0, 0xa7, 0x50, 0xee, 0x05, 0xfe, 0x78,
+	0x4c, 0x7a, 0x77, 0x54, 0x55, 0x27, 0x17, 0xab, 0x7a, 0x4b, 0x9f, 0xb7, 0x17, 0xcc, 0xad, 0x5f,
+	0x10, 0x94, 0x54, 0xcf, 0x50, 0x50, 0x45, 0x29, 0xa2, 0x37, 0xee, 0x92, 0xc9, 0x65, 0xbb, 0xe4,
+	0x1a, 0x18, 0xfd, 0xc0, 0x9f, 0x8c, 0x69, 0x35, 0x25, 0x0b, 0x52, 0x4a, 0x4b, 0x76, 0xcf, 0xeb,
+	0x50, 0x0e, 0x53, 0x39, 0xa2, 0x71, 0xd6, 0x16, 0x1b, 0xe7, 0x76, 0x8f, 0x78, 0xcc, 0xdd, 0x75,
+	0x49, 0xd0, 0x49, 0xf3, 0x90, 0xa2, 0xc6, 0xf9, 0x2d, 0x82, 0xca, 0xa2, 0x09, 0xfe, 0x44, 0xa3,
+	0x2d, 0x77, 0x77, 0xe6, 0x68, 0x77, 0x2d, 0xd1, 0x71, 0xa8, 0x28, 0xeb, 0x90, 0xd2, 0xb5, 0x8b,
+	0x50, 0xd0, 0xd4, 0xb8, 0x02, 0xa9, 0x3d, 0x12, 0x52, 0x92, 0x0f, 0x39, 0xe9, 0xe2, 0x02, 0xcb,
+	0xab, 0xaa, 0xba, 0x94, 0xbc, 0x80, 0x38, 0xa1, 0x4b, 0x73, 0x27, 0x89, 0x2f, 0x40, 0x7a, 0x37,
+	0xf0, 0x47, 0x4b, 0x1d, 0x93, 0x58, 0x81, 0xdf, 0x83, 0x24, 0xf3, 0x97, 0x3a, 0xa4, 0x24, 0xf3,
+	0xf9, 0x19, 0xa9, 0xe4, 0x53, 0x22, 0x38, 0x25, 0x59, 0x3f, 0x21, 0x38, 0xc6, 0xd7, 0x48, 0x04,
+	0xae, 0x0c, 0x26, 0xde, 0x1e, 0x6e, 0x42, 0x85, 0xef, 0xf4, 0xc0, 0xf5, 0xfa, 0x84, 0x32, 0x12,
+	0x3c, 0x70, 0x7b, 0x2a, 0xcd, 0x32, 0xd7, 0x6f, 0x2b, 0xf5, 0x76, 0x0f, 0xaf, 0x43, 0x76, 0x42,
+	0xa5, 0x81, 0xcc, 0xd9, 0xe0, 0xe2, 0x76, 0x0f, 0xbf, 0xa5, 0x6d, 0xc7, 0xb1, 0xd6, 0xde, 0x10,
+	0x02, 0xc3, 0x5b, 0x8e, 0x1b, 0x44, 0xbd, 0xe2, 0x2c, 0x18, 0x5d, 0xbe, 0xb1, 0xe4, 0x49, 0xa1,
+	0x7d, 0x2c, 0x36, 0x16, 0x01, 0xd9, 0x6a, 0xda, 0x7a, 0x1f, 0xf2, 0xd1, 0xea, 0x43, 0xef, 0xad,
+	0x43, 0x4f, 0xc0, 0x3a, 0x01, 0x19, 0x99, 0x18, 0x86, 0x74, 0xcf, 0x61, 0x8e, 0x58, 0x52, 0xb4,
+	0xc5, 0xd8, 0xaa, 0xc2, 0xda, 0xdd, 0xc0, 0xf1, 0xe8, 0x2e, 0x09, 0x84, 0x51, 0x44, 0x3f, 0xeb,
+	0x38, 0xac, 0xf0, 0x52, 0x27, 0x01, 0xbd, 0xe2, 0x4f, 0x3c, 0xa6, 0x2a, 0xcc, 0x3a, 0x07, 0xab,
+	0xf3, 0x6a, 0xc5, 0xd6, 0x55, 0xc8, 0x74, 0xb9, 0x42, 0x78, 0x2f, 0xd9, 0x52, 0xb0, 0x7e, 0x40,
+	0x80, 0x3f, 0x27, 0x4c, 0xb8, 0xde, 0xde, 0xa2, 0xda, 0x43, 0x67, 0xe4, 0xb0, 0xee, 0x80, 0x04,
+	0x34, 0x7c, 0xe8, 0x84, 0xf2, 0x7f, 0xf1, 0xd0, 0xb1, 0xce, 0xc3, 0xca, 0x5c, 0x94, 0x2a, 0xa7,
+	0x1a, 0xe4, 0xba, 0x4a, 0xa7, 0x2e, 0xdb, 0x48, 0xfe, 0xff, 0x19, 0xc8, 0x47, 0xcf, 0x41, 0x5c,
+	0x80, 0xec, 0xd5, 0x9b, 0xf6, 0xbd, 0x4d, 0x7b, 0xab, 0x92, 0xc0, 0x45, 0xc8, 0x75, 0x36, 0xaf,
+	0x7c, 0x21, 0x24, 0xd4, 0xde, 0x04, 0x83, 0x3f, 0x8c, 0x49, 0x80, 0x3f, 0x84, 0x34, 0x1f, 0xe1,
+	0xe3, 0xf1, 0xf9, 0x6a, 0x6f, 0xf1, 0xda, 0xda, 0xa2, 0x5a, 0x9d, 0x43, 0xa2, 0xfd, 0x57, 0x0a,
+	0xb2, 0xfc, 0x21, 0xc4, 0xab, 0xf8, 0x23, 0xc8, 0x88, 0x37, 0x11, 0xd6, 0xcc, 0xf5, 0x37, 0x64,
+	0x6d, 0xfd, 0x15, 0x7d, 0xe8, 0xe7, 0x1d, 0x84, 0xbf, 0x84, 0x82, 0x50, 0xaa, 0x8b, 0xf3, 0xe4,
+	0xe2, 0xa5, 0x34, 0xe7, 0xe9, 0xd4, 0x11, 0xb3, 0x9a, 0xbf, 0x4b, 0x90, 0x11, 0x8c, 0xd4, 0xa3,
+	0xd1, 0x5f, 0x57, 0x7a, 0x34, 0x73, 0xaf, 0x18, 0x2b, 0x81, 0x2f, 0x42, 0x9a, 0x13, 0x49, 0x87,
+	0x43, 0xbb, 0xf4, 0x74, 0x38, 0xf4, 0x1b, 0x47, 0x6c, 0xfb, 0x71, 0x74, 0x17, 0xaf, 0x2f, 0x36,
+	0xb1, 0x70, 0x79, 0xf5, 0xd5, 0x89, 0x68, 0xe7, 0x9b, 0xf2, 0x12, 0x0b, 0x29, 0x8c, 0x4f, 0xcd,
+	0x6f, 0xb5, 0xc0, 0xf8, 0x9a, 0x79, 0xd4, 0x74, 0xe4, 0xf0, 0x06, 0x14, 0x34, 0xfa, 0xe8, 0xb0,
+	0xbe, 0xca, 0x7d, 0x1d, 0xd6, 0x43, 0x38, 0x67, 0x25, 0xda, 0x5f, 0x41, 0x2e, 0xec, 0x31, 0xf8,
+	0x36, 0x94, 0xe7, 0xcb, 0x13, 0xff, 0x4f, 0x8b, 0x66, 0xbe, 0x71, 0xd5, 0x1a, 0xda, 0xd4, 0xe1,
+	0x35, 0x9d, 0x68, 0xa2, 0xce, 0xfd, 0xa7, 0xcf, 0xcd, 0xc4, 0xb3, 0xe7, 0x66, 0xe2, 0xe5, 0x73,
+	0x13, 0x7d, 0x3d, 0x33, 0xd1, 0x8f, 0x33, 0x13, 0x3d, 0x99, 0x99, 0xe8, 0xe9, 0xcc, 0x44, 0x7f,
+	0xcc, 0x4c, 0xf4, 0xe7, 0xcc, 0x4c, 0xbc, 0x9c, 0x99, 0xe8, 0xf1, 0x0b, 0x33, 0xf1, 0xf4, 0x85,
+	0x99, 0x78, 0xf6, 0xc2, 0x4c, 0xdc, 0x3f, 0xad, 0xff, 0xcf, 0x0c, 0x9c, 0x5d, 0xc7, 0x73, 0x36,
+	0x86, 0xfe, 0x9e, 0xbb, 0xa1, 0xff, 0x8f, 0xdd, 0x31, 0xc4, 0xe7, 0xdd, 0xbf, 0x03, 0x00, 0x00,
+	0xff, 0xff, 0x0a, 0x35, 0x40, 0x22, 0xde, 0x0e, 0x00, 0x00,
 }
 
 func (x Direction) String() string {
@@ -1974,6 +1985,14 @@ func (this *SeriesRequest) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if len(this.Shards) != len(that1.Shards) {
+		return false
+	}
+	for i := range this.Shards {
+		if this.Shards[i] != that1.Shards[i] {
+			return false
+		}
+	}
 	return true
 }
 func (this *SeriesResponse) Equal(that interface{}) bool {
@@ -2460,11 +2479,12 @@ func (this *SeriesRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&logproto.SeriesRequest{")
 	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
 	s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
 	s = append(s, "Groups: "+fmt.Sprintf("%#v", this.Groups)+",\n")
+	s = append(s, "Shards: "+fmt.Sprintf("%#v", this.Shards)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2650,6 +2670,14 @@ func (c *pusherClient) Push(ctx context.Context, in *PushRequest, opts ...grpc.C
 // PusherServer is the server API for Pusher service.
 type PusherServer interface {
 	Push(context.Context, *PushRequest) (*PushResponse, error)
+}
+
+// UnimplementedPusherServer can be embedded to have forward compatible implementations.
+type UnimplementedPusherServer struct {
+}
+
+func (*UnimplementedPusherServer) Push(ctx context.Context, req *PushRequest) (*PushResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
 }
 
 func RegisterPusherServer(s *grpc.Server, srv PusherServer) {
@@ -2849,6 +2877,32 @@ type QuerierServer interface {
 	Series(context.Context, *SeriesRequest) (*SeriesResponse, error)
 	TailersCount(context.Context, *TailersCountRequest) (*TailersCountResponse, error)
 	GetChunkIDs(context.Context, *GetChunkIDsRequest) (*GetChunkIDsResponse, error)
+}
+
+// UnimplementedQuerierServer can be embedded to have forward compatible implementations.
+type UnimplementedQuerierServer struct {
+}
+
+func (*UnimplementedQuerierServer) Query(req *QueryRequest, srv Querier_QueryServer) error {
+	return status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (*UnimplementedQuerierServer) QuerySample(req *SampleQueryRequest, srv Querier_QuerySampleServer) error {
+	return status.Errorf(codes.Unimplemented, "method QuerySample not implemented")
+}
+func (*UnimplementedQuerierServer) Label(ctx context.Context, req *LabelRequest) (*LabelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Label not implemented")
+}
+func (*UnimplementedQuerierServer) Tail(req *TailRequest, srv Querier_TailServer) error {
+	return status.Errorf(codes.Unimplemented, "method Tail not implemented")
+}
+func (*UnimplementedQuerierServer) Series(ctx context.Context, req *SeriesRequest) (*SeriesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Series not implemented")
+}
+func (*UnimplementedQuerierServer) TailersCount(ctx context.Context, req *TailersCountRequest) (*TailersCountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TailersCount not implemented")
+}
+func (*UnimplementedQuerierServer) GetChunkIDs(ctx context.Context, req *GetChunkIDsRequest) (*GetChunkIDsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChunkIDs not implemented")
 }
 
 func RegisterQuerierServer(s *grpc.Server, srv QuerierServer) {
@@ -3085,6 +3139,14 @@ type IngesterServer interface {
 	TransferChunks(Ingester_TransferChunksServer) error
 }
 
+// UnimplementedIngesterServer can be embedded to have forward compatible implementations.
+type UnimplementedIngesterServer struct {
+}
+
+func (*UnimplementedIngesterServer) TransferChunks(srv Ingester_TransferChunksServer) error {
+	return status.Errorf(codes.Unimplemented, "method TransferChunks not implemented")
+}
+
 func RegisterIngesterServer(s *grpc.Server, srv IngesterServer) {
 	s.RegisterService(&_Ingester_serviceDesc, srv)
 }
@@ -3132,7 +3194,7 @@ var _Ingester_serviceDesc = grpc.ServiceDesc{
 func (m *PushRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3140,29 +3202,36 @@ func (m *PushRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PushRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PushRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Streams) > 0 {
-		for _, msg := range m.Streams {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Streams) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Streams[iNdEx].Size()
+				i -= size
+				if _, err := m.Streams[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0xa
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *PushResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3170,17 +3239,22 @@ func (m *PushResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PushResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PushResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *QueryRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3188,64 +3262,64 @@ func (m *QueryRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *QueryRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Selector) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Selector)))
-		i += copy(dAtA[i:], m.Selector)
-	}
-	if m.Limit != 0 {
-		dAtA[i] = 0x10
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(m.Limit))
-	}
-	dAtA[i] = 0x1a
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)))
-	n1, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n1
-	dAtA[i] = 0x22
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.End)))
-	n2, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n2
-	if m.Direction != 0 {
-		dAtA[i] = 0x28
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(m.Direction))
-	}
 	if len(m.Shards) > 0 {
-		for _, s := range m.Shards {
+		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Shards[iNdEx])
+			copy(dAtA[i:], m.Shards[iNdEx])
+			i = encodeVarintLogproto(dAtA, i, uint64(len(m.Shards[iNdEx])))
+			i--
 			dAtA[i] = 0x3a
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	if m.Direction != 0 {
+		i = encodeVarintLogproto(dAtA, i, uint64(m.Direction))
+		i--
+		dAtA[i] = 0x28
+	}
+	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err1 != nil {
+		return 0, err1
+	}
+	i -= n1
+	i = encodeVarintLogproto(dAtA, i, uint64(n1))
+	i--
+	dAtA[i] = 0x22
+	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err2 != nil {
+		return 0, err2
+	}
+	i -= n2
+	i = encodeVarintLogproto(dAtA, i, uint64(n2))
+	i--
+	dAtA[i] = 0x1a
+	if m.Limit != 0 {
+		i = encodeVarintLogproto(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Selector) > 0 {
+		i -= len(m.Selector)
+		copy(dAtA[i:], m.Selector)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Selector)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *SampleQueryRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3253,54 +3327,54 @@ func (m *SampleQueryRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SampleQueryRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SampleQueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Selector) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Selector)))
-		i += copy(dAtA[i:], m.Selector)
-	}
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)))
-	n3, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n3
-	dAtA[i] = 0x1a
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.End)))
-	n4, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n4
 	if len(m.Shards) > 0 {
-		for _, s := range m.Shards {
+		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Shards[iNdEx])
+			copy(dAtA[i:], m.Shards[iNdEx])
+			i = encodeVarintLogproto(dAtA, i, uint64(len(m.Shards[iNdEx])))
+			i--
 			dAtA[i] = 0x22
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err3 != nil {
+		return 0, err3
+	}
+	i -= n3
+	i = encodeVarintLogproto(dAtA, i, uint64(n3))
+	i--
+	dAtA[i] = 0x1a
+	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err4 != nil {
+		return 0, err4
+	}
+	i -= n4
+	i = encodeVarintLogproto(dAtA, i, uint64(n4))
+	i--
+	dAtA[i] = 0x12
+	if len(m.Selector) > 0 {
+		i -= len(m.Selector)
+		copy(dAtA[i:], m.Selector)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Selector)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *SampleQueryResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3308,29 +3382,36 @@ func (m *SampleQueryResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SampleQueryResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SampleQueryResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Series) > 0 {
-		for _, msg := range m.Series {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Series) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Series[iNdEx].Size()
+				i -= size
+				if _, err := m.Series[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0xa
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *QueryResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3338,29 +3419,36 @@ func (m *QueryResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *QueryResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Streams) > 0 {
-		for _, msg := range m.Streams {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Streams) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Streams[iNdEx].Size()
+				i -= size
+				if _, err := m.Streams[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0xa
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *LabelRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3368,53 +3456,59 @@ func (m *LabelRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LabelRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LabelRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Name) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Name)))
-		i += copy(dAtA[i:], m.Name)
+	if m.End != nil {
+		n5, err5 := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(*m.End):])
+		if err5 != nil {
+			return 0, err5
+		}
+		i -= n5
+		i = encodeVarintLogproto(dAtA, i, uint64(n5))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.Start != nil {
+		n6, err6 := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(*m.Start):])
+		if err6 != nil {
+			return 0, err6
+		}
+		i -= n6
+		i = encodeVarintLogproto(dAtA, i, uint64(n6))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.Values {
-		dAtA[i] = 0x10
-		i++
+		i--
 		if m.Values {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
 		}
-		i++
+		i--
+		dAtA[i] = 0x10
 	}
-	if m.Start != nil {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.Start)))
-		n5, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.Start, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n5
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
 	}
-	if m.End != nil {
-		dAtA[i] = 0x22
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.End)))
-		n6, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.End, dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n6
-	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *LabelResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3422,32 +3516,31 @@ func (m *LabelResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LabelResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LabelResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Values) > 0 {
-		for _, s := range m.Values {
+		for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Values[iNdEx])
+			copy(dAtA[i:], m.Values[iNdEx])
+			i = encodeVarintLogproto(dAtA, i, uint64(len(m.Values[iNdEx])))
+			i--
 			dAtA[i] = 0xa
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *StreamAdapter) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3455,35 +3548,43 @@ func (m *StreamAdapter) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *StreamAdapter) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *StreamAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Labels) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
-		i += copy(dAtA[i:], m.Labels)
-	}
 	if len(m.Entries) > 0 {
-		for _, msg := range m.Entries {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Entries[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.Labels) > 0 {
+		i -= len(m.Labels)
+		copy(dAtA[i:], m.Labels)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *EntryAdapter) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3491,31 +3592,37 @@ func (m *EntryAdapter) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *EntryAdapter) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *EntryAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp)))
-	n7, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n7
 	if len(m.Line) > 0 {
-		dAtA[i] = 0x12
-		i++
+		i -= len(m.Line)
+		copy(dAtA[i:], m.Line)
 		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Line)))
-		i += copy(dAtA[i:], m.Line)
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	n7, err7 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err7 != nil {
+		return 0, err7
+	}
+	i -= n7
+	i = encodeVarintLogproto(dAtA, i, uint64(n7))
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
 }
 
 func (m *Sample) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3523,33 +3630,38 @@ func (m *Sample) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Sample) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Sample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.Timestamp != 0 {
-		dAtA[i] = 0x8
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(m.Timestamp))
+	if m.Hash != 0 {
+		i = encodeVarintLogproto(dAtA, i, uint64(m.Hash))
+		i--
+		dAtA[i] = 0x18
 	}
 	if m.Value != 0 {
-		dAtA[i] = 0x11
-		i++
+		i -= 8
 		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.Value))))
-		i += 8
+		i--
+		dAtA[i] = 0x11
 	}
-	if m.Hash != 0 {
-		dAtA[i] = 0x18
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(m.Hash))
+	if m.Timestamp != 0 {
+		i = encodeVarintLogproto(dAtA, i, uint64(m.Timestamp))
+		i--
+		dAtA[i] = 0x8
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *Series) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3557,35 +3669,43 @@ func (m *Series) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Series) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Labels) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
-		i += copy(dAtA[i:], m.Labels)
-	}
 	if len(m.Samples) > 0 {
-		for _, msg := range m.Samples {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Samples) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Samples[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.Labels) > 0 {
+		i -= len(m.Labels)
+		copy(dAtA[i:], m.Labels)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *TailRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3593,41 +3713,47 @@ func (m *TailRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TailRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TailRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Query) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Query)))
-		i += copy(dAtA[i:], m.Query)
+	n8, err8 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err8 != nil {
+		return 0, err8
+	}
+	i -= n8
+	i = encodeVarintLogproto(dAtA, i, uint64(n8))
+	i--
+	dAtA[i] = 0x2a
+	if m.Limit != 0 {
+		i = encodeVarintLogproto(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.DelayFor != 0 {
-		dAtA[i] = 0x18
-		i++
 		i = encodeVarintLogproto(dAtA, i, uint64(m.DelayFor))
+		i--
+		dAtA[i] = 0x18
 	}
-	if m.Limit != 0 {
-		dAtA[i] = 0x20
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(m.Limit))
+	if len(m.Query) > 0 {
+		i -= len(m.Query)
+		copy(dAtA[i:], m.Query)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0xa
 	}
-	dAtA[i] = 0x2a
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)))
-	n8, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n8
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *TailResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3635,39 +3761,48 @@ func (m *TailResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TailResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TailResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.Stream != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(m.Stream.Size()))
-		n9, err := m.Stream.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n9
-	}
 	if len(m.DroppedStreams) > 0 {
-		for _, msg := range m.DroppedStreams {
+		for iNdEx := len(m.DroppedStreams) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.DroppedStreams[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
+			}
+			i--
 			dAtA[i] = 0x12
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
+		}
+	}
+	if m.Stream != nil {
+		{
+			size := m.Stream.Size()
+			i -= size
+			if _, err := m.Stream.MarshalTo(dAtA[i:]); err != nil {
 				return 0, err
 			}
-			i += n
+			i = encodeVarintLogproto(dAtA, i, uint64(size))
 		}
+		i--
+		dAtA[i] = 0xa
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *SeriesRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3675,48 +3810,56 @@ func (m *SeriesRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SeriesRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SeriesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)))
-	n10, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n10
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.End)))
-	n11, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n11
-	if len(m.Groups) > 0 {
-		for _, s := range m.Groups {
-			dAtA[i] = 0x1a
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
+	if len(m.Shards) > 0 {
+		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Shards[iNdEx])
+			copy(dAtA[i:], m.Shards[iNdEx])
+			i = encodeVarintLogproto(dAtA, i, uint64(len(m.Shards[iNdEx])))
+			i--
+			dAtA[i] = 0x22
 		}
 	}
-	return i, nil
+	if len(m.Groups) > 0 {
+		for iNdEx := len(m.Groups) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Groups[iNdEx])
+			copy(dAtA[i:], m.Groups[iNdEx])
+			i = encodeVarintLogproto(dAtA, i, uint64(len(m.Groups[iNdEx])))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	n10, err10 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err10 != nil {
+		return 0, err10
+	}
+	i -= n10
+	i = encodeVarintLogproto(dAtA, i, uint64(n10))
+	i--
+	dAtA[i] = 0x12
+	n11, err11 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err11 != nil {
+		return 0, err11
+	}
+	i -= n11
+	i = encodeVarintLogproto(dAtA, i, uint64(n11))
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
 }
 
 func (m *SeriesResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3724,29 +3867,36 @@ func (m *SeriesResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SeriesResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SeriesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Series) > 0 {
-		for _, msg := range m.Series {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Series) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Series[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0xa
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *SeriesIdentifier) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3754,34 +3904,41 @@ func (m *SeriesIdentifier) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SeriesIdentifier) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SeriesIdentifier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Labels) > 0 {
-		for k, _ := range m.Labels {
-			dAtA[i] = 0xa
-			i++
+		for k := range m.Labels {
 			v := m.Labels[k]
-			mapSize := 1 + len(k) + sovLogproto(uint64(len(k))) + 1 + len(v) + sovLogproto(uint64(len(v)))
-			i = encodeVarintLogproto(dAtA, i, uint64(mapSize))
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(len(k)))
-			i += copy(dAtA[i:], k)
-			dAtA[i] = 0x12
-			i++
+			baseI := i
+			i -= len(v)
+			copy(dAtA[i:], v)
 			i = encodeVarintLogproto(dAtA, i, uint64(len(v)))
-			i += copy(dAtA[i:], v)
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = encodeVarintLogproto(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = encodeVarintLogproto(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0xa
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *DroppedStream) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3789,39 +3946,45 @@ func (m *DroppedStream) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *DroppedStream) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *DroppedStream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.From)))
-	n12, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.From, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n12
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.To)))
-	n13, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n13
 	if len(m.Labels) > 0 {
-		dAtA[i] = 0x1a
-		i++
+		i -= len(m.Labels)
+		copy(dAtA[i:], m.Labels)
 		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
-		i += copy(dAtA[i:], m.Labels)
+		i--
+		dAtA[i] = 0x1a
 	}
-	return i, nil
+	n12, err12 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.To):])
+	if err12 != nil {
+		return 0, err12
+	}
+	i -= n12
+	i = encodeVarintLogproto(dAtA, i, uint64(n12))
+	i--
+	dAtA[i] = 0x12
+	n13, err13 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.From, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.From):])
+	if err13 != nil {
+		return 0, err13
+	}
+	i -= n13
+	i = encodeVarintLogproto(dAtA, i, uint64(n13))
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
 }
 
 func (m *TimeSeriesChunk) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3829,53 +3992,64 @@ func (m *TimeSeriesChunk) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TimeSeriesChunk) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TimeSeriesChunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.FromIngesterId) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.FromIngesterId)))
-		i += copy(dAtA[i:], m.FromIngesterId)
-	}
-	if len(m.UserId) > 0 {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.UserId)))
-		i += copy(dAtA[i:], m.UserId)
+	if len(m.Chunks) > 0 {
+		for iNdEx := len(m.Chunks) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Chunks[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
 	}
 	if len(m.Labels) > 0 {
-		for _, msg := range m.Labels {
+		for iNdEx := len(m.Labels) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Labels[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
+			}
+			i--
 			dAtA[i] = 0x1a
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
 		}
 	}
-	if len(m.Chunks) > 0 {
-		for _, msg := range m.Chunks {
-			dAtA[i] = 0x22
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
+	if len(m.UserId) > 0 {
+		i -= len(m.UserId)
+		copy(dAtA[i:], m.UserId)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.UserId)))
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	if len(m.FromIngesterId) > 0 {
+		i -= len(m.FromIngesterId)
+		copy(dAtA[i:], m.FromIngesterId)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.FromIngesterId)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *LabelPair) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3883,29 +4057,36 @@ func (m *LabelPair) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *LabelPair) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LabelPair) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Name) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Name)))
-		i += copy(dAtA[i:], m.Name)
-	}
 	if len(m.Value) > 0 {
-		dAtA[i] = 0x12
-		i++
+		i -= len(m.Value)
+		copy(dAtA[i:], m.Value)
 		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Value)))
-		i += copy(dAtA[i:], m.Value)
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *Chunk) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3913,23 +4094,29 @@ func (m *Chunk) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Chunk) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Data) > 0 {
-		dAtA[i] = 0xa
-		i++
+		i -= len(m.Data)
+		copy(dAtA[i:], m.Data)
 		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Data)))
-		i += copy(dAtA[i:], m.Data)
+		i--
+		dAtA[i] = 0xa
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *TransferChunksResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3937,17 +4124,22 @@ func (m *TransferChunksResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TransferChunksResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TransferChunksResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *TailersCountRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3955,17 +4147,22 @@ func (m *TailersCountRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TailersCountRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TailersCountRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *TailersCountResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3973,22 +4170,27 @@ func (m *TailersCountResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TailersCountResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TailersCountResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.Count != 0 {
-		dAtA[i] = 0x8
-		i++
 		i = encodeVarintLogproto(dAtA, i, uint64(m.Count))
+		i--
+		dAtA[i] = 0x8
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *GetChunkIDsRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -3996,39 +4198,45 @@ func (m *GetChunkIDsRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *GetChunkIDsRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetChunkIDsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Matchers) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Matchers)))
-		i += copy(dAtA[i:], m.Matchers)
+	n14, err14 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err14 != nil {
+		return 0, err14
 	}
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)))
-	n14, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n14
+	i -= n14
+	i = encodeVarintLogproto(dAtA, i, uint64(n14))
+	i--
 	dAtA[i] = 0x1a
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.End)))
-	n15, err := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i:])
-	if err != nil {
-		return 0, err
+	n15, err15 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err15 != nil {
+		return 0, err15
 	}
-	i += n15
-	return i, nil
+	i -= n15
+	i = encodeVarintLogproto(dAtA, i, uint64(n15))
+	i--
+	dAtA[i] = 0x12
+	if len(m.Matchers) > 0 {
+		i -= len(m.Matchers)
+		copy(dAtA[i:], m.Matchers)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Matchers)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *GetChunkIDsResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -4036,36 +4244,37 @@ func (m *GetChunkIDsResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *GetChunkIDsResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetChunkIDsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.ChunkIDs) > 0 {
-		for _, s := range m.ChunkIDs {
+		for iNdEx := len(m.ChunkIDs) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.ChunkIDs[iNdEx])
+			copy(dAtA[i:], m.ChunkIDs[iNdEx])
+			i = encodeVarintLogproto(dAtA, i, uint64(len(m.ChunkIDs[iNdEx])))
+			i--
 			dAtA[i] = 0xa
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintLogproto(dAtA []byte, offset int, v uint64) int {
+	offset -= sovLogproto(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *PushRequest) Size() (n int) {
 	if m == nil {
@@ -4339,6 +4548,12 @@ func (m *SeriesRequest) Size() (n int) {
 			n += 1 + l + sovLogproto(uint64(l))
 		}
 	}
+	if len(m.Shards) > 0 {
+		for _, s := range m.Shards {
+			l = len(s)
+			n += 1 + l + sovLogproto(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -4513,14 +4728,7 @@ func (m *GetChunkIDsResponse) Size() (n int) {
 }
 
 func sovLogproto(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozLogproto(x uint64) (n int) {
 	return sovLogproto(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -4551,8 +4759,8 @@ func (this *QueryRequest) String() string {
 	s := strings.Join([]string{`&QueryRequest{`,
 		`Selector:` + fmt.Sprintf("%v", this.Selector) + `,`,
 		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
-		`Start:` + strings.Replace(strings.Replace(this.Start.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`End:` + strings.Replace(strings.Replace(this.End.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Direction:` + fmt.Sprintf("%v", this.Direction) + `,`,
 		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
 		`}`,
@@ -4565,8 +4773,8 @@ func (this *SampleQueryRequest) String() string {
 	}
 	s := strings.Join([]string{`&SampleQueryRequest{`,
 		`Selector:` + fmt.Sprintf("%v", this.Selector) + `,`,
-		`Start:` + strings.Replace(strings.Replace(this.Start.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`End:` + strings.Replace(strings.Replace(this.End.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
 		`}`,
 	}, "")
@@ -4619,9 +4827,14 @@ func (this *StreamAdapter) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForEntries := "[]EntryAdapter{"
+	for _, f := range this.Entries {
+		repeatedStringForEntries += strings.Replace(strings.Replace(f.String(), "EntryAdapter", "EntryAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForEntries += "}"
 	s := strings.Join([]string{`&StreamAdapter{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Entries:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Entries), "EntryAdapter", "EntryAdapter", 1), `&`, ``, 1) + `,`,
+		`Entries:` + repeatedStringForEntries + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4631,7 +4844,7 @@ func (this *EntryAdapter) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&EntryAdapter{`,
-		`Timestamp:` + strings.Replace(strings.Replace(this.Timestamp.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Timestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Line:` + fmt.Sprintf("%v", this.Line) + `,`,
 		`}`,
 	}, "")
@@ -4653,9 +4866,14 @@ func (this *Series) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForSamples := "[]Sample{"
+	for _, f := range this.Samples {
+		repeatedStringForSamples += strings.Replace(strings.Replace(f.String(), "Sample", "Sample", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForSamples += "}"
 	s := strings.Join([]string{`&Series{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Samples:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Samples), "Sample", "Sample", 1), `&`, ``, 1) + `,`,
+		`Samples:` + repeatedStringForSamples + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4668,7 +4886,7 @@ func (this *TailRequest) String() string {
 		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
 		`DelayFor:` + fmt.Sprintf("%v", this.DelayFor) + `,`,
 		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
-		`Start:` + strings.Replace(strings.Replace(this.Start.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4677,9 +4895,14 @@ func (this *TailResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForDroppedStreams := "[]*DroppedStream{"
+	for _, f := range this.DroppedStreams {
+		repeatedStringForDroppedStreams += strings.Replace(f.String(), "DroppedStream", "DroppedStream", 1) + ","
+	}
+	repeatedStringForDroppedStreams += "}"
 	s := strings.Join([]string{`&TailResponse{`,
 		`Stream:` + fmt.Sprintf("%v", this.Stream) + `,`,
-		`DroppedStreams:` + strings.Replace(fmt.Sprintf("%v", this.DroppedStreams), "DroppedStream", "DroppedStream", 1) + `,`,
+		`DroppedStreams:` + repeatedStringForDroppedStreams + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4689,9 +4912,10 @@ func (this *SeriesRequest) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&SeriesRequest{`,
-		`Start:` + strings.Replace(strings.Replace(this.Start.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`End:` + strings.Replace(strings.Replace(this.End.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Groups:` + fmt.Sprintf("%v", this.Groups) + `,`,
+		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4700,8 +4924,13 @@ func (this *SeriesResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForSeries := "[]SeriesIdentifier{"
+	for _, f := range this.Series {
+		repeatedStringForSeries += strings.Replace(strings.Replace(f.String(), "SeriesIdentifier", "SeriesIdentifier", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForSeries += "}"
 	s := strings.Join([]string{`&SeriesResponse{`,
-		`Series:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Series), "SeriesIdentifier", "SeriesIdentifier", 1), `&`, ``, 1) + `,`,
+		`Series:` + repeatedStringForSeries + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4731,8 +4960,8 @@ func (this *DroppedStream) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&DroppedStream{`,
-		`From:` + strings.Replace(strings.Replace(this.From.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`To:` + strings.Replace(strings.Replace(this.To.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`From:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.From), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`To:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.To), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`}`,
 	}, "")
@@ -4742,11 +4971,21 @@ func (this *TimeSeriesChunk) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForLabels := "[]*LabelPair{"
+	for _, f := range this.Labels {
+		repeatedStringForLabels += strings.Replace(f.String(), "LabelPair", "LabelPair", 1) + ","
+	}
+	repeatedStringForLabels += "}"
+	repeatedStringForChunks := "[]*Chunk{"
+	for _, f := range this.Chunks {
+		repeatedStringForChunks += strings.Replace(f.String(), "Chunk", "Chunk", 1) + ","
+	}
+	repeatedStringForChunks += "}"
 	s := strings.Join([]string{`&TimeSeriesChunk{`,
 		`FromIngesterId:` + fmt.Sprintf("%v", this.FromIngesterId) + `,`,
 		`UserId:` + fmt.Sprintf("%v", this.UserId) + `,`,
-		`Labels:` + strings.Replace(fmt.Sprintf("%v", this.Labels), "LabelPair", "LabelPair", 1) + `,`,
-		`Chunks:` + strings.Replace(fmt.Sprintf("%v", this.Chunks), "Chunk", "Chunk", 1) + `,`,
+		`Labels:` + repeatedStringForLabels + `,`,
+		`Chunks:` + repeatedStringForChunks + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4806,8 +5045,8 @@ func (this *GetChunkIDsRequest) String() string {
 	}
 	s := strings.Join([]string{`&GetChunkIDsRequest{`,
 		`Matchers:` + fmt.Sprintf("%v", this.Matchers) + `,`,
-		`Start:` + strings.Replace(strings.Replace(this.Start.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`End:` + strings.Replace(strings.Replace(this.End.String(), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -6673,6 +6912,38 @@ func (m *SeriesRequest) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Groups = append(m.Groups, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Shards", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Shards = append(m.Shards, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

@@ -1,10 +1,12 @@
+local k = import 'ksonnet-util/kausal.libsonnet';
+
 {
   namespace:
-    $.core.v1.namespace.new($._config.namespace),
+    k.core.v1.namespace.new($._config.namespace),
 
   util+:: {
-    local containerPort = $.core.v1.containerPort,
-    local container = $.core.v1.container,
+    local containerPort = k.core.v1.containerPort,
+    local container = k.core.v1.container,
 
     defaultPorts::
       [

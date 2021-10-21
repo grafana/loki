@@ -175,6 +175,10 @@ func defaultBaseTransport(ctx context.Context, clientCertSource cert.Source) htt
 		}
 	}
 
+	// If possible, configure http2 transport in order to use ReadIdleTimeout
+	// setting. This can only be done in Go 1.16 and up.
+	configureHTTP2(trans)
+
 	return trans
 }
 

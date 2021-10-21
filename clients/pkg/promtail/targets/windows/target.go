@@ -1,4 +1,5 @@
-//+build windows
+//go:build windows
+// +build windows
 
 package windows
 
@@ -9,8 +10,8 @@ import (
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/spf13/afero"

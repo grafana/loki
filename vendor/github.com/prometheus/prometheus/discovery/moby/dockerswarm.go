@@ -22,7 +22,7 @@ import (
 
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
@@ -146,7 +146,7 @@ func NewDiscovery(conf *DockerSwarmSDConfig, logger log.Logger) (*Discovery, err
 	// unix, which are not supported by the HTTP client. Passing HTTP client
 	// options to the Docker client makes those non-HTTP requests fail.
 	if hostURL.Scheme == "http" || hostURL.Scheme == "https" {
-		rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "dockerswarm_sd", config.WithHTTP2Disabled())
+		rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "dockerswarm_sd")
 		if err != nil {
 			return nil, err
 		}

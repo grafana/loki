@@ -18,7 +18,6 @@ import (
 	"container/heap"
 	"math"
 	"sort"
-	"strings"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -197,15 +196,13 @@ func mergeStrings(a, b []string) []string {
 	res := make([]string, 0, maxl*10/9)
 
 	for len(a) > 0 && len(b) > 0 {
-		d := strings.Compare(a[0], b[0])
-
-		if d == 0 {
+		if a[0] == b[0] {
 			res = append(res, a[0])
 			a, b = a[1:], b[1:]
-		} else if d < 0 {
+		} else if a[0] < b[0] {
 			res = append(res, a[0])
 			a = a[1:]
-		} else if d > 0 {
+		} else {
 			res = append(res, b[0])
 			b = b[1:]
 		}
@@ -218,13 +215,13 @@ func mergeStrings(a, b []string) []string {
 }
 
 // LabelNames returns all the unique label names present in all queriers in sorted order.
-func (q *mergeGenericQuerier) LabelNames() ([]string, Warnings, error) {
+func (q *mergeGenericQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, Warnings, error) {
 	var (
 		labelNamesMap = make(map[string]struct{})
 		warnings      Warnings
 	)
 	for _, querier := range q.queriers {
-		names, wrn, err := querier.LabelNames()
+		names, wrn, err := querier.LabelNames(matchers...)
 		if wrn != nil {
 			// TODO(bwplotka): We could potentially wrap warnings.
 			warnings = append(warnings, wrn...)
@@ -667,7 +664,7 @@ func (c *compactChunkIterator) Next() bool {
 	}
 
 	// Add last as it's not yet included in overlap. We operate on same series, so labels does not matter here.
-	iter = (&seriesToChunkEncoder{Series: c.mergeFunc(append(overlapping, newChunkToSeriesDecoder(nil, c.curr))...)}).Iterator()
+	iter = NewSeriesToChunkEncoder(c.mergeFunc(append(overlapping, newChunkToSeriesDecoder(nil, c.curr))...)).Iterator()
 	if !iter.Next() {
 		if c.err = iter.Err(); c.err != nil {
 			return false

@@ -31,7 +31,7 @@ pack:
     - [<string>]
 
   # If the resulting log line should use any existing timestamp or use time.Now() when the line was processed.
-  # To avoid out of order issues with Loki, when combining several log streams (separate source files) into one
+  # To avoid out-of-order issues with Loki, when combining several log streams (separate source files) into one
   # you will want to set a new timestamp on the log line, `ingest_timestamp: true`
   # If you are not combining multiple source files or you know your log lines won't have interlaced timestamps
   # you can set this value to false.

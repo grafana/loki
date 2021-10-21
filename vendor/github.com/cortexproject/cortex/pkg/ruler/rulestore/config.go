@@ -2,6 +2,9 @@ package rulestore
 
 import (
 	"flag"
+	"reflect"
+
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb"
@@ -24,4 +27,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
 	cfg.RegisterFlagsWithPrefix(prefix, f)
+}
+
+// IsDefaults returns true if the storage options have not been set.
+func (cfg *Config) IsDefaults() bool {
+	defaults := Config{}
+	flagext.DefaultValues(&defaults)
+
+	return reflect.DeepEqual(*cfg, defaults)
 }

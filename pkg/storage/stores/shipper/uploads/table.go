@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -43,7 +43,7 @@ type BoltDBIndexClient interface {
 }
 
 type StorageClient interface {
-	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
 }
 
 type dbSnapshot struct {
@@ -82,8 +82,8 @@ func NewTable(path, uploader string, storageClient StorageClient, boltdbIndexCli
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient) (*Table, error) {
-	dbs, err := loadBoltDBsFromDir(path)
+func LoadTable(path, uploader string, storageClient StorageClient, boltdbIndexClient BoltDBIndexClient, metrics *metrics) (*Table, error) {
+	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,6 @@ func (lt *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, c
 			}
 			return nil
 		})
-
 		if err != nil {
 			return err
 		}
@@ -411,8 +410,8 @@ func (lt *Table) uploadDB(ctx context.Context, name string, db *bbolt.DB) error 
 		return err
 	}
 
-	objectKey := lt.buildObjectKey(name)
-	return lt.storageClient.PutObject(ctx, objectKey, f)
+	fileName := lt.buildFileName(name)
+	return lt.storageClient.PutFile(ctx, lt.name, fileName, f)
 }
 
 // Cleanup removes dbs which are already uploaded and have not been modified for period longer than dbRetainPeriod.
@@ -453,19 +452,19 @@ func (lt *Table) Cleanup(dbRetainPeriod time.Duration) error {
 	return nil
 }
 
-func (lt *Table) buildObjectKey(dbName string) string {
-	// Files are stored with <table-name>/<uploader>-<db-name>
-	objectKey := fmt.Sprintf("%s/%s-%s", lt.name, lt.uploader, dbName)
+func (lt *Table) buildFileName(dbName string) string {
+	// Files are stored with <uploader>-<db-name>
+	fileName := fmt.Sprintf("%s-%s", lt.uploader, dbName)
 
 	// if the file is a migrated one then don't add its name to the object key otherwise we would re-upload them again here with a different name.
 	if lt.name == dbName {
-		objectKey = fmt.Sprintf("%s/%s", lt.name, lt.uploader)
+		fileName = lt.uploader
 	}
 
-	return fmt.Sprintf("%s.gz", objectKey)
+	return fmt.Sprintf("%s.gz", fileName)
 }
 
-func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
+func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, error) {
 	dbs := map[string]*bbolt.DB{}
 	filesInfo, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -476,19 +475,37 @@ func loadBoltDBsFromDir(dir string) (map[string]*bbolt.DB, error) {
 		if fileInfo.IsDir() {
 			continue
 		}
+		fullPath := filepath.Join(dir, fileInfo.Name())
 
 		if strings.HasSuffix(fileInfo.Name(), tempFileSuffix) || strings.HasSuffix(fileInfo.Name(), snapshotFileSuffix) {
 			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
 			// Cleaning up those temp files to avoid problems.
-			if err := os.Remove(filepath.Join(dir, fileInfo.Name())); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to remove temp file", "name", fileInfo.Name(), "err", err)
+			if err := os.Remove(fullPath); err != nil {
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", fullPath), "err", err)
 			}
 			continue
 		}
 
-		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(dir, fileInfo.Name()))
+		db, err := shipper_util.SafeOpenBoltdbFile(fullPath)
 		if err != nil {
-			return nil, err
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to open file %s. Please fix or remove this file.", fullPath), "err", err)
+			metrics.openExistingFileFailuresTotal.Inc()
+			continue
+		}
+
+		hasBucket := false
+		_ = db.View(func(tx *bbolt.Tx) error {
+			hasBucket = tx.Bucket(bucketName) != nil
+			return nil
+		})
+
+		if !hasBucket {
+			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("file %s has no bucket named %s, so removing it", fullPath, bucketName))
+			_ = db.Close()
+			if err := os.Remove(fullPath); err != nil {
+				level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove file %s without bucket", fullPath), "err", err)
+			}
+			continue
 		}
 
 		dbs[fileInfo.Name()] = db

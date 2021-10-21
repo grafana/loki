@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -616,7 +616,10 @@ func (w *WAL) log(rec []byte, final bool) error {
 
 	// Compress the record before calculating if a new segment is needed.
 	compressed := false
-	if w.compress && len(rec) > 0 {
+	if w.compress &&
+		len(rec) > 0 &&
+		// If MaxEncodedLen is less than 0 the record is too large to be compressed.
+		snappy.MaxEncodedLen(len(rec)) >= 0 {
 		// The snappy library uses `len` to calculate if we need a new buffer.
 		// In order to allocate as few buffers as possible make the length
 		// equal to the capacity.
@@ -694,6 +697,22 @@ func (w *WAL) log(rec []byte, final bool) error {
 	}
 
 	return nil
+}
+
+// LastSegmentAndOffset returns the last segment number of the WAL
+// and the offset in that file upto which the segment has been filled.
+func (w *WAL) LastSegmentAndOffset() (seg, offset int, err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+
+	_, seg, err = Segments(w.Dir())
+	if err != nil {
+		return
+	}
+
+	offset = (w.donePages * pageSize) + w.page.alloc
+
+	return
 }
 
 // Truncate drops all segments before i.
@@ -862,6 +881,21 @@ func NewSegmentBufReader(segs ...*Segment) *segmentBufReader {
 		buf:  bufio.NewReaderSize(segs[0], 16*pageSize),
 		segs: segs,
 	}
+}
+
+// nolint:golint
+func NewSegmentBufReaderWithOffset(offset int, segs ...*Segment) (sbr *segmentBufReader, err error) {
+	if offset == 0 {
+		return NewSegmentBufReader(segs...), nil
+	}
+	sbr = &segmentBufReader{
+		buf:  bufio.NewReaderSize(segs[0], 16*pageSize),
+		segs: segs,
+	}
+	if offset > 0 {
+		_, err = sbr.buf.Discard(offset)
+	}
+	return sbr, err
 }
 
 func (r *segmentBufReader) Close() (err error) {

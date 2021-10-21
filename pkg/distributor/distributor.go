@@ -9,31 +9,30 @@ import (
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/grafana/dskit/limiter"
+	"github.com/grafana/dskit/services"
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/pkg/errors"
-	"go.uber.org/atomic"
-
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
-var (
-	maxLabelCacheSize = 100000
-)
+var maxLabelCacheSize = 100000
 
 // Config for a Distributor.
 type Config struct {
@@ -44,21 +43,39 @@ type Config struct {
 	factory ring_client.PoolFactory `yaml:"-"`
 }
 
-// RegisterFlags registers the flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.DistributorRing.RegisterFlags(f)
+// RegisterFlags registers distributor-related flags.
+//
+// Since they are registered through an external library, we override some of them to set
+// different default values.
+func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+
+	cfg.DistributorRing.RegisterFlags(throwaway)
+
+	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
+	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
+	throwaway.VisitAll(func(f *flag.Flag) {
+		// Ignore errors when setting new values. We have a test to verify that it works.
+		switch f.Name {
+		case "distributor.ring.store":
+			_ = f.Value.Set("inmemory")
+		}
+
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
 }
 
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
 	services.Service
 
-	cfg           Config
-	clientCfg     client.Config
-	tenantConfigs *runtime.TenantConfigs
-	ingestersRing ring.ReadRing
-	validator     *Validator
-	pool          *ring_client.Pool
+	cfg              Config
+	clientCfg        client.Config
+	tenantConfigs    *runtime.TenantConfigs
+	tenantsRetention *retention.TenantsRetention
+	ingestersRing    ring.ReadRing
+	validator        *Validator
+	pool             *ring_client.Pool
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -118,6 +135,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		cfg:                  cfg,
 		clientCfg:            clientCfg,
 		tenantConfigs:        configs,
+		tenantsRetention:     retention.NewTenantsRetention(overrides),
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
 		validator:            validator,
@@ -190,7 +208,7 @@ type pushTracker struct {
 
 // Push a set of streams.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -207,6 +225,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validationContext := d.validator.getValidationContextFor(userID)
 
 	for _, stream := range req.Streams {
+		// Truncate first so subsequent steps have consistent line lengths
+		d.truncateLines(validationContext, &stream)
+
 		stream.Labels, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
@@ -218,6 +239,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, userID).Add(float64(bytes))
 			continue
 		}
+
 		n := 0
 		for _, entry := range stream.Entries {
 			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
@@ -234,6 +256,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		if len(stream.Entries) == 0 {
 			continue
 		}
+
 		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,
@@ -272,8 +295,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		done: make(chan struct{}),
-		err:  make(chan error),
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		err:  make(chan error, 1),
 	}
 	tracker.samplesPending.Store(int32(len(streams)))
 	for ingester, samples := range samplesByIngester {
@@ -296,6 +319,25 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
+	if !vContext.maxLineSizeTruncate {
+		return
+	}
+
+	var truncatedSamples, truncatedBytes int
+	for i, e := range stream.Entries {
+		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
+			stream.Entries[i].Line = e.Line[:maxSize]
+
+			truncatedSamples++
+			truncatedBytes = len(e.Line) - maxSize
+		}
+	}
+
+	validation.MutatedSamples.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedSamples))
+	validation.MutatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedBytes))
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

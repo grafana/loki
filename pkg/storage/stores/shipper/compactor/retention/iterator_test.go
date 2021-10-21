@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 func Test_ChunkIterator(t *testing.T) {
@@ -99,14 +100,11 @@ func Test_SeriesCleaner(t *testing.T) {
 			require.NoError(t, err)
 
 			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				cleaner := newSeriesCleaner(tx.Bucket(bucketName), tt.config)
-				if err := cleaner.Cleanup(entryFromChunk(c2).SeriesID, entryFromChunk(c2).UserID); err != nil {
+				cleaner := newSeriesCleaner(tx.Bucket(bucketName), tt.config, tables[0].name)
+				if err := cleaner.Cleanup(entryFromChunk(c2).UserID, c2.Metric); err != nil {
 					return err
 				}
-				if err := cleaner.Cleanup(entryFromChunk(c1).SeriesID, entryFromChunk(c1).UserID); err != nil {
-					return err
-				}
-				return nil
+				return cleaner.Cleanup(entryFromChunk(c1).UserID, c1.Metric)
 			})
 			require.NoError(t, err)
 

@@ -10,7 +10,7 @@ const floatingBasePath = "v2/floating_ips"
 
 // FloatingIPsService is an interface for interfacing with the floating IPs
 // endpoints of the Digital Ocean API.
-// See: https://developers.digitalocean.com/documentation/v2#floating-ips
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Floating-IPs
 type FloatingIPsService interface {
 	List(context.Context, *ListOptions) ([]FloatingIP, *Response, error)
 	Get(context.Context, string) (*FloatingIP, *Response, error)
@@ -54,10 +54,10 @@ type floatingIPRoot struct {
 }
 
 // FloatingIPCreateRequest represents a request to create a floating IP.
-// If DropletID is not empty, the floating IP will be assigned to the
-// droplet.
+// Specify DropletID to assign the floating IP to a Droplet or Region
+// to reserve it to the region.
 type FloatingIPCreateRequest struct {
-	Region    string `json:"region"`
+	Region    string `json:"region,omitempty"`
 	DropletID int    `json:"droplet_id,omitempty"`
 }
 

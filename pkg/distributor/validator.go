@@ -28,7 +28,9 @@ type validationContext struct {
 	rejectOldSample       bool
 	rejectOldSampleMaxAge int64
 	creationGracePeriod   int64
-	maxLineSize           int
+
+	maxLineSize         int
+	maxLineSizeTruncate bool
 
 	maxLabelNamesPerSeries int
 	maxLabelNameLength     int
@@ -45,6 +47,7 @@ func (v Validator) getValidationContextFor(userID string) validationContext {
 		rejectOldSampleMaxAge:  now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
 		creationGracePeriod:    now.Add(v.CreationGracePeriod(userID)).UnixNano(),
 		maxLineSize:            v.MaxLineSize(userID),
+		maxLineSizeTruncate:    v.MaxLineSizeTruncate(userID),
 		maxLabelNamesPerSeries: v.MaxLabelNamesPerSeries(userID),
 		maxLabelNameLength:     v.MaxLabelNameLength(userID),
 		maxLabelValueLength:    v.MaxLabelValueLength(userID),

@@ -1,12 +1,13 @@
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
-.PHONY: migrate migrate-image
+.PHONY: migrate migrate-image lint-markdown ragel
+.PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 
 SHELL = /usr/bin/env bash
 
@@ -32,14 +33,13 @@ endif
 #############
 
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
-IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 
 # Certain aspects of the build are done in containers for consistency (e.g. yacc/protobuf generation)
 # If you have the correct tools installed and you want to speed up development you can run
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.13.0
+BUILD_IMAGE_VERSION := 0.18.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -59,7 +59,7 @@ DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -
 APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -prune -o -name cmd -prune -o -type f -name '*.go' -print)
 
 # Build flags
-VPREFIX := github.com/grafana/loki/pkg/build
+VPREFIX := github.com/grafana/loki/pkg/util/build
 GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
 DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
@@ -87,6 +87,10 @@ PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 # Yacc Files
 YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
+
+# Ragel Files
+RAGEL_DEFS := $(shell find . $(DONT_FIND) -type f -name *.rl -print)
+RAGEL_GOS := $(patsubst %.rl,%.rl.go,$(RAGEL_DEFS))
 
 # Promtail UI files
 PROMTAIL_GENERATED_FILE := clients/pkg/promtail/server/ui/assets_vfsdata.go
@@ -127,8 +131,8 @@ binfmt:
 all: promtail logcli loki loki-canary check-generated-files
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: touch-protobuf-sources yacc protos clients/pkg/promtail/server/ui/assets_vfsdata.go
-	@if ! (git diff --exit-code $(YACC_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
+check-generated-files: touch-protobuf-sources yacc ragel protos clients/pkg/promtail/server/ui/assets_vfsdata.go
+	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
@@ -148,7 +152,7 @@ touch-protobuf-sources:
 # Logcli #
 ##########
 
-logcli: yacc cmd/logcli/logcli
+logcli: yacc ragel cmd/logcli/logcli
 
 logcli-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
@@ -161,8 +165,8 @@ cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
 # Loki #
 ########
 
-loki: protos yacc cmd/loki/loki
-loki-debug: protos yacc cmd/loki/loki-debug
+loki: protos yacc ragel cmd/loki/loki
+loki-debug: protos yacc ragel cmd/loki/loki-debug
 
 cmd/loki/loki: $(APP_GO_FILES) cmd/loki/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -176,7 +180,7 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 # Loki-Canary #
 ###############
 
-loki-canary: protos yacc cmd/loki-canary/loki-canary
+loki-canary: protos yacc ragel cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -201,14 +205,16 @@ PROMTAIL_DEBUG_GO_FLAGS := $(DEBUG_GO_FLAGS)
 # Validate GOHOSTOS=linux && GOOS=linux to use CGO.
 ifeq ($(shell go env GOHOSTOS),linux)
 ifeq ($(shell go env GOOS),linux)
+ifneq ($(CGO_ENABLED), 0)
 PROMTAIL_CGO = 1
+endif
 PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
 PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
 endif
 endif
 
-promtail: yacc clients/cmd/promtail/promtail
-promtail-debug: yacc clients/cmd/promtail/promtail-debug
+promtail: yacc ragel clients/cmd/promtail/promtail
+promtail-debug: yacc ragel clients/cmd/promtail/promtail-debug
 
 promtail-clean-assets:
 	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
@@ -243,10 +249,10 @@ cmd/migrate/migrate: $(APP_GO_FILES) cmd/migrate/main.go
 GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -258,6 +264,8 @@ publish: dist
 # Lint #
 ########
 
+# To run this efficiently on your workstation, run this from the root dir:
+# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.17.0 lint
 lint:
 	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
@@ -307,6 +315,25 @@ else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 	sed -i.back '/^\/\/line/ d' $@
 	rm ${@}.back
+endif
+
+#########
+# Ragels #
+#########
+
+ragel: $(RAGEL_GOS)
+
+%.rl.go: %.rl
+ifeq ($(BUILD_IN_CONTAINER),true)
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	ragel -Z $< -o $@
 endif
 
 #############
@@ -451,12 +478,6 @@ push-bigtable-backup: bigtable-backup
 
 images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image fluentd-image
 
-print-images:
-	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
-	@echo > /dev/null
-
-IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
-
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
 define push
@@ -546,12 +567,15 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
+		-e DRONE_SERVER -e DRONE_TOKEN \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
+	drone lint .drone/drone.yml
+	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
 endif
 
 
@@ -583,8 +607,59 @@ fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
 
+lint-scripts:
+	@find . -name '*.sh' -not -path '*/vendor/*' -print0 | \
+		xargs -0 -n1 shellcheck -x -o all
+
+
+# search for dead link in our documentation.
+# To avoid being rate limited by Github you can use an env variable GITHUB_TOKEN to pass a github token API.
+# see https://github.com/settings/tokens
+lint-markdown:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	lychee --verbose --config .lychee.toml ./*.md  ./docs/**/*.md  ./production/**/*.md ./cmd/**/*.md ./clients/**/*.md ./tools/**/*.md
+endif
+
+
 # usage: FUZZ_TESTCASE_PATH=/tmp/testcase make test-fuzz
 # this will run the fuzzing using /tmp/testcase and save benchmark locally.
 test-fuzz:
 	go test -timeout 30s -tags dev,gofuzz -cpuprofile cpu.prof -memprofile mem.prof  \
 		-run ^Test_Fuzz$$ github.com/grafana/loki/pkg/logql -v -count=1 -timeout=0s
+
+format:
+	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
+		-type f -name '*.go' -exec gofmt -w -s {} \;
+	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
+		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+
+###################
+# Example Configs #
+###################
+
+# Validate the example configurations that we provide in ./docs/sources/configuration/examples
+validate-example-configs: loki
+	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+
+# Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
+# This target should be run if any of our example configs change.
+generate-example-config-doc:
+	echo "Removing existing doc at loki/docs/configuration/examples.md and re-generating. . ."
+	# Title and Heading
+	echo -e "---\ntitle: Examples\n---\n # Loki Configuration Examples" > ./docs/sources/configuration/examples.md
+	# Append each configuration and its file name to examples.md
+	for f in ./docs/sources/configuration/examples/*.yaml; do echo -e "\n## $$(basename $$f)\n\n\`\`\`yaml\n$$(cat $$f)\n\`\`\`\n" >> ./docs/sources/configuration/examples.md; done
+
+# Fail our CI build if changes are made to example configurations but our doc is not updated
+check-example-config-doc: generate-example-config-doc
+	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+		echo -e "\nChanges found in generated example configuration doc"; \
+		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
+		echo "If you are actively developing these files you can ignore this error"; \
+		echo -e "(Don't forget to check in the generated files when finished)\n"; \
+		exit 1; \
+	fi

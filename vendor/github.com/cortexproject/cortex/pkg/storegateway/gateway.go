@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -18,12 +20,10 @@ import (
 	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -113,7 +113,8 @@ func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		ringStore, err = kv.NewClient(
 			gatewayCfg.ShardingRing.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(reg, "store-gateway"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), "store-gateway"),
+			logger,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
@@ -231,6 +232,22 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is JOINING in the ring")
+
+		// In the event of a cluster cold start or scale up of 2+ store-gateway instances at the same
+		// time, we may end up in a situation where each new store-gateway instance starts at a slightly
+		// different time and thus each one starts with a different state of the ring. It's better
+		// to just wait the ring stability for a short time.
+		if g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
+			minWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMinDuration
+			maxWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMaxDuration
+
+			level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
+			if err := ring.WaitRingStability(ctx, g.ring, BlocksOwnerSync, minWaiting, maxWaiting); err != nil {
+				level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway")
+			} else {
+				level.Info(g.logger).Log("msg", "store-gateway ring topology is stable")
+			}
+		}
 	}
 
 	// At this point, if sharding is enabled, the instance is registered with some tokens
@@ -271,7 +288,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
-		ringLastState, _ = g.ring.GetAllHealthy(BlocksSync) // nolint:errcheck
+		ringLastState, _ = g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
 		ringTicker := time.NewTicker(util.DurationWithJitter(g.gatewayCfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -284,7 +301,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := g.ring.GetAllHealthy(BlocksSync) // nolint:errcheck
+			currRingState, _ := g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState

@@ -5,7 +5,7 @@ import (
 )
 
 // TargetType is the type of target
-// nolint:golint
+// nolint:revive
 type TargetType string
 
 const (

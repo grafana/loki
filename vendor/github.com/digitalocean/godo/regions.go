@@ -7,7 +7,7 @@ import (
 
 // RegionsService is an interface for interfacing with the regions
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#regions
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Regions
 type RegionsService interface {
 	List(context.Context, *ListOptions) ([]Region, *Response, error)
 }

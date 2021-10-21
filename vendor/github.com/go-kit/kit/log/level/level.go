@@ -172,7 +172,7 @@ func WarnValue() Value { return warnValue }
 // InfoValue returns the unique value added to log events by Info.
 func InfoValue() Value { return infoValue }
 
-// DebugValue returns the unique value added to log events by Warn.
+// DebugValue returns the unique value added to log events by Debug.
 func DebugValue() Value { return debugValue }
 
 var (

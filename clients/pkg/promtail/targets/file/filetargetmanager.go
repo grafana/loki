@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
@@ -33,7 +33,7 @@ const (
 )
 
 // FileTargetManager manages a set of targets.
-// nolint:golint
+// nolint:revive
 type FileTargetManager struct {
 	log     log.Logger
 	quit    context.CancelFunc

@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
@@ -30,15 +30,18 @@ import (
 	"github.com/prometheus/common/version"
 	apiv1 "k8s.io/api/core/v1"
 	disv1beta1 "k8s.io/api/discovery/v1beta1"
+	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/api/networking/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -114,6 +117,7 @@ func (c *Role) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type SDConfig struct {
 	APIServer          config.URL              `yaml:"api_server,omitempty"`
 	Role               Role                    `yaml:"role"`
+	KubeConfig         string                  `yaml:"kubeconfig_file"`
 	HTTPClientConfig   config.HTTPClientConfig `yaml:",inline"`
 	NamespaceDiscovery NamespaceDiscovery      `yaml:"namespaces,omitempty"`
 	Selectors          []SelectorConfig        `yaml:"selectors,omitempty"`
@@ -130,6 +134,7 @@ func (c *SDConfig) NewDiscoverer(opts discovery.DiscovererOptions) (discovery.Di
 // SetDirectory joins any relative file paths with dir.
 func (c *SDConfig) SetDirectory(dir string) {
 	c.HTTPClientConfig.SetDirectory(dir)
+	c.KubeConfig = config.JoinDir(dir, c.KubeConfig)
 }
 
 type roleSelector struct {
@@ -166,6 +171,14 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	err = c.HTTPClientConfig.Validate()
 	if err != nil {
 		return err
+	}
+	if c.APIServer.URL != nil && c.KubeConfig != "" {
+		// Api-server and kubeconfig_file are mutually exclusive
+		return errors.Errorf("cannot use 'kubeconfig_file' and 'api_server' simultaneously")
+	}
+	if c.KubeConfig != "" && !reflect.DeepEqual(c.HTTPClientConfig, config.DefaultHTTPClientConfig) {
+		// Kubeconfig_file and custom http config are mutually exclusive
+		return errors.Errorf("cannot use a custom HTTP client configuration together with 'kubeconfig_file'")
 	}
 	if c.APIServer.URL == nil && !reflect.DeepEqual(c.HTTPClientConfig, config.DefaultHTTPClientConfig) {
 		return errors.Errorf("to use custom HTTP client configuration please provide the 'api_server' URL explicitly")
@@ -256,7 +269,12 @@ func New(l log.Logger, conf *SDConfig) (*Discovery, error) {
 		kcfg *rest.Config
 		err  error
 	)
-	if conf.APIServer.URL == nil {
+	if conf.KubeConfig != "" {
+		kcfg, err = clientcmd.BuildConfigFromFlags("", conf.KubeConfig)
+		if err != nil {
+			return nil, err
+		}
+	} else if conf.APIServer.URL == nil {
 		// Use the Kubernetes provided pod service account
 		// as described in https://kubernetes.io/docs/admin/service-accounts-admin/
 		kcfg, err = rest.InClusterConfig()
@@ -265,7 +283,7 @@ func New(l log.Logger, conf *SDConfig) (*Discovery, error) {
 		}
 		level.Info(l).Log("msg", "Using pod service account via in-cluster config")
 	} else {
-		rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "kubernetes_sd", config.WithHTTP2Disabled())
+		rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "kubernetes_sd")
 		if err != nil {
 			return nil, err
 		}
@@ -475,23 +493,58 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 			go svc.informer.Run(ctx.Done())
 		}
 	case RoleIngress:
+		// Check "networking.k8s.io/v1" availability with retries.
+		// If "v1" is not avaiable, use "networking.k8s.io/v1beta1" for backward compatibility
+		var v1Supported bool
+		if retryOnError(ctx, 10*time.Second,
+			func() (err error) {
+				v1Supported, err = checkNetworkingV1Supported(d.client)
+				if err != nil {
+					level.Error(d.logger).Log("msg", "Failed to check networking.k8s.io/v1 availability", "err", err)
+				}
+				return err
+			},
+		) {
+			d.Unlock()
+			return
+		}
+
 		for _, namespace := range namespaces {
-			i := d.client.NetworkingV1beta1().Ingresses(namespace)
-			ilw := &cache.ListWatch{
-				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					options.FieldSelector = d.selectors.ingress.field
-					options.LabelSelector = d.selectors.ingress.label
-					return i.List(ctx, options)
-				},
-				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					options.FieldSelector = d.selectors.ingress.field
-					options.LabelSelector = d.selectors.ingress.label
-					return i.Watch(ctx, options)
-				},
+			var informer cache.SharedInformer
+			if v1Supported {
+				i := d.client.NetworkingV1().Ingresses(namespace)
+				ilw := &cache.ListWatch{
+					ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+						options.FieldSelector = d.selectors.ingress.field
+						options.LabelSelector = d.selectors.ingress.label
+						return i.List(ctx, options)
+					},
+					WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+						options.FieldSelector = d.selectors.ingress.field
+						options.LabelSelector = d.selectors.ingress.label
+						return i.Watch(ctx, options)
+					},
+				}
+				informer = cache.NewSharedInformer(ilw, &networkv1.Ingress{}, resyncPeriod)
+			} else {
+				i := d.client.NetworkingV1beta1().Ingresses(namespace)
+				ilw := &cache.ListWatch{
+					ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+						options.FieldSelector = d.selectors.ingress.field
+						options.LabelSelector = d.selectors.ingress.label
+						return i.List(ctx, options)
+					},
+					WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+						options.FieldSelector = d.selectors.ingress.field
+						options.LabelSelector = d.selectors.ingress.label
+						return i.Watch(ctx, options)
+					},
+				}
+				informer = cache.NewSharedInformer(ilw, &v1beta1.Ingress{}, resyncPeriod)
 			}
 			ingress := NewIngress(
 				log.With(d.logger, "role", "ingress"),
-				cache.NewSharedInformer(ilw, &v1beta1.Ingress{}, resyncPeriod),
+				informer,
 			)
 			d.discoverers = append(d.discoverers, ingress)
 			go ingress.informer.Run(ctx.Done())
@@ -546,4 +599,34 @@ func send(ctx context.Context, ch chan<- []*targetgroup.Group, tg *targetgroup.G
 	case <-ctx.Done():
 	case ch <- []*targetgroup.Group{tg}:
 	}
+}
+
+func retryOnError(ctx context.Context, interval time.Duration, f func() error) (canceled bool) {
+	var err error
+	err = f()
+	for {
+		if err == nil {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return true
+		case <-time.After(interval):
+			err = f()
+		}
+	}
+}
+
+func checkNetworkingV1Supported(client kubernetes.Interface) (bool, error) {
+	k8sVer, err := client.Discovery().ServerVersion()
+	if err != nil {
+		return false, err
+	}
+	semVer, err := utilversion.ParseSemantic(k8sVer.String())
+	if err != nil {
+		return false, err
+	}
+	// networking.k8s.io/v1 is available since Kubernetes v1.19
+	// https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/CHANGELOG-1.19.md
+	return semVer.Major() >= 1 && semVer.Minor() >= 19, nil
 }

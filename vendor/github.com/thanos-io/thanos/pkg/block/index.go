@@ -29,7 +29,7 @@ import (
 )
 
 // VerifyIndex does a full run over a block index and verifies that it fulfills the order invariants.
-func VerifyIndex(logger log.Logger, fn string, minTime int64, maxTime int64) error {
+func VerifyIndex(logger log.Logger, fn string, minTime, maxTime int64) error {
 	stats, err := GatherIndexHealthStats(logger, fn, minTime, maxTime)
 	if err != nil {
 		return err
@@ -111,12 +111,9 @@ func (i HealthStats) Issue347OutsideChunksErr() error {
 	return nil
 }
 
-// CriticalErr returns error if stats indicates critical block issue, that might solved only by manual repair procedure.
-func (i HealthStats) CriticalErr() error {
-	var errMsg []string
-
-	if i.OutOfOrderSeries > 0 {
-		errMsg = append(errMsg, fmt.Sprintf(
+func (i HealthStats) OutOfOrderChunksErr() error {
+	if i.OutOfOrderChunks > 0 {
+		return errors.New(fmt.Sprintf(
 			"%d/%d series have an average of %.3f out-of-order chunks: "+
 				"%.3f of these are exact duplicates (in terms of data and time range)",
 			i.OutOfOrderSeries,
@@ -125,6 +122,12 @@ func (i HealthStats) CriticalErr() error {
 			float64(i.DuplicatedChunks)/float64(i.OutOfOrderChunks),
 		))
 	}
+	return nil
+}
+
+// CriticalErr returns error if stats indicates critical block issue, that might solved only by manual repair procedure.
+func (i HealthStats) CriticalErr() error {
+	var errMsg []string
 
 	n := i.OutsideChunks - (i.CompleteOutsideChunks + i.Issue347OutsideChunks)
 	if n > 0 {
@@ -155,6 +158,10 @@ func (i HealthStats) AnyErr() error {
 	}
 
 	if err := i.PrometheusIssue5372Err(); err != nil {
+		errMsg = append(errMsg, err.Error())
+	}
+
+	if err := i.OutOfOrderChunksErr(); err != nil {
 		errMsg = append(errMsg, err.Error())
 	}
 
@@ -202,7 +209,7 @@ func (n *minMaxSumInt64) Avg() int64 {
 // helps to assess index health.
 // It considers https://github.com/prometheus/tsdb/issues/347 as something that Thanos can handle.
 // See HealthStats.Issue347OutsideChunks for details.
-func GatherIndexHealthStats(logger log.Logger, fn string, minTime int64, maxTime int64) (stats HealthStats, err error) {
+func GatherIndexHealthStats(logger log.Logger, fn string, minTime, maxTime int64) (stats HealthStats, err error) {
 	r, err := index.NewFileReader(fn)
 	if err != nil {
 		return stats, errors.Wrap(err, "open index file")
@@ -440,7 +447,7 @@ func Repair(logger log.Logger, dir string, id ulid.ULID, source metadata.SourceT
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
-func IgnoreCompleteOutsideChunk(mint int64, maxt int64, _ *chunks.Meta, curr *chunks.Meta) (bool, error) {
+func IgnoreCompleteOutsideChunk(mint, maxt int64, _, curr *chunks.Meta) (bool, error) {
 	if curr.MinTime > maxt || curr.MaxTime < mint {
 		// "Complete" outsider. Ignore.
 		return true, nil
@@ -448,7 +455,7 @@ func IgnoreCompleteOutsideChunk(mint int64, maxt int64, _ *chunks.Meta, curr *ch
 	return false, nil
 }
 
-func IgnoreIssue347OutsideChunk(_ int64, maxt int64, _ *chunks.Meta, curr *chunks.Meta) (bool, error) {
+func IgnoreIssue347OutsideChunk(_, maxt int64, _, curr *chunks.Meta) (bool, error) {
 	if curr.MinTime == maxt {
 		// "Near" outsider from issue https://github.com/prometheus/tsdb/issues/347. Ignore.
 		return true, nil
@@ -456,7 +463,7 @@ func IgnoreIssue347OutsideChunk(_ int64, maxt int64, _ *chunks.Meta, curr *chunk
 	return false, nil
 }
 
-func IgnoreDuplicateOutsideChunk(_ int64, _ int64, last *chunks.Meta, curr *chunks.Meta) (bool, error) {
+func IgnoreDuplicateOutsideChunk(_, _ int64, last, curr *chunks.Meta) (bool, error) {
 	if last == nil {
 		return false, nil
 	}
@@ -483,7 +490,7 @@ func IgnoreDuplicateOutsideChunk(_ int64, _ int64, last *chunks.Meta, curr *chun
 
 // sanitizeChunkSequence ensures order of the input chunks and drops any duplicates.
 // It errors if the sequence contains non-dedupable overlaps.
-func sanitizeChunkSequence(chks []chunks.Meta, mint int64, maxt int64, ignoreChkFns []ignoreFnType) ([]chunks.Meta, error) {
+func sanitizeChunkSequence(chks []chunks.Meta, mint, maxt int64, ignoreChkFns []ignoreFnType) ([]chunks.Meta, error) {
 	if len(chks) == 0 {
 		return nil, nil
 	}

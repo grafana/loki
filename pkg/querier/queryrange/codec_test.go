@@ -1,9 +1,11 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	strings "strings"
@@ -84,7 +86,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := lokiCodec.DecodeRequest(context.TODO(), req)
+			got, err := LokiCodec.DecodeRequest(context.TODO(), req)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -115,6 +117,36 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					Data: queryrange.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
 						Result:     sampleStreams,
+					},
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
+			"matrix-empty-streams",
+			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixStringEmptyResult))},
+			nil,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     make([]queryrange.SampleStream, 0), // shouldn't be nil.
+					},
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
+			"vector-empty-streams",
+			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(vectorStringEmptyResult))},
+			nil,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeVector,
+						Result:     make([]queryrange.SampleStream, 0), // shouldn't be nil.
 					},
 				},
 				Statistics: statsResult,
@@ -171,7 +203,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := lokiCodec.DecodeResponse(context.TODO(), tt.res, tt.req)
+			got, err := LokiCodec.DecodeResponse(context.TODO(), tt.res, tt.req)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -183,7 +215,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 
 func Test_codec_EncodeRequest(t *testing.T) {
 	// we only accept LokiRequest.
-	got, err := lokiCodec.EncodeRequest(context.TODO(), &queryrange.PrometheusRequest{})
+	got, err := LokiCodec.EncodeRequest(context.TODO(), &queryrange.PrometheusRequest{})
 	require.Error(t, err)
 	require.Nil(t, got)
 
@@ -197,7 +229,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 		StartTs:   start,
 		EndTs:     end,
 	}
-	got, err = lokiCodec.EncodeRequest(ctx, toEncode)
+	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/query_range", got.URL.Path)
@@ -209,7 +241,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
 
 	// testing a full roundtrip
-	req, err := lokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Query, req.(*LokiRequest).Query)
 	require.Equal(t, toEncode.Step, req.(*LokiRequest).Step)
@@ -221,7 +253,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 }
 
 func Test_codec_series_EncodeRequest(t *testing.T) {
-	got, err := lokiCodec.EncodeRequest(context.TODO(), &queryrange.PrometheusRequest{})
+	got, err := LokiCodec.EncodeRequest(context.TODO(), &queryrange.PrometheusRequest{})
 	require.Error(t, err)
 	require.Nil(t, got)
 
@@ -232,7 +264,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 		StartTs: start,
 		EndTs:   end,
 	}
-	got, err = lokiCodec.EncodeRequest(ctx, toEncode)
+	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/series", got.URL.Path)
@@ -241,7 +273,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("match[]"))
 
 	// testing a full roundtrip
-	req, err := lokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Match, req.(*LokiSeriesRequest).Match)
 	require.Equal(t, toEncode.StartTs, req.(*LokiSeriesRequest).StartTs)
@@ -256,7 +288,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 		StartTs: start,
 		EndTs:   end,
 	}
-	got, err := lokiCodec.EncodeRequest(ctx, toEncode)
+	got, err := LokiCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/labels", got.URL.Path)
@@ -264,7 +296,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 
 	// testing a full roundtrip
-	req, err := lokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
@@ -344,7 +376,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := lokiCodec.EncodeResponse(context.TODO(), tt.res)
+			got, err := LokiCodec.EncodeResponse(context.TODO(), tt.res)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.EncodeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -810,7 +842,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := lokiCodec.MergeResponse(tt.responses...)
+			got, err := LokiCodec.MergeResponse(tt.responses...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.MergeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -903,6 +935,23 @@ var (
 	},
 	"status": "success"
   }`
+	matrixStringEmptyResult = `{
+	"data": {
+	  ` + statsResultString + `
+	  "resultType": "matrix",
+	  "result": []
+	},
+	"status": "success"
+  }`
+	vectorStringEmptyResult = `{
+	"data": {
+	  ` + statsResultString + `
+	  "resultType": "vector",
+	  "result": []
+	},
+	"status": "success"
+  }`
+
 	sampleStreams = []queryrange.SampleStream{
 		{
 			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
@@ -1090,4 +1139,115 @@ func mkResps(nResps, nStreams, nLogs int, direction logproto.Direction) (resps [
 		resps = append(resps, r)
 	}
 	return resps
+}
+
+type buffer struct {
+	buff []byte
+	io.ReadCloser
+}
+
+func (b *buffer) Bytes() []byte {
+	return b.buff
+}
+
+func Benchmark_CodecDecodeLogs(b *testing.B) {
+	ctx := context.Background()
+	resp, err := LokiCodec.EncodeResponse(ctx, &LokiResponse{
+		Status:    loghttp.QueryStatusSuccess,
+		Direction: logproto.BACKWARD,
+		Version:   uint32(loghttp.VersionV1),
+		Limit:     1000,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     generateStream(),
+		},
+	})
+	require.Nil(b, err)
+
+	buf, err := io.ReadAll(resp.Body)
+	require.Nil(b, err)
+	reader := bytes.NewReader(buf)
+	resp.Body = &buffer{
+		ReadCloser: ioutil.NopCloser(reader),
+		buff:       buf,
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		_, _ = reader.Seek(0, io.SeekStart)
+		result, err := LokiCodec.DecodeResponse(ctx, resp, &LokiRequest{
+			Limit:     100,
+			StartTs:   start,
+			EndTs:     end,
+			Direction: logproto.BACKWARD,
+			Path:      "/loki/api/v1/query_range",
+		})
+		require.Nil(b, err)
+		require.NotNil(b, result)
+	}
+}
+
+func Benchmark_CodecDecodeSamples(b *testing.B) {
+	ctx := context.Background()
+	resp, err := LokiCodec.EncodeResponse(ctx, &LokiPromResponse{
+		Response: &queryrange.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrange.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result:     generateMatrix(),
+			},
+		},
+	})
+	require.Nil(b, err)
+
+	buf, err := io.ReadAll(resp.Body)
+	require.Nil(b, err)
+	reader := bytes.NewReader(buf)
+	resp.Body = ioutil.NopCloser(reader)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		_, _ = reader.Seek(0, io.SeekStart)
+		result, err := LokiCodec.DecodeResponse(ctx, resp, &LokiRequest{
+			Limit:     100,
+			StartTs:   start,
+			EndTs:     end,
+			Direction: logproto.BACKWARD,
+			Path:      "/loki/api/v1/query_range",
+		})
+		require.Nil(b, err)
+		require.NotNil(b, result)
+	}
+}
+
+func generateMatrix() (res []queryrange.SampleStream) {
+	for i := 0; i < 100; i++ {
+		s := queryrange.SampleStream{
+			Labels:  []cortexpb.LabelAdapter{},
+			Samples: []cortexpb.Sample{},
+		}
+		for j := 0; j < 1000; j++ {
+			s.Samples = append(s.Samples, cortexpb.Sample{
+				Value:       float64(j),
+				TimestampMs: int64(j),
+			})
+		}
+		res = append(res, s)
+	}
+	return res
+}
+
+func generateStream() (res []logproto.Stream) {
+	for i := 0; i < 1000; i++ {
+		s := logproto.Stream{
+			Labels: fmt.Sprintf(`{foo="%d", buzz="bar", cluster="us-central2", namespace="loki-dev", container="query-frontend"}`, i),
+		}
+		for j := 0; j < 10; j++ {
+			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("%d\nyolo", j)})
+		}
+		res = append(res, s)
+	}
+	return res
 }

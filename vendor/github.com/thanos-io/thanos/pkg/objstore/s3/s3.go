@@ -314,7 +314,7 @@ func validate(conf Config) error {
 	}
 
 	if conf.AccessKey == "" && conf.SecretKey != "" {
-		return errors.New("no s3 acccess_key specified while secret_key is present in config file; either both should be present in config or envvars/IAM should be used.")
+		return errors.New("no s3 access_key specified while secret_key is present in config file; either both should be present in config or envvars/IAM should be used.")
 	}
 
 	if conf.AccessKey != "" && conf.SecretKey == "" {

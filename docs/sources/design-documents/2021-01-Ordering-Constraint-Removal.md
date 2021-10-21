@@ -1,4 +1,8 @@
-## Metadata
+---
+title: Ordering Constraint Removal
+weight: 40
+---
+## Ordering Constraint Removal
 
 Author: Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](https://grafana.com/))
 

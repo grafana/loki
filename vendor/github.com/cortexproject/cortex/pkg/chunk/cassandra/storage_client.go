@@ -10,16 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gocql/gocql"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -398,6 +398,11 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		}
 	}
 	return errors.WithStack(scanner.Err())
+}
+
+// Allow other packages to interact with Cassandra directly
+func (s *StorageClient) GetReadSession() *gocql.Session {
+	return s.readSession
 }
 
 // readBatch represents a batch of rows read from Cassandra.

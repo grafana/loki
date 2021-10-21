@@ -12,7 +12,7 @@ func NewLabelSet(s string) (loghttp.LabelSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := make(map[string]string)
+	ret := make(map[string]string, len(labels))
 
 	for _, l := range labels {
 		ret[l.Name] = l.Value

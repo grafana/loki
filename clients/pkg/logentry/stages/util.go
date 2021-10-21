@@ -14,6 +14,9 @@ var (
 	// debug level when debug level logging is not enabled. Log level allocations can become very expensive
 	// as we log numerous log entries per log line at debug level.
 	Debug = false
+
+	// Inspect is used to debug promtail pipelines by showing diffs between pipeline stages
+	Inspect = false
 )
 
 const (

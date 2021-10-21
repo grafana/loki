@@ -1,4 +1,3 @@
-local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
@@ -76,11 +75,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addRow(
           $.row('')
           .addPanel(
-            $.fromNowPanel('Sweep Lag', 'loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time')
+            $.panel('Sweeper Lag') +
+            $.queryPanel(['time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{%s} > 0)' % $.namespaceMatcher()], ['lag']) + {
+              yaxes: $.yaxes({ format: 's', min: null }),
+            },
           )
           .addPanel(
             $.panel('Marks Files to Process') +
-            $.queryPanel(['loki_boltdb_shipper_retention_sweeper_marker_files_current{%s}' % $.namespaceMatcher()], ['count']),
+            $.queryPanel(['sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{%s})' % $.namespaceMatcher()], ['count']),
           )
           .addPanel(
             $.panel('Delete Rate Per Status') +

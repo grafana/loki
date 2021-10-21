@@ -11,7 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
 
@@ -109,8 +109,12 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 			if data, ok := ctxValue.(*queryData); ok {
 				data.recorded = true
 				data.statistics = statistics
-				data.params = paramsFromRequest(req)
 				data.result = res
+				p, errReq := paramsFromRequest(req)
+				if errReq != nil {
+					return nil, errReq
+				}
+				data.params = p
 			}
 			return resp, err
 		})

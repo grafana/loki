@@ -1,9 +1,10 @@
 ---
 title: Promtail
+weight: 10
 ---
 # Promtail
 
-Promtail is an agent which ships the contents of local logs to a private Loki
+Promtail is an agent which ships the contents of local logs to a private Grafana Loki
 instance or [Grafana Cloud](https://grafana.com/oss/loki). It is usually
 deployed to every machine that has applications needed to be monitored.
 
@@ -25,7 +26,7 @@ applications emitting log lines to files that need to be monitored.
 Promtail borrows the same
 [service discovery mechanism from Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config),
 although it currently only supports `static` and `kubernetes` service
-discovery. This limitation is due to the fact that `promtail` is deployed as a
+discovery. This limitation is due to the fact that Promtail is deployed as a
 daemon to every local machine and, as such, does not discover label from other
 machines. `kubernetes` service discovery fetches required labels from the
 Kubernetes API server while `static` usually covers all other use cases.
@@ -43,7 +44,7 @@ There are a few instances where this might be helpful:
 
 - complex network infrastructures where many machines having egress is not desirable.
 - using the Docker Logging Driver and wanting to provide a complex pipeline or to extract metrics from logs.
-- serverless setups where many ephemeral log sources want to send to Loki, sending to a Promtail instance with `use_incoming_timestamp` == false can avoid out of order errors and avoid having to use high cardinality labels.
+- serverless setups where many ephemeral log sources want to send to Loki, sending to a Promtail instance with `use_incoming_timestamp` == false can avoid out-of-order errors and avoid having to use high cardinality labels.
 
 ## Receiving logs From Syslog
 

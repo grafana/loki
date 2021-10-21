@@ -5,13 +5,20 @@ package azure
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	blob "github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 // DirDelim is the delimiter used to model a directory structure in an object store bucket.
@@ -30,20 +37,74 @@ func init() {
 	pipeline.SetForceLogEnabled(false)
 }
 
-func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error) {
-	c, err := blob.NewSharedKeyCredential(conf.StorageAccountName, conf.StorageAccountKey)
+func getAzureStorageCredentials(logger log.Logger, conf Config) (blob.Credential, error) {
+	if conf.MSIResource != "" || conf.UserAssignedID != "" {
+		spt, err := getServicePrincipalToken(logger, conf)
+		if err != nil {
+			return nil, err
+		}
+		if err := spt.Refresh(); err != nil {
+			return nil, err
+		}
+
+		return blob.NewTokenCredential(spt.Token().AccessToken, func(tc blob.TokenCredential) time.Duration {
+			err := spt.Refresh()
+			if err != nil {
+				level.Error(logger).Log("msg", "could not refresh MSI token", "err", err)
+				// Retry later as the error can be related to API throttling
+				return 30 * time.Second
+			}
+			tc.SetToken(spt.Token().AccessToken)
+			return spt.Token().Expires().Sub(time.Now().Add(2 * time.Minute))
+		}), nil
+	}
+
+	credential, err := blob.NewSharedKeyCredential(conf.StorageAccountName, conf.StorageAccountKey)
+	if err != nil {
+		return nil, err
+	}
+	return credential, nil
+}
+
+func getServicePrincipalToken(logger log.Logger, conf Config) (*adal.ServicePrincipalToken, error) {
+	resource := conf.MSIResource
+	if resource == "" {
+		resource = fmt.Sprintf("https://%s.%s", conf.StorageAccountName, conf.Endpoint)
+	}
+
+	msiConfig := auth.MSIConfig{
+		Resource: resource,
+	}
+
+	if conf.UserAssignedID != "" {
+		level.Debug(logger).Log("msg", "using user assigned identity", "clientId", conf.UserAssignedID)
+		msiConfig.ClientID = conf.UserAssignedID
+	} else {
+		level.Debug(logger).Log("msg", "using system assigned identity")
+	}
+
+	return msiConfig.ServicePrincipalToken()
+}
+
+func getContainerURL(ctx context.Context, logger log.Logger, conf Config) (blob.ContainerURL, error) {
+	credentials, err := getAzureStorageCredentials(logger, conf)
+
 	if err != nil {
 		return blob.ContainerURL{}, err
 	}
 
 	retryOptions := blob.RetryOptions{
-		MaxTries: int32(conf.MaxRetries),
+		MaxTries:      conf.PipelineConfig.MaxTries,
+		TryTimeout:    time.Duration(conf.PipelineConfig.TryTimeout),
+		RetryDelay:    time.Duration(conf.PipelineConfig.RetryDelay),
+		MaxRetryDelay: time.Duration(conf.PipelineConfig.MaxRetryDelay),
 	}
+
 	if deadline, ok := ctx.Deadline(); ok {
 		retryOptions.TryTimeout = time.Until(deadline)
 	}
 
-	p := blob.NewPipeline(c, blob.PipelineOptions{
+	p := blob.NewPipeline(credentials, blob.PipelineOptions{
 		Retry:     retryOptions,
 		Telemetry: blob.TelemetryOptions{Value: "Thanos"},
 		RequestLog: blob.RequestLogOptions{
@@ -54,6 +115,17 @@ func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error
 		Log: pipeline.LogOptions{
 			ShouldLog: nil,
 		},
+		HTTPSender: pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+				client := http.Client{
+					Transport: DefaultTransport(conf),
+				}
+
+				resp, err := client.Do(request.WithContext(ctx))
+
+				return pipeline.NewHTTPResponse(resp), err
+			}
+		}),
 	})
 	u, err := url.Parse(fmt.Sprintf("https://%s.%s", conf.StorageAccountName, conf.Endpoint))
 	if err != nil {
@@ -64,8 +136,30 @@ func getContainerURL(ctx context.Context, conf Config) (blob.ContainerURL, error
 	return service.NewContainerURL(conf.ContainerName), nil
 }
 
-func getContainer(ctx context.Context, conf Config) (blob.ContainerURL, error) {
-	c, err := getContainerURL(ctx, conf)
+func DefaultTransport(config Config) *http.Transport {
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+
+		MaxIdleConns:          config.HTTPConfig.MaxIdleConns,
+		MaxIdleConnsPerHost:   config.HTTPConfig.MaxIdleConnsPerHost,
+		IdleConnTimeout:       time.Duration(config.HTTPConfig.IdleConnTimeout),
+		MaxConnsPerHost:       config.HTTPConfig.MaxConnsPerHost,
+		TLSHandshakeTimeout:   time.Duration(config.HTTPConfig.TLSHandshakeTimeout),
+		ExpectContinueTimeout: time.Duration(config.HTTPConfig.ExpectContinueTimeout),
+
+		ResponseHeaderTimeout: time.Duration(config.HTTPConfig.ResponseHeaderTimeout),
+		DisableCompression:    config.HTTPConfig.DisableCompression,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: config.HTTPConfig.InsecureSkipVerify},
+	}
+}
+
+func getContainer(ctx context.Context, logger log.Logger, conf Config) (blob.ContainerURL, error) {
+	c, err := getContainerURL(ctx, logger, conf)
 	if err != nil {
 		return blob.ContainerURL{}, err
 	}
@@ -74,8 +168,8 @@ func getContainer(ctx context.Context, conf Config) (blob.ContainerURL, error) {
 	return c, err
 }
 
-func createContainer(ctx context.Context, conf Config) (blob.ContainerURL, error) {
-	c, err := getContainerURL(ctx, conf)
+func createContainer(ctx context.Context, logger log.Logger, conf Config) (blob.ContainerURL, error) {
+	c, err := getContainerURL(ctx, logger, conf)
 	if err != nil {
 		return blob.ContainerURL{}, err
 	}
@@ -86,12 +180,8 @@ func createContainer(ctx context.Context, conf Config) (blob.ContainerURL, error
 	return c, err
 }
 
-func getBlobURL(ctx context.Context, conf Config, blobName string) (blob.BlockBlobURL, error) {
-	c, err := getContainerURL(ctx, conf)
-	if err != nil {
-		return blob.BlockBlobURL{}, err
-	}
-	return c.NewBlockBlobURL(blobName), nil
+func getBlobURL(blobName string, c blob.ContainerURL) blob.BlockBlobURL {
+	return c.NewBlockBlobURL(blobName)
 }
 
 func parseError(errorCode string) string {

@@ -16,7 +16,7 @@ func TestDefaults(t *testing.T) {
 	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
 	err := Unmarshal(&data,
-		dDefaults(fs),
+		Defaults(fs),
 	)
 
 	require.NoError(t, err)
@@ -39,7 +39,7 @@ func TestFlags(t *testing.T) {
 	data := Data{}
 	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 	err := Unmarshal(&data,
-		dDefaults(fs),
+		Defaults(fs),
 		dFlags(fs, []string{"-server.timeout=10h", "-verbose"}),
 	)
 	require.NoError(t, err)

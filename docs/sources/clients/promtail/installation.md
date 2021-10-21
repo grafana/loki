@@ -44,7 +44,7 @@ $ helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
 
 ### DaemonSet (recommended)
 
-A `DaemonSet` will deploy `promtail` on every node within a Kubernetes cluster.
+A `DaemonSet` will deploy Promtail on every node within a Kubernetes cluster.
 
 The DaemonSet deployment is great to collect the logs of all containers within a
 cluster. It's the best solution for a single-tenant model.
@@ -131,7 +131,7 @@ roleRef:
 
 ### Sidecar
 
-The Sidecar method deploys `promtail` as a sidecar container for a specific pod.
+The Sidecar method deploys Promtail as a sidecar container for a specific pod.
 In a multi-tenant environment, this enables teams to aggregate logs for specific
 pods and deployments.
 

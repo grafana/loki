@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -20,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -1522,6 +1522,7 @@ var entry logproto.Entry
 func Benchmark_store_OverlappingChunks(b *testing.B) {
 	b.ReportAllocs()
 	st := &store{
+		chunkMetrics: NilMetrics,
 		cfg: Config{
 			MaxChunkBatchSize: 50,
 		},

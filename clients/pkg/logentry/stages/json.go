@@ -1,11 +1,12 @@
 package stages
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/jmespath/go-jmespath"
 	json "github.com/json-iterator/go"
 	"github.com/mitchellh/mapstructure"
@@ -163,7 +164,9 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			extracted[n] = string(jm)
 		}
 	}
-
+	if Debug {
+		level.Debug(j.logger).Log("msg", "extracted data debug in json stage", "extracted data", fmt.Sprintf("%v", extracted))
+	}
 }
 
 // Name implements Stage

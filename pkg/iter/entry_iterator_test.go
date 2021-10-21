@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -599,4 +600,33 @@ func Test_timeRangedIterator_Next(t *testing.T) {
 			require.NoError(t, it.Close())
 		})
 	}
+}
+
+type CloseTestingIterator struct {
+	closed atomic.Bool
+	e      logproto.Entry
+}
+
+func (i *CloseTestingIterator) Next() bool            { return true }
+func (i *CloseTestingIterator) Entry() logproto.Entry { return i.e }
+func (i *CloseTestingIterator) Labels() string        { return "" }
+func (i *CloseTestingIterator) Error() error          { return nil }
+func (i *CloseTestingIterator) Close() error {
+	i.closed.Store(true)
+	return nil
+}
+
+func TestNonOverlappingClose(t *testing.T) {
+	a, b := &CloseTestingIterator{}, &CloseTestingIterator{}
+	itr := NewNonOverlappingIterator([]EntryIterator{a, b}, "")
+
+	// Ensure both itr.cur and itr.iterators are non nil
+	itr.Next()
+
+	require.NotNil(t, itr.(*nonOverlappingIterator).curr)
+
+	itr.Close()
+
+	require.Equal(t, true, a.closed.Load())
+	require.Equal(t, true, b.closed.Load())
 }

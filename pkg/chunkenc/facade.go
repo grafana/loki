@@ -3,7 +3,9 @@ package chunkenc
 import (
 	"io"
 
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 )
 
 // GzipLogChunk is a cortex encoding type for our chunks.
@@ -75,12 +77,23 @@ func (f Facade) Size() int {
 	if f.c == nil {
 		return 0
 	}
-	return f.c.Size()
+	// Note this is an estimation (which is OK)
+	return f.c.CompressedSize()
 }
 
 // LokiChunk returns the chunkenc.Chunk.
 func (f Facade) LokiChunk() Chunk {
 	return f.c
+}
+
+func (f Facade) Rebound(start, end model.Time) (encoding.Chunk, error) {
+	newChunk, err := f.c.Rebound(start.Time(), end.Time())
+	if err != nil {
+		return nil, err
+	}
+	return &Facade{
+		c: newChunk,
+	}, nil
 }
 
 // UncompressedSize is a helper function to hide the type assertion kludge when wanting the uncompressed size of the Cortex interface encoding.Chunk.

@@ -11,11 +11,13 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	blob "github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -24,13 +26,65 @@ const (
 	azureDefaultEndpoint = "blob.core.windows.net"
 )
 
+// Set default retry values to default Azure values. 0 = use Default Azure.
+var DefaultConfig = Config{
+	PipelineConfig: PipelineConfig{
+		MaxTries:      0,
+		TryTimeout:    0,
+		RetryDelay:    0,
+		MaxRetryDelay: 0,
+	},
+	ReaderConfig: ReaderConfig{
+		MaxRetryRequests: 0,
+	},
+	HTTPConfig: HTTPConfig{
+		IdleConnTimeout:       model.Duration(90 * time.Second),
+		ResponseHeaderTimeout: model.Duration(2 * time.Minute),
+		TLSHandshakeTimeout:   model.Duration(10 * time.Second),
+		ExpectContinueTimeout: model.Duration(1 * time.Second),
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		MaxConnsPerHost:       0,
+		DisableCompression:    false,
+	},
+}
+
 // Config Azure storage configuration.
 type Config struct {
-	StorageAccountName string `yaml:"storage_account"`
-	StorageAccountKey  string `yaml:"storage_account_key"`
-	ContainerName      string `yaml:"container"`
-	Endpoint           string `yaml:"endpoint"`
-	MaxRetries         int    `yaml:"max_retries"`
+	StorageAccountName string         `yaml:"storage_account"`
+	StorageAccountKey  string         `yaml:"storage_account_key"`
+	ContainerName      string         `yaml:"container"`
+	Endpoint           string         `yaml:"endpoint"`
+	MaxRetries         int            `yaml:"max_retries"`
+	MSIResource        string         `yaml:"msi_resource"`
+	UserAssignedID     string         `yaml:"user_assigned_id"`
+	PipelineConfig     PipelineConfig `yaml:"pipeline_config"`
+	ReaderConfig       ReaderConfig   `yaml:"reader_config"`
+	HTTPConfig         HTTPConfig     `yaml:"http_config"`
+}
+
+type ReaderConfig struct {
+	MaxRetryRequests int `yaml:"max_retry_requests"`
+}
+
+type PipelineConfig struct {
+	MaxTries      int32          `yaml:"max_tries"`
+	TryTimeout    model.Duration `yaml:"try_timeout"`
+	RetryDelay    model.Duration `yaml:"retry_delay"`
+	MaxRetryDelay model.Duration `yaml:"max_retry_delay"`
+}
+
+type HTTPConfig struct {
+	IdleConnTimeout       model.Duration `yaml:"idle_conn_timeout"`
+	ResponseHeaderTimeout model.Duration `yaml:"response_header_timeout"`
+	InsecureSkipVerify    bool           `yaml:"insecure_skip_verify"`
+
+	TLSHandshakeTimeout   model.Duration `yaml:"tls_handshake_timeout"`
+	ExpectContinueTimeout model.Duration `yaml:"expect_continue_timeout"`
+	MaxIdleConns          int            `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int            `yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost       int            `yaml:"max_conns_per_host"`
+	DisableCompression    bool           `yaml:"disable_compression"`
 }
 
 // Bucket implements the store.Bucket interface against Azure APIs.
@@ -42,34 +96,86 @@ type Bucket struct {
 
 // Validate checks to see if any of the config options are set.
 func (conf *Config) validate() error {
-	if conf.StorageAccountName == "" ||
-		conf.StorageAccountKey == "" {
-		return errors.New("invalid Azure storage configuration")
+
+	var errMsg []string
+	if conf.MSIResource == "" {
+		if conf.UserAssignedID == "" {
+			if conf.StorageAccountName == "" ||
+				conf.StorageAccountKey == "" {
+				errMsg = append(errMsg, "invalid Azure storage configuration")
+			}
+			if conf.StorageAccountName == "" && conf.StorageAccountKey != "" {
+				errMsg = append(errMsg, "no Azure storage_account specified while storage_account_key is present in config file; both should be present")
+			}
+			if conf.StorageAccountName != "" && conf.StorageAccountKey == "" {
+				errMsg = append(errMsg, "no Azure storage_account_key specified while storage_account is present in config file; both should be present")
+			}
+		} else {
+			if conf.StorageAccountName == "" {
+				errMsg = append(errMsg, "UserAssignedID is configured but storage account name is missing")
+			}
+			if conf.StorageAccountKey != "" {
+				errMsg = append(errMsg, "UserAssignedID is configured but storage account key is used")
+			}
+		}
+	} else {
+		if conf.StorageAccountName == "" {
+			errMsg = append(errMsg, "MSI resource is configured but storage account name is missing")
+		}
+		if conf.StorageAccountKey != "" {
+			errMsg = append(errMsg, "MSI resource is configured but storage account key is used")
+		}
 	}
-	if conf.StorageAccountName == "" && conf.StorageAccountKey != "" {
-		return errors.New("no Azure storage_account specified while storage_account_key is present in config file; both should be present")
-	}
-	if conf.StorageAccountName != "" && conf.StorageAccountKey == "" {
-		return errors.New("no Azure storage_account_key specified while storage_account is present in config file; both should be present")
-	}
+
 	if conf.ContainerName == "" {
-		return errors.New("no Azure container specified")
+		errMsg = append(errMsg, "no Azure container specified")
 	}
 	if conf.Endpoint == "" {
 		conf.Endpoint = azureDefaultEndpoint
 	}
-	if conf.MaxRetries < 0 {
-		return errors.New("the value of maxretries must be greater than or equal to 0 in the config file")
+
+	if conf.PipelineConfig.MaxTries < 0 {
+		errMsg = append(errMsg, "The value of max_tries must be greater than or equal to 0 in the config file")
 	}
+
+	if conf.ReaderConfig.MaxRetryRequests < 0 {
+		errMsg = append(errMsg, "The value of max_retry_requests must be greater than or equal to 0 in the config file")
+	}
+
+	if len(errMsg) > 0 {
+		return errors.New(strings.Join(errMsg, ", "))
+	}
+
 	return nil
+}
+
+// parseConfig unmarshals a buffer into a Config with default values.
+func parseConfig(conf []byte) (Config, error) {
+	config := DefaultConfig
+	if err := yaml.UnmarshalStrict(conf, &config); err != nil {
+		return Config{}, err
+	}
+
+	// If we don't have config specific retry values but we do have the generic MaxRetries.
+	// This is for backwards compatibility but also ease of configuration.
+	if config.MaxRetries > 0 {
+		if config.PipelineConfig.MaxTries == 0 {
+			config.PipelineConfig.MaxTries = int32(config.MaxRetries)
+		}
+		if config.ReaderConfig.MaxRetryRequests == 0 {
+			config.ReaderConfig.MaxRetryRequests = config.MaxRetries
+		}
+	}
+
+	return config, nil
 }
 
 // NewBucket returns a new Bucket using the provided Azure config.
 func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket, error) {
 	level.Debug(logger).Log("msg", "creating new Azure bucket connection", "component", component)
 
-	var conf Config
-	if err := yaml.Unmarshal(azureConfig, &conf); err != nil {
+	conf, err := parseConfig(azureConfig)
+	if err != nil {
 		return nil, err
 	}
 
@@ -78,7 +184,7 @@ func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket
 	}
 
 	ctx := context.Background()
-	container, err := createContainer(ctx, conf)
+	container, err := createContainer(ctx, logger, conf)
 	if err != nil {
 		ret, ok := err.(blob.StorageError)
 		if !ok {
@@ -86,7 +192,7 @@ func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket
 		}
 		if ret.ServiceCode() == "ContainerAlreadyExists" {
 			level.Debug(logger).Log("msg", "Getting connection to existing Azure blob container", "container", conf.ContainerName)
-			container, err = getContainer(ctx, conf)
+			container, err = getContainer(ctx, logger, conf)
 			if err != nil {
 				return nil, errors.Wrapf(err, "cannot get existing Azure blob container: %s", container)
 			}
@@ -120,7 +226,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 	for i := 1; ; i++ {
 		var (
 			blobPrefixes []blob.BlobPrefix
-			blobItems    []blob.BlobItem
+			blobItems    []blob.BlobItemInternal
 		)
 
 		if params.Recursive {
@@ -186,7 +292,7 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 
 func (b *Bucket) getBlobReader(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
 	level.Debug(b.logger).Log("msg", "getting blob", "blob", name, "offset", offset, "length", length)
-	if len(name) == 0 {
+	if name == "" {
 		return nil, errors.New("X-Ms-Error-Code: [EmptyContainerName]")
 	}
 	exists, err := b.Exists(ctx, name)
@@ -198,12 +304,12 @@ func (b *Bucket) getBlobReader(ctx context.Context, name string, offset, length 
 		return nil, errors.New("X-Ms-Error-Code: [BlobNotFound]")
 	}
 
-	blobURL, err := getBlobURL(ctx, *b.config, name)
+	blobURL := getBlobURL(name, b.containerURL)
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get Azure blob URL, address: %s", name)
 	}
 	var props *blob.BlobGetPropertiesResponse
-	props, err = blobURL.GetProperties(ctx, blob.BlobAccessConditions{})
+	props, err = blobURL.GetProperties(ctx, blob.BlobAccessConditions{}, blob.ClientProvidedKeyOptions{})
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get properties for container: %s", name)
 	}
@@ -227,7 +333,7 @@ func (b *Bucket) getBlobReader(ctx context.Context, name string, offset, length 
 			Parallelism: uint16(3),
 			Progress:    nil,
 			RetryReaderOptionsPerBlock: blob.RetryReaderOptions{
-				MaxRetryRequests: b.config.MaxRetries,
+				MaxRetryRequests: b.config.ReaderConfig.MaxRetryRequests,
 			},
 		},
 	); err != nil {
@@ -249,13 +355,9 @@ func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (
 
 // Attributes returns information about the specified object.
 func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	blobURL, err := getBlobURL(ctx, *b.config, name)
-	if err != nil {
-		return objstore.ObjectAttributes{}, errors.Wrapf(err, "cannot get Azure blob URL, blob: %s", name)
-	}
+	blobURL := getBlobURL(name, b.containerURL)
 
-	var props *blob.BlobGetPropertiesResponse
-	props, err = blobURL.GetProperties(ctx, blob.BlobAccessConditions{})
+	props, err := blobURL.GetProperties(ctx, blob.BlobAccessConditions{}, blob.ClientProvidedKeyOptions{})
 	if err != nil {
 		return objstore.ObjectAttributes{}, err
 	}
@@ -269,12 +371,9 @@ func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAt
 // Exists checks if the given object exists.
 func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 	level.Debug(b.logger).Log("msg", "check if blob exists", "blob", name)
-	blobURL, err := getBlobURL(ctx, *b.config, name)
-	if err != nil {
-		return false, errors.Wrapf(err, "cannot get Azure blob URL, address: %s", name)
-	}
+	blobURL := getBlobURL(name, b.containerURL)
 
-	if _, err = blobURL.GetProperties(ctx, blob.BlobAccessConditions{}); err != nil {
+	if _, err := blobURL.GetProperties(ctx, blob.BlobAccessConditions{}, blob.ClientProvidedKeyOptions{}); err != nil {
 		if b.IsObjNotFoundErr(err) {
 			return false, nil
 		}
@@ -287,11 +386,9 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	level.Debug(b.logger).Log("msg", "Uploading blob", "blob", name)
-	blobURL, err := getBlobURL(ctx, *b.config, name)
-	if err != nil {
-		return errors.Wrapf(err, "cannot get Azure blob URL, address: %s", name)
-	}
-	if _, err = blob.UploadStreamToBlockBlob(ctx, r, blobURL,
+	blobURL := getBlobURL(name, b.containerURL)
+
+	if _, err := blob.UploadStreamToBlockBlob(ctx, r, blobURL,
 		blob.UploadStreamToBlockBlobOptions{
 			BufferSize: 3 * 1024 * 1024,
 			MaxBuffers: 4,
@@ -305,12 +402,9 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 // Delete removes the object with the given name.
 func (b *Bucket) Delete(ctx context.Context, name string) error {
 	level.Debug(b.logger).Log("msg", "Deleting blob", "blob", name)
-	blobURL, err := getBlobURL(ctx, *b.config, name)
-	if err != nil {
-		return errors.Wrapf(err, "cannot get Azure blob URL, address: %s", name)
-	}
+	blobURL := getBlobURL(name, b.containerURL)
 
-	if _, err = blobURL.Delete(ctx, blob.DeleteSnapshotsOptionInclude, blob.BlobAccessConditions{}); err != nil {
+	if _, err := blobURL.Delete(ctx, blob.DeleteSnapshotsOptionInclude, blob.BlobAccessConditions{}); err != nil {
 		return errors.Wrapf(err, "error deleting blob, address: %s", name)
 	}
 	return nil

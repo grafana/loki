@@ -40,7 +40,6 @@ import (
 	gtransport "google.golang.org/api/transport/grpc"
 	btapb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
 	"google.golang.org/genproto/protobuf/field_mask"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -50,7 +49,7 @@ const adminAddr = "bigtableadmin.googleapis.com:443"
 
 // AdminClient is a client type for performing admin operations within a specific instance.
 type AdminClient struct {
-	conn      *grpc.ClientConn
+	connPool  gtransport.ConnPool
 	tClient   btapb.BigtableTableAdminClient
 	lroClient *lroauto.OperationsClient
 
@@ -71,12 +70,12 @@ func NewAdminClient(ctx context.Context, project, instance string, opts ...optio
 	// Need to add scopes for long running operations (for create table & snapshots)
 	o = append(o, option.WithScopes(cloudresourcemanager.CloudPlatformScope))
 	o = append(o, opts...)
-	conn, err := gtransport.Dial(ctx, o...)
+	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
 		return nil, fmt.Errorf("dialing: %v", err)
 	}
 
-	lroClient, err := lroauto.NewOperationsClient(ctx, option.WithGRPCConn(conn))
+	lroClient, err := lroauto.NewOperationsClient(ctx, gtransport.WithConnPool(connPool))
 	if err != nil {
 		// This error "should not happen", since we are just reusing old connection
 		// and never actually need to dial.
@@ -88,8 +87,8 @@ func NewAdminClient(ctx context.Context, project, instance string, opts ...optio
 	}
 
 	return &AdminClient{
-		conn:      conn,
-		tClient:   btapb.NewBigtableTableAdminClient(conn),
+		connPool:  connPool,
+		tClient:   btapb.NewBigtableTableAdminClient(connPool),
 		lroClient: lroClient,
 		project:   project,
 		instance:  instance,
@@ -99,7 +98,7 @@ func NewAdminClient(ctx context.Context, project, instance string, opts ...optio
 
 // Close closes the AdminClient.
 func (ac *AdminClient) Close() error {
-	return ac.conn.Close()
+	return ac.connPool.Close()
 }
 
 func (ac *AdminClient) instancePrefix() string {
@@ -599,7 +598,7 @@ const instanceAdminAddr = "bigtableadmin.googleapis.com:443"
 // InstanceAdminClient is a client type for performing admin operations on instances.
 // These operations can be substantially more dangerous than those provided by AdminClient.
 type InstanceAdminClient struct {
-	conn      *grpc.ClientConn
+	connPool  gtransport.ConnPool
 	iClient   btapb.BigtableInstanceAdminClient
 	lroClient *lroauto.OperationsClient
 
@@ -618,12 +617,12 @@ func NewInstanceAdminClient(ctx context.Context, project string, opts ...option.
 	// Add gRPC client interceptors to supply Google client information. No external interceptors are passed.
 	o = append(o, btopt.ClientInterceptorOptions(nil, nil)...)
 	o = append(o, opts...)
-	conn, err := gtransport.Dial(ctx, o...)
+	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
 		return nil, fmt.Errorf("dialing: %v", err)
 	}
 
-	lroClient, err := lroauto.NewOperationsClient(ctx, option.WithGRPCConn(conn))
+	lroClient, err := lroauto.NewOperationsClient(ctx, gtransport.WithConnPool(connPool))
 	if err != nil {
 		// This error "should not happen", since we are just reusing old connection
 		// and never actually need to dial.
@@ -635,8 +634,8 @@ func NewInstanceAdminClient(ctx context.Context, project string, opts ...option.
 	}
 
 	return &InstanceAdminClient{
-		conn:      conn,
-		iClient:   btapb.NewBigtableInstanceAdminClient(conn),
+		connPool:  connPool,
+		iClient:   btapb.NewBigtableInstanceAdminClient(connPool),
 		lroClient: lroClient,
 
 		project: project,
@@ -646,7 +645,7 @@ func NewInstanceAdminClient(ctx context.Context, project string, opts ...option.
 
 // Close closes the InstanceAdminClient.
 func (iac *InstanceAdminClient) Close() error {
-	return iac.conn.Close()
+	return iac.connPool.Close()
 }
 
 // StorageType is the type of storage used for all tables in an instance
