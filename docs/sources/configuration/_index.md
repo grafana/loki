@@ -602,48 +602,48 @@ The `azure_storage_config` configures Azure as a general storage for different d
 ```yaml
 # Azure Cloud environment. Supported values are: AzureGlobal,
 # AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
-# CLI flag: -ruler.storage.azure.environment
+# CLI flag: -<prefix>.azure.environment
 [environment: <string> | default = "AzureGlobal"]
 
 # Name of the blob container used to store chunks. This container must be
 # created before running cortex.
-# CLI flag: -ruler.storage.azure.container-name
+# CLI flag: -<prefix>.azure.container-name
 [container_name: <string> | default = "cortex"]
 
 # The Microsoft Azure account name to be used
-# CLI flag: -ruler.storage.azure.account-name
+# CLI flag: -<prefix>.azure.account-name
 [account_name: <string> | default = ""]
 
 # The Microsoft Azure account key to use.
-# CLI flag: -ruler.storage.azure.account-key
+# CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
 
 # Preallocated buffer size for downloads.
-# CLI flag: -ruler.storage.azure.download-buffer-size
+# CLI flag: -<prefix>.azure.download-buffer-size
 [download_buffer_size: <int> | default = 512000]
 
 # Preallocated buffer size for uploads.
-# CLI flag: -ruler.storage.azure.upload-buffer-size
+# CLI flag: -<prefix>.azure.upload-buffer-size
 [upload_buffer_size: <int> | default = 256000]
 
 # Number of buffers used to used to upload a chunk.
-# CLI flag: -ruler.storage.azure.download-buffer-count
+# CLI flag: -<prefix>.azure.download-buffer-count
 [upload_buffer_count: <int> | default = 1]
 
 # Timeout for requests made against azure blob storage.
-# CLI flag: -ruler.storage.azure.request-timeout
+# CLI flag: -<prefix>.azure.request-timeout
 [request_timeout: <duration> | default = 30s]
 
 # Number of retries for a request which times out.
-# CLI flag: -ruler.storage.azure.max-retries
+# CLI flag: -<prefix>.azure.max-retries
 [max_retries: <int> | default = 5]
 
 # Minimum time to wait before retrying a request.
-# CLI flag: -ruler.storage.azure.min-retry-delay
+# CLI flag: -<prefix>.azure.min-retry-delay
 [min_retry_delay: <duration> | default = 10ms]
 
 # Maximum time to wait before retrying a request.
-# CLI flag: -ruler.storage.azure.max-retry-delay
+# CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
 ```
 
@@ -653,16 +653,16 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 
 ```yaml
 # Name of GCS bucket to put chunks in.
-# CLI flag: -ruler.storage.gcs.bucketname
+# CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
 
 # The size of the buffer that GCS client for each PUT request. 0 to disable
 # buffering.
-# CLI flag: -ruler.storage.gcs.chunk-buffer-size
+# CLI flag: -<prefix>.gcs.chunk-buffer-size
 [chunk_buffer_size: <int> | default = 0]
 
 # The duration after which the requests to GCS should be timed out.
-# CLI flag: -ruler.storage.gcs.request-timeout
+# CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
 ```
 
@@ -674,59 +674,59 @@ The `s3_storage_config` configures S3 as a general storage for different data ge
 # S3 endpoint URL with escaped Key and Secret encoded. If only region is
 # specified as a host, proper endpoint will be deduced. Use
 # inmemory:///<bucket-name> to use a mock in-memory implementation.
-# CLI flag: -ruler.storage.s3.url
+# CLI flag: -<prefix>.s3.url
 [s3: <url> | default = ]
 
 # Set this to `true` to force the request to use path-style addressing.
-# CLI flag: -ruler.storage.s3.force-path-style
+# CLI flag: -<prefix>.s3.force-path-style
 [s3forcepathstyle: <boolean> | default = false]
 
 # Comma separated list of bucket names to evenly distribute chunks over.
 # Overrides any buckets specified in s3.url flag
-# CLI flag: -ruler.storage.s3.buckets
+# CLI flag: -<prefix>.s3.buckets
 [bucketnames: <string> | default = ""]
 
 # S3 Endpoint to connect to.
-# CLI flag: -ruler.storage.s3.endpoint
+# CLI flag: -<prefix>.s3.endpoint
 [endpoint: <string> | default = ""]
 
 # AWS region to use.
-# CLI flag: -ruler.storage.s3.region
+# CLI flag: -<prefix>.s3.region
 [region: <string> | default = ""]
 
 # AWS Access Key ID
-# CLI flag: -ruler.storage.s3.access-key-id
+# CLI flag: -<prefix>.s3.access-key-id
 [access_key_id: <string> | default = ""]
 
 # AWS Secret Access Key
-# CLI flag: -ruler.storage.s3.secret-access-key
+# CLI flag: -<prefix>.s3.secret-access-key
 [secret_access_key: <string> | default = ""]
 
 # Disable https on S3 connection.
-# CLI flag: -ruler.storage.s3.insecure
+# CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
 
 # Enable AES256 AWS server-side encryption
-# CLI flag: -ruler.storage.s3.sse-encryption
+# CLI flag: -<prefix>.s3.sse-encryption
 [sse_encryption: <boolean> | default = false]
 
 http_config:
   # The maximum amount of time an idle connection will be held open.
-  # CLI flag: -ruler.storage.s3.http.idle-conn-timeout
+  # CLI flag: -<prefix>.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
 
   # If non-zero, specifies the amount of time to wait for a server's
   # response headers after fully writing the request.
-  # CLI flag: -ruler.storage.s3.http.response-header-timeout
+  # CLI flag: -<prefix>.s3.http.response-header-timeout
   [response_header_timeout: <duration> | default = 0s]
 
   # Set to true to skip verifying the certificate chain and hostname.
-  # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
+  # CLI flag: -<prefix>.s3.http.insecure-skip-verify
   [insecure_skip_verify: <boolean> | default = false]
 
   # Path to the trusted CA file that signed the SSL certificate of the S3
   # endpoint.
-  # CLI flag: -ruler.storage.s3.http.ca-file
+  # CLI flag: -<prefix>.s3.http.ca-file
   [ca_file: <string> | default = ""]
 ```
 
@@ -736,62 +736,62 @@ The `swift_storage_config` configures Swift as a general storage for different d
 
 ```yaml
 # Openstack authentication URL.
-# CLI flag: -ruler.storage.swift.auth-url
+# CLI flag: -<prefix>.swift.auth-url
 [auth_url: <string> | default = ""]
 
 # Openstack username for the api.
-# CLI flag: -ruler.storage.swift.username
+# CLI flag: -<prefix>.swift.username
 [username: <string> | default = ""]
 
 # Openstack user's domain name.
-# CLI flag: -ruler.storage.swift.user-domain-name
+# CLI flag: -<prefix>.swift.user-domain-name
 [user_domain_name: <string> | default = ""]
 
 # Openstack user's domain ID.
-# CLI flag: -ruler.storage.swift.user-domain-id
+# CLI flag: -<prefix>.swift.user-domain-id
 [user_domain_id: <string> | default = ""]
 
 # Openstack user ID for the API.
-# CLI flag: -ruler.storage.swift.user-id
+# CLI flag: -<prefix>.swift.user-id
 [user_id: <string> | default = ""]
 
 # Openstack API key.
-# CLI flag: -ruler.storage.swift.password
+# CLI flag: -<prefix>.swift.password
 [password: <string> | default = ""]
 
 # Openstack user's domain ID.
-# CLI flag: -ruler.storage.swift.domain-id
+# CLI flag: -<prefix>.swift.domain-id
 [domain_id: <string> | default = ""]
 
 # Openstack user's domain name.
-# CLI flag: -ruler.storage.swift.domain-name
+# CLI flag: -<prefix>.swift.domain-name
 [domain_name: <string> | default = ""]
 
 # Openstack project ID (v2,v3 auth only).
-# CLI flag: -ruler.storage.swift.project-id
+# CLI flag: -<prefix>.swift.project-id
 [project_id: <string> | default = ""]
 
 # Openstack project name (v2,v3 auth only).
-# CLI flag: -ruler.storage.swift.project-name
+# CLI flag: -<prefix>.swift.project-name
 [project_name: <string> | default = ""]
 
 # ID of the project's domain (v3 auth only), only needed if it differs the
 # from user domain.
-# CLI flag: -ruler.storage.swift.project-domain-id
+# CLI flag: -<prefix>.swift.project-domain-id
 [project_domain_id: <string> | default = ""]
 
 # Name of the project's domain (v3 auth only), only needed if it differs
 # from the user domain.
-# CLI flag: -ruler.storage.swift.project-domain-name
+# CLI flag: -<prefix>.swift.project-domain-name
 [project_domain_name: <string> | default = ""]
 
 # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
 # auth only)
-# CLI flag: -ruler.storage.swift.region-name
+# CLI flag: -<prefix>.swift.region-name
 [region_name: <string> | default = ""]
 
 # Name of the Swift container to put chunks in.
-# CLI flag: -ruler.storage.swift.container-name
+# CLI flag: -<prefix>.swift.container-name
 [container_name: <string> | default = "cortex"]
 ```
 
