@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"io"
+	"sync"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -344,26 +345,31 @@ type seriesIterator struct {
 }
 
 type withCloseSampleIterator struct {
-	closeFn func() error
+	closeOnce sync.Once
+	closeFn   func() error
+	errs      []error
 	SampleIterator
 }
 
 func (w *withCloseSampleIterator) Close() error {
-	var errs []error
-	if err := w.SampleIterator.Close(); err != nil {
-		errs = append(errs, err)
-	}
-	if err := w.closeFn(); err != nil {
-		errs = append(errs, err)
-	}
-	if len(errs) == 0 {
+	w.closeOnce.Do(func() {
+		if err := w.SampleIterator.Close(); err != nil {
+			w.errs = append(w.errs, err)
+		}
+		if err := w.closeFn(); err != nil {
+			w.errs = append(w.errs, err)
+		}
+
+	})
+	if len(w.errs) == 0 {
 		return nil
 	}
-	return util.MultiError(errs)
+	return util.MultiError(w.errs)
 }
 
 func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIterator {
 	return &withCloseSampleIterator{
+		closeOnce:      sync.Once{},
 		closeFn:        closeFn,
 		SampleIterator: it,
 	}
