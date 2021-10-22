@@ -209,6 +209,7 @@ type Loki struct {
 	ring                     *ring.Ring
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
+	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Querier                  *querier.Querier
@@ -409,6 +410,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
@@ -429,6 +431,7 @@ func (t *Loki) setupModuleManager() error {
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Overrides:                {RuntimeConfig},
+		OverridesExporter:        {RuntimeConfig, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs},
 		Store:                    {Overrides},

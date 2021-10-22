@@ -56,30 +56,21 @@ type tenantLimitsFromRuntimeConfig struct {
 	c *runtimeconfig.Manager
 }
 
-func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
+func (t *tenantLimitsFromRuntimeConfig) AllByUserID() map[string]*validation.Limits {
 	if t.c == nil {
 		return nil
 	}
+
 	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
-	if !ok || cfg == nil {
-		return nil
+	if cfg != nil && ok {
+		return cfg.TenantLimits
 	}
 
-	return cfg.TenantLimits[userID]
+	return nil
 }
 
-func (t *tenantLimitsFromRuntimeConfig) ForEachTenantLimit(callback validation.ForEachTenantLimitCallback) {
-	if t.c == nil {
-		return
-	}
-	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
-	if !ok || cfg == nil {
-		return
-	}
-
-	for userID, tenantLimit := range cfg.TenantLimits {
-		callback(userID, tenantLimit)
-	}
+func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
+	return t.AllByUserID()[userID]
 }
 
 func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
