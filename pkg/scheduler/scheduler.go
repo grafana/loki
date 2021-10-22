@@ -194,6 +194,8 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	if err != nil {
 		return nil, err
 	}
+	s.subservicesWatcher = services.NewFailureWatcher()
+	s.subservicesWatcher.WatchManager(s.subservices)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -561,8 +563,6 @@ func (s *Scheduler) starting(ctx context.Context) (err error) {
 			level.Error(s.log).Log("msg", "failed to gracefully stop scheduler dependencies", "err", stopErr)
 		}
 	}()
-
-	s.subservicesWatcher.WatchManager(s.subservices)
 
 	if err := services.StartManagerAndAwaitHealthy(ctx, s.subservices); err != nil {
 		return errors.Wrap(err, "unable to start scheduler subservices")
