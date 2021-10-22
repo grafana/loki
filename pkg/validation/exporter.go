@@ -4,9 +4,10 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 type OverridesExporter struct {
