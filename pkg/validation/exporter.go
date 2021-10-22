@@ -22,22 +22,13 @@ func NewOverridesExporter(tenantLimits TenantLimits) *OverridesExporter {
 	}
 }
 
-func (oe *OverridesExporter) TenantLimitMap() map[string]*Limits {
-	m := make(map[string]*Limits)
-	oe.tenantLimits.ForEachTenantLimit(func(userID string, limit *Limits) {
-		m[userID] = limit
-	})
-
-	return m
-}
-
 func (oe *OverridesExporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- oe.description
 }
 
 // TODO(jordanrushing): Add more limits. . . including durations?
 func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
-	for tenant, limits := range oe.TenantLimitMap() {
+	for tenant, limits := range oe.tenantLimits.AllByUserID() {
 		// Distributor enforced limits
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, limits.IngestionRateMB, "ingestion_rate_mb", tenant)
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, limits.IngestionBurstSizeMB, "ingestion_burst_size_mb", tenant)

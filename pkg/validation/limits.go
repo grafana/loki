@@ -234,13 +234,12 @@ func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
 }
 
-type ForEachTenantLimitCallback func(userID string, limit *Limits)
-
 type TenantLimits interface {
 	// TenantLimits is a function that returns limits for given tenant, or
 	// nil, if there are no tenant-specific limits.
 	TenantLimits(userID string) *Limits
-	ForEachTenantLimit(ForEachTenantLimitCallback)
+	// AllByUserID gets a mapping of all tenant IDs and limits for that user
+	AllByUserID() map[string]*Limits
 }
 
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
@@ -257,6 +256,8 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 		defaultLimits: &defaults,
 	}, nil
 }
+
+func (o *Overrides) AllByUserID() map[string]*Limits { return o.tenantLimits.AllByUserID() }
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).
@@ -503,10 +504,6 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 
 func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
-}
-
-func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
-	o.tenantLimits.ForEachTenantLimit(callback)
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
