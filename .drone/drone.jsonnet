@@ -88,9 +88,6 @@ local lambda_promtail_ecr(app) = {
     dry_run: false,
     region: 'us-east-1',
   },
-  environment: {
-    DOCKER_LAUNCH_DEBUG: true,
-  },
 };
 
 local arch_image(arch, tags='') = {
