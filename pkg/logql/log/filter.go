@@ -199,6 +199,26 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	}
 }
 
+type ContainsAllFilter struct {
+	Matches           [][]byte
+}
+
+func (l ContainsAllFilter) Filter(line []byte) bool {
+	result := true
+	for _, match := range l.Matches {
+		result = result && bytes.Contains(line, match)
+	}
+	return result
+}
+
+func (l ContainsAllFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, l.Filter(line)
+		},
+	}
+}
+
 // NewFilter creates a new line filter from a match string and type.
 func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
 	switch mt {

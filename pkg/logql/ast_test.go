@@ -332,7 +332,7 @@ func TestStringer(t *testing.T) {
 }
 
 func BenchmarkContainsFilter(b *testing.B) {
-	expr, err := ParseLogSelector(`{app="foo"} |= "foo"`, true)
+	expr, err := ParseLogSelector(`{app="foo"} |= "foo"|= "hello" |= "world" |= "bar"`, true)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -341,6 +341,27 @@ func BenchmarkContainsFilter(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
+	line := []byte("hello world foo bar")
+
+	b.ResetTimer()
+
+	sp := p.ForStream(labelBar)
+	for i := 0; i < b.N; i++ {
+		if _, _, ok := sp.Process(line); !ok {
+			b.Fatal("doesn't match")
+		}
+	}
+}
+
+func BenchmarkContainsAllFilter(b *testing.B) {
+
+	filter := log.ContainsAllFilter {
+		Matches : [][]byte{[]byte("foo"), []byte("hello"), []byte("world"), []byte("bar") },
+	}
+
+	stages := []log.Stage{filter.ToStage()}
+	p := log.NewPipeline(stages)
 
 	line := []byte("hello world foo bar")
 
