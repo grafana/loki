@@ -31,4 +31,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     ) +
     k.util.antiAffinity
   else {},
+
+  overrides_exporter_service: if $._config.overrides_exporter_enabled then
+    k.util.serviceFor($.overrides_exporter_deployment)
+  else {},
 }
