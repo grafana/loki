@@ -1,7 +1,12 @@
 package validation
 
 import (
+	"reflect"
+	"time"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 )
 
 type OverridesExporter struct {
@@ -35,35 +40,29 @@ func (oe *OverridesExporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- oe.description
 }
 
-// TODO(jordanrushing): Add more limits. . . including durations?
 func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
+	var metricValue float64
+	var metricLabelValue string
+	var rv reflect.Value
+
 	for tenant, limits := range oe.TenantLimitMap() {
-		// Distributor enforced limits
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, limits.IngestionRateMB, "ingestion_rate_mb", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, limits.IngestionBurstSizeMB, "ingestion_burst_size_mb", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxLabelNameLength), "max_label_name_length", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxLabelValueLength), "max_label_value_length", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxLabelNamesPerSeries), "max_label_names_per_series", tenant)
-		// Ingester enforced limits
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxLocalStreamsPerUser), "max_local_streams_per_user", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxGlobalStreamsPerUser), "max_global_streams_per_user", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.PerStreamRateLimit), "per_stream_rate_limit", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.PerStreamRateLimitBurst), "per_stream_rate_limit_burst", tenant)
-		// Querier enforced limits
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxChunksPerQuery), "max_chunks_per_query", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxQuerySeries), "max_query_series", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxQueryParallelism), "max_query_parallelism", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.CardinalityLimit), "cardinality_limit", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxStreamsMatchersPerQuery), "max_streams_matchers_per_query", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxConcurrentTailRequests), "max_concurrent_tail_requests", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxEntriesLimitPerQuery), "max_entries_limit_per_query", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.MaxQueriersPerTenant), "max_queriers_per_tenant", tenant)
-		// Ruler enforced limits
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerMaxRulesPerRuleGroup), "ruler_max_rules_per_rule_group", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerMaxRuleGroupsPerTenant), "ruler_max_rule_groups_per_tenant", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueCapacity), "ruler_remote_write_queue_capacity", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueMinShards), "ruler_remote_write_queue_min_shards", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueMaxShards), "ruler_remote_write_queue_max_shards", tenant)
-		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.RulerRemoteWriteQueueMaxSamplesPerSend), "ruler_remote_write_queue_max_samples_per_send", tenant)
+		rv = reflect.ValueOf(limits).Elem()
+		for i := 0; i < rv.NumField(); i++ {
+			switch rv.Field(i).Interface().(type) {
+			case int, time.Duration:
+				metricValue = float64(rv.Field(i).Int())
+			case model.Duration:
+				metricValue = float64(rv.Field(i).Interface().(model.Duration))
+			case flagext.ByteSize:
+				metricValue = float64(rv.Field(i).Uint())
+			case float64:
+				metricValue = rv.Field(i).Float()
+			default:
+				continue
+			}
+			metricLabelValue = rv.Type().Field(i).Tag.Get("yaml")
+
+			ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, metricValue, metricLabelValue, tenant)
+		}
 	}
 }
