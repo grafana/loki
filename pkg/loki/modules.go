@@ -226,7 +226,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		QuerierWorkerConfig:   &t.Cfg.Worker,
 		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
 		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
-		SchedulerRing:         t.queryScheduler.SafeReadRing(),
+		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
 	var queryHandlers = map[string]http.Handler{
@@ -439,7 +439,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}
 	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
 		combinedCfg,
-		t.queryScheduler.SafeReadRing(),
+		scheduler.SafeReadRing(t.queryScheduler),
 		disabledShuffleShardingLimits{},
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
