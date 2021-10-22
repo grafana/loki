@@ -70,7 +70,12 @@ func (t *tenantLimitsFromRuntimeConfig) AllByUserID() map[string]*validation.Lim
 }
 
 func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
-	return t.AllByUserID()[userID]
+	allByUserID := t.AllByUserID()
+	if allByUserID == nil {
+		return nil
+	}
+
+	return allByUserID[userID]
 }
 
 func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
