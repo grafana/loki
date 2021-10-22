@@ -4,6 +4,8 @@
 * [4440](https://github.com/grafana/loki/pull/4440) **DylanGuedes**: Config: Override distributor's default ring KV store
 * [4443](https://github.com/grafana/loki/pull/4443) **DylanGuedes**: Loki: Change how push API checks for contentType
 * [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: Change default limits to common values
+* [4473](https://github.com/grafana/loki/pull/4473) **trevorwhitney**: Config: add object storage configuration to common config
+* [4425](https://github.com/grafana/loki/pull/4425) **trevorwhitney** and **slim-bean**: Add a ring for the query scheduler
 
 # 2.3.0 (2021/08/06)
 

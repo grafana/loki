@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
+	cortex_local "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -32,6 +33,12 @@ func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlags registers flags with prefix.
 func (cfg *FSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, prefix+"local.chunk-directory", "", "Directory to store chunks in.")
+}
+
+func (cfg *FSConfig) ToCortexLocalConfig() cortex_local.Config {
+	return cortex_local.Config{
+		Directory: cfg.Directory,
+	}
 }
 
 // FSObjectClient holds config for filesystem as object store

@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 
+	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/flagext"
@@ -85,6 +86,22 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.IntVar(&c.MaxRetries, prefix+"azure.max-retries", 5, "Number of retries for a request which times out.")
 	f.DurationVar(&c.MinRetryDelay, prefix+"azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
 	f.DurationVar(&c.MaxRetryDelay, prefix+"azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
+}
+
+func (c *BlobStorageConfig) ToCortexAzureConfig() cortex_azure.BlobStorageConfig {
+	return cortex_azure.BlobStorageConfig{
+		Environment:        c.Environment,
+		ContainerName:      c.ContainerName,
+		AccountName:        c.AccountName,
+		AccountKey:         c.AccountKey,
+		DownloadBufferSize: c.DownloadBufferSize,
+		UploadBufferSize:   c.UploadBufferSize,
+		UploadBufferCount:  c.UploadBufferCount,
+		RequestTimeout:     c.RequestTimeout,
+		MaxRetries:         c.MaxRetries,
+		MinRetryDelay:      c.MinRetryDelay,
+		MaxRetryDelay:      c.MaxRetryDelay,
+	}
 }
 
 // BlobStorage is used to interact with azure blob storage for setting or getting time series chunks.
