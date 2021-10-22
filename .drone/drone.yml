@@ -884,10 +884,21 @@ steps:
   image: golang:windowsservercore-1809
   name: test
 ---
+depends_on:
+- check
 kind: pipeline
 name: lambda-promtail
 steps:
-- environment:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  - echo ",latest,main" >> .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  environment:
     DOCKER_LAUNCH_DEBUG: true
   image: cstyan/ecr
   name: build-lambda-promtail-image
@@ -908,7 +919,9 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
-- environment:
+- depends_on:
+  - image-tag
+  environment:
     DOCKER_LAUNCH_DEBUG: true
   image: cstyan/ecr
   name: publish-lambda-promtail-image
@@ -975,6 +988,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: c5a09975994df7d34234d1b79d739681ee6a3dea2e8ba5998989ea365f48ecf1
+hmac: d5e3143a34510bea2cb37e05f1668137ee2dfdf1aa86991a6dca3988079b1d1f
 
 ...

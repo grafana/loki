@@ -229,10 +229,19 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
   depends_on: ['check'],
 };
 
-local lambda_promtail() = pipeline('lambda-promtail'){
+local lambda_promtail(tags='') = pipeline('lambda-promtail'){
   steps+: [
+    {
+      name: 'image-tag',
+      image: 'alpine',
+      commands: [
+        'apk add --no-cache bash git',
+        'git fetch origin --tags',
+        'echo $(./tools/image-tag)-amd64 > .tags',
+      ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
+    },
     lambda_promtail_ecr('lambda-promtail') {
-      // depends_on: ['image-tag'],
+      depends_on: ['image-tag'],
       when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
@@ -241,14 +250,14 @@ local lambda_promtail() = pipeline('lambda-promtail'){
   ] + [
     // publish for tag or main
     lambda_promtail_ecr('lambda-promtail') {
-      // depends_on: ['image-tag'],
+      depends_on: ['image-tag'],
       when: condition('include').tagMain,
       settings+: {
         build_args: ['TOUCH_PROTOS=1'],
       },
     },
   ],
-  // depends_on: ['check'],
+  depends_on: ['check'],
 };
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
@@ -397,5 +406,5 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [promtail_win()]
-+ [lambda_promtail()]
++ [lambda_promtail('latest,main')]
 + [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]
