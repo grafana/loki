@@ -21,7 +21,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   local deployment = k.apps.v1.deployment,
 
-  overrides_exporter_deployment:
+  overrides_exporter_deployment: if $._config.overrides_exporter_enabled then
     deployment.new('overrides_exporter', 1, [$.overrides_exporter_container]) +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
@@ -29,5 +29,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ) +
-    k.util.antiAffinity,
+    k.util.antiAffinity
+  else {},
 }
