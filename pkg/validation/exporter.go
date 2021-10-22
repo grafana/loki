@@ -28,15 +28,6 @@ func NewOverridesExporter(tenantLimits TenantLimits) *OverridesExporter {
 	}
 }
 
-func (oe *OverridesExporter) TenantLimitMap() map[string]*Limits {
-	m := make(map[string]*Limits)
-	oe.tenantLimits.ForEachTenantLimit(func(userID string, limit *Limits) {
-		m[userID] = limit
-	})
-
-	return m
-}
-
 func (oe *OverridesExporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- oe.description
 }
@@ -46,7 +37,7 @@ func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
 	var metricLabelValue string
 	var rv reflect.Value
 
-	for tenant, limits := range oe.TenantLimitMap() {
+	for tenant, limits := range oe.tenantLimits.AllByUserID() {
 		rv = reflect.ValueOf(limits).Elem()
 		for i := 0; i < rv.NumField(); i++ {
 			switch rv.Field(i).Interface().(type) {

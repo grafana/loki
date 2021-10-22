@@ -21,11 +21,7 @@ func (l *mockTenantLimits) TenantLimits(userID string) *Limits {
 	return l.limits[userID]
 }
 
-func (l *mockTenantLimits) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
-	for userID, tenantLimit := range l.limits {
-		callback(userID, tenantLimit)
-	}
-}
+func (l *mockTenantLimits) AllByUserID() map[string]*Limits { return l.limits }
 
 func TestOverridesExporter_noConfig(t *testing.T) {
 	exporter := NewOverridesExporter(newMockTenantLimits(nil))

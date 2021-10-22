@@ -209,6 +209,7 @@ type Loki struct {
 	ring                     *ring.Ring
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
+	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Querier                  *querier.Querier

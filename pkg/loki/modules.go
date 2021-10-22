@@ -153,23 +153,23 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 
 	var err error
 	t.runtimeConfig, err = runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), util_log.Logger)
+	t.TenantLimits = newtenantLimitsFromRuntimeConfig(t.runtimeConfig)
 	return t.runtimeConfig, err
 }
 
 func (t *Loki) initOverrides() (_ services.Service, err error) {
-	t.overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, newtenantLimitsFromRuntimeConfig(t.runtimeConfig))
+	t.overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides are not a service, since they don't have any operational state.
 	return nil, err
 }
 
 func (t *Loki) initOverridesExporter() (services.Service, error) {
-	tenantLimits := newtenantLimitsFromRuntimeConfig(t.runtimeConfig)
-	if t.Cfg.isModuleEnabled(OverridesExporter) && tenantLimits == nil {
+	if t.Cfg.isModuleEnabled(OverridesExporter) && t.TenantLimits == nil {
 		// This target isn't enabled by default ("all") and requires per-tenant limits to run.
 		return nil, errors.New("overrides-exporter has been enabled, but no runtime configuration file was configured")
 	}
 
-	exporter := validation.NewOverridesExporter(tenantLimits)
+	exporter := validation.NewOverridesExporter(t.TenantLimits)
 	prometheus.MustRegister(exporter)
 
 	// The overrides-exporter has no state and reads overrides for runtime configuration each time it
@@ -226,7 +226,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		QuerierWorkerConfig:   &t.Cfg.Worker,
 		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
 		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
-		SchedulerRing:         t.queryScheduler.SafeReadRing(),
+		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
 	var queryHandlers = map[string]http.Handler{
@@ -439,7 +439,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}
 	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
 		combinedCfg,
-		t.queryScheduler.SafeReadRing(),
+		scheduler.SafeReadRing(t.queryScheduler),
 		disabledShuffleShardingLimits{},
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
