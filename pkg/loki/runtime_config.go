@@ -57,6 +57,10 @@ type tenantLimitsFromRuntimeConfig struct {
 }
 
 func (t *tenantLimitsFromRuntimeConfig) AllByUserID() map[string]*validation.Limits {
+	if t.c == nil {
+		return nil
+	}
+
 	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
 	if cfg != nil && ok {
 		return cfg.TenantLimits
