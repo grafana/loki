@@ -9,7 +9,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     },
 
   overrides_exporter_container::
-    container.new('overrides_exporter', $._images.overrides_exporter) +
+    container.new('overrides-exporter', $._images.overrides_exporter) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin(k.util.mapToFlags($.overrides_exporter_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
@@ -22,7 +22,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   local deployment = k.apps.v1.deployment,
 
   overrides_exporter_deployment: if $._config.overrides_exporter_enabled then
-    deployment.new('overrides_exporter', 1, [$.overrides_exporter_container]) +
+    deployment.new('overrides-exporter', 1, [$.overrides_exporter_container]) +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
     k.util.configVolumeMount(
