@@ -6,7 +6,7 @@
   b. Start with an imperative verb. Example: Fix the latency between System A and System B.
   c. Use sentence case, not title case.
   d. Use a complete phrase or sentence. The PR title will appear in a changelog, so help other people understand what your change will be.
-3. Rebase your PR if it gets out of sync with master
+3. Rebase your PR if it gets out of sync with main
 4. If changing the Helm chart, please ensure the chart version is increased per semantic versioning (https://semver.org)
 -->
 
