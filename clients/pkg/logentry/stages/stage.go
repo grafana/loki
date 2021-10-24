@@ -34,6 +34,7 @@ const (
 	StageTypeMultiline  = "multiline"
 	StageTypePack       = "pack"
 	StageTypeLabelAllow = "labelallow"
+	StageTypeMerge      = "merge"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -194,6 +195,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeLabelAllow:
 		s, err = newLabelAllowStage(cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeMerge:
+		s, err = newMergeStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}
