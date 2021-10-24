@@ -74,6 +74,7 @@ Resources:
           WRITE_ADDRESS: !Ref WriteAddress
           USERNAME: !Ref Username
           PASSWORD: !Ref Password
+          KEEP_STREAM: !Ref KeepStream
   LambdaPromtailVersion:
     Type: AWS::Lambda::Version
     Properties:
