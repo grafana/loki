@@ -83,6 +83,18 @@ common:
 
 			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
+			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
+		})
+
+		t.Run("accepts paths both with and without trailing slash", func(t *testing.T) {
+			configFileString := `---
+common:
+  path_prefix: /opt/loki/`
+			config, _ := testContext(configFileString, nil)
+
+			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
+			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via config file", func(t *testing.T) {
@@ -176,6 +188,7 @@ memberlist:
 		//    gcs: gcp.GCSConfig
 		//    s3: aws.S3Config
 		//    swift: openstack.SwiftConfig
+		//    filesystem: local.FSConfig
 
 		t.Run("does not automatically configure cloud object storage", func(t *testing.T) {
 			config, defaults := testContext(emptyConfigString, nil)
@@ -222,9 +235,7 @@ memberlist:
       access_key_id: abc123
       secret_access_key: def789
       insecure: true
-      signature_version: v4
       http_config:
-        idle_conn_timeout: 5m
         response_header_timeout: 5m`
 
 			config, defaults := testContext(s3Config, nil)
@@ -248,10 +259,13 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey)
 				assert.Equal(t, true, actual.Insecure)
 				assert.Equal(t, false, actual.SSEEncryption)
-				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.IdleConnTimeout)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
-				assert.Equal(t, "v4", actual.SignatureVersion)
+
+				assert.Equal(t, cortex_aws.SignatureVersionV4, actual.SignatureVersion,
+					"signature version should equal default value")
+				assert.Equal(t, 90*time.Second, actual.HTTPConfig.IdleConnTimeout,
+					"idle connection timeout should equal default value")
 			}
 
 			//should remain empty
@@ -273,8 +287,7 @@ memberlist:
     gcs:
       bucket_name: foobar
       chunk_buffer_size: 27
-      request_timeout: 5m
-      enable_opencensus: true`
+      request_timeout: 5m`
 
 			config, defaults := testContext(gcsConfig, nil)
 
@@ -287,7 +300,7 @@ memberlist:
 				assert.Equal(t, "foobar", actual.BucketName)
 				assert.Equal(t, 27, actual.ChunkBufferSize)
 				assert.Equal(t, 5*time.Minute, actual.RequestTimeout)
-				assert.Equal(t, true, actual.EnableOpenCensus)
+				assert.Equal(t, true, actual.EnableOpenCensus, "should get default value for unspecified oc config")
 			}
 
 			//should remain empty
@@ -306,7 +319,6 @@ memberlist:
 			azureConfig := `common:
   storage:
     azure:
-      environment: earth
       container_name: milkyway
       account_name: 3rd_planet
       account_key: water
@@ -326,7 +338,9 @@ memberlist:
 				config.Ruler.StoreConfig.Azure,
 				config.StorageConfig.AzureStorageConfig.ToCortexAzureConfig(),
 			} {
-				assert.Equal(t, "earth", actual.Environment)
+				assert.Equal(t, "AzureGlobal", actual.Environment,
+					"should equal default environment since unspecified in config")
+
 				assert.Equal(t, "milkyway", actual.ContainerName)
 				assert.Equal(t, "3rd_planet", actual.AccountName)
 				assert.Equal(t, "water", actual.AccountKey.Value)
@@ -371,9 +385,7 @@ memberlist:
       project_domain_name: tower.com
       region_name: us-east1
       container_name: tupperware
-      max_retries: 6
-      connect_timeout: 5m
-      request_timeout: 5s`
+      connect_timeout: 5m`
 
 			config, defaults := testContext(swiftConfig, nil)
 
@@ -398,9 +410,12 @@ memberlist:
 				assert.Equal(t, "tower.com", actual.ProjectDomainName)
 				assert.Equal(t, "us-east1", actual.RegionName)
 				assert.Equal(t, "tupperware", actual.ContainerName)
-				assert.Equal(t, 6, actual.MaxRetries)
 				assert.Equal(t, 5*time.Minute, actual.ConnectTimeout)
-				assert.Equal(t, 5*time.Second, actual.RequestTimeout)
+
+				assert.Equal(t, 3, actual.MaxRetries,
+					"unspecified max retries should get default value")
+				assert.Equal(t, 5*time.Second, actual.RequestTimeout,
+					"unspecified connection timeout should get default value")
 			}
 
 			//should remain empty
@@ -469,9 +484,6 @@ ruler:
 			assert.Equal(t, "abc123", config.Ruler.StoreConfig.S3.AccessKeyID)
 			assert.Equal(t, "def789", config.Ruler.StoreConfig.S3.SecretAccessKey)
 
-			//should remain empty
-			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
-
 			//should be set by common config
 			assert.EqualValues(t, "foobar", config.StorageConfig.GCSConfig.BucketName)
 			assert.EqualValues(t, 27, config.StorageConfig.GCSConfig.ChunkBufferSize)
@@ -502,9 +514,6 @@ storage_config:
 			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
 			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey)
 
-			//should remain empty
-			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-
 			//should be set by common config
 			assert.EqualValues(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
 			assert.EqualValues(t, 27, config.Ruler.StoreConfig.GCS.ChunkBufferSize)
@@ -512,6 +521,47 @@ storage_config:
 
 			//should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+		})
+
+		t.Run("partial ruler config from file is honored for overriding things like bucket names", func(t *testing.T) {
+			specificRulerConfig := `common:
+  storage:
+    gcs:
+      bucket_name: foobar
+      chunk_buffer_size: 27
+      request_timeout: 5m
+ruler:
+  storage:
+    gcs:
+      bucket_name: rules`
+
+			config, _ := testContext(specificRulerConfig, nil)
+
+			assert.EqualValues(t, "rules", config.Ruler.StoreConfig.GCS.BucketName)
+
+			//from common config
+			assert.EqualValues(t, 27, config.Ruler.StoreConfig.GCS.ChunkBufferSize)
+			assert.EqualValues(t, 5*time.Minute, config.Ruler.StoreConfig.GCS.RequestTimeout)
+		})
+
+		t.Run("partial chunk store config from file is honored for overriding things like bucket names", func(t *testing.T) {
+			specificRulerConfig := `common:
+  storage:
+    gcs:
+      bucket_name: foobar
+      chunk_buffer_size: 27
+      request_timeout: 5m
+storage_config:
+  gcs:
+    bucket_name: chunks`
+
+			config, _ := testContext(specificRulerConfig, nil)
+
+			assert.EqualValues(t, "chunks", config.StorageConfig.GCSConfig.BucketName)
+
+			//from common config
+			assert.EqualValues(t, 27, config.StorageConfig.GCSConfig.ChunkBufferSize)
+			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
 
 		t.Run("when common object store config is provided, compactor shared store is defaulted to use it", func(t *testing.T) {
@@ -653,6 +703,43 @@ schema_config:
 			assert.Equal(t, storage.StorageTypeS3, config.StorageConfig.BoltDBShipperConfig.SharedStoreType)
 			assert.Equal(t, storage.StorageTypeS3, config.CompactorConfig.SharedStoreType)
 		})
+
+		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {})
+		const boltdbSchemaConfig = `---
+common:
+  path_prefix: /opt/loki
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+
+		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+	})
+
+	t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
+		const boltdbSchemaConfig = `---
+common:
+  path_prefix: /opt/loki/
+schema_config:
+  configs:
+    - from: 2021-08-01
+      store: boltdb-shipper
+      object_store: gcs
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+
+		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
 	})
 }
 

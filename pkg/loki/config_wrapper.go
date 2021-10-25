@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"strings"
 
 	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/grafana/dskit/flagext"
@@ -66,17 +67,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return errors.New("dst is not a Loki ConfigWrapper")
 		}
 
-		// Apply all our custom logic here to set values in the Loki config from values in the common config
-		if r.Common.PathPrefix != "" {
-			if r.Ruler.RulePath == defaults.Ruler.RulePath {
-				r.Ruler.RulePath = fmt.Sprintf("%s/rules", r.Common.PathPrefix)
-			}
-
-			if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
-				r.Ingester.WAL.Dir = fmt.Sprintf("%s/wal", r.Common.PathPrefix)
-			}
-		}
-
 		// If nobody has defined any frontend address or scheduler address
 		// we can default to using the query scheduler ring for scheduler discovery.
 		if r.Worker.FrontendAddress == "" &&
@@ -85,6 +75,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			r.QueryScheduler.UseSchedulerRing = true
 		}
 
+		applyPathPrefixDefaults(r, defaults)
 		applyMemberlistConfig(r)
 
 		if err := applyStorageConfig(r, &defaults); err != nil {
@@ -98,6 +89,24 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyFIFOCacheConfig(r)
 
 		return nil
+	}
+}
+
+func applyPathPrefixDefaults(r *ConfigWrapper, defaults ConfigWrapper) {
+	if r.Common.PathPrefix != "" {
+		prefix := strings.TrimSuffix(r.Common.PathPrefix, "/")
+
+		if r.Ruler.RulePath == defaults.Ruler.RulePath {
+			r.Ruler.RulePath = fmt.Sprintf("%s/rules", prefix)
+		}
+
+		if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
+			r.Ingester.WAL.Dir = fmt.Sprintf("%s/wal", prefix)
+		}
+
+		if r.CompactorConfig.WorkingDirectory == defaults.CompactorConfig.WorkingDirectory {
+			r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", prefix)
+		}
 	}
 }
 
@@ -123,78 +132,62 @@ var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in 
 // configuration file, applyStorageConfig will not override them.
 // If multiple storage configurations are provided, applyStorageConfig will return an error
 func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
-	var applyRulerStoreConfig func(*ConfigWrapper)
-	var applyChunkStorageConfig func(*ConfigWrapper)
+	var applyConfig func(*ConfigWrapper)
 
 	//only one config is allowed
 	configsFound := 0
 
-	if cfg.Common.Storage.Azure != nil {
+	if !reflect.DeepEqual(cfg.Common.Storage.Azure, defaults.StorageConfig.AzureStorageConfig) {
 		configsFound++
 
-		applyRulerStoreConfig = func(r *ConfigWrapper) {
+		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "azure"
 			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure.ToCortexAzureConfig()
-		}
-
-		applyChunkStorageConfig = func(r *ConfigWrapper) {
-			r.StorageConfig.AzureStorageConfig = *r.Common.Storage.Azure
+			r.StorageConfig.AzureStorageConfig = r.Common.Storage.Azure
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
 		}
 	}
 
-	if cfg.Common.Storage.FSConfig != nil {
+	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, defaults.StorageConfig.FSConfig) {
 		configsFound++
 
-		applyRulerStoreConfig = func(r *ConfigWrapper) {
+		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
 			r.Ruler.StoreConfig.Local = r.Common.Storage.FSConfig.ToCortexLocalConfig()
-		}
-
-		applyChunkStorageConfig = func(r *ConfigWrapper) {
-			r.StorageConfig.FSConfig = *r.Common.Storage.FSConfig
+			r.StorageConfig.FSConfig = r.Common.Storage.FSConfig
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
 		}
 	}
 
-	if cfg.Common.Storage.GCS != nil {
+	if !reflect.DeepEqual(cfg.Common.Storage.GCS, defaults.StorageConfig.GCSConfig) {
 		configsFound++
 
-		applyRulerStoreConfig = func(r *ConfigWrapper) {
+		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "gcs"
 			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS.ToCortexGCSConfig()
-		}
-
-		applyChunkStorageConfig = func(r *ConfigWrapper) {
-			r.StorageConfig.GCSConfig = *r.Common.Storage.GCS
+			r.StorageConfig.GCSConfig = r.Common.Storage.GCS
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
 		}
 	}
 
-	if cfg.Common.Storage.S3 != nil {
+	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.AWSStorageConfig.S3Config) {
 		configsFound++
 
-		applyRulerStoreConfig = func(r *ConfigWrapper) {
+		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3.ToCortexS3Config()
-		}
-
-		applyChunkStorageConfig = func(r *ConfigWrapper) {
-			r.StorageConfig.AWSStorageConfig.S3Config = *r.Common.Storage.S3
+			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
 		}
 	}
 
-	if cfg.Common.Storage.Swift != nil {
+	if !reflect.DeepEqual(cfg.Common.Storage.Swift, defaults.StorageConfig.Swift) {
 		configsFound++
 
-		applyRulerStoreConfig = func(r *ConfigWrapper) {
+		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "swift"
 			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift.ToCortexSwiftConfig()
-		}
-
-		applyChunkStorageConfig = func(r *ConfigWrapper) {
-			r.StorageConfig.Swift = *r.Common.Storage.Swift
+			r.StorageConfig.Swift = r.Common.Storage.Swift
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
 		}
 	}
@@ -203,22 +196,11 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		return ErrTooManyStorageConfigs
 	}
 
-	applyRulerStoreConfigs(cfg, defaults, applyRulerStoreConfig)
-	applyChunkStorageConfigs(cfg, defaults, applyChunkStorageConfig)
+	if applyConfig != nil {
+		applyConfig(cfg)
+	}
 
 	return nil
-}
-
-func applyRulerStoreConfigs(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
-	if apply != nil && reflect.DeepEqual(cfg.Ruler.StoreConfig, defaults.Ruler.StoreConfig) {
-		apply(cfg)
-	}
-}
-
-func applyChunkStorageConfigs(cfg, defaults *ConfigWrapper, apply func(*ConfigWrapper)) {
-	if apply != nil && reflect.DeepEqual(cfg.StorageConfig, defaults.StorageConfig) {
-		apply(cfg)
-	}
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
@@ -231,6 +213,18 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
 		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
+	}
+
+	if cfg.Common.PathPrefix != "" {
+		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
+
+		if cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory == "" {
+			cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory = fmt.Sprintf("%s/boltdb-shipper-active", prefix)
+		}
+
+		if cfg.StorageConfig.BoltDBShipperConfig.CacheLocation == "" {
+			cfg.StorageConfig.BoltDBShipperConfig.CacheLocation = fmt.Sprintf("%s/boltdb-shipper-cache", prefix)
+		}
 	}
 }
 
