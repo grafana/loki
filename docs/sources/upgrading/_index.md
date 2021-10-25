@@ -120,6 +120,15 @@ present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_
 | reject_old_samples | true | false |
 | reject_old_samples_max_age | "168h" | "336h" |
 
+#### Some metric prefixes have changed from `cortex_` to `loki_`
+
+PR [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com/grafana/loki/pull/4253) **jordanrushing**: Metrics related to chunk storage and runtime config have changed their prefixes from `cortex_` to `loki_`.
+
+- `cortex_runtime_config*` -> `loki_runtime_config*`
+- `cortex_chunks_store*` -> `loki_chunks_store*`
+
+-_add changes here which are unreleased_
+
 ## 2.3.0
 
 ### Loki

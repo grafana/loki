@@ -8,16 +8,14 @@ import (
 	"net/http"
 
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -38,8 +36,10 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
@@ -209,6 +209,7 @@ type Loki struct {
 	ring                     *ring.Ring
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
+	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Querier                  *querier.Querier
@@ -224,6 +225,7 @@ type Loki struct {
 	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware cortex_tripper.Tripperware
+	queryScheduler           *scheduler.Scheduler
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -408,6 +410,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
@@ -428,6 +431,7 @@ func (t *Loki) setupModuleManager() error {
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Overrides:                {RuntimeConfig},
+		OverridesExporter:        {RuntimeConfig, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs},
 		Store:                    {Overrides},
@@ -435,13 +439,13 @@ func (t *Loki) setupModuleManager() error {
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware},
-		QueryScheduler:           {Server, Overrides},
+		QueryScheduler:           {Server, Overrides, MemberlistKV},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:             {Server},
 		Compactor:                {Server, Overrides},
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Ruler},
+		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.

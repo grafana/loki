@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -890,9 +890,7 @@ func TestStore_DeleteChunk(t *testing.T) {
 	nonExistentChunk := dummyChunkForEncoding(model.Now(), metric3, encoding.Varbit, 200)
 
 	fooMetricNameMatcher, err := parser.ParseMetricSelector(`foo`)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	for _, tc := range []struct {
 		name                           string

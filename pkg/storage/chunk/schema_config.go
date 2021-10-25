@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"

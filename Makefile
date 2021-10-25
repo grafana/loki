@@ -39,7 +39,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.17.0
+BUILD_IMAGE_VERSION := 0.18.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -574,7 +574,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
-	drone lint .drone/drone.yml
+	drone lint .drone/drone.yml --trusted
 	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
 endif
 

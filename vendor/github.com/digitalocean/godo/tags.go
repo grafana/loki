@@ -10,7 +10,7 @@ const tagsBasePath = "v2/tags"
 
 // TagsService is an interface for interfacing with the tags
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#tags
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Tags
 type TagsService interface {
 	List(context.Context, *ListOptions) ([]Tag, *Response, error)
 	Get(context.Context, string) (*Tag, *Response, error)

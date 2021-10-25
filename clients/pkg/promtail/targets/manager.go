@@ -1,8 +1,10 @@
 package targets
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"fmt"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -80,7 +82,7 @@ func NewTargetManagers(
 			targetScrapeConfigs[WindowsEventsConfigs] = append(targetScrapeConfigs[WindowsEventsConfigs], cfg)
 
 		default:
-			return nil, errors.New("unknown scrape config")
+			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
 	}
 

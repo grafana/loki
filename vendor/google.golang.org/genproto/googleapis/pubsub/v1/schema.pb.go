@@ -1,4 +1,4 @@
-// Copyright 2020 Google LLC
+// Copyright 2021 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -659,6 +659,7 @@ func (x *ValidateSchemaRequest) GetSchema() *Schema {
 }
 
 // Response for the `ValidateSchema` method.
+// Empty for now.
 type ValidateSchemaResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -811,6 +812,7 @@ func (*ValidateMessageRequest_Name) isValidateMessageRequest_SchemaSpec() {}
 func (*ValidateMessageRequest_Schema) isValidateMessageRequest_SchemaSpec() {}
 
 // Response for the `ValidateMessage` method.
+// Empty for now.
 type ValidateMessageResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

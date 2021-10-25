@@ -310,7 +310,13 @@ is their form when uncompressed:
 `ts` is the Unix nanosecond timestamp of the logs, while len is the length in
 bytes of the log entry.
 
-## Chunk Store
+## Storage
+
+### Single Store
+
+Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`](../../operations/storage/boltdb-shipper) to store the `index` in object storage (the same way we store `chunks`).
+
+###  Deprecated: Multi-store
 
 The **chunk store** is Loki's long-term data store, designed to support
 interactive querying and sustained writing without the need for background

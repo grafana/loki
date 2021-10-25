@@ -19,7 +19,7 @@ import (
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"path"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/route"
 

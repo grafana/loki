@@ -372,4 +372,6 @@ func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
 	return limits
 }
 
-func (f fakeLimits) ForEachTenantLimit(validation.ForEachTenantLimitCallback) {}
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	return f.limits
+}

@@ -8,7 +8,7 @@ import (
 
 // StorageActionsService is an interface for interfacing with the
 // storage actions endpoints of the Digital Ocean API.
-// See: https://developers.digitalocean.com/documentation/v2#storage-actions
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Block-Storage-Actions
 type StorageActionsService interface {
 	Attach(ctx context.Context, volumeID string, dropletID int) (*Action, *Response, error)
 	DetachByDropletID(ctx context.Context, volumeID string, dropletID int) (*Action, *Response, error)
