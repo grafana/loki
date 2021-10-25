@@ -204,11 +204,12 @@ type ContainsAllFilter struct {
 }
 
 func (l ContainsAllFilter) Filter(line []byte) bool {
-	result := true
 	for _, match := range l.Matches {
-		result = result && bytes.Contains(line, match)
+		if !bytes.Contains(line, match) {
+			return false
+		}
 	}
-	return result
+	return true
 }
 
 func (l ContainsAllFilter) ToStage() Stage {
