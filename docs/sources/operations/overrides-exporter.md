@@ -7,11 +7,11 @@ Loki is a multi-tenant system that supports applying limits to each tenant as a 
 
 ## Context
 
-Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`](../configuration/_index.md#Runtime-Configuration-File) feature.
+Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`](../configuration/#runtime-configuration-file) feature.
 
 ## Example
 
-The `overrides-exporter` module is disabled by default. We recommend running a single instance per cluster to avoid issues with metric cardinality.
+The `overrides-exporter` module is disabled by default. We recommend running a single instance per cluster to avoid issues with metric cardinality as the `overrides-exporter` creates ~40 metrics per tenant with overrides configured.
 
 Using an example `runtime.yaml`:
 
