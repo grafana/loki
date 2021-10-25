@@ -908,7 +908,7 @@ steps:
     dry_run: true
     region: us-east-1
     registry: public.ecr.aws/grafana
-    repo: lambda-promtail
+    repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
   when:
@@ -931,7 +931,7 @@ steps:
     dry_run: false
     region: us-east-1
     registry: public.ecr.aws/grafana
-    repo: lambda-promtail
+    repo: public.ecr.aws/grafana/lambda-promtail
     secret_key:
       from_secret: ecr_secret_key
   when:
@@ -984,6 +984,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 2f519d332d5e2241a44b170461a9cf256dc8050de6d0a6caa99839a4b561aab5
+hmac: 55440faa2728a5b8abbd213c2cf198e01f00201ba7143391924da1b9aa02c350
 
 ...

@@ -80,7 +80,7 @@ local lambda_promtail_ecr(app) = {
   image: 'cstyan/ecr',
   privileged: true,
   settings: {
-    repo: 'lambda-promtail',
+    repo: 'public.ecr.aws/grafana/lambda-promtail',
     registry: 'public.ecr.aws/grafana',
     dockerfile: 'tools/%s/Dockerfile' % app,
     access_key: { from_secret: ecr_key.name },

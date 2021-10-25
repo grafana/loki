@@ -8,6 +8,7 @@
 * [4425](https://github.com/grafana/loki/pull/4425) **trevorwhitney** and **slim-bean**: Add a ring for the query scheduler
 * [4519](https://github.com/grafana/loki/pull/4519) **DylanGuedes** and **replay**: Loki: Enable FIFO cache by default
 * [4520](https://github.com/grafana/loki/pull/4520) **jordanrushing** and **owen-d**: Introduce overrides-exporter module for tenant limits
+* [4453](https://github.com/grafana/loki/pull/4453) **liguozhong**: Loki: Implement retry to s3 chunk storage
 * [4542](https://github.com/grafana/loki/pull/4542) **owen-d**: Introduce the `loki_overrides_defaults` metric and only export diffs for tenant limits.
 
 # 2.3.0 (2021/08/06)
