@@ -70,8 +70,6 @@ groups:
 
 ## Recording Rules
 
-<span style="background-color:#f3f973;">Recording rules are an experimental feature.</span>
-
 We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules) recording rules. From Prometheus' documentation:
 
 > Recording rules allow you to precompute frequently needed or computationally expensive expressions and save their result as a new set of time series.
@@ -126,32 +124,9 @@ ruler:
 
 Further configuration options can be found under [ruler_config](/configuration#ruler_config).
 
-### Resilience and Durability
+### Operations
 
-Given the above remote-write configuration, one needs to take into account what would happen if the remote-write receiver
-becomes unavailable.
-
-The Ruler component ensures some durability guarantees by buffering all outgoing writes in an in-memory queue. This queue
-holds all metric samples that are due to be written to the remote-write receiver, and while that receiver is down, the buffer
-will grow in size.
-
-Once the queue is full, the oldest samples will be evicted from the queue. The size of this queue is controllable globally,
-or on a per-tenant basis, with the [`ruler_remote_write_queue_capacity`](/configuration#limits_config) limit setting. By default, this value is set to 10000 samples.
-
-**NOTE**: this queue only exists in-memory at this time; there is no Write-Ahead Log (WAL) functionality available yet.
-This means that if your Ruler instance crashes, all pending metric samples in the queue that have not yet been written will be lost.
-
-### Operational Considerations
-
-Metrics are available to monitor recording rule evaluations and writes.
-
-| Metric  | Description  |
-|---|---|
-| `recording_rules_samples_queued_current`  | Number of samples queued to be remote-written.                                 |
-| `recording_rules_samples_queued_total`    | Total number of samples queued.                                             |
-| `recording_rules_samples_queue_capacity`  | Number of samples that can be queued before eviction of the oldest samples occurs. |
-| `recording_rules_samples_evicted_total`   | Number of samples evicted from queue because the queue is full.                           | 
-| `recording_rules_remote_write_errors`     | Number of samples that failed to be remote-written due to error.               |
+Please refer to the [Recording Rules](../operations/recording-rules/) page.
 
 ## Use cases
 
