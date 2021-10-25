@@ -898,8 +898,6 @@ steps:
   name: image-tag
 - depends_on:
   - image-tag
-  environment:
-    DOCKER_LAUNCH_DEBUG: true
   image: cstyan/ecr
   name: build-lambda-promtail-image
   privileged: true
@@ -921,8 +919,6 @@ steps:
       - refs/tags/v*
 - depends_on:
   - image-tag
-  environment:
-    DOCKER_LAUNCH_DEBUG: true
   image: cstyan/ecr
   name: publish-lambda-promtail-image
   privileged: true
@@ -988,6 +984,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: d5e3143a34510bea2cb37e05f1668137ee2dfdf1aa86991a6dca3988079b1d1f
+hmac: 2f519d332d5e2241a44b170461a9cf256dc8050de6d0a6caa99839a4b561aab5
 
 ...
