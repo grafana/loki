@@ -535,7 +535,7 @@ storage:
   [swift: <swift_storage_config>]
 
   # Configures backend rule storage for a local filesystem directory.
-  [local: <filesystem_storage_config>]
+  [local: <local_storage_config>]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
@@ -2322,7 +2322,7 @@ If any specific configs for an object storage client have been provided elsewher
 [swift: <swift_storage_config>]
 
 # Configures a (local) filesystem as the common storage.
-[filesystem: <filesystem_storage_config>]
+[filesystem: <local_storage_config>]
 ```
 
 ## Runtime Configuration file
