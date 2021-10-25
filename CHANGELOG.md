@@ -11,6 +11,7 @@
 * [4453](https://github.com/grafana/loki/pull/4453) **liguozhong**: Loki: Implement retry to s3 chunk storage
 * [4542](https://github.com/grafana/loki/pull/4542) **owen-d**: Introduce the `loki_overrides_defaults` metric and only export diffs for tenant limits.
 * [4498](https://github.com/grafana/loki/pull/4498) **trevorwhitney**: Feature: add virtual read and write targets
+* [4543](https://github.com/grafana/loki/pull/4543) **trevorwhitney**: Change more default values and improve application of common storage config
 
 # 2.3.0 (2021/08/06)
 
