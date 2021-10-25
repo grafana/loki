@@ -29,6 +29,12 @@ variable "password" {
   default     = ""
 }
 
+variable "keep_stream" {
+  type        = string
+  description = "Determines whether to keep the CloudWatch Log Stream value as a Loki label when writing logs from lambda-promtail."
+  default     = "false"
+}
+
 variable "lambda_vpc_subnets" {
   type        = list(string)
   description = "List of subnet IDs associated with the Lambda function."
