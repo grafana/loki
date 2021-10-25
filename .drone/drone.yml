@@ -884,6 +884,63 @@ steps:
   image: golang:windowsservercore-1809
   name: test
 ---
+depends_on:
+- check
+kind: pipeline
+name: lambda-promtail
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  - echo ",latest,main" >> .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: cstyan/ecr
+  name: build-lambda-promtail-image
+  privileged: true
+  settings:
+    access_key:
+      from_secret: ecr_key
+    dockerfile: tools/lambda-promtail/Dockerfile
+    dry_run: true
+    region: us-east-1
+    registry: public.ecr.aws/grafana
+    repo: lambda-promtail
+    secret_key:
+      from_secret: ecr_secret_key
+  when:
+    ref:
+      exclude:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: cstyan/ecr
+  name: publish-lambda-promtail-image
+  privileged: true
+  settings:
+    access_key:
+      from_secret: ecr_key
+    build_args:
+    - TOUCH_PROTOS=1
+    dockerfile: tools/lambda-promtail/Dockerfile
+    dry_run: false
+    region: us-east-1
+    registry: public.ecr.aws/grafana
+    repo: lambda-promtail
+    secret_key:
+      from_secret: ecr_secret_key
+  when:
+    ref:
+      include:
+      - refs/heads/main
+      - refs/heads/k??
+      - refs/tags/v*
+---
 get:
   name: pat
   path: infra/data/ci/github/grafanabot
@@ -909,12 +966,24 @@ kind: secret
 name: docker_password
 ---
 get:
+  name: access_key_id
+  path: infra/data/ci/loki/aws-credentials
+kind: secret
+name: ecr_key
+---
+get:
+  name: secret_access_key
+  path: infra/data/ci/loki/aws-credentials
+kind: secret
+name: ecr_secret_key
+---
+get:
   name: config.json
   path: infra/data/ci/loki/deploy
 kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: ad45dfe45de92130908844a1a3cf4b829d71e057f4c9f819063a437b963232d0
+hmac: 2f519d332d5e2241a44b170461a9cf256dc8050de6d0a6caa99839a4b561aab5
 
 ...
