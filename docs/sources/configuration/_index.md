@@ -1794,7 +1794,7 @@ fifocache:
   # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
   # applied.
   # CLI flag: -<prefix>.fifocache.max-size-bytes
-  [max_size_bytes: <string> | default = ""]
+  [max_size_bytes: <string> | default = "1GB"]
 
   # Maximum number of entries in the cache.
   # CLI flag: -<prefix>.fifocache.max-size-items
@@ -1802,7 +1802,7 @@ fifocache:
 
   # The expiry duration for the cache.
   # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 0s]
+  [validity: <duration> | default = 1h]
 ```
 
 ## schema_config
