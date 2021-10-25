@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockTenantLimits struct {
@@ -24,9 +25,11 @@ func (l *mockTenantLimits) TenantLimits(userID string) *Limits {
 func (l *mockTenantLimits) AllByUserID() map[string]*Limits { return l.limits }
 
 func TestOverridesExporter_noConfig(t *testing.T) {
-	exporter := NewOverridesExporter(newMockTenantLimits(nil))
+	overrides, _ := NewOverrides(Limits{}, newMockTenantLimits(nil))
+	exporter := NewOverridesExporter(overrides)
 	count := testutil.CollectAndCount(exporter, "loki_overrides")
 	assert.Equal(t, 0, count)
+	require.Greater(t, testutil.CollectAndCount(exporter, "loki_overrides_defaults"), 0)
 }
 
 func TestOverridesExporter_withConfig(t *testing.T) {
@@ -35,7 +38,9 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 			MaxQueriersPerTenant: 5,
 		},
 	}
-	exporter := NewOverridesExporter(newMockTenantLimits(tenantLimits))
+	overrides, _ := NewOverrides(Limits{}, newMockTenantLimits(tenantLimits))
+	exporter := NewOverridesExporter(overrides)
 	count := testutil.CollectAndCount(exporter, "loki_overrides")
 	assert.Greater(t, count, 0)
+	require.Greater(t, testutil.CollectAndCount(exporter, "loki_overrides_defaults"), 0)
 }
