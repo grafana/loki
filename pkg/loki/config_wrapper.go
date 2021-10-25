@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"reflect"
 
+	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util/cfg"
+
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
-
-	"github.com/grafana/loki/pkg/util/cfg"
 )
 
 // ConfigWrapper is a struct containing the Loki config along with other values that can be set on the command line
@@ -84,14 +86,16 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyMemberlistConfig(r)
-		err := applyStorageConfig(r, &defaults)
-		if err != nil {
+
+		if err := applyStorageConfig(r, &defaults); err != nil {
 			return err
 		}
 
 		if len(r.SchemaConfig.Configs) > 0 && loki_storage.UsingBoltdbShipper(r.SchemaConfig.Configs) {
 			betterBoltdbShipperDefaults(r, &defaults)
 		}
+
+		applyFIFOCacheConfig(r)
 
 		return nil
 	}
@@ -228,4 +232,37 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper) {
 	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
 		cfg.CompactorConfig.SharedStoreType = currentSchema.ObjectType
 	}
+}
+
+// applyFIFOCacheConfig turns on FIFO cache for the chunk store and for the query range results,
+// but only if no other cache storage is configured (redis or memcache).
+//
+// This behavior is only applied for the chunk store cache and for the query range results cache
+// (i.e: not applicable for the index queries cache or for the write dedupe cache).
+func applyFIFOCacheConfig(r *ConfigWrapper) {
+	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
+	if !cache.IsRedisSet(chunkCacheConfig) && !cache.IsMemcacheSet(chunkCacheConfig) {
+		r.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = true
+	}
+
+	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
+	if !isRedisSet(resultsCacheConfig) && !isMemcacheSet(resultsCacheConfig) {
+		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
+	}
+}
+
+// isRedisSet is a duplicate of cache.IsRedisSet.
+//
+// We had to duplicate this implementation because we have code relying on
+// loki/pkg/storage/chunk/cache and cortex/pkg/chunk/cache at the same time.
+func isRedisSet(cfg cortexcache.Config) bool {
+	return cfg.Redis.Endpoint != ""
+}
+
+// isMemcacheSet is a duplicate of cache.IsMemcacheSet.
+//
+// We had to duplicate this implementation because we have code relying on
+// loki/pkg/storage/chunk/cache and cortex/pkg/chunk/cache at the same time.
+func isMemcacheSet(cfg cortexcache.Config) bool {
+	return cfg.MemcacheClient.Addresses != "" || cfg.MemcacheClient.Host != ""
 }

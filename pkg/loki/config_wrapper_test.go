@@ -21,41 +21,41 @@ import (
 	"github.com/grafana/loki/pkg/util/cfg"
 )
 
-func Test_ApplyDynamicConfig(t *testing.T) {
-	testContextExposingErrs := func(configFileString string, args []string) (error, ConfigWrapper, ConfigWrapper) {
-		config := ConfigWrapper{}
-		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+func configWrapperFromYAML(t *testing.T, configFileString string, args []string) (ConfigWrapper, ConfigWrapper, error) {
+	config := ConfigWrapper{}
+	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
-		file, err := ioutil.TempFile("", "config.yaml")
-		defer func() {
-			os.Remove(file.Name())
-		}()
+	file, err := ioutil.TempFile("", "config.yaml")
+	defer func() {
+		os.Remove(file.Name())
+	}()
 
-		require.NoError(t, err)
-		_, err = file.WriteString(configFileString)
-		require.NoError(t, err)
+	require.NoError(t, err)
+	_, err = file.WriteString(configFileString)
+	require.NoError(t, err)
 
-		configFileArgs := []string{"-config.file", file.Name()}
-		if args == nil {
-			args = configFileArgs
-		} else {
-			args = append(args, configFileArgs...)
-		}
-		err = cfg.DynamicUnmarshal(&config, args, fs)
-		if err != nil {
-			return err, ConfigWrapper{}, ConfigWrapper{}
-		}
-
-		defaults := ConfigWrapper{}
-		freshFlags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
-		err = cfg.DefaultUnmarshal(&defaults, args, freshFlags)
-		require.NoError(t, err)
-
-		return nil, config, defaults
+	configFileArgs := []string{"-config.file", file.Name()}
+	if args == nil {
+		args = configFileArgs
+	} else {
+		args = append(args, configFileArgs...)
+	}
+	err = cfg.DynamicUnmarshal(&config, args, fs)
+	if err != nil {
+		return ConfigWrapper{}, ConfigWrapper{}, err
 	}
 
+	defaults := ConfigWrapper{}
+	freshFlags := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+	err = cfg.DefaultUnmarshal(&defaults, args, freshFlags)
+	require.NoError(t, err)
+
+	return config, defaults, nil
+}
+
+func Test_ApplyDynamicConfig(t *testing.T) {
 	testContext := func(configFileString string, args []string) (ConfigWrapper, ConfigWrapper) {
-		err, config, defaults := testContextExposingErrs(configFileString, args)
+		config, defaults, err := configWrapperFromYAML(t, configFileString, args)
 		require.NoError(t, err)
 
 		return config, defaults
@@ -208,7 +208,7 @@ memberlist:
       chunk_buffer_size: 27
       request_timeout: 5m`
 
-			err, _, _ := testContextExposingErrs(multipleConfig, nil)
+			_, _, err := configWrapperFromYAML(t, multipleConfig, nil)
 			assert.ErrorIs(t, err, ErrTooManyStorageConfigs)
 		})
 
@@ -656,7 +656,136 @@ schema_config:
 	})
 }
 
-// Can't use a totally empty yaml file or it causes weird behavior in the unmarhsalling
+func TestDefaultFIFOCacheBehavior(t *testing.T) {
+	t.Run("for the chunk cache config", func(t *testing.T) {
+		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+chunk_store_config:
+  chunk_cache_config: 
+    redis:
+      endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.ChunkCacheConfig.Redis.Endpoint)
+			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+chunk_store_config:
+  chunk_cache_config: 
+    memcached_client:
+      host: host.memcached.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient.Host)
+			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+		})
+
+		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+		})
+	})
+
+	t.Run("for the write dedupe cache config", func(t *testing.T) {
+		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+chunk_store_config:
+  write_dedupe_cache_config:
+    redis:
+      endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.Redis.Endpoint)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+chunk_store_config:
+  write_dedupe_cache_config:
+    memcached_client:
+      host: host.memcached.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient.Host)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache is enabled by default even if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+		})
+	})
+
+	t.Run("for the index queries cache config", func(t *testing.T) {
+		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+storage_config:
+  index_queries_cache_config:
+    redis:
+      endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.StorageConfig.IndexQueriesCacheConfig.Redis.Endpoint)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+storage_config:
+  index_queries_cache_config:
+    memcached_client:
+      host: host.memcached.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+
+			assert.EqualValues(t, "host.memcached.org", config.StorageConfig.IndexQueriesCacheConfig.MemcacheClient.Host)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache is enabled by default even if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+		})
+	})
+
+	t.Run("for the query range results cache config", func(t *testing.T) {
+		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  results_cache: 
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, config.QueryRange.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  results_cache: 
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.CacheConfig.EnableFifoCache)
+		})
+	})
+}
+
+// Can't use a totally empty yaml file or it causes weird behavior in the unmarhsalling.
 const minimalConfig = `---
 schema_config:
   configs:

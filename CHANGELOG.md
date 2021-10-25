@@ -6,6 +6,7 @@
 * [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: Change default limits to common values
 * [4473](https://github.com/grafana/loki/pull/4473) **trevorwhitney**: Config: add object storage configuration to common config
 * [4425](https://github.com/grafana/loki/pull/4425) **trevorwhitney** and **slim-bean**: Add a ring for the query scheduler
+* [4519](https://github.com/grafana/loki/pull/4519) **DylanGuedes** and **replay**: Loki: Enable FIFO cache by default
 
 # 2.3.0 (2021/08/06)
 

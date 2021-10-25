@@ -49,15 +49,29 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
-
-	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache.")
-	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", 0, description+"The default validity of entries for caches unless overridden.")
+	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
+	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
 
 	cfg.Prefix = prefix
 }
 
 func (cfg *Config) Validate() error {
 	return cfg.Fifocache.Validate()
+}
+
+// IsMemcacheSet returns whether a non empty Memcache config is set or not, based on the configured
+// host or addresses.
+//
+// Internally, this function is used to set Memcache as the cache storage to be used.
+func IsMemcacheSet(cfg Config) bool {
+	return cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != ""
+}
+
+// IsRedisSet returns whether a non empty Redis config is set or not, based on the configured endpoint.
+//
+// Internally, this function is used to set Redis as the cache storage to be used.
+func IsRedisSet(cfg Config) bool {
+	return cfg.Redis.Endpoint != ""
 }
 
 // New creates a new Cache using Config.
@@ -78,11 +92,11 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		}
 	}
 
-	if (cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "") && cfg.Redis.Endpoint != "" {
+	if IsMemcacheSet(cfg) && IsRedisSet(cfg) {
 		return nil, errors.New("use of multiple cache storage systems is not supported")
 	}
 
-	if cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "" {
+	if IsMemcacheSet(cfg) {
 		if cfg.Memcache.Expiration == 0 && cfg.DefaultValidity != 0 {
 			cfg.Memcache.Expiration = cfg.DefaultValidity
 		}
@@ -94,7 +108,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
 	}
 
-	if cfg.Redis.Endpoint != "" {
+	if IsRedisSet(cfg) {
 		if cfg.Redis.Expiration == 0 && cfg.DefaultValidity != 0 {
 			cfg.Redis.Expiration = cfg.DefaultValidity
 		}
