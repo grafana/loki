@@ -37,7 +37,7 @@ provider "aws" {
 
 To keep the log group label add `-var "keep_stream=true"`.
 
-Note that the creation of subscription filter in the provided Terraform file only accepts an array of log group names, it does accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using pipeline stages.
+Note that the creation of subscription filter in the provided Terraform file only accepts an array of log group names, it does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using [pipeline stages](https://grafana.com/docs/loki/latest/clients/promtail/stages/drop/).
 
 CloudFormation:
 ```
@@ -140,7 +140,7 @@ scrape_configs:
 
 ## Multiple Promtail Deployment
 
-** Disclaimer: The following section is only relevant for older versions of Loki that cannot accept out of order logs. **
+**Disclaimer: The following section is only relevant for older versions of Loki that cannot accept out of order logs.**
 
 However, these may only be active for a very short while. This creates a problem for combining these short-lived log streams in Loki because timestamps may not strictly increase across multiple log streams. The other obvious route is creating labels based on log streams, which is also undesirable because it leads to cardinality problems via many low-throughput log streams.
 
