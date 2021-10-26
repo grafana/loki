@@ -37,7 +37,7 @@ provider "aws" {
 
 To keep the log group label add `-var "keep_stream=true"`.
 
-Note that the creation of subscription filter in the provided Terraform file only accepts an array of log group names, it does nottake in strings for any regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using pipeline stages.
+Note that the creation of subscription filter in the provided Terraform file only accepts an array of log group names, it does accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using pipeline stages.
 
 CloudFormation:
 ```
