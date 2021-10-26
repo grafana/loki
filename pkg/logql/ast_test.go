@@ -292,6 +292,35 @@ func Test_FilterMatcher(t *testing.T) {
 	}
 }
 
+func Test_LineFilterExprFilter(t *testing.T) {
+
+	ignoreError := func(val log.Filterer, err error) log.Filterer {
+		return val
+	}
+
+	t.Parallel()
+	for _, tc := range []struct {
+		in  *LineFilterExpr
+        out log.Filterer
+	} {
+		{
+			newNestedLineFilterExpr(
+				newLineFilterExpr(labels.MatchEqual, "", "baz"),
+				newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+			),
+			ignoreError(log.NewFilter("wrong", labels.MatchEqual)),
+		},
+	} {
+		tc := tc
+		t.Run("foo", func(t *testing.T) {
+			t.Parallel()
+			filter, err := tc.in.Filter()
+			assert.NoError(t, err)
+			assert.Equal(t, tc.out, filter)
+		})
+	}
+}
+
 func TestStringer(t *testing.T) {
 	for _, tc := range []struct {
 		in  string
