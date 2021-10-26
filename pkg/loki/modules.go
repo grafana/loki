@@ -81,6 +81,8 @@ const (
 	IndexGateway             string = "index-gateway"
 	QueryScheduler           string = "query-scheduler"
 	All                      string = "all"
+	Read                     string = "read"
+	Write                    string = "write"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -194,7 +196,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 
 	// Register the distributor to receive Push requests over GRPC
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
-	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Ingester) {
+	if !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Write) && !t.Cfg.isModuleEnabled(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
@@ -221,6 +223,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
 		AllEnabled:            t.Cfg.isModuleEnabled(All),
+		ReadEnabled:           t.Cfg.isModuleEnabled(Read),
 		GrpcListenPort:        t.Cfg.Server.GRPCListenPort,
 		QuerierMaxConcurrent:  t.Cfg.Querier.MaxConcurrent,
 		QuerierWorkerConfig:   &t.Cfg.Worker,
