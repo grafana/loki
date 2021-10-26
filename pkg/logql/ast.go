@@ -381,6 +381,41 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	return f, nil
 }
 
+func (e *LineFilterExpr) NonRecursiveFilter() (log.Filterer, error) {
+	var f log.Filterer
+
+	switch e.Op {
+	case OpFilterIP:
+		var err error
+		f, err = log.NewIPLineFilter(e.Match, e.Ty)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		var err error // to avoid `f` being shadowed.
+		f, err = log.NewFilter(e.Match, e.Ty)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	acc := make([]log.Filterer, 0)
+	for curr := e; curr.Left != nil; curr = curr.Left {
+		// TODO: this is wrong. We want to avoid recursion.
+		nextFilter, err := e.Left.Filter()
+		if err != nil {
+			return nil, err
+		}
+		acc = append(acc, nextFilter)
+	}
+
+	for _, nextFilter := range acc {
+		f = log.NewAndFilter(nextFilter, f)
+	}
+
+	return f, nil
+}
+
 func (e *LineFilterExpr) Stage() (log.Stage, error) {
 	f, err := e.Filter()
 	if err != nil {
