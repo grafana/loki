@@ -24,7 +24,7 @@ If possible try to stay current and do sequential updates. If you want to skip v
 * [4543](https://github.com/grafana/loki/pull/4543) **trevorwhitney**: Change more default values and improve application of common storage config
 
 This changes a few default values, resulting in the ingester WAL now being on by default,
-and chunk transfer retries are disabled by default. Below are config snippets with the previous defaults, and another with the new values.
+and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for it's WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
 
 Previous defaults:
 ```yaml
