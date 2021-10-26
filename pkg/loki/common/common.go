@@ -17,7 +17,7 @@ type Config struct {
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Storage.RegisterFlags("common.storage", f)
+	c.Storage.RegisterFlagsWithPrefix("common.storage", f)
 }
 
 type Storage struct {
@@ -28,7 +28,7 @@ type Storage struct {
 	FSConfig local.FSConfig          `yaml:"filesystem"`
 }
 
-func (s *Storage) RegisterFlags(prefix string, f *flag.FlagSet) {
+func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.S3.RegisterFlagsWithPrefix(prefix+".s3", f)
 	s.GCS.RegisterFlagsWithPrefix(prefix+".gcs", f)
 	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
