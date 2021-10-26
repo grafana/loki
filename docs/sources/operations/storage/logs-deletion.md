@@ -41,10 +41,11 @@ Query parameters:
 A 204 response indicates success.
 
 URL encode the `match[]` parameter. This sample form of a cURL command URL encodes `match[]={foo="bar"}`:
+
 ```
-curl -X POST \
-  '<compactor_addr>/loki/api/admin/delete?match%5B%5D=%7Bfoo=%22bar%22%7D&start=1591616227&end=1591619692' \
-  -H 'x-scope-orgid: <tenant-id>'
+curl -g -X POST \ 
+  'http://127.0.0.1:3100/loki/api/admin/delete?match[]={foo="bar"}&start=1591616227&end=1591619692' \ 
+  -H 'x-scope-orgid: 1'
 ```
 
 ### List delete requests
