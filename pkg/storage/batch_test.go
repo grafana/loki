@@ -1455,6 +1455,58 @@ func TestBuildHeapIterator(t *testing.T) {
 	}
 }
 
+func TestCacheRace(t *testing.T) {
+	a := newLazyChunk(logproto.Stream{
+		Labels: fooLabelsWithName,
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(1, 0),
+				Line:      "1",
+			},
+			{
+				Timestamp: time.Unix(2, 0),
+				Line:      "2",
+			},
+		},
+	})
+	b := newLazyChunk(logproto.Stream{
+		Labels: fooLabelsWithName,
+		Entries: []logproto.Entry{
+
+			{
+				Timestamp: time.Unix(2, 0),
+				Line:      "2",
+			},
+			{
+				Timestamp: time.Unix(3, 0),
+				Line:      "3",
+			},
+		},
+	})
+	c := newLazyChunk(logproto.Stream{
+		Labels: fooLabelsWithName,
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(3, 0),
+				Line:      "3",
+			},
+			{
+				Timestamp: time.Unix(4, 0),
+				Line:      "4",
+			},
+		},
+	})
+
+	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+	it, err := newSampleBatchIterator(context.Background(), NilMetrics, []*LazyChunk{a, b, c}, 2, newMatchers(`{foo="bar"}`), ex, time.Unix(1, 0), time.Unix(5, 0), nil)
+	require.NoError(t, err)
+	for it.Next() {
+		fmt.Println(it.Sample())
+	}
+	it.Close()
+}
+
 func Test_IsInvalidChunkError(t *testing.T) {
 	tests := []struct {
 		name           string
