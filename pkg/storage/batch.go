@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"time"
 
@@ -236,22 +235,26 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 				through = through.Add(time.Nanosecond)
 			}
 		} else {
+
 			from = time.Unix(0, headChunk.Chunk.From.UnixNano())
 
-			// when clipping the from it should never be before the start or equal to the end.
-			// Doing so would include entries not requested.
+			// if the start of the batch is equal to the end of the query, since the end is not inclusive we can discard that batch.
 			if from.Equal(it.end) {
-				fmt.Println("clamp b from:", from.UnixNano())
+				if it.end != it.start {
+					return nil
+				}
+				// unless end and start are equal in which case start and end are both inclusive.
 				from = it.end
-				fmt.Println("clamp after from:", from.UnixNano())
+			}
+			// when clipping the from it should never be before the start.
+			// Doing so would include entries not requested.
+			if from.Before(it.start) {
+				from = it.start
 			}
 		}
 
 		// it's possible that the current batch and the next batch are fully overlapping in which case
 		// we should keep adding more items until the batch boundaries difference is positive.
-		fmt.Println("through:", through.UnixNano())
-		fmt.Println("from:", from.UnixNano())
-
 		if through.Sub(from) > 0 {
 			break
 		}
@@ -281,7 +284,6 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 	if err != nil {
 		return &chunkBatch{err: err}
 	}
-	fmt.Println("batch")
 	return &chunkBatch{
 		chunksBySeries: chksBySeries,
 		err:            err,

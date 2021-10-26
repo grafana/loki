@@ -1162,6 +1162,121 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			from, from.Add(3 * time.Millisecond),
 			2,
 		},
+		"forward last chunk boundaries equal to end": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "1",
+						},
+						{
+							Timestamp: time.Unix(2, 0),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+
+						{
+							Timestamp: time.Unix(2, 0),
+							Line:      "2",
+						},
+						{
+							Timestamp: time.Unix(3, 0),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(3, 0),
+							Line:      "3",
+						},
+						{
+							Timestamp: time.Unix(4, 0),
+							Line:      "4",
+						},
+					},
+				}),
+			},
+			[]logproto.Series{
+				{
+					Labels: fooLabels,
+					Samples: []logproto.Sample{
+						{
+							Timestamp: time.Unix(1, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: time.Unix(2, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			time.Unix(1, 0), time.Unix(3, 0),
+			2,
+		},
+		"forward last chunk boundaries equal to end and start": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "1",
+						},
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "2",
+						},
+						{
+							Timestamp: time.Unix(2, 0),
+							Line:      "3",
+						},
+					},
+				}),
+			},
+			[]logproto.Series{
+				{
+					Labels: fooLabels,
+					Samples: []logproto.Sample{
+						{
+							Timestamp: time.Unix(1, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: time.Unix(1, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			time.Unix(1, 0), time.Unix(1, 0),
+			2,
+		},
 		"forward without overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
@@ -1453,58 +1568,6 @@ func TestBuildHeapIterator(t *testing.T) {
 			assertStream(t, tc.expected, streams.Streams)
 		})
 	}
-}
-
-func TestCacheRace(t *testing.T) {
-	a := newLazyChunk(logproto.Stream{
-		Labels: fooLabelsWithName,
-		Entries: []logproto.Entry{
-			{
-				Timestamp: time.Unix(1, 0),
-				Line:      "1",
-			},
-			{
-				Timestamp: time.Unix(2, 0),
-				Line:      "2",
-			},
-		},
-	})
-	b := newLazyChunk(logproto.Stream{
-		Labels: fooLabelsWithName,
-		Entries: []logproto.Entry{
-
-			{
-				Timestamp: time.Unix(2, 0),
-				Line:      "2",
-			},
-			{
-				Timestamp: time.Unix(3, 0),
-				Line:      "3",
-			},
-		},
-	})
-	c := newLazyChunk(logproto.Stream{
-		Labels: fooLabelsWithName,
-		Entries: []logproto.Entry{
-			{
-				Timestamp: time.Unix(3, 0),
-				Line:      "3",
-			},
-			{
-				Timestamp: time.Unix(4, 0),
-				Line:      "4",
-			},
-		},
-	})
-
-	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
-	require.NoError(t, err)
-	it, err := newSampleBatchIterator(context.Background(), NilMetrics, []*LazyChunk{a, b, c}, 2, newMatchers(`{foo="bar"}`), ex, time.Unix(1, 0), time.Unix(3, 0), nil)
-	require.NoError(t, err)
-	for it.Next() {
-		fmt.Println(it.Sample())
-	}
-	it.Close()
 }
 
 func Test_IsInvalidChunkError(t *testing.T) {

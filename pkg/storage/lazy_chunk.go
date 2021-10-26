@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -135,7 +134,6 @@ func (c *LazyChunk) SampleIterator(
 	for _, b := range blocks {
 		// if we have already processed and cache block let's use it.
 		if cache, ok := c.overlappingSampleBlocks[b.Offset()]; ok {
-			fmt.Println("overlaping cache")
 			cache.Reset()
 			its = append(its, cache)
 			continue
