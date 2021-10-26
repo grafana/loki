@@ -466,6 +466,18 @@ func (t *Loki) setupModuleManager() error {
 		deps[All] = append(deps[All], Compactor)
 	}
 
+	// If the query scheduler and querier are running together, make sure the scheduler goes
+	// first to initialize the ring that will also be used by the querier
+	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+		deps[Querier] = append(deps[Querier], QueryScheduler)
+	}
+
+	// If the query scheduler and query frontend are running together, make sure the scheduler goes
+	// first to initialize the ring that will also be used by the query frontend
+	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {
 			return err
