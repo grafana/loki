@@ -212,6 +212,7 @@ Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with p
 It also supports `relabeling` and `pipeline` stages just like other targets.
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):
+  - `__gcp_logname`
   - `__gcp_resource_type`
   - `__gcp_resource_labels_<NAME>`
     In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
