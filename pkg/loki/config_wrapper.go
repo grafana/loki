@@ -85,6 +85,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			r.QueryScheduler.UseSchedulerRing = true
 		}
 
+		applyIngesterRingConfig(r)
 		applyMemberlistConfig(r)
 
 		if err := applyStorageConfig(r, &defaults); err != nil {
@@ -99,6 +100,53 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		return nil
 	}
+}
+
+// applyIngesterRingConfig will use whatever config is setup for the ingester ring and use it everywhere else
+// we have a ring configured. The reason for centralizing on the ingester ring as this is been set in basically
+// all of our provided config files for all of time, usually set to `inmemory` for all the single binary Loki's
+// and is the most central ring config for Loki.
+func applyIngesterRingConfig(r *ConfigWrapper) {
+	lc := r.Ingester.LifecyclerConfig
+	rc := r.Ingester.LifecyclerConfig.RingConfig
+	s := rc.KVStore.Store
+	sc := r.Ingester.LifecyclerConfig.RingConfig.KVStore.StoreConfig
+
+	// This gets ugly because we use a separate struct for configuring each ring...
+
+	// Distributor
+	r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
+	r.Distributor.DistributorRing.HeartbeatPeriod = lc.HeartbeatPeriod
+	r.Distributor.DistributorRing.InstancePort = lc.Port
+	r.Distributor.DistributorRing.InstanceAddr = lc.Addr
+	r.Distributor.DistributorRing.InstanceID = lc.ID
+	r.Distributor.DistributorRing.InstanceInterfaceNames = lc.InfNames
+	r.Distributor.DistributorRing.KVStore.Store = s
+	r.Distributor.DistributorRing.KVStore.StoreConfig = sc
+
+	// Ruler
+	r.Ruler.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+	r.Ruler.Ring.HeartbeatPeriod = lc.HeartbeatPeriod
+	r.Ruler.Ring.InstancePort = lc.Port
+	r.Ruler.Ring.InstanceAddr = lc.Addr
+	r.Ruler.Ring.InstanceID = lc.ID
+	r.Ruler.Ring.InstanceInterfaceNames = lc.InfNames
+	r.Ruler.Ring.NumTokens = lc.NumTokens
+	r.Ruler.Ring.KVStore.Store = s
+	r.Ruler.Ring.KVStore.StoreConfig = sc
+
+	// Query Scheduler
+	r.QueryScheduler.SchedulerRing.HeartbeatTimeout = rc.HeartbeatTimeout
+	r.QueryScheduler.SchedulerRing.HeartbeatPeriod = lc.HeartbeatPeriod
+	r.QueryScheduler.SchedulerRing.InstancePort = lc.Port
+	r.QueryScheduler.SchedulerRing.InstanceAddr = lc.Addr
+	r.QueryScheduler.SchedulerRing.InstanceID = lc.ID
+	r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = lc.InfNames
+	r.QueryScheduler.SchedulerRing.InstanceZone = lc.Zone
+	r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+	r.QueryScheduler.SchedulerRing.TokensFilePath = lc.TokensFilePath
+	r.QueryScheduler.SchedulerRing.KVStore.Store = s
+	r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = sc
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist

@@ -2,12 +2,15 @@ package loki
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net/url"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -118,8 +121,6 @@ common:
 			config, defaults := testContext(emptyConfigString, nil)
 
 			assert.EqualValues(t, defaults.Ingester.LifecyclerConfig.RingConfig.KVStore.Store, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, defaults.Distributor.DistributorRing.KVStore.Store, config.Distributor.DistributorRing.KVStore.Store)
-			assert.EqualValues(t, defaults.Ruler.Ring.KVStore.Store, config.Ruler.Ring.KVStore.Store)
 		})
 
 		t.Run("when top-level memberlist join_members are provided, all applicable rings are defaulted to use memberlist", func(t *testing.T) {
@@ -817,4 +818,12 @@ func TestDefaultUnmarshal(t *testing.T) {
 		assert.Equal(t, 80, config.Server.HTTPListenPort)
 		assert.Equal(t, 9095, config.Server.GRPCListenPort)
 	})
+}
+
+func Test_applyIngesterRingConfig(t *testing.T) {
+
+	msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
+
+	assert.Equal(t, 8, reflect.TypeOf(distributor.RingConfig{}).NumField(), fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
+
 }
