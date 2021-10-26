@@ -57,7 +57,6 @@ func TestFormat(t *testing.T) {
 					"resource_type":        "gcs",
 					"backend_service_name": "http-loki",
 					"bucket_name":          "loki-bucket",
-					"promtail_instance":    model.LabelValue(instanceID.String()),
 				},
 				Entry: logproto.Entry{
 					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
@@ -76,9 +75,8 @@ func TestFormat(t *testing.T) {
 			useIncomingTimestamp: true,
 			expected: api.Entry{
 				Labels: model.LabelSet{
-					"jobname":           "pubsub-test",
-					"resource_type":     "gcs",
-					"promtail_instance": model.LabelValue(instanceID.String()),
+					"jobname":       "pubsub-test",
+					"resource_type": "gcs",
 				},
 				Entry: logproto.Entry{
 					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
@@ -96,9 +94,8 @@ func TestFormat(t *testing.T) {
 			},
 			expected: api.Entry{
 				Labels: model.LabelSet{
-					"jobname":           "pubsub-test",
-					"resource_type":     "gcs",
-					"promtail_instance": model.LabelValue(instanceID.String()),
+					"jobname":       "pubsub-test",
+					"resource_type": "gcs",
 				},
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),
