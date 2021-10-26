@@ -17,7 +17,7 @@ For both deployment types there are a few values that must be defined:
 
 The Terraform deployment also takes in an array of log group names, and can take arrays for VPC subnets and security groups.
 
-There's also a flag to keep the log group label when propagating the logs, which defaults to false.
+There's also a flag to keep the log stream label when propagating the logs, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
 
 In an effort to make deployment of lambda-promtail as simple as possible, we've created a [public ECR repo](https://gallery.ecr.aws/grafana/lambda-promtail) to publish our builds of lambda-promtail. Users are still able to clone this repo, make their own modifications to the Go code, and upload their own image to their own ECR repo if they wish.
 
@@ -37,7 +37,7 @@ provider "aws" {
 
 To keep the log group label add `-var "keep_stream=true"`.
 
-Note that the automatic subscription filter creation to multiple log groups is done without the addition of any regex filtering on the logs contents.
+Note that the creation of subscription filter in the provided Terraform file only accepts an array of log group names, it does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so, or having lambda-promtail write to Promtail and using [pipeline stages](https://grafana.com/docs/loki/latest/clients/promtail/stages/drop/).
 
 CloudFormation:
 ```
@@ -140,7 +140,7 @@ scrape_configs:
 
 ## Multiple Promtail Deployment
 
-Disclaimer: The following section is only relevant for older versions of Loki that cannot accept out of order logs.
+**Disclaimer: The following section is only relevant for older versions of Loki that cannot accept out of order logs.**
 
 However, these may only be active for a very short while. This creates a problem for combining these short-lived log streams in Loki because timestamps may not strictly increase across multiple log streams. The other obvious route is creating labels based on log streams, which is also undesirable because it leads to cardinality problems via many low-throughput log streams.
 
