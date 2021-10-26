@@ -57,7 +57,7 @@ func format(
 
 	// labels from gcp log entry. Add it as internal labels
 	for k, v := range ge.Resource.Labels {
-		lbs.Set("__"+util.SnakeCase(k), v)
+		lbs.Set("__gcp_resource_labels_"+util.SnakeCase(k), v)
 	}
 
 	var processed labels.Labels

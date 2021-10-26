@@ -34,7 +34,7 @@ func TestFormat(t *testing.T) {
 			},
 			relabel: []*relabel.Config{
 				{
-					SourceLabels: model.LabelNames{"__backend_service_name"},
+					SourceLabels: model.LabelNames{"__gcp_resource_labels_backend_service_name"},
 					Separator:    ";",
 					Regex:        relabel.MustNewRegexp("(.*)"),
 					TargetLabel:  "backend_service_name",
@@ -42,7 +42,7 @@ func TestFormat(t *testing.T) {
 					Replacement:  "$1",
 				},
 				{
-					SourceLabels: model.LabelNames{"__bucket_name"},
+					SourceLabels: model.LabelNames{"__gcp_resource_labels_bucket_name"},
 					Separator:    ";",
 					Regex:        relabel.MustNewRegexp("(.*)"),
 					TargetLabel:  "bucket_name",
