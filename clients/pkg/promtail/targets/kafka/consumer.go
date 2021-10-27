@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	cortexutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
-var defaultBackOff = cortexutil.BackoffConfig{
+var defaultBackOff = backoff.Config{
 	MinBackoff: 1 * time.Second,
 	MaxBackoff: 60 * time.Second,
 	MaxRetries: 20,
@@ -51,7 +51,7 @@ func (c *consumer) start(ctx context.Context, topics []string) {
 
 	go func() {
 		defer c.wg.Done()
-		backoff := cortexutil.NewBackoff(c.ctx, defaultBackOff)
+		backoff := backoff.New(c.ctx, defaultBackOff)
 		for {
 			// Calling Consume in an infinite loop in case rebalancing is kicking in.
 			// In which case all claims will be renewed.
