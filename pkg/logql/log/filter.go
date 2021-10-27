@@ -175,91 +175,49 @@ var (
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
-
-	buf []byte // reusable buffer for lowercase transformation
 }
 
 func (l *containsFilter) Filter(line []byte) bool {
 	if !l.caseInsensitive {
 		return bytes.Contains(line, l.match)
 	}
-	// verify if we have uppercase in the line and if it's only ascii chars
-	isASCII, hasUpper := true, false
-	for i := 0; i < len(line); i++ {
-		c := line[i]
-		if c >= utf8.RuneSelf {
-			isASCII = false
-			break
-		}
-		hasUpper = hasUpper || ('A' <= c && c <= 'Z')
+	if len(l.match) == 0 {
+		return true
 	}
-	if isASCII {
-		if !hasUpper {
-			return bytes.Contains(line, l.match)
-		}
-		return bytes.Contains(l.toLowerASCII(line), l.match)
+	if len(l.match) > len(line) {
+		return false
 	}
-	return bytes.Contains(l.toLowerUnicode(line), l.match)
-}
-
-func (l *containsFilter) toLowerASCII(line []byte) []byte {
-	if len(line) > cap(l.buf) {
-		if l.buf != nil {
-			BytesBufferPool.Put(l.buf)
-		}
-		l.buf = BytesBufferPool.Get(len(line)).([]byte)[:len(line)]
-	}
-	for i := 0; i < len(line); i++ {
-		c := line[i]
-		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		l.buf[i] = c
-	}
-	return l.buf
-}
-
-// toLowerUnicode returns a lowercased version of s, using the Unicode lower case function.
-// this is inspired by `bytes.ToLower` but doesn't allocate a new buffer.
-func (l *containsFilter) toLowerUnicode(line []byte) []byte {
-	// In the worst case, the slice can grow when mapped, making
-	// things unpleasant. But it's so rare we barge in assuming it's
-	// fine. It could also shrink but that falls out naturally.
-	nbytes := 0 // number of bytes encoded in b
-	if len(line) > cap(l.buf) {
-		if l.buf != nil {
-			BytesBufferPool.Put(l.buf)
-		}
-		l.buf = BytesBufferPool.Get(len(line)).([]byte)
-		l.buf = l.buf[:cap(l.buf)]
-	}
-	for i := 0; i < len(line); {
-		wid := 1
-		r := rune(line[i])
-		if r >= utf8.RuneSelf {
-			r, wid = utf8.DecodeRune(line[i:])
-		}
-		r = toLower(r)
-		if r >= 0 {
-			rl := utf8.RuneLen(r)
-			if rl < 0 {
-				rl = len(string(utf8.RuneError))
-			}
-			if nbytes+rl > cap(l.buf) {
-				// Grow the buffer.
-				nb := BytesBufferPool.Get(cap(l.buf)*2 + utf8.UTFMax).([]byte)
-				copy(nb, l.buf[0:nbytes])
-				if l.buf != nil {
-					BytesBufferPool.Put(l.buf)
+	j := 0
+	for len(line) > 0 {
+		// ascii fast case
+		if c := line[0]; c < utf8.RuneSelf {
+			if c == l.match[j] || c+'a'-'A' == l.match[j] {
+				j++
+				if j == len(l.match) {
+					return true
 				}
-				l.buf = nb
-
+				line = line[1:]
+				continue
 			}
-			nbytes += utf8.EncodeRune(l.buf[nbytes:cap(l.buf)], r)
+			line = line[1:]
+			j = 0
+			continue
 		}
-		i += wid
+		// unicode slow case
+		lr, lwid := utf8.DecodeRune(line)
+		mr, mwid := utf8.DecodeRune(l.match[j:])
+		if lr == mr || mr == toLower(lr) {
+			j += mwid
+			if j == len(l.match) {
+				return true
+			}
+			line = line[lwid:]
+			continue
+		}
+		line = line[lwid:]
+		j = 0
 	}
-	return l.buf[0:nbytes]
+	return false
 }
 
 func (l containsFilter) ToStage() Stage {

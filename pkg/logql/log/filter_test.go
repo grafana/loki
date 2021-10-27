@@ -10,7 +10,7 @@ import (
 func Test_SimplifiedRegex(t *testing.T) {
 	fixtures := []string{
 		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo", "FoO",
-		"foo, 世界", allunicode(),
+		"foo, 世界", allunicode(), "fooÏbar",
 	}
 	for _, test := range []struct {
 		re         string
@@ -54,6 +54,8 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{".*||||", true, TrueFilter, true},
 		{"", true, TrueFilter, true},
 		{"(?i)foo", true, newContainsFilter([]byte("foo"), true), true},
+		{"(?i)界", true, newContainsFilter([]byte("界"), true), true},
+		{"(?i)ïB", true, newContainsFilter([]byte("ïB"), true), true},
 
 		// regex we are not supporting.
 		{"[a-z]+foo", false, nil, false},
@@ -96,7 +98,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 
 func allunicode() string {
 	var b []byte
-	for i := 0x00; i <= 0x10FFFF; i++ {
+	for i := 0x00; i < 0x10FFFF; i++ {
 		b = append(b, byte(i))
 	}
 	return string(b)
@@ -176,13 +178,21 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	b.ResetTimer()
 	b.Run(fmt.Sprintf("default_%v_%s", match, re), func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			m = d.Filter(l)
+			for j := 0; j < 1e6; j++ {
+				m = d.Filter(l)
+			}
 		}
 	})
 	b.Run(fmt.Sprintf("simplified_%v_%s", match, re), func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			m = s.Filter(l)
+			for j := 0; j < 1e6; j++ {
+				m = s.Filter(l)
+			}
 		}
 	})
 	res = m
+}
+
+func Test_rune(t *testing.T) {
+	require.True(t, newContainsFilter([]byte("foo"), true).Filter([]byte("foo")))
 }
