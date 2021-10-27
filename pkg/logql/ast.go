@@ -362,22 +362,6 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 		}
 	}
 
-	/*
-	acc := make([]log.Filterer, 0)
-	for curr := e; curr.left != nil; curr = curr.left {
-		// TODO: this is wrong. We want to avoid recursion.
-		nextFilter, err := e.left.Filter()
-		if err != nil {
-			return nil, err
-		}
-		acc = append(acc, nextFilter)
-	}
-
-	for _, nextFilter := range acc {
-		f = log.NewAndFilter(nextFilter, f)
-	}
-	*/
-
 	return f, nil
 }
 
