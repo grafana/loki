@@ -84,7 +84,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	// Set the default module list to 'all'
 	c.Target = []string{All}
 	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
-		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. ")
+		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
+		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
