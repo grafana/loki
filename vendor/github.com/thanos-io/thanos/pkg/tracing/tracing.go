@@ -9,11 +9,19 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
-// ForceTracingBaggageKey - force sampling header.
-const ForceTracingBaggageKey = "X-Thanos-Force-Tracing"
+const (
+	// ForceTracingBaggageKey is a request header name that forces tracing sampling.
+	ForceTracingBaggageKey = "X-Thanos-Force-Tracing"
 
-// traceIdResponseHeader - Trace ID response header.
-const traceIDResponseHeader = "X-Thanos-Trace-Id"
+	// traceIdResponseHeader is a response header name that stores trace ID.
+	traceIDResponseHeader = "X-Thanos-Trace-Id"
+)
+
+// Aliases to avoid spreading opentracing package to Thanos code.
+
+type Tag = opentracing.Tag
+type Tags = opentracing.Tags
+type Span = opentracing.Span
 
 type contextKey struct{}
 
@@ -49,14 +57,14 @@ func CopyTraceContext(trgt, src context.Context) context.Context {
 
 // StartSpan starts and returns span with `operationName` and hooking as child to a span found within given context if any.
 // It uses opentracing.Tracer propagated in context. If no found, it uses noop tracer without notification.
-func StartSpan(ctx context.Context, operationName string, opts ...opentracing.StartSpanOption) (opentracing.Span, context.Context) {
+func StartSpan(ctx context.Context, operationName string, opts ...opentracing.StartSpanOption) (Span, context.Context) {
 	tracer := tracerFromContext(ctx)
 	if tracer == nil {
 		// No tracing found, return noop span.
 		return opentracing.NoopTracer{}.StartSpan(operationName), ctx
 	}
 
-	var span opentracing.Span
+	var span Span
 	if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
 		opts = append(opts, opentracing.ChildOf(parentSpan.Context()))
 	}
@@ -74,7 +82,7 @@ func DoInSpan(ctx context.Context, operationName string, doFn func(context.Conte
 
 // DoWithSpan executes function doFn inside new span with `operationName` name and hooking as child to a span found within given context if any.
 // It uses opentracing.Tracer propagated in context. If no found, it uses noop tracer notification.
-func DoWithSpan(ctx context.Context, operationName string, doFn func(context.Context, opentracing.Span), opts ...opentracing.StartSpanOption) {
+func DoWithSpan(ctx context.Context, operationName string, doFn func(context.Context, Span), opts ...opentracing.StartSpanOption) {
 	span, newCtx := StartSpan(ctx, operationName, opts...)
 	defer span.Finish()
 	doFn(newCtx, span)

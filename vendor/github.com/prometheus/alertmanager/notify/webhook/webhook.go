@@ -21,8 +21,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 

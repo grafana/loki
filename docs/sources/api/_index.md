@@ -3,9 +3,9 @@ title: HTTP API
 weight: 900
 ---
 
-# Loki HTTP API
+# Grafana Loki HTTP API
 
-Loki exposes an HTTP API for pushing, querying, and tailing log data.
+Grafana Loki exposes an HTTP API for pushing, querying, and tailing log data.
 Note that [authenticating](../operations/authentication/) against the API is
 out of scope for Loki.
 
@@ -534,13 +534,7 @@ JSON post body can be sent in the following format:
 
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
-> **NOTE**: logs sent to Loki for every stream must be in timestamp-ascending
-> order; logs with identical timestamps are only allowed if their content
-> differs. If a log line is received with a timestamp older than the most
-> recent received log, it is rejected with an out of order error. If a log
-> is received with the same timestamp and content as the most recent log, it is
-> silently ignored. For more details on the ordering rules, refer to the
-> [Loki Overview docs](../overview#timestamp-ordering).
+Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
 
 In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 
@@ -646,7 +640,7 @@ See [statistics](#Statistics) for information about the statistics returned by L
 ### Examples
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar"}' | jq
+$ curl -G -s "http://localhost:3100/api/prom/query" --data-urlencode 'query={foo="bar"}' | jq
 {
   "streams": [
     {
@@ -772,10 +766,7 @@ JSON post body can be sent in the following format:
 }
 ```
 
-> **NOTE**: logs sent to Loki for every stream must be in timestamp-ascending
-> order, meaning each log line must be more recent than the one last received.
-> If logs do not follow this order, Loki will reject the log with an out of
-> order error.
+Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
 
 In microservices mode, `/api/prom/push` is exposed by the distributor.
 
@@ -851,7 +842,7 @@ In microservices mode, these endpoints are exposed by the querier.
 ### Examples
 
 ``` bash
-$ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match={container_name=~"prometheus.*", component="server"}' --data-urlencode 'match={app="loki"}' | jq '.'
+$ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match[]={container_name=~"prometheus.*", component="server"}' --data-urlencode 'match[]={app="loki"}' | jq '.'
 {
   "status": "success",
   "data": [

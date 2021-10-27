@@ -7,12 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -508,4 +507,55 @@ func TestValidate(t *testing.T) {
 			require.Equal(t, tc.expected, tc.in)
 		})
 	}
+}
+
+func Test_InMemoryLabels(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
+			},
+		},
+	}
+	for i := 0; i < 10; i++ {
+		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	res, err := i.Label(ctx, &logproto.LabelRequest{
+		Name:   "bar",
+		Values: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"baz1", "baz2"}, res.Values)
+
+	res, err = i.Label(ctx, &logproto.LabelRequest{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"bar", "foo"}, res.Values)
 }

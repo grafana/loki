@@ -3,8 +3,8 @@ package cache
 import (
 	"context"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,7 +19,7 @@ type RedisCache struct {
 	name            string
 	redis           *RedisClient
 	logger          log.Logger
-	requestDuration observableVecCollector
+	requestDuration *instr.HistogramCollector
 }
 
 // NewRedisCache creates a new RedisCache
@@ -29,15 +29,15 @@ func NewRedisCache(name string, redisClient *RedisClient, reg prometheus.Registe
 		name:   name,
 		redis:  redisClient,
 		logger: logger,
-		requestDuration: observableVecCollector{
-			v: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		requestDuration: instr.NewHistogramCollector(
+			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 				Namespace:   "cortex",
 				Name:        "rediscache_request_duration_seconds",
 				Help:        "Total time spent in seconds doing Redis requests.",
 				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
 				ConstLabels: prometheus.Labels{"name": name},
 			}, []string{"method", "status_code"}),
-		},
+		),
 	}
 	if err := cache.redis.Ping(context.Background()); err != nil {
 		level.Error(logger).Log("msg", "error connecting to redis", "name", name, "err", err)

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,16 +19,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
-
-type observableVecCollector struct {
-	v prometheus.ObserverVec
-}
-
-func (observableVecCollector) Register()                             {}
-func (observableVecCollector) Before(method string, start time.Time) {}
-func (o observableVecCollector) After(method, statusCode string, start time.Time) {
-	o.v.WithLabelValues(method, statusCode).Observe(time.Since(start).Seconds())
-}
 
 // MemcachedConfig is config to make a Memcached
 type MemcachedConfig struct {
@@ -51,10 +41,11 @@ type Memcached struct {
 	memcache MemcachedClient
 	name     string
 
-	requestDuration observableVecCollector
+	requestDuration *instr.HistogramCollector
 
 	wg      sync.WaitGroup
 	inputCh chan *work
+	quit    chan struct{}
 
 	logger log.Logger
 }
@@ -66,8 +57,8 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 		memcache: client,
 		name:     name,
 		logger:   logger,
-		requestDuration: observableVecCollector{
-			v: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		requestDuration: instr.NewHistogramCollector(
+			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 				Namespace: "cortex",
 				Name:      "memcache_request_duration_seconds",
 				Help:      "Total time spent in seconds doing memcache requests.",
@@ -75,7 +66,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
 				ConstLabels: prometheus.Labels{"name": name},
 			}, []string{"method", "status_code"}),
-		},
+		),
 	}
 
 	if cfg.BatchSize == 0 || cfg.Parallelism == 0 {
@@ -83,19 +74,30 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 	}
 
 	c.inputCh = make(chan *work)
+	c.quit = make(chan struct{})
 	c.wg.Add(cfg.Parallelism)
 
 	for i := 0; i < cfg.Parallelism; i++ {
 		go func() {
-			for input := range c.inputCh {
-				res := &result{
-					batchID: input.batchID,
+			defer c.wg.Done()
+			for {
+				select {
+				case <-c.quit:
+					return
+				case input := <-c.inputCh:
+					res := &result{
+						batchID: input.batchID,
+					}
+					res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
+					// No-one will be reading from resultCh if we were asked to quit
+					// during the fetch, so check again before writing to it.
+					select {
+					case <-c.quit:
+						return
+					case input.resultCh <- res:
+					}
 				}
-				res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
-				input.resultCh <- res
 			}
-
-			c.wg.Done()
 		}()
 	}
 
@@ -187,11 +189,15 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
-			c.inputCh <- &work{
+			select {
+			case <-c.quit:
+				return
+			case c.inputCh <- &work{
 				keys:     batchKeys,
 				ctx:      ctx,
 				resultCh: resultsCh,
 				batchID:  j,
+			}:
 			}
 			j++
 		}
@@ -205,13 +211,20 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 	// We need to order found by the input keys order.
 	results := make([]*result, numResults)
+loopResults:
 	for i := 0; i < numResults; i++ {
-		result := <-resultsCh
-		results[result.batchID] = result
+		select {
+		case <-c.quit:
+			break loopResults
+		case result := <-resultsCh:
+			results[result.batchID] = result
+		}
 	}
-	close(resultsCh)
 
 	for _, result := range results {
+		if result == nil {
+			continue
+		}
 		found = append(found, result.found...)
 		bufs = append(bufs, result.bufs...)
 		missed = append(missed, result.missed...)
@@ -239,11 +252,15 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 
 // Stop does nothing.
 func (c *Memcached) Stop() {
-	if c.inputCh == nil {
+	if c.quit == nil {
 		return
 	}
 
-	close(c.inputCh)
+	select {
+	case <-c.quit:
+	default:
+		close(c.quit)
+	}
 	c.wg.Wait()
 }
 

@@ -728,10 +728,12 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 }
 
 func toProtoMatrix(m loghttp.Matrix) []queryrange.SampleStream {
-	if len(m) == 0 {
-		return nil
-	}
 	res := make([]queryrange.SampleStream, 0, len(m))
+
+	if len(m) == 0 {
+		return res
+	}
+
 	for _, stream := range m {
 		samples := make([]cortexpb.Sample, 0, len(stream.Values))
 		for _, s := range stream.Values {
@@ -749,10 +751,11 @@ func toProtoMatrix(m loghttp.Matrix) []queryrange.SampleStream {
 }
 
 func toProtoVector(v loghttp.Vector) []queryrange.SampleStream {
-	if len(v) == 0 {
-		return nil
-	}
 	res := make([]queryrange.SampleStream, 0, len(v))
+
+	if len(v) == 0 {
+		return res
+	}
 	for _, s := range v {
 		res = append(res, queryrange.SampleStream{
 			Samples: []cortexpb.Sample{{

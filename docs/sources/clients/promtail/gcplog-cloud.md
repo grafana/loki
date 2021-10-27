@@ -3,7 +3,7 @@ title: Cloud setup GCP Logs
 ---
 # Cloud setup GCP logs
 
-This document explain how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Loki Promtail to consume.
+This document explain how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Promtail to consume.
 
 This document assumes, that reader have `gcloud` installed and have required permissions(as mentioned in #[Roles and Permission] section)
 
@@ -46,7 +46,7 @@ For more information on adding `log-filter` refer this [document](https://cloud.
 
 We cover more advanced `log-filter` [below](#Advanced-Log-filter)
 
-## Create Pubsub subscription for Loki
+## Create Pubsub subscription for Grafana Loki
 
 We create subscription for the pubsub topic we create above and Promtail uses this subscription to consume log messages.
 
@@ -94,7 +94,7 @@ gcloud pubsub subscriptions seek projects/my-project/subscriptions/cloud-logs --
 
 ## Advanced log filter
 
-So far we've covered admitting GCS bucket logs into Loki, but often one may need to add multiple cloud resource logs and may also need to exclude unnecessary logs. The following is a more complex example.
+So far we've covered admitting GCS bucket logs into Grafana Loki, but often one may need to add multiple cloud resource logs and may also need to exclude unnecessary logs. The following is a more complex example.
 
 We use the `log-filter` option to include logs and the `exclusion` option to exclude them.
 

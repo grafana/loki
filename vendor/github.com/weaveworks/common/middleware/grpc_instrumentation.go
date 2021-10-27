@@ -7,11 +7,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	grpcUtils "github.com/weaveworks/common/grpc"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
-func observe(hist *prometheus.HistogramVec, method string, err error, duration time.Duration) {
+func observe(ctx context.Context, hist *prometheus.HistogramVec, method string, err error, duration time.Duration) {
 	respStatus := "success"
 	if err != nil {
 		if errResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
@@ -22,7 +23,7 @@ func observe(hist *prometheus.HistogramVec, method string, err error, duration t
 			respStatus = "error"
 		}
 	}
-	hist.WithLabelValues(gRPC, method, respStatus, "false").Observe(duration.Seconds())
+	instrument.ObserveWithExemplar(ctx, hist.WithLabelValues(gRPC, method, respStatus, "false"), duration.Seconds())
 }
 
 // UnaryServerInstrumentInterceptor instruments gRPC requests for errors and latency.
@@ -30,7 +31,7 @@ func UnaryServerInstrumentInterceptor(hist *prometheus.HistogramVec) grpc.UnaryS
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		begin := time.Now()
 		resp, err := handler(ctx, req)
-		observe(hist, info.FullMethod, err, time.Since(begin))
+		observe(ctx, hist, info.FullMethod, err, time.Since(begin))
 		return resp, err
 	}
 }
@@ -40,7 +41,7 @@ func StreamServerInstrumentInterceptor(hist *prometheus.HistogramVec) grpc.Strea
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		begin := time.Now()
 		err := handler(srv, ss)
-		observe(hist, info.FullMethod, err, time.Since(begin))
+		observe(ss.Context(), hist, info.FullMethod, err, time.Since(begin))
 		return err
 	}
 }

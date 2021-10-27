@@ -48,6 +48,12 @@ linters-settings:
   goimports:
     local-prefixes: github.com/grafana/loki/pkg
 
+  depguard:
+    list-type: blacklist
+    include-go-root: true
+    packages-with-error-message:
+      - github.com/go-kit/kit/log: "Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
+
 linters:
   enable:
     - deadcode
@@ -55,19 +61,19 @@ linters:
     - goconst
     - gofmt
     - goimports
-    - golint
+    - revive
     - gosimple
     - ineffassign
-    - megacheck
+    - staticcheck
     - misspell
     - structcheck
     - unconvert
     - unparam
     - varcheck
     - govet
-    - unused # new from here.
-    - interfacer
+    - unused
     - typecheck
+    - depguard
 
 issues:
   exclude:

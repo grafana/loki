@@ -1,7 +1,6 @@
-local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
-{
+(import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
 
@@ -66,15 +65,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
         },
       ],
     } +
-    g.dashboard('Loki / Reads')
+    $.dashboard('Loki / Reads')
+    .addClusterSelectorTemplates(false)
     .addRow(
-      g.row('Frontend (cortex_gw)')
+      $.row('Frontend (cortex_gw)')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].cortexGwSelector, http_routes])
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].cortexGwSelector, http_routes])
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
           dashboards['loki-reads.json'].matchers.cortexgateway + [utils.selector.re('route', http_routes)],
@@ -84,13 +84,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('Frontend (query-frontend)')
+      $.row('Frontend (query-frontend)')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
           dashboards['loki-reads.json'].matchers.queryFrontend + [utils.selector.re('route', http_routes)],
@@ -100,13 +100,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('Querier')
+      $.row('Querier')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].querierSelector, http_routes])
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].querierSelector, http_routes])
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
           dashboards['loki-reads.json'].matchers.querier + [utils.selector.re('route', http_routes)],
@@ -116,13 +116,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('Ingester')
+      $.row('Ingester')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterSelector, grpc_routes])
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].ingesterSelector, grpc_routes])
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
           dashboards['loki-reads.json'].matchers.ingester + [utils.selector.re('route', grpc_routes)],
@@ -132,13 +132,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('BigTable')
+      $.row('BigTable')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
+        $.panel('QPS') +
+        $.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'cortex_bigtable_request_duration_seconds',
           dashboards['loki-reads.json'].matchers.querier + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
@@ -146,14 +146,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('BoltDB Shipper')
+      $.row('BoltDB Shipper')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+        $.panel('QPS') +
+        $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
       )
       .addPanel(
-        g.panel('Latency') +
-        g.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
+        $.panel('Latency') +
+        $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="QUERY"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
       )
     ){
       templating+: {

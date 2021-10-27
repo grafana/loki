@@ -1,9 +1,9 @@
 ---
 title: Releasing Loki
 ---
-# Releasing Loki
+# Releasing Grafana Loki
 
-This document is a series of instructions for core Loki maintainers to be able
+This document is a series of instructions for core Grafana Loki maintainers to be able
 to publish a new Loki release.
 
 ## Prerequisites

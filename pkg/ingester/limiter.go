@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
-	cortex_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/validation"
@@ -129,27 +129,53 @@ func (l *Limiter) minNonZero(first, second int) int {
 	return first
 }
 
-type localStrategy struct {
-	limiter *Limiter
+type RateLimiterStrategy interface {
+	RateLimit(tenant string) validation.RateLimit
 }
 
-func newLocalStreamRateStrategy(l *Limiter) cortex_limiter.RateLimiterStrategy {
-	return &localStrategy{
-		limiter: l,
+func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
+	if l.disabled {
+		return validation.Unlimited
+	}
+
+	return l.limits.PerStreamRateLimit(tenant)
+}
+
+type StreamRateLimiter struct {
+	recheckPeriod time.Duration
+	recheckAt     time.Time
+	strategy      RateLimiterStrategy
+	tenant        string
+	lim           *rate.Limiter
+}
+
+func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
+	rl := strategy.RateLimit(tenant)
+	return &StreamRateLimiter{
+		recheckPeriod: recheckPeriod,
+		strategy:      strategy,
+		tenant:        tenant,
+		lim:           rate.NewLimiter(rl.Limit, rl.Burst),
 	}
 }
 
-func (s *localStrategy) Limit(userID string) float64 {
-	if s.limiter.disabled {
-		return float64(rate.Inf)
-	}
-	return float64(s.limiter.limits.MaxLocalStreamRateBytes(userID))
-}
+func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
+	now := time.Now()
+	if now.After(l.recheckAt) {
+		l.recheckAt = now.Add(l.recheckPeriod)
 
-func (s *localStrategy) Burst(userID string) int {
-	if s.limiter.disabled {
-		// Burst is ignored when limit = rate.Inf
-		return 0
+		oldLim := l.lim.Limit()
+		oldBurst := l.lim.Burst()
+
+		next := l.strategy.RateLimit(l.tenant)
+
+		if oldLim != next.Limit || oldBurst != next.Burst {
+			// Edge case: rate.Inf doesn't advance nicely when reconfigured.
+			// To simplify, we just create a new limiter after reconfiguration rather
+			// than alter the existing one.
+			l.lim = rate.NewLimiter(next.Limit, next.Burst)
+		}
 	}
-	return s.limiter.limits.MaxLocalStreamBurstRateBytes(userID)
+
+	return l.lim.AllowN(at, n)
 }

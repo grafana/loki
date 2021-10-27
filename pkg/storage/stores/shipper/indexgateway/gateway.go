@@ -1,7 +1,7 @@
 package indexgateway
 
 import (
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"

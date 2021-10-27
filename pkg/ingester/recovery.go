@@ -7,7 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -135,6 +135,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		if err != nil {
 			return err
 		}
+		memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))
@@ -220,8 +221,16 @@ func (r *ingesterRecoverer) Close() {
 
 	for _, inst := range r.ing.getInstances() {
 		inst.forAllStreams(context.Background(), func(s *stream) error {
+			s.chunkMtx.Lock()
+			defer s.chunkMtx.Unlock()
+
 			// reset all the incrementing stream counters after a successful WAL replay.
 			s.resetCounter()
+
+			if len(s.chunks) == 0 {
+				inst.removeStream(s)
+				return nil
+			}
 
 			// If we've replayed a WAL with unordered writes, but the new
 			// configuration disables them, convert all streams/head blocks
@@ -232,14 +241,9 @@ func (r *ingesterRecoverer) Close() {
 			s.unorderedWrites = isAllowed
 
 			if !isAllowed && old {
-
-				s.chunkMtx.Lock()
-				defer s.chunkMtx.Unlock()
-				if len(s.chunks) > 0 {
-					err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
-					if err != nil {
-						return err
-					}
+				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
+				if err != nil {
+					return err
 				}
 			}
 

@@ -3,6 +3,8 @@ package flagext
 import (
 	"testing"
 
+	"encoding/json"
+
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 )
@@ -98,6 +100,41 @@ func Test_ByteSizeYAML(t *testing.T) {
 			} else {
 				require.Nil(t, err)
 				require.Equal(t, tc.out, out)
+			}
+		})
+	}
+}
+
+func Test_ByteSizeJSON(t *testing.T) {
+	for _, tc := range []struct {
+		in  string
+		err bool
+		out ByteSize
+	}{
+		{
+			in:  `{ "bytes": "256GB" }`,
+			out: ByteSize(256 << 30),
+		},
+		{
+			// JSON shouldn't allow to set integer as value for ByteSize field.
+			in:  `{ "bytes": 2.62144e+07 }`,
+			err: true,
+		},
+		{
+			in:  `{ "bytes": "abc" }`,
+			err: true,
+		},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			var out struct {
+				Bytes ByteSize `json:"bytes"`
+			}
+			err := json.Unmarshal([]byte(tc.in), &out)
+			if tc.err {
+				require.NotNil(t, err)
+			} else {
+				require.Nil(t, err)
+				require.Equal(t, tc.out, out.Bytes)
 			}
 		})
 	}

@@ -4,12 +4,13 @@ import (
 	"flag"
 	"fmt"
 
+	yaml "gopkg.in/yaml.v2"
+
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
-	yaml "gopkg.in/yaml.v2"
 )
 
 // Config for promtail, describing what files to watch.

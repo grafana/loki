@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -330,11 +330,15 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 }
 
 func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Duration) {
+	once := make(chan struct{}, 1)
+	once <- struct{}{}
+
 	deadline := time.After(max)
 	for {
 		select {
 		case <-deadline:
 			require.Fail(t, "timeout while waiting for checkpoint existence:", shouldExist)
+		case <-once: // Trick to ensure we check immediately before deferring to ticker.
 		default:
 			<-time.After(max / 10) // check 10x over the duration
 		}
@@ -443,13 +447,14 @@ var (
 
 func Test_SeriesIterator(t *testing.T) {
 	var instances []*instance
-	limits, err := validation.NewOverrides(validation.Limits{
-		MaxLocalStreamsPerUser:       1000,
-		IngestionRateMB:              1e4,
-		IngestionBurstSizeMB:         1e4,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}, nil)
+
+	// NB (owen-d): Not sure why we have these overrides
+	l := defaultLimitsTestConfig()
+	l.MaxLocalStreamsPerUser = 1000
+	l.IngestionRateMB = 1e4
+	l.IngestionBurstSizeMB = 1e4
+
+	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -636,7 +641,7 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 
 			if waitForCheckpoint {
 				// Ensure we have checkpointed now
-				expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*2) // give a bit of buffer
+				expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*10) // give a bit of buffer
 
 				// Add some more data after the checkpoint
 				tmp := end

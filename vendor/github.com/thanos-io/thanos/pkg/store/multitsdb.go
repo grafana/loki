@@ -269,7 +269,7 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 
 }
 
-// LabelNames returns all known label names.
+// LabelNames returns all known label names constrained by the matchers.
 func (s *MultiTSDBStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	span, ctx := tracing.StartSpan(ctx, "multitsdb_label_names")
 	defer span.Finish()

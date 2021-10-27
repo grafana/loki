@@ -1,9 +1,10 @@
 ---
 title: Fluentd
+weight: 60
 ---
 # Fluentd Loki Output Plugin
 
-Loki has a [Fluentd](https://www.fluentd.org/) output plugin called
+Grafana Loki has a [Fluentd](https://www.fluentd.org/) output plugin called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
 instance or [Grafana Cloud](https://grafana.com/products/cloud/).
 
@@ -145,7 +146,7 @@ Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
 
 ### Multi-worker usage
 
-Loki doesn't currently support out-of-order inserts - if you try to insert a log entry an earlier timestamp after a log entry with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels or otherwise [ensure log streams are always sent to the same worker](https://docs.fluentd.org/deployment/multi-process-workers#less-than-worker-n-greater-than-directive).
+Out-of-order inserts may be configured for Loki; refer to [accept out-of-order writes](../../configuration/#accept-out-of-order-writes). If out-of-order inserts are not configured, attempting to insert a log entry with an earlier timestamp after a log entry with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels or otherwise [ensure log streams are always sent to the same worker](https://docs.fluentd.org/deployment/multi-process-workers#less-than-worker-n-greater-than-directive).
 
 For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly/fluent-plugin-record-modifier):
 

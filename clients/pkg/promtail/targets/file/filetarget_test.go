@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"

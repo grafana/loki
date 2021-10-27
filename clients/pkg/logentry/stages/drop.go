@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -110,7 +110,7 @@ func (m *dropStage) Run(in chan Entry) chan Entry {
 				out <- e
 				continue
 			}
-			m.dropCount.WithLabelValues(*m.cfg.DropReason)
+			m.dropCount.WithLabelValues(*m.cfg.DropReason).Inc()
 		}
 	}()
 	return out

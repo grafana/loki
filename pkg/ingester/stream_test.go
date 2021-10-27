@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -53,7 +54,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			cfg.MaxReturnedErrors = tc.limit
 			s := newStream(
 				cfg,
-				newLocalStreamRateStrategy(limiter),
+				limiter,
 				"fake",
 				model.Fingerprint(0),
 				labels.Labels{
@@ -98,7 +99,7 @@ func TestPushDeduplication(t *testing.T) {
 
 	s := newStream(
 		defaultConfig(),
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -127,7 +128,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 
 	s := newStream(
 		defaultConfig(),
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -221,7 +222,7 @@ func TestUnorderedPush(t *testing.T) {
 
 	s := newStream(
 		&cfg,
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -310,8 +311,8 @@ func TestUnorderedPush(t *testing.T) {
 
 func TestPushRateLimit(t *testing.T) {
 	l := validation.Limits{
-		MaxLocalStreamRateBytes:      10,
-		MaxLocalStreamBurstRateBytes: 10,
+		PerStreamRateLimit:      10,
+		PerStreamRateLimitBurst: 10,
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
@@ -319,7 +320,7 @@ func TestPushRateLimit(t *testing.T) {
 
 	s := newStream(
 		defaultConfig(),
-		newLocalStreamRateStrategy(limiter),
+		limiter,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -329,13 +330,13 @@ func TestPushRateLimit(t *testing.T) {
 		NilMetrics,
 	)
 
-	// Counter should be 2 now since the first line will be deduped.
-	_, err = s.Push(context.Background(), []logproto.Entry{
+	entries := []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
 		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
-	}, recordPool.GetRecord(), 0)
-	require.Contains(t, err.Error(), ErrStreamRateLimit.Error())
-	require.Contains(t, err.Error(), "total ignored: 1 out of 2")
+	}
+	// Counter should be 2 now since the first line will be deduped.
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0)
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
@@ -360,7 +361,7 @@ func Benchmark_PushStream(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	s := newStream(&Config{}, newLocalStreamRateStrategy(limiter), "fake", model.Fingerprint(0), ls, true, NilMetrics)
+	s := newStream(&Config{}, limiter, "fake", model.Fingerprint(0), ls, true, NilMetrics)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{})
 	require.NoError(b, err)
 

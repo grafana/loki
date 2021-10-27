@@ -4,7 +4,7 @@ weight: 1010
 ---
 # Storage
 
-Unlike other logging systems, Loki is built around the idea of only indexing
+Unlike other logging systems, Grafana Loki is built around the idea of only indexing
 metadata about your logs: labels (just like Prometheus labels). Log data itself
 is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
@@ -298,20 +298,20 @@ schema_config:
     object_store: azure
     schema: v11
     store: boltdb-shipper
-  storage_config:
-    azure:
-      # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
-      account_key: <account-key>
-      # Your azure account name
-      account_name: <account-name>
-      # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
-      container_name: <container-name>
-      request_timeout: 0
-    boltdb_shipper:
-      active_index_directory: /data/loki/boltdb-shipper-active
-      cache_location: /data/loki/boltdb-shipper-cache
-      cache_ttl: 24h
-      shared_store: azure
-    filesystem:
-      directory: /data/loki/chunks
+storage_config:
+  azure:
+    # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
+    account_key: <account-key>
+    # Your azure account name
+    account_name: <account-name>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <container-name>
+    request_timeout: 0
+  boltdb_shipper:
+    active_index_directory: /data/loki/boltdb-shipper-active
+    cache_location: /data/loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: azure
+  filesystem:
+    directory: /data/loki/chunks
 ```

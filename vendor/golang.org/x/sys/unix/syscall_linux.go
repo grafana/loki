@@ -66,11 +66,22 @@ func Fchmodat(dirfd int, path string, mode uint32, flags int) (err error) {
 	return fchmodat(dirfd, path, mode)
 }
 
-//sys	ioctl(fd int, req uint, arg uintptr) (err error)
+func InotifyInit() (fd int, err error) {
+	return InotifyInit1(0)
+}
 
-// ioctl itself should not be exposed directly, but additional get/set
-// functions for specific types are permissible.
-// These are defined in ioctl.go and ioctl_linux.go.
+//sys	ioctl(fd int, req uint, arg uintptr) (err error) = SYS_IOCTL
+//sys	ioctlPtr(fd int, req uint, arg unsafe.Pointer) (err error) = SYS_IOCTL
+
+// ioctl itself should not be exposed directly, but additional get/set functions
+// for specific types are permissible. These are defined in ioctl.go and
+// ioctl_linux.go.
+//
+// The third argument to ioctl is often a pointer but sometimes an integer.
+// Callers should use ioctlPtr when the third argument is a pointer and ioctl
+// when the third argument is an integer.
+//
+// TODO: some existing code incorrectly uses ioctl when it should use ioctlPtr.
 
 //sys	Linkat(olddirfd int, oldpath string, newdirfd int, newpath string, flags int) (err error)
 
@@ -161,27 +172,7 @@ func Utimes(path string, tv []Timeval) error {
 //sys	utimensat(dirfd int, path string, times *[2]Timespec, flags int) (err error)
 
 func UtimesNano(path string, ts []Timespec) error {
-	if ts == nil {
-		err := utimensat(AT_FDCWD, path, nil, 0)
-		if err != ENOSYS {
-			return err
-		}
-		return utimes(path, nil)
-	}
-	if len(ts) != 2 {
-		return EINVAL
-	}
-	err := utimensat(AT_FDCWD, path, (*[2]Timespec)(unsafe.Pointer(&ts[0])), 0)
-	if err != ENOSYS {
-		return err
-	}
-	// If the utimensat syscall isn't available (utimensat was added to Linux
-	// in 2.6.22, Released, 8 July 2007) then fall back to utimes
-	var tv [2]Timeval
-	for i := 0; i < 2; i++ {
-		tv[i] = NsecToTimeval(TimespecToNsec(ts[i]))
-	}
-	return utimes(path, (*[2]Timeval)(unsafe.Pointer(&tv[0])))
+	return UtimesNanoAt(AT_FDCWD, path, ts, 0)
 }
 
 func UtimesNanoAt(dirfd int, path string, ts []Timespec, flags int) error {
@@ -1222,11 +1213,7 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 func Accept(fd int) (nfd int, sa Sockaddr, err error) {
 	var rsa RawSockaddrAny
 	var len _Socklen = SizeofSockaddrAny
-	// Try accept4 first for Android, then try accept for kernel older than 2.6.28
 	nfd, err = accept4(fd, &rsa, &len, 0)
-	if err == ENOSYS {
-		nfd, err = accept(fd, &rsa, &len)
-	}
 	if err != nil {
 		return
 	}
@@ -1346,6 +1333,13 @@ func SetsockoptTpacketReq(fd, level, opt int, tp *TpacketReq) error {
 
 func SetsockoptTpacketReq3(fd, level, opt int, tp *TpacketReq3) error {
 	return setsockopt(fd, level, opt, unsafe.Pointer(tp), unsafe.Sizeof(*tp))
+}
+
+func SetsockoptTCPRepairOpt(fd, level, opt int, o []TCPRepairOpt) (err error) {
+	if len(o) == 0 {
+		return EINVAL
+	}
+	return setsockopt(fd, level, opt, unsafe.Pointer(&o[0]), uintptr(SizeofTCPRepairOpt*len(o)))
 }
 
 // Keyctl Commands (http://man7.org/linux/man-pages/man2/keyctl.2.html)
@@ -1859,7 +1853,7 @@ func Getpgrp() (pid int) {
 //sys	Nanosleep(time *Timespec, leftover *Timespec) (err error)
 //sys	PerfEventOpen(attr *PerfEventAttr, pid int, cpu int, groupFd int, flags int) (fd int, err error)
 //sys	PivotRoot(newroot string, putold string) (err error) = SYS_PIVOT_ROOT
-//sysnb	prlimit(pid int, resource int, newlimit *Rlimit, old *Rlimit) (err error) = SYS_PRLIMIT64
+//sysnb	Prlimit(pid int, resource int, newlimit *Rlimit, old *Rlimit) (err error) = SYS_PRLIMIT64
 //sys	Prctl(option int, arg2 uintptr, arg3 uintptr, arg4 uintptr, arg5 uintptr) (err error)
 //sys	Pselect(nfd int, r *FdSet, w *FdSet, e *FdSet, timeout *Timespec, sigmask *Sigset_t) (n int, err error) = SYS_PSELECT6
 //sys	read(fd int, p []byte) (n int, err error)

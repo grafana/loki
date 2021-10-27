@@ -2,9 +2,9 @@
 title: Clients
 weight: 600
 ---
-# Loki clients
+# Grafana Loki clients
 
-Loki supports the following official clients for sending logs:
+Grafana Loki supports the following official clients for sending logs:
 
 - [Promtail](promtail/)
 - [Docker Driver](docker-driver/)

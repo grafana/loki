@@ -8,9 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -22,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -50,8 +50,7 @@ var (
 )
 
 var (
-	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
-	ErrStreamRateLimit = errors.New("stream rate limit exceeded")
+	ErrEntriesExist = errors.New("duplicate push - entries already exist")
 )
 
 func init() {
@@ -66,7 +65,7 @@ type line struct {
 }
 
 type stream struct {
-	limiter *limiter.RateLimiter
+	limiter *StreamRateLimiter
 	cfg     *Config
 	tenant  string
 	// Newest chunk at chunks[n-1].
@@ -116,9 +115,9 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, limits limiter.RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, metrics *ingesterMetrics) *stream {
 	return &stream{
-		limiter:         limiter.NewRateLimiter(limits, 10*time.Second),
+		limiter:         NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:             cfg,
 		fp:              fp,
 		labels:          labels,
@@ -184,6 +183,13 @@ func (s *stream) Push(
 	defer s.chunkMtx.Unlock()
 
 	if counter > 0 && counter <= s.entryCt {
+		var byteCt int
+		for _, e := range entries {
+			byteCt += len(e.Line)
+		}
+
+		s.metrics.walReplaySamplesDropped.WithLabelValues(duplicateReason).Add(float64(len(entries)))
+		s.metrics.walReplayBytesDropped.WithLabelValues(duplicateReason).Add(float64(byteCt))
 		return 0, ErrEntriesExist
 	}
 
@@ -212,6 +218,11 @@ func (s *stream) Push(
 		}
 	}()
 
+	// This call uses a mutex under the hood, cache the result since we're checking the limit
+	// on each entry in the push (hot path) and we only use this value when logging entries
+	// over the rate limit.
+	limit := s.limiter.lim.Limit()
+
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
 	for i := range entries {
@@ -233,8 +244,8 @@ func (s *stream) Push(
 		}
 		// Check if this this should be rate limited.
 		now := time.Now()
-		if !s.limiter.AllowN(now, s.tenant, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
+		if !s.limiter.AllowN(now, len(entries[i].Line)) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
 			continue
@@ -304,19 +315,23 @@ func (s *stream) Push(
 				}
 			}()
 		}
+	}
 
+	if len(s.chunks) != prevNumChunks {
+		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && lastEntryWithErr.e != ErrStreamRateLimit {
+		_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
+		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && !ok {
 			return bytesAdded, lastEntryWithErr.e
 		}
 		var statusCode int
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			statusCode = http.StatusBadRequest
 		}
-		if lastEntryWithErr.e == ErrStreamRateLimit {
+		if ok {
 			statusCode = http.StatusTooManyRequests
 		}
 		// Return a http status 4xx request response with all failed entries.
@@ -339,9 +354,6 @@ func (s *stream) Push(
 		return bytesAdded, httpgrpc.Errorf(statusCode, buf.String())
 	}
 
-	if len(s.chunks) != prevNumChunks {
-		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
-	}
 	return bytesAdded, nil
 }
 

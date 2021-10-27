@@ -13,9 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -31,9 +33,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -54,6 +54,7 @@ var (
 			reg,
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
+			prometheus.NewCounter(prometheus.CounterOpts{}),
 			metadata.NoneFunc)
 	}
 
@@ -656,6 +657,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
+		false,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")

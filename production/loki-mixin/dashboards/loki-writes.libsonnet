@@ -1,7 +1,6 @@
-local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
-{
+(import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
 
@@ -59,15 +58,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
         },
       ],
     } +
-    g.dashboard('Loki / Writes')
+    $.dashboard('Loki / Writes')
+    .addClusterSelectorTemplates(false)
     .addRow(
-      g.row('Frontend (cortex_gw)')
+      $.row('Frontend (cortex_gw)')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push"}' % dashboards['loki-writes.json'].cortexGwSelector)
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push"}' % dashboards['loki-writes.json'].cortexGwSelector)
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
           dashboards['loki-writes.json'].matchers.cortexgateway + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
@@ -76,13 +76,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('Distributor')
+      $.row('Distributor')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_request_duration_seconds_count{%s}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
           dashboards['loki-writes.json'].matchers.distributor,
@@ -91,13 +91,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('Ingester')
+      $.row('Ingester')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector)
+        $.panel('QPS') +
+        $.qpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector)
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'loki_request_duration_seconds',
           dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('route', '/logproto.Pusher/Push')],
@@ -106,13 +106,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('BigTable')
+      $.row('BigTable')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/MutateRows"}' % dashboards['loki-writes.json'].ingesterSelector)
+        $.panel('QPS') +
+        $.qpsPanel('cortex_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/MutateRows"}' % dashboards['loki-writes.json'].ingesterSelector)
       )
       .addPanel(
-        g.panel('Latency') +
+        $.panel('Latency') +
         utils.latencyRecordingRulePanel(
           'cortex_bigtable_request_duration_seconds',
           dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')]
@@ -120,14 +120,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
       )
     )
     .addRow(
-      g.row('BoltDB Shipper')
+      $.row('BoltDB Shipper')
       .addPanel(
-        g.panel('QPS') +
-        g.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
+        $.panel('QPS') +
+        $.qpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
       )
       .addPanel(
-        g.panel('Latency') +
-        g.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
+        $.panel('Latency') +
+        $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
       )
     ){
       templating+: {

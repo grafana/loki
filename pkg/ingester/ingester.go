@@ -13,8 +13,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -97,7 +97,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
-	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 0, "")
+	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "How often to cut chunks to synchronize ingesters.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
@@ -669,6 +669,10 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	resp, err := instance.Label(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Start == nil {
+		return resp, nil
 	}
 
 	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.

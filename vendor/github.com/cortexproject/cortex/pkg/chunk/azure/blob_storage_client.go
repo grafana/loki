@@ -12,11 +12,11 @@ import (
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -30,6 +30,7 @@ const (
 
 var (
 	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
+	noClientKey           = azblob.ClientProvidedKeyOptions{}
 	endpoints             = map[string]struct{ blobURLFmt, containerURLFmt string }{
 		azureGlobal: {
 			"https://%s.blob.core.windows.net/%s/%s",
@@ -135,7 +136,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 	}
 
 	// Request access to the blob
-	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
+	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, noClientKey)
 	if err != nil {
 		if isObjNotFoundErr(err) {
 			return nil, chunk.ErrStorageObjectNotFound
