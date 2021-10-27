@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util/cfg"
+	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
 func configWrapperFromYAML(t *testing.T, configFileString string, args []string) (ConfigWrapper, ConfigWrapper, error) {
@@ -913,4 +914,82 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 
 	assert.Equal(t, 8, reflect.TypeOf(distributor.RingConfig{}).NumField(), fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
 
+}
+
+func TestRingInterfaceNames(t *testing.T) {
+	defaultIface, err := loki_net.LoopbackInterfaceName()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, defaultIface)
+
+	t.Run("by default, loopback is available for all ring interfaces", func(t *testing.T) {
+		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
+		assert.NoError(t, err)
+
+		assert.Contains(t, config.Ingester.LifecyclerConfig.InfNames, defaultIface)
+		assert.Contains(t, config.Distributor.DistributorRing.InstanceInterfaceNames, defaultIface)
+		assert.Contains(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, defaultIface)
+		assert.Contains(t, config.Ruler.Ring.InstanceInterfaceNames, defaultIface)
+	})
+
+	t.Run("if ingestor interface is set, it overrides other rings default interfaces", func(t *testing.T) {
+		yamlContent := `ingester:
+  lifecycler:
+    interface_names:
+    - ingesteriface`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"ingesteriface"})
+		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"ingesteriface"})
+		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ingesteriface"})
+		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"ingesteriface"})
+	})
+
+	t.Run("if all rings have different net interface sets, doesn't override any of them", func(t *testing.T) {
+		yamlContent := `distributor:
+  ring:
+    instance_interface_names:
+    - distributoriface
+ruler:
+  ring:
+    instance_interface_names:
+    - ruleriface
+query_scheduler:
+  scheduler_ring:
+    instance_interface_names:
+    - scheduleriface
+ingester:
+  lifecycler:
+    interface_names:
+    - ingesteriface`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"ingesteriface"})
+		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
+		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
+		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
+	})
+
+	t.Run("if all rings except ingester have net interface sets, doesn't override them with ingester default value", func(t *testing.T) {
+		yamlContent := `distributor:
+  ring:
+    instance_interface_names:
+    - distributoriface
+ruler:
+  ring:
+    instance_interface_names:
+    - ruleriface
+query_scheduler:
+  scheduler_ring:
+    instance_interface_names:
+    - scheduleriface`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
+		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
+		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
+		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"eth0", "en0", defaultIface})
+	})
 }
