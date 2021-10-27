@@ -93,6 +93,7 @@ func Test_NewTarget(t *testing.T) {
 			},
 			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
 				UseIncomingTimestamp: true,
+				GroupID:              "group_1",
 				Topics:               []string{"topic1", "topic2"},
 				Labels:               model.LabelSet{"static": "static1"},
 			},
@@ -109,7 +110,7 @@ func Test_NewTarget(t *testing.T) {
 		InitialOffset: 1,
 	}, tg.Details())
 	require.Equal(t, model.LabelSet{"static": "static1", "topic": "foo"}, tg.Labels())
-	require.Equal(t, model.LabelSet{"__member_id": "foo", "__partition": "10", "__topic": "foo"}, tg.DiscoveredLabels())
+	require.Equal(t, model.LabelSet{"__member_id": "foo", "__partition": "10", "__topic": "foo", "__group_id": "group_1"}, tg.DiscoveredLabels())
 }
 
 func Test_NewDroppedTarget(t *testing.T) {
@@ -120,6 +121,7 @@ func Test_NewDroppedTarget(t *testing.T) {
 			JobName: "foo",
 			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
 				UseIncomingTimestamp: true,
+				GroupID:              "group1",
 				Topics:               []string{"topic1", "topic2"},
 			},
 		},
@@ -129,7 +131,7 @@ func Test_NewDroppedTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "dropping target, no labels", tg.Details())
 	require.Equal(t, model.LabelSet(nil), tg.Labels())
-	require.Equal(t, model.LabelSet{"__member_id": "foo", "__partition": "10", "__topic": "foo"}, tg.DiscoveredLabels())
+	require.Equal(t, model.LabelSet{"__member_id": "foo", "__partition": "10", "__topic": "foo", "__group_id": "group1"}, tg.DiscoveredLabels())
 }
 
 func Test_validateConfig(t *testing.T) {

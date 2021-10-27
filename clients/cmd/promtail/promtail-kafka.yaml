@@ -28,3 +28,7 @@ scrape_configs:
         source_labels:
           - __partition
         target_label: partition
+      - action: replace
+        source_labels:
+          - __group_id
+        target_label: group

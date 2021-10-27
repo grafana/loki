@@ -200,6 +200,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		"__topic":     model.LabelValue(claim.Topic()),
 		"__partition": model.LabelValue(fmt.Sprintf("%d", claim.Partition())),
 		"__member_id": model.LabelValue(session.MemberID()),
+		"__group_id":  model.LabelValue(ts.cfg.KafkaConfig.GroupID),
 	}
 	labelMap := make(map[string]string)
 	for k, v := range discoveredLabels.Clone().Merge(ts.cfg.KafkaConfig.Labels) {

@@ -242,7 +242,7 @@ type KafkaTargetConfig struct {
 	// Kafka version. Default to 2.2.1
 	Version string `yaml:"version"`
 
-	// Rebalancing strategy to use. (e.g sticky,roundrobin or range)
+	// Rebalancing strategy to use. (e.g sticky, roundrobin or range)
 	Assignor string `yaml:"assignor"`
 }
 
