@@ -95,6 +95,18 @@ type andFilters struct {
 
 // NewAndFilters creates a new filter which matches only if all filters match
 func NewAndFilters(filters []Filterer) Filterer {
+	// Make sure we take care of panics in case a nil or noop filter is passed.
+	for i:= len(filters)-1; i>=0; i-- {
+		if filters[i] == nil || filters[i] == TrueFilter {
+			// Delete entry
+			filters = append(filters[:i], filters[i+1:]...)
+		}
+	}
+
+	if len(filters) == 0 {
+		return TrueFilter
+	}
+
 	return andFilters {
 		filters: filters,
 	}
@@ -188,19 +200,19 @@ func (r regexpFilter) ToStage() Stage {
 	}
 }
 
-type containsFilter struct {
-	match           []byte
+type ContainsFilter struct {
+	Match           []byte
 	caseInsensitive bool
 }
 
-func (l containsFilter) Filter(line []byte) bool {
+func (l ContainsFilter) Filter(line []byte) bool {
 	if l.caseInsensitive {
 		line = bytes.ToLower(line)
 	}
-	return bytes.Contains(line, l.match)
+	return bytes.Contains(line, l.Match)
 }
 
-func (l containsFilter) ToStage() Stage {
+func (l ContainsFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, l.Filter(line)
@@ -208,8 +220,8 @@ func (l containsFilter) ToStage() Stage {
 	}
 }
 
-func (l containsFilter) String() string {
-	return string(l.match)
+func (l ContainsFilter) String() string {
+	return string(l.Match)
 }
 
 // newContainsFilter creates a contains filter that checks if a log line contains a match.
@@ -220,8 +232,8 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if caseInsensitive {
 		match = bytes.ToLower(match)
 	}
-	return containsFilter{
-		match:           match,
+	return ContainsFilter{
+		Match:           match,
 		caseInsensitive: caseInsensitive,
 	}
 }

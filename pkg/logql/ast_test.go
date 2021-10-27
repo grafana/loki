@@ -291,6 +291,7 @@ func Test_FilterMatcher(t *testing.T) {
 		})
 	}
 }
+
 /*
 func Test_LineFilterExprFilter(t *testing.T) {
 
@@ -389,23 +390,29 @@ func TestStringer(t *testing.T) {
 }
 
 func BenchmarkContainsFilter(b *testing.B) {
-	benchmarks := []struct{
+	benchmarks := []struct {
 		name  string
 		expr  string
 		line  []byte
 		match bool
-	} {
+	}{
 		{
-           "AllMatches",
-		   `{app="foo"} |= "foo" |= "hello" |= "world" |= "bar"`,
-		   []byte("hello world foo bar"),
-		   true,
+			"AllMatches",
+			`{app="foo"} |= "foo" |= "hello" |= "world" |= "bar"`,
+			[]byte("hello world foo bar"),
+			true,
 		},
 		{
-           "OneMatches",
-		   `{app="foo"} |= "foo"|= "not" |= "in" |= "there"`,
-		   []byte("hello world foo bar"),
-		   false,
+			"OneMatches",
+			`{app="foo"} |= "foo" |= "not" |= "in" |= "there"`,
+			[]byte("hello world foo bar"),
+			false,
+		},
+		{
+			"MixedFilters",
+			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world"`,
+			[]byte("hello world foo bar"),
+			true,
 		},
 	}
 

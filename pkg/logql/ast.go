@@ -366,13 +366,9 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	return f, nil
 }
 */
-
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 
 	acc := make([]log.Filterer, 0)
-	containsAllFilter := log.ContainsAllFilter {
-		Matches: make([][]byte, 0),
-	}
 	for curr := e; curr != nil; curr = curr.Left {
 
 		switch curr.Op {
@@ -389,14 +385,24 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 			if err != nil {
 				return nil, err
 			}
-			if curr.Ty == labels.MatchEqual {
-				containsAllFilter.Matches = append(containsAllFilter.Matches, []byte(curr.Match))
-			} else {
-				acc = append(acc, next)
-			}
+			acc = append(acc, next)
 		}
 	}
 
+	// Join all contain filters if there are any.
+	containsAllFilter := log.ContainsAllFilter{
+		Matches: make([][]byte, 0),
+	}
+	for i := len(acc) - 1; i >= 0; i-- {
+		switch c := acc[i].(type) {
+		case log.ContainsFilter:
+			{
+				containsAllFilter.Matches = append(containsAllFilter.Matches, c.Match)
+				// Delete entry
+				acc = append(acc[:i], acc[i+1:]...)
+			}
+		}
+	}
 	if len(containsAllFilter.Matches) != 0 {
 		acc = append(acc, containsAllFilter)
 	}
