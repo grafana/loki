@@ -409,9 +409,9 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 
 	if len(acc) == 1 {
 		return acc[0], nil
-	} else {
-		return log.NewAndFilters(acc), nil
 	}
+
+	return log.NewAndFilters(acc), nil
 }
 
 func (e *LineFilterExpr) Stage() (log.Stage, error) {
