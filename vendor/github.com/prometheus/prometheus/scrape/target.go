@@ -143,8 +143,18 @@ func (t *Target) SetMetadataStore(s MetricMetadataStore) {
 // hash returns an identifying hash for the target.
 func (t *Target) hash() uint64 {
 	h := fnv.New64a()
+
+	// We must build a label set without the scrape interval and timeout
+	// labels because those aren't defining attributes of a target
+	// and can be changed without qualifying its parent as a new target,
+	// therefore they should not effect its unique hash.
+	l := t.labels.Map()
+	delete(l, model.ScrapeIntervalLabel)
+	delete(l, model.ScrapeTimeoutLabel)
+	lset := labels.FromMap(l)
+
 	//nolint: errcheck
-	h.Write([]byte(fmt.Sprintf("%016d", t.labels.Hash())))
+	h.Write([]byte(fmt.Sprintf("%016d", lset.Hash())))
 	//nolint: errcheck
 	h.Write([]byte(t.URL().String()))
 
@@ -273,6 +283,31 @@ func (t *Target) Health() TargetHealth {
 	return t.health
 }
 
+// intervalAndTimeout returns the interval and timeout derived from
+// the targets labels.
+func (t *Target) intervalAndTimeout(defaultInterval, defaultDuration time.Duration) (time.Duration, time.Duration, error) {
+	t.mtx.RLock()
+	defer t.mtx.RUnlock()
+
+	intervalLabel := t.labels.Get(model.ScrapeIntervalLabel)
+	interval, err := model.ParseDuration(intervalLabel)
+	if err != nil {
+		return defaultInterval, defaultDuration, errors.Errorf("Error parsing interval label %q: %v", intervalLabel, err)
+	}
+	timeoutLabel := t.labels.Get(model.ScrapeTimeoutLabel)
+	timeout, err := model.ParseDuration(timeoutLabel)
+	if err != nil {
+		return defaultInterval, defaultDuration, errors.Errorf("Error parsing timeout label %q: %v", timeoutLabel, err)
+	}
+
+	return time.Duration(interval), time.Duration(timeout), nil
+}
+
+// GetValue gets a label value from the entire label set.
+func (t *Target) GetValue(name string) string {
+	return t.labels.Get(name)
+}
+
 // Targets is a sortable list of targets.
 type Targets []*Target
 
@@ -329,6 +364,8 @@ func populateLabels(lset labels.Labels, cfg *config.ScrapeConfig) (res, orig lab
 	// Copy labels into the labelset for the target if they are not set already.
 	scrapeLabels := []labels.Label{
 		{Name: model.JobLabel, Value: cfg.JobName},
+		{Name: model.ScrapeIntervalLabel, Value: cfg.ScrapeInterval.String()},
+		{Name: model.ScrapeTimeoutLabel, Value: cfg.ScrapeTimeout.String()},
 		{Name: model.MetricsPathLabel, Value: cfg.MetricsPath},
 		{Name: model.SchemeLabel, Value: cfg.Scheme},
 	}
@@ -390,6 +427,34 @@ func populateLabels(lset labels.Labels, cfg *config.ScrapeConfig) (res, orig lab
 		return nil, nil, err
 	}
 
+	var interval string
+	var intervalDuration model.Duration
+	if interval = lset.Get(model.ScrapeIntervalLabel); interval != cfg.ScrapeInterval.String() {
+		intervalDuration, err = model.ParseDuration(interval)
+		if err != nil {
+			return nil, nil, errors.Errorf("error parsing scrape interval: %v", err)
+		}
+		if time.Duration(intervalDuration) == 0 {
+			return nil, nil, errors.New("scrape interval cannot be 0")
+		}
+	}
+
+	var timeout string
+	var timeoutDuration model.Duration
+	if timeout = lset.Get(model.ScrapeTimeoutLabel); timeout != cfg.ScrapeTimeout.String() {
+		timeoutDuration, err = model.ParseDuration(timeout)
+		if err != nil {
+			return nil, nil, errors.Errorf("error parsing scrape timeout: %v", err)
+		}
+		if time.Duration(timeoutDuration) == 0 {
+			return nil, nil, errors.New("scrape timeout cannot be 0")
+		}
+	}
+
+	if timeoutDuration > intervalDuration {
+		return nil, nil, errors.Errorf("scrape timeout cannot be greater than scrape interval (%q > %q)", timeout, interval)
+	}
+
 	// Meta labels are deleted after relabelling. Other internal labels propagate to
 	// the target which decides whether they will be part of their label set.
 	for _, l := range lset {
@@ -414,8 +479,9 @@ func populateLabels(lset labels.Labels, cfg *config.ScrapeConfig) (res, orig lab
 }
 
 // targetsFromGroup builds targets based on the given TargetGroup and config.
-func targetsFromGroup(tg *targetgroup.Group, cfg *config.ScrapeConfig) ([]*Target, error) {
+func targetsFromGroup(tg *targetgroup.Group, cfg *config.ScrapeConfig) ([]*Target, []error) {
 	targets := make([]*Target, 0, len(tg.Targets))
+	failures := []error{}
 
 	for i, tlset := range tg.Targets {
 		lbls := make([]labels.Label, 0, len(tlset)+len(tg.Labels))
@@ -433,11 +499,11 @@ func targetsFromGroup(tg *targetgroup.Group, cfg *config.ScrapeConfig) ([]*Targe
 
 		lbls, origLabels, err := populateLabels(lset, cfg)
 		if err != nil {
-			return nil, errors.Wrapf(err, "instance %d in group %s", i, tg)
+			failures = append(failures, errors.Wrapf(err, "instance %d in group %s", i, tg))
 		}
 		if lbls != nil || origLabels != nil {
 			targets = append(targets, NewTarget(lbls, origLabels, cfg.Params))
 		}
 	}
-	return targets, nil
+	return targets, failures
 }

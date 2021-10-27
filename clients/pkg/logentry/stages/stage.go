@@ -1,35 +1,40 @@
 package stages
 
 import (
+	"os"
+	"runtime"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 )
 
 const (
-	StageTypeJSON       = "json"
-	StageTypeRegex      = "regex"
-	StageTypeReplace    = "replace"
-	StageTypeMetric     = "metrics"
-	StageTypeLabel      = "labels"
-	StageTypeLabelDrop  = "labeldrop"
-	StageTypeTimestamp  = "timestamp"
-	StageTypeOutput     = "output"
-	StageTypeDocker     = "docker"
-	StageTypeCRI        = "cri"
-	StageTypeMatch      = "match"
-	StageTypeTemplate   = "template"
-	StageTypePipeline   = "pipeline"
-	StageTypeTenant     = "tenant"
-	StageTypeDrop       = "drop"
-	StageTypeMultiline  = "multiline"
-	StageTypePack       = "pack"
-	StageTypeLabelAllow = "labelallow"
+	StageTypeJSON         = "json"
+	StageTypeLogfmt       = "logfmt"
+	StageTypeRegex        = "regex"
+	StageTypeReplace      = "replace"
+	StageTypeMetric       = "metrics"
+	StageTypeLabel        = "labels"
+	StageTypeLabelDrop    = "labeldrop"
+	StageTypeTimestamp    = "timestamp"
+	StageTypeOutput       = "output"
+	StageTypeDocker       = "docker"
+	StageTypeCRI          = "cri"
+	StageTypeMatch        = "match"
+	StageTypeTemplate     = "template"
+	StageTypePipeline     = "pipeline"
+	StageTypeTenant       = "tenant"
+	StageTypeDrop         = "drop"
+	StageTypeMultiline    = "multiline"
+	StageTypePack         = "pack"
+	StageTypeLabelAllow   = "labelallow"
+	StageTypeStaticLabels = "static_labels"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -50,20 +55,51 @@ type Stage interface {
 	Run(chan Entry) chan Entry
 }
 
+func (entry *Entry) copy() *Entry {
+	out, err := yaml.Marshal(entry)
+	if err != nil {
+		return nil
+	}
+
+	var n *Entry
+	err = yaml.Unmarshal(out, &n)
+	if err != nil {
+		return nil
+	}
+
+	return n
+}
+
 // stageProcessor Allow to transform a Processor (old synchronous pipeline stage) into an async Stage
 type stageProcessor struct {
 	Processor
+
+	inspector *inspector
 }
 
 func (s stageProcessor) Run(in chan Entry) chan Entry {
 	return RunWith(in, func(e Entry) Entry {
+		var before *Entry
+
+		if Inspect {
+			before = e.copy()
+		}
+
 		s.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+
+		if Inspect {
+			s.inspector.inspect(s.Processor.Name(), before, e)
+		}
+
 		return e
 	})
 }
 
 func toStage(p Processor) Stage {
-	return &stageProcessor{Processor: p}
+	return &stageProcessor{
+		Processor: p,
+		inspector: newInspector(os.Stderr, runtime.GOOS == "windows"),
+	}
 }
 
 // New creates a new stage for the given type and configuration.
@@ -84,6 +120,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeJSON:
 		s, err = newJSONStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeLogfmt:
+		s, err = newLogfmtStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -154,6 +195,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeLabelAllow:
 		s, err = newLabelAllowStage(cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeStaticLabels:
+		s, err = newStaticLabelsStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}

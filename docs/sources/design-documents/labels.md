@@ -1,5 +1,6 @@
 ---
 title: Labels
+weight: 10
 ---
 # Labels from Logs
 Author: Ed Welch

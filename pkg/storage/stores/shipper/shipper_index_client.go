@@ -10,20 +10,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
 const (
@@ -53,20 +53,23 @@ type boltDBIndexClient interface {
 }
 
 type Config struct {
-	ActiveIndexDirectory   string        `yaml:"active_index_directory"`
-	SharedStoreType        string        `yaml:"shared_store"`
-	SharedStoreKeyPrefix   string        `yaml:"shared_store_key_prefix"`
-	CacheLocation          string        `yaml:"cache_location"`
-	CacheTTL               time.Duration `yaml:"cache_ttl"`
-	ResyncInterval         time.Duration `yaml:"resync_interval"`
-	QueryReadyNumDays      int           `yaml:"query_ready_num_days"`
-	IngesterName           string        `yaml:"-"`
-	Mode                   int           `yaml:"-"`
-	IngesterDBRetainPeriod time.Duration `yaml:"-"`
+	ActiveIndexDirectory     string                   `yaml:"active_index_directory"`
+	SharedStoreType          string                   `yaml:"shared_store"`
+	SharedStoreKeyPrefix     string                   `yaml:"shared_store_key_prefix"`
+	CacheLocation            string                   `yaml:"cache_location"`
+	CacheTTL                 time.Duration            `yaml:"cache_ttl"`
+	ResyncInterval           time.Duration            `yaml:"resync_interval"`
+	QueryReadyNumDays        int                      `yaml:"query_ready_num_days"`
+	IndexGatewayClientConfig IndexGatewayClientConfig `yaml:"index_gateway_client"`
+	IngesterName             string                   `yaml:"-"`
+	Mode                     int                      `yaml:"-"`
+	IngesterDBRetainPeriod   time.Duration            `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix("boltdb.shipper.index-gateway-client", f)
+
 	f.StringVar(&cfg.ActiveIndexDirectory, "boltdb.shipper.active-index-directory", "", "Directory where ingesters would write boltdb files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.shared-store", "", "Shared store for keeping boltdb files. Supported types: gcs, s3, azure, filesystem")
 	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.shared-store.key-prefix", "index/", "Prefix to add to Object Keys in Shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it")
@@ -121,7 +124,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 		return err
 	}
 
-	prefixedObjectClient := util.NewPrefixedObjectClient(storageClient, s.cfg.SharedStoreKeyPrefix)
+	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
 		uploader, err := s.getUploaderName()
@@ -135,7 +138,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			UploadInterval: UploadInterval,
 			DBRetainPeriod: s.cfg.IngesterDBRetainPeriod,
 		}
-		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		uploadsManager, err := uploads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, registerer)
 		if err != nil {
 			return err
 		}
@@ -150,7 +153,7 @@ func (s *Shipper) init(storageClient chunk.ObjectClient, registerer prometheus.R
 			CacheTTL:          s.cfg.CacheTTL,
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, prefixedObjectClient, registerer)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.boltDBIndexClient, indexStorageClient, registerer)
 		if err != nil {
 			return err
 		}

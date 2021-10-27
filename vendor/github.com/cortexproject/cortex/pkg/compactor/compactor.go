@@ -13,8 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -30,9 +33,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -53,11 +54,12 @@ var (
 			reg,
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
+			prometheus.NewCounter(prometheus.CounterOpts{}),
 			metadata.NoneFunc)
 	}
 
 	DefaultBlocksCompactorFactory = func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, compact.Planner, error) {
-		compactor, err := tsdb.NewLeveledCompactor(ctx, reg, logger, cfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
+		compactor, err := tsdb.NewLeveledCompactor(ctx, reg, logger, cfg.BlockRanges.ToMilliseconds(), downsample.NewPool(), nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -393,14 +395,18 @@ func (c *Compactor) starting(ctx context.Context) error {
 		// users scanner depends on the ring (to check whether an user belongs
 		// to this shard or not).
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
+
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, c.compactorCfg.ShardingRing.WaitActiveInstanceTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
+			level.Error(c.logger).Log("msg", "compactor failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
 
 		// In the event of a cluster cold start or scale up of 2+ compactor instances at the same
 		// time, we may end up in a situation where each new compactor instance starts at a slightly
-		// different time and thus each one starts with on a different state of the ring. It's better
+		// different time and thus each one starts with a different state of the ring. It's better
 		// to just wait the ring stability for a short time.
 		if c.compactorCfg.ShardingRing.WaitStabilityMinDuration > 0 {
 			minWaiting := c.compactorCfg.ShardingRing.WaitStabilityMinDuration
@@ -408,9 +414,9 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 			level.Info(c.logger).Log("msg", "waiting until compactor ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
 			if err := ring.WaitRingStability(ctx, c.ring, RingOp, minWaiting, maxWaiting); err != nil {
-				level.Warn(c.logger).Log("msg", "compactor is ring topology is not stable after the max waiting time, proceeding anyway")
+				level.Warn(c.logger).Log("msg", "compactor ring topology is not stable after the max waiting time, proceeding anyway")
 			} else {
-				level.Info(c.logger).Log("msg", "compactor is ring topology is stable")
+				level.Info(c.logger).Log("msg", "compactor ring topology is stable")
 			}
 		}
 	}
@@ -569,7 +575,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {
 	var lastErr error
 
-	retries := util.NewBackoff(ctx, util.BackoffConfig{
+	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: c.compactorCfg.retryMinBackoff,
 		MaxBackoff: c.compactorCfg.retryMaxBackoff,
 		MaxRetries: c.compactorCfg.CompactionRetries,
@@ -599,11 +605,11 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	deduplicateBlocksFilter := block.NewDeduplicateFilter()
 
 	// While fetching blocks, we filter out blocks that were marked for deletion by using IgnoreDeletionMarkFilter.
-	// The delay of deleteDelay/2 is added to ensure we fetch blocks that are meant to be deleted but do not have a replacement yet.
+	// No delay is used -- all blocks with deletion marker are ignored, and not considered for compaction.
 	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(
 		ulogger,
 		bucket,
-		time.Duration(c.compactorCfg.DeletionDelay.Seconds()/2)*time.Second,
+		0,
 		c.compactorCfg.MetaSyncConcurrency)
 
 	fetcher, err := block.NewMetaFetcher(
@@ -651,6 +657,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
+		false,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")
@@ -666,7 +673,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 func (c *Compactor) discoverUsersWithRetries(ctx context.Context) ([]string, error) {
 	var lastErr error
 
-	retries := util.NewBackoff(ctx, util.BackoffConfig{
+	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: c.compactorCfg.retryMinBackoff,
 		MaxBackoff: c.compactorCfg.retryMaxBackoff,
 		MaxRetries: c.compactorCfg.CompactionRetries,

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/runtime"
@@ -24,6 +26,11 @@ type runtimeConfigValues struct {
 
 func (r runtimeConfigValues) validate() error {
 	for t, c := range r.TenantLimits {
+		if c == nil {
+			level.Warn(util_log.Logger).Log("msg", "skipping empty tenant limit definition", "tenant", t)
+			continue
+		}
+
 		if err := c.Validate(); err != nil {
 			return fmt.Errorf("invalid override for tenant %s: %w", t, err)
 		}
@@ -45,18 +52,34 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	return overrides, nil
 }
 
-func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
-	if c == nil {
+type tenantLimitsFromRuntimeConfig struct {
+	c *runtimeconfig.Manager
+}
+
+func (t *tenantLimitsFromRuntimeConfig) AllByUserID() map[string]*validation.Limits {
+	if t.c == nil {
 		return nil
 	}
-	return func(userID string) *validation.Limits {
-		cfg, ok := c.GetConfig().(*runtimeConfigValues)
-		if !ok || cfg == nil {
-			return nil
-		}
 
-		return cfg.TenantLimits[userID]
+	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
+	if cfg != nil && ok {
+		return cfg.TenantLimits
 	}
+
+	return nil
+}
+
+func (t *tenantLimitsFromRuntimeConfig) TenantLimits(userID string) *validation.Limits {
+	allByUserID := t.AllByUserID()
+	if allByUserID == nil {
+		return nil
+	}
+
+	return allByUserID[userID]
+}
+
+func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
+	return &tenantLimitsFromRuntimeConfig{c: c}
 }
 
 func tenantConfigFromRuntimeConfig(c *runtimeconfig.Manager) runtime.TenantConfig {

@@ -197,12 +197,13 @@ func (f *Factory) Histogram(options metrics.HistogramOptions) metrics.Histogram 
 		help = options.Name
 	}
 	name := f.subScope(options.Name)
+	buckets := f.selectBuckets(options.Buckets)
 	tags := f.mergeTags(options.Tags)
 	labelNames := f.tagNames(tags)
 	opts := prometheus.HistogramOpts{
 		Name:    name,
 		Help:    help,
-		Buckets: options.Buckets,
+		Buckets: buckets,
 	}
 	hv := f.cache.getOrMakeHistogramVec(opts, labelNames)
 	return &histogram{
@@ -291,6 +292,13 @@ func (f *Factory) tagsAsLabelValues(labels []string, tags map[string]string) []s
 		ret = append(ret, tags[l])
 	}
 	return ret
+}
+
+func (f *Factory) selectBuckets(buckets []float64) []float64 {
+	if len(buckets) > 0 {
+		return buckets
+	}
+	return f.buckets
 }
 
 func counterNamingConvention(name string) string {

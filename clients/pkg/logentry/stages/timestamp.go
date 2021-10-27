@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -37,7 +37,7 @@ const (
 )
 
 var (
-	supportedBackends = []string{S3, GCS, Azure, Swift, Filesystem}
+	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem}
 
 	ErrUnsupportedStorageBackend = errors.New("unsupported storage backend")
 )
@@ -63,7 +63,7 @@ type Config struct {
 
 // Returns the supportedBackends for the package and any custom backends injected into the config.
 func (cfg *Config) supportedBackends() []string {
-	return append(supportedBackends, cfg.ExtraBackends...)
+	return append(SupportedBackends, cfg.ExtraBackends...)
 }
 
 // RegisterFlags registers the backend storage config.

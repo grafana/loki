@@ -19,6 +19,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
+
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/errutil"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -66,7 +68,7 @@ func Downsample(
 
 	// Create block directory to populate with chunks, meta and index files into.
 	blockDir := filepath.Join(dir, uid.String())
-	if err := os.MkdirAll(blockDir, 0777); err != nil {
+	if err := os.MkdirAll(blockDir, 0750); err != nil {
 		return id, errors.Wrap(err, "mkdir block dir")
 	}
 
@@ -143,7 +145,7 @@ func Downsample(
 					return id, errors.Wrapf(err, "expand chunk %d, series %d", c.Ref, postings.At())
 				}
 			}
-			if err := streamedBlockWriter.WriteSeries(lset, downsampleRaw(all, resolution)); err != nil {
+			if err := streamedBlockWriter.WriteSeries(lset, DownsampleRaw(all, resolution)); err != nil {
 				return id, errors.Wrapf(err, "downsample raw data, series: %d", postings.At())
 			}
 		} else {
@@ -314,8 +316,8 @@ func (b *aggrChunkBuilder) encode() chunks.Meta {
 	}
 }
 
-// downsampleRaw create a series of aggregation chunks for the given sample data.
-func downsampleRaw(data []sample, resolution int64) []chunks.Meta {
+// DownsampleRaw create a series of aggregation chunks for the given sample data.
+func DownsampleRaw(data []sample, resolution int64) []chunks.Meta {
 	if len(data) == 0 {
 		return nil
 	}
@@ -714,4 +716,13 @@ func (it *AverageChunkIterator) Err() error {
 		return it.sumIt.Err()
 	}
 	return it.err
+}
+
+// SamplesFromTSDBSamples converts tsdbutil.Sample slice to samples.
+func SamplesFromTSDBSamples(samples []tsdbutil.Sample) []sample {
+	res := make([]sample, len(samples))
+	for i, s := range samples {
+		res[i] = sample{t: s.T(), v: s.V()}
+	}
+	return res
 }

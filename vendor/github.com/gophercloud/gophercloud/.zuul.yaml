@@ -13,7 +13,7 @@
       Run gophercloud acceptance test on master branch
     run: .zuul/playbooks/gophercloud-acceptance-test/run.yaml
     timeout: 18000 # 5 hours
-    nodeset: ubuntu-bionic
+    nodeset: ubuntu-focal
 
 - job:
     name: gophercloud-acceptance-test-ironic
@@ -21,7 +21,7 @@
     description: |
       Run gophercloud ironic acceptance test on master branch
     run: .zuul/playbooks/gophercloud-acceptance-test-ironic/run.yaml
-    nodeset: ubuntu-bionic
+    nodeset: ubuntu-focal
 
 - job:
     name: gophercloud-acceptance-test-ussuri

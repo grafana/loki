@@ -1,15 +1,18 @@
 ---
 title: Tanka
+weight: 10
 ---
-# Install Loki with Tanka
+# Install Grafana Loki with Tanka
 
 [Tanka](https://tanka.dev) is a reimplementation of
 [Ksonnet](https://ksonnet.io) that Grafana Labs created after Ksonnet was
-deprecated. Tanka is used by Grafana Labs to run Loki in production.
+deprecated. Tanka is used by Grafana Labs to run Grafana Loki in production.
+
+The Tanka installation runs the Loki cluster in microservices mode.
 
 ## Prerequisites
 
-Install the latest version of Tanka (at least version v0.5.0) for the `tk env`
+Install the latest version of Tanka (version v0.17.1 or a more recent version) for the `tk env`
 commands. Prebuilt binaries for Tanka can be found at the [Tanka releases
 URL](https://github.com/grafana/tanka/releases).
 
@@ -24,32 +27,27 @@ tk init
 tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
 ```
 
+Install `jsonnet-bundler` (`jb`), find instructions for your platform in Tanka's [installation docs](https://tanka.dev/install#jsonnet-bundler).
+
 ## Deploying
 
-Download and install the Loki and Promtail module using `jb`:
+Download and install the Loki and Promtail module using `jb` (version v0.4.0 or a more recent version):
 
 ```bash
-go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
 jb init  # not required if you already ran `tk init`
-jb install github.com/grafana/loki/production/ksonnet/loki
-jb install github.com/grafana/loki/production/ksonnet/promtail
+jb install github.com/grafana/loki/production/ksonnet/loki@main
+jb install github.com/grafana/loki/production/ksonnet/promtail@main
 ```
 
-Then you'll need to install a kubernetes library:
+Revise the YAML contents of `environments/loki/main.jsonnet`, updating these variables:
 
-```bash
-jb install github.com/jsonnet-libs/k8s-alpha/1.16
-```
+- Update the `username`, `password`, and the relevant `htpasswd` variable values.
+- Update the S3 or GCS variable values, depending on your object storage type. See [storage_config](https://grafana.com/docs/loki/latest/configuration/#storage_config) for more configuration details.
+- Remove from the configuration the S3 or GCS object storage variables that are not part of your setup.
+- Update the value of `boltdb_shipper_shared_store` to the type of object storage you are using. Options are `gcs`, `s3`, `azure`, or `filesystem`. Update the `object_store` variable under the `schema_config` section to the same value. 
+- Update the Promtail configuration `container_root_path` variable's value to reflect your root path for the Docker daemon. Run `docker info | grep "Root Dir"` to acquire your root path.
+- Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-01`. This recommendation is based on Loki's default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
 
-Next, override the `lib/k.libsonnet` with the following
-
-```jsonnet
-import 'github.com/jsonnet-libs/k8s-alpha/1.16/main.libsonnet'
-```
-
-Be sure to replace the username, password, and the relevant `htpasswd` contents.
-Making sure to set the value for username, password, and `htpasswd` properly,
-replace the contents of `environments/loki/main.jsonnet` with:
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
@@ -61,7 +59,7 @@ loki + promtail + gateway {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
-    // S3 variables remove if not using aws
+    // S3 variables -- Remove if not using s3
     storage_backend: 's3,dynamodb',
     s3_access_key: 'key',
     s3_secret_access_key: 'secret access key',
@@ -69,12 +67,32 @@ loki + promtail + gateway {
     s3_bucket_name: 'loki-test',
     dynamodb_region: 'region',
 
-    // GCS variables remove if not using gcs
+    // GCS variables -- Remove if not using gcs
     storage_backend: 'bigtable,gcs',
     bigtable_instance: 'instance',
     bigtable_project: 'project',
     gcs_bucket_name: 'bucket',
 
+    //Set this variable based on the type of object storage you're using.
+    boltdb_shipper_shared_store: 'my-object-storage-backend-type',
+
+    //Update the object_store and from fields
+    loki+: {
+      schema_config: {
+        configs: [{
+          from: 'YYYY-MM-DD',
+          store: 'boltdb-shipper',
+          object_store: 'my-object-storage-backend-type',
+          schema: 'v11',
+          index: {
+            prefix: '%s_index_' % $._config.table_prefix,
+            period: '%dh' % $._config.index_period_hours,
+          },
+        }],
+      },
+    },
+
+    //Update the container_root_path if necessary
     promtail_config+: {
       clients: [{
         scheme:: 'http',
@@ -91,10 +109,5 @@ loki + promtail + gateway {
 }
 ```
 
-Notice that `container_root_path` is your own data root for the Docker Daemon.
-Run `docker info | grep "Root Dir"` to get the root path.
-
 Run `tk show environments/loki` to see the manifests that will be deployed to
 the cluster. Run `tk apply environments/loki` to deploy the manifests.
-
->> **Note:** You'll likely be prompted to set the `boltdb_shipper_shared_store` based on which backend you're using. This is expected. Set it to the name of the storage backend (i.e. 'gcs') that you've chosen. Available options may be found in the [configuration docs](https://grafana.com/docs/loki/latest/configuration/#storage_config).

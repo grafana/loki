@@ -2,7 +2,6 @@ package ring
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -10,16 +9,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 	perrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -83,7 +84,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	}
 
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
-	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
+	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul. 0 = disabled.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
@@ -156,7 +157,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	store, err := kv.NewClient(
 		cfg.RingConfig.KVStore,
 		codec,
-		kv.RegistererWithKVName(reg, ringName+"-lifecycler"),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), ringName+"-lifecycler"),
+		log.Logger,
 	)
 	if err != nil {
 		return nil, err
@@ -392,8 +394,8 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	autoJoinAfter := time.After(i.cfg.JoinAfter)
 	var observeChan <-chan time.Time = nil
 
-	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
-	defer heartbeatTicker.Stop()
+	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(i.cfg.HeartbeatPeriod)
+	defer heartbeatTickerStop()
 
 	for {
 		select {
@@ -442,7 +444,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				observeChan = time.After(i.cfg.ObservePeriod)
 			}
 
-		case <-heartbeatTicker.C:
+		case <-heartbeatTickerChan:
 			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(log.Logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
@@ -469,8 +471,8 @@ func (i *Lifecycler) stopping(runningError error) error {
 		return nil
 	}
 
-	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
-	defer heartbeatTicker.Stop()
+	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(i.cfg.HeartbeatPeriod)
+	defer heartbeatTickerStop()
 
 	// Mark ourselved as Leaving so no more samples are send to us.
 	err := i.changeState(context.Background(), LEAVING)
@@ -489,7 +491,7 @@ func (i *Lifecycler) stopping(runningError error) error {
 heartbeatLoop:
 	for {
 		select {
-		case <-heartbeatTicker.C:
+		case <-heartbeatTickerChan:
 			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(log.Logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
@@ -575,7 +577,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
-		// If the ingester failed to clean it's ring entry up in can leave it's state in LEAVING.
+		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
+		// OR unregister_on_shutdown=false
 		// Move it into ACTIVE to ensure the ingester joins the ring.
 		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
 			instanceDesc.State = ACTIVE
@@ -587,6 +590,17 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.setTokens(tokens)
 
 		level.Info(log.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
+
+		// Update the ring if the instance has been changed and the heartbeat is disabled.
+		// We dont need to update KV here when heartbeat is enabled as this info will eventually be update on KV
+		// on the next heartbeat
+		if i.cfg.HeartbeatPeriod == 0 && !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
+			// Update timestamp to give gossiping client a chance register ring change.
+			instanceDesc.Timestamp = time.Now().Unix()
+			ringDesc.Ingesters[i.ID] = instanceDesc
+			return ringDesc, true, nil
+		}
+
 		// we haven't modified the ring, don't try to store it.
 		return nil, true, nil
 	})

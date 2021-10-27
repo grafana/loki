@@ -10,8 +10,14 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/modules"
+	"github.com/grafana/dskit/runtimeconfig"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
@@ -45,7 +51,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
@@ -54,13 +59,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/process"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -120,7 +120,7 @@ type Config struct {
 	Configs             configs.Config                             `yaml:"configs"`
 	Alertmanager        alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	AlertmanagerStorage alertstore.Config                          `yaml:"alertmanager_storage"`
-	RuntimeConfig       runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
 }
@@ -142,7 +142,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
 	c.API.RegisterFlags(f)
-	c.Server.RegisterFlags(f)
+	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -170,7 +170,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Alertmanager.RegisterFlags(f)
 	c.AlertmanagerStorage.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
-	c.MemberlistKV.RegisterFlags(f, "")
+	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 
 	// These don't seem to have a home.
@@ -236,11 +236,11 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Compactor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.Alertmanager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid alertmanager config")
-	}
 	if err := c.AlertmanagerStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid alertmanager storage config")
+	}
+	if err := c.Alertmanager.Validate(c.AlertmanagerStorage); err != nil {
+		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
@@ -281,6 +281,27 @@ func (c *Config) validateYAMLEmptyNodes() error {
 	return nil
 }
 
+func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+
+	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
+	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
+	c.Server.RegisterFlags(throwaway)
+
+	throwaway.VisitAll(func(f *flag.Flag) {
+		// Ignore errors when setting new values. We have a test to verify that it works.
+		switch f.Name {
+		case "server.grpc.keepalive.min-time-between-pings":
+			_ = f.Value.Set("10s")
+
+		case "server.grpc.keepalive.ping-without-stream-allowed":
+			_ = f.Value.Set("true")
+		}
+
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
+}
+
 // Cortex is the root datastructure for Cortex.
 type Cortex struct {
 	Cfg Config
@@ -305,6 +326,7 @@ type Cortex struct {
 	Purger                   *purger.Purger
 	TombstonesLoader         *purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
+	ExemplarQueryable        prom_storage.ExemplarQueryable
 	QuerierEngine            *promql.Engine
 	QueryFrontendTripperware queryrange.Tripperware
 
@@ -408,7 +430,7 @@ func (t *Cortex) Run() error {
 	// before starting servers, register /ready handler and gRPC health check service.
 	// It should reflect entire Cortex.
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
-	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthcheck.New(sm))
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util_log.Logger).Log("msg", "Cortex started") }
@@ -420,7 +442,7 @@ func (t *Cortex) Run() error {
 		// let's find out which module failed
 		for m, s := range t.ServiceMap {
 			if s == service {
-				if service.FailureCase() == util.ErrStopProcess {
+				if service.FailureCase() == modules.ErrStopProcess {
 					level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "err", service.FailureCase())
 				} else {
 					level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "err", service.FailureCase())
@@ -456,7 +478,7 @@ func (t *Cortex) Run() error {
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {
-				if f.FailureCase() != util.ErrStopProcess {
+				if f.FailureCase() != modules.ErrStopProcess {
 					// Details were reported via failure listener before
 					err = errors.New("failed services")
 					break

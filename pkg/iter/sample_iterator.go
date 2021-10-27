@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"io"
+	"sync"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -343,6 +344,37 @@ type seriesIterator struct {
 	labels  string
 }
 
+type withCloseSampleIterator struct {
+	closeOnce sync.Once
+	closeFn   func() error
+	errs      []error
+	SampleIterator
+}
+
+func (w *withCloseSampleIterator) Close() error {
+	w.closeOnce.Do(func() {
+		if err := w.SampleIterator.Close(); err != nil {
+			w.errs = append(w.errs, err)
+		}
+		if err := w.closeFn(); err != nil {
+			w.errs = append(w.errs, err)
+		}
+
+	})
+	if len(w.errs) == 0 {
+		return nil
+	}
+	return util.MultiError(w.errs)
+}
+
+func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIterator {
+	return &withCloseSampleIterator{
+		closeOnce:      sync.Once{},
+		closeFn:        closeFn,
+		SampleIterator: it,
+	}
+}
+
 // NewMultiSeriesIterator returns an iterator over multiple logproto.Series
 func NewMultiSeriesIterator(ctx context.Context, series []logproto.Series) SampleIterator {
 	is := make([]SampleIterator, 0, len(series))
@@ -435,6 +467,9 @@ func (i *nonOverlappingSampleIterator) Error() error {
 }
 
 func (i *nonOverlappingSampleIterator) Close() error {
+	if i.curr != nil {
+		i.curr.Close()
+	}
 	for _, iter := range i.iterators {
 		iter.Close()
 	}

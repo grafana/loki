@@ -22,6 +22,15 @@ message LokiRequest {
   repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
 }
 
+message LokiInstantRequest {
+  string query = 1;
+  uint32 limit = 2;
+  google.protobuf.Timestamp timeTs = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  logproto.Direction direction = 4;
+  string path = 5;
+  repeated string shards = 6 [(gogoproto.jsontag) = "shards"];
+}
+
 message LokiResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   LokiData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
@@ -39,6 +48,8 @@ message LokiSeriesRequest {
   google.protobuf.Timestamp startTs = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp endTs = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   string path = 4;
+  repeated string shards = 5 [(gogoproto.jsontag) = "shards"];
+
 }
 
 message LokiSeriesResponse {

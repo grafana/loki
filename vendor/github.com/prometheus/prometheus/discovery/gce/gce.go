@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"golang.org/x/oauth2/google"
@@ -177,6 +177,12 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			labels[gceLabelPrivateIP] = model.LabelValue(priIface.NetworkIP)
 			addr := fmt.Sprintf("%s:%d", priIface.NetworkIP, d.port)
 			labels[model.AddressLabel] = model.LabelValue(addr)
+
+			// Append named interface metadata for all interfaces
+			for _, iface := range inst.NetworkInterfaces {
+				gceLabelNetAddress := model.LabelName(fmt.Sprintf("%sinterface_ipv4_%s", gceLabel, strutil.SanitizeLabelName(iface.Name)))
+				labels[gceLabelNetAddress] = model.LabelValue(iface.NetworkIP)
+			}
 
 			// Tags in GCE are usually only used for networking rules.
 			if inst.Tags != nil && len(inst.Tags.Items) > 0 {

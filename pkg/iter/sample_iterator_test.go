@@ -6,9 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 func TestNewPeekingSampleIterator(t *testing.T) {
@@ -192,4 +196,81 @@ func TestReadSampleBatch(t *testing.T) {
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
+}
+
+type CloseTestingSmplIterator struct {
+	closed atomic.Bool
+	s      logproto.Sample
+}
+
+func (i *CloseTestingSmplIterator) Next() bool              { return true }
+func (i *CloseTestingSmplIterator) Sample() logproto.Sample { return i.s }
+func (i *CloseTestingSmplIterator) Labels() string          { return "" }
+func (i *CloseTestingSmplIterator) Error() error            { return nil }
+func (i *CloseTestingSmplIterator) Close() error {
+	i.closed.Store(true)
+	return nil
+}
+
+func TestNonOverlappingSampleClose(t *testing.T) {
+	a, b := &CloseTestingSmplIterator{}, &CloseTestingSmplIterator{}
+	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b}, "")
+
+	// Ensure both itr.cur and itr.iterators are non nil
+	itr.Next()
+
+	require.NotNil(t, itr.(*nonOverlappingSampleIterator).curr)
+
+	itr.Close()
+
+	require.Equal(t, true, a.closed.Load())
+	require.Equal(t, true, b.closed.Load())
+}
+
+func TestSampleIteratorWithClose_CloseIdempotent(t *testing.T) {
+	c := 0
+	closeFn := func() error {
+		c++
+		return nil
+	}
+	ni := noOpIterator{}
+	it := SampleIteratorWithClose(ni, closeFn)
+	// Multiple calls to close should result in c only ever having been incremented one time from 0 to 1
+	err := it.Close()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, c)
+	err = it.Close()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, c)
+	err = it.Close()
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, c)
+}
+
+type alwaysErrorIterator struct {
+	noOpIterator
+}
+
+func (alwaysErrorIterator) Close() error {
+	return errors.New("i always error")
+}
+
+func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
+	closeFn := func() error {
+		return errors.New("i broke")
+	}
+	ei := alwaysErrorIterator{}
+	it := SampleIteratorWithClose(ei, closeFn)
+	err := it.Close()
+	// Verify that a proper multi error is returned when both the iterator and the close function return errors
+	if me, ok := err.(util.MultiError); ok {
+		assert.True(t, len(me) == 2, "Expected 2 errors, one from the iterator and one from the close function")
+		assert.EqualError(t, me[0], "i always error")
+		assert.EqualError(t, me[1], "i broke")
+	} else {
+		t.Error("Expected returned error to be of type util.MultiError")
+	}
+	// A second call to Close should return the same error
+	err2 := it.Close()
+	assert.Equal(t, err, err2)
 }

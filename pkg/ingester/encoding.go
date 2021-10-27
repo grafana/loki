@@ -17,11 +17,18 @@ const (
 	_ = iota // ignore first value so the zero value doesn't look like a record type.
 	// WALRecordSeries is the type for the WAL record for series.
 	WALRecordSeries RecordType = iota
-	// WALRecordSamples is the type for the WAL record for samples.
-	WALRecordEntries
+	// WALRecordEntriesV1 is the type for the WAL record for samples.
+	WALRecordEntriesV1
 	// CheckpointRecord is the type for the Checkpoint record based on protos.
 	CheckpointRecord
+	// WALRecordEntriesV2 is the type for the WAL record for samples with an
+	// additional counter value for use in replaying without the ordering constraint.
+	WALRecordEntriesV2
 )
+
+// The current type of Entries that this distribution writes.
+// Loki can read in a backwards compatible manner, but will write the newest variant.
+const CurrentEntriesRec RecordType = WALRecordEntriesV2
 
 // WALRecord is a struct combining the series and samples record.
 type WALRecord struct {
@@ -52,20 +59,23 @@ func (r *WALRecord) Reset() {
 	r.entryIndexMap = make(map[uint64]int)
 }
 
-func (r *WALRecord) AddEntries(fp uint64, entries ...logproto.Entry) {
+func (r *WALRecord) AddEntries(fp uint64, counter int64, entries ...logproto.Entry) {
 	if idx, ok := r.entryIndexMap[fp]; ok {
 		r.RefEntries[idx].Entries = append(r.RefEntries[idx].Entries, entries...)
+		r.RefEntries[idx].Counter = counter
 		return
 	}
 
 	r.entryIndexMap[fp] = len(r.RefEntries)
 	r.RefEntries = append(r.RefEntries, RefEntries{
+		Counter: counter,
 		Ref:     fp,
 		Entries: entries,
 	})
 }
 
 type RefEntries struct {
+	Counter int64
 	Ref     uint64
 	Entries []logproto.Entry
 }
@@ -84,9 +94,9 @@ func (r *WALRecord) encodeSeries(b []byte) []byte {
 	return encoded
 }
 
-func (r *WALRecord) encodeEntries(b []byte) []byte {
+func (r *WALRecord) encodeEntries(version RecordType, b []byte) []byte {
 	buf := EncWith(b)
-	buf.PutByte(byte(WALRecordEntries))
+	buf.PutByte(byte(version))
 	buf.PutUvarintStr(r.UserID)
 
 	// Placeholder for the first timestamp of any sample encountered.
@@ -108,7 +118,12 @@ outer:
 		if len(ref.Entries) < 1 {
 			continue
 		}
-		buf.PutBE64(ref.Ref)             // write fingerprint
+		buf.PutBE64(ref.Ref) // write fingerprint
+
+		if version >= WALRecordEntriesV2 {
+			buf.PutBE64int64(ref.Counter) // write highest counter value
+		}
+
 		buf.PutUvarint(len(ref.Entries)) // write number of entries
 
 		for _, s := range ref.Entries {
@@ -120,7 +135,7 @@ outer:
 	return buf.Get()
 }
 
-func decodeEntries(b []byte, rec *WALRecord) error {
+func decodeEntries(b []byte, version RecordType, rec *WALRecord) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -131,6 +146,10 @@ func decodeEntries(b []byte, rec *WALRecord) error {
 	for len(dec.B) > 0 && dec.Err() == nil {
 		refEntries := RefEntries{
 			Ref: dec.Be64(),
+		}
+
+		if version >= WALRecordEntriesV2 {
+			refEntries.Counter = dec.Be64int64()
 		}
 
 		nEntries := dec.Uvarint()
@@ -178,9 +197,9 @@ func decodeWALRecord(b []byte, walRec *WALRecord) (err error) {
 	case WALRecordSeries:
 		userID = decbuf.UvarintStr()
 		rSeries, err = dec.Series(decbuf.B, walRec.Series)
-	case WALRecordEntries:
+	case WALRecordEntriesV1, WALRecordEntriesV2:
 		userID = decbuf.UvarintStr()
-		err = decodeEntries(decbuf.B, walRec)
+		err = decodeEntries(decbuf.B, t, walRec)
 	default:
 		return errors.New("unknown record type")
 	}

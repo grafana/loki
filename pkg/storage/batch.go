@@ -5,11 +5,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -23,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 type ChunkMetrics struct {
@@ -235,11 +235,20 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 				through = through.Add(time.Nanosecond)
 			}
 		} else {
+
 			from = time.Unix(0, headChunk.Chunk.From.UnixNano())
 
-			// when clipping the from it should never be before the start or equal to the end.
+			// if the start of the batch is equal to the end of the query, since the end is not inclusive we can discard that batch.
+			if from.Equal(it.end) {
+				if it.end != it.start {
+					return nil
+				}
+				// unless end and start are equal in which case start and end are both inclusive.
+				from = it.end
+			}
+			// when clipping the from it should never be before the start.
 			// Doing so would include entries not requested.
-			if from.Before(it.start) || from.Equal(it.end) {
+			if from.Before(it.start) {
 				from = it.start
 			}
 		}

@@ -73,6 +73,7 @@ If you are querying metrics and just want the most recent data point
 the "instant-query" command instead.`)
 	rangeQuery = newQuery(false, queryCmd)
 	tail       = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
+	follow     = queryCmd.Flag("follow", "Alias for --tail").Short('f').Default("false").Bool()
 	delayFor   = queryCmd.Flag("delay-for", "Delay in tailing by number of seconds to accumulate logs for re-ordering").Default("0").Int()
 
 	instantQueryCmd = app.Command("instant-query", `Run an instant LogQL query.
@@ -155,7 +156,7 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		if *tail {
+		if *tail || *follow {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
 			rangeQuery.DoQuery(queryClient, out, *statistics)
@@ -209,6 +210,9 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("cert", "Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
 	app.Flag("org-id", "adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.").Default("").Envar("LOKI_ORG_ID").StringVar(&client.OrgID)
+	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
+	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
+	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
 
 	return client
 }

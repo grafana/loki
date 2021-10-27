@@ -71,6 +71,8 @@ func NewInvalidARNWithUnsupportedPartitionError(resource arn.Resource, err error
 }
 
 // NewInvalidARNWithFIPSError ARN not supported for FIPS region
+//
+// Deprecated: FIPS will not appear in the ARN region component.
 func NewInvalidARNWithFIPSError(resource arn.Resource, err error) InvalidARNError {
 	return InvalidARNError{
 		message:  "resource ARN not supported for FIPS region",
@@ -148,6 +150,17 @@ func NewFailedToResolveEndpointError(resource arn.Resource, clientPartitionID, c
 func NewClientConfiguredForFIPSError(resource arn.Resource, clientPartitionID, clientRegion string, err error) ConfigurationError {
 	return ConfigurationError{
 		message:           "client configured for fips but cross-region resource ARN provided",
+		origErr:           err,
+		resource:          resource,
+		clientPartitionID: clientPartitionID,
+		clientRegion:      clientRegion,
+	}
+}
+
+// NewFIPSConfigurationError denotes a configuration error when a client or request is configured for FIPS
+func NewFIPSConfigurationError(resource arn.Resource, clientPartitionID, clientRegion string, err error) ConfigurationError {
+	return ConfigurationError{
+		message:           "use of ARN is not supported when client or request is configured for FIPS",
 		origErr:           err,
 		resource:          resource,
 		clientPartitionID: clientPartitionID,

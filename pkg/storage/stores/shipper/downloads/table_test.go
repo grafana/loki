@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -22,9 +23,33 @@ const (
 	objectsStorageDirName = "objects"
 )
 
+// storageClientWithFakeObjectsInList adds a fake object in the list call response which
+// helps with testing the case where objects gets deleted in the middle of a Sync/Download operation due to compaction.
+type storageClientWithFakeObjectsInList struct {
+	StorageClient
+}
+
+func newStorageClientWithFakeObjectsInList(storageClient StorageClient) StorageClient {
+	return storageClientWithFakeObjectsInList{storageClient}
+}
+
+func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, error) {
+	files, err := o.StorageClient.ListFiles(ctx, tableName)
+	if err != nil {
+		return nil, err
+	}
+
+	files = append(files, storage.IndexFile{
+		Name:       "fake-object",
+		ModifiedAt: time.Now(),
+	})
+
+	return files, nil
+}
+
 type stopFunc func()
 
-func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, *local.FSObjectClient) {
+func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, StorageClient) {
 	cachePath := filepath.Join(path, cacheDirName)
 
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: cachePath})
@@ -34,14 +59,14 @@ func buildTestClients(t *testing.T, path string) (*local.BoltIndexClient, *local
 	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 	require.NoError(t, err)
 
-	return boltDBIndexClient, fsObjectClient
+	return boltDBIndexClient, storage.NewIndexStorageClient(fsObjectClient, "")
 }
 
 func buildTestTable(t *testing.T, tableName, path string) (*Table, *local.BoltIndexClient, stopFunc) {
-	boltDBIndexClient, fsObjectClient := buildTestClients(t, path)
+	boltDBIndexClient, storageClient := buildTestClients(t, path)
 	cachePath := filepath.Join(path, cacheDirName)
 
-	table := NewTable(context.Background(), tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	table := NewTable(context.Background(), tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil))
 
 	// wait for either table to get ready or a timeout hits
 	select {
@@ -137,6 +162,9 @@ func TestTable_Sync(t *testing.T) {
 	defer func() {
 		stopFunc()
 	}()
+
+	// replace the storage client with the one that adds fake objects in the list call
+	table.storageClient = newStorageClientWithFakeObjectsInList(table.storageClient)
 
 	// query table to see it has expected records setup
 	testutil.TestSingleTableQuery(t, []chunk.IndexQuery{{}}, table, 0, 20)
@@ -304,11 +332,13 @@ func TestLoadTable(t *testing.T) {
 	// setup the table in storage with some records
 	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbs, false)
 
-	boltDBIndexClient, fsObjectClient := buildTestClients(t, tempDir)
+	boltDBIndexClient, storageClient := buildTestClients(t, tempDir)
 	cachePath := filepath.Join(tempDir, cacheDirName)
 
+	storageClient = newStorageClientWithFakeObjectsInList(storageClient)
+
 	// try loading the table.
-	table, err := LoadTable(context.Background(), tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	table, err := LoadTable(context.Background(), tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -338,7 +368,7 @@ func TestLoadTable(t *testing.T) {
 	testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbs, false)
 
 	// try loading the table, it should skip loading corrupt file and reload it from storage.
-	table, err = LoadTable(context.Background(), tableName, cachePath, fsObjectClient, boltDBIndexClient, newMetrics(nil))
+	table, err = LoadTable(context.Background(), tableName, cachePath, storageClient, boltDBIndexClient, newMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 

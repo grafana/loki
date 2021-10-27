@@ -49,7 +49,7 @@ type iterator interface {
 	Err() error
 }
 
-// NewChunkMergeIterator returns a storage.SeriesIterator that merges Cortex chunks together.
+// NewChunkMergeIterator returns a chunkenc.Iterator that merges Cortex chunks together.
 func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	converted := make([]GenericChunk, len(chunks))
 	for i, c := range chunks {
@@ -59,13 +59,13 @@ func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Itera
 	return NewGenericChunkMergeIterator(converted)
 }
 
-// NewGenericChunkMergeIterator returns a storage.SeriesIterator that merges generic chunks together.
+// NewGenericChunkMergeIterator returns a chunkenc.Iterator that merges generic chunks together.
 func NewGenericChunkMergeIterator(chunks []GenericChunk) chunkenc.Iterator {
 	iter := newMergeIterator(chunks)
 	return newIteratorAdapter(iter)
 }
 
-// iteratorAdapter turns a batchIterator into a storage.SeriesIterator.
+// iteratorAdapter turns a batchIterator into a chunkenc.Iterator.
 // It fetches ever increasing batchSizes (up to promchunk.BatchSize) on each
 // call to Next; on calls to Seek, resets batch size to 1.
 type iteratorAdapter struct {
@@ -81,15 +81,23 @@ func newIteratorAdapter(underlying iterator) chunkenc.Iterator {
 	}
 }
 
-// Seek implements storage.SeriesIterator.
+// Seek implements chunkenc.Iterator.
 func (a *iteratorAdapter) Seek(t int64) bool {
-	// Optimisation: see if the seek is within the current batch.
-	if a.curr.Length > 0 && t >= a.curr.Timestamps[0] && t <= a.curr.Timestamps[a.curr.Length-1] {
-		a.curr.Index = 0
-		for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
-			a.curr.Index++
+
+	// Optimisation: fulfill the seek using current batch if possible.
+	if a.curr.Length > 0 && a.curr.Index < a.curr.Length {
+		if t <= a.curr.Timestamps[a.curr.Index] {
+			//In this case, the interface's requirement is met, so state of this
+			//iterator does not need any change.
+			return true
+		} else if t <= a.curr.Timestamps[a.curr.Length-1] {
+			//In this case, some timestamp between current sample and end of batch can fulfill
+			//the seek. Let's find it.
+			for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
+				a.curr.Index++
+			}
+			return true
 		}
-		return true
 	}
 
 	a.curr.Length = -1
@@ -101,7 +109,7 @@ func (a *iteratorAdapter) Seek(t int64) bool {
 	return false
 }
 
-// Next implements storage.SeriesIterator.
+// Next implements chunkenc.Iterator.
 func (a *iteratorAdapter) Next() bool {
 	a.curr.Index++
 	for a.curr.Index >= a.curr.Length && a.underlying.Next(a.batchSize) {
@@ -114,12 +122,12 @@ func (a *iteratorAdapter) Next() bool {
 	return a.curr.Index < a.curr.Length
 }
 
-// At implements storage.SeriesIterator.
+// At implements chunkenc.Iterator.
 func (a *iteratorAdapter) At() (int64, float64) {
 	return a.curr.Timestamps[a.curr.Index], a.curr.Values[a.curr.Index]
 }
 
-// Err implements storage.SeriesIterator.
+// Err implements chunkenc.Iterator.
 func (a *iteratorAdapter) Err() error {
 	return nil
 }

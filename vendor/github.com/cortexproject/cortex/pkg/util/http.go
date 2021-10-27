@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
@@ -80,6 +80,14 @@ func WriteYAMLResponse(w http.ResponseWriter, v interface{}) {
 // Sends message as text/plain response with 200 status code.
 func WriteTextResponse(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "text/plain")
+
+	// Ignore inactionable errors.
+	_, _ = w.Write([]byte(message))
+}
+
+// Sends message as text/html response with 200 status code.
+func WriteHTMLResponse(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "text/html")
 
 	// Ignore inactionable errors.
 	_, _ = w.Write([]byte(message))

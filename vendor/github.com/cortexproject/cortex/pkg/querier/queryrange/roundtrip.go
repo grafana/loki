@@ -18,12 +18,14 @@ package queryrange
 import (
 	"context"
 	"flag"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -289,7 +291,10 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024))
+		_ = response.Body.Close()
+	}()
 
 	return q.codec.DecodeResponse(ctx, response, r)
 }

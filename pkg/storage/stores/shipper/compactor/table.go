@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -35,58 +36,62 @@ type indexEntry struct {
 }
 
 type table struct {
-	name             string
-	workingDirectory string
-	storageClient    chunk.ObjectClient
-	applyRetention   bool
-	tableMarker      retention.TableMarker
+	name               string
+	workingDirectory   string
+	indexStorageClient storage.Client
+	applyRetention     bool
+	tableMarker        retention.TableMarker
 
 	compactedDB *bbolt.DB
+	logger      log.Logger
 
 	ctx  context.Context
 	quit chan struct{}
 }
 
-func newTable(ctx context.Context, workingDirectory string, objectClient chunk.ObjectClient, applyRetention bool, tableMarker retention.TableMarker) (*table, error) {
+func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client, applyRetention bool, tableMarker retention.TableMarker) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
 		return nil, err
 	}
 
 	table := table{
-		ctx:              ctx,
-		name:             filepath.Base(workingDirectory),
-		workingDirectory: workingDirectory,
-		storageClient:    objectClient,
-		quit:             make(chan struct{}),
-		applyRetention:   applyRetention,
-		tableMarker:      tableMarker,
+		ctx:                ctx,
+		name:               filepath.Base(workingDirectory),
+		workingDirectory:   workingDirectory,
+		indexStorageClient: indexStorageClient,
+		quit:               make(chan struct{}),
+		applyRetention:     applyRetention,
+		tableMarker:        tableMarker,
 	}
+	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
 	return &table, nil
 }
 
-func (t *table) compact() error {
-	objects, err := util.ListDirectory(t.ctx, t.name, t.storageClient)
+func (t *table) compact(tableHasExpiredStreams bool) error {
+	indexFiles, err := t.indexStorageClient.ListFiles(t.ctx, t.name)
 	if err != nil {
 		return err
 	}
 
-	level.Info(util_log.Logger).Log("msg", "listed files", "count", len(objects))
+	level.Info(t.logger).Log("msg", "listed files", "count", len(indexFiles))
 
 	defer func() {
 		err := t.cleanup()
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to cleanup table", "name", t.name)
+			level.Error(t.logger).Log("msg", "failed to cleanup table")
 		}
 	}()
 
-	if !t.applyRetention {
-		if len(objects) < compactMinDBs {
-			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(objects)))
+	applyRetention := t.applyRetention && tableHasExpiredStreams
+
+	if !applyRetention {
+		if len(indexFiles) < compactMinDBs {
+			level.Info(t.logger).Log("msg", fmt.Sprintf("skipping compaction since we have just %d files in storage", len(indexFiles)))
 			return nil
 		}
-		if err := t.compactFiles(objects); err != nil {
+		if err := t.compactFiles(indexFiles); err != nil {
 			return err
 		}
 		// upload the compacted db
@@ -96,7 +101,7 @@ func (t *table) compact() error {
 		}
 
 		// remove source files from storage which were compacted
-		err = t.removeObjectsFromStorage(objects)
+		err = t.removeFilesFromStorage(indexFiles)
 		if err != nil {
 			return err
 		}
@@ -104,30 +109,28 @@ func (t *table) compact() error {
 	}
 
 	var compacted bool
-	if len(objects) > 1 {
-		if err := t.compactFiles(objects); err != nil {
+	if len(indexFiles) > 1 {
+		if err := t.compactFiles(indexFiles); err != nil {
 			return err
 		}
 		compacted = true
 	}
 
-	if len(objects) == 1 {
+	if len(indexFiles) == 1 {
 		// download the db
 		downloadAt := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
-		err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objects[0].Key, downloadAt, false)
+		err = shipper_util.GetFileFromStorage(t.ctx, t.indexStorageClient, t.name, indexFiles[0].Name, downloadAt, false)
 		if err != nil {
 			return err
 		}
-		t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(downloadAt)
+		t.compactedDB, err = openBoltdbFileWithNoSync(downloadAt)
 		if err != nil {
 			return err
 		}
-		// no need to enforce write to disk, we'll upload and delete the file anyway.
-		t.compactedDB.NoSync = true
 	}
 
 	if t.compactedDB == nil {
-		level.Info(util_log.Logger).Log("msg", "skipping compaction no files found.")
+		level.Info(t.logger).Log("msg", "skipping compaction no files found.")
 		return nil
 	}
 
@@ -137,7 +140,7 @@ func (t *table) compact() error {
 	}
 
 	if empty {
-		return t.removeObjectsFromStorage(objects)
+		return t.removeFilesFromStorage(indexFiles)
 	}
 
 	if markCount == 0 && !compacted {
@@ -150,24 +153,31 @@ func (t *table) compact() error {
 		return err
 	}
 
-	return t.removeObjectsFromStorage(objects)
+	return t.removeFilesFromStorage(indexFiles)
 }
 
-func (t *table) compactFiles(objects []chunk.StorageObject) error {
+func (t *table) compactFiles(files []storage.IndexFile) error {
 	var err error
-	// create a new compacted db
-	t.compactedDB, err = shipper_util.SafeOpenBoltdbFile(filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix())))
+	level.Info(t.logger).Log("msg", "starting compaction of dbs")
+
+	compactedDBName := filepath.Join(t.workingDirectory, fmt.Sprint(time.Now().Unix()))
+	seedFileIdx := findSeedFileIdx(files)
+
+	level.Info(t.logger).Log("msg", fmt.Sprintf("using %s as seed file", files[seedFileIdx].Name))
+
+	err = shipper_util.GetFileFromStorage(t.ctx, t.indexStorageClient, t.name, files[seedFileIdx].Name, compactedDBName, false)
 	if err != nil {
 		return err
 	}
-	// no need to enforce write to disk, we'll upload and delete the file anyway.
-	// in case of failure we'll restart the whole process anyway.
-	t.compactedDB.NoSync = true
-	level.Info(util_log.Logger).Log("msg", "starting compaction of dbs")
+
+	t.compactedDB, err = openBoltdbFileWithNoSync(compactedDBName)
+	if err != nil {
+		return err
+	}
 
 	errChan := make(chan error)
-	readObjectChan := make(chan string)
-	n := util_math.Min(len(objects), readDBsParallelism)
+	readFileChan := make(chan string)
+	n := util_math.Min(len(files), readDBsParallelism)
 
 	// read files in parallel
 	for i := 0; i < n; i++ {
@@ -179,32 +189,21 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 
 			for {
 				select {
-				case objectKey, ok := <-readObjectChan:
+				case fileName, ok := <-readFileChan:
 					if !ok {
 						return
 					}
 
-					// The s3 client can also return the directory itself in the ListObjects.
-					if shipper_util.IsDirectory(objectKey) {
-						continue
-					}
+					downloadAt := filepath.Join(t.workingDirectory, fileName)
 
-					var dbName string
-					dbName, err = shipper_util.GetDBNameFromObjectKey(objectKey)
-					if err != nil {
-						return
-					}
-
-					downloadAt := filepath.Join(t.workingDirectory, dbName)
-
-					err = shipper_util.GetFileFromStorage(t.ctx, t.storageClient, objectKey, downloadAt, false)
+					err = shipper_util.GetFileFromStorage(t.ctx, t.indexStorageClient, t.name, fileName, downloadAt, false)
 					if err != nil {
 						return
 					}
 
 					err = t.readFile(downloadAt)
 					if err != nil {
-						level.Error(util_log.Logger).Log("msg", "error reading file", "err", err)
+						level.Error(t.logger).Log("msg", fmt.Sprintf("error reading file %s", fileName), "err", err)
 						return
 					}
 				case <-t.quit:
@@ -216,11 +215,15 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 		}()
 	}
 
-	// send all files to readObjectChan
+	// send all files to readFileChan
 	go func() {
-		for _, object := range objects {
+		for i, file := range files {
+			// skip seed file
+			if i == seedFileIdx {
+				continue
+			}
 			select {
-			case readObjectChan <- object.Key:
+			case readFileChan <- file.Name:
 			case <-t.quit:
 				break
 			case <-t.ctx.Done():
@@ -228,9 +231,9 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 			}
 		}
 
-		level.Debug(util_log.Logger).Log("msg", "closing readObjectChan")
+		level.Debug(t.logger).Log("msg", "closing readFileChan")
 
-		close(readObjectChan)
+		close(readFileChan)
 	}()
 
 	var firstErr error
@@ -255,7 +258,7 @@ func (t *table) compactFiles(objects []chunk.StorageObject) error {
 	default:
 	}
 
-	level.Info(util_log.Logger).Log("msg", "finished compacting the dbs")
+	level.Info(t.logger).Log("msg", "finished compacting the dbs")
 	return nil
 }
 
@@ -291,20 +294,20 @@ func (t *table) writeBatch(batch []indexEntry) error {
 
 // readFile reads a boltdb file from a path and writes the index in batched mode to compactedDB
 func (t *table) readFile(path string) error {
-	level.Debug(util_log.Logger).Log("msg", "reading file for compaction", "path", path)
+	level.Debug(t.logger).Log("msg", "reading file for compaction", "path", path)
 
-	db, err := shipper_util.SafeOpenBoltdbFile(path)
+	db, err := openBoltdbFileWithNoSync(path)
 	if err != nil {
 		return err
 	}
-	db.NoSync = true
+
 	defer func() {
 		if err := db.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close db", "path", path, "err", err)
+			level.Error(t.logger).Log("msg", "failed to close db", "path", path, "err", err)
 		}
 
 		if err = os.Remove(path); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to remove file", "path", path, "err", err)
+			level.Error(t.logger).Log("msg", "failed to remove file", "path", path, "err", err)
 		}
 	}()
 
@@ -377,30 +380,58 @@ func (t *table) upload() error {
 
 	defer func() {
 		if err := compressedDB.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close file", "path", compactedDBPath, "err", err)
+			level.Error(t.logger).Log("msg", "failed to close file", "path", compactedDBPath, "err", err)
 		}
 
 		if err := os.Remove(compressedDBPath); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to remove file", "path", compressedDBPath, "err", err)
+			level.Error(t.logger).Log("msg", "failed to remove file", "path", compressedDBPath, "err", err)
 		}
 	}()
 
-	objectKey := fmt.Sprintf("%s.gz", shipper_util.BuildObjectKey(t.name, uploaderName, fmt.Sprint(time.Now().Unix())))
-	level.Info(util_log.Logger).Log("msg", "uploading the compacted file", "objectKey", objectKey)
+	fileName := fmt.Sprintf("%s.gz", shipper_util.BuildIndexFileName(t.name, uploaderName, fmt.Sprint(time.Now().Unix())))
+	level.Info(t.logger).Log("msg", "uploading the compacted file", "fileName", fileName)
 
-	return t.storageClient.PutObject(t.ctx, objectKey, compressedDB)
+	return t.indexStorageClient.PutFile(t.ctx, t.name, fileName, compressedDB)
 }
 
-// removeObjectsFromStorage deletes objects from storage.
-func (t *table) removeObjectsFromStorage(objects []chunk.StorageObject) error {
-	level.Info(util_log.Logger).Log("msg", "removing source db files from storage", "count", len(objects))
+// removeFilesFromStorage deletes index files from storage.
+func (t *table) removeFilesFromStorage(files []storage.IndexFile) error {
+	level.Info(t.logger).Log("msg", "removing source db files from storage", "count", len(files))
 
-	for _, object := range objects {
-		err := t.storageClient.DeleteObject(t.ctx, object.Key)
+	for _, file := range files {
+		err := t.indexStorageClient.DeleteFile(t.ctx, t.name, file.Name)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// openBoltdbFileWithNoSync opens a boltdb file and configures it to not sync the file to disk.
+// Compaction process is idempotent and we do not retain the files so there is no need to sync them to disk.
+func openBoltdbFileWithNoSync(path string) (*bbolt.DB, error) {
+	boltdb, err := shipper_util.SafeOpenBoltdbFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// no need to enforce write to disk, we'll upload and delete the file anyway.
+	boltdb.NoSync = true
+
+	return boltdb, nil
+}
+
+// findSeedFileIdx returns index of file to use as seed which would then get index from all the files written to.
+// It tries to find previously compacted file(which has uploaderName) which would be the biggest file.
+// In a large cluster, using previously compacted file as seed would significantly reduce compaction time.
+// If it can't find a previously compacted file, it would just use the first file from the list of files.
+func findSeedFileIdx(files []storage.IndexFile) int {
+	for i, file := range files {
+		if strings.HasPrefix(file.Name, uploaderName) {
+			return i
+		}
+	}
+
+	return 0
 }

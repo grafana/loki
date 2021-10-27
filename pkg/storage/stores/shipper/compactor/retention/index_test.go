@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 func Test_schemaPeriodForTable(t *testing.T) {

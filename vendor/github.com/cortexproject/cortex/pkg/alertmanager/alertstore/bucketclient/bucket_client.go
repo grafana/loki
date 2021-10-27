@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"strings"
 	"sync"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/runutil"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
 )
 
 const (
@@ -123,6 +124,18 @@ func (s *BucketAlertStore) DeleteAlertConfig(ctx context.Context, userID string)
 	return err
 }
 
+// ListUsersWithFullState implements alertstore.AlertStore.
+func (s *BucketAlertStore) ListUsersWithFullState(ctx context.Context) ([]string, error) {
+	var userIDs []string
+
+	err := s.amBucket.Iter(ctx, "", func(key string) error {
+		userIDs = append(userIDs, strings.TrimRight(key, "/"))
+		return nil
+	})
+
+	return userIDs, err
+}
+
 // GetFullState implements alertstore.AlertStore.
 func (s *BucketAlertStore) GetFullState(ctx context.Context, userID string) (alertspb.FullStateDesc, error) {
 	bkt := s.getAlertmanagerUserBucket(userID)
@@ -192,5 +205,5 @@ func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 }
 
 func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {
-	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider)
+	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider).WithExpectedErrs(s.amBucket.IsObjNotFoundErr)
 }

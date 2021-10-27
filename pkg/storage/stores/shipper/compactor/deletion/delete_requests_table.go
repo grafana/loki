@@ -9,20 +9,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 type deleteRequestsTable struct {
-	objectClient chunk.ObjectClient
-	dbPath       string
+	indexStorageClient storage.Client
+	dbPath             string
 
 	boltdbIndexClient *local.BoltIndexClient
 	db                *bbolt.DB
@@ -30,9 +31,9 @@ type deleteRequestsTable struct {
 	wg                sync.WaitGroup
 }
 
-const objectPathInStorage = DeleteRequestsTableName + "/" + DeleteRequestsTableName + ".gz"
+const deleteRequestsIndexFileName = DeleteRequestsTableName + ".gz"
 
-func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectClient) (chunk.IndexClient, error) {
+func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (chunk.IndexClient, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, DeleteRequestsTableName)
 	boltdbIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: filepath.Dir(dbPath)})
 	if err != nil {
@@ -40,10 +41,10 @@ func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectCl
 	}
 
 	table := &deleteRequestsTable{
-		objectClient:      objectClient,
-		dbPath:            dbPath,
-		boltdbIndexClient: boltdbIndexClient,
-		done:              make(chan struct{}),
+		indexStorageClient: indexStorageClient,
+		dbPath:             dbPath,
+		boltdbIndexClient:  boltdbIndexClient,
+		done:               make(chan struct{}),
 	}
 
 	err = table.init()
@@ -56,16 +57,16 @@ func newDeleteRequestsTable(workingDirectory string, objectClient chunk.ObjectCl
 }
 
 func (t *deleteRequestsTable) init() error {
-	tempFilePath := fmt.Sprintf("%s.%s", t.dbPath, tempFileSuffix)
+	tempFilePath := fmt.Sprintf("%s%s", t.dbPath, tempFileSuffix)
 
-	if err := os.Remove(tempFilePath); err != nil {
+	if err := os.Remove(tempFilePath); err != nil && !os.IsNotExist(err) {
 		level.Error(util_log.Logger).Log("msg", fmt.Sprintf("failed to remove temp file %s", tempFilePath), "err", err)
 	}
 
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
-		err = shipper_util.GetFileFromStorage(context.Background(), t.objectClient, objectPathInStorage, t.dbPath, true)
-		if err != nil && !errors.Is(err, chunk.ErrStorageObjectNotFound) {
+		err = shipper_util.GetFileFromStorage(context.Background(), t.indexStorageClient, DeleteRequestsTableName, deleteRequestsIndexFileName, t.dbPath, true)
+		if err != nil && !t.indexStorageClient.IsFileNotFoundErr(err) {
 			return err
 		}
 	}
@@ -139,7 +140,7 @@ func (t *deleteRequestsTable) uploadFile() error {
 		return err
 	}
 
-	return t.objectClient.PutObject(context.Background(), objectPathInStorage, f)
+	return t.indexStorageClient.PutFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName, f)
 }
 
 func (t *deleteRequestsTable) Stop() {

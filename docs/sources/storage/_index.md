@@ -4,7 +4,7 @@ weight: 1010
 ---
 # Storage
 
-Unlike other logging systems, Loki is built around the idea of only indexing
+Unlike other logging systems, Grafana Loki is built around the idea of only indexing
 metadata about your logs: labels (just like Prometheus labels). Log data itself
 is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
@@ -17,32 +17,6 @@ This index type only requires one store, the object store, for both the index an
 More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}). 
 
 Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
-
-- [Storage](#storage)
-  - [Implementations - Chunks](#implementations---chunks)
-    - [Cassandra](#cassandra)
-    - [GCS](#gcs)
-    - [File System](#file-system)
-    - [S3](#s3)
-    - [Notable Mentions](#notable-mentions)
-  - [Implementations - Index](#implementations---index)
-    - [Single Store (boltdb-shipper) - Recommended for 2.0 and newer](#single-store)
-    - [Cassandra](#cassandra-1)
-    - [BigTable](#bigtable)
-    - [DynamoDB](#dynamodb)
-      - [Rate Limiting](#rate-limiting)
-    - [BoltDB](#boltdb)
-  - [Schema Configs](#schema-configs)
-  - [Table Manager](#table-manager)
-    - [Provisioning](#provisioning)
-  - [Upgrading Schemas](#upgrading-schemas)
-  - [Retention](#retention)
-  - [Examples](#examples)
-    - [Single machine/local development (boltdb+filesystem)](#single-machinelocal-development-boltdbfilesystem)
-    - [GCP deployment (GCS Single Store)](#gcp-deployment-gcs-single-store)
-    - [AWS deployment (S3+DynamoDB)](#aws-deployment-s3dynamodb)
-    - [On prem deployment (Cassandra+Cassandra)](#on-prem-deployment-cassandracassandra)
-    - [On prem deployment (MinIO Single Store)](#on-prem-deployment-minio-single-store)
 
 ## Implementations - Chunks
 
@@ -76,7 +50,7 @@ As of 2.0, this is the recommended index storage type, performance is comparable
 
 ### Cassandra
 
-Cassandra can also be utilized for the index store and aside from the experimental [boltdb-shipper](../operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
+Cassandra can also be utilized for the index store and aside from the [boltdb-shipper](../operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
 
 ### BigTable
 
@@ -92,7 +66,11 @@ DynamoDB is susceptible to rate limiting, particularly due to overconsuming what
 
 ### BoltDB
 
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. There is also an experimental mode, the [boltdb-shipper](../operations/storage/boltdb-shipper/), which aims to support clustered deployments using `boltdb` as an index.
+BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](../operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
+
+### Azure Storage Account
+
+An Azure storage account contains all of your Azure Storage data objects: blobs, file shares, queues, tables, and disks.
 
 ## Schema Configs
 
@@ -306,4 +284,34 @@ schema_config:
       index:
         prefix: index_
         period: 24h
+```
+
+### Azure Storage Account
+
+```yaml
+schema_config:
+  configs:
+  - from: "2020-12-11"
+    index:
+      period: 24h
+      prefix: index_
+    object_store: azure
+    schema: v11
+    store: boltdb-shipper
+storage_config:
+  azure:
+    # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
+    account_key: <account-key>
+    # Your azure account name
+    account_name: <account-name>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <container-name>
+    request_timeout: 0
+  boltdb_shipper:
+    active_index_directory: /data/loki/boltdb-shipper-active
+    cache_location: /data/loki/boltdb-shipper-cache
+    cache_ttl: 24h
+    shared_store: azure
+  filesystem:
+    directory: /data/loki/chunks
 ```

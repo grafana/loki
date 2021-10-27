@@ -8,9 +8,16 @@ import (
 	"math/big"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 )
+
+// ExemplarStore wraps the ExemplarsClient and contains the info of external labels.
+type ExemplarStore struct {
+	ExemplarsClient
+	LabelSets []labels.Labels
+}
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (m *Exemplar) UnmarshalJSON(b []byte) error {
@@ -60,6 +67,7 @@ func NewWarningExemplarsResponse(warning error) *ExemplarsResponse {
 	}
 }
 
+// Compare only compares the series labels of two exemplar data.
 func (s1 *ExemplarData) Compare(s2 *ExemplarData) int {
 	return labels.Compare(s1.SeriesLabels.PromLabels(), s2.SeriesLabels.PromLabels())
 }
@@ -74,26 +82,29 @@ func (s *ExemplarData) SetSeriesLabels(ls labels.Labels) {
 	s.SeriesLabels = result
 }
 
-func (e *Exemplar) SetLabels(ls labels.Labels) {
-	var result labelpb.ZLabelSet
-
-	if len(ls) > 0 {
-		result = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(ls)}
+// Compare is used for sorting and comparing exemplars. Start from timestamp, then labels, finally values.
+func (e1 *Exemplar) Compare(e2 *Exemplar) int {
+	if e1.Ts < e2.Ts {
+		return -1
+	}
+	if e1.Ts > e2.Ts {
+		return 1
 	}
 
-	e.Labels = result
-}
-
-func (e1 *Exemplar) Compare(e2 *Exemplar) int {
 	if d := labels.Compare(e1.Labels.PromLabels(), e2.Labels.PromLabels()); d != 0 {
 		return d
 	}
-	if e1.Ts < e2.Ts {
-		return 1
-	}
-	if e1.Ts > e2.Ts {
-		return -1
-	}
-
 	return big.NewFloat(e1.Value).Cmp(big.NewFloat(e2.Value))
+}
+
+func ExemplarsFromPromExemplars(exemplars []exemplar.Exemplar) []*Exemplar {
+	ex := make([]*Exemplar, 0, len(exemplars))
+	for _, e := range exemplars {
+		ex = append(ex, &Exemplar{
+			Labels: labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(e.Labels)},
+			Value:  e.Value,
+			Ts:     e.Ts,
+		})
+	}
+	return ex
 }

@@ -4,7 +4,7 @@ import (
 	"flag"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/flagext"
 )
 
 // Data is a test Data structure

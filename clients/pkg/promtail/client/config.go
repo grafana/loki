@@ -4,8 +4,8 @@ import (
 	"flag"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/config"
 
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
@@ -29,7 +29,7 @@ type Config struct {
 
 	Client config.HTTPClientConfig `yaml:",inline"`
 
-	BackoffConfig util.BackoffConfig `yaml:"backoff_config"`
+	BackoffConfig backoff.Config `yaml:"backoff_config"`
 	// The labels to add to any time series or alerts when communicating with loki
 	ExternalLabels lokiflag.LabelSet `yaml:"external_labels,omitempty"`
 	Timeout        time.Duration     `yaml:"timeout"`
@@ -37,6 +37,8 @@ type Config struct {
 	// The tenant ID to use when pushing logs to Loki (empty string means
 	// single tenant mode)
 	TenantID string `yaml:"tenant_id"`
+
+	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -53,6 +55,9 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&c.ExternalLabels, prefix+"client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
 
 	f.StringVar(&c.TenantID, prefix+"client.tenant-id", "", "Tenant ID to use when pushing logs to Loki.")
+
+	c.StreamLagLabels = []string{"filename"}
+	f.Var(&c.StreamLagLabels, prefix+"client.stream-lag-labels", "Comma-separated list of labels to use when calculating stream lag")
 }
 
 // RegisterFlags registers flags.
@@ -70,14 +75,15 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	} else {
 		// force sane defaults.
 		cfg = raw{
-			BackoffConfig: util.BackoffConfig{
+			BackoffConfig: backoff.Config{
 				MaxBackoff: MaxBackoff,
 				MaxRetries: MaxRetries,
 				MinBackoff: MinBackoff,
 			},
-			BatchSize: BatchSize,
-			BatchWait: BatchWait,
-			Timeout:   Timeout,
+			BatchSize:       BatchSize,
+			BatchWait:       BatchWait,
+			Timeout:         Timeout,
+			StreamLagLabels: []string{"filename"},
 		}
 	}
 

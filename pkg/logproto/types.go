@@ -1,8 +1,8 @@
 package logproto
 
 import (
-	"fmt"
-	"io"
+	fmt "fmt"
+	io "io"
 	"time"
 )
 
@@ -23,7 +23,7 @@ type Entry struct {
 func (m *Stream) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -31,35 +31,43 @@ func (m *Stream) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Stream) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Labels) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
-		i += copy(dAtA[i:], m.Labels)
-	}
 	if len(m.Entries) > 0 {
-		for _, msg := range m.Entries {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Entries[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogproto(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.Labels) > 0 {
+		i -= len(m.Labels)
+		copy(dAtA[i:], m.Labels)
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *Entry) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -67,25 +75,31 @@ func (m *Entry) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Entry) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(SizeOfStdTime(m.Timestamp)))
-	n5, err := StdTimeMarshalTo(m.Timestamp, dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n5
 	if len(m.Line) > 0 {
-		dAtA[i] = 0x12
-		i++
+		i -= len(m.Line)
+		copy(dAtA[i:], m.Line)
 		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Line)))
-		i += copy(dAtA[i:], m.Line)
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	n7, err7 := StdTimeMarshalTo(m.Timestamp, dAtA[i-SizeOfStdTime(m.Timestamp):])
+	if err7 != nil {
+		return 0, err7
+	}
+	i -= n7
+	i = encodeVarintLogproto(dAtA, i, uint64(n7))
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
 }
 
 func (m *Stream) Unmarshal(dAtA []byte) error {
@@ -111,10 +125,10 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Stream: wiretype end group for non-group")
+			return fmt.Errorf("proto: StreamAdapter: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Stream: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: StreamAdapter: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -231,10 +245,10 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Entry: wiretype end group for non-group")
+			return fmt.Errorf("proto: EntryAdapter: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Entry: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: EntryAdapter: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -393,6 +407,7 @@ func (m *Stream) Equal(that interface{}) bool {
 	}
 	return true
 }
+
 func (m *Entry) Equal(that interface{}) bool {
 	if that == nil {
 		return m == nil

@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -56,8 +57,8 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Ring flags
 	cfg.KVStore.RegisterFlagsWithPrefix("ruler.ring.", "rulers/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, "ruler.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
-	f.DurationVar(&cfg.HeartbeatTimeout, "ruler.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which rulers are considered unhealthy within the ring.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "ruler.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
+	f.DurationVar(&cfg.HeartbeatTimeout, "ruler.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which rulers are considered unhealthy within the ring. 0 = never (timeout disabled).")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}

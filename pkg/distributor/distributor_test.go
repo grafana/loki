@@ -14,12 +14,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -115,6 +115,29 @@ func Test_SortLabelsOnPush(t *testing.T) {
 	require.Equal(t, `{a="b", buzz="f"}`, ingester.pushed[0].Streams[0].Labels)
 }
 
+func Test_TruncateLogLines(t *testing.T) {
+	setup := func() (*validation.Limits, *mockIngester) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+
+		limits.EnforceMetricName = false
+		limits.MaxLineSize = 5
+		limits.MaxLineSizeTruncate = true
+		return limits, &mockIngester{}
+	}
+
+	t.Run("it truncates lines to MaxLineSize when MaxLineSizeTruncate is true", func(t *testing.T) {
+		limits, ingester := setup()
+
+		d := prepare(t, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+
+		_, err := d.Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		require.Len(t, ingester.pushed[0].Streams[0].Entries[0].Line, 5)
+	})
+}
+
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
@@ -145,6 +168,31 @@ func Benchmark_Push(b *testing.B) {
 	limits.RejectOldSamples = true
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 	limits.CreationGracePeriod = model.Duration(24 * time.Hour)
+	ingester := &mockIngester{}
+	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
+	request := makeWriteRequest(100000, 100)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+
+		_, err := d.Push(ctx, request)
+		if err != nil {
+			require.NoError(b, err)
+		}
+	}
+}
+
+func Benchmark_PushWithLineTruncation(b *testing.B) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	limits.IngestionRateMB = math.MaxInt32
+	limits.MaxLineSizeTruncate = true
+	limits.MaxLineSize = 50
+
 	ingester := &mockIngester{}
 	d := prepare(&testing.T{}, limits, nil, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 	defer services.StopAndAwaitTerminated(context.Background(), d) //nolint:errcheck
@@ -225,7 +273,8 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
 
 			// Init a shared KVStore
-			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Start all expected distributors
 			distributors := make([]*Distributor, testData.distributors)
@@ -424,3 +473,7 @@ func (r mockRing) ShuffleShardWithLookback(identifier string, size int, lookback
 }
 
 func (r mockRing) CleanupShuffleShardCache(identifier string) {}
+
+func (r mockRing) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+	return 0, nil
+}

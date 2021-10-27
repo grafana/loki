@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
+	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -201,6 +201,8 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 			}
 			if len(paths) == 0 {
 				level.Info(util_log.Logger).Log("msg", "no marks file found")
+				r.sweeperMetrics.markerFileCurrentTime.Set(0)
+				continue
 			}
 			for i, path := range paths {
 				level.Debug(util_log.Logger).Log("msg", "processing mark file", "path", path)
@@ -301,7 +303,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 			}
 		}()
 	}
-	if err := dbView.View(func(tx *bbolt.Tx) error {
+	return dbView.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
 			return nil
@@ -321,10 +323,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 
 		}
 		return nil
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 func processKey(ctx context.Context, key *keyPair, db *bbolt.DB, deleteFunc func(ctx context.Context, chunkId []byte) error) error {

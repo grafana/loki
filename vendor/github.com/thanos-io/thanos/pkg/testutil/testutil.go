@@ -4,12 +4,20 @@
 package testutil
 
 import (
+	"context"
 	"fmt"
+	"math/rand"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"testing"
+
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/index"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
@@ -100,7 +108,7 @@ func typeAndKind(v interface{}) (reflect.Type, reflect.Kind) {
 
 // diff returns a diff of both values as long as both are of the same type and
 // are a struct, map, slice, array or string. Otherwise it returns an empty string.
-func diff(expected interface{}, actual interface{}) string {
+func diff(expected, actual interface{}) string {
 	if expected == nil || actual == nil {
 		return ""
 	}
@@ -143,7 +151,7 @@ func diff(expected interface{}, actual interface{}) string {
 }
 
 // GatherAndCompare compares the metrics of a Gatherers pair.
-func GatherAndCompare(t *testing.T, g1 prometheus.Gatherer, g2 prometheus.Gatherer, filter string) {
+func GatherAndCompare(t *testing.T, g1, g2 prometheus.Gatherer, filter string) {
 	g1m, err := g1.Gather()
 	Ok(t, err)
 	g2m, err := g2.Gather()
@@ -173,6 +181,8 @@ func TolerantVerifyLeakMain(m *testing.M) {
 		// https://github.com/kubernetes/klog/blob/c85d02d1c76a9ebafa81eb6d35c980734f2c4727/klog.go#L417
 		goleak.IgnoreTopFunction("k8s.io/klog/v2.(*loggingT).flushDaemon"),
 		goleak.IgnoreTopFunction("k8s.io/klog.(*loggingT).flushDaemon"),
+		// https://github.com/baidubce/bce-sdk-go/blob/9a8c1139e6a3ad23080b9b8c51dec88df8ce3cda/util/log/logger.go#L359
+		goleak.IgnoreTopFunction("github.com/baidubce/bce-sdk-go/util/log.NewLogger.func1"),
 	)
 }
 
@@ -185,6 +195,8 @@ func TolerantVerifyLeak(t *testing.T) {
 		// https://github.com/kubernetes/klog/blob/c85d02d1c76a9ebafa81eb6d35c980734f2c4727/klog.go#L417
 		goleak.IgnoreTopFunction("k8s.io/klog/v2.(*loggingT).flushDaemon"),
 		goleak.IgnoreTopFunction("k8s.io/klog.(*loggingT).flushDaemon"),
+		// https://github.com/baidubce/bce-sdk-go/blob/9a8c1139e6a3ad23080b9b8c51dec88df8ce3cda/util/log/logger.go#L359
+		goleak.IgnoreTopFunction("github.com/baidubce/bce-sdk-go/util/log.NewLogger.func1"),
 	)
 }
 
@@ -202,4 +214,106 @@ func FaultOrPanicToErr(f func()) (err error) {
 	f()
 
 	return err
+}
+
+var indexFilename = "index"
+
+type indexWriterSeries struct {
+	labels labels.Labels
+	chunks []chunks.Meta // series file offset of chunks
+}
+
+type indexWriterSeriesSlice []*indexWriterSeries
+
+// PutOutOfOrderIndex updates the index in blockDir with an index containing an out-of-order chunk
+// copied from https://github.com/prometheus/prometheus/blob/b1ed4a0a663d0c62526312311c7529471abbc565/tsdb/index/index_test.go#L346
+func PutOutOfOrderIndex(blockDir string, minTime int64, maxTime int64) error {
+
+	if minTime >= maxTime || minTime+4 >= maxTime {
+		return fmt.Errorf("minTime must be at least 4 less than maxTime to not create overlapping chunks")
+	}
+
+	lbls := []labels.Labels{
+		[]labels.Label{
+			{Name: "lbl1", Value: "1"},
+		},
+	}
+
+	// Sort labels as the index writer expects series in sorted order.
+	sort.Sort(labels.Slice(lbls))
+
+	symbols := map[string]struct{}{}
+	for _, lset := range lbls {
+		for _, l := range lset {
+			symbols[l.Name] = struct{}{}
+			symbols[l.Value] = struct{}{}
+		}
+	}
+
+	var input indexWriterSeriesSlice
+
+	// Generate ChunkMetas for every label set.
+	for _, lset := range lbls {
+		var metas []chunks.Meta
+		// only need two chunks that are out-of-order
+		chk1 := chunks.Meta{
+			MinTime: maxTime - 2,
+			MaxTime: maxTime - 1,
+			Ref:     rand.Uint64(),
+			Chunk:   chunkenc.NewXORChunk(),
+		}
+		metas = append(metas, chk1)
+		chk2 := chunks.Meta{
+			MinTime: minTime + 1,
+			MaxTime: minTime + 2,
+			Ref:     rand.Uint64(),
+			Chunk:   chunkenc.NewXORChunk(),
+		}
+		metas = append(metas, chk2)
+
+		input = append(input, &indexWriterSeries{
+			labels: lset,
+			chunks: metas,
+		})
+	}
+
+	iw, err := index.NewWriter(context.Background(), filepath.Join(blockDir, indexFilename))
+	if err != nil {
+		return err
+	}
+
+	syms := []string{}
+	for s := range symbols {
+		syms = append(syms, s)
+	}
+	sort.Strings(syms)
+	for _, s := range syms {
+		if err := iw.AddSymbol(s); err != nil {
+			return err
+		}
+	}
+
+	// Population procedure as done by compaction.
+	var (
+		postings = index.NewMemPostings()
+		values   = map[string]map[string]struct{}{}
+	)
+
+	for i, s := range input {
+		if err := iw.AddSeries(uint64(i), s.labels, s.chunks...); err != nil {
+			return err
+		}
+
+		for _, l := range s.labels {
+			valset, ok := values[l.Name]
+			if !ok {
+				valset = map[string]struct{}{}
+				values[l.Name] = valset
+			}
+			valset[l.Value] = struct{}{}
+		}
+		postings.Add(uint64(i), s.labels)
+	}
+
+	return iw.Close()
 }

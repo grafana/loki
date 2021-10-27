@@ -32,6 +32,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/googleapis/gax-go/v2"
 )
 
 const (
@@ -282,6 +284,7 @@ func NewClient(c *http.Client) *Client {
 // getETag returns a value from the metadata service as well as the associated ETag.
 // This func is otherwise equivalent to Get.
 func (c *Client) getETag(suffix string) (value, etag string, err error) {
+	ctx := context.TODO()
 	// Using a fixed IP makes it very difficult to spoof the metadata service in
 	// a container, which is an important use-case for local testing of cloud
 	// deployments. To enable spoofing of the metadata service, the environment
@@ -304,9 +307,25 @@ func (c *Client) getETag(suffix string) (value, etag string, err error) {
 	}
 	req.Header.Set("Metadata-Flavor", "Google")
 	req.Header.Set("User-Agent", userAgent)
-	res, err := c.hc.Do(req)
-	if err != nil {
-		return "", "", err
+	var res *http.Response
+	var reqErr error
+	retryer := newRetryer()
+	for {
+		res, reqErr = c.hc.Do(req)
+		var code int
+		if res != nil {
+			code = res.StatusCode
+		}
+		if delay, shouldRetry := retryer.Retry(code, reqErr); shouldRetry {
+			if err := gax.Sleep(ctx, delay); err != nil {
+				return "", "", err
+			}
+			continue
+		}
+		break
+	}
+	if reqErr != nil {
+		return "", "", nil
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {

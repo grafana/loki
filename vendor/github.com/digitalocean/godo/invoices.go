@@ -12,7 +12,7 @@ const invoicesBasePath = "v2/customers/my/invoices"
 
 // InvoicesService is an interface for interfacing with the Invoice
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2/#invoices
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Billing
 type InvoicesService interface {
 	Get(context.Context, string, *ListOptions) (*Invoice, *Response, error)
 	GetPDF(context.Context, string) ([]byte, *Response, error)

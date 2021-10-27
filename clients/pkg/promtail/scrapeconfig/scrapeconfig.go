@@ -5,13 +5,14 @@ import (
 	"reflect"
 	"time"
 
+	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/discovery/aws"
 	"github.com/prometheus/prometheus/discovery/azure"
 	"github.com/prometheus/prometheus/discovery/consul"
 	"github.com/prometheus/prometheus/discovery/digitalocean"
 	"github.com/prometheus/prometheus/discovery/dns"
-	"github.com/prometheus/prometheus/discovery/ec2"
 	"github.com/prometheus/prometheus/discovery/file"
 	"github.com/prometheus/prometheus/discovery/gce"
 	"github.com/prometheus/prometheus/discovery/kubernetes"
@@ -24,6 +25,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
 )
 
 // Config describes a job to scrape.
@@ -49,6 +51,8 @@ type ServiceDiscoveryConfig struct {
 	FileSDConfigs []*file.SDConfig `yaml:"file_sd_configs,omitempty"`
 	// List of Consul service discovery configurations.
 	ConsulSDConfigs []*consul.SDConfig `yaml:"consul_sd_configs,omitempty"`
+	// List of Consul agent service discovery configurations.
+	ConsulAgentSDConfigs []*consulagent.SDConfig `yaml:"consulagent_sd_configs,omitempty"`
 	// List of DigitalOcean service discovery configurations.
 	DigitalOceanSDConfigs []*digitalocean.SDConfig `yaml:"digitalocean_sd_configs,omitempty"`
 	// List of Docker Swarm service discovery configurations.
@@ -64,7 +68,7 @@ type ServiceDiscoveryConfig struct {
 	// List of GCE service discovery configurations.
 	GCESDConfigs []*gce.SDConfig `yaml:"gce_sd_configs,omitempty"`
 	// List of EC2 service discovery configurations.
-	EC2SDConfigs []*ec2.SDConfig `yaml:"ec2_sd_configs,omitempty"`
+	EC2SDConfigs []*aws.EC2SDConfig `yaml:"ec2_sd_configs,omitempty"`
 	// List of OpenStack service discovery configurations.
 	OpenstackSDConfigs []*openstack.SDConfig `yaml:"openstack_sd_configs,omitempty"`
 	// List of Azure service discovery configurations.
@@ -84,6 +88,9 @@ func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
 		res = append(res, x)
 	}
 	for _, x := range cfg.ConsulSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.ConsulAgentSDConfigs {
 		res = append(res, x)
 	}
 	for _, x := range cfg.DigitalOceanSDConfigs {
@@ -168,6 +175,8 @@ type SyslogTargetConfig struct {
 
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
+
+	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.

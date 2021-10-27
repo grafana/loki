@@ -1,4 +1,104 @@
-## 0.17.0 (Unreleased)
+## 0.21.0 (Unreleased)
+
+## 0.20.0 (August 10, 2021)
+
+IMPROVEMENTS
+
+* Added `RetryFunc` to enable custom retry functions. [GH-2194](https://github.com/gophercloud/gophercloud/pull/2194)
+* Added `openstack/baremetal/v1/nodes.GetVendorPassthruMethods` [GH-2201](https://github.com/gophercloud/gophercloud/pull/2201)
+* Added `openstack/baremetal/v1/nodes.GetAllSubscriptions` [GH-2201](https://github.com/gophercloud/gophercloud/pull/2201)
+* Added `openstack/baremetal/v1/nodes.GetSubscription` [GH-2201](https://github.com/gophercloud/gophercloud/pull/2201)
+* Added `openstack/baremetal/v1/nodes.DeleteSubscription` [GH-2201](https://github.com/gophercloud/gophercloud/pull/2201)
+* Added `openstack/baremetal/v1/nodes.CreateSubscription` [GH-2201](https://github.com/gophercloud/gophercloud/pull/2201)
+
+## 0.19.0 (July 22, 2021)
+
+NOTES / BREAKING CHANGES
+
+* `compute/v2/extensions/keypairs.List` now takes a `ListOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
+* `compute/v2/extensions/keypairs.Get` now takes a `GetOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186) 
+* `compute/v2/extensions/keypairs.Delete` now takes a `DeleteOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
+* `compute/v2/extensions/hypervisors.List` now takes a `ListOptsBuilder` argument [GH-2187](https://github.com/gophercloud/gophercloud/pull/2187)
+
+IMPROVEMENTS
+
+* Added `blockstorage/v3/qos.List` [GH-2167](https://github.com/gophercloud/gophercloud/pull/2167)
+* Added `compute/v2/extensions/volumeattach.CreateOpts.Tag` [GH-2177](https://github.com/gophercloud/gophercloud/pull/2177)
+* Added `compute/v2/extensions/volumeattach.CreateOpts.DeleteOnTermination` [GH-2177](https://github.com/gophercloud/gophercloud/pull/2177)
+* Added `compute/v2/extensions/volumeattach.VolumeAttachment.Tag` [GH-2177](https://github.com/gophercloud/gophercloud/pull/2177)
+* Added `compute/v2/extensions/volumeattach.VolumeAttachment.DeleteOnTermination` [GH-2177](https://github.com/gophercloud/gophercloud/pull/2177)
+* Added `db/v1/instances.Instance.Address` [GH-2179](https://github.com/gophercloud/gophercloud/pull/2179)
+* Added `compute/v2/servers.ListOpts.AvailabilityZone` [GH-2098](https://github.com/gophercloud/gophercloud/pull/2098)
+* Added `compute/v2/extensions/keypairs.ListOpts` [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
+* Added `compute/v2/extensions/keypairs.GetOpts` [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
+* Added `compute/v2/extensions/keypairs.DeleteOpts` [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
+* Added `objectstorage/v2/containers.GetHeader.Timestamp` [GH-2185](https://github.com/gophercloud/gophercloud/pull/2185)
+* Added `compute/v2/extensions.ListOpts` [GH-2187](https://github.com/gophercloud/gophercloud/pull/2187)
+* Added `sharedfilesystems/v2/shares.Share.CreateShareFromSnapshotSupport` [GH-2191](https://github.com/gophercloud/gophercloud/pull/2191)
+* Added `compute/v2/servers.Network.Tag` for use in `CreateOpts` [GH-2193](https://github.com/gophercloud/gophercloud/pull/2193)
+
+## 0.18.0 (June 11, 2021)
+
+NOTES / BREAKING CHANGES
+
+* As of [GH-2160](https://github.com/gophercloud/gophercloud/pull/2160), Gophercloud no longer URL encodes Object Storage containers and object names. You can still encode them yourself before passing the names to the Object Storage functions.
+
+* `baremetal/v1/nodes.ListBIOSSettings` now takes three parameters. The third, new, parameter is `ListBIOSSettingsOptsBuilder` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+
+BUG FIXES
+
+* Fixed expected OK codes to use default codes [GH-2173](https://github.com/gophercloud/gophercloud/pull/2173)
+* Fixed inablity to create sub-containers (objects with `/` in their name) [GH-2160](https://github.com/gophercloud/gophercloud/pull/2160)
+
+IMPROVEMENTS
+
+* Added `orchestration/v1/stacks.ListOpts.ShowHidden` [GH-2104](https://github.com/gophercloud/gophercloud/pull/2104)
+* Added `loadbalancer/v2/listeners.ProtocolSCTP` [GH-2149](https://github.com/gophercloud/gophercloud/pull/2149)
+* Added `loadbalancer/v2/listeners.CreateOpts.TLSVersions` [GH-2150](https://github.com/gophercloud/gophercloud/pull/2150)
+* Added `loadbalancer/v2/listeners.UpdateOpts.TLSVersions` [GH-2150](https://github.com/gophercloud/gophercloud/pull/2150)
+* Added `baremetal/v1/nodes.CreateOpts.NetworkData` [GH-2154](https://github.com/gophercloud/gophercloud/pull/2154)
+* Added `baremetal/v1/nodes.Node.NetworkData` [GH-2154](https://github.com/gophercloud/gophercloud/pull/2154)
+* Added `loadbalancer/v2/pools.ProtocolPROXYV2` [GH-2158](https://github.com/gophercloud/gophercloud/pull/2158)
+* Added `loadbalancer/v2/pools.ProtocolSCTP` [GH-2158](https://github.com/gophercloud/gophercloud/pull/2158)
+* Added `placement/v1/resourceproviders.GetAllocations` [GH-2162](https://github.com/gophercloud/gophercloud/pull/2162)
+* Added `baremetal/v1/nodes.CreateOpts.BIOSInterface` [GH-2164](https://github.com/gophercloud/gophercloud/pull/2164)
+* Added `baremetal/v1/nodes.Node.BIOSInterface` [GH-2164](https://github.com/gophercloud/gophercloud/pull/2164)
+* Added `baremetal/v1/nodes.NodeValidation.BIOS` [GH-2164](https://github.com/gophercloud/gophercloud/pull/2164)
+* Added `baremetal/v1/nodes.ListBIOSSettings` [GH-2171](https://github.com/gophercloud/gophercloud/pull/2171)
+* Added `baremetal/v1/nodes.GetBIOSSetting` [GH-2171](https://github.com/gophercloud/gophercloud/pull/2171)
+* Added `baremetal/v1/nodes.ListBIOSSettingsOpts` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.AttributeType` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.AllowableValues` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.LowerBound` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.UpperBound` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.MinLength` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.MaxLength` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.ReadOnly` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.ResetRequired` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+* Added `baremetal/v1/nodes.BIOSSetting.Unique` [GH-2174](https://github.com/gophercloud/gophercloud/pull/2174)
+
+## 0.17.0 (April 9, 2021)
+
+IMPROVEMENTS
+
+* `networking/v2/extensions/quotas.QuotaDetail.Reserved` can handle both `int` and `string` values [GH-2126](https://github.com/gophercloud/gophercloud/pull/2126)
+* Added `blockstorage/v3/volumetypes.ListExtraSpecs` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.GetExtraSpec` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.CreateExtraSpecs` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.UpdateExtraSpec` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `blockstorage/v3/volumetypes.DeleteExtraSpec` [GH-2123](https://github.com/gophercloud/gophercloud/pull/2123)
+* Added `identity/v3/roles.ListAssignmentOpts.IncludeNames` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.AssignedRoles.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.Domain.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.Project.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.User.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `identity/v3/roles.Group.Name` [GH-2133](https://github.com/gophercloud/gophercloud/pull/2133)
+* Added `blockstorage/extensions/availabilityzones.List` [GH-2135](https://github.com/gophercloud/gophercloud/pull/2135)
+* Added `blockstorage/v3/volumetypes.ListAccesses` [GH-2138](https://github.com/gophercloud/gophercloud/pull/2138)
+* Added `blockstorage/v3/volumetypes.AddAccess` [GH-2138](https://github.com/gophercloud/gophercloud/pull/2138)
+* Added `blockstorage/v3/volumetypes.RemoveAccess` [GH-2138](https://github.com/gophercloud/gophercloud/pull/2138)
+* Added `blockstorage/v3/qos.Create` [GH-2140](https://github.com/gophercloud/gophercloud/pull/2140)
+* Added `blockstorage/v3/qos.Delete` [GH-2140](https://github.com/gophercloud/gophercloud/pull/2140)
 
 ## 0.16.0 (February 23, 2021)
 

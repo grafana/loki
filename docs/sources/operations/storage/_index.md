@@ -1,11 +1,12 @@
 ---
 title: Storage
+weight: 40
 ---
-# Loki Storage
+# Grafana Loki Storage
 
 [High level storage overview here]({{< relref "../../storage/_index.md" >}})
 
-Loki needs to store two different types of data: **chunks** and **indexes**.
+Grafana Loki needs to store two different types of data: **chunks** and **indexes**.
 
 Loki receives logs in separate streams, where each stream is uniquely identified
 by its tenant ID and its set of labels. As log entries from a stream arrive,
@@ -22,6 +23,7 @@ For more information:
 
 1. [Table Manager](table-manager/)
 1. [Retention](retention/)
+1. [Logs Deletion](logs-deletion/)
 
 ## Supported Stores
 

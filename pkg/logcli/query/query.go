@@ -12,7 +12,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	cortex_storage "github.com/cortexproject/cortex/pkg/chunk/storage"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
@@ -28,6 +27,8 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
+	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/cfg"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -188,8 +189,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
-
-	chunkStore, err := cortex_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
+	storage.RegisterCustomIndexClients(&conf.StorageConfig, prometheus.DefaultRegisterer)
+	conf.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
+	chunkStore, err := chunk_storage.NewStore(conf.StorageConfig.Config, conf.ChunkStoreConfig.StoreConfig, conf.SchemaConfig.SchemaConfig, limits, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return err
 	}

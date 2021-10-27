@@ -1,10 +1,11 @@
+//go:build cgo
 // +build cgo
 
 package journal
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -15,7 +16,7 @@ import (
 )
 
 // JournalTargetManager manages a series of JournalTargets.
-// nolint(golint)
+// nolint
 type JournalTargetManager struct {
 	logger  log.Logger
 	targets map[string]*JournalTarget

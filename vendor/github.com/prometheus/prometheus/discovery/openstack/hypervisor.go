@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
@@ -74,7 +74,7 @@ func (h *HypervisorDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group
 	}
 	// OpenStack API reference
 	// https://developer.openstack.org/api-ref/compute/#list-hypervisors-details
-	pagerHypervisors := hypervisors.List(client)
+	pagerHypervisors := hypervisors.List(client, nil)
 	err = pagerHypervisors.EachPage(func(page pagination.Page) (bool, error) {
 		hypervisorList, err := hypervisors.ExtractHypervisors(page)
 		if err != nil {

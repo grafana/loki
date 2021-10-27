@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.58.0"
+	libraryVersion = "1.65.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -77,6 +77,7 @@ type Client struct {
 	Databases         DatabasesService
 	VPCs              VPCsService
 	OneClick          OneClickService
+	Monitoring        MonitoringService
 
 	// Optional function called after every successful request made to the DO APIs
 	onRequestCompleted RequestCompletionCallback
@@ -110,6 +111,8 @@ type Response struct {
 	Meta *Meta
 
 	// Monitoring URI
+	// Deprecated: This field is not populated. To poll for the status of a
+	// newly created Droplet, use Links.Actions[0].HREF
 	Monitor string
 
 	Rate
@@ -219,6 +222,7 @@ func NewClient(httpClient *http.Client) *Client {
 	c.Databases = &DatabasesServiceOp{client: c}
 	c.VPCs = &VPCsServiceOp{client: c}
 	c.OneClick = &OneClickServiceOp{client: c}
+	c.Monitoring = &MonitoringServiceOp{client: c}
 
 	c.headers = make(map[string]string)
 
@@ -433,6 +437,7 @@ func (r *ErrorResponse) Error() string {
 // CheckResponse checks the API response for errors, and returns them if present. A response is considered an
 // error if it has a status code outside the 200 range. API error responses are expected to have either no response
 // body, or a JSON response body that maps to ErrorResponse. Any other response body will be silently ignored.
+// If the API error response does not include the request ID in its body, the one from its header will be used.
 func CheckResponse(r *http.Response) error {
 	if c := r.StatusCode; c >= 200 && c <= 299 {
 		return nil
@@ -445,6 +450,10 @@ func CheckResponse(r *http.Response) error {
 		if err != nil {
 			errorResponse.Message = string(data)
 		}
+	}
+
+	if errorResponse.RequestID == "" {
+		errorResponse.RequestID = r.Header.Get("x-request-id")
 	}
 
 	return errorResponse

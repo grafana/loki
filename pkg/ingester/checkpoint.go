@@ -14,8 +14,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	prompool "github.com/prometheus/prometheus/pkg/pool"
@@ -100,7 +100,11 @@ func fromWireChunks(conf *Config, wireChunks []Chunk) ([]chunkDesc, error) {
 			lastUpdated: c.LastUpdated,
 		}
 
-		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, conf.BlockSize, conf.TargetChunkSize)
+		// Always use Unordered headblocks during replay
+		// to ensure Loki can effectively replay an unordered-friendly
+		// WAL into a new configuration that disables unordered writes.
+		hbType := chunkenc.UnorderedHeadBlockFmt
+		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, hbType, conf.BlockSize, conf.TargetChunkSize)
 		if err != nil {
 			return nil, err
 		}
@@ -272,6 +276,8 @@ func (s *streamIterator) Next() bool {
 
 	s.current.To = stream.lastLine.ts
 	s.current.LastLine = stream.lastLine.content
+	s.current.EntryCt = stream.entryCt
+	s.current.HighestTs = stream.highestTs
 
 	return true
 }

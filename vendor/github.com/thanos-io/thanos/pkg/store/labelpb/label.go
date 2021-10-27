@@ -254,7 +254,7 @@ func (m *ZLabel) Compare(other ZLabel) int {
 //
 // In case of existing labels already present in given label set, it will be overwritten by external one.
 // NOTE: Labels and extend has to be sorted.
-func ExtendSortedLabels(lset labels.Labels, extend labels.Labels) labels.Labels {
+func ExtendSortedLabels(lset, extend labels.Labels) labels.Labels {
 	ret := make(labels.Labels, 0, len(lset)+len(extend))
 
 	// Inject external labels in place.

@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
@@ -108,7 +108,7 @@ func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
 		port: conf.Port,
 	}
 
-	rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "digitalocean_sd", config.WithHTTP2Disabled())
+	rt, err := config.NewRoundTripperFromConfig(conf.HTTPClientConfig, "digitalocean_sd")
 	if err != nil {
 		return nil, err
 	}

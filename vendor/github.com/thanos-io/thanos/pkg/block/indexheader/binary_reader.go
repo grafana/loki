@@ -65,7 +65,7 @@ func newCRC32() hash.Hash32 {
 type BinaryTOC struct {
 	// Symbols holds start to the same symbols section as index related to this index header.
 	Symbols uint64
-	// PostingsOffsetTable holds start to the the same Postings Offset Table section as index related to this index header.
+	// PostingsOffsetTable holds start to the same Postings Offset Table section as index related to this index header.
 	PostingsOffsetTable uint64
 }
 
@@ -295,7 +295,7 @@ type FileWriter struct {
 
 // TODO(bwplotka): Added size to method, upstream this.
 func NewFileWriter(name string, size int) (*FileWriter, error) {
-	f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
+	f, err := os.OpenFile(filepath.Clean(name), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -653,7 +653,7 @@ func (r *BinaryReader) IndexVersion() (int, error) {
 }
 
 // TODO(bwplotka): Get advantage of multi value offset fetch.
-func (r *BinaryReader) PostingsOffset(name string, value string) (index.Range, error) {
+func (r *BinaryReader) PostingsOffset(name, value string) (index.Range, error) {
 	rngs, err := r.postingsOffset(name, value)
 	if err != nil {
 		return index.Range{}, err

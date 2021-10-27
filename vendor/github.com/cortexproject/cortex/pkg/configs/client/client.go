@@ -11,16 +11,16 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
+	dstls "github.com/grafana/dskit/crypto/tls"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	tls_cfg "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 var (
@@ -29,9 +29,9 @@ var (
 
 // Config says where we can find the ruler userconfig.
 type Config struct {
-	ConfigsAPIURL flagext.URLValue     `yaml:"configs_api_url"`
-	ClientTimeout time.Duration        `yaml:"client_timeout"` // HTTP timeout duration for requests made to the Weave Cloud configs service.
-	TLS           tls_cfg.ClientConfig `yaml:",inline"`
+	ConfigsAPIURL flagext.URLValue   `yaml:"configs_api_url"`
+	ClientTimeout time.Duration      `yaml:"client_timeout"` // HTTP timeout duration for requests made to the Weave Cloud configs service.
+	TLS           dstls.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

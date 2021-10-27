@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -108,7 +110,7 @@ func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor)
+			limiter := NewLimiter(limits, NilMetrics, ring, testData.ringReplicationFactor)
 			actual := limiter.AssertMaxStreamsPerUser("test", testData.streams)
 
 			assert.Equal(t, testData.expected, actual)
@@ -155,7 +157,7 @@ func TestLimiter_minNonZero(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			limiter := NewLimiter(nil, nil, 0)
+			limiter := NewLimiter(nil, NilMetrics, nil, 0)
 			assert.Equal(t, testData.expected, limiter.minNonZero(testData.first, testData.second))
 		})
 	}
@@ -167,4 +169,45 @@ type ringCountMock struct {
 
 func (m *ringCountMock) HealthyInstancesCount() int {
 	return m.count
+}
+
+// Assert some of the weirder (bug?) behavior of golang.org/x/time/rate
+func TestGoLimiter(t *testing.T) {
+	for _, tc := range []struct {
+		desc  string
+		lim   *rate.Limiter
+		at    time.Time
+		burst int
+		limit rate.Limit
+		allow int
+		exp   bool
+	}{
+		{
+			// I (owen-d) think this _should_ work and am supplying this test
+			// case by way of explanation for how the StreamRateLimiter
+			// works around the rate.Inf edge case.
+			desc:  "changing inf limits unnecessarily cordons",
+			lim:   rate.NewLimiter(rate.Inf, 0),
+			at:    time.Now(),
+			burst: 2,
+			limit: 1,
+			allow: 1,
+			exp:   false,
+		},
+		{
+			desc:  "non inf limit works",
+			lim:   rate.NewLimiter(1, 2),
+			at:    time.Now(),
+			burst: 2,
+			limit: 1,
+			allow: 1,
+			exp:   true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			tc.lim.SetBurstAt(tc.at, tc.burst)
+			tc.lim.SetLimitAt(tc.at, tc.limit)
+			require.Equal(t, tc.exp, tc.lim.AllowN(tc.at, tc.allow))
+		})
+	}
 }

@@ -155,8 +155,9 @@ func endpointHandler(req *request.Request) {
 		}
 	case arn.OutpostAccessPointARN:
 		// outposts does not support FIPS regions
-		if resReq.ResourceConfiguredForFIPS() {
-			req.Error = s3shared.NewInvalidARNWithFIPSError(resource, nil)
+		if resReq.UseFIPS() {
+			req.Error = s3shared.NewFIPSConfigurationError(resource, req.ClientInfo.PartitionID,
+				aws.StringValue(req.Config.Region), nil)
 			return
 		}
 

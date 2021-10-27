@@ -22,8 +22,8 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cespare/xxhash"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -277,6 +277,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		"opsgenie",
 		"webhook",
 		"victorops",
+		"sns",
 	} {
 		m.numNotifications.WithLabelValues(integration)
 		m.numTotalFailedNotifications.WithLabelValues(integration)
@@ -807,7 +808,7 @@ Loop:
 			return ctx, alerts, errors.Errorf("mute time %s doesn't exist in config", mtName)
 		}
 		for _, ti := range mt {
-			if ti.ContainsTime(now) {
+			if ti.ContainsTime(now.UTC()) {
 				muted = true
 				break Loop
 			}

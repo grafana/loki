@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/shipper/storage"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/grafana/loki/pkg/storage/chunk/local"
 )
 
 func TestDeleteRequestsStore(t *testing.T) {
@@ -57,7 +59,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 		Directory: objectStorePath,
 	})
 	require.NoError(t, err)
-	testDeleteRequestsStore, err := NewDeleteStore(workingDir, objectClient)
+	testDeleteRequestsStore, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
 
 	defer testDeleteRequestsStore.Stop()

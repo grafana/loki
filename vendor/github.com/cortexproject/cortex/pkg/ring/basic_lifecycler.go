@@ -7,14 +7,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type BasicLifecyclerDelegate interface {
@@ -182,12 +183,12 @@ func (l *BasicLifecycler) starting(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) running(ctx context.Context) error {
-	heartbeatTicker := time.NewTicker(l.cfg.HeartbeatPeriod)
-	defer heartbeatTicker.Stop()
+	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	defer heartbeatTickerStop()
 
 	for {
 		select {
-		case <-heartbeatTicker.C:
+		case <-heartbeatTickerChan:
 			l.heartbeat(ctx)
 
 		case f := <-l.actorChan:
@@ -214,13 +215,13 @@ func (l *BasicLifecycler) stopping(runningError error) error {
 	}()
 
 	// Heartbeat while the stopping delegate function is running.
-	heartbeatTicker := time.NewTicker(l.cfg.HeartbeatPeriod)
-	defer heartbeatTicker.Stop()
+	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	defer heartbeatTickerStop()
 
 heartbeatLoop:
 	for {
 		select {
-		case <-heartbeatTicker.C:
+		case <-heartbeatTickerChan:
 			l.heartbeat(context.Background())
 		case <-done:
 			break heartbeatLoop
@@ -292,8 +293,8 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) waitStableTokens(ctx context.Context, period time.Duration) error {
-	heartbeatTicker := time.NewTicker(l.cfg.HeartbeatPeriod)
-	defer heartbeatTicker.Stop()
+	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	defer heartbeatTickerStop()
 
 	// The first observation will occur after the specified period.
 	level.Info(l.logger).Log("msg", "waiting stable tokens", "ring", l.ringName)
@@ -312,7 +313,7 @@ func (l *BasicLifecycler) waitStableTokens(ctx context.Context, period time.Dura
 			level.Info(l.logger).Log("msg", "tokens verification succeeded", "ring", l.ringName)
 			return nil
 
-		case <-heartbeatTicker.C:
+		case <-heartbeatTickerChan:
 			l.heartbeat(ctx)
 
 		case <-ctx.Done():

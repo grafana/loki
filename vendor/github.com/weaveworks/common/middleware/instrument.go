@@ -10,6 +10,8 @@ import (
 	"github.com/felixge/httpsnoop"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/weaveworks/common/instrument"
 )
 
 const mb = 1024 * 1024
@@ -71,17 +73,7 @@ func (i Instrument) Wrap(next http.Handler) http.Handler {
 		i.RequestBodySize.WithLabelValues(r.Method, route).Observe(float64(rBody.read))
 		i.ResponseBodySize.WithLabelValues(r.Method, route).Observe(float64(respMetrics.Written))
 
-		histogram := i.Duration.WithLabelValues(r.Method, route, strconv.Itoa(respMetrics.Code), isWS)
-		if traceID, ok := ExtractSampledTraceID(r.Context()); ok {
-			// Need to type-convert the Observer to an
-			// ExemplarObserver. This will always work for a
-			// HistogramVec.
-			histogram.(prometheus.ExemplarObserver).ObserveWithExemplar(
-				respMetrics.Duration.Seconds(), prometheus.Labels{"traceID": traceID},
-			)
-			return
-		}
-		histogram.Observe(respMetrics.Duration.Seconds())
+		instrument.ObserveWithExemplar(r.Context(), i.Duration.WithLabelValues(r.Method, route, strconv.Itoa(respMetrics.Code), isWS), respMetrics.Duration.Seconds())
 	})
 }
 

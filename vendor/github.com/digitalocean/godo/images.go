@@ -10,7 +10,7 @@ const imageBasePath = "v2/images"
 
 // ImagesService is an interface for interfacing with the images
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#images
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Images
 type ImagesService interface {
 	List(context.Context, *ListOptions) ([]Image, *Response, error)
 	ListDistribution(ctx context.Context, opt *ListOptions) ([]Image, *Response, error)
