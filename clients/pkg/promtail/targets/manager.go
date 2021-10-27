@@ -195,7 +195,7 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, windowsTargetManager)
 		case KafkaConfigs:
-			kafkaTargetManager, err := kafka.NewTargetManager(reg, logger, scrapeConfigs, clientConfigs...)
+			kafkaTargetManager, err := kafka.NewTargetManager(reg, logger, client, scrapeConfigs)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make kafka target manager")
 			}

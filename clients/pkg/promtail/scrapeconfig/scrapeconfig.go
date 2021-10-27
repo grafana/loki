@@ -230,9 +230,6 @@ type KafkaTargetConfig struct {
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
 
-	// The amount of worker to send data per partition
-	WorkerPerPartition int `yaml:"worker_per_partition"`
-
 	// The list of brokers to connect to kafka (Required).
 	Brokers []string `yaml:"brokers"`
 

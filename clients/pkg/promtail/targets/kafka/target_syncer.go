@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
@@ -39,10 +38,10 @@ type Consumer interface {
 }
 
 type TargetSyncer struct {
-	logger        log.Logger
-	cfg           scrapeconfig.Config
-	reg           prometheus.Registerer
-	clientConfigs []client.Config
+	logger log.Logger
+	cfg    scrapeconfig.Config
+	reg    prometheus.Registerer
+	client api.EntryHandler
 
 	topicManager TopicManager
 	consumer
@@ -58,7 +57,7 @@ func NewSyncer(
 	reg prometheus.Registerer,
 	logger log.Logger,
 	cfg scrapeconfig.Config,
-	clientConfigs ...client.Config,
+	pushClient api.EntryHandler,
 ) (*TargetSyncer, error) {
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
@@ -102,6 +101,7 @@ func NewSyncer(
 		topicManager: topicManager,
 		cfg:          cfg,
 		reg:          reg,
+		client:       pushClient,
 		close: func() error {
 			if err := group.Close(); err != nil {
 				level.Warn(logger).Log("msg", "error while closing consumer group", "err", err)
@@ -114,7 +114,6 @@ func NewSyncer(
 			ConsumerGroup: group,
 			logger:        logger,
 		},
-		clientConfigs: clientConfigs,
 	}
 	t.discoverer = t
 	t.loop()
@@ -225,14 +224,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		}, nil
 	}
 
-	c, err := NewFanOutHandler(
-		ts.cfg.KafkaConfig.WorkerPerPartition,
-		ts.logger,
-		ts.reg,
-		func() (api.EntryMiddleware, error) {
-			return stages.NewPipeline(log.With(ts.logger, "component", "kafka_pipeline"), ts.cfg.PipelineStages, &ts.cfg.JobName, ts.reg)
-		},
-		ts.clientConfigs...)
+	pipeline, err := stages.NewPipeline(log.With(ts.logger, "component", "kafka_pipeline"), ts.cfg.PipelineStages, &ts.cfg.JobName, ts.reg)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +234,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		claim,
 		discoveredLabels,
 		labelOut,
-		c,
+		pipeline.Wrap(ts.client),
 		ts.cfg.KafkaConfig.UseIncomingTimestamp,
 	)
 
@@ -252,9 +244,6 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 func validateConfig(cfg *scrapeconfig.Config) error {
 	if cfg.KafkaConfig == nil {
 		return errors.New("Kafka configuration is empty")
-	}
-	if cfg.KafkaConfig.WorkerPerPartition == 0 {
-		cfg.KafkaConfig.WorkerPerPartition = 1
 	}
 	if cfg.KafkaConfig.Version == "" {
 		cfg.KafkaConfig.Version = "2.1.1"

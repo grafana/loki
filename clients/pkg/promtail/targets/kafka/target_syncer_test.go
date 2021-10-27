@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/go-kit/log"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,7 +22,7 @@ func Test_TopicDiscovery(t *testing.T) {
 	group := &testConsumerGroupHandler{}
 	TopicPollInterval = time.Microsecond
 	var closed bool
-	kClient := &mockKafkaClient{
+	client := &mockKafkaClient{
 		topics: []string{"topic1"},
 	}
 	ts := &TargetSyncer{
@@ -31,13 +30,10 @@ func Test_TopicDiscovery(t *testing.T) {
 		cancel:       cancel,
 		logger:       log.NewNopLogger(),
 		reg:          prometheus.DefaultRegisterer,
-		topicManager: mustNewTopicsManager(kClient, []string{"topic1", "topic2"}),
+		topicManager: mustNewTopicsManager(client, []string{"topic1", "topic2"}),
 		close: func() error {
 			closed = true
 			return nil
-		},
-		clientConfigs: []client.Config{
-			{},
 		},
 		consumer: consumer{
 			ctx:           context.Background(),
@@ -52,7 +48,6 @@ func Test_TopicDiscovery(t *testing.T) {
 			JobName:        "foo",
 			RelabelConfigs: []*relabel.Config{},
 			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
-				WorkerPerPartition:   1,
 				UseIncomingTimestamp: true,
 				Topics:               []string{"topic1", "topic2"},
 			},
@@ -67,7 +62,7 @@ func Test_TopicDiscovery(t *testing.T) {
 		return assert.Equal(t, group.topics, []string{"topic1"})
 	}, 200*time.Millisecond, time.Millisecond)
 
-	kClient.topics = []string{"topic1", "topic2"} // introduce new topics
+	client.topics = []string{"topic1", "topic2"} // introduce new topics
 
 	require.Eventually(t, func() bool {
 		if !group.consuming.Load() {
@@ -81,15 +76,10 @@ func Test_TopicDiscovery(t *testing.T) {
 }
 
 func Test_NewTarget(t *testing.T) {
-	DefaultClientFactory = func(reg prometheus.Registerer, logger log.Logger, cfgs ...client.Config) (client.Client, error) {
-		return fake.New(func() {}), nil
-	}
 	ts := &TargetSyncer{
 		logger: log.NewNopLogger(),
 		reg:    prometheus.DefaultRegisterer,
-		clientConfigs: []client.Config{
-			{},
-		},
+		client: fake.New(func() {}),
 		cfg: scrapeconfig.Config{
 			JobName: "foo",
 			RelabelConfigs: []*relabel.Config{
@@ -102,7 +92,6 @@ func Test_NewTarget(t *testing.T) {
 				},
 			},
 			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
-				WorkerPerPartition:   1,
 				UseIncomingTimestamp: true,
 				Topics:               []string{"topic1", "topic2"},
 				Labels:               model.LabelSet{"static": "static1"},
@@ -130,7 +119,6 @@ func Test_NewDroppedTarget(t *testing.T) {
 		cfg: scrapeconfig.Config{
 			JobName: "foo",
 			KafkaConfig: &scrapeconfig.KafkaTargetConfig{
-				WorkerPerPartition:   1,
 				UseIncomingTimestamp: true,
 				Topics:               []string{"topic1", "topic2"},
 			},
@@ -198,11 +186,10 @@ func Test_validateConfig(t *testing.T) {
 			false,
 			&scrapeconfig.Config{
 				KafkaConfig: &scrapeconfig.KafkaTargetConfig{
-					Brokers:            []string{"foo"},
-					Topics:             []string{"bar"},
-					GroupID:            "foo",
-					WorkerPerPartition: 1,
-					Version:            "2.1.1",
+					Brokers: []string{"foo"},
+					Topics:  []string{"bar"},
+					GroupID: "foo",
+					Version: "2.1.1",
 				},
 			},
 		},

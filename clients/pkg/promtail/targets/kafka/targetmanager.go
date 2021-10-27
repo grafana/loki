@@ -1,11 +1,11 @@
 package kafka
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
@@ -20,15 +20,15 @@ type TargetManager struct {
 func NewTargetManager(
 	reg prometheus.Registerer,
 	logger log.Logger,
+	pushClient api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
-	clientConfigs ...client.Config,
 ) (*TargetManager, error) {
 	tm := &TargetManager{
 		logger:        logger,
 		targetSyncers: make(map[string]*TargetSyncer),
 	}
 	for _, cfg := range scrapeConfigs {
-		t, err := NewSyncer(reg, logger, cfg, clientConfigs...)
+		t, err := NewSyncer(reg, logger, cfg, pushClient)
 		if err != nil {
 			return nil, err
 		}
