@@ -146,6 +146,19 @@ func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.TokensFilePath = lc.TokensFilePath
 	r.QueryScheduler.SchedulerRing.KVStore.Store = s
 	r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = sc
+
+	// Compactor
+	r.CompactorConfig.CompactorRing.HeartbeatTimeout = rc.HeartbeatTimeout
+	r.CompactorConfig.CompactorRing.HeartbeatPeriod = lc.HeartbeatPeriod
+	r.CompactorConfig.CompactorRing.InstancePort = lc.Port
+	r.CompactorConfig.CompactorRing.InstanceAddr = lc.Addr
+	r.CompactorConfig.CompactorRing.InstanceID = lc.ID
+	r.CompactorConfig.CompactorRing.InstanceInterfaceNames = lc.InfNames
+	r.CompactorConfig.CompactorRing.InstanceZone = lc.Zone
+	r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+	r.CompactorConfig.CompactorRing.TokensFilePath = lc.TokensFilePath
+	r.CompactorConfig.CompactorRing.KVStore.Store = s
+	r.CompactorConfig.CompactorRing.KVStore.StoreConfig = sc
 }
 
 func applyPathPrefixDefaults(r *ConfigWrapper, defaults ConfigWrapper) {
@@ -184,6 +197,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 		r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 		r.Ruler.Ring.KVStore.Store = memberlistStr
 		r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
+		r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	}
 }
 

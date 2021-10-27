@@ -1903,33 +1903,126 @@ compacts index shards to more performant forms.
 
 ```yaml
 # Directory where files can be downloaded for compaction.
+# CLI flag: -boltdb.shipper.compactor.working-directory
 [working_directory: <string>]
 
 # The shared store used for storing boltdb files.
 # Supported types: gcs, s3, azure, swift, filesystem.
+# CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string>]
 
 # Prefix to add to object keys in shared store.
 # Path separator(if any) should always be a '/'.
 # Prefix should never start with a separator but should always end with it.
+# CLI flag: -boltdb.shipper.compactor.shared-store.key-prefix
 [shared_store_key_prefix: <string> | default = "index/"]
 
 # Interval at which to re-run the compaction operation (or retention if enabled).
+# CLI flag: -boltdb.shipper.compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
+# CLI flag: -boltdb.shipper.compactor.retention-enabled
 [retention_enabled: <bool> | default = false]
 
 # Delay after which chunks will be fully deleted during retention.
+# CLI flag: -boltdb.shipper.compactor.retention-delete-delay
 [retention_delete_delay: <duration> | default = 2h]
 
 # The total amount of worker to use to delete chunks.
+# CLI flag: -boltdb.shipper.compactor.retention-delete-worker-count
 [retention_delete_worker_count: <int> | default = 150]
 
 # Allow cancellation of delete request until duration after they are created.
 # Data would be deleted only after delete requests have been older than this duration.
 # Ideally this should be set to at least 24h.
+# CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
+
+# Maximum number of tables to compact in parallel.
+# While increasing this value, please make sure compactor has enough disk space
+# allocated to be able to store and compact as many tables.
+# CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
+[max_compaction_parallelism: <int> | default = 1]
+
+# The hash ring configuration used by compactors to elect a single instance for running compactions
+compactor_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -boltdb.shipper.compactor.ring.store
+    [store: <string> | default = "memberlist"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -boltdb.shipper.compactor.ring.prefix
+    [prefix: <string> | default = "compactors/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -boltdb.shipper.compactor.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -boltdb.shipper.compactor.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Interval between heartbeats sent to the ring. 0 = disabled.
+  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which store gateways are considered unhealthy
+  # within the ring. 0 = never (timeout disabled). This option needs be set both
+  # on the store-gateway and querier when running in microservices mode.
+  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # File path where tokens are stored. If empty, tokens are neither stored at
+  # shutdown nor restored at startup.
+  # CLI flag: -boltdb.shipper.compactor.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # True to enable zone-awareness and replicate blocks across different
+  # availability zones.
+  # CLI flag: -boltdb.shipper.compactor.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # Name of network interface to read addresses from.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # IP address to advertise in the ring.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-addr
+  [instance_addr: <list of string> | default = first from instance_interface_names]
+
+  # Port to advertise in the ring
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-port
+  [instance_port: <list of string> | default = server.grpc-listen-port]
+
+  # Instance ID to register in the ring.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-id
+  [instance_id: <list of string> | default = os.Hostname()]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
 ```
 
 ## limits_config
