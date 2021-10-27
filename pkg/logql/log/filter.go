@@ -96,12 +96,15 @@ type andFilters struct {
 // NewAndFilters creates a new filter which matches only if all filters match
 func NewAndFilters(filters []Filterer) Filterer {
 	// Make sure we take care of panics in case a nil or noop filter is passed.
-	for i:= len(filters)-1; i>=0; i-- {
-		if filters[i] == nil || filters[i] == TrueFilter {
-			// Delete entry
-			filters = append(filters[:i], filters[i+1:]...)
+	n := 0
+	for _, filter := range filters {
+		if !(filter == nil || filter == TrueFilter) {
+			// Keep filter
+			filters[n] = filter
+			n++
 		}
 	}
+	filters = filters[:n]
 
 	if len(filters) == 0 {
 		return TrueFilter

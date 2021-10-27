@@ -393,16 +393,21 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	containsAllFilter := log.ContainsAllFilter{
 		Matches: make([][]byte, 0),
 	}
-	for i := len(acc) - 1; i >= 0; i-- {
-		switch c := acc[i].(type) {
+	n := 0
+	for _, filter := range acc {
+		switch c := filter.(type) {
 		case log.ContainsFilter:
 			{
 				containsAllFilter.Matches = append(containsAllFilter.Matches, c.Match)
-				// Delete entry
-				acc = append(acc[:i], acc[i+1:]...)
 			}
+		default:
+			// Keep filter
+			acc[n] = filter
+			n++
 		}
 	}
+	acc = acc[:n]
+
 	if len(containsAllFilter.Matches) != 0 {
 		acc = append(acc, containsAllFilter)
 	}
