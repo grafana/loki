@@ -79,5 +79,5 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Remote-write recording rule samples to Prometheus-compatible remote-write receiver.")
-	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
+	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between refreshing remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
 }

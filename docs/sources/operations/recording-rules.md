@@ -120,8 +120,21 @@ aware that if the remote storage is down for longer than `ruler.wal.max-age`, da
 
 In cases 2 & 3, you should consider [tuning](#tuning) remote-write appropriately.
 
-### Insufficient Shards
+Further reading: see [this blog post](https://grafana.com/blog/2021/04/12/how-to-troubleshoot-remote-write-issues-in-prometheus/)
+by Prometheus maintainer Callum Styan.
 
 ### Appender Not Ready
 
+Each tenant's WAL has an "appender" internally; this appender is used to _append_ samples to the WAL. The appender is marked
+as _not ready_ until the WAL replay is complete upon startup. If the WAL is corrupted for some reason, or is taking a long
+time to replay, you can determine this by alerting on `loki_ruler_wal_appender_ready < 1`.
+
 ### Corrupt WAL
+
+If a disk fails or the `ruler` does not terminate correctly, there's a chance one or more tenant WALs can become corrupted.
+A mechanism exists for automatically repairing the WAL, but this cannot handle every conceivable scenario. In this case,
+the `loki_ruler_wal_corruptions_repair_failed_total` metric will be incremented.
+
+### Found another failure mode?
+
+Please open an [issue](https://github.com/grafana/loki/issues) and tell us about it!
