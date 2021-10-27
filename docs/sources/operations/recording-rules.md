@@ -70,8 +70,8 @@ so a `Persistent Volume` should be utilised.
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
-a per-tenant basis. Most of the configuration options [defined here](TODO:LINK) have
-[override options](TODO:LINK) (which can be also applied at runtime!).
+a per-tenant basis. Most of the configuration options [defined here](../configuration/#ruler_config)
+have [override options](../configuration/#limits_config) (which can be also applied at runtime!).
 
 ### Tuning
 
@@ -87,7 +87,7 @@ Prometheus exposes a number of metrics for its WAL implementation, and these hav
 
 For example: `prometheus_remote_storage_bytes_total` → `loki_ruler_wal_prometheus_remote_storage_bytes_total`
 
-Additional metrics are exposed, also with with the prefix `loki_ruler_wal_`. All per-tenant metrics contain a `tenant`
+Additional metrics are exposed, also with the prefix `loki_ruler_wal_`. All per-tenant metrics contain a `tenant`
 label, so be aware that cardinality could begin to be a concern if the number of tenants grows sufficiently large.
 
 Some key metrics to note are:
@@ -107,13 +107,15 @@ There is a [preconfigured dashboard](TODO:LINK) which you can use to administer 
 
 ### Remote-Write Lagging
 
-Remote-write can lag behind for many reasons. It can be determined by subtracting
-`loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds` from
-`loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds`.
+Remote-write can lag behind for many reasons:
 
 1. Remote-write storage (Prometheus) is temporarily unavailable
 2. A tenant is producing samples too quickly from a recording rule
 3. Remote-write is tuned too low, creating backpressure
+
+It can be determined by subtracting
+`loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds` from
+`loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds`.
 
 In case 1, the `ruler` will continue to retry sending these samples until the remote storage becomes available again. Be
 aware that if the remote storage is down for longer than `ruler.wal.max-age`, data loss may occur after truncation occurs.
