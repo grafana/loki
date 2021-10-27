@@ -15,6 +15,7 @@ import (
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	chunk_storage "github.com/grafana/loki/pkg/storage/chunk/storage"
+	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
 // ConfigWrapper is a struct containing the Loki config along with other values that can be set on the command line
@@ -75,8 +76,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			r.QueryScheduler.UseSchedulerRing = true
 		}
 
-		applyIngesterRingConfig(r)
 		applyPathPrefixDefaults(r, defaults)
+		applyIngesterRingConfig(r, &defaults)
 		applyMemberlistConfig(r)
 
 		if err := applyStorageConfig(r, &defaults); err != nil {
@@ -97,7 +98,14 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 // we have a ring configured. The reason for centralizing on the ingester ring as this is been set in basically
 // all of our provided config files for all of time, usually set to `inmemory` for all the single binary Loki's
 // and is the most central ring config for Loki.
-func applyIngesterRingConfig(r *ConfigWrapper) {
+//
+// If the ingester ring has its interface names sets to a value equal to the default (["eth0", en0"]), it will try to append
+// the loopback interface at the end of it.
+func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) {
+	if reflect.DeepEqual(r.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
+		appendLoopbackInterface(r)
+	}
+
 	lc := r.Ingester.LifecyclerConfig
 	rc := r.Ingester.LifecyclerConfig.RingConfig
 	s := rc.KVStore.Store
@@ -155,6 +163,12 @@ func applyPathPrefixDefaults(r *ConfigWrapper, defaults ConfigWrapper) {
 		if r.CompactorConfig.WorkingDirectory == defaults.CompactorConfig.WorkingDirectory {
 			r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", prefix)
 		}
+	}
+}
+
+func appendLoopbackInterface(r *ConfigWrapper) {
+	if loopbackIface, err := loki_net.LoopbackInterfaceName(); err == nil {
+		r.Ingester.LifecyclerConfig.InfNames = append(r.Ingester.LifecyclerConfig.InfNames, loopbackIface)
 	}
 }
 

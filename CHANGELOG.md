@@ -9,9 +9,10 @@
 * [4519](https://github.com/grafana/loki/pull/4519) **DylanGuedes** and **replay**: Loki: Enable FIFO cache by default
 * [4520](https://github.com/grafana/loki/pull/4520) **jordanrushing** and **owen-d**: Introduce overrides-exporter module for tenant limits
 * [4453](https://github.com/grafana/loki/pull/4453) **liguozhong**: Loki: Implement retry to s3 chunk storage
-* [4542](https://github.com/grafana/loki/pull/4542) **owen-d**: Introduce the `loki_overrides_defaults` metric and only export diffs for tenant limits.
+* [4542](https://github.com/grafana/loki/pull/4542) **owen-d**: Introduce the `loki_overrides_defaults` metric and only export diffs for tenant limits
 * [4498](https://github.com/grafana/loki/pull/4498) **trevorwhitney**: Feature: add virtual read and write targets
 * [4543](https://github.com/grafana/loki/pull/4543) **trevorwhitney**: Change more default values and improve application of common storage config
+* [4570](https://github.com/grafana/loki/pull/4570) **DylanGuedes**: Loki: Append loopback to ingester net interface default list
 
 # 2.3.0 (2021/08/06)
 
