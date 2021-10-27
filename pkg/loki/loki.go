@@ -453,7 +453,7 @@ func (t *Loki) setupModuleManager() error {
 		Compactor:                {Server, Overrides},
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
-		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler},
+		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler},
 		Write:                    {Ingester, Distributor},
 	}
@@ -461,12 +461,6 @@ func (t *Loki) setupModuleManager() error {
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
 	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
-	}
-
-	// If we are running Loki with boltdb-shipper as a single binary, without clustered mode(which should always be the case when using inmemory ring),
-	// we should start compactor as well for better user experience.
-	if storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) && t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
-		deps[All] = append(deps[All], Compactor)
 	}
 
 	// If the query scheduler and querier are running together, make sure the scheduler goes

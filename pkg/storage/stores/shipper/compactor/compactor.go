@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -33,6 +34,9 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
+
+	// RingKeyOfLeader is a somewhat arbitrary ID to pull from the ring to see who will be elected the leader
+	RingKeyOfLeader = 100
 )
 
 type Config struct {
@@ -87,10 +91,13 @@ type Compactor struct {
 	deleteRequestsManager *deletion.DeleteRequestsManager
 	expirationChecker     retention.ExpirationChecker
 	metrics               *metrics
+	running               bool
+	wg                    sync.WaitGroup
 
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
+	ringPollPeriod time.Duration
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -103,7 +110,8 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	}
 
 	compactor := &Compactor{
-		cfg: cfg,
+		cfg:            cfg,
+		ringPollPeriod: 5 * time.Second,
 	}
 
 	ringStore, err := kv.NewClient(
@@ -259,16 +267,80 @@ func (c *Compactor) loop(ctx context.Context) error {
 		defer c.deleteRequestsManager.Stop()
 	}
 
+	syncTicker := time.NewTicker(c.ringPollPeriod)
+	defer syncTicker.Stop()
+
+	var runningCtx context.Context
+	var runningCancel context.CancelFunc
+
+	for {
+		select {
+		case <-ctx.Done():
+			if runningCancel != nil {
+				runningCancel()
+			}
+			c.wg.Wait()
+			level.Info(util_log.Logger).Log("msg", "compactor exiting")
+			return nil
+		case <-syncTicker.C:
+			bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
+			rs, err := c.ring.Get(RingKeyOfLeader, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "error asking ring for who should run the compactor, will check again", "err", err)
+				continue
+			}
+
+			addrs := rs.GetAddresses()
+			if len(addrs) != 1 {
+				level.Error(util_log.Logger).Log("msg", "too many addresses (more that one) return when asking the ring who should run the compactor, will check again")
+				continue
+			}
+			if c.ringLifecycler.GetInstanceAddr() == addrs[0] {
+				// If not running, start
+				if !c.running {
+					level.Info(util_log.Logger).Log("msg", "this instance has been chosen to run the compactor, starting compactor")
+					runningCtx, runningCancel = context.WithCancel(ctx)
+					go c.runCompactions(runningCtx)
+					c.running = true
+				}
+			} else {
+				// If running, shutdown
+				if c.running {
+					level.Info(util_log.Logger).Log("msg", "this instance should no longer run the compactor, stopping compactor")
+					runningCancel()
+					c.wg.Wait()
+					c.running = false
+					level.Info(util_log.Logger).Log("msg", "compactor stopped")
+				}
+			}
+		}
+	}
+}
+
+func (c *Compactor) runCompactions(ctx context.Context) {
+	// To avoid races, wait 1 compaction interval before actually starting the compactor
+	// this allows the ring to settle if there are a lot of ring changes and gives
+	// time for existing compactors to shutdown before this starts to avoid
+	// multiple compactors running at the same time.
+	t := time.NewTimer(c.cfg.CompactionInterval)
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("waiting %v for ring to stay stable and previous compactions to finish before starting compactor", c.cfg.CompactionInterval))
+	select {
+	case <-ctx.Done():
+		return
+	case <-t.C:
+		level.Info(util_log.Logger).Log("msg", "compactor startup delay completed, continuing to start compactor")
+		break
+	}
+
 	runCompaction := func() {
 		err := c.RunCompaction(ctx)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 		}
 	}
-	var wg sync.WaitGroup
-	wg.Add(1)
+	c.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer c.wg.Done()
 		runCompaction()
 
 		ticker := time.NewTicker(c.cfg.CompactionInterval)
@@ -284,20 +356,19 @@ func (c *Compactor) loop(ctx context.Context) error {
 		}
 	}()
 	if c.cfg.RetentionEnabled {
-		wg.Add(1)
+		c.wg.Add(1)
 		go func() {
 			// starts the chunk sweeper
 			defer func() {
 				c.sweeper.Stop()
-				wg.Done()
+				c.wg.Done()
 			}()
 			c.sweeper.Start()
 			<-ctx.Done()
 		}()
 	}
-
-	wg.Wait()
-	return nil
+	level.Info(util_log.Logger).Log("msg", "compactor started")
+	return
 }
 
 func (c *Compactor) stopping(_ error) error {

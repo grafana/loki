@@ -104,7 +104,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
 	rc.ZoneAwarenessEnabled = cfg.ZoneAwarenessEnabled
-	rc.ReplicationFactor = 2
+	rc.ReplicationFactor = 1
 
 	return rc
 }
