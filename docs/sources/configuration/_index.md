@@ -78,9 +78,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ### Supported contents and default values of `loki.yaml`
 
 ```yaml
-# A comma-separated list of components to run. The default value "all" runs
-# Loki in single binary mode.
-# Supported values: all, compactor, distributor, ingester, querier, query-frontend, table-manager.
+# A comma-separated list of components to run.
+# The default value "all" runs Loki in single binary mode.
+# The value "read" is an alias to run only read-path related components (ex: querier, query-frontend, etc) but all in the same process.
+# The value "write" is an alias to run only write-path related components (ex: distributor, compactor) but all in the same process.
+# Supported values: all, compactor, distributor, ingester, querier, query-frontend, table-manager, read, write.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
