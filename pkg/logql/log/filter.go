@@ -81,8 +81,35 @@ func NewAndFilter(left Filterer, right Filterer) Filterer {
 func (a andFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) && a.right.Filter(line)
 }
-
 func (a andFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, a.Filter(line)
+		},
+	}
+}
+
+type andFilters struct {
+	filters []Filterer
+}
+
+// NewAndFilters creates a new filter which matches only if all filters match
+func NewAndFilters(filters []Filterer) Filterer {
+	return andFilters {
+		filters: filters,
+	}
+}
+
+func (a andFilters) Filter(line []byte) bool {
+	for _, filter := range a.filters {
+		if !filter.Filter(line) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a andFilters) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
