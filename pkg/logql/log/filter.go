@@ -251,8 +251,6 @@ var (
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
-
-	buf []byte // reusable buffer for lowercase transformation
 }
 
 func (l *containsFilter) Filter(line []byte) bool {
