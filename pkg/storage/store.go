@@ -303,6 +303,9 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 	outer:
 		for _, chk := range group {
 			for _, matcher := range matchers {
+				if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
+					continue
+				}
 				if !matcher.Matches(chk.Chunk.Metric.Get(matcher.Name)) {
 					continue outer
 				}
