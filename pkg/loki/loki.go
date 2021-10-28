@@ -454,7 +454,7 @@ func (t *Loki) setupModuleManager() error {
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
-		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler},
+		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
 		Write:                    {Ingester, Distributor},
 	}
 
