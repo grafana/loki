@@ -698,7 +698,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			errors.New("multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)"),
 		},
 		{
-			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left (app) sum by (app) (count_over_time({app="foo"}[1m]))`,
+			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
 			logproto.FORWARD,
 			0,
