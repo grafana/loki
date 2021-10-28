@@ -7,7 +7,7 @@ import (
 
 // AccountService is an interface for interfacing with the Account
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2/#account
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Account
 type AccountService interface {
 	Get(context.Context) (*Account, *Response, error)
 }

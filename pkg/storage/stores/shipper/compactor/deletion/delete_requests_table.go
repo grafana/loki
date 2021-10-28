@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"

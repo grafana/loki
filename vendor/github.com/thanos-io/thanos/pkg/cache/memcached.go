@@ -19,6 +19,7 @@ import (
 type MemcachedCache struct {
 	logger    log.Logger
 	memcached cacheutil.MemcachedClient
+	name      string
 
 	// Metrics.
 	requests prometheus.Counter
@@ -30,6 +31,7 @@ func NewMemcachedCache(name string, logger log.Logger, memcached cacheutil.Memca
 	c := &MemcachedCache{
 		logger:    logger,
 		memcached: memcached,
+		name:      name,
 	}
 
 	c.requests = promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -80,4 +82,8 @@ func (c *MemcachedCache) Fetch(ctx context.Context, keys []string) map[string][]
 	results := c.memcached.GetMulti(ctx, keys)
 	c.hits.Add(float64(len(results)))
 	return results
+}
+
+func (c *MemcachedCache) Name() string {
+	return c.name
 }

@@ -373,8 +373,8 @@ func Test_parserExpr_Parser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &LabelParserExpr{
-				op:    tt.op,
-				param: tt.param,
+				Op:    tt.op,
+				Param: tt.param,
 			}
 			got, err := e.Stage()
 			if (err != nil) != tt.wantErr {

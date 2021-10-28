@@ -5,6 +5,7 @@ package storepb
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"sort"
 	"strconv"
@@ -455,4 +456,63 @@ func CompareLabels(a, b []Label) int {
 // TODO(bwplotka): Remove this once Cortex dep will stop using it.
 func LabelsToPromLabelsUnsafe(lset []Label) labels.Labels {
 	return labelpb.ZLabelsToPromLabels(lset)
+}
+
+// XORNumSamples return number of samples. Returns 0 if it's not XOR chunk.
+func (m *Chunk) XORNumSamples() int {
+	if m.Type == Chunk_XOR {
+		return int(binary.BigEndian.Uint16(m.Data))
+	}
+	return 0
+}
+
+type SeriesStatsCounter struct {
+	lastSeriesHash uint64
+
+	Series  int
+	Chunks  int
+	Samples int
+}
+
+func (c *SeriesStatsCounter) CountSeries(seriesLabels []labelpb.ZLabel) {
+	seriesHash := labelpb.HashWithPrefix("", seriesLabels)
+	if c.lastSeriesHash != 0 || seriesHash != c.lastSeriesHash {
+		c.lastSeriesHash = seriesHash
+		c.Series++
+	}
+}
+
+func (c *SeriesStatsCounter) Count(series *Series) {
+	c.CountSeries(series.Labels)
+	for _, chk := range series.Chunks {
+		if chk.Raw != nil {
+			c.Chunks++
+			c.Samples += chk.Raw.XORNumSamples()
+		}
+
+		if chk.Count != nil {
+			c.Chunks++
+			c.Samples += chk.Count.XORNumSamples()
+		}
+
+		if chk.Counter != nil {
+			c.Chunks++
+			c.Samples += chk.Counter.XORNumSamples()
+		}
+
+		if chk.Max != nil {
+			c.Chunks++
+			c.Samples += chk.Max.XORNumSamples()
+		}
+
+		if chk.Min != nil {
+			c.Chunks++
+			c.Samples += chk.Min.XORNumSamples()
+		}
+
+		if chk.Sum != nil {
+			c.Chunks++
+			c.Samples += chk.Sum.XORNumSamples()
+		}
+	}
 }

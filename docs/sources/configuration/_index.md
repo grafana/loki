@@ -78,9 +78,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ### Supported contents and default values of `loki.yaml`
 
 ```yaml
-# A comma-separated list of components to run. The default value "all" runs
-# Loki in single binary mode.
-# Supported values: all, compactor, distributor, ingester, querier, query-frontend, table-manager.
+# A comma-separated list of components to run.
+# The default value "all" runs Loki in single binary mode.
+# The value "read" is an alias to run only read-path related components (ex: querier, query-frontend, etc) but all in the same process.
+# The value "write" is an alias to run only write-path related components (ex: distributor, compactor) but all in the same process.
+# Supported values: all, compactor, distributor, ingester, querier, query-scheduler, ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -96,6 +98,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the querier. Only appropriate when running all modules or
 # just the querier.
 [querier: <querier_config>]
+
+# The query_scheduler block configures the Loki query scheduler.
+# When configured it separates the tenant query queues from the query-frontend
+[query_scheduler: <query_scheduler_config>]
 
 # The query_frontend_config configures the Loki query-frontend.
 [frontend: <query_frontend_config>]
@@ -127,21 +133,26 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the compactor component which compacts index shards for performance.
 [compactor: <compactor_config>]
 
-# Configures limits per-tenant or globally
+# Configures limits per-tenant or globally.
 [limits_config: <limits_config>]
 
 # The frontend_worker_config configures the worker - running within the Loki
 # querier - picking up and executing queries enqueued by the query-frontend.
 [frontend_worker: <frontend_worker_config>]
 
-# Configures the table manager for retention
+# Configures the table manager for retention.
 [table_manager: <table_manager_config>]
 
 # Configuration for "runtime config" module, responsible for reloading runtime configuration file.
 [runtime_config: <runtime_config>]
 
-# Configuration for tracing
+# Configuration for tracing.
 [tracing: <tracing_config>]
+
+# Common config to be shared between multiple modules.
+# If a more specific config is given in other sections, the related config under this section
+# will be ignored.
+[common: <common_config>]
 ```
 
 ## server_config
@@ -282,6 +293,106 @@ engine:
   [max_look_back_period: <duration> | default = 30s]
 ```
 
+## query_scheduler_config
+
+The `query_scheduler_config` block configures the Loki query scheduler.
+  
+```yaml
+# Maximum number of outstanding requests per tenant per query-scheduler.
+# In-flight requests above this limit will fail with HTTP response status code
+# 429.
+# CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
+[max_outstanding_requests_per_tenant: <int> | default = 100]
+
+# This configures the gRPC client used to report errors back to the
+# query-frontend.
+[grpc_client_config: <grpc_client_config>]
+ 
+# Set to true to have the query schedulers create and place themselves in a ring.
+# If no frontend_address or scheduler_address are present 
+# anywhere else in the configuration, Loki will toggle this value to true.
+[use_scheduler_ring: <boolean> | default = false]
+
+# The hash ring configuration. This option is required only if use_scheduler_ring is true
+scheduler_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -scheduler.ring.store
+    [store: <string> | default = "memberlist"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -scheduler.ring.prefix
+    [prefix: <string> | default = "schedulers/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: scheduler.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: scheduler.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -scheduler.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -scheduler.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -scheduler.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -scheduler.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Interval between heartbeats sent to the ring. 0 = disabled.
+  # CLI flag: -scheduler.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which store gateways are considered unhealthy
+  # within the ring. 0 = never (timeout disabled). This option needs be set both
+  # on the store-gateway and querier when running in microservices mode.
+  # CLI flag: -scheduler.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # File path where tokens are stored. If empty, tokens are neither stored at
+  # shutdown nor restored at startup.
+  # CLI flag: -scheduler.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # True to enable zone-awareness and replicate blocks across different
+  # availability zones.
+  # CLI flag: -scheduler.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # Name of network interface to read addresses from.
+  # CLI flag: -scheduler.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # IP address to advertise in the ring.
+  # CLI flag: -scheduler.ring.instance-addr
+  [instance_addr: <list of string> | default = first from instance_interface_names]
+
+  # Port to advertise in the ring
+  # CLI flag: -scheduler.ring.instance-port
+  [instance_port: <list of string> | default = server.grpc-listen-port]
+
+  # Instance ID to register in the ring.
+  # CLI flag: -scheduler.ring.instance-id
+  [instance_id: <list of string> | default = os.Hostname()]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -scheduler.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+```
+
 ## query_frontend_config
 
 The query_frontend_config configures the Loki query-frontend.
@@ -315,8 +426,9 @@ The query_frontend_config configures the Loki query-frontend.
 
 # How often to resolve the scheduler-address, in order to look for new
 # query-scheduler instances.
+# Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -frontend.scheduler-dns-lookup-period
-[scheduler_dns_lookup_period: <duration> | default = 10s]
+[scheduler_dns_lookup_period: <duration> | default = 3s]
 
 # Number of concurrent workers forwarding queries to single query-scheduler.
 # CLI flag: -frontend.scheduler-worker-concurrency
@@ -374,7 +486,6 @@ results_cache:
 
 The `ruler_config` configures the Loki ruler.
 
-
 ```yaml
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
@@ -400,203 +511,33 @@ ruler_client:
   # CLI flag: -ruler.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
-# How frequently to evaluate rules
+# How frequently to evaluate rules.
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
 
-# How frequently to poll for rule changes
+# How frequently to poll for rule changes.
 # CLI flag: -ruler.poll-interval
 [poll_interval: <duration> | default = 1m]
 
 storage:
-  # Method to use for backend rule storage (azure, gcs, s3, swift, local)
+  # Method to use for backend rule storage (azure, gcs, s3, swift, local).
   # CLI flag: -ruler.storage.type
   [type: <string> ]
+  
+  # Configures backend rule storage for Azure.
+  [azure: <azure_storage_config>]
 
-  azure:
-    # Azure Cloud environment. Supported values are: AzureGlobal,
-    # AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
-    # CLI flag: -ruler.storage.azure.environment
-    [environment: <string> | default = "AzureGlobal"]
+  # Configures backend rule storage for GCS.
+  [gcs: <gcs_storage_config>]
 
-    # Name of the blob container used to store chunks. This container must be
-    # created before running cortex.
-    # CLI flag: -ruler.storage.azure.container-name
-    [container_name: <string> | default = "cortex"]
+  # Configures backend rule storage for S3.
+  [s3: <s3_storage_config>]
 
-    # The Microsoft Azure account name to be used
-    # CLI flag: -ruler.storage.azure.account-name
-    [account_name: <string> | default = ""]
+  # Configures backend rule storage for Swift.
+  [swift: <swift_storage_config>]
 
-    # The Microsoft Azure account key to use.
-    # CLI flag: -ruler.storage.azure.account-key
-    [account_key: <string> | default = ""]
-
-    # Preallocated buffer size for downloads.
-    # CLI flag: -ruler.storage.azure.download-buffer-size
-    [download_buffer_size: <int> | default = 512000]
-
-    # Preallocated buffer size for uploads.
-    # CLI flag: -ruler.storage.azure.upload-buffer-size
-    [upload_buffer_size: <int> | default = 256000]
-
-    # Number of buffers used to used to upload a chunk.
-    # CLI flag: -ruler.storage.azure.download-buffer-count
-    [upload_buffer_count: <int> | default = 1]
-
-    # Timeout for requests made against azure blob storage.
-    # CLI flag: -ruler.storage.azure.request-timeout
-    [request_timeout: <duration> | default = 30s]
-
-    # Number of retries for a request which times out.
-    # CLI flag: -ruler.storage.azure.max-retries
-    [max_retries: <int> | default = 5]
-
-    # Minimum time to wait before retrying a request.
-    # CLI flag: -ruler.storage.azure.min-retry-delay
-    [min_retry_delay: <duration> | default = 10ms]
-
-    # Maximum time to wait before retrying a request.
-    # CLI flag: -ruler.storage.azure.max-retry-delay
-    [max_retry_delay: <duration> | default = 500ms]
-
-  gcs:
-    # Name of GCS bucket to put chunks in.
-    # CLI flag: -ruler.storage.gcs.bucketname
-    [bucket_name: <string> | default = ""]
-
-    # The size of the buffer that GCS client for each PUT request. 0 to disable
-    # buffering.
-    # CLI flag: -ruler.storage.gcs.chunk-buffer-size
-    [chunk_buffer_size: <int> | default = 0]
-
-    # The duration after which the requests to GCS should be timed out.
-    # CLI flag: -ruler.storage.gcs.request-timeout
-    [request_timeout: <duration> | default = 0s]
-
-  s3:
-    # S3 endpoint URL with escaped Key and Secret encoded. If only region is
-    # specified as a host, proper endpoint will be deduced. Use
-    # inmemory:///<bucket-name> to use a mock in-memory implementation.
-    # CLI flag: -ruler.storage.s3.url
-    [s3: <url> | default = ]
-
-    # Set this to `true` to force the request to use path-style addressing.
-    # CLI flag: -ruler.storage.s3.force-path-style
-    [s3forcepathstyle: <boolean> | default = false]
-
-    # Comma separated list of bucket names to evenly distribute chunks over.
-    # Overrides any buckets specified in s3.url flag
-    # CLI flag: -ruler.storage.s3.buckets
-    [bucketnames: <string> | default = ""]
-
-    # S3 Endpoint to connect to.
-    # CLI flag: -ruler.storage.s3.endpoint
-    [endpoint: <string> | default = ""]
-
-    # AWS region to use.
-    # CLI flag: -ruler.storage.s3.region
-    [region: <string> | default = ""]
-
-    # AWS Access Key ID
-    # CLI flag: -ruler.storage.s3.access-key-id
-    [access_key_id: <string> | default = ""]
-
-    # AWS Secret Access Key
-    # CLI flag: -ruler.storage.s3.secret-access-key
-    [secret_access_key: <string> | default = ""]
-
-    # Disable https on S3 connection.
-    # CLI flag: -ruler.storage.s3.insecure
-    [insecure: <boolean> | default = false]
-
-    # Enable AES256 AWS server-side encryption
-    # CLI flag: -ruler.storage.s3.sse-encryption
-    [sse_encryption: <boolean> | default = false]
-
-    http_config:
-      # The maximum amount of time an idle connection will be held open.
-      # CLI flag: -ruler.storage.s3.http.idle-conn-timeout
-      [idle_conn_timeout: <duration> | default = 1m30s]
-
-      # If non-zero, specifies the amount of time to wait for a server's
-      # response headers after fully writing the request.
-      # CLI flag: -ruler.storage.s3.http.response-header-timeout
-      [response_header_timeout: <duration> | default = 0s]
-
-      # Set to true to skip verifying the certificate chain and hostname.
-      # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
-      [insecure_skip_verify: <boolean> | default = false]
-
-      # Path to the trusted CA file that signed the SSL certificate of the S3
-      # endpoint.
-      # CLI flag: -ruler.storage.s3.http.ca-file
-      [ca_file: <string> | default = ""]
-
-  swift:
-    # Openstack authentication URL.
-    # CLI flag: -ruler.storage.swift.auth-url
-    [auth_url: <string> | default = ""]
-
-    # Openstack username for the api.
-    # CLI flag: -ruler.storage.swift.username
-    [username: <string> | default = ""]
-
-    # Openstack user's domain name.
-    # CLI flag: -ruler.storage.swift.user-domain-name
-    [user_domain_name: <string> | default = ""]
-
-    # Openstack user's domain ID.
-    # CLI flag: -ruler.storage.swift.user-domain-id
-    [user_domain_id: <string> | default = ""]
-
-    # Openstack user ID for the API.
-    # CLI flag: -ruler.storage.swift.user-id
-    [user_id: <string> | default = ""]
-
-    # Openstack API key.
-    # CLI flag: -ruler.storage.swift.password
-    [password: <string> | default = ""]
-
-    # Openstack user's domain ID.
-    # CLI flag: -ruler.storage.swift.domain-id
-    [domain_id: <string> | default = ""]
-
-    # Openstack user's domain name.
-    # CLI flag: -ruler.storage.swift.domain-name
-    [domain_name: <string> | default = ""]
-
-    # Openstack project ID (v2,v3 auth only).
-    # CLI flag: -ruler.storage.swift.project-id
-    [project_id: <string> | default = ""]
-
-    # Openstack project name (v2,v3 auth only).
-    # CLI flag: -ruler.storage.swift.project-name
-    [project_name: <string> | default = ""]
-
-    # ID of the project's domain (v3 auth only), only needed if it differs the
-    # from user domain.
-    # CLI flag: -ruler.storage.swift.project-domain-id
-    [project_domain_id: <string> | default = ""]
-
-    # Name of the project's domain (v3 auth only), only needed if it differs
-    # from the user domain.
-    # CLI flag: -ruler.storage.swift.project-domain-name
-    [project_domain_name: <string> | default = ""]
-
-    # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
-    # auth only)
-    # CLI flag: -ruler.storage.swift.region-name
-    [region_name: <string> | default = ""]
-
-    # Name of the Swift container to put chunks in.
-    # CLI flag: -ruler.storage.swift.container-name
-    [container_name: <string> | default = "cortex"]
-
-  local:
-    # Directory to scan for rules
-    # CLI flag: -ruler.storage.local.directory
-    [directory: <filename> | default = ""]
+  # Configures backend rule storage for a local filesystem directory.
+  [local: <local_storage_config>]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
@@ -653,7 +594,7 @@ remote_write:
       # Disable validation of the server certificate.
       [insecure_skip_verify: <boolean>]
 
-# File path to store temporary rule files
+# File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
 [rule_path: <filename> | default = "/rules"]
 
@@ -763,6 +704,216 @@ ring:
 [enable_api: <boolean> | default = false]
 ```
 
+## azure_storage_config
+
+The `azure_storage_config` configures Azure as a general storage for different data generated by Loki.
+
+```yaml
+# Azure Cloud environment. Supported values are: AzureGlobal,
+# AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
+# CLI flag: -<prefix>.azure.environment
+[environment: <string> | default = "AzureGlobal"]
+
+# Name of the blob container used to store chunks. This container must be
+# created before running cortex.
+# CLI flag: -<prefix>.azure.container-name
+[container_name: <string> | default = "cortex"]
+
+# The Microsoft Azure account name to be used
+# CLI flag: -<prefix>.azure.account-name
+[account_name: <string> | default = ""]
+
+# The Microsoft Azure account key to use.
+# CLI flag: -<prefix>.azure.account-key
+[account_key: <string> | default = ""]
+
+# Preallocated buffer size for downloads.
+# CLI flag: -<prefix>.azure.download-buffer-size
+[download_buffer_size: <int> | default = 512000]
+
+# Preallocated buffer size for uploads.
+# CLI flag: -<prefix>.azure.upload-buffer-size
+[upload_buffer_size: <int> | default = 256000]
+
+# Number of buffers used to used to upload a chunk.
+# CLI flag: -<prefix>.azure.download-buffer-count
+[upload_buffer_count: <int> | default = 1]
+
+# Timeout for requests made against azure blob storage.
+# CLI flag: -<prefix>.azure.request-timeout
+[request_timeout: <duration> | default = 30s]
+
+# Number of retries for a request which times out.
+# CLI flag: -<prefix>.azure.max-retries
+[max_retries: <int> | default = 5]
+
+# Minimum time to wait before retrying a request.
+# CLI flag: -<prefix>.azure.min-retry-delay
+[min_retry_delay: <duration> | default = 10ms]
+
+# Maximum time to wait before retrying a request.
+# CLI flag: -<prefix>.azure.max-retry-delay
+[max_retry_delay: <duration> | default = 500ms]
+```
+
+## gcs_storage_config
+
+The `gcs_storage_config` configures GCS as a general storage for different data generated by Loki.
+
+```yaml
+# Name of GCS bucket to put chunks in.
+# CLI flag: -<prefix>.gcs.bucketname
+[bucket_name: <string> | default = ""]
+
+# The size of the buffer that GCS client for each PUT request. 0 to disable
+# buffering.
+# CLI flag: -<prefix>.gcs.chunk-buffer-size
+[chunk_buffer_size: <int> | default = 0]
+
+# The duration after which the requests to GCS should be timed out.
+# CLI flag: -<prefix>.gcs.request-timeout
+[request_timeout: <duration> | default = 0s]
+```
+
+## s3_storage_config
+
+The `s3_storage_config` configures S3 as a general storage for different data generated by Loki.
+
+```yaml
+# S3 endpoint URL with escaped Key and Secret encoded. If only region is
+# specified as a host, proper endpoint will be deduced. Use
+# inmemory:///<bucket-name> to use a mock in-memory implementation.
+# CLI flag: -<prefix>.s3.url
+[s3: <url> | default = ]
+
+# Set this to `true` to force the request to use path-style addressing.
+# CLI flag: -<prefix>.s3.force-path-style
+[s3forcepathstyle: <boolean> | default = false]
+
+# Comma separated list of bucket names to evenly distribute chunks over.
+# Overrides any buckets specified in s3.url flag
+# CLI flag: -<prefix>.s3.buckets
+[bucketnames: <string> | default = ""]
+
+# S3 Endpoint to connect to.
+# CLI flag: -<prefix>.s3.endpoint
+[endpoint: <string> | default = ""]
+
+# AWS region to use.
+# CLI flag: -<prefix>.s3.region
+[region: <string> | default = ""]
+
+# AWS Access Key ID
+# CLI flag: -<prefix>.s3.access-key-id
+[access_key_id: <string> | default = ""]
+
+# AWS Secret Access Key
+# CLI flag: -<prefix>.s3.secret-access-key
+[secret_access_key: <string> | default = ""]
+
+# Disable https on S3 connection.
+# CLI flag: -<prefix>.s3.insecure
+[insecure: <boolean> | default = false]
+
+# Enable AES256 AWS server-side encryption
+# CLI flag: -<prefix>.s3.sse-encryption
+[sse_encryption: <boolean> | default = false]
+
+http_config:
+  # The maximum amount of time an idle connection will be held open.
+  # CLI flag: -<prefix>.s3.http.idle-conn-timeout
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # If non-zero, specifies the amount of time to wait for a server's
+  # response headers after fully writing the request.
+  # CLI flag: -<prefix>.s3.http.response-header-timeout
+  [response_header_timeout: <duration> | default = 0s]
+
+  # Set to true to skip verifying the certificate chain and hostname.
+  # CLI flag: -<prefix>.s3.http.insecure-skip-verify
+  [insecure_skip_verify: <boolean> | default = false]
+
+  # Path to the trusted CA file that signed the SSL certificate of the S3
+  # endpoint.
+  # CLI flag: -<prefix>.s3.http.ca-file
+  [ca_file: <string> | default = ""]
+```
+
+## swift_storage_config
+
+The `swift_storage_config` configures Swift as a general storage for different data generated by Loki.
+
+```yaml
+# Openstack authentication URL.
+# CLI flag: -<prefix>.swift.auth-url
+[auth_url: <string> | default = ""]
+
+# Openstack username for the api.
+# CLI flag: -<prefix>.swift.username
+[username: <string> | default = ""]
+
+# Openstack user's domain name.
+# CLI flag: -<prefix>.swift.user-domain-name
+[user_domain_name: <string> | default = ""]
+
+# Openstack user's domain ID.
+# CLI flag: -<prefix>.swift.user-domain-id
+[user_domain_id: <string> | default = ""]
+
+# Openstack user ID for the API.
+# CLI flag: -<prefix>.swift.user-id
+[user_id: <string> | default = ""]
+
+# Openstack API key.
+# CLI flag: -<prefix>.swift.password
+[password: <string> | default = ""]
+
+# Openstack user's domain ID.
+# CLI flag: -<prefix>.swift.domain-id
+[domain_id: <string> | default = ""]
+
+# Openstack user's domain name.
+# CLI flag: -<prefix>.swift.domain-name
+[domain_name: <string> | default = ""]
+
+# Openstack project ID (v2,v3 auth only).
+# CLI flag: -<prefix>.swift.project-id
+[project_id: <string> | default = ""]
+
+# Openstack project name (v2,v3 auth only).
+# CLI flag: -<prefix>.swift.project-name
+[project_name: <string> | default = ""]
+
+# ID of the project's domain (v3 auth only), only needed if it differs the
+# from user domain.
+# CLI flag: -<prefix>.swift.project-domain-id
+[project_domain_id: <string> | default = ""]
+
+# Name of the project's domain (v3 auth only), only needed if it differs
+# from the user domain.
+# CLI flag: -<prefix>.swift.project-domain-name
+[project_domain_name: <string> | default = ""]
+
+# Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+# auth only)
+# CLI flag: -<prefix>.swift.region-name
+[region_name: <string> | default = ""]
+
+# Name of the Swift container to put chunks in.
+# CLI flag: -<prefix>.swift.container-name
+[container_name: <string> | default = "cortex"]
+```
+
+## local_storage_config
+
+The `local_storage_config` configures a (local) filesystem as a general storage for different data generated by Loki.
+
+```yaml
+# Filesystem directory to be used as storage.
+# CLI flag: -<prefix>.local.directory
+[directory: <filename> | default = ""]
+```
+
 ## frontend_worker_config
 
 The `frontend_worker_config` configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.
@@ -776,9 +927,10 @@ The `frontend_worker_config` configures the worker - running within the Loki que
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
 
-# How often to query DNS.
+# How often to query the frontend_address DNS to resolve frontend addresses.
+# Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -querier.dns-lookup-period
-[dns_lookup_duration: <duration> | default = 10s]
+[dns_lookup_duration: <duration> | default = 3s]
 
 # The CLI flags prefix for this block config is: querier.frontend-client
 [grpc_client_config: <grpc_client_config>]
@@ -1215,6 +1367,20 @@ aws:
     # endpoint.
     # CLI flag: -s3.http.ca-file
     [ca_file: <string> | default = ""]
+
+  # Configures back off when s3 get Object.
+  backoff_config:
+    # Minimum duration to back off.
+    # CLI flag: -s3.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+  
+    # The duration to back off.
+    # CLI flag: -s3.backoff-max-period
+    [max_period: <duration> | default = 3s]
+  
+    # Number of times to back off and retry before failing.
+    # CLI flag: -s3.backoff-retries
+    [max_retries: <int> | default = 5]
 
   # Configure the DynamoDB connection
   dynamodb:
@@ -1656,7 +1822,7 @@ fifocache:
   # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
   # applied.
   # CLI flag: -<prefix>.fifocache.max-size-bytes
-  [max_size_bytes: <string> | default = ""]
+  [max_size_bytes: <string> | default = "1GB"]
 
   # Maximum number of entries in the cache.
   # CLI flag: -<prefix>.fifocache.max-size-items
@@ -1664,7 +1830,7 @@ fifocache:
 
   # The expiry duration for the cache.
   # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 0s]
+  [validity: <duration> | default = 1h]
 ```
 
 ## schema_config
@@ -1785,7 +1951,7 @@ logs in Loki.
 #   The global strategy requires the distributors to form their own ring, which
 #   is used to keep track of the current number of healthy distributor replicas.
 # CLI flag: -distributor.ingestion-rate-limit-strategy
-[ingestion_rate_strategy: <string> | default = "local"]
+[ingestion_rate_strategy: <string> | default = "global"]
 
 # Per-user ingestion rate limit in sample size per second. Units in MB.
 # CLI flag: -distributor.ingestion-rate-limit-mb
@@ -1812,11 +1978,11 @@ logs in Loki.
 
 # Whether or not old samples will be rejected.
 # CLI flag: -validation.reject-old-samples
-[reject_old_samples: <bool> | default = false]
+[reject_old_samples: <bool> | default = true]
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
-[reject_old_samples_max_age: <duration> | default = 336h]
+[reject_old_samples_max_age: <duration> | default = 168h]
 
 # Duration for a table to be created/deleted before/after it's
 # needed. Samples won't be accepted before this time.
@@ -1829,7 +1995,7 @@ logs in Loki.
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
-[max_streams_per_user: <int> | default = 10000]
+[max_streams_per_user: <int> | default = 0]
 
 # Maximum line size on ingestion path. Example: 256kb.
 # There is no limit when unset.
@@ -1849,7 +2015,7 @@ logs in Loki.
 # local limit based on the replication factor and the current number of healthy
 # ingesters, and is kept updated whenever the number of ingesters change.
 # CLI flag: -ingester.max-global-streams-per-user
-[max_global_streams_per_user: <int> | default = 0]
+[max_global_streams_per_user: <int> | default = 5000]
 
 # When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
@@ -1861,11 +2027,11 @@ logs in Loki.
 
 # The limit to length of chunk store queries. 0 to disable.
 # CLI flag: -store.max-query-length
-[max_query_length: <duration> | default = 0]
+[max_query_length: <duration> | default = 721h]
 
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
-[max_query_parallelism: <int> | default = 14]
+[max_query_parallelism: <int> | default = 32]
 
 # Limit the maximum of unique series that is returned by a metric query.
 # When the limit is reached an error is returned.
@@ -2138,6 +2304,41 @@ The `tracing_config` block configures tracing for Jaeger. Currently limited to d
 # Whether or not tracing should be enabled.
 # CLI flag: -tracing.enabled
 [enabled: <boolean>: default = true]
+```
+
+## common_config
+
+The `common_config` block sets common definitions to be shared by different components.
+This way, one doesn't have to replicate configs in multiple places.
+
+```yaml
+# A common storage config to be used by the different Loki components.
+[storage: <common_storage_config>]
+
+# When defined, the given prefix will be present in front of the endpoint paths.
+[path_prefix: <string>]
+```
+
+### common_storage_config
+
+The `common_storage_config` block defines a common storage to be reused by different components as a way to facilitate storage configuration.
+If any specific configs for an object storage client have been provided elsewhere in the configuration file, the specific config will supersede the common storage config.
+
+```yaml
+# Configures Azure as the common storage.
+[azure: <azure_storage_config>]
+
+# Configures GCS as the common storage.
+[gcs: <gcs_storage_config>]
+
+# Configures S3 as the common storage.
+[s3: <s3_storage_config>]
+
+# Configures Swift as the common storage.
+[swift: <swift_storage_config>]
+
+# Configures a (local) filesystem as the common storage.
+[filesystem: <local_storage_config>]
 ```
 
 ## Runtime Configuration file

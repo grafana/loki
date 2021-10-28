@@ -36,14 +36,16 @@ func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention 
 	return f.perTenant[userID].streamRetention
 }
 
-func (f fakeLimits) ForEachTenantLimit(callback validation.ForEachTenantLimitCallback) {
-	for userID, limit := range f.perTenant {
-		callback(userID, limit.convertToValidationLimit())
-	}
-}
-
 func (f fakeLimits) DefaultLimits() *validation.Limits {
 	return f.defaultLimit.convertToValidationLimit()
+}
+
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	res := make(map[string]*validation.Limits)
+	for userID, ret := range f.perTenant {
+		res[userID] = ret.convertToValidationLimit()
+	}
+	return res
 }
 
 func Test_expirationChecker_Expired(t *testing.T) {

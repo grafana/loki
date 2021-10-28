@@ -8,16 +8,14 @@ import (
 	"net/http"
 
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -38,8 +36,10 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
@@ -84,7 +84,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	// Set the default module list to 'all'
 	c.Target = []string{All}
 	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
-		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. ")
+		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
+		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
@@ -158,6 +159,9 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
+	if err := c.LimitsConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid limits config")
+	}
 	if err := c.Worker.Validate(util_log.Logger); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}
@@ -209,6 +213,7 @@ type Loki struct {
 	ring                     *ring.Ring
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
+	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Querier                  *querier.Querier
@@ -224,6 +229,7 @@ type Loki struct {
 	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware cortex_tripper.Tripperware
+	queryScheduler           *scheduler.Scheduler
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -408,6 +414,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
@@ -422,12 +429,16 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+
 	mm.RegisterModule(All, nil)
+	mm.RegisterModule(Read, nil)
+	mm.RegisterModule(Write, nil)
 
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Overrides:                {RuntimeConfig},
+		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs},
 		Store:                    {Overrides},
@@ -435,13 +446,15 @@ func (t *Loki) setupModuleManager() error {
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware},
-		QueryScheduler:           {Server, Overrides},
+		QueryScheduler:           {Server, Overrides, MemberlistKV},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:             {Server},
 		Compactor:                {Server, Overrides},
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Ruler},
+		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler},
+		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler},
+		Write:                    {Ingester, Distributor},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,34 +24,36 @@ func TestFlagDefaults(t *testing.T) {
 
 	const delim = '\n'
 
-	minTimeChecked := false
-	pingWithoutStreamChecked := false
+	// Populate map with parsed default flags.
+	// Key is the flag and value is the default text.
+	gotFlags := make(map[string]string)
 	for {
 		line, err := buf.ReadString(delim)
 		if err == io.EOF {
 			break
 		}
-
 		require.NoError(t, err)
 
-		if strings.Contains(line, "-server.grpc.keepalive.min-time-between-pings") {
-			nextLine, err := buf.ReadString(delim)
-			require.NoError(t, err)
-			assert.Contains(t, nextLine, "(default 10s)")
-			minTimeChecked = true
-		}
+		nextLine, err := buf.ReadString(delim)
+		require.NoError(t, err)
 
-		if strings.Contains(line, "-server.grpc.keepalive.ping-without-stream-allowed") {
-			nextLine, err := buf.ReadString(delim)
-			require.NoError(t, err)
-			assert.Contains(t, nextLine, "(default true)")
-			pingWithoutStreamChecked = true
-		}
+		trimmedLine := strings.Trim(line, " \n")
+		splittedLine := strings.Split(trimmedLine, " ")[0]
+		gotFlags[splittedLine] = nextLine
 	}
 
-	require.True(t, minTimeChecked)
-	require.True(t, pingWithoutStreamChecked)
+	flagToCheck := "-distributor.ring.store"
+	require.Contains(t, gotFlags, flagToCheck)
+	require.Equal(t, c.Distributor.DistributorRing.KVStore.Store, "inmemory")
+	require.Contains(t, gotFlags[flagToCheck], "(default \"inmemory\")")
 
-	require.Equal(t, true, c.Server.GRPCServerPingWithoutStreamAllowed)
-	require.Equal(t, 10*time.Second, c.Server.GRPCServerMinTimeBetweenPings)
+	flagToCheck = "-server.grpc.keepalive.min-time-between-pings"
+	require.Contains(t, gotFlags, flagToCheck)
+	require.Equal(t, c.Server.GRPCServerMinTimeBetweenPings, 10*time.Second)
+	require.Contains(t, gotFlags[flagToCheck], "(default 10s)")
+
+	flagToCheck = "-server.grpc.keepalive.ping-without-stream-allowed"
+	require.Contains(t, gotFlags, flagToCheck)
+	require.Equal(t, c.Server.GRPCServerPingWithoutStreamAllowed, true)
+	require.Contains(t, gotFlags[flagToCheck], "(default true)")
 }

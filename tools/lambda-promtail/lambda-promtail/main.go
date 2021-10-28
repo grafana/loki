@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -28,8 +29,11 @@ const (
 	maxErrMsgLen = 1024
 )
 
-var writeAddress *url.URL
-var username, password string
+var (
+	writeAddress       *url.URL
+	username, password string
+	keepStream         bool
+)
 
 func init() {
 	addr := os.Getenv("WRITE_ADDRESS")
@@ -50,6 +54,13 @@ func init() {
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
 	}
+
+	keep := os.Getenv("KEEP_STREAM")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(keep, "true") {
+		keepStream = true
+	}
+	fmt.Println("keep stream: ", keepStream)
 }
 
 func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
@@ -58,13 +69,16 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 		fmt.Println("error parsing log event: ", err)
 		return err
 	}
+	labels := model.LabelSet{
+		model.LabelName("__aws_cloudwatch_log_group"): model.LabelValue(data.LogGroup),
+		model.LabelName("__aws_cloudwatch_owner"):     model.LabelValue(data.Owner),
+	}
+	if keepStream {
+		labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
+	}
 
 	stream := logproto.Stream{
-		Labels: model.LabelSet{
-			model.LabelName("__aws_cloudwatch_log_group"):  model.LabelValue(data.LogGroup),
-			model.LabelName("__aws_cloudwatch_log_stream"): model.LabelValue(data.LogStream),
-			model.LabelName("__aws_cloudwatch_owner"):      model.LabelValue(data.Owner),
-		}.String(),
+		Labels:  labels.String(),
 		Entries: make([]logproto.Entry, 0, len(data.LogEvents)),
 	}
 

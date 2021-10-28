@@ -60,6 +60,7 @@ resource "aws_lambda_function" "lambda_promtail" {
       WRITE_ADDRESS = var.write_address
       USERNAME      = var.username
       PASSWORD      = var.password
+      KEEP_STREAM   = var.keep_stream
     }
   }
 }

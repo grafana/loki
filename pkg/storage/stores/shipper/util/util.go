@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	gzip "github.com/klauspost/pgzip"
 	"go.etcd.io/bbolt"
 

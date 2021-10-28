@@ -14,6 +14,7 @@
 
     wal_enabled: false,
     query_scheduler_enabled: false,
+    overrides_exporter_enabled: false,
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
     stateful_ingesters: false,

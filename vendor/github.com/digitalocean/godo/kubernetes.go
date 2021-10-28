@@ -21,7 +21,7 @@ const (
 
 // KubernetesService is an interface for interfacing with the Kubernetes endpoints
 // of the DigitalOcean API.
-// See: https://developers.digitalocean.com/documentation/v2#kubernetes
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Kubernetes
 type KubernetesService interface {
 	Create(context.Context, *KubernetesClusterCreateRequest) (*KubernetesCluster, *Response, error)
 	Get(context.Context, string) (*KubernetesCluster, *Response, error)

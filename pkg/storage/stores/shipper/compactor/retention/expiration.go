@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -30,7 +30,7 @@ type expirationChecker struct {
 type Limits interface {
 	RetentionPeriod(userID string) time.Duration
 	StreamRetention(userID string) []validation.StreamRetention
-	ForEachTenantLimit(validation.ForEachTenantLimitCallback)
+	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
 }
 
@@ -123,7 +123,7 @@ func findSmallestRetentionPeriod(limits Limits) time.Duration {
 		}
 	}
 
-	limits.ForEachTenantLimit(func(userID string, limit *validation.Limits) {
+	for _, limit := range limits.AllByUserID() {
 		if limit.RetentionPeriod < smallestRetentionPeriod {
 			smallestRetentionPeriod = limit.RetentionPeriod
 		}
@@ -132,7 +132,8 @@ func findSmallestRetentionPeriod(limits Limits) time.Duration {
 				smallestRetentionPeriod = streamRetention.Period
 			}
 		}
-	})
+
+	}
 
 	return time.Duration(smallestRetentionPeriod)
 }

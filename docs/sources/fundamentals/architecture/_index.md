@@ -16,7 +16,7 @@ index and in stored chunks.
 
 ## Modes of operation
 
-![modes_diagram](modes_of_operation.png)
+![modes_diagram](modes.png)
 
 Loki has a set of [components](#components), which
 are internally referred to as modules. Each component spawns a gRPC server for
@@ -24,20 +24,22 @@ internal traffic and an HTTP/1 server for external API requests. All components
 come with an HTTP/1 server, but most only expose readiness, health, and metrics
 endpoints.
 
-Loki can run as a single binary; all components are part of the same process.
-Or, Loki can run components as microservices.
-As microservices, the cluster is horizontally scalable.
+Loki can run as:
 
-When invoked, the `-target` flag on the
-command line or the `target: <string>` configuration determines
-the components' mode: single binary or microservices.
-A `target` value of `all` runs Loki in single binary mode.
-A `target` value of one of the components invokes that component
-as its own microservice. 
+- A single binary, where all components are part of the same process
+- Simple scalable, where read-path components (ex: `querier`, `query-frontend`) run separately from write-path components (ex: `distributor`, `ingester`)
+- As microservices, where every component run and scale separately
+
+When invoked, the `-target` flag on the command line or the `target: <string>` configuration determines
+the components' mode: monolythic, simple scalable, or microservices.
+A `target` value of `all` runs Loki in single binary/monolythic mode.
+A `target` value of `read` runs all read-path related components (simple scalable mode).
+A `target` value of `write` runs all write-path related components (simple scalable mode).
+A `target` value of one of the components (ex: `compactor`) invokes that component as its own microservice (microservices mode).
 
 Each component of Loki, such as the ingesters and distributors, communicate with
 one another over gRPC using the gRPC listen port defined in the Loki configuration.
-When running components as a single binary, this is still true: each component,
+When running components with target `all`, `read` or `write`, this is still true: different components,
 although running in the same process, will connect to each other over the local
 network for inter-component communication.
 
@@ -49,8 +51,11 @@ processes with the following limitations:
    with more than one replica, as each replica must be able to
    access the same storage backend, and local storage is not safe for concurrent
    access.
-1. Individual components cannot be scaled independently, so it is not possible
-   to have more read components than write components.
+2. Individual components cannot be scaled independently
+
+Another option is to run in simple scalable mode, where Loki is composed of multiple `read` and `write` nodes.
+By using this mode, one can scale the read path separately from the write path and vice-versa, but without
+the overhead of managing all the different components separately.
 
 ## Components
 
@@ -310,7 +315,13 @@ is their form when uncompressed:
 `ts` is the Unix nanosecond timestamp of the logs, while len is the length in
 bytes of the log entry.
 
-## Chunk Store
+## Storage
+
+### Single Store
+
+Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`](../../operations/storage/boltdb-shipper) to store the `index` in object storage (the same way we store `chunks`).
+
+###  Deprecated: Multi-store
 
 The **chunk store** is Loki's long-term data store, designed to support
 interactive querying and sustained writing without the need for background
