@@ -587,11 +587,11 @@ func binOpStepEvaluator(
 		var results promql.Vector
 		switch expr.Op {
 		case OpTypeAnd:
-			results = vectorAnd(expr.Opts, lhs, rhs, lsigs, rsigs)
+			results = vectorAnd(lhs, rhs, lsigs, rsigs)
 		case OpTypeOr:
-			results = vectorOr(expr.Opts, lhs, rhs, lsigs, rsigs)
+			results = vectorOr(lhs, rhs, lsigs, rsigs)
 		case OpTypeUnless:
-			results = vectorUnless(expr.Opts, lhs, rhs, lsigs, rsigs)
+			results = vectorUnless(lhs, rhs, lsigs, rsigs)
 		default:
 			results, err = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
 		}
@@ -708,10 +708,7 @@ func vectorBinop(op string, opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, r
 	return results, nil
 }
 
-func vectorAnd(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
-	if opts.VectorMatching.Card != CardManyToMany {
-		panic("set operations must only use many-to-many matching")
-	}
+func vectorAnd(lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
 	if len(lhs) == 0 || len(rhs) == 0 {
 		return nil // Short-circuit: AND with nothing is nothing.
 	}
@@ -730,10 +727,7 @@ func vectorAnd(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64
 	return results
 }
 
-func vectorOr(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
-	if opts.VectorMatching.Card != CardManyToMany {
-		panic("set operations must only use many-to-many matching")
-	}
+func vectorOr(lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
 	if len(lhs) == 0 {
 		return rhs
 	} else if len(rhs) == 0 {
@@ -755,10 +749,7 @@ func vectorOr(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64)
 	return results
 }
 
-func vectorUnless(opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
-	if opts.VectorMatching.Card != CardManyToMany {
-		panic("set operations must only use many-to-many matching")
-	}
+func vectorUnless(lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
 	if len(lhs) == 0 || len(rhs) == 0 {
 		return lhs
 	}
