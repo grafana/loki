@@ -144,19 +144,23 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 
 // Lookup all fingerprints for the provided matchers.
 func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
-	if len(matchers) == 0 {
-		return nil, nil
-	}
-
 	if err := validateShard(ii.totalShards, shard); err != nil {
 		return nil, err
 	}
 
-	result := []model.Fingerprint{}
+	var result []model.Fingerprint
 	shards := ii.getShards(shard)
-	for i := range shards {
-		fps := shards[i].lookup(matchers)
-		result = append(result, fps...)
+	// if no matcher is specified, all fingerprints would be returned
+	if len(matchers) == 0 {
+		for i := range shards {
+			fps := shards[i].allFPs()
+			result = append(result, fps...)
+		}
+	} else {
+		for i := range shards {
+			fps := shards[i].lookup(matchers)
+			result = append(result, fps...)
+		}
 	}
 
 	return result, nil
@@ -307,6 +311,23 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		}
 	}
 
+	return result
+}
+
+func (shard *indexShard) allFPs() model.Fingerprints {
+	shard.mtx.RLock()
+	defer shard.mtx.RUnlock()
+
+	var result model.Fingerprints
+	for _, ie := range shard.idx {
+		for _, ive := range ie.fps {
+			result = intersect(result, ive.fps)
+		}
+		sort.Sort(result)
+	}
+	if len(result) == 0 {
+		return nil
+	}
 	return result
 }
 

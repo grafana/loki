@@ -419,12 +419,24 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
+	var shard *astmapper.ShardAnnotation
+	shards, err := logql.ParseShards(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+	if len(shards) > 1 {
+		return nil, errors.New("only one shard per ingester query is supported")
+	}
+	if len(shards) == 1 {
+		shard = &shards[0]
+	}
+
 	var series []logproto.SeriesIdentifier
 
 	// If no matchers were supplied we include all streams.
 	if len(groups) == 0 {
 		series = make([]logproto.SeriesIdentifier, 0, len(i.streams))
-		err = i.forAllStreams(ctx, func(stream *stream) error {
+		err = i.forMatchingStreams(ctx, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req) {
 				series = append(series, logproto.SeriesIdentifier{
@@ -439,7 +451,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	} else {
 		dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
 		for _, matchers := range groups {
-			err = i.forMatchingStreams(ctx, matchers, nil, func(stream *stream) error {
+			err = i.forMatchingStreams(ctx, matchers, shard, func(stream *stream) error {
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req) {
 					// exit early when this stream was added by an earlier group
