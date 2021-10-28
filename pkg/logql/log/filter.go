@@ -204,7 +204,7 @@ func (r regexpFilter) ToStage() Stage {
 }
 
 type ContainsFilter struct {
-	Match           []byte
+	match           []byte
 	caseInsensitive bool
 }
 
@@ -212,7 +212,7 @@ func (l ContainsFilter) Filter(line []byte) bool {
 	if l.caseInsensitive {
 		line = bytes.ToLower(line)
 	}
-	return bytes.Contains(line, l.Match)
+	return bytes.Contains(line, l.match)
 }
 
 func (l ContainsFilter) ToStage() Stage {
@@ -224,7 +224,7 @@ func (l ContainsFilter) ToStage() Stage {
 }
 
 func (l ContainsFilter) String() string {
-	return string(l.Match)
+	return string(l.match)
 }
 
 // newContainsFilter creates a contains filter that checks if a log line contains a match.
@@ -236,17 +236,30 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 		match = bytes.ToLower(match)
 	}
 	return ContainsFilter{
-		Match:           match,
+		match:           match,
 		caseInsensitive: caseInsensitive,
 	}
 }
 
 type ContainsAllFilter struct {
-	Matches           [][]byte
+	matches           [][]byte
+	caseInsensitives  []bool
 }
 
-func (l ContainsAllFilter) Filter(line []byte) bool {
-	for _, match := range l.Matches {
+func (f *ContainsAllFilter) Add(filter ContainsFilter) {
+	f.matches = append(f.matches, filter.match)
+	f.caseInsensitives = append(f.caseInsensitives, filter.caseInsensitive)
+}
+
+func (f *ContainsAllFilter) Empty() bool {
+	return len(f.matches) == 0
+}
+
+func (f ContainsAllFilter) Filter(line []byte) bool {
+	for i, match := range f.matches {
+		if f.caseInsensitives[i] {
+			line = bytes.ToLower(line)
+		}
 		if !bytes.Contains(line, match) {
 			return false
 		}
@@ -254,10 +267,10 @@ func (l ContainsAllFilter) Filter(line []byte) bool {
 	return true
 }
 
-func (l ContainsAllFilter) ToStage() Stage {
+func (f ContainsAllFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, l.Filter(line)
+			return line, f.Filter(line)
 		},
 	}
 }

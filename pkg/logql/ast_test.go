@@ -414,6 +414,18 @@ func BenchmarkContainsFilter(b *testing.B) {
 			[]byte("hello world foo bar"),
 			true,
 		},
+		{
+			"GreedyRegex",
+			`{app="foo"} |~ "hello.*bar.*"`,
+			[]byte("hello world foobar and the bar and more bar until the end"),
+			true,
+		},
+		{
+			"NonGreedyRegex",
+			`{app="foo"} |~ "hello.*?bar.*?"`,
+			[]byte("hello world foobar and the bar and more bar until the end"),
+			true,
+		},
 	}
 
 	for _, bm := range benchmarks {

@@ -390,15 +390,13 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	}
 
 	// Join all contain filters if there are any.
-	containsAllFilter := log.ContainsAllFilter{
-		Matches: make([][]byte, 0),
-	}
+	containsAllFilter := log.ContainsAllFilter{}
 	n := 0
 	for _, filter := range acc {
 		switch c := filter.(type) {
 		case log.ContainsFilter:
 			{
-				containsAllFilter.Matches = append(containsAllFilter.Matches, c.Match)
+				containsAllFilter.Add(c)
 			}
 		default:
 			// Keep filter
@@ -408,7 +406,7 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	}
 	acc = acc[:n]
 
-	if len(containsAllFilter.Matches) != 0 {
+	if !containsAllFilter.Empty() {
 		acc = append(acc, containsAllFilter)
 	}
 
