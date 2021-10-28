@@ -252,11 +252,11 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 	// Wait until the ring client detected this instance in the ACTIVE state to
 	// make sure that when we'll run the loop it won't be detected as a ring
 	// topology change.
-	level.Info(util_log.Logger).Log("msg", "waiting until scheduler is ACTIVE in the ring")
+	level.Info(util_log.Logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
 	if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
 		return err
 	}
-	level.Info(util_log.Logger).Log("msg", "scheduler is ACTIVE in the ring")
+	level.Info(util_log.Logger).Log("msg", "compactor is ACTIVE in the ring")
 
 	return nil
 }
@@ -302,6 +302,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 					runningCtx, runningCancel = context.WithCancel(ctx)
 					go c.runCompactions(runningCtx)
 					c.running = true
+					c.metrics.compactorRunning.Set(1)
 				}
 			} else {
 				// If running, shutdown
@@ -310,6 +311,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 					runningCancel()
 					c.wg.Wait()
 					c.running = false
+					c.metrics.compactorRunning.Set(0)
 					level.Info(util_log.Logger).Log("msg", "compactor stopped")
 				}
 			}
@@ -406,8 +408,9 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 
 	defer func() {
 		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+		runtime := time.Since(start)
 		if status == statusSuccess {
-			c.metrics.compactTablesOperationDurationSeconds.Set(time.Since(start).Seconds())
+			c.metrics.compactTablesOperationDurationSeconds.Set(runtime.Seconds())
 			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 		}
 
@@ -417,6 +420,9 @@ func (c *Compactor) RunCompaction(ctx context.Context) error {
 			} else {
 				c.expirationChecker.MarkPhaseFailed()
 			}
+		}
+		if runtime > c.cfg.CompactionInterval {
+			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("last compaction took %s which is longer than the compaction interval of %s, this can lead to duplicate compactors running if not running a standalone compactor instance.", runtime, c.cfg.CompactionInterval))
 		}
 	}()
 
