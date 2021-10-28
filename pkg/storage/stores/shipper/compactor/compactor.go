@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"time"
 
@@ -66,12 +65,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CompactorRing.RegisterFlags(f)
 }
 
-func (cfg *Config) IsDefaults() bool {
-	cpy := &Config{}
-	cpy.RegisterFlags(flag.NewFlagSet("defaults", flag.ContinueOnError))
-	return reflect.DeepEqual(cfg, cpy)
-}
-
+// Validate verifies the config does not contain inappropriate values
 func (cfg *Config) Validate() error {
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
@@ -105,8 +99,8 @@ type Compactor struct {
 }
 
 func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
-	if cfg.IsDefaults() {
-		return nil, errors.New("Must specify compactor config")
+	if cfg.SharedStoreType == "" {
+		return nil, errors.New("compactor shared_store_type must be specified")
 	}
 
 	compactor := &Compactor{
@@ -330,7 +324,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 	case <-ctx.Done():
 		return
 	case <-t.C:
-		level.Info(util_log.Logger).Log("msg", "compactor startup delay completed, continuing to start compactor")
+		level.Info(util_log.Logger).Log("msg", "compactor startup delay completed")
 		break
 	}
 

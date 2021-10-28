@@ -656,6 +656,11 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
+	if !loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+		level.Info(util_log.Logger).Log("msg", "Not using boltdb-shipper index, not starting compactor")
+		return nil, nil
+	}
+
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
 		return nil, err
