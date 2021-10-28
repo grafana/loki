@@ -27,14 +27,14 @@ endpoints.
 Loki can run as:
 
 - A single binary, where all components are part of the same process
-- Hybrid, where read-path components run separately from write-path components.
+- Simple scalable, where read-path components (ex: `querier`, `query-frontend`) run separately from write-path components (ex: `distributor`, `ingester`)
 - As microservices, where every component run and scale separately
 
 When invoked, the `-target` flag on the command line or the `target: <string>` configuration determines
-the components' mode: monolythic, hybrid, or microservices.
+the components' mode: monolythic, simple scalable, or microservices.
 A `target` value of `all` runs Loki in single binary/monolythic mode.
-A `target` value of `read` runs all read-path related components (hybrid mode).
-A `target` value of `write` runs all write-path related components (hybrid mode).
+A `target` value of `read` runs all read-path related components (simple scalable mode).
+A `target` value of `write` runs all write-path related components (simple scalable mode).
 A `target` value of one of the components (ex: `compactor`) invokes that component as its own microservice (microservices mode).
 
 Each component of Loki, such as the ingesters and distributors, communicate with
@@ -53,7 +53,7 @@ processes with the following limitations:
    access.
 2. Individual components cannot be scaled independently
 
-Another option is to run in hybrid mode, where Loki is composed of multiple `read` and `write` nodes.
+Another option is to run in simple scalable mode, where Loki is composed of multiple `read` and `write` nodes.
 By using this mode, one can scale the read path separately from the write path and vice-versa, but without
 the overhead of managing all the different components separately.
 
