@@ -804,15 +804,6 @@ func resultMetric(lhs, rhs labels.Labels, opts *BinOpOptions) labels.Labels {
 	return lb.Labels()
 }
 
-// IsSetOperator returns whether the op corresponds to a set operator.
-func IsSetOperator(op string) bool {
-	switch op {
-	case OpTypeAnd, OpTypeOr, OpTypeUnless:
-		return true
-	}
-	return false
-}
-
 func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
