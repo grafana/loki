@@ -16,8 +16,8 @@ cloud.google.com/go/bigtable/internal/option
 # cloud.google.com/go/compute v1.3.0
 ## explicit; go 1.15
 cloud.google.com/go/compute/metadata
-# cloud.google.com/go/iam v0.1.0
-## explicit; go 1.11
+# cloud.google.com/go/iam v0.3.0
+## explicit; go 1.15
 cloud.google.com/go/iam
 # cloud.google.com/go/kms v1.0.0
 ## explicit; go 1.16
@@ -185,6 +185,15 @@ github.com/aws/aws-sdk-go/service/sso
 github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
+# github.com/baidubce/bce-sdk-go v0.9.106
+## explicit; go 1.11
+github.com/baidubce/bce-sdk-go/auth
+github.com/baidubce/bce-sdk-go/bce
+github.com/baidubce/bce-sdk-go/http
+github.com/baidubce/bce-sdk-go/services/bos
+github.com/baidubce/bce-sdk-go/services/bos/api
+github.com/baidubce/bce-sdk-go/util
+github.com/baidubce/bce-sdk-go/util/log
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -1283,7 +1292,7 @@ google.golang.org/appengine/internal/socket
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/socket
 google.golang.org/appengine/urlfetch
-# google.golang.org/genproto v0.0.0-20220222154240-daf995802d7b
+# google.golang.org/genproto v0.0.0-20220222213610-43724f9ea8cf
 ## explicit; go 1.15
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/bigtable/admin/v2
