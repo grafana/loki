@@ -16,6 +16,7 @@ index and in stored chunks.
 
 ## Modes of operation
 
+<!-- Source: https://excalidraw.com/#json=6618573900349440,WVFApiDm-du_wG6o1dZqUw -->
 ![modes_diagram](modes.png)
 
 Loki has a set of [components](#components), which
@@ -31,8 +32,8 @@ Loki can run as:
 - As microservices, where every component run and scale separately
 
 When invoked, the `-target` flag on the command line or the `target: <string>` configuration determines
-the components' mode: monolythic, simple scalable, or microservices.
-A `target` value of `all` runs Loki in single binary/monolythic mode.
+the components' mode: monolithic, simple scalable, or microservices.
+A `target` value of `all` runs Loki in single binary/monolithic mode.
 A `target` value of `read` runs all read-path related components (simple scalable mode).
 A `target` value of `write` runs all write-path related components (simple scalable mode).
 A `target` value of one of the components (ex: `compactor`) invokes that component as its own microservice (microservices mode).
