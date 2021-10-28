@@ -159,6 +159,9 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
+	if err := c.LimitsConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid limits config")
+	}
 	if err := c.Worker.Validate(util_log.Logger); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}

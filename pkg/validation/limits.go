@@ -209,13 +209,7 @@ func (l *Limits) Validate() error {
 				return fmt.Errorf("retention period must be >= 24h was %s", rule.Period)
 			}
 			// populate matchers during validation
-			l.StreamRetention[i] = StreamRetention{
-				Period:   rule.Period,
-				Priority: rule.Priority,
-				Selector: rule.Selector,
-				Matchers: matchers,
-			}
-
+			l.StreamRetention[i].Matchers = matchers
 		}
 	}
 	return nil
