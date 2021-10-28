@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/chunk/baidubce"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -48,6 +50,7 @@ const (
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
 	StorageTypeS3             = "s3"
+	StorageTypeBOS            = "bos"
 	StorageTypeSwift          = "swift"
 )
 
@@ -79,15 +82,16 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
-	Engine                 string                  `yaml:"engine"`
-	AWSStorageConfig       aws.StorageConfig       `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig `yaml:"azure"`
-	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig           `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
-	FSConfig               local.FSConfig          `yaml:"filesystem"`
-	Swift                  openstack.SwiftConfig   `yaml:"swift"`
+	Engine                 string                    `yaml:"engine"`
+	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
+	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
+	BosStorageConfig       baidubce.BosStorageConfig `yaml:"bos"`
+	GCPStorageConfig       gcp.Config                `yaml:"bigtable"`
+	GCSConfig              gcp.GCSConfig             `yaml:"gcs"`
+	CassandraStorageConfig cassandra.Config          `yaml:"cassandra"`
+	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb"`
+	FSConfig               local.FSConfig            `yaml:"filesystem"`
+	Swift                  openstack.SwiftConfig     `yaml:"swift"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
@@ -118,6 +122,7 @@ func (c *ClientMetrics) Unregister() {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
+	cfg.BosStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
@@ -150,6 +155,9 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Index Queries Cache config")
+	}
+	if err := cfg.BosStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Baidu BCE BOS config")
 	}
 	if err := cfg.AzureStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
@@ -301,6 +309,12 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clien
 			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
+	case StorageTypeBOS:
+		c, err := baidubce.NewBosObjectStorage(&cfg.BosStorageConfig)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case StorageTypeAzure:
 		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, clientMetrics.AzureMetrics, cfg.Hedging)
 		if err != nil {
@@ -395,6 +409,8 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (chun
 		return chunk.NewMockStorage(), nil
 	case StorageTypeFileSystem:
 		return local.NewFSObjectClient(cfg.FSConfig)
+	case StorageTypeBOS:
+		return baidubce.NewBosObjectStorage(&cfg.BosStorageConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeS3, StorageTypeGCS, StorageTypeAzure, StorageTypeFileSystem)
 	}
