@@ -89,6 +89,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
+	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -466,6 +467,18 @@ func (t *Loki) setupModuleManager() error {
 	// we should start compactor as well for better user experience.
 	if storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) && t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
 		deps[All] = append(deps[All], Compactor)
+	}
+
+	// If the query scheduler and querier are running together, make sure the scheduler goes
+	// first to initialize the ring that will also be used by the querier
+	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+		deps[Querier] = append(deps[Querier], QueryScheduler)
+	}
+
+	// If the query scheduler and query frontend are running together, make sure the scheduler goes
+	// first to initialize the ring that will also be used by the query frontend
+	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
 	for mod, targets := range deps {
