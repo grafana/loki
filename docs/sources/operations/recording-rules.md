@@ -102,7 +102,8 @@ Some key metrics to note are:
 - `loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds`: highest timestamp of sample appended to WAL
 - `loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds`: highest timestamp of sample sent to remote storage.
 
-There is a [preconfigured dashboard](TODO:LINK) which you can use to administer recording rules.
+We've created a basic [dashboard in our loki-mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin/dashboards/recording-rules.libsonnet)
+which you can use to administer recording rules.
 
 ## Failure Modes
 
