@@ -18,7 +18,7 @@ const (
 	// RingKey is the key under which we store the store gateways ring in the KVStore.
 	RingKey = "compactor"
 
-	// RingNameForServer is the name of the ring used by the store gateway server.
+	// RingNameForServer is the name of the ring used by the compactor server.
 	RingNameForServer = "compactor"
 
 	// RingNameForClient is the name of the ring used by the store gateway client (we need
