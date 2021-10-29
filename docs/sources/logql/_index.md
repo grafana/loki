@@ -175,9 +175,56 @@ The syntax:
 The label list provided with the group modifier contains additional labels from the "one"-side that are included in the result metrics. And a label should only appear in one of the lists specified by `on` and `group_x`. Every time series of the result vector must be uniquely identifiable.
 Grouping modifiers can only be used for comparison and arithmetic. By default, the system matches `and`, `unless`, and `or` operations with all entries in the right vector.
 
-The following example returns sum results for the same application with the many part labels and the labels specified by the group_right operation.
+The following example returns the rates requests partitioned by `app` and `status` as a percentage of total requests.
 ```logql
-sum by (app,pool) (count_over_time({foo="bar"}[1m])) + on (app) group_right (pool) sum by (app,machine) (count_over_time({foo="bar"}[1m]))
+sum by (app, status) (
+  rate(
+    {job="http-server"}
+      | json
+      [5m]
+  )
+)
+/ on (app) group_left
+sum by (app) (
+  rate(
+    {job="http-server"}
+      | json
+      [5m]
+  )
+)
+
+=>
+[
+  {app="foo", status="200"} => 0.8
+  {app="foo", status="400"} => 0.1
+  {app="foo", status="500"} => 0.1
+]
+```
+This version uses `group_left(<labels>)` to include `<labels>` from the right hand side in the result and returns the cost of discarded events per user, organization, and namespace:
+```logql
+sum by (user, namespace) (
+  rate(
+    {job="events"}
+      | logfmt
+      | discarded="true"
+      [5m]
+  )
+)
+* on (user) group_left(organization)
+max_over_time(
+  {job="cost-calculator"}
+    | logfmt
+    | unwrap cost
+    [5m]
+) by (user, organization)
+
+=>
+[
+  {user="foo", namespace="dev", organization="little-org"} => 10
+  {user="foo", namespace="prod", organization="little-org"} => 50
+  {user="bar", namespace="dev", organization="big-org"} => 70
+  {user="bar", namespace="prod", organization="big-org"} => 200
+]
 ```
 
 ## Comments
