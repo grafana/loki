@@ -21,9 +21,6 @@ const (
 	// RingNameForServer is the name of the ring used by the compactor server.
 	RingNameForServer = "compactor"
 
-	// RingNameForClient is the name of the ring used by the store gateway client (we need
-	// a different name to avoid clashing Prometheus metrics when running in single-binary).
-	RingNameForClient = "compactor-client"
 
 	// We use a safe default instead of exposing to config option to the user
 	// in order to simplify the config.
