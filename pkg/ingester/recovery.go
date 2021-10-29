@@ -128,9 +128,6 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		stream.lastLine.content = series.LastLine
 		stream.entryCt = series.EntryCt
 		stream.highestTs = series.HighestTs
-		// Always set during replay, then reset to desired value afterward.
-		// This allows replaying unordered WALs into ordered configurations.
-		stream.unorderedWrites = true
 
 		if err != nil {
 			return err
