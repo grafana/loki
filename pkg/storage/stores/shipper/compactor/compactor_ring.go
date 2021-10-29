@@ -24,7 +24,7 @@ const (
 
 	// We use a safe default instead of exposing to config option to the user
 	// in order to simplify the config.
-	RingNumTokens = 512
+	RingNumTokens = 1
 )
 
 // RingConfig masks the ring lifecycler config which contains
