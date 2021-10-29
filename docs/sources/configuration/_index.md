@@ -2164,30 +2164,41 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <bool> | default = false]
+
 # The URL of the endpoint to send samples to.
 [ruler_remote_write_url: <string>]
+
 # Timeout for requests to the remote write endpoint.
 [ruler_remote_write_timeout: <duration>]
+
 # Custom HTTP headers to be sent along with each remote write request.
 # Be aware that headers that are set by Loki itself can't be overwritten.
 [ruler_remote_write_headers: <headers>]
+
 # List of remote write relabel configurations.
 [ruler_remote_write_relabel_configs: <relabel_config>]
+
 # Number of samples to buffer per shard before we block reading of more
 # samples from the WAL. It is recommended to have enough capacity in each
 # shard to buffer several requests to keep throughput up while processing
 # occasional slow remote requests.
 [ruler_remote_write_queue_capacity: <int>]
+
 # Minimum number of shards, i.e. amount of concurrency.
 [ruler_remote_write_queue_min_shards: <int>]
+
 # Maximum number of shards, i.e. amount of concurrency.
 [ruler_remote_write_queue_max_shards: <int>]
+
 # Maximum number of samples per send.
 [ruler_remote_write_queue_max_samples_per_send: <int>]
+
 # Maximum time a sample will wait in buffer.
 [ruler_remote_write_queue_batch_send_deadline: <duration>]
+
 # Initial retry delay. Gets doubled for every retry.
 [ruler_remote_write_queue_min_backoff: <duration>]
+
 # Maximum retry delay.
 [ruler_remote_write_queue_max_backoff: <duration>]
 # Retry upon receiving a 429 status code from the remote-write storage.
