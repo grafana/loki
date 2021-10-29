@@ -162,9 +162,6 @@ func ParseSampleExpr(input string) (SampleExpr, error) {
 func validateSampleExpr(expr SampleExpr) error {
 	switch e := expr.(type) {
 	case *BinOpExpr:
-		if IsSetOperator(e.Op) && e.Opts.VectorMatching.Card == CardOneToOne {
-			e.Opts.VectorMatching.Card = CardManyToMany
-		}
 		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}

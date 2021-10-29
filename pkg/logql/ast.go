@@ -975,7 +975,6 @@ const (
 	CardOneToOne VectorMatchCardinality = iota
 	CardManyToOne
 	CardOneToMany
-	CardManyToMany
 )
 
 func (vmc VectorMatchCardinality) String() string {
@@ -986,8 +985,6 @@ func (vmc VectorMatchCardinality) String() string {
 		return "many-to-one"
 	case CardOneToMany:
 		return "one-to-many"
-	case CardManyToMany:
-		return "many-to-many"
 	}
 	panic("promql.VectorMatchCardinality.String: unknown match cardinality")
 }

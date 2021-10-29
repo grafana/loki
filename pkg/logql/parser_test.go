@@ -2716,7 +2716,7 @@ func TestParse(t *testing.T) {
 				Op: OpTypeOr,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: &VectorMatching{Card: CardManyToMany},
+					VectorMatching: &VectorMatching{},
 				},
 				SampleExpr: &RangeAggregationExpr{
 					Left: &LogRange{
