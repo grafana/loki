@@ -38,6 +38,8 @@ var tokens = map[string]int{
 	OpOffset:       OFFSET,
 	OpOn:           ON,
 	OpIgnoring:     IGNORING,
+	OpGroupLeft:    GROUP_LEFT,
+	OpGroupRight:   GROUP_RIGHT,
 
 	// binops
 	OpTypeOr:     OR,

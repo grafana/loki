@@ -686,7 +686,7 @@ func TestMapping(t *testing.T) {
 				Op: OpTypeAdd,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: nil,
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				SampleExpr: &LiteralExpr{value: 1},
 				RHS: &VectorAggregationExpr{
@@ -864,7 +864,7 @@ func TestMapping(t *testing.T) {
 				Op: OpTypeDiv,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: nil,
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				SampleExpr: &VectorAggregationExpr{
 					Operation: OpTypeMax,
@@ -987,8 +987,8 @@ func TestMapping(t *testing.T) {
 				Opts: &BinOpOptions{
 					ReturnBool: false,
 					VectorMatching: &VectorMatching{
-						On:      false,
-						Include: []string{"cluster"},
+						On:             false,
+						MatchingLabels: []string{"cluster"},
 					},
 				},
 				SampleExpr: &VectorAggregationExpr{

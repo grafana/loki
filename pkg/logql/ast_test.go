@@ -318,7 +318,6 @@ func TestStringer(t *testing.T) {
 			out: `(0 > bool count_over_time({foo="bar"}[1m]))`,
 		},
 		{
-
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
 			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},

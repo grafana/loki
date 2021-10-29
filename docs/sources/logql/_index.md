@@ -163,6 +163,23 @@ This example will return every machine total count within the last minutes ratio
 sum by(machine) (count_over_time({app="foo"}[1m])) / on() sum(count_over_time({app="foo"}[1m]))
 ```
 
+### Many-to-one and one-to-many vector matches
+Many-to-one and one-to-many matchings occur when each vector element on the "one"-side can match with multiple elements on the "many"-side. You must explicitly request matching by using the group_left or group_right modifier, where left or right determines which vector has the higher cardinality.
+The syntax:
+```logql
+<vector expr> <bin-op> ignoring(<labels>) group_left(<labels>) <vector expr>
+<vector expr> <bin-op> ignoring(<labels>) group_right(<labels>) <vector expr>
+<vector expr> <bin-op> on(<labels>) group_left(<labels>) <vector expr>
+<vector expr> <bin-op> on(<labels>) group_right(<labels>) <vector expr>
+```
+The label list provided with the group modifier contains additional labels from the "one"-side that are included in the result metrics. And a label should only appear in one of the lists specified by `on` and `group_x`. Every time series of the result vector must be uniquely identifiable.
+Grouping modifiers can only be used for comparison and arithmetic. By default, the system matches `and`, `unless`, and `or` operations with all entries in the right vector.
+
+The following example returns sum results for the same application with the many part labels and the labels specified by the group_right operation.
+```logql
+sum by (app,pool) (count_over_time({foo="bar"}[1m])) + on (app) group_right (pool) sum by (app,machine) (count_over_time({foo="bar"}[1m]))
+```
+
 ## Comments
 
 LogQL queries can be commented using the `#` character:
