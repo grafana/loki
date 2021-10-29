@@ -2019,7 +2019,7 @@ logs in Loki.
 
 # When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
-[unordered_writes: <bool> | default = false]
+[unordered_writes: <bool> | default = true]
 
 # Maximum number of chunks that can be fetched by a single query.
 # CLI flag: -store.query-chunk-limit
@@ -2379,18 +2379,18 @@ multi_kv_config:
 Since the beginning of Loki, log entries had to be written to Loki in order
 by time.
 This limitation has been lifted.
-Out-of-order writes may be enabled globally for a Loki cluster
-or enabled on a per-tenant basis.
+Out-of-order writes are enabled globally by default, but can be disabled/enabled
+on a cluster or per-tenant basis.
 
-- To enable out-of-order writes for all tenants,
+- To disable out-of-order writes for all tenants,
 place in the `limits_config` section:
 
     ```
     limits_config:
-        unordered_writes: true
+        unordered_writes: false
     ```
 
-- To enable out-of-order writes for specific tenants,
+- To disable out-of-order writes for specific tenants,
 configure a runtime configuration file:
 
     ```
@@ -2403,7 +2403,7 @@ configure a runtime configuration file:
     ```
     overrides:
       "tenantA":
-        unordered_writes: true
+        unordered_writes: false
     ```
 
 How far into the past accepted out-of-order log entries may be
