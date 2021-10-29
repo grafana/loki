@@ -993,3 +993,25 @@ query_scheduler:
 		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"eth0", "en0", defaultIface})
 	})
 }
+
+func TestLoopbackAppendingToFrontendV2(t *testing.T) {
+	defaultIface, err := loki_net.LoopbackInterfaceName()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, defaultIface)
+
+	t.Run("by default, loopback should be in FrontendV2 interface names", func(t *testing.T) {
+		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Frontend.FrontendV2.InfNames)
+	})
+
+	t.Run("loopback shouldn't be in FrontendV2 interface names if set by user", func(t *testing.T) {
+		yamlContent := `frontend:
+  instance_interface_names:
+  - otheriface`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"otheriface"}, config.Frontend.FrontendV2.InfNames)
+	})
+}
