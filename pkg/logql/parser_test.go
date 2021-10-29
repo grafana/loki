@@ -525,6 +525,52 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"`, // just using `ip` as a label name(identifier) should work
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"`, // just using `ip` as a label name should work with chaining
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")`, // `ip` should work as both label name and filter in same query
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")|ip=ip("6.7.8.9")`, // `ip` should work as both label name and filter in same query with same name.
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+					newLabelFilterExpr(log.NewIPLabelFilter("6.7.8.9", "ip", log.LabelFilterEqual)),
+				},
+			),
+		},
+		{
 			in:  `sum(3 ,count_over_time({ foo = "bar" }[5h]))`,
 			err: logqlmodel.NewParseError("unsupported parameter for operation sum(3,", 0, 0),
 		},

@@ -52,6 +52,9 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} #|~ "\\w+"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 		{`#{foo="bar"} |~ "\\w+"`, []int{}},
 		{`{foo="#"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
+		{`{foo="bar"}|logfmt|ip="b"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING}},
+		{`{foo="bar"}|logfmt|b=ip("b")`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, IP, OPEN_PARENTHESIS, STRING, CLOSE_PARENTHESIS}},
+		{`ip`, []int{IDENTIFIER}},
 		{`{foo="bar"} | json | baz="#"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, JSON, PIPE, IDENTIFIER, EQ, STRING}},
 		{`{foo="bar"}
 					# |~ "\\w+"

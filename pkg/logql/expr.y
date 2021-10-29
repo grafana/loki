@@ -289,7 +289,7 @@ labelFormatExpr: LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }
-    | ipLabelFilter                                       { $$ = $1 }
+    | ipLabelFilter                                  { $$ = $1 }
     | unitFilter                                     { $$ = $1 }
     | numberFilter                                   { $$ = $1 }
     | OPEN_PARENTHESIS labelFilter CLOSE_PARENTHESIS { $$ = $2 }

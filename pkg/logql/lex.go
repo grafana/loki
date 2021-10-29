@@ -14,6 +14,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
+var alsoIdentifier = map[string]bool{
+	"ip": true,
+}
+
 var tokens = map[string]int{
 	",":            COMMA,
 	".":            DOT,
@@ -107,6 +111,9 @@ var functionTokens = map[string]int{
 	OpConvBytes:           BYTES_CONV,
 	OpConvDuration:        DURATION_CONV,
 	OpConvDurationSeconds: DURATION_SECONDS_CONV,
+
+	// filterOp
+	OpFilterIP: IP,
 }
 
 type lexer struct {
@@ -202,7 +209,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return tok
 	}
 
-	if tok, ok := tokens[tokenText]; ok {
+	if tok, ok := tokens[tokenText]; ok && !alsoIdentifier[tokenText] {
 		return tok
 	}
 
