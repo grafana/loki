@@ -78,6 +78,36 @@ func (es MultiError) Is(target error) bool {
 	return true
 }
 
+// IsCancel tells if all errors are either context.Canceled or grpc codes.Canceled.
+func (es MultiError) IsCancel() bool {
+	for _, err := range es {
+		if errors.Is(err, context.Canceled) {
+			continue
+		}
+		s, ok := status.FromError(err)
+		if ok && s.Code() == codes.Canceled {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// IsDeadlineExceeded tells if all errors are either context.DeadlineExceeded or grpc codes.DeadlineExceeded.
+func (es MultiError) IsDeadlineExceeded() bool {
+	for _, err := range es {
+		if errors.Is(err, context.DeadlineExceeded) {
+			continue
+		}
+		s, ok := status.FromError(err)
+		if ok && s.Code() == codes.DeadlineExceeded {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // IsConnCanceled returns true, if error is from a closed gRPC connection.
 // copied from https://github.com/etcd-io/etcd/blob/7f47de84146bdc9225d2080ec8678ca8189a2d2b/clientv3/client.go#L646
 func IsConnCanceled(err error) bool {

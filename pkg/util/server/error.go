@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/grafana/loki/pkg/util"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"net/http"
 
 	"github.com/prometheus/prometheus/promql"
@@ -28,11 +31,24 @@ func WriteError(err error, w http.ResponseWriter) {
 		promErr  promql.ErrStorage
 	)
 
+	me, ok := err.(util.MultiError)
+	if ok && me.IsCancel() {
+		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
+		return
+	}
+	if ok && me.IsDeadlineExceeded() {
+		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
+		return
+	}
+
+	s, isRPC := status.FromError(err)
 	switch {
 	case errors.Is(err, context.Canceled) ||
+		(isRPC && s.Code() == codes.Canceled) ||
 		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
 		http.Error(w, ErrClientCanceled, StatusClientClosedRequest)
-	case errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded) ||
+		(isRPC && s.Code() == codes.DeadlineExceeded):
 		http.Error(w, ErrDeadlineExceeded, http.StatusGatewayTimeout)
 	case errors.As(err, &queryErr):
 		http.Error(w, err.Error(), http.StatusBadRequest)
