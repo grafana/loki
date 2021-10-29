@@ -169,6 +169,7 @@ func applyPathPrefixDefaults(r *ConfigWrapper, defaults ConfigWrapper) {
 func appendLoopbackInterface(r *ConfigWrapper) {
 	if loopbackIface, err := loki_net.LoopbackInterfaceName(); err == nil {
 		r.Ingester.LifecyclerConfig.InfNames = append(r.Ingester.LifecyclerConfig.InfNames, loopbackIface)
+		r.Config.Frontend.FrontendV2.InfNames = append(r.Config.Frontend.FrontendV2.InfNames, loopbackIface)
 	}
 }
 
