@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/grafana/loki/pkg/util"
+	"net/http"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"net/http"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
