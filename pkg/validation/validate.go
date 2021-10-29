@@ -31,6 +31,7 @@ const (
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
 	OutOfOrder      = "out_of_order"
+	TooFarBehind    = "too_far_behind"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
 	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v"
