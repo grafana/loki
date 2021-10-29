@@ -150,19 +150,20 @@ func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.Sha
 
 	var result []model.Fingerprint
 	shards := ii.getShards(shard)
+
 	// if no matcher is specified, all fingerprints would be returned
 	if len(matchers) == 0 {
 		for i := range shards {
 			fps := shards[i].allFPs()
 			result = append(result, fps...)
 		}
-	} else {
-		for i := range shards {
-			fps := shards[i].lookup(matchers)
-			result = append(result, fps...)
-		}
+		return result, nil
 	}
 
+	for i := range shards {
+		fps := shards[i].lookup(matchers)
+		result = append(result, fps...)
+	}
 	return result, nil
 }
 

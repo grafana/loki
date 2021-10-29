@@ -3,13 +3,14 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"math/rand"
 	"runtime"
 	"sort"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"

@@ -310,16 +310,9 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 	ingStats := stats.GetIngesterData(ctx)
 	var iters []iter.EntryIterator
 
-	var shard *astmapper.ShardAnnotation
-	shards, err := logql.ParseShards(req.Shards)
+	shard, err := parseShardFromRequest(req.Shards)
 	if err != nil {
 		return nil, err
-	}
-	if len(shards) > 1 {
-		return nil, errors.New("only one shard per ingester query is supported")
-	}
-	if len(shards) == 1 {
-		shard = &shards[0]
 	}
 
 	err = i.forMatchingStreams(
@@ -418,17 +411,9 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
-
-	var shard *astmapper.ShardAnnotation
-	shards, err := logql.ParseShards(req.Shards)
+	shard, err := parseShardFromRequest(req.Shards)
 	if err != nil {
 		return nil, err
-	}
-	if len(shards) > 1 {
-		return nil, errors.New("only one shard per ingester query is supported")
-	}
-	if len(shards) == 1 {
-		shard = &shards[0]
 	}
 
 	var series []logproto.SeriesIdentifier
@@ -623,6 +608,21 @@ func (i *instance) openTailersCount() uint32 {
 	defer i.tailerMtx.RUnlock()
 
 	return uint32(len(i.tailers))
+}
+
+func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, error) {
+	var shard *astmapper.ShardAnnotation
+	shards, err := logql.ParseShards(reqShards)
+	if err != nil {
+		return nil, err
+	}
+	if len(shards) > 1 {
+		return nil, errors.New("only one shard per ingester query is supported")
+	}
+	if len(shards) == 1 {
+		shard = &shards[0]
+	}
+	return shard, nil
 }
 
 func isDone(ctx context.Context) bool {
