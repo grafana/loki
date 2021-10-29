@@ -42,7 +42,7 @@ var (
 // Default configuration values
 var (
 	DefaultConfig = Config{
-		Dir:                 "wal",
+		Dir:                 "ruler-wal",
 		TruncateFrequency:   60 * time.Minute,
 		MinAge:              5 * time.Minute,
 		MaxAge:              4 * time.Hour,

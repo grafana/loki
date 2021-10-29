@@ -547,7 +547,7 @@ remote_write:
   wal:
     # The directory in which to write tenant WAL files. Each tenant will have its own
     # directory one level below this directory.
-    [dir: <string> | default = "wal"]
+    [dir: <string> | default = "ruler-wal"]
     # Frequency with which to run the WAL truncation process.
     [truncate_frequency: <duration> | default = 60m]
     # Minimum and maximum time series should exist in the WAL for.
