@@ -319,15 +319,23 @@ func (shard *indexShard) allFPs() model.Fingerprints {
 	shard.mtx.RLock()
 	defer shard.mtx.RUnlock()
 
-	var result model.Fingerprints
+	var fps model.Fingerprints
 	for _, ie := range shard.idx {
 		for _, ive := range ie.fps {
-			result = intersect(result, ive.fps)
+			fps = append(fps, ive.fps...)
 		}
-		sort.Sort(result)
 	}
-	if len(result) == 0 {
+	if len(fps) == 0 {
 		return nil
+	}
+
+	var result model.Fingerprints
+	var m = map[model.Fingerprint]struct{}{}
+	for _, fp := range fps {
+		if _, ok := m[fp]; !ok {
+			m[fp] = struct{}{}
+			result = append(result, fp)
+		}
 	}
 	return result
 }
