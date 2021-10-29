@@ -182,7 +182,8 @@ func (s *stream) Push(
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
 
-	if counter > 0 && counter <= s.entryCt {
+	isReplay := counter > 0
+	if isReplay && counter <= s.entryCt {
 		var byteCt int
 		for _, e := range entries {
 			byteCt += len(e.Line)
@@ -256,7 +257,7 @@ func (s *stream) Push(
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		if s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
+		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)

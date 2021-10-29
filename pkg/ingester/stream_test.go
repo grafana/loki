@@ -339,6 +339,51 @@ func TestPushRateLimit(t *testing.T) {
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 }
 
+func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	cfg := defaultConfig()
+	cfg.MaxChunkAge = time.Minute
+
+	s := newStream(
+		cfg,
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NilMetrics,
+	)
+
+	base := time.Now()
+
+	entries := []logproto.Entry{
+		{Timestamp: base, Line: "1"},
+	}
+
+	// Push a first entry (it doesn't matter if we look like we're replaying or not)
+	_, err = s.Push(context.Background(), entries, nil, 1)
+	require.Nil(t, err)
+
+	// Create a sample outside the validity window
+	entries = []logproto.Entry{
+		{Timestamp: base.Add(-time.Hour), Line: "2"},
+	}
+
+	// Pretend it's not a replay, ensure we error
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0)
+	require.NotNil(t, err)
+
+	// Now pretend it's a replay. The same write should succeed.
+	_, err = s.Push(context.Background(), entries, nil, 2)
+	require.Nil(t, err)
+
+}
+
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
