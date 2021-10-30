@@ -80,6 +80,9 @@ func (es MultiError) Is(target error) bool {
 
 // IsCancel tells if all errors are either context.Canceled or grpc codes.Canceled.
 func (es MultiError) IsCancel() bool {
+	if len(es) == 0 {
+		return false
+	}
 	for _, err := range es {
 		if errors.Is(err, context.Canceled) {
 			continue
