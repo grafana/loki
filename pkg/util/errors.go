@@ -84,8 +84,7 @@ func (es MultiError) IsCancel() bool {
 		if errors.Is(err, context.Canceled) {
 			continue
 		}
-		s, ok := status.FromError(err)
-		if ok && s.Code() == codes.Canceled {
+		if IsConnCanceled(err) {
 			continue
 		}
 		return false
