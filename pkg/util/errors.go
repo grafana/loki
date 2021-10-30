@@ -97,6 +97,9 @@ func (es MultiError) IsCancel() bool {
 
 // IsDeadlineExceeded tells if all errors are either context.DeadlineExceeded or grpc codes.DeadlineExceeded.
 func (es MultiError) IsDeadlineExceeded() bool {
+	if len(es) == 0 {
+		return false
+	}
 	for _, err := range es {
 		if errors.Is(err, context.DeadlineExceeded) {
 			continue
