@@ -30,6 +30,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
+	lokiutil "github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
@@ -41,6 +42,19 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
+
+	// ringKey is the key under which we store the store gateways ring in the KVStore.
+	ringKey = "scheduler"
+
+	// ringNameForServer is the name of the ring used by the compactor server.
+	ringNameForServer = "scheduler"
+
+	// ringReplicationFactor should be 1 because we only want to pull back one node from the Ring
+	ringReplicationFactor = 1
+
+	// ringNumTokens sets our single token in the ring,
+	// we only need to insert 1 token to be used for leader election purposes.
+	ringNumTokens = 1
 )
 
 // Scheduler is responsible for queueing and dispatching queries to Queriers.
@@ -96,8 +110,8 @@ type Config struct {
 	QuerierForgetDelay      time.Duration     `yaml:"-"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
-	UseSchedulerRing bool       `yaml:"use_scheduler_ring"`
-	SchedulerRing    RingConfig `yaml:"scheduler_ring,omitempty"`
+	UseSchedulerRing bool                `yaml:"use_scheduler_ring"`
+	SchedulerRing    lokiutil.RingConfig `yaml:"scheduler_ring,omitempty"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -107,7 +121,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.QuerierForgetDelay = 0
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query scheduler create a ring and the frontend and frontend_worker use this ring to get the addresses of the query schedulers. If frontend_address and scheduler_address are not present in the config this value will be toggle by Loki to true")
-	cfg.SchedulerRing.RegisterFlags(f)
+	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "schedulers/", f)
 }
 
 // NewScheduler creates a new Scheduler.
@@ -160,7 +174,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
 		}
-		lifecyclerCfg, err := cfg.SchedulerRing.ToLifecyclerConfig()
+		lifecyclerCfg, err := cfg.SchedulerRing.ToLifecyclerConfig(ringNumTokens)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid ring lifecycler config")
 		}
@@ -172,13 +186,13 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		delegate = ring.NewTokensPersistencyDelegate(cfg.SchedulerRing.TokensFilePath, ring.JOINING, delegate, log)
 		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.SchedulerRing.HeartbeatTimeout, delegate, log)
 
-		s.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, log, registerer)
+		s.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, log, registerer)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring lifecycler")
 		}
 
-		ringCfg := cfg.SchedulerRing.ToRingConfig()
-		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+		ringCfg := cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
+		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}
@@ -656,7 +670,7 @@ func (s *Scheduler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc rin
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := ring.GenerateTokens(RingNumTokens-len(tokens), takenTokens)
+	newTokens := ring.GenerateTokens(ringNumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

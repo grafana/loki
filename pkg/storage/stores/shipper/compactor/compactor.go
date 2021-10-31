@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/shipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -34,21 +35,34 @@ const (
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
 
-	// RingKeyOfLeader is a somewhat arbitrary ID to pull from the ring to see who will be elected the leader
-	RingKeyOfLeader = 100
+	// ringKey is the key under which we store the store gateways ring in the KVStore.
+	ringKey = "compactor"
+
+	// ringNameForServer is the name of the ring used by the compactor server.
+	ringNameForServer = "compactor"
+
+	// ringKeyOfLeader is a somewhat arbitrary ID to pull from the ring to see who will be elected the leader
+	ringKeyOfLeader = 0
+
+	// ringReplicationFactor should be 1 because we only want to pull back one node from the Ring
+	ringReplicationFactor = 1
+
+	// ringNumTokens sets our single token in the ring,
+	// we only need to insert 1 token to be used for leader election purposes.
+	ringNumTokens = 1
 )
 
 type Config struct {
-	WorkingDirectory          string        `yaml:"working_directory"`
-	SharedStoreType           string        `yaml:"shared_store"`
-	SharedStoreKeyPrefix      string        `yaml:"shared_store_key_prefix"`
-	CompactionInterval        time.Duration `yaml:"compaction_interval"`
-	RetentionEnabled          bool          `yaml:"retention_enabled"`
-	RetentionDeleteDelay      time.Duration `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount  int           `yaml:"retention_delete_worker_count"`
-	DeleteRequestCancelPeriod time.Duration `yaml:"delete_request_cancel_period"`
-	MaxCompactionParallelism  int           `yaml:"max_compaction_parallelism"`
-	CompactorRing             RingConfig    `yaml:"compactor_ring,omitempty"`
+	WorkingDirectory          string          `yaml:"working_directory"`
+	SharedStoreType           string          `yaml:"shared_store"`
+	SharedStoreKeyPrefix      string          `yaml:"shared_store_key_prefix"`
+	CompactionInterval        time.Duration   `yaml:"compaction_interval"`
+	RetentionEnabled          bool            `yaml:"retention_enabled"`
+	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
+	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
+	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
+	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty"`
 }
 
 // RegisterFlags registers flags.
@@ -62,7 +76,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	cfg.CompactorRing.RegisterFlags(f)
+	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "compactors/", f)
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -117,7 +131,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if err != nil {
 		return nil, errors.Wrap(err, "create KV store client")
 	}
-	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig()
+	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig(ringNumTokens)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid ring lifecycler config")
 	}
@@ -129,13 +143,13 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	delegate = ring.NewTokensPersistencyDelegate(cfg.CompactorRing.TokensFilePath, ring.JOINING, delegate, util_log.Logger)
 	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.CompactorRing.HeartbeatTimeout, delegate, util_log.Logger)
 
-	compactor.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, util_log.Logger, r)
+	compactor.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, util_log.Logger, r)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring lifecycler")
 	}
 
-	ringCfg := cfg.CompactorRing.ToRingConfig()
-	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	ringCfg := cfg.CompactorRing.ToRingConfig(ringReplicationFactor)
+	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring client")
 	}
@@ -278,7 +292,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 			return nil
 		case <-syncTicker.C:
 			bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-			rs, err := c.ring.Get(RingKeyOfLeader, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+			rs, err := c.ring.Get(ringKeyOfLeader, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "error asking ring for who should run the compactor, will check again", "err", err)
 				continue
@@ -536,7 +550,7 @@ func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc rin
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := ring.GenerateTokens(RingNumTokens-len(tokens), takenTokens)
+	newTokens := ring.GenerateTokens(ringNumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)
