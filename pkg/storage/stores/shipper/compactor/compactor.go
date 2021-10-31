@@ -378,7 +378,6 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		}()
 	}
 	level.Info(util_log.Logger).Log("msg", "compactor started")
-	return
 }
 
 func (c *Compactor) stopping(_ error) error {
