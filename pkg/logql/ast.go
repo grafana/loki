@@ -391,6 +391,7 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 
 	// Join all contain filters if there are any.
 	containsAllFilter := log.ContainsAllFilter{}
+	regexpFilters := make()
 	n := 0
 	for _, filter := range acc {
 		switch c := filter.(type) {

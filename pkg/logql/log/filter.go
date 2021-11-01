@@ -110,7 +110,7 @@ func NewAndFilters(filters []Filterer) Filterer {
 		return TrueFilter
 	}
 
-	return andFilters {
+	return andFilters{
 		filters: filters,
 	}
 }
@@ -173,7 +173,7 @@ func (a orFilter) ToStage() Stage {
 	}
 }
 
-type regexpFilter struct {
+type RegexpFilter struct {
 	*regexp.Regexp
 }
 
@@ -184,18 +184,18 @@ func newRegexpFilter(re string, match bool) (Filterer, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := regexpFilter{reg}
+	f := RegexpFilter{reg}
 	if match {
 		return f, nil
 	}
 	return newNotFilter(f), nil
 }
 
-func (r regexpFilter) Filter(line []byte) bool {
+func (r RegexpFilter) Filter(line []byte) bool {
 	return r.Match(line)
 }
 
-func (r regexpFilter) ToStage() Stage {
+func (r RegexpFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, r.Filter(line)
@@ -242,8 +242,8 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 }
 
 type ContainsAllFilter struct {
-	matches           [][]byte
-	caseInsensitives  []bool
+	matches          [][]byte
+	caseInsensitives []bool
 }
 
 func (f *ContainsAllFilter) Add(filter ContainsFilter) {
