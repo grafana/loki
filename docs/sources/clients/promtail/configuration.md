@@ -277,7 +277,7 @@ external_labels:
 # A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
 # The default value is "filename". A "host" label is always included.
 # The stream lag metric indicates which streams are falling behind on writes to Loki;
-# be mindful about not using too many labels here as it can explode cardinality.
+# be mindful about using too many labels, as it can increase cardinality.
 [stream_lag_labels: <string> | default = "filename"]
 ```
 
