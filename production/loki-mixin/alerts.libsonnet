@@ -51,6 +51,21 @@
               |||,
             },
           },
+          {
+            alert: 'LokiTooManyCompactorsRunning',
+            expr: |||
+              sum(loki_boltdb_shipper_compactor_running) by (namespace) > 1
+            |||,
+            'for': '5m',
+            labels: {
+              severity: 'warning',
+            },
+            annotations: {
+              message: |||
+                {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
+              |||,
+            },
+          },
         ],
       },
     ],

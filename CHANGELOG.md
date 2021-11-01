@@ -14,6 +14,7 @@
 * [4543](https://github.com/grafana/loki/pull/4543) **trevorwhitney**: Change more default values and improve application of common storage config
 * [4570](https://github.com/grafana/loki/pull/4570) **DylanGuedes**: Loki: Append loopback to ingester net interface default list
 * [4594](https://github.com/grafana/loki/pull/4594) **owen-d**: Configures unordered_writes=true by default
+* [4574](https://github.com/grafana/loki/pull/4574) **slim-bean**: Loki: Add a ring to the compactor used to control concurrency when not running standalone
 
 # 2.3.0 (2021/08/06)
 

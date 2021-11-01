@@ -12,8 +12,9 @@ import (
 
 // Config holds common config that can be shared between multiple other config sections
 type Config struct {
-	PathPrefix string  `yaml:"path_prefix"`
-	Storage    Storage `yaml:"storage"`
+	PathPrefix    string  `yaml:"path_prefix"`
+	Storage       Storage `yaml:"storage"`
+	PersistTokens bool    `yaml:"persist_tokens"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {

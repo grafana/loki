@@ -86,12 +86,12 @@ func (w *ringWatcher) lookupAddresses() {
 	}
 
 	for _, ta := range toAdd {
-		level.Debug(w.log).Log("msg", fmt.Sprintf("adding connection to scheduler at address: %s", ta))
+		level.Debug(w.log).Log("msg", fmt.Sprintf("adding connection to address: %s", ta))
 		w.notifications.AddressAdded(ta)
 	}
 
 	for _, tr := range toRemove {
-		level.Debug(w.log).Log("msg", fmt.Sprintf("removing connection to scheduler at address: %s", tr))
+		level.Debug(w.log).Log("msg", fmt.Sprintf("removing connection to address: %s", tr))
 		w.notifications.AddressRemoved(tr)
 	}
 
