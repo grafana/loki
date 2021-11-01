@@ -49,8 +49,8 @@ const (
 	// ringNameForServer is the name of the ring used by the compactor server.
 	ringNameForServer = "scheduler"
 
-	// ringReplicationFactor should be 1 because we only want to pull back one node from the Ring
-	ringReplicationFactor = 1
+	// ringReplicationFactor should be 2 because we want 2 schedulers.
+	ringReplicationFactor = 2
 
 	// ringNumTokens sets our single token in the ring,
 	// we only need to insert 1 token to be used for leader election purposes.
