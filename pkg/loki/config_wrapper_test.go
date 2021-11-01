@@ -980,13 +980,14 @@ func TestRingInterfaceNames(t *testing.T) {
 		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
 		assert.NoError(t, err)
 
+		assert.Contains(t, config.Common.Ring.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.Ingester.LifecyclerConfig.InfNames, defaultIface)
 		assert.Contains(t, config.Distributor.DistributorRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.Ruler.Ring.InstanceInterfaceNames, defaultIface)
 	})
 
-	t.Run("if ingestor interface is set, it overrides other rings default interfaces", func(t *testing.T) {
+	t.Run("if ingester interface is set, it overrides other rings default interfaces", func(t *testing.T) {
 		yamlContent := `ingester:
   lifecycler:
     interface_names:
@@ -1095,4 +1096,81 @@ func Test_tokensFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TODO(dylanguedes): Add missing tests scenarios.
+func TestCommonRingConfigSection(t *testing.T) {
+	t.Run("if only common ring is provided, reuse it for all rings", func(t *testing.T) {
+		yamlContent := `common:
+  ring:
+    kvstore:
+      store: etcd`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("if common ring is provided, reuse it for all rings that aren't explictly set", func(t *testing.T) {
+		yamlContent := `common:
+  ring:
+    kvstore:
+      store: etcd
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("if only ingester ring is provided, reuse it for all rings", func(t *testing.T) {
+		yamlContent := `ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: etcd`
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
+
+	t.Run("if a ring is explicitly configured, doesn't override it", func(t *testing.T) {
+		yamlContent := `common:
+  ring:
+    kvstore:
+      store: consul
+distributor:
+  ring:
+    kvstore:
+      store: etcd
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "consul", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "consul", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "consul", config.CompactorConfig.CompactorRing.KVStore.Store)
+	})
 }

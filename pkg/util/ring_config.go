@@ -82,6 +82,27 @@ func (cfg *RingConfig) ToLifecyclerConfig(numTokens int) (ring.BasicLifecyclerCo
 	}, nil
 }
 
+func (cfg *RingConfig) ToCortexLifecyclerConfig() (ring.LifecyclerConfig, error) {
+	// TODO(dylanguedes): Make sure no important config is missed.
+	return ring.LifecyclerConfig{
+		RingConfig:      ring.Config{KVStore: cfg.KVStore},
+		NumTokens:       128, // default ingester num tokens
+		HeartbeatPeriod: cfg.HeartbeatPeriod,
+		ObservePeriod:   cfg.ObservePeriod,
+
+		//     MinReadyDuration: cfg.MinReady
+		InfNames: cfg.InstanceInterfaceNames,
+		// FinalSleep: ,
+		TokensFilePath: cfg.TokensFilePath,
+		Zone:           cfg.InstanceZone,
+		//     UnregisterOnShutdown: cfg
+
+		Addr: cfg.InstanceAddr,
+		Port: cfg.InstancePort,
+		ID:   cfg.InstanceID,
+	}, nil
+}
+
 func (cfg *RingConfig) ToRingConfig(replicationFactor int) ring.Config {
 	rc := ring.Config{}
 	flagext.DefaultValues(&rc)

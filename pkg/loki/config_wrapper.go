@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
@@ -77,9 +78,11 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyPathPrefixDefaults(r, defaults)
-		if err := applyIngesterRingConfig(r, &defaults); err != nil {
-			return err
-		}
+
+		applyDynamicRingConfigs(r, &defaults)
+
+		applyTokensFilePath(r)
+
 		applyMemberlistConfig(r)
 
 		if err := applyStorageConfig(r, &defaults); err != nil {
@@ -96,30 +99,54 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 	}
 }
 
-// applyIngesterRingConfig will use whatever config is setup for the ingester ring and use it everywhere else
-// we have a ring configured. The reason for centralizing on the ingester ring as this is been set in basically
-// all of our provided config files for all of time, usually set to `inmemory` for all the single binary Loki's
-// and is the most central ring config for Loki.
+// applyDynamicRingConfigs checks the current config and, depending on the given values, reuse ring configs accordingly.
 //
-// If the ingester ring has its interface names sets to a value equal to the default (["eth0", en0"]), it will try to append
-// the loopback interface at the end of it.
-func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) error {
-	if reflect.DeepEqual(r.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
-		appendLoopbackInterface(r)
+// 1. Gives preference to any explicit ring config set. For instance, if the user explicitly configures Distributor's ring,
+// that config will prevail.
+// 2. If no explicit ring config is set, reuse the common ring configured if it was provided.
+// 3. If no common ring was provided, reuse whatever was set by the ingester ring.
+func applyDynamicRingConfigs(r, defaults *ConfigWrapper) error {
+	// if common/ring is NOT set, reuse ingester ring config.
+	if reflect.DeepEqual(r.Common.Ring, defaults.Common.Ring) {
+		reuseIngesterConfig(r, defaults)
+		return nil
 	}
 
-	lc := r.Ingester.LifecyclerConfig
-	rc := r.Ingester.LifecyclerConfig.RingConfig
-	s := rc.KVStore.Store
-	sc := r.Ingester.LifecyclerConfig.RingConfig.KVStore.StoreConfig
+	return reuseCommonConfig(r, defaults)
+}
 
-	f, err := tokensFile(r, "ingester.tokens")
+func reuseCommonConfig(r, defaults *ConfigWrapper) error {
+	lifecyclerCfg, err := r.Common.Ring.ToCortexLifecyclerConfig()
 	if err != nil {
 		return err
 	}
-	r.Ingester.LifecyclerConfig.TokensFilePath = f
 
-	// This gets ugly because we use a separate struct for configuring each ring...
+	applyConfigToRings(r, defaults, lifecyclerCfg)
+	return nil
+}
+
+func reuseIngesterConfig(r, defaults *ConfigWrapper) {
+	appendLoopbackInterface(r, defaults)
+	applyConfigToRings(r, defaults, r.Ingester.LifecyclerConfig)
+}
+
+// applyConfigToRings will reuse a given LifecyclerConfig everywhere else we have a ring configured.
+//
+// If the ingester ring has its interface names sets to a value equal to the default (["eth0", en0"]), it will try to append
+// the loopback interface at the end of it.
+func applyConfigToRings(r, defaults *ConfigWrapper, reuse ring.LifecyclerConfig) {
+	shouldOverrideIngester := reflect.DeepEqual(r.Ingester.LifecyclerConfig, defaults.Ingester.LifecyclerConfig)
+	appendLoopbackInterface(r, defaults)
+
+	lc := reuse
+	rc := reuse.RingConfig
+	s := rc.KVStore.Store
+	sc := rc.KVStore.StoreConfig
+
+	if shouldOverrideIngester {
+		r.Ingester.LifecyclerConfig = reuse
+		r.Ingester.LifecyclerConfig.RingConfig = reuse.RingConfig
+	}
 
 	// Distributor
 	r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -153,11 +180,6 @@ func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) error {
 	r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 	r.QueryScheduler.SchedulerRing.KVStore.Store = s
 	r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = sc
-	f, err = tokensFile(r, "scheduler.tokens")
-	if err != nil {
-		return err
-	}
-	r.QueryScheduler.SchedulerRing.TokensFilePath = f
 
 	// Compactor
 	r.CompactorConfig.CompactorRing.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -170,11 +192,30 @@ func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) error {
 	r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 	r.CompactorConfig.CompactorRing.KVStore.Store = s
 	r.CompactorConfig.CompactorRing.KVStore.StoreConfig = sc
-	f, err = tokensFile(r, "compactor.tokens")
+}
+
+func applyTokensFilePath(cfg *ConfigWrapper) error {
+	// Ingester
+	f, err := tokensFile(cfg, "ingester.tokens")
 	if err != nil {
 		return err
 	}
-	r.CompactorConfig.CompactorRing.TokensFilePath = f
+	cfg.Ingester.LifecyclerConfig.TokensFilePath = f
+
+	// Compactor
+	f, err = tokensFile(cfg, "compactor.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.CompactorConfig.CompactorRing.TokensFilePath = f
+
+	// Query Scheduler
+	f, err = tokensFile(cfg, "scheduler.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.QueryScheduler.SchedulerRing.TokensFilePath = f
+
 	return nil
 }
 
@@ -211,10 +252,22 @@ func applyPathPrefixDefaults(r *ConfigWrapper, defaults ConfigWrapper) {
 	}
 }
 
-func appendLoopbackInterface(r *ConfigWrapper) {
-	if loopbackIface, err := loki_net.LoopbackInterfaceName(); err == nil {
-		r.Ingester.LifecyclerConfig.InfNames = append(r.Ingester.LifecyclerConfig.InfNames, loopbackIface)
-		r.Config.Frontend.FrontendV2.InfNames = append(r.Config.Frontend.FrontendV2.InfNames, loopbackIface)
+func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
+	loopbackIface, err := loki_net.LoopbackInterfaceName()
+	if err != nil {
+		return
+	}
+
+	if reflect.DeepEqual(cfg.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
+		cfg.Ingester.LifecyclerConfig.InfNames = append(cfg.Ingester.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.Frontend.FrontendV2.InfNames, defaults.Frontend.FrontendV2.InfNames) {
+		cfg.Frontend.FrontendV2.InfNames = append(cfg.Config.Frontend.FrontendV2.InfNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.Common.Ring.InstanceInterfaceNames, defaults.Common.Ring.InstanceInterfaceNames) {
+		cfg.Common.Ring.InstanceInterfaceNames = append(cfg.Common.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
