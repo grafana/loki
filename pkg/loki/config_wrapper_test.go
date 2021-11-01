@@ -20,7 +20,9 @@ import (
 	cortex_local "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 
+	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
@@ -910,9 +912,62 @@ func TestDefaultUnmarshal(t *testing.T) {
 
 func Test_applyIngesterRingConfig(t *testing.T) {
 
-	msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
+	t.Run("Attempt to catch changes to a RingConfig", func(t *testing.T) {
+		msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
 
-	assert.Equal(t, 8, reflect.TypeOf(distributor.RingConfig{}).NumField(), fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
+		assert.Equal(t, 8, reflect.TypeOf(distributor.RingConfig{}).NumField(), fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
+		assert.Equal(t, 12, reflect.TypeOf(util.RingConfig{}).NumField(), fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
+	})
+
+	t.Run("compactor and scheduler tokens file should not be configured if persist_tokens is false", func(t *testing.T) {
+		yamlContent := `
+common:
+  path_prefix: /loki
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+
+		assert.Equal(t, "", config.Ingester.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "", config.CompactorConfig.CompactorRing.TokensFilePath)
+		assert.Equal(t, "", config.QueryScheduler.SchedulerRing.TokensFilePath)
+	})
+
+	t.Run("tokens files should be set from common config when persist_tokens is true and path_prefix is defined", func(t *testing.T) {
+		yamlContent := `
+common:
+  persist_tokens: true
+  path_prefix: /loki
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+
+		assert.Equal(t, "/loki/ingester.tokens", config.Ingester.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "/loki/compactor.tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
+		assert.Equal(t, "/loki/scheduler.tokens", config.QueryScheduler.SchedulerRing.TokensFilePath)
+	})
+
+	t.Run("common config ignored if actual values set", func(t *testing.T) {
+		yamlContent := `
+ingester:
+  lifecycler:
+    tokens_file_path: /loki/toookens
+compactor:
+  compactor_ring:
+    tokens_file_path: /foo/tokens
+query_scheduler:
+  scheduler_ring:
+    tokens_file_path: /sched/tokes
+common:
+  persist_tokens: true
+  path_prefix: /loki
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
+		assert.NoError(t, err)
+
+		assert.Equal(t, "/loki/toookens", config.Ingester.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "/foo/tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
+		assert.Equal(t, "/sched/tokes", config.QueryScheduler.SchedulerRing.TokensFilePath)
+	})
 
 }
 
@@ -1014,4 +1069,30 @@ func TestLoopbackAppendingToFrontendV2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"otheriface"}, config.Frontend.FrontendV2.InfNames)
 	})
+}
+
+func Test_tokensFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     *ConfigWrapper
+		file    string
+		want    string
+		wantErr bool
+	}{
+		{"persist_tokens false, path_prefix empty", &ConfigWrapper{Config: Config{Common: common.Config{PathPrefix: "", PersistTokens: false}}}, "ingester.tokens", "", false},
+		{"persist_tokens true, path_prefix empty", &ConfigWrapper{Config: Config{Common: common.Config{PathPrefix: "", PersistTokens: true}}}, "ingester.tokens", "", true},
+		{"persist_tokens true, path_prefix set", &ConfigWrapper{Config: Config{Common: common.Config{PathPrefix: "/loki", PersistTokens: true}}}, "ingester.tokens", "/loki/ingester.tokens", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tokensFile(tt.cfg, tt.file)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("tokensFile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("tokensFile() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

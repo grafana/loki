@@ -2410,6 +2410,10 @@ This way, one doesn't have to replicate configs in multiple places.
 
 # When defined, the given prefix will be present in front of the endpoint paths.
 [path_prefix: <string>]
+
+# When true, the ingester, compactor and query_scheduler ring tokens will be saved to files in the path_prefix directory
+# Loki will error if you set this to true and path_prefix is empty.
+[persist_tokens: <boolean>: default = false]
 ```
 
 ### common_storage_config

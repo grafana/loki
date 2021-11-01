@@ -77,7 +77,9 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyPathPrefixDefaults(r, defaults)
-		applyIngesterRingConfig(r, &defaults)
+		if err := applyIngesterRingConfig(r, &defaults); err != nil {
+			return err
+		}
 		applyMemberlistConfig(r)
 
 		if err := applyStorageConfig(r, &defaults); err != nil {
@@ -101,7 +103,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 //
 // If the ingester ring has its interface names sets to a value equal to the default (["eth0", en0"]), it will try to append
 // the loopback interface at the end of it.
-func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) {
+func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) error {
 	if reflect.DeepEqual(r.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
 		appendLoopbackInterface(r)
 	}
@@ -110,6 +112,12 @@ func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) {
 	rc := r.Ingester.LifecyclerConfig.RingConfig
 	s := rc.KVStore.Store
 	sc := r.Ingester.LifecyclerConfig.RingConfig.KVStore.StoreConfig
+
+	f, err := tokensFile(r, "ingester.tokens")
+	if err != nil {
+		return err
+	}
+	r.Ingester.LifecyclerConfig.TokensFilePath = f
 
 	// This gets ugly because we use a separate struct for configuring each ring...
 
@@ -143,9 +151,13 @@ func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = lc.InfNames
 	r.QueryScheduler.SchedulerRing.InstanceZone = lc.Zone
 	r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-	r.QueryScheduler.SchedulerRing.TokensFilePath = lc.TokensFilePath
 	r.QueryScheduler.SchedulerRing.KVStore.Store = s
 	r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = sc
+	f, err = tokensFile(r, "scheduler.tokens")
+	if err != nil {
+		return err
+	}
+	r.QueryScheduler.SchedulerRing.TokensFilePath = f
 
 	// Compactor
 	r.CompactorConfig.CompactorRing.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -156,9 +168,29 @@ func applyIngesterRingConfig(r *ConfigWrapper, defaults *ConfigWrapper) {
 	r.CompactorConfig.CompactorRing.InstanceInterfaceNames = lc.InfNames
 	r.CompactorConfig.CompactorRing.InstanceZone = lc.Zone
 	r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-	r.CompactorConfig.CompactorRing.TokensFilePath = lc.TokensFilePath
 	r.CompactorConfig.CompactorRing.KVStore.Store = s
 	r.CompactorConfig.CompactorRing.KVStore.StoreConfig = sc
+	f, err = tokensFile(r, "compactor.tokens")
+	if err != nil {
+		return err
+	}
+	r.CompactorConfig.CompactorRing.TokensFilePath = f
+	return nil
+}
+
+// tokensFile will create a tokens file with the provided name in the common config /tokens directory
+// if and only if:
+// * the common config persist_tokens == true
+// * the common config path_prefix is defined.
+func tokensFile(cfg *ConfigWrapper, file string) (string, error) {
+	if !cfg.Common.PersistTokens {
+		return "", nil
+	}
+	if cfg.Common.PathPrefix == "" {
+		return "", errors.New("if persist_tokens is true, path_prefix MUST be defined")
+	}
+
+	return cfg.Common.PathPrefix + "/" + file, nil
 }
 
 func applyPathPrefixDefaults(r *ConfigWrapper, defaults ConfigWrapper) {
