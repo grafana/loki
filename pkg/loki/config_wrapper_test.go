@@ -745,6 +745,27 @@ schema_config:
 		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
 		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
 	})
+
+	t.Run("ingester final sleep config", func(t *testing.T) {
+		t.Run("defaults to 0s", func(t *testing.T) {
+			config, _ := testContext(emptyConfigString, nil)
+
+			assert.Equal(t, 0*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
+		})
+
+		t.Run("honors values from config file and command line", func(t *testing.T) {
+			config, _ := testContext(emptyConfigString, []string{"--ingester.final-sleep", "5s"})
+			assert.Equal(t, 5*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
+
+			const finalSleepConfig = `---
+ingester:
+  lifecycler:
+    final_sleep: 12s`
+
+			config, _ = testContext(finalSleepConfig, nil)
+			assert.Equal(t, 12*time.Second, config.Ingester.LifecyclerConfig.FinalSleep)
+		})
+	})
 }
 
 func TestDefaultFIFOCacheBehavior(t *testing.T) {
