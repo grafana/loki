@@ -100,24 +100,16 @@ func (w *ringWatcher) lookupAddresses() {
 }
 
 func (w *ringWatcher) getAddresses() ([]string, error) {
-	var addrs []string
 
-	// If there are less than 2 existing addresses, odds are we are running just a single instance
-	// so just get the first healthy address and use it. If the call returns to continue on to
-	// check for the actual replicaset instances
-	if len(w.addresses) < 2 {
-		rs, err := w.ring.GetAllHealthy(ring.WriteNoExtend)
-		if err != nil {
-			return nil, err
-		}
-		addrs = rs.GetAddresses()
-		if len(addrs) == 1 {
-			return addrs, nil
-		}
-	}
+	// We use ring.Write combined with the `ring.NewIgnoreUnhealthyInstancesReplicationStrategy`
+	// during ring creation to fetch at least 1 and ideally $REPLICATION_FACTOR nodes from the ring.
+	// If the ideal nodes for the desired token position are unhealthy, ring.Write ensures
+	// we continue to traverse the ring looking for more, until we've acquired $REPLICATION_FACTOR
+	// nodes or the ring is exhausted.
+	op := ring.Write
 
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-	rs, err := w.ring.Get(RingKeyOfLeader, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+	rs, err := w.ring.Get(RingKeyOfLeader, op, bufDescs, bufHosts, bufZones)
 	if err != nil {
 		return nil, err
 	}
