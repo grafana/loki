@@ -292,7 +292,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 			return nil
 		case <-syncTicker.C:
 			bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-			rs, err := c.ring.Get(ringKeyOfLeader, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+			rs, err := c.ring.Get(ringKeyOfLeader, ring.Write, bufDescs, bufHosts, bufZones)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "error asking ring for who should run the compactor, will check again", "err", err)
 				continue
