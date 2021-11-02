@@ -80,7 +80,7 @@ Where default_value is the value to use if the environment variable is undefined
 [server: <server_config>]
 
 # Describes how Promtail connects to multiple instances
-# of Loki, sending logs to each.
+# of Grafana Loki, sending logs to each.
 # WARNING: If one of the remote Loki servers fails to respond or responds
 # with any error which is retryable, this will impact sending logs to any
 # other configured remote Loki servers.  Sending is done on a single thread!
@@ -273,6 +273,12 @@ external_labels:
 
 # Maximum time to wait for a server to respond to a request
 [timeout: <duration> | default = 10s]
+
+# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
+# The default value is "filename". A "host" label is always included.
+# The stream lag metric indicates which streams are falling behind on writes to Loki;
+# be mindful about using too many labels, as it can increase cardinality.
+[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## positions
@@ -791,9 +797,10 @@ The `loki_push_api` block configures Promtail to expose a [Loki push API](../../
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
-Note the `server` configuration is the same as [server](#server)
+Note the `server` configuration is the same as [server](#server).
 
-
+Promtail also exposes a second endpoint on `/promtail/api/v1/raw` which expects newline-delimited log lines.
+This can be used to send NDJSON or plaintext logs.
 
 ```yaml
 # The push server configuration options
@@ -804,7 +811,8 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 
 # If Promtail should pass on the timestamp from the incoming log or not.
-# When false Promtail will assign the current timestamp to the log when it was processed
+# When false Promtail will assign the current timestamp to the log when it was processed.
+# Does not apply to the plaintext endpoint on `/promtail/api/v1/raw`.
 [use_incoming_timestamp: <bool> | default = false]
 ```
 

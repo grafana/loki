@@ -1,7 +1,11 @@
 package validation
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const (
@@ -27,6 +31,7 @@ const (
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
 	OutOfOrder      = "out_of_order"
+	TooFarBehind    = "too_far_behind"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
 	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v"
@@ -46,6 +51,19 @@ const (
 	DuplicateLabelNames         = "duplicate_label_names"
 	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
 )
+
+type ErrStreamRateLimit struct {
+	RateLimit flagext.ByteSize
+	Labels    string
+	Bytes     flagext.ByteSize
+}
+
+func (e *ErrStreamRateLimit) Error() string {
+	return fmt.Sprintf("Per stream rate limit exceeded (limit: %s/sec) while attempting to ingest for stream '%s' totaling %s, consider splitting a stream via additional labels or contact your Loki administrator to see if the limt can be increased",
+		e.RateLimit.String(),
+		e.Labels,
+		e.Bytes.String())
+}
 
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
 var MutatedSamples = prometheus.NewCounterVec(

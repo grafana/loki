@@ -1,9 +1,10 @@
 ---
 title: Promtail
+weight: 10
 ---
 # Promtail
 
-Promtail is an agent which ships the contents of local logs to a private Loki
+Promtail is an agent which ships the contents of local logs to a private Grafana Loki
 instance or [Grafana Cloud](https://grafana.com/oss/loki). It is usually
 deployed to every machine that has applications needed to be monitored.
 

@@ -1,10 +1,11 @@
 ---
 title: Loki in Grafana
+weight: 30
 ---
 # Loki in Grafana
 
 [Grafana 6.0](https://grafana.com/grafana/download/6.0.0) and more recent
-versions have built-in support for Loki.
+versions have built-in support for Grafana Loki.
 Use [Grafana 6.3](https://grafana.com/grafana/download/6.3.0) or a more
 recent version to take advantage of [LogQL]({{< relref "../logql/_index.md" >}}) functionality.
 

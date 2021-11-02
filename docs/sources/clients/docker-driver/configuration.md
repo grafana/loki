@@ -8,7 +8,7 @@ each container will use the default driver unless configured otherwise.
 
 ## Installation
 
-Before configuring the plugin, [install or upgrade the Loki Docker Driver Client](../../docker-driver/)
+Before configuring the plugin, [install or upgrade the Grafana Loki Docker Driver Client](../../docker-driver/)
 
 ## Change the logging driver for a container
 

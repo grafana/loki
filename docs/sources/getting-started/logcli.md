@@ -1,9 +1,10 @@
 ---
 title: LogCLI
+weight: 20
 ---
-# LogCLI, Loki's command-line interface
+# LogCLI, Grafana Loki's command-line interface
 
-LogCLI is the command-line interface to Loki.
+LogCLI is the command-line interface to Grafana Loki.
 It facilitates running [LogQL]({{< relref "../logql/_index.md" >}})
 queries against a Loki instance.
 

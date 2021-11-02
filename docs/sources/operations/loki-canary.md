@@ -7,7 +7,7 @@ weight: 60
 ![canary](../canary.png)
 
 Loki Canary is a standalone app that audits the log-capturing performance of
-a Loki cluster.
+a Grafana Loki cluster.
 
 Loki Canary generates artificial log lines.
 These log lines are sent to the Loki cluster.

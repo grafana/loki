@@ -9,7 +9,7 @@ import (
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -49,8 +50,7 @@ var (
 )
 
 var (
-	ErrEntriesExist    = errors.New("duplicate push - entries already exist")
-	ErrStreamRateLimit = errors.New("stream rate limit exceeded")
+	ErrEntriesExist = errors.New("duplicate push - entries already exist")
 )
 
 func init() {
@@ -182,7 +182,8 @@ func (s *stream) Push(
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
 
-	if counter > 0 && counter <= s.entryCt {
+	isReplay := counter > 0
+	if isReplay && counter <= s.entryCt {
 		var byteCt int
 		for _, e := range entries {
 			byteCt += len(e.Line)
@@ -209,14 +210,23 @@ func (s *stream) Push(
 	var rateLimitedSamples, rateLimitedBytes int
 	defer func() {
 		if outOfOrderSamples > 0 {
-			validation.DiscardedSamples.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderSamples))
-			validation.DiscardedBytes.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderBytes))
+			name := validation.OutOfOrder
+			if s.unorderedWrites {
+				name = validation.TooFarBehind
+			}
+			validation.DiscardedSamples.WithLabelValues(name, s.tenant).Add(float64(outOfOrderSamples))
+			validation.DiscardedBytes.WithLabelValues(name, s.tenant).Add(float64(outOfOrderBytes))
 		}
 		if rateLimitedSamples > 0 {
 			validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
 			validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedBytes))
 		}
 	}()
+
+	// This call uses a mutex under the hood, cache the result since we're checking the limit
+	// on each entry in the push (hot path) and we only use this value when logging entries
+	// over the rate limit.
+	limit := s.limiter.lim.Limit()
 
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
@@ -240,20 +250,20 @@ func (s *stream) Push(
 		// Check if this this should be rate limited.
 		now := time.Now()
 		if !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], ErrStreamRateLimit})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[i].Line))}})
 			rateLimitedSamples++
 			rateLimitedBytes += len(entries[i].Line)
 			continue
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		if s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
+		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
-			if err == chunkenc.ErrOutOfOrder {
+			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
 			}
@@ -310,19 +320,24 @@ func (s *stream) Push(
 				}
 			}()
 		}
+	}
 
+	if len(s.chunks) != prevNumChunks {
+		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
 	}
 
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && lastEntryWithErr.e != ErrStreamRateLimit {
+		_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
+		outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
+		if !outOfOrder && !ok {
 			return bytesAdded, lastEntryWithErr.e
 		}
 		var statusCode int
-		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
+		if outOfOrder {
 			statusCode = http.StatusBadRequest
 		}
-		if lastEntryWithErr.e == ErrStreamRateLimit {
+		if ok {
 			statusCode = http.StatusTooManyRequests
 		}
 		// Return a http status 4xx request response with all failed entries.
@@ -345,9 +360,6 @@ func (s *stream) Push(
 		return bytesAdded, httpgrpc.Errorf(statusCode, buf.String())
 	}
 
-	if len(s.chunks) != prevNumChunks {
-		memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
-	}
 	return bytesAdded, nil
 }
 

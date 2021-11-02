@@ -7,7 +7,7 @@ weight: 700
 
 # Rules and the Ruler
 
-Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
+Grafana Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
 This example configuration sources rules from a local disk.
 

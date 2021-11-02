@@ -65,7 +65,7 @@ func newCRC32() hash.Hash32 {
 type BinaryTOC struct {
 	// Symbols holds start to the same symbols section as index related to this index header.
 	Symbols uint64
-	// PostingsOffsetTable holds start to the the same Postings Offset Table section as index related to this index header.
+	// PostingsOffsetTable holds start to the same Postings Offset Table section as index related to this index header.
 	PostingsOffsetTable uint64
 }
 

@@ -34,7 +34,7 @@ A more granular log stream selector then reduces the number of searched streams 
 This means that the labels passed to the log stream selector will affect the relative performance of the query's execution.
 
 The log stream selector is specified by one or more comma-separated key-value pairs. Each key is a log label and each value is that label's value.
-Curly braces (`{` and `}`) delimit the stream selector. 
+Curly braces (`{` and `}`) delimit the stream selector.
 
 Consider this stream selector:
 
@@ -49,7 +49,7 @@ A stream may contain other pairs of labels and values,
 but only the specified pairs within the stream selector are used to determine
 which streams will be included within the query results.
 
-The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki log stream selectors.
+The same rules that apply for [Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Grafana Loki log stream selectors.
 
 The `=` operator after the label name is a **label matching operator**.
 The following label matching operators are supported:
@@ -142,7 +142,7 @@ Line filter expression examples:
 and is followed by 1 or more word characters. A complete query with a regular expression:
 
     ```
-    {name="cassandra"} |~  `error=\w+` 
+    {name="cassandra"} |~  `error=\w+`
     ```
 
 Filter operators can be chained.
@@ -358,7 +358,7 @@ The **json** parser operates in two modes:
 
    If an array or an object returned by an expression, it will be assigned to the label in json format.
 
-   For example, `| json server_list="servers", headers="request.headers` will extract:
+   For example, `| json server_list="servers", headers="request.headers"` will extract:
 
    ```kv
    "server_list" => `["129.0.1.1","10.2.1.3"]`

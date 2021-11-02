@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
+	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -15,16 +15,19 @@ import (
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 
+	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 type WorkerServiceConfig struct {
 	AllEnabled            bool
+	ReadEnabled           bool
 	GrpcListenPort        int
 	QuerierMaxConcurrent  int
 	QuerierWorkerConfig   *querier_worker.Config
 	QueryFrontendEnabled  bool
 	QuerySchedulerEnabled bool
+	SchedulerRing         ring.ReadRing
 }
 
 // InitWorkerService takes a config object, a map of routes to handlers, an external http router and external
@@ -78,12 +81,16 @@ func InitWorkerService(
 		// If a frontend or scheduler address has been configured, return a querier worker service that uses
 		// the external Loki Server HTTP server, which has now has the internal handler's routes registered with it
 		return querier_worker.NewQuerierWorker(
-			*(cfg.QuerierWorkerConfig), httpgrpc_server.NewServer(externalHandler), util_log.Logger, prometheus.DefaultRegisterer)
+			*(cfg.QuerierWorkerConfig),
+			cfg.SchedulerRing,
+			httpgrpc_server.NewServer(externalHandler),
+			util_log.Logger,
+			prometheus.DefaultRegisterer)
 	}
 
-	// Since we must be running a querier with either a frontend and/or scheduler at this point, if no frontend or scheduler address
+	// Since we must be running a querier with either a frontend and/or scheduler at this point, if no scheduler ring, frontend, or scheduler address
 	// is configured, Loki will default to using the frontend on localhost on it's own GRPC listening port.
-	if (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
+	if cfg.SchedulerRing == nil && (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
 		address := fmt.Sprintf("127.0.0.1:%d", cfg.GrpcListenPort)
 		level.Warn(util_log.Logger).Log(
 			"msg", "Worker address is empty, attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.",
@@ -104,6 +111,7 @@ func InitWorkerService(
 	// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
 	// request context, as well as make sure any x-www-url-formencoded params are correctly parsed
 	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
 		authMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 	)
@@ -116,7 +124,11 @@ func InitWorkerService(
 	//Return a querier worker pointed to the internal querier HTTP handler so there is not a conflict in routes between the querier
 	//and the query frontend
 	return querier_worker.NewQuerierWorker(
-		*(cfg.QuerierWorkerConfig), httpgrpc_server.NewServer(internalHandler), util_log.Logger, prometheus.DefaultRegisterer)
+		*(cfg.QuerierWorkerConfig),
+		cfg.SchedulerRing,
+		httpgrpc_server.NewServer(internalHandler),
+		util_log.Logger,
+		prometheus.DefaultRegisterer)
 }
 
 func registerRoutesExternally(routes []string, externalRouter *mux.Router, internalHandler http.Handler, authMiddleware middleware.Interface) {
@@ -133,12 +145,13 @@ func registerRoutesExternally(routes []string, externalRouter *mux.Router, inter
 }
 
 func querierRunningStandalone(cfg WorkerServiceConfig) bool {
-	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.AllEnabled
+	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.ReadEnabled && !cfg.AllEnabled
 	level.Debug(util_log.Logger).Log(
 		"msg", "determining if querier is running as standalone target",
 		"runningStandalone", runningStandalone,
 		"queryFrontendEnabled", cfg.QueryFrontendEnabled,
 		"queryScheduleEnabled", cfg.QuerySchedulerEnabled,
+		"readEnabled", cfg.ReadEnabled,
 		"allEnabled", cfg.AllEnabled,
 	)
 

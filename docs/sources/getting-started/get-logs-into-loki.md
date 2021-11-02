@@ -1,9 +1,10 @@
 ---
 title: Get logs into Loki
+weight: 10
 ---
-# Get logs into Loki
+# Get logs into Grafana Loki
 
-After you [install and run Loki](../../installation/local/), you probably want to get logs from other applications into it.
+After you [install and run Grafana Loki](../../installation/local/), you probably want to get logs from other applications into it.
 
 To get application logs into Loki, you need to edit the [Promtail]({{< relref "../clients/promtail" >}}) configuration file.
 

@@ -76,6 +76,10 @@ var (
 		"floor",
 		"round",
 		"fromJson",
+		"date",
+		"toDate",
+		"now",
+		"unixEpoch",
 	}
 )
 

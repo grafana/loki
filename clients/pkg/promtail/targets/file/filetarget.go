@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
@@ -116,6 +116,14 @@ func (t *FileTarget) Stop() {
 	close(t.quit)
 	<-t.done
 	t.handler.Stop()
+}
+
+// UpdatePath updates the filetarget path
+// returns true if the path was changed
+func (t *FileTarget) UpdatePath(path string) bool {
+	curPath := t.path
+	t.path = path
+	return curPath != path
 }
 
 // Type implements a Target

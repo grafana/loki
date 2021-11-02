@@ -1,14 +1,17 @@
 package validation
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/time/rate"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/ruler/util"
@@ -81,23 +84,23 @@ type Limits struct {
 
 	// this field is the inversion of the general remote_write.enabled because the zero value of a boolean is false,
 	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
-	RulerRemoteWriteDisabled               bool                  `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
-	RulerRemoteWriteURL                    string                `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
-	RulerRemoteWriteTimeout                time.Duration         `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
-	RulerRemoteWriteHeaders                map[string]string     `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
-	RulerRemoteWriteRelabelConfigs         []*util.RelabelConfig `yaml:"ruler_remote_write_relabel_configs" json:"ruler_remote_write_relabel_configs"`
-	RulerRemoteWriteQueueCapacity          int                   `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
-	RulerRemoteWriteQueueMinShards         int                   `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
-	RulerRemoteWriteQueueMaxShards         int                   `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
-	RulerRemoteWriteQueueMaxSamplesPerSend int                   `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
-	RulerRemoteWriteQueueBatchSendDeadline time.Duration         `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
-	RulerRemoteWriteQueueMinBackoff        time.Duration         `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
-	RulerRemoteWriteQueueMaxBackoff        time.Duration         `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
-	RulerRemoteWriteQueueRetryOnRateLimit  bool                  `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
+	RulerRemoteWriteDisabled               bool                         `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled"`
+	RulerRemoteWriteURL                    string                       `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url"`
+	RulerRemoteWriteTimeout                time.Duration                `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout"`
+	RulerRemoteWriteHeaders                OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers"`
+	RulerRemoteWriteRelabelConfigs         []*util.RelabelConfig        `yaml:"ruler_remote_write_relabel_configs,omitempty" json:"ruler_remote_write_relabel_configs,omitempty"`
+	RulerRemoteWriteQueueCapacity          int                          `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity"`
+	RulerRemoteWriteQueueMinShards         int                          `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards"`
+	RulerRemoteWriteQueueMaxShards         int                          `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards"`
+	RulerRemoteWriteQueueMaxSamplesPerSend int                          `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send"`
+	RulerRemoteWriteQueueBatchSendDeadline time.Duration                `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline"`
+	RulerRemoteWriteQueueMinBackoff        time.Duration                `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff"`
+	RulerRemoteWriteQueueMaxBackoff        time.Duration                `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff"`
+	RulerRemoteWriteQueueRetryOnRateLimit  bool                         `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit"`
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
-	StreamRetention []StreamRetention `yaml:"retention_stream" json:"retention_stream"`
+	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
@@ -113,7 +116,7 @@ type StreamRetention struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
+	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "global", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB.")
 	f.Var(&l.MaxLineSize, "distributor.max-line-size", "maximum line length allowed, i.e. 100mb. Default (0) means unlimited.")
@@ -121,18 +124,18 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
-	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
+	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Reject old samples.")
 
-	_ = l.RejectOldSamplesMaxAge.Set("14d")
+	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
 	_ = l.CreationGracePeriod.Set("10m")
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Per-user entries limit per query")
 
-	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user, per ingester. 0 to disable.")
-	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 0, "Maximum number of active streams per user, across the cluster. 0 to disable.")
-	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", false, "(Experimental) Allow out of order writes.")
+	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable.")
+	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", true, "Allow out of order writes.")
 
 	_ = l.PerStreamRateLimit.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
@@ -141,13 +144,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 
-	_ = l.MaxQueryLength.Set("0s")
+	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series returned by a metric query. When the limit is reached an error is returned.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
-	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
+	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Limit the number of concurrent tail requests")
@@ -179,12 +182,18 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
+	type plain Limits
 
 	// During startup we wont have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
-		*l = *defaultLimits
+		b, err := yaml.Marshal(defaultLimits)
+		if err != nil {
+			return errors.Wrap(err, "cloning limits (marshaling)")
+		}
+		if err := yaml.Unmarshal(b, (*plain)(l)); err != nil {
+			return errors.Wrap(err, "cloning limits (unmarshaling)")
+		}
 	}
-	type plain Limits
 	return unmarshal((*plain)(l))
 }
 
@@ -200,13 +209,7 @@ func (l *Limits) Validate() error {
 				return fmt.Errorf("retention period must be >= 24h was %s", rule.Period)
 			}
 			// populate matchers during validation
-			l.StreamRetention[i] = StreamRetention{
-				Period:   rule.Period,
-				Priority: rule.Priority,
-				Selector: rule.Selector,
-				Matchers: matchers,
-			}
-
+			l.StreamRetention[i].Matchers = matchers
 		}
 	}
 	return nil
@@ -225,13 +228,12 @@ func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
 }
 
-type ForEachTenantLimitCallback func(userID string, limit *Limits)
-
 type TenantLimits interface {
 	// TenantLimits is a function that returns limits for given tenant, or
 	// nil, if there are no tenant-specific limits.
 	TenantLimits(userID string) *Limits
-	ForEachTenantLimit(ForEachTenantLimitCallback)
+	// AllByUserID gets a mapping of all tenant IDs and limits for that user
+	AllByUserID() map[string]*Limits
 }
 
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
@@ -248,6 +250,8 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 		defaultLimits: &defaults,
 	}, nil
 }
+
+func (o *Overrides) AllByUserID() map[string]*Limits { return o.tenantLimits.AllByUserID() }
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).
@@ -434,7 +438,7 @@ func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
 
 // RulerRemoteWriteHeaders returns the headers to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
-	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders
+	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders.Map()
 }
 
 // RulerRemoteWriteRelabelConfigs returns the write relabel configs to use in a remote-write for a given user.
@@ -496,10 +500,6 @@ func (o *Overrides) UnorderedWrites(userID string) bool {
 	return o.getOverridesForUser(userID).UnorderedWrites
 }
 
-func (o *Overrides) ForEachTenantLimit(callback ForEachTenantLimitCallback) {
-	o.tenantLimits.ForEachTenantLimit(callback)
-}
-
 func (o *Overrides) DefaultLimits() *Limits {
 	return o.defaultLimits
 }
@@ -521,4 +521,53 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 		}
 	}
 	return o.defaultLimits
+}
+
+// OverwriteMarshalingStringMap will overwrite the src map when unmarshaling
+// as opposed to merging.
+type OverwriteMarshalingStringMap struct {
+	m map[string]string
+}
+
+func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {
+	return OverwriteMarshalingStringMap{m: m}
+}
+
+func (sm *OverwriteMarshalingStringMap) Map() map[string]string {
+	return sm.m
+}
+
+// MarshalJSON explicitly uses the the type receiver and not pointer receiver
+// or it won't be called
+func (sm OverwriteMarshalingStringMap) MarshalJSON() ([]byte, error) {
+	return json.Marshal(sm.m)
+}
+
+func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
+	var def map[string]string
+	if err := json.Unmarshal(val, &def); err != nil {
+		return err
+	}
+	sm.m = def
+
+	return nil
+
+}
+
+// MarshalYAML explicitly uses the the type receiver and not pointer receiver
+// or it won't be called
+func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
+	return sm.m, nil
+}
+
+func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var def map[string]string
+
+	err := unmarshal(&def)
+	if err != nil {
+		return err
+	}
+	sm.m = def
+
+	return nil
 }

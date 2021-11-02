@@ -25,11 +25,14 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
-const enabledRWTenant = "12345"
-const disabledRWTenant = "54321"
-const additionalHeadersRWTenant = "55443"
-const customRelabelsTenant = "98765"
-const badRelabelsTenant = "45677"
+const enabledRWTenant = "enabled"
+const disabledRWTenant = "disabled"
+const additionalHeadersRWTenant = "additional-headers"
+const noHeadersRWTenant = "no-headers"
+const customRelabelsTenant = "custom-relabels"
+const badRelabelsTenant = "bad-relabels"
+const nilRelabelsTenant = "nil-relabels"
+const emptySliceRelabelsTenant = "empty-slice-relabels"
 
 const defaultCapacity = 1000
 
@@ -43,12 +46,16 @@ func newFakeLimits() fakeLimits {
 				RulerRemoteWriteDisabled: true,
 			},
 			additionalHeadersRWTenant: {
-				RulerRemoteWriteHeaders: map[string]string{
-					user.OrgIDHeaderName:                  "overridden",
-					strings.ToLower(user.OrgIDHeaderName): "overridden-lower",
-					strings.ToUpper(user.OrgIDHeaderName): "overridden-upper",
-					"Additional":                          "Header",
-				},
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
+					user.OrgIDHeaderName:                         "overridden",
+					fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
+					strings.ToLower(user.OrgIDHeaderName):        "overridden-lower",
+					strings.ToUpper(user.OrgIDHeaderName):        "overridden-upper",
+					"Additional":                                 "Header",
+				}),
+			},
+			noHeadersRWTenant: {
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{}),
 			},
 			customRelabelsTenant: {
 				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
@@ -62,6 +69,10 @@ func newFakeLimits() fakeLimits {
 						Action: "labeldrop",
 					},
 				},
+			},
+			nilRelabelsTenant: {},
+			emptySliceRelabelsTenant: {
+				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{},
 			},
 			badRelabelsTenant: {
 				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
@@ -85,11 +96,22 @@ func setupRegistry(t *testing.T, dir string) *walRegistry {
 				QueueConfig: config.QueueConfig{
 					Capacity: defaultCapacity,
 				},
+				HTTPClientConfig: promConfig.HTTPClientConfig{
+					BasicAuth: &promConfig.BasicAuth{
+						Password: "bar",
+						Username: "foo",
+					},
+				},
+				Headers: map[string]string{
+					"Base": "value",
+				},
 				WriteRelabelConfigs: []*relabel.Config{
 					{
 						SourceLabels: []model.LabelName{"__name__"},
 						Regex:        relabel.MustNewRegexp("ALERTS.*"),
 						Action:       "drop",
+						Separator:    ";",
+						Replacement:  "$1",
 					},
 				},
 			},
@@ -158,6 +180,20 @@ func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
 	assert.Len(t, tenantCfg.RemoteWrite, 0)
 }
 
+func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
+	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username, "foo")
+	assert.Equal(t, tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password, promConfig.Secret("<secret>"))
+}
+
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 	walDir, err := createTempWALDir()
 	require.NoError(t, err)
@@ -172,12 +208,46 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], additionalHeadersRWTenant)
 	// but that the additional header defined is set
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Additional"], "Header")
+	// the original header must be removed
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
 
 	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
 
 	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+}
+
+func TestTenantRemoteWriteHeadersReset(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(noHeadersRWTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
+	// the original header must be removed
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
+}
+
+func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
+	// ensure that tenant cannot override X-Scope-OrgId header
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
+	// the original header must be present
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
 }
 
 func TestRelabelConfigOverrides(t *testing.T) {
@@ -191,6 +261,32 @@ func TestRelabelConfigOverrides(t *testing.T) {
 
 	// it should also override the default label configs
 	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
+}
+
+func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
+	require.NoError(t, err)
+
+	// if there are no relabel configs defined for the tenant, it should not override
+	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, reg.config.RemoteWrite.Client.WriteRelabelConfigs)
+}
+
+func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
+	walDir, err := createTempWALDir()
+	require.NoError(t, err)
+	reg := setupRegistry(t, walDir)
+	defer os.RemoveAll(walDir)
+
+	tenantCfg, err := reg.getTenantConfig(emptySliceRelabelsTenant)
+	require.NoError(t, err)
+
+	// if there is an empty slice of relabel configs, it should clear existing relabel configs
+	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
 }
 
 func TestRelabelConfigOverridesWithErrors(t *testing.T) {
@@ -276,4 +372,6 @@ func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
 	return limits
 }
 
-func (f fakeLimits) ForEachTenantLimit(validation.ForEachTenantLimitCallback) {}
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	return f.limits
+}

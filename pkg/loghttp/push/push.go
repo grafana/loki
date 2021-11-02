@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"mime"
 	"net/http"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/dustin/go-humanize"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -78,8 +79,14 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		req              logproto.PushRequest
 	)
 
+	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, err
+	}
+
 	switch contentType {
 	case applicationJSON:
+
 		var err error
 
 		// todo once https://github.com/weaveworks/common/commit/73225442af7da93ec8f6a6e2f7c8aafaee3f8840 is in Loki.

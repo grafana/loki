@@ -33,7 +33,9 @@ import (
   str                     string
   duration                time.Duration
   LiteralExpr             *LiteralExpr
-  BinOpModifier           BinOpOptions
+  BinOpModifier           *BinOpOptions
+  BoolModifier            *BinOpOptions
+  OnOrIgnoringModifier    *BinOpOptions
   LabelParser             *LabelParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
@@ -78,6 +80,8 @@ import (
 %type <LiteralExpr>           literalExpr
 %type <LabelReplaceExpr>      labelReplaceExpr
 %type <BinOpModifier>         binOpModifier
+%type <BoolModifier>          boolModifier
+%type <OnOrIgnoringModifier>  onOrIgnoringModifier
 %type <LabelParser>           labelParser
 %type <PipelineExpr>          pipelineExpr
 %type <PipelineStage>         pipelineStage
@@ -106,7 +110,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP
+                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -342,7 +346,6 @@ numberFilter:
     | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     ;
 
-// TODO(owen-d): add (on,ignoring) clauses to binOpExpr
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:
          expr OR binOpModifier expr          { $$ = mustNewBinOpExpr("or", $3, $1, $4) }
@@ -362,10 +365,75 @@ binOpExpr:
          | expr LTE binOpModifier expr       { $$ = mustNewBinOpExpr("<=", $3, $1, $4) }
          ;
 
+boolModifier:
+		{
+		 $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}}
+        	}
+        | BOOL
+        	{
+        	 $$ = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool:true}
+        	}
+        ;
+
+onOrIgnoringModifier:
+    	boolModifier ON OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+		{
+		$$ = $1
+    		$$.VectorMatching.On=true
+    		$$.VectorMatching.MatchingLabels=$4
+		}
+	| boolModifier ON OPEN_PARENTHESIS CLOSE_PARENTHESIS
+		{
+		$$ = $1
+		$$.VectorMatching.On=true
+		}
+	| boolModifier IGNORING OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+		{
+		$$ = $1
+    		$$.VectorMatching.MatchingLabels=$4
+		}
+	| boolModifier IGNORING OPEN_PARENTHESIS CLOSE_PARENTHESIS
+		{
+		$$ = $1
+		}
+	;
+
 binOpModifier:
-           { $$ = BinOpOptions{} }
-           | BOOL { $$ = BinOpOptions{ ReturnBool: true } }
-           ;
+	boolModifier {$$ = $1 }
+ 	| onOrIgnoringModifier {$$ = $1 }
+ 	| onOrIgnoringModifier GROUP_LEFT
+                	{
+                        $$ = $1
+                        $$.VectorMatching.Card = CardManyToOne
+                        }
+ 	| onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS CLOSE_PARENTHESIS
+        	{
+                $$ = $1
+                $$.VectorMatching.Card = CardManyToOne
+                }
+ 	| onOrIgnoringModifier GROUP_LEFT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+                {
+                $$ = $1
+                $$.VectorMatching.Card = CardManyToOne
+                $$.VectorMatching.Include = $4
+                }
+        | onOrIgnoringModifier GROUP_RIGHT
+        	{
+                $$ = $1
+                $$.VectorMatching.Card = CardOneToMany
+                }
+ 	| onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS CLOSE_PARENTHESIS
+                {
+                $$ = $1
+                $$.VectorMatching.Card = CardOneToMany
+                }
+ 	| onOrIgnoringModifier GROUP_RIGHT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS
+                {
+                $$ = $1
+                $$.VectorMatching.Card = CardOneToMany
+                $$.VectorMatching.Include = $4
+                }
+        ;
 
 literalExpr:
            NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }

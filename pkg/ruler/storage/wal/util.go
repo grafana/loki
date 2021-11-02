@@ -127,6 +127,8 @@ func (c *walDataCollector) StoreSeries(series []record.RefSeries, _ int) {
 	c.series = append(c.series, series...)
 }
 
+func (c *walDataCollector) UpdateSeriesSegment(series []record.RefSeries, index int) {}
+
 func (c *walDataCollector) SeriesReset(_ int) {}
 
 // SubDirectory returns the subdirectory within a Storage directory used for

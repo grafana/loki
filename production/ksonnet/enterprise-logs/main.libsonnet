@@ -170,7 +170,7 @@ loki {
     + container.withCommand([
       '/bin/bash',
       '-euc',
-      'kubectl create secret generic gel-admin-token --from-file=token=/shared/admin-token --from-literal=grafana-token="self.base64 <(echo :self.cat /shared/admin-token)))"',
+      'kubectl create secret generic gel-admin-token --from-file=token=/shared/admin-token --from-literal=grafana-token="$(base64 <(echo :$(cat /shared/admin-token)))"',
     ])
     + container.withVolumeMounts([{ mountPath: '/shared', name: 'shared' }]),
   tokengen_job::

@@ -7,6 +7,7 @@
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
+.PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 
 SHELL = /usr/bin/env bash
 
@@ -38,7 +39,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.17.0
+BUILD_IMAGE_VERSION := 0.18.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -248,10 +249,10 @@ cmd/migrate/migrate: $(APP_GO_FILES) cmd/migrate/main.go
 GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
-	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -573,7 +574,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
-	drone lint .drone/drone.yml
+	drone lint .drone/drone.yml --trusted
 	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN"
 endif
 
@@ -635,3 +636,30 @@ format:
 		-type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
 		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+
+###################
+# Example Configs #
+###################
+
+# Validate the example configurations that we provide in ./docs/sources/configuration/examples
+validate-example-configs: loki
+	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+
+# Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
+# This target should be run if any of our example configs change.
+generate-example-config-doc:
+	echo "Removing existing doc at loki/docs/configuration/examples.md and re-generating. . ."
+	# Title and Heading
+	echo -e "---\ntitle: Examples\n---\n # Loki Configuration Examples" > ./docs/sources/configuration/examples.md
+	# Append each configuration and its file name to examples.md
+	for f in ./docs/sources/configuration/examples/*.yaml; do echo -e "\n## $$(basename $$f)\n\n\`\`\`yaml\n$$(cat $$f)\n\`\`\`\n" >> ./docs/sources/configuration/examples.md; done
+
+# Fail our CI build if changes are made to example configurations but our doc is not updated
+check-example-config-doc: generate-example-config-doc
+	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+		echo -e "\nChanges found in generated example configuration doc"; \
+		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
+		echo "If you are actively developing these files you can ignore this error"; \
+		echo -e "(Don't forget to check in the generated files when finished)\n"; \
+		exit 1; \
+	fi

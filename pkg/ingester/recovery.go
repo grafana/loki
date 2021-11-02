@@ -7,7 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -128,13 +128,11 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		stream.lastLine.content = series.LastLine
 		stream.entryCt = series.EntryCt
 		stream.highestTs = series.HighestTs
-		// Always set during replay, then reset to desired value afterward.
-		// This allows replaying unordered WALs into ordered configurations.
-		stream.unorderedWrites = true
 
 		if err != nil {
 			return err
 		}
+		memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))

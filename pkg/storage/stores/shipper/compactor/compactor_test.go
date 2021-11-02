@@ -2,16 +2,13 @@ package compactor
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/grafana/dskit/flagext"
-
 	"github.com/stretchr/testify/require"
 
 	loki_storage "github.com/grafana/loki/pkg/storage"
@@ -27,34 +24,12 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 	cfg.SharedStoreType = "filesystem"
 	cfg.RetentionEnabled = false
 
+	require.NoError(t, cfg.Validate())
+
 	c, err := NewCompactor(cfg, storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, loki_storage.SchemaConfig{}, nil, nil)
 	require.NoError(t, err)
 
 	return c
-}
-
-func TestIsDefaults(t *testing.T) {
-	for i, tc := range []struct {
-		in  *Config
-		out bool
-	}{
-		{&Config{
-			WorkingDirectory: "/tmp",
-		}, false},
-		{&Config{}, false},
-		{&Config{
-			SharedStoreKeyPrefix:      "index/",
-			CompactionInterval:        10 * time.Minute,
-			RetentionDeleteDelay:      2 * time.Hour,
-			RetentionDeleteWorkCount:  150,
-			DeleteRequestCancelPeriod: 24 * time.Hour,
-			MaxCompactionParallelism:  1,
-		}, true},
-	} {
-		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			require.Equal(t, tc.out, tc.in.IsDefaults())
-		})
-	}
 }
 
 func TestCompactor_RunCompaction(t *testing.T) {

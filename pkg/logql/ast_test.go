@@ -318,7 +318,6 @@ func TestStringer(t *testing.T) {
 			out: `(0 > bool count_over_time({foo="bar"}[1m]))`,
 		},
 		{
-
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
 			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},
@@ -373,8 +372,8 @@ func Test_parserExpr_Parser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &LabelParserExpr{
-				op:    tt.op,
-				param: tt.param,
+				Op:    tt.op,
+				Param: tt.param,
 			}
 			got, err := e.Stage()
 			if (err != nil) != tt.wantErr {

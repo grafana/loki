@@ -3,9 +3,9 @@ title: Upgrading
 weight: 250
 ---
 
-# Upgrading Loki
+# Upgrading Grafana Loki
 
-Every attempt is made to keep Loki backwards compatible, such that upgrades should be low risk and low friction.
+Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 
 Unfortunately Loki is software and software is hard and sometimes we are forced to make decisions between ease of use and ease of maintenance.
 
@@ -16,6 +16,139 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 
 ## Master / Unreleased
+
+### Loki
+
+#### Ingester WAL now defaults to on, and chunk transfers are disabled by default
+
+* [4543](https://github.com/grafana/loki/pull/4543) **trevorwhitney**: Change more default values and improve application of common storage config
+
+This changes a few default values, resulting in the ingester WAL now being on by default,
+and chunk transfer retries are disabled by default. Note, this now means Loki will depend on local disk by default for it's WAL (write ahead log) directory. This defaults to `wal` but can be overridden via the `--ingester.wal-dir` or via `path_prefix` in the common configuration section. Below are config snippets with the previous defaults, and another with the new values.
+
+Previous defaults:
+```yaml
+ingester:
+  max_transfer_retries: 10
+  wal:
+    enabled: false
+```
+
+New defaults:
+```yaml
+ingester:
+  max_transfer_retries: 0
+  wal:
+    enabled: true
+```
+
+#### Distributor now stores ring in memory by default instead of Consul
+
+PR [4440](https://github.com/grafana/loki/pull/4440) **DylanGuedes**: Config: Override distributor's default ring KV store
+
+This change sets `inmemory` as the new default storage for the Distributor ring (previously `consul`).
+The motivation is making the Distributor easier to run with default configs, by not requiring Consul anymore.
+In any case, if you prefer to use Consul as the ring storage, you can set it by using the following config:
+
+```yaml
+distributor:
+  ring:
+    kvstore:
+      store: consul
+```
+
+#### Memberlist config now automatically applies to all non-configured rings
+PR [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
+
+This change affects the behavior of the ingester, distributor, and ruler rings. Previously, if you wanted to use memberlist for all of these rings, you
+had to provide a `memberlist` configuration as well as specify `store: memberlist` for the `kvstore` of each of the rings you wanted to use memberlist.
+For example, your configuration might look something like this:
+
+```yaml
+memberlist:
+  join_members:
+    - loki.namespace.svc.cluster.local
+distributor:
+  ring:
+    kvstore:
+      store: memberlist
+ingester:
+    lifecycler:
+      ring:
+        kvstore:
+          store: memberlist
+ruler:
+  ring:
+    kvstore:
+      store: memberlist
+```
+
+Now, if your provide a `memberlist` configuration with at least one `join_members`, loki will default all rings to use a `kvstore` of type `memberlist`.
+You can change this behavior by overriding specific configurations. For example, if you wanted to use `consul` for you `ruler` rings, but `memberlist`
+for the `ingester` and `distributor`, you could do so with the following config:
+
+```yaml
+memberlist:
+  join_members:
+    - loki.namespace.svc.cluster.local
+ruler:
+  ring:
+    kvstore:
+      store: consul
+      consul:
+        host: consul.namespace.svc.cluster.local:8500
+```
+
+#### Changed defaults for some GRPC server settings
+* [4435](https://github.com/grafana/loki/pull/4435) **trevorwhitney**: Change default values for two GRPC settings so querier can connect to frontend/scheduler
+
+This changes two default values, `grpc_server_min_time_between_pings` and `grpc_server_ping_without_stream_allowed` used by the GRPC server.
+
+*Previous Values*:
+```
+server:
+  grpc_server_min_time_between_pings: '5m'
+  grpc_server_ping_without_stream_allowed: false
+```
+
+*New Values*:
+```
+server:
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+```
+
+Please manually provide the values of `5m` and `true` (respectively) in your config if you rely on those values.
+
+-_add changes here which are unreleased_
+
+### Loki Config
+
+#### Change of some default limits to common values
+
+PR [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: the default value of some limits were changed to protect users from overwhelming their cluster with ingestion load caused by relying on default configs.
+
+We suggest you double check if the following parameters are
+present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_user`
+`max_query_length` `max_query_parallelism` `max_streams_per_user`
+`reject_old_samples` `reject_old_samples_max_age`. If they are not present, we recommend you double check that the new values will not negatively impact your system. The changes are:
+
+| config | new default | old default |
+| --- | --- | --- |
+| ingestion_rate_strategy | "global" | "local" |
+| max_global_streams_per_user | 5000 | 0 (no limit) |
+| max_query_length | "721h" | "0h" (no limit) |
+| max_query_parallelism | 32 | 14 |
+| max_streams_per_user | 0 (no limit) | 10000 |
+| reject_old_samples | true | false |
+| reject_old_samples_max_age | "168h" | "336h" |
+
+#### Some metric prefixes have changed from `cortex_` to `loki_`
+
+PR [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com/grafana/loki/pull/4253) **jordanrushing**: Metrics related to chunk storage and runtime config have changed their prefixes from `cortex_` to `loki_`.
+
+- `cortex_runtime_config*` -> `loki_runtime_config*`
+- `cortex_chunks_store*` -> `loki_chunks_store*`
 
 -_add changes here which are unreleased_
 
@@ -64,7 +197,7 @@ This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrad
 
 **Read this if you use the query-frontend and have `sharded_queries_enabled: true`**
 
-We discovered query scheduling related to sharded queries over long time ranges could lead to unfair work scheduling by one single query in the per tenant work queue. 
+We discovered query scheduling related to sharded queries over long time ranges could lead to unfair work scheduling by one single query in the per tenant work queue.
 
 The `max_query_parallelism` setting is designed to limit how many split and sharded units of 'work' for a single query are allowed to be put into the per tenant work queue at one time. The previous behavior would split the query by time using the `split_queries_by_interval` and compare this value to `max_query_parallelism` when filling the queue, however with sharding enabled, every split was then sharded into 16 additional units of work after the `max_query_parallelism` limit was applied.
 

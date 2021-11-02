@@ -2,9 +2,9 @@
 title: Best practices
 weight: 400
 ---
-# Loki label best practices
+# Grafana Loki label best practices
 
-Loki is under active development, and we are constantly working to improve performance. But here are some of the most current best practices for labels that will give you the best experience with Loki.
+Grafana Loki is under active development, and we are constantly working to improve performance. But here are some of the most current best practices for labels that will give you the best experience with Loki.
 
 ## Static labels are good
 
@@ -69,7 +69,7 @@ Loki can cache data at many levels, which can drastically improve performance. D
 
 ## Time ordering of logs
 
-Loki can be configured to [accept out-of-order writes](../configuration/#accept-out-of-order-writes).
+Loki [accepts out-of-order writes](../configuration/#accept-out-of-order-writes) _by default_.
 This section identifies best practices when Loki is _not_ configured to accept out-of-order writes.
 
 One issue many people have with Loki is their client receiving errors for out of order log entries.  This happens because of this hard and fast rule within Loki:

@@ -114,6 +114,26 @@ func Test_hash_mapping(t *testing.T) {
 	}
 }
 
+func Test_NoMatcherLookup(t *testing.T) {
+	lbs := labels.Labels{
+		labels.Label{Name: "foo", Value: "bar"},
+		labels.Label{Name: "hi", Value: "hello"},
+	}
+	// with no shard param
+	ii := NewWithShards(16)
+	ii.Add(cortexpb.FromLabelsToLabelAdapters(lbs), 1)
+	ids, err := ii.Lookup(nil, nil)
+	require.Nil(t, err)
+	require.Equal(t, model.Fingerprint(1), ids[0])
+
+	// with shard param
+	ii = NewWithShards(16)
+	ii.Add(cortexpb.FromLabelsToLabelAdapters(lbs), 1)
+	ids, err = ii.Lookup(nil, &astmapper.ShardAnnotation{Shard: int(labelsSeriesIDHash(lbs) % 16), Of: 16})
+	require.Nil(t, err)
+	require.Equal(t, model.Fingerprint(1), ids[0])
+}
+
 func Test_ConsistentMapping(t *testing.T) {
 	a := NewWithShards(16)
 	b := NewWithShards(32)
