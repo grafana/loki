@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -72,7 +72,7 @@ type StoreConfig struct {
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("store.chunks-cache.", "Cache config for chunks. ", f)
 	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
-	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
+	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing.", f)
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
 }
@@ -82,10 +82,7 @@ func (cfg *StoreConfig) Validate(logger log.Logger) error {
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
 	}
-	if err := cfg.WriteDedupeCacheConfig.Validate(); err != nil {
-		return err
-	}
-	return nil
+	return cfg.WriteDedupeCacheConfig.Validate()
 }
 
 type baseStore struct {

@@ -3,7 +3,7 @@ package gcs
 import (
 	"flag"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/flagext"
 )
 
 // Config holds the config options for GCS backend

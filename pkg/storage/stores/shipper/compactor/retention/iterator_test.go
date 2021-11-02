@@ -104,10 +104,7 @@ func Test_SeriesCleaner(t *testing.T) {
 				if err := cleaner.Cleanup(entryFromChunk(c2).UserID, c2.Metric); err != nil {
 					return err
 				}
-				if err := cleaner.Cleanup(entryFromChunk(c1).UserID, c1.Metric); err != nil {
-					return err
-				}
-				return nil
+				return cleaner.Cleanup(entryFromChunk(c1).UserID, c1.Metric)
 			})
 			require.NoError(t, err)
 

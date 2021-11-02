@@ -185,9 +185,9 @@ from there. This means that if new log entries have been read and pushed to the
 ingester between the last sync period and the crash, these log entries will be
 sent again to the ingester on Promtail restart.
 
-However, it's important to note that Loki will reject all log lines received in
-what it perceives is [out of
-order](../../../overview#timestamp-ordering). If Promtail happens to
+If Loki is not configured to [accept out-of-order writes](../../../configuration/#accept-out-of-order-writes), Loki will reject all log lines received in
+what it perceives is out of
+order. If Promtail happens to
 crash, it may re-send log lines that were sent prior to the crash. The default
 behavior of Promtail is to assign a timestamp to logs at the time it read the
 entry from the tailed file. This would result in duplicate log lines being sent

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -14,7 +15,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -387,20 +387,26 @@ func filterValuesByMatchers(idLabelName string, ids []string, matchers ...*label
 }
 
 type addLabelsSeriesSet struct {
-	upstream storage.SeriesSet
-	labels   labels.Labels
+	upstream   storage.SeriesSet
+	labels     labels.Labels
+	currSeries storage.Series
 }
 
 func (m *addLabelsSeriesSet) Next() bool {
+	m.currSeries = nil
 	return m.upstream.Next()
 }
 
 // At returns full series. Returned series should be iteratable even after Next is called.
 func (m *addLabelsSeriesSet) At() storage.Series {
-	return &addLabelsSeries{
-		upstream: m.upstream.At(),
-		labels:   m.labels,
+	if m.currSeries == nil {
+		upstream := m.upstream.At()
+		m.currSeries = &addLabelsSeries{
+			upstream: upstream,
+			labels:   setLabelsRetainExisting(upstream.Labels(), m.labels...),
+		}
 	}
+	return m.currSeries
 }
 
 // The error that iteration as failed with.
@@ -441,7 +447,7 @@ type addLabelsSeries struct {
 
 // Labels returns the complete set of labels. For series it means all labels identifying the series.
 func (a *addLabelsSeries) Labels() labels.Labels {
-	return setLabelsRetainExisting(a.upstream.Labels(), a.labels...)
+	return a.labels
 }
 
 // Iterator returns a new, independent iterator of the data of the series.

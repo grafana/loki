@@ -15,5 +15,6 @@
     ruler: self.loki,
     compactor: self.loki,
     index_gateway: self.loki,
+    overrides_exporter: self.loki,
   },
 }

@@ -284,7 +284,7 @@ func (op *Operator) AutopilotGetConfiguration(q *QueryOptions) (*AutopilotConfig
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	var out AutopilotConfiguration
 	if err := decodeBody(resp, &out); err != nil {
@@ -303,7 +303,7 @@ func (op *Operator) AutopilotSetConfiguration(conf *AutopilotConfiguration, q *W
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	closeResponseBody(resp)
 	return nil
 }
 
@@ -319,7 +319,7 @@ func (op *Operator) AutopilotCASConfiguration(conf *AutopilotConfiguration, q *W
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, resp.Body); err != nil {
@@ -334,11 +334,24 @@ func (op *Operator) AutopilotCASConfiguration(conf *AutopilotConfiguration, q *W
 func (op *Operator) AutopilotServerHealth(q *QueryOptions) (*OperatorHealthReply, error) {
 	r := op.c.newRequest("GET", "/v1/operator/autopilot/health")
 	r.setQueryOptions(q)
-	_, resp, err := requireOK(op.c.doRequest(r))
+
+	// we cannot just use requireOK because this endpoint might use a 429 status to indicate
+	// that unhealthiness
+	_, resp, err := op.c.doRequest(r)
 	if err != nil {
+		if resp != nil {
+			closeResponseBody(resp)
+		}
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	// these are the only 2 status codes that would indicate that we should
+	// expect the body to contain the right format.
+	if resp.StatusCode != 200 && resp.StatusCode != 429 {
+		return nil, generateUnexpectedResponseCodeError(resp)
+	}
+
+	defer closeResponseBody(resp)
 
 	var out OperatorHealthReply
 	if err := decodeBody(resp, &out); err != nil {
@@ -354,7 +367,7 @@ func (op *Operator) AutopilotState(q *QueryOptions) (*AutopilotState, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	var out AutopilotState
 	if err := decodeBody(resp, &out); err != nil {

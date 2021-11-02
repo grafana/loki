@@ -5,9 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/dskit/services"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // ActiveUsers keeps track of latest user's activity timestamp,

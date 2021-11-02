@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,12 +13,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -33,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
+	loki_net "github.com/grafana/loki/pkg/util/net"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -273,7 +273,8 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
 
 			// Init a shared KVStore
-			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Start all expected distributors
 			distributors := make([]*Distributor, testData.distributors)
@@ -307,23 +308,6 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
-// loopbackInterfaceName search for the name of a loopback interface in the list
-// of the system's network interfaces.
-func loopbackInterfaceName() (string, error) {
-	is, err := net.Interfaces()
-	if err != nil {
-		return "", fmt.Errorf("can't retrieve loopback interface name: %s", err)
-	}
-
-	for _, i := range is {
-		if i.Flags&net.FlagLoopback != 0 {
-			return i.Name, nil
-		}
-	}
-
-	return "", fmt.Errorf("can't retrieve loopback interface name")
-}
-
 func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory func(addr string) (ring_client.PoolClient, error)) *Distributor {
 	var (
 		distributorConfig Config
@@ -349,7 +333,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 		})
 	}
 
-	loopbackName, err := loopbackInterfaceName()
+	loopbackName, err := loki_net.LoopbackInterfaceName()
 	require.NoError(t, err)
 
 	distributorConfig.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond

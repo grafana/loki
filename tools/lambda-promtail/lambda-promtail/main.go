@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -28,33 +29,56 @@ const (
 	maxErrMsgLen = 1024
 )
 
-var promtailAddress *url.URL
+var (
+	writeAddress       *url.URL
+	username, password string
+	keepStream         bool
+)
 
 func init() {
-	addr := os.Getenv("PROMTAIL_ADDRESS")
+	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
-		panic(errors.New("required environmental variable PROMTAIL_ADDRESS not present"))
+		panic(errors.New("required environmental variable WRITE_ADDRESS not present"))
 	}
 	var err error
-	promtailAddress, err = url.Parse(addr)
+	writeAddress, err = url.Parse(addr)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("write address: ", writeAddress.String())
+
+	username = os.Getenv("USERNAME")
+	password = os.Getenv("PASSWORD")
+
+	// If either username or password is set then both must be.
+	if (username != "" && password == "") || (username == "" && password != "") {
+		panic("both username and password must be set if either one is set")
+	}
+
+	keep := os.Getenv("KEEP_STREAM")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(keep, "true") {
+		keepStream = true
+	}
+	fmt.Println("keep stream: ", keepStream)
 }
 
 func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
-
 	data, err := ev.AWSLogs.Parse()
 	if err != nil {
+		fmt.Println("error parsing log event: ", err)
 		return err
+	}
+	labels := model.LabelSet{
+		model.LabelName("__aws_cloudwatch_log_group"): model.LabelValue(data.LogGroup),
+		model.LabelName("__aws_cloudwatch_owner"):     model.LabelValue(data.Owner),
+	}
+	if keepStream {
+		labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
 	}
 
 	stream := logproto.Stream{
-		Labels: model.LabelSet{
-			model.LabelName("__aws_cloudwatch_log_group"):  model.LabelValue(data.LogGroup),
-			model.LabelName("__aws_cloudwatch_log_stream"): model.LabelValue(data.LogStream),
-			model.LabelName("__aws_cloudwatch_owner"):      model.LabelValue(data.Owner),
-		}.String(),
+		Labels:  labels.String(),
 		Entries: make([]logproto.Entry, 0, len(data.LogEvents)),
 	}
 
@@ -75,14 +99,22 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 
 	// Push to promtail
 	buf = snappy.Encode(nil, buf)
-	req, err := http.NewRequest("POST", promtailAddress.String(), bytes.NewReader(buf))
+	req, err := http.NewRequest("POST", writeAddress.String(), bytes.NewReader(buf))
 	if err != nil {
+		fmt.Println("error: ", err)
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)
 
+	// If either is not empty both should be (see initS), but just to be safe.
+	if username != "" && password != "" {
+		fmt.Println("adding basic auth to request")
+		req.SetBasicAuth(username, password)
+	}
+
 	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
+		fmt.Println("error: ", err)
 		return err
 	}
 
@@ -93,8 +125,8 @@ func handler(ctx context.Context, ev events.CloudwatchLogsEvent) error {
 			line = scanner.Text()
 		}
 		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
+		fmt.Println("error:", err)
 	}
-
 	return err
 }
 

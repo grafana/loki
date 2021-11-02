@@ -1,8 +1,14 @@
 local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
+local loki_mixin_utils = import 'loki-mixin/dashboards/dashboard-utils.libsonnet';
 
 {
   grafanaDashboards+: {
+    local dashboard = (
+      loki_mixin_utils {
+        _config+:: { tags: ['loki'] },
+      }
+    ),
     local dashboards = self,
 
     'promtail.json':{
@@ -16,14 +22,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       selector:: std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in (cfg.clusterMatchers + dashboards['promtail.json'].matchers)]),
 
       templateLabels:: (
-        if cfg.showMultiCluster then [
-          {
-            variable:: 'cluster',
-            label:: cfg.clusterLabel,
-            query:: 'kube_pod_container_info{image=~".*promtail.*"}',
-          },
-        ] else []
-      ) + [
+      [
         {
           variable:: 'namespace',
           label:: 'namespace',
@@ -34,9 +33,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
           label:: 'created_by_name',
           query:: 'kube_pod_info{namespace="$namespace",pod=~"promtail.*"}',
         },
-      ],
+      ]),
     } +
-    g.dashboard('Loki / Promtail')
+    dashboard.dashboard('Loki / Promtail')
+    .addClusterSelectorTemplates(false)
     .addRow(
       g.row('Targets & Files')
       .addPanel(

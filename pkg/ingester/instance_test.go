@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -37,12 +39,7 @@ func defaultConfig() *Config {
 var NilMetrics = newIngesterMetrics(nil)
 
 func TestLabelsCollisions(t *testing.T) {
-	l := validation.Limits{
-		MaxLocalStreamsPerUser:       10000,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -69,12 +66,7 @@ func TestLabelsCollisions(t *testing.T) {
 }
 
 func TestConcurrentPushes(t *testing.T) {
-	l := validation.Limits{
-		MaxLocalStreamsPerUser:       100000,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -125,12 +117,7 @@ func TestConcurrentPushes(t *testing.T) {
 }
 
 func TestSyncPeriod(t *testing.T) {
-	l := validation.Limits{
-		MaxLocalStreamsPerUser:       1000,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -172,19 +159,16 @@ func TestSyncPeriod(t *testing.T) {
 }
 
 func Test_SeriesQuery(t *testing.T) {
-	l := validation.Limits{
-		MaxLocalStreamsPerUser:       1000,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	indexShards := 2
 
 	// just some random values
 	cfg := defaultConfig()
 	cfg.SyncPeriod = 1 * time.Minute
 	cfg.SyncMinUtilization = 0.20
+	cfg.IndexShards = indexShards
 
 	instance := newInstance(cfg, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 
@@ -198,7 +182,7 @@ func Test_SeriesQuery(t *testing.T) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, false, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(cfg, newLocalStreamRateStrategy(limiter), "fake", 0, nil, true, NilMetrics).NewChunk()
+		chunk := newStream(cfg, limiter, "fake", 0, nil, true, NilMetrics).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -229,6 +213,22 @@ func Test_SeriesQuery(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				{Labels: map[string]string{"app": "test", "job": "varlogs"}},
+				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+			},
+		},
+		{
+			"overlapping request with shard param",
+			&logproto.SeriesRequest{
+				Start:  currentTime.Add(1 * time.Nanosecond),
+				End:    currentTime.Add(7 * time.Nanosecond),
+				Groups: []string{`{job="varlogs"}`},
+				Shards: []string{astmapper.ShardAnnotation{
+					Shard: 1,
+					Of:    indexShards,
+				}.String()},
+			},
+			[]logproto.SeriesIdentifier{
+				// Separated by shard number
 				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
 			},
 		},
@@ -292,12 +292,7 @@ func makeRandomLabels() labels.Labels {
 }
 
 func Benchmark_PushInstance(b *testing.B) {
-	l := validation.Limits{
-		MaxLocalStreamsPerUser:       1000,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
@@ -337,11 +332,8 @@ func Benchmark_PushInstance(b *testing.B) {
 }
 
 func Benchmark_instance_addNewTailer(b *testing.B) {
-	l := validation.Limits{
-		MaxLocalStreamsPerUser:       100000,
-		MaxLocalStreamRateBytes:      defaultLimitsTestConfig().MaxLocalStreamRateBytes,
-		MaxLocalStreamBurstRateBytes: defaultLimitsTestConfig().MaxLocalStreamBurstRateBytes,
-	}
+	l := defaultLimitsTestConfig()
+	l.MaxLocalStreamsPerUser = 100000
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
@@ -364,7 +356,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	lbs := makeRandomLabels()
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(nil, newLocalStreamRateStrategy(limiter), "fake", 0, lbs, true, NilMetrics))
+			inst.addTailersToNewStream(newStream(nil, limiter, "fake", 0, lbs, true, NilMetrics))
 		}
 	})
 }

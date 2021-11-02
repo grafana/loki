@@ -76,7 +76,7 @@ loki {
   },
 
   admin_api_args:: self._config.commonArgs {
-    'bootstrap.license.path': '/etc/gel-license/license.jwt',
+    'license.path': '/etc/gel-license/license.jwt',
     target: 'admin-api',
   },
   admin_api_container::
@@ -110,7 +110,7 @@ loki {
     + util.withNonRootSecurityContext(uid=10001),
 
   gateway_args:: self._config.commonArgs {
-    'bootstrap.license.path': '/etc/gel-license/license.jwt',
+    'license.path': '/etc/gel-license/license.jwt',
     'gateway.proxy.admin-api.url': 'http://admin-api:%s' % $._config.http_listen_port,
     'gateway.proxy.compactor.url': 'http://compactor:%s' % $._config.http_listen_port,
     'gateway.proxy.distributor.url': 'dns:///distributor:9095',
@@ -170,7 +170,7 @@ loki {
     + container.withCommand([
       '/bin/bash',
       '-euc',
-      'kubectl create secret generic gel-admin-token --from-file=token=/shared/admin-token --from-literal=grafana-token="self.base64 <(echo :self.cat /shared/admin-token)))"',
+      'kubectl create secret generic gel-admin-token --from-file=token=/shared/admin-token --from-literal=grafana-token="$(base64 <(echo :$(cat /shared/admin-token)))"',
     ])
     + container.withVolumeMounts([{ mountPath: '/shared', name: 'shared' }]),
   tokengen_job::

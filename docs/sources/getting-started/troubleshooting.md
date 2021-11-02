@@ -1,11 +1,12 @@
 ---
 title: Troubleshooting
+weight: 40
 ---
-# Troubleshooting Loki
+# Troubleshooting Grafana Loki
 
 ## "Loki: Bad Gateway. 502"
 
-This error can appear in Grafana when Loki is added as a
+This error can appear in Grafana when Grafana Loki is added as a
 datasource, indicating that Grafana in unable to connect to Loki. There may
 one of many root causes:
 
@@ -63,11 +64,15 @@ $ kubectl port-forward loki-promtail-jrfg7 9080
 
 ## Debug output
 
-Both Loki and Promtail support a log level flag on the command-line:
+Both Loki and Promtail support a log level flag with the addition of
+a command-line option:
 
 ```bash
-$ loki -log.level=debug
-$ promtail -log.level=debug
+loki -log.level=debug
+```
+
+```bash
+promtail -log.level=debug
 ```
 
 ## Failed to create target, `ioutil.ReadDir: readdirent: not a directory`

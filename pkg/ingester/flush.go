@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -327,11 +327,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 	i.replayController.Sub(int64(subtracted))
 
 	if mayRemoveStream && len(stream.chunks) == 0 {
-		delete(instance.streamsByFP, stream.fp)
-		delete(instance.streams, stream.labelsString)
-		instance.index.Delete(stream.labels, stream.fp)
-		instance.streamsRemovedTotal.Inc()
-		memoryStreams.WithLabelValues(instance.instanceID).Dec()
+		instance.removeStream(stream)
 	}
 }
 

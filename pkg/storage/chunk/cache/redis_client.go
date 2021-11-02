@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/go-redis/redis/v8"
 )

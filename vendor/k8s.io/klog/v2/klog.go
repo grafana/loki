@@ -1603,3 +1603,20 @@ func KRef(namespace, name string) ObjectRef {
 		Namespace: namespace,
 	}
 }
+
+// KObjs returns slice of ObjectRef from an slice of ObjectMeta
+func KObjs(arg interface{}) []ObjectRef {
+	s := reflect.ValueOf(arg)
+	if s.Kind() != reflect.Slice {
+		return nil
+	}
+	objectRefs := make([]ObjectRef, 0, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		if v, ok := s.Index(i).Interface().(KMetadata); ok {
+			objectRefs = append(objectRefs, KObj(v))
+		} else {
+			return nil
+		}
+	}
+	return objectRefs
+}

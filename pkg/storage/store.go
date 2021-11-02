@@ -9,9 +9,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -83,6 +83,7 @@ type ChunkStoreConfig struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreConfig.RegisterFlags(f)
+	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "This flag is deprecated. Use -querier.max-query-lookback instead.")
 }
 
 func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
@@ -302,6 +303,9 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 	outer:
 		for _, chk := range group {
 			for _, matcher := range matchers {
+				if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
+					continue
+				}
 				if !matcher.Matches(chk.Chunk.Metric.Get(matcher.Name)) {
 					continue outer
 				}

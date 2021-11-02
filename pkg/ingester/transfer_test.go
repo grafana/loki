@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
-
-	"github.com/go-kit/kit/log/level"
+	gokitlog "github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -58,24 +58,6 @@ func TestTransferOut(t *testing.T) {
 		assert.Len(t, ing.instances["test"].streams, 2)
 	}
 
-	// verify we get out of order exception on adding an entry with older timestamps
-	_, err2 := ing.Push(ctx, &logproto.PushRequest{
-		Streams: []logproto.Stream{
-			{
-				Entries: []logproto.Entry{
-					{Line: "line 4", Timestamp: time.Unix(2, 0)},
-					{Line: "ooo", Timestamp: time.Unix(0, 0)},
-					{Line: "line 5", Timestamp: time.Unix(3, 0)},
-				},
-				Labels: `{foo="bar",bar="baz1"}`,
-			},
-		},
-	})
-
-	require.Error(t, err2)
-	require.Contains(t, err2.Error(), "out of order")
-	require.Contains(t, err2.Error(), "total ignored: 1 out of 3")
-
 	// Create a new ingester and transfer data to it
 	ing2 := f.getIngester(time.Second*60, t)
 	defer services.StopAndAwaitTerminated(context.Background(), ing2) //nolint:errcheck
@@ -112,7 +94,7 @@ func TestTransferOut(t *testing.T) {
 
 		assert.Equal(
 			t,
-			[]string{"line 0", "line 1", "line 2", "line 3", "line 4", "line 5"},
+			[]string{"line 0", "line 1", "line 2", "line 3"},
 			lines,
 		)
 	}
@@ -126,7 +108,7 @@ type testIngesterFactory struct {
 }
 
 func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil)
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil, gokitlog.NewNopLogger())
 	require.NoError(t, err)
 
 	return &testIngesterFactory{

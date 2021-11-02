@@ -31,7 +31,7 @@ func init() {
 // LogEntry that will be written to the pubsub topic.
 // According to the following spec.
 // https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry
-// nolint: golint
+// nolint:revive
 type GCPLogEntry struct {
 	LogName  string `json:"logName"`
 	Resource struct {
