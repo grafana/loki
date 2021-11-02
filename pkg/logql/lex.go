@@ -14,10 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
-var alsoIdentifier = map[string]bool{
-	"ip": true,
-}
-
 var tokens = map[string]int{
 	",":            COMMA,
 	".":            DOT,
@@ -200,7 +196,11 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 	}
 
-	if tok, ok := functionTokens[tokenText]; ok && isFunction(l.Scanner) {
+	if tok, ok := functionTokens[tokenText]; ok {
+		if !isFunction(l.Scanner) {
+			lval.str = tokenText
+			return IDENTIFIER
+		}
 		return tok
 	}
 
@@ -209,7 +209,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return tok
 	}
 
-	if tok, ok := tokens[tokenText]; ok && !alsoIdentifier[tokenText] {
+	if tok, ok := tokens[tokenText]; ok {
 		return tok
 	}
 
