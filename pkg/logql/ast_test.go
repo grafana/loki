@@ -332,41 +332,41 @@ func TestStringer(t *testing.T) {
 }
 
 func BenchmarkContainsFilter(b *testing.B) {
+	lines := [][]byte{
+		[]byte("hello world foo bar"),
+		[]byte("bar hello world for"),
+		[]byte("hello world foobar and the bar and more bar until the end"),
+		[]byte("hello world foobar and the bar and more bar and more than one hundred characters for sure until the end"),
+		[]byte("hello world foobar and the bar and more bar and more than one hundred characters for sure until the end and yes bar"),
+	}
+
 	benchmarks := []struct {
 		name  string
 		expr  string
-		line  []byte
-		match bool
 	}{
 		{
 			"AllMatches",
 			`{app="foo"} |= "foo" |= "hello" |= "world" |= "bar"`,
-			[]byte("hello world foo bar"),
-			true,
 		},
 		{
 			"OneMatches",
 			`{app="foo"} |= "foo" |= "not" |= "in" |= "there"`,
-			[]byte("hello world foo bar"),
-			false,
 		},
 		{
 			"MixedFilters",
 			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world"`,
-			[]byte("hello world foo bar"),
-			true,
 		},
 		{
 			"GreedyRegex",
 			`{app="foo"} |~ "hello.*bar.*"`,
-			[]byte("hello world foobar and the bar and more bar until the end"),
-			true,
 		},
 		{
 			"NonGreedyRegex",
 			`{app="foo"} |~ "hello.*?bar.*?"`,
-			[]byte("hello world foobar and the bar and more bar until the end"),
-			true,
+		},
+		{
+			"ReorderedRegex",
+			`{app="foo"} |~ "hello.*?bar.*?" |= "not"`,
 		},
 	}
 
@@ -385,8 +385,8 @@ func BenchmarkContainsFilter(b *testing.B) {
 			b.ResetTimer()
 			sp := p.ForStream(labelBar)
 			for i := 0; i < b.N; i++ {
-				if _, _, ok := sp.Process(bm.line); ok != bm.match {
-					b.Fatal("unexpected outcome")
+				for _, line := range lines {
+					sp.Process(line)
 				}
 			}
 		})
