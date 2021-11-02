@@ -68,9 +68,6 @@ steps:
       from_secret: github_token
   image: prominfra/funcbench:master
   name: LogQL
-trigger:
-  event:
-  - custom
 workspace:
   base: /src
   path: loki
@@ -1005,6 +1002,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 0dfb2c245a03965ca3fe8791b3c1c6cc0ba87f05d88ab34552afab1462923b59
+hmac: 3d7f1e1952cdda9b34d1c675fa857c428aec4b31f05e9cd16b37485cd47a06ac
 
 ...

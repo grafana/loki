@@ -348,7 +348,6 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
   pipeline('benchmark') {
-    trigger: { event: ["custom"] },
     workspace: {
       base: '/src',
       path: 'loki',
