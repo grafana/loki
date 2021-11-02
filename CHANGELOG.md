@@ -16,6 +16,7 @@
 * [4594](https://github.com/grafana/loki/pull/4594) **owen-d**: Configures unordered_writes=true by default
 * [4574](https://github.com/grafana/loki/pull/4574) **slim-bean**: Loki: Add a ring to the compactor used to control concurrency when not running standalone
 * [4603](https://github.com/grafana/loki/pull/4603) **garrettlish**: Add date time sprig template functions in logql label/line formatter
+* [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
 
 # 2.3.0 (2021/08/06)
 

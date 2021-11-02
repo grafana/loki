@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/grafana/dskit/flagext"
@@ -91,6 +92,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		applyFIFOCacheConfig(r)
+		applyIngesterFinalSleep(r)
 
 		return nil
 	}
@@ -368,4 +370,8 @@ func isRedisSet(cfg cortexcache.Config) bool {
 // loki/pkg/storage/chunk/cache and cortex/pkg/chunk/cache at the same time.
 func isMemcacheSet(cfg cortexcache.Config) bool {
 	return cfg.MemcacheClient.Addresses != "" || cfg.MemcacheClient.Host != ""
+}
+
+func applyIngesterFinalSleep(cfg *ConfigWrapper) {
+	cfg.Ingester.LifecyclerConfig.FinalSleep = 0 * time.Second
 }

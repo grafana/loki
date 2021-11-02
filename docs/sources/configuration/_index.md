@@ -1033,7 +1033,7 @@ lifecycler:
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
-  [final_sleep: <duration> | default = 30s]
+  [final_sleep: <duration> | default = 0s]
 
 # Number of times to try and transfer chunks when leaving before
 # falling back to flushing to the store. Zero = no transfers are done.

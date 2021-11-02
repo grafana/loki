@@ -19,6 +19,12 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ### Loki
 
+
+#### Ingester Lifecycler `final_sleep` now defaults to `0s`
+* [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
+
+This changes the default value for the `final_sleep` property of the ingester's lifecycler from `30s` to `0s`
+
 #### Ingester WAL now defaults to on, and chunk transfers are disabled by default
 
 * [4543](https://github.com/grafana/loki/pull/4543) **trevorwhitney**: Change more default values and improve application of common storage config
