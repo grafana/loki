@@ -292,64 +292,6 @@ func Test_FilterMatcher(t *testing.T) {
 	}
 }
 
-/*
-func Test_LineFilterExprFilter(t *testing.T) {
-
-	ignoreError := func(val log.Filterer, err error) log.Filterer {
-		return val
-	}
-
-	t.Parallel()
-	for _, tc := range []struct {
-		in  *LineFilterExpr
-        out log.Filterer
-	} {
-		{
-			newNestedLineFilterExpr(
-				newLineFilterExpr(labels.MatchEqual, "", "baz"),
-				newLineFilterExpr(labels.MatchNotEqual, "", "foo"),
-			),
-			log.NewAndFilter(
-				log.NewAndFilter(
-					ignoreError(log.NewFilter("baz", labels.MatchEqual)),
-					ignoreError(log.NewFilter("foo", labels.MatchNotEqual)),
-				),
-				nil),
-		},
-		{
-			newNestedLineFilterExpr(
-				newNestedLineFilterExpr(
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
-					newLineFilterExpr(labels.MatchEqual, "", "foo"),
-				),
-				newLineFilterExpr(labels.MatchNotEqual, "", "baz"),
-			),
-			log.NewAndFilter(
-				log.NewAndFilter(
-					log.NewAndFilter(
-						ignoreError(log.NewFilter("bar", labels.MatchEqual)),
-						ignoreError(log.NewFilter("foo", labels.MatchEqual)),
-					),
-					ignoreError(log.NewFilter("baz", labels.MatchNotEqual)),
-				),
-				nil),
-		},
-	} {
-		tc := tc
-		t.Run("foo", func(t *testing.T) {
-			t.Parallel()
-			filter, err := tc.in.Filter()
-			assert.NoError(t, err)
-			assert.Equal(t, tc.out, filter)
-
-			filter, err = tc.in.NonRecursiveFilter()
-			assert.NoError(t, err)
-			assert.Equal(t, tc.out, filter)
-		})
-	}
-}
-*/
-
 func TestStringer(t *testing.T) {
 	for _, tc := range []struct {
 		in  string
