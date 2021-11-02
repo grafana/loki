@@ -68,13 +68,17 @@ Consumer related metrics:
 	| Name                                      | Type       | Description                                                                          |
 	+-------------------------------------------+------------+--------------------------------------------------------------------------------------+
 	| consumer-batch-size                       | histogram  | Distribution of the number of messages in a batch                                    |
+	| consumer-group-join-total-<GroupID>       | counter    | Total count of consumer group join attempts                                          |
+	| consumer-group-join-failed-<GroupID>      | counter    | Total count of consumer group join failures                                          |
+	| consumer-group-sync-total-<GroupID>       | counter    | Total count of consumer group sync attempts                                          |
+	| consumer-group-sync-failed-<GroupID>      | counter    | Total count of consumer group sync failures                                          |
 	+-------------------------------------------+------------+--------------------------------------------------------------------------------------+
 
 */
 package sarama
 
 import (
-	"io/ioutil"
+	"io"
 	"log"
 )
 
@@ -82,7 +86,7 @@ var (
 	// Logger is the instance of a StdLogger interface that Sarama writes connection
 	// management events to. By default it is set to discard all log messages via ioutil.Discard,
 	// but you can set it to redirect wherever you want.
-	Logger StdLogger = log.New(ioutil.Discard, "[Sarama] ", log.LstdFlags)
+	Logger StdLogger = log.New(io.Discard, "[Sarama] ", log.LstdFlags)
 
 	// PanicHandler is called for recovering from panics spawned internally to the library (and thus
 	// not recoverable by the caller's goroutine). Defaults to nil, which means panics are not recovered.
@@ -108,3 +112,21 @@ type StdLogger interface {
 	Printf(format string, v ...interface{})
 	Println(v ...interface{})
 }
+
+type debugLogger struct{}
+
+func (d *debugLogger) Print(v ...interface{}) {
+	Logger.Print(v)
+}
+func (d *debugLogger) Printf(format string, v ...interface{}) {
+	Logger.Printf(format, v)
+}
+func (d *debugLogger) Println(v ...interface{}) {
+	Logger.Println(v)
+}
+
+// DebugLogger is the instance of a StdLogger that Sarama writes more verbose
+// debug information to. By default it is set to redirect all debug to the
+// default Logger above, but you can optionally set it to another StdLogger
+// instance to (e.g.,) discard debug information
+var DebugLogger StdLogger = &debugLogger{}

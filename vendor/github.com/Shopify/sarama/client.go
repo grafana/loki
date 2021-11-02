@@ -138,7 +138,7 @@ type client struct {
 // and uses that broker to automatically fetch metadata on the rest of the kafka cluster. If metadata cannot
 // be retrieved from any of the given broker addresses, the client is not created.
 func NewClient(addrs []string, conf *Config) (Client, error) {
-	Logger.Println("Initializing new client")
+	DebugLogger.Println("Initializing new client")
 
 	if conf == nil {
 		conf = NewConfig()
@@ -182,7 +182,7 @@ func NewClient(addrs []string, conf *Config) (Client, error) {
 	}
 	go withRecover(client.backgroundMetadataUpdater)
 
-	Logger.Println("Successfully initialized new client")
+	DebugLogger.Println("Successfully initialized new client")
 
 	return client, nil
 }
@@ -213,11 +213,12 @@ func (client *client) Broker(brokerID int32) (*Broker, error) {
 }
 
 func (client *client) InitProducerID() (*InitProducerIDResponse, error) {
-	var err error
+	err := ErrOutOfBrokers
 	for broker := client.any(); broker != nil; broker = client.any() {
+		var response *InitProducerIDResponse
 		req := &InitProducerIDRequest{}
 
-		response, err := broker.InitProducerID(req)
+		response, err = broker.InitProducerID(req)
 		switch err.(type) {
 		case nil:
 			return response, nil
@@ -228,6 +229,7 @@ func (client *client) InitProducerID() (*InitProducerIDResponse, error) {
 			client.deregisterBroker(broker)
 		}
 	}
+
 	return nil, err
 }
 
@@ -245,7 +247,7 @@ func (client *client) Close() error {
 
 	client.lock.Lock()
 	defer client.lock.Unlock()
-	Logger.Println("Closing Client")
+	DebugLogger.Println("Closing Client")
 
 	for _, broker := range client.brokers {
 		safeAsyncClose(broker)
@@ -612,7 +614,7 @@ func (client *client) updateBroker(brokers []*Broker) {
 		currentBroker[broker.ID()] = broker
 		if client.brokers[broker.ID()] == nil { // add new broker
 			client.brokers[broker.ID()] = broker
-			Logger.Printf("client/brokers registered new broker #%d at %s", broker.ID(), broker.Addr())
+			DebugLogger.Printf("client/brokers registered new broker #%d at %s", broker.ID(), broker.Addr())
 		} else if broker.Addr() != client.brokers[broker.ID()].Addr() { // replace broker with new address
 			safeAsyncClose(client.brokers[broker.ID()])
 			client.brokers[broker.ID()] = broker
@@ -640,7 +642,7 @@ func (client *client) registerBroker(broker *Broker) {
 
 	if client.brokers[broker.ID()] == nil {
 		client.brokers[broker.ID()] = broker
-		Logger.Printf("client/brokers registered new broker #%d at %s", broker.ID(), broker.Addr())
+		DebugLogger.Printf("client/brokers registered new broker #%d at %s", broker.ID(), broker.Addr())
 	} else if broker.Addr() != client.brokers[broker.ID()].Addr() {
 		safeAsyncClose(client.brokers[broker.ID()])
 		client.brokers[broker.ID()] = broker
@@ -662,7 +664,7 @@ func (client *client) deregisterBroker(broker *Broker) {
 		// but we really shouldn't have to; once that loop is made better this case can be
 		// removed, and the function generally can be renamed from `deregisterBroker` to
 		// `nextSeedBroker` or something
-		Logger.Printf("client/brokers deregistered broker #%d at %s", broker.ID(), broker.Addr())
+		DebugLogger.Printf("client/brokers deregistered broker #%d at %s", broker.ID(), broker.Addr())
 		delete(client.brokers, broker.ID())
 	}
 }
@@ -876,12 +878,12 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 
 	broker := client.any()
 	for ; broker != nil && !pastDeadline(0); broker = client.any() {
-		allowAutoTopicCreation := true
+		allowAutoTopicCreation := client.conf.Metadata.AllowAutoTopicCreation
 		if len(topics) > 0 {
-			Logger.Printf("client/metadata fetching metadata for %v from broker %s\n", topics, broker.addr)
+			DebugLogger.Printf("client/metadata fetching metadata for %v from broker %s\n", topics, broker.addr)
 		} else {
 			allowAutoTopicCreation = false
-			Logger.Printf("client/metadata fetching metadata for all topics from broker %s\n", broker.addr)
+			DebugLogger.Printf("client/metadata fetching metadata for all topics from broker %s\n", broker.addr)
 		}
 
 		req := &MetadataRequest{Topics: topics, AllowAutoTopicCreation: allowAutoTopicCreation}
@@ -1045,7 +1047,7 @@ func (client *client) getConsumerMetadata(consumerGroup string, attemptsRemainin
 	}
 
 	for broker := client.any(); broker != nil; broker = client.any() {
-		Logger.Printf("client/coordinator requesting coordinator for consumergroup %s from %s\n", consumerGroup, broker.Addr())
+		DebugLogger.Printf("client/coordinator requesting coordinator for consumergroup %s from %s\n", consumerGroup, broker.Addr())
 
 		request := new(FindCoordinatorRequest)
 		request.CoordinatorKey = consumerGroup
@@ -1067,7 +1069,7 @@ func (client *client) getConsumerMetadata(consumerGroup string, attemptsRemainin
 
 		switch response.Err {
 		case ErrNoError:
-			Logger.Printf("client/coordinator coordinator for consumergroup %s is #%d (%s)\n", consumerGroup, response.Coordinator.ID(), response.Coordinator.Addr())
+			DebugLogger.Printf("client/coordinator coordinator for consumergroup %s is #%d (%s)\n", consumerGroup, response.Coordinator.ID(), response.Coordinator.Addr())
 			return response, nil
 
 		case ErrConsumerCoordinatorNotAvailable:

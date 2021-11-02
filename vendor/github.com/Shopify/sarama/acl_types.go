@@ -141,6 +141,7 @@ const (
 	AclResourceGroup
 	AclResourceCluster
 	AclResourceTransactionalID
+	AclResourceDelegationToken
 )
 
 func (a *AclResourceType) String() string {
@@ -151,6 +152,7 @@ func (a *AclResourceType) String() string {
 		AclResourceGroup:           "Group",
 		AclResourceCluster:         "Cluster",
 		AclResourceTransactionalID: "TransactionalID",
+		AclResourceDelegationToken: "DelegationToken",
 	}
 	s, ok := mapping[*a]
 	if !ok {
@@ -174,6 +176,7 @@ func (a *AclResourceType) UnmarshalText(text []byte) error {
 		"group":           AclResourceGroup,
 		"cluster":         AclResourceCluster,
 		"transactionalid": AclResourceTransactionalID,
+		"delegationtoken": AclResourceDelegationToken,
 	}
 
 	art, ok := mapping[normalized]

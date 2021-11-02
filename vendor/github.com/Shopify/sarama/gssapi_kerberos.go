@@ -57,10 +57,10 @@ type KerberosClient interface {
 
 // writePackage appends length in big endian before the payload, and sends it to kafka
 func (krbAuth *GSSAPIKerberosAuth) writePackage(broker *Broker, payload []byte) (int, error) {
-	length := len(payload)
+	length := uint64(len(payload))
 	size := length + 4 // 4 byte length header + payload
-	if size > math.MaxUint32 {
-		return 0, errors.New("payload too large, will overflow uint32")
+	if size > math.MaxInt32 {
+		return 0, errors.New("payload too large, will overflow int32")
 	}
 	finalPackage := make([]byte, size)
 	copy(finalPackage[4:], payload)

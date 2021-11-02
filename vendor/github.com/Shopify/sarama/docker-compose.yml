@@ -1,7 +1,7 @@
 version: '3.7'
 services:
   zookeeper-1:
-    image: 'confluentinc/cp-zookeeper:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-zookeeper:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       ZOOKEEPER_SERVER_ID: '1'
@@ -13,7 +13,7 @@ services:
       ZOOKEEPER_SYNC_LIMIT: '5'
       ZOOKEEPER_MAX_CLIENT_CONNS: '0'
   zookeeper-2:
-    image: 'confluentinc/cp-zookeeper:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-zookeeper:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       ZOOKEEPER_SERVER_ID: '2'
@@ -25,7 +25,7 @@ services:
       ZOOKEEPER_SYNC_LIMIT: '5'
       ZOOKEEPER_MAX_CLIENT_CONNS: '0'
   zookeeper-3:
-    image: 'confluentinc/cp-zookeeper:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-zookeeper:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       ZOOKEEPER_SERVER_ID: '3'
@@ -37,7 +37,7 @@ services:
       ZOOKEEPER_SYNC_LIMIT: '5'
       ZOOKEEPER_MAX_CLIENT_CONNS: '0'
   kafka-1:
-    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
@@ -54,7 +54,7 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: 'true'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
   kafka-2:
-    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
@@ -71,7 +71,7 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: 'true'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
   kafka-3:
-    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
@@ -88,7 +88,7 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: 'true'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
   kafka-4:
-    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
@@ -105,7 +105,7 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: 'true'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
   kafka-5:
-    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.1.1}'
+    image: 'confluentinc/cp-kafka:${CONFLUENT_PLATFORM_VERSION:-6.2.0}'
     restart: always
     environment:
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
@@ -122,7 +122,7 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: 'true'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
   toxiproxy:
-    image: 'shopify/toxiproxy:2.1.4'
+    image: 'ghcr.io/shopify/toxiproxy:2.1.5'
     ports:
       # The tests themselves actually start the proxies on these ports
       - '29091:29091'

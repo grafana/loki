@@ -147,7 +147,7 @@ func allocateBody(key, version int16) protocolBody {
 	case 17:
 		return &SaslHandshakeRequest{}
 	case 18:
-		return &ApiVersionsRequest{}
+		return &ApiVersionsRequest{Version: version}
 	case 19:
 		return &CreateTopicsRequest{}
 	case 20:
@@ -182,10 +182,18 @@ func allocateBody(key, version int16) protocolBody {
 		return &CreatePartitionsRequest{}
 	case 42:
 		return &DeleteGroupsRequest{}
+	case 44:
+		return &IncrementalAlterConfigsRequest{}
 	case 45:
 		return &AlterPartitionReassignmentsRequest{}
 	case 46:
 		return &ListPartitionReassignmentsRequest{}
+	case 47:
+		return &DeleteOffsetsRequest{}
+	case 48:
+		return &DescribeClientQuotasRequest{}
+	case 49:
+		return &AlterClientQuotasRequest{}
 	case 50:
 		return &DescribeUserScramCredentialsRequest{}
 	case 51:

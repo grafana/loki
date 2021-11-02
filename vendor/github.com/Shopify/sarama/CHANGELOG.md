@@ -2,6 +2,10 @@
 
 #### Unreleased
 
+# Improvements
+
+- #1912 - @faillefer Support for --delete-offsets for consumer group topic
+
 #### Version 1.28.0 (2021-02-15)
 
 **Note that with this release we change `RoundRobinBalancer` strategy to match Java client behavior. See #1788 for details.**

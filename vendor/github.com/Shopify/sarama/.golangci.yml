@@ -40,6 +40,7 @@ linters:
     - bodyclose
     - deadcode
     - depguard
+    - exportloopref
     - dogsled
     # - dupl
     - errcheck
@@ -55,8 +56,9 @@ linters:
     # - gosimple
     - govet
     # - ineffassign
-    # - misspell
+    - misspell
     # - nakedret
+    - nilerr
     # - scopelint
     - staticcheck
     - structcheck

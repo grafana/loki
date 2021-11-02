@@ -373,7 +373,7 @@ func (child *partitionConsumer) preferredBroker() (*Broker, error) {
 		}
 	}
 
-	// if prefered replica cannot be found fallback to leader
+	// if preferred replica cannot be found fallback to leader
 	return child.consumer.client.Leader(child.topic, child.partition)
 }
 
@@ -468,9 +468,7 @@ feederLoop:
 		}
 
 		for i, msg := range msgs {
-			for _, interceptor := range child.conf.Consumer.Interceptors {
-				msg.safelyApplyInterceptor(interceptor)
-			}
+			child.interceptors(msg)
 		messageSelect:
 			select {
 			case <-child.dying:
@@ -484,6 +482,7 @@ feederLoop:
 					child.broker.acks.Done()
 				remainingLoop:
 					for _, msg = range msgs[i:] {
+						child.interceptors(msg)
 						select {
 						case child.messages <- msg:
 						case <-child.dying:
@@ -715,6 +714,12 @@ func (child *partitionConsumer) parseResponse(response *FetchResponse) ([]*Consu
 	return messages, nil
 }
 
+func (child *partitionConsumer) interceptors(msg *ConsumerMessage) {
+	for _, interceptor := range child.conf.Consumer.Interceptors {
+		msg.safelyApplyInterceptor(interceptor)
+	}
+}
+
 type brokerConsumer struct {
 	consumer         *consumer
 	broker           *Broker
@@ -840,7 +845,7 @@ func (bc *brokerConsumer) handleResponses() {
 		if result == nil {
 			if preferredBroker, err := child.preferredBroker(); err == nil {
 				if bc.broker.ID() != preferredBroker.ID() {
-					// not an error but needs redispatching to consume from prefered replica
+					// not an error but needs redispatching to consume from preferred replica
 					child.trigger <- none{}
 					delete(bc.subscriptions, child)
 				}

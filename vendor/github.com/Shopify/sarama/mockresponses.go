@@ -1082,6 +1082,35 @@ func (m *MockDeleteGroupsResponse) For(reqBody versionedDecoder) encoderWithHead
 	return resp
 }
 
+type MockDeleteOffsetResponse struct {
+	errorCode      KError
+	topic          string
+	partition      int32
+	errorPartition KError
+}
+
+func NewMockDeleteOffsetRequest(t TestReporter) *MockDeleteOffsetResponse {
+	return &MockDeleteOffsetResponse{}
+}
+
+func (m *MockDeleteOffsetResponse) SetDeletedOffset(errorCode KError, topic string, partition int32, errorPartition KError) *MockDeleteOffsetResponse {
+	m.errorCode = errorCode
+	m.topic = topic
+	m.partition = partition
+	m.errorPartition = errorPartition
+	return m
+}
+
+func (m *MockDeleteOffsetResponse) For(reqBody versionedDecoder) encoderWithHeader {
+	resp := &DeleteOffsetsResponse{
+		ErrorCode: m.errorCode,
+		Errors: map[string]map[int32]KError{
+			m.topic: {m.partition: m.errorPartition},
+		},
+	}
+	return resp
+}
+
 type MockJoinGroupResponse struct {
 	t TestReporter
 
@@ -1270,4 +1299,34 @@ func (m *MockDescribeLogDirsResponse) For(reqBody versionedDecoder) encoderWithH
 		LogDirs: m.logDirs,
 	}
 	return resp
+}
+
+type MockApiVersionsResponse struct {
+	t TestReporter
+}
+
+func NewMockApiVersionsResponse(t TestReporter) *MockApiVersionsResponse {
+	return &MockApiVersionsResponse{t: t}
+}
+
+func (mr *MockApiVersionsResponse) For(reqBody versionedDecoder) encoderWithHeader {
+	req := reqBody.(*ApiVersionsRequest)
+	res := &ApiVersionsResponse{
+		Version: req.Version,
+		ApiKeys: []ApiVersionsResponseKey{
+			{
+				Version:    req.Version,
+				ApiKey:     0,
+				MinVersion: 5,
+				MaxVersion: 8,
+			},
+			{
+				Version:    req.Version,
+				ApiKey:     1,
+				MinVersion: 7,
+				MaxVersion: 11,
+			},
+		},
+	}
+	return res
 }

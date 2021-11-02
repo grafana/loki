@@ -7,6 +7,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/rcrowley/go-metrics"
 )
 
 // ErrClosedConsumerGroup is the error returned when a method is called on a consumer group that has been closed.
@@ -28,7 +30,7 @@ type ConsumerGroup interface {
 	//    in a separate goroutine which requires it to be thread-safe. Any state must be carefully protected
 	//    from concurrent reads/writes.
 	// 4. The session will persist until one of the ConsumeClaim() functions exits. This can be either when the
-	//    parent context is cancelled or when a server-side rebalance cycle is initiated.
+	//    parent context is canceled or when a server-side rebalance cycle is initiated.
 	// 5. Once all the ConsumeClaim() loops have exited, the handler's Cleanup() hook is called
 	//    to allow the user to perform any final tasks before a rebalance.
 	// 6. Finally, marked offsets are committed one last time before claims are released.
@@ -112,6 +114,7 @@ func newConsumerGroup(groupID string, client Client) (ConsumerGroup, error) {
 		groupID:  groupID,
 		errors:   make(chan error, config.ChannelBufferSize),
 		closed:   make(chan none),
+		userData: config.Consumer.Group.Member.UserData,
 	}, nil
 }
 
@@ -212,11 +215,37 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 		return c.retryNewSession(ctx, topics, handler, retries, true)
 	}
 
+	var (
+		metricRegistry          = c.config.MetricRegistry
+		consumerGroupJoinTotal  metrics.Counter
+		consumerGroupJoinFailed metrics.Counter
+		consumerGroupSyncTotal  metrics.Counter
+		consumerGroupSyncFailed metrics.Counter
+	)
+
+	if metricRegistry != nil {
+		consumerGroupJoinTotal = metrics.GetOrRegisterCounter(fmt.Sprintf("consumer-group-join-total-%s", c.groupID), metricRegistry)
+		consumerGroupJoinFailed = metrics.GetOrRegisterCounter(fmt.Sprintf("consumer-group-join-failed-%s", c.groupID), metricRegistry)
+		consumerGroupSyncTotal = metrics.GetOrRegisterCounter(fmt.Sprintf("consumer-group-sync-total-%s", c.groupID), metricRegistry)
+		consumerGroupSyncFailed = metrics.GetOrRegisterCounter(fmt.Sprintf("consumer-group-sync-failed-%s", c.groupID), metricRegistry)
+	}
+
 	// Join consumer group
 	join, err := c.joinGroupRequest(coordinator, topics)
+	if consumerGroupJoinTotal != nil {
+		consumerGroupJoinTotal.Inc(1)
+	}
 	if err != nil {
 		_ = coordinator.Close()
+		if consumerGroupJoinFailed != nil {
+			consumerGroupJoinFailed.Inc(1)
+		}
 		return nil, err
+	}
+	if join.Err != ErrNoError {
+		if consumerGroupJoinFailed != nil {
+			consumerGroupJoinFailed.Inc(1)
+		}
 	}
 	switch join.Err {
 	case ErrNoError:
@@ -256,10 +285,22 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 
 	// Sync consumer group
 	groupRequest, err := c.syncGroupRequest(coordinator, plan, join.GenerationId)
+	if consumerGroupSyncTotal != nil {
+		consumerGroupSyncTotal.Inc(1)
+	}
 	if err != nil {
 		_ = coordinator.Close()
+		if consumerGroupSyncFailed != nil {
+			consumerGroupSyncFailed.Inc(1)
+		}
 		return nil, err
 	}
+	if groupRequest.Err != ErrNoError {
+		if consumerGroupSyncFailed != nil {
+			consumerGroupSyncFailed.Inc(1)
+		}
+	}
+
 	switch groupRequest.Err {
 	case ErrNoError:
 	case ErrUnknownMemberId, ErrIllegalGeneration: // reset member ID and retry immediately
@@ -289,7 +330,15 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 			return nil, err
 		}
 		claims = members.Topics
-		c.userData = members.UserData
+
+		// in the case of stateful balance strategies, hold on to the returned
+		// assignment metadata, otherwise, reset the statically defined conusmer
+		// group metadata
+		if members.UserData != nil {
+			c.userData = members.UserData
+		} else {
+			c.userData = c.config.Consumer.Group.Member.UserData
+		}
 
 		for _, partitions := range claims {
 			sort.Sort(int32Slice(partitions))
@@ -311,14 +360,9 @@ func (c *consumerGroup) joinGroupRequest(coordinator *Broker, topics []string) (
 		req.RebalanceTimeout = int32(c.config.Consumer.Group.Rebalance.Timeout / time.Millisecond)
 	}
 
-	// use static user-data if configured, otherwise use consumer-group userdata from the last sync
-	userData := c.config.Consumer.Group.Member.UserData
-	if len(userData) == 0 {
-		userData = c.userData
-	}
 	meta := &ConsumerGroupMemberMetadata{
 		Topics:   topics,
-		UserData: userData,
+		UserData: c.userData,
 	}
 	strategy := c.config.Consumer.Group.Rebalance.Strategy
 	if err := req.AddGroupProtocolMetadata(strategy.Name(), meta); err != nil {
@@ -732,6 +776,9 @@ func (s *consumerGroupSession) heartbeatLoop() {
 	pause := time.NewTicker(s.parent.config.Consumer.Group.Heartbeat.Interval)
 	defer pause.Stop()
 
+	retryBackoff := time.NewTimer(s.parent.config.Metadata.Retry.Backoff)
+	defer retryBackoff.Stop()
+
 	retries := s.parent.config.Metadata.Retry.Max
 	for {
 		coordinator, err := s.parent.client.Coordinator(s.parent.groupID)
@@ -740,11 +787,11 @@ func (s *consumerGroupSession) heartbeatLoop() {
 				s.parent.handleError(err, "", -1)
 				return
 			}
-
+			retryBackoff.Reset(s.parent.config.Metadata.Retry.Backoff)
 			select {
 			case <-s.hbDying:
 				return
-			case <-time.After(s.parent.config.Metadata.Retry.Backoff):
+			case <-retryBackoff.C:
 				retries--
 			}
 			continue

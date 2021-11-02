@@ -49,6 +49,7 @@ type Broker struct {
 	brokerResponseRate     metrics.Meter
 	brokerResponseSize     metrics.Histogram
 	brokerRequestsInFlight metrics.Counter
+	brokerThrottleTime     metrics.Histogram
 
 	kerberosAuthenticator GSSAPIKerberosAuth
 }
@@ -149,11 +150,28 @@ func (b *Broker) Open(conf *Config) error {
 		return err
 	}
 
+	usingApiVersionsRequests := conf.Version.IsAtLeast(V2_4_0_0) && conf.ApiVersionsRequest
+
 	b.lock.Lock()
 
 	go withRecover(func() {
-		defer b.lock.Unlock()
+		defer func() {
+			b.lock.Unlock()
 
+			// Send an ApiVersionsRequest to identify the client (KIP-511).
+			// Ideally Sarama would use the response to control protocol versions,
+			// but for now just fire-and-forget just to send
+			if usingApiVersionsRequests {
+				_, err = b.ApiVersions(&ApiVersionsRequest{
+					Version:               3,
+					ClientSoftwareName:    defaultClientSoftwareName,
+					ClientSoftwareVersion: version(),
+				})
+				if err != nil {
+					Logger.Printf("Error while sending ApiVersionsRequest to broker %s: %s\n", b.addr, err)
+				}
+			}
+		}()
 		dialer := conf.getDialer()
 		b.conn, b.connErr = dialer.Dial("tcp", b.addr)
 		if b.connErr != nil {
@@ -180,7 +198,7 @@ func (b *Broker) Open(conf *Config) error {
 		b.requestsInFlight = metrics.GetOrRegisterCounter("requests-in-flight", conf.MetricRegistry)
 		// Do not gather metrics for seeded broker (only used during bootstrap) because they share
 		// the same id (-1) and are already exposed through the global metrics above
-		if b.id >= 0 {
+		if b.id >= 0 && !metrics.UseNilMetrics {
 			b.registerMetrics()
 		}
 
@@ -190,7 +208,7 @@ func (b *Broker) Open(conf *Config) error {
 			if b.connErr != nil {
 				err = b.conn.Close()
 				if err == nil {
-					Logger.Printf("Closed connection to broker %s\n", b.addr)
+					DebugLogger.Printf("Closed connection to broker %s\n", b.addr)
 				} else {
 					Logger.Printf("Error while closing connection to broker %s: %s\n", b.addr, err)
 				}
@@ -204,9 +222,9 @@ func (b *Broker) Open(conf *Config) error {
 		b.responses = make(chan responsePromise, b.conf.Net.MaxOpenRequests-1)
 
 		if b.id >= 0 {
-			Logger.Printf("Connected to broker at %s (registered as #%d)\n", b.addr, b.id)
+			DebugLogger.Printf("Connected to broker at %s (registered as #%d)\n", b.addr, b.id)
 		} else {
-			Logger.Printf("Connected to broker at %s (unregistered)\n", b.addr)
+			DebugLogger.Printf("Connected to broker at %s (unregistered)\n", b.addr)
 		}
 		go withRecover(b.responseReceiver)
 	})
@@ -245,7 +263,7 @@ func (b *Broker) Close() error {
 	b.unregisterMetrics()
 
 	if err == nil {
-		Logger.Printf("Closed connection to broker %s\n", b.addr)
+		DebugLogger.Printf("Closed connection to broker %s\n", b.addr)
 	} else {
 		Logger.Printf("Error while closing connection to broker %s: %s\n", b.addr, err)
 	}
@@ -336,6 +354,15 @@ func (b *Broker) Produce(request *ProduceRequest) (*ProduceResponse, error) {
 	} else {
 		response = new(ProduceResponse)
 		err = b.sendAndReceive(request, response)
+		if response.ThrottleTime != time.Duration(0) {
+			DebugLogger.Printf(
+				"producer/broker/%d ProduceResponse throttled %v\n",
+				b.ID(), response.ThrottleTime)
+			if b.brokerThrottleTime != nil {
+				throttleTimeInMs := int64(response.ThrottleTime / time.Millisecond)
+				b.brokerThrottleTime.Update(throttleTimeInMs)
+			}
+		}
 	}
 
 	if err != nil {
@@ -666,9 +693,32 @@ func (b *Broker) AlterConfigs(request *AlterConfigsRequest) (*AlterConfigsRespon
 	return response, nil
 }
 
+// IncrementalAlterConfigs sends a request to incremental alter config and return a response or error
+func (b *Broker) IncrementalAlterConfigs(request *IncrementalAlterConfigsRequest) (*IncrementalAlterConfigsResponse, error) {
+	response := new(IncrementalAlterConfigsResponse)
+
+	err := b.sendAndReceive(request, response)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
+}
+
 // DeleteGroups sends a request to delete groups and returns a response or error
 func (b *Broker) DeleteGroups(request *DeleteGroupsRequest) (*DeleteGroupsResponse, error) {
 	response := new(DeleteGroupsResponse)
+
+	if err := b.sendAndReceive(request, response); err != nil {
+		return nil, err
+	}
+
+	return response, nil
+}
+
+// DeleteOffsets sends a request to delete group offsets and returns a response or error
+func (b *Broker) DeleteOffsets(request *DeleteOffsetsRequest) (*DeleteOffsetsResponse, error) {
+	response := new(DeleteOffsetsResponse)
 
 	if err := b.sendAndReceive(request, response); err != nil {
 		return nil, err
@@ -710,6 +760,30 @@ func (b *Broker) AlterUserScramCredentials(req *AlterUserScramCredentialsRequest
 	}
 
 	return res, nil
+}
+
+// DescribeClientQuotas sends a request to get the broker's quotas
+func (b *Broker) DescribeClientQuotas(request *DescribeClientQuotasRequest) (*DescribeClientQuotasResponse, error) {
+	response := new(DescribeClientQuotasResponse)
+
+	err := b.sendAndReceive(request, response)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
+}
+
+// AlterClientQuotas sends a request to alter the broker's quotas
+func (b *Broker) AlterClientQuotas(request *AlterClientQuotasRequest) (*AlterClientQuotasResponse, error) {
+	response := new(AlterClientQuotasResponse)
+
+	err := b.sendAndReceive(request, response)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }
 
 // readFull ensures the conn ReadDeadline has been setup before making a
@@ -929,7 +1003,7 @@ func (b *Broker) authenticateViaSASL() error {
 	case SASLTypeOAuth:
 		return b.sendAndReceiveSASLOAuth(b.conf.Net.SASL.TokenProvider)
 	case SASLTypeSCRAMSHA256, SASLTypeSCRAMSHA512:
-		return b.sendAndReceiveSASLSCRAMv1()
+		return b.sendAndReceiveSASLSCRAM()
 	case SASLTypeGSSAPI:
 		return b.sendAndReceiveKerberos()
 	default:
@@ -997,7 +1071,7 @@ func (b *Broker) sendAndReceiveSASLHandshake(saslType SASLMechanism, version int
 		return res.Err
 	}
 
-	Logger.Print("Successful SASL handshake. Available mechanisms: ", res.EnabledMechanisms)
+	DebugLogger.Print("Successful SASL handshake. Available mechanisms: ", res.EnabledMechanisms)
 	return nil
 }
 
@@ -1070,7 +1144,7 @@ func (b *Broker) sendAndReceiveV0SASLPlainAuth() error {
 		return err
 	}
 
-	Logger.Printf("SASL authentication successful with broker %s:%v - %v\n", b.addr, n, header)
+	DebugLogger.Printf("SASL authentication successful with broker %s:%v - %v\n", b.addr, n, header)
 	return nil
 }
 
@@ -1168,6 +1242,70 @@ func (b *Broker) sendClientMessage(message []byte) (bool, error) {
 	return isChallenge, err
 }
 
+func (b *Broker) sendAndReceiveSASLSCRAM() error {
+	if b.conf.Net.SASL.Version == SASLHandshakeV0 {
+		return b.sendAndReceiveSASLSCRAMv0()
+	}
+	return b.sendAndReceiveSASLSCRAMv1()
+}
+
+func (b *Broker) sendAndReceiveSASLSCRAMv0() error {
+	if err := b.sendAndReceiveSASLHandshake(b.conf.Net.SASL.Mechanism, SASLHandshakeV0); err != nil {
+		return err
+	}
+
+	scramClient := b.conf.Net.SASL.SCRAMClientGeneratorFunc()
+	if err := scramClient.Begin(b.conf.Net.SASL.User, b.conf.Net.SASL.Password, b.conf.Net.SASL.SCRAMAuthzID); err != nil {
+		return fmt.Errorf("failed to start SCRAM exchange with the server: %s", err.Error())
+	}
+
+	msg, err := scramClient.Step("")
+	if err != nil {
+		return fmt.Errorf("failed to advance the SCRAM exchange: %s", err.Error())
+	}
+
+	for !scramClient.Done() {
+		requestTime := time.Now()
+		// Will be decremented in updateIncomingCommunicationMetrics (except error)
+		b.addRequestInFlightMetrics(1)
+		length := len(msg)
+		authBytes := make([]byte, length+4) //4 byte length header + auth data
+		binary.BigEndian.PutUint32(authBytes, uint32(length))
+		copy(authBytes[4:], []byte(msg))
+		_, err := b.write(authBytes)
+		b.updateOutgoingCommunicationMetrics(length + 4)
+		if err != nil {
+			b.addRequestInFlightMetrics(-1)
+			Logger.Printf("Failed to write SASL auth header to broker %s: %s\n", b.addr, err.Error())
+			return err
+		}
+		b.correlationID++
+		header := make([]byte, 4)
+		_, err = b.readFull(header)
+		if err != nil {
+			b.addRequestInFlightMetrics(-1)
+			Logger.Printf("Failed to read response header while authenticating with SASL to broker %s: %s\n", b.addr, err.Error())
+			return err
+		}
+		payload := make([]byte, int32(binary.BigEndian.Uint32(header)))
+		n, err := b.readFull(payload)
+		if err != nil {
+			b.addRequestInFlightMetrics(-1)
+			Logger.Printf("Failed to read response payload while authenticating with SASL to broker %s: %s\n", b.addr, err.Error())
+			return err
+		}
+		b.updateIncomingCommunicationMetrics(n+4, time.Since(requestTime))
+		msg, err = scramClient.Step(string(payload))
+		if err != nil {
+			Logger.Println("SASL authentication failed", err)
+			return err
+		}
+	}
+
+	DebugLogger.Println("SASL authentication succeeded")
+	return nil
+}
+
 func (b *Broker) sendAndReceiveSASLSCRAMv1() error {
 	if err := b.sendAndReceiveSASLHandshake(b.conf.Net.SASL.Mechanism, SASLHandshakeV1); err != nil {
 		return err
@@ -1212,7 +1350,7 @@ func (b *Broker) sendAndReceiveSASLSCRAMv1() error {
 		}
 	}
 
-	Logger.Println("SASL authentication succeeded")
+	DebugLogger.Println("SASL authentication succeeded")
 	return nil
 }
 
@@ -1416,6 +1554,7 @@ func (b *Broker) registerMetrics() {
 	b.brokerResponseRate = b.registerMeter("response-rate")
 	b.brokerResponseSize = b.registerHistogram("response-size")
 	b.brokerRequestsInFlight = b.registerCounter("requests-in-flight")
+	b.brokerThrottleTime = b.registerHistogram("throttle-time-in-ms")
 }
 
 func (b *Broker) unregisterMetrics() {

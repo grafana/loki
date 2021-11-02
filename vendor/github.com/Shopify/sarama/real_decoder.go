@@ -93,6 +93,16 @@ func (rd *realDecoder) getUVarint() (uint64, error) {
 	return tmp, nil
 }
 
+func (rd *realDecoder) getFloat64() (float64, error) {
+	if rd.remaining() < 8 {
+		rd.off = len(rd.raw)
+		return -1, ErrInsufficientData
+	}
+	tmp := math.Float64frombits(binary.BigEndian.Uint64(rd.raw[rd.off:]))
+	rd.off += 8
+	return tmp, nil
+}
+
 func (rd *realDecoder) getArrayLength() (int, error) {
 	if rd.remaining() < 4 {
 		rd.off = len(rd.raw)
@@ -230,7 +240,9 @@ func (rd *realDecoder) getCompactString() (string, error) {
 	}
 
 	length := int(n - 1)
-
+	if length < 0 {
+		return "", errInvalidByteSliceLength
+	}
 	tmpStr := string(rd.raw[rd.off : rd.off+length])
 	rd.off += length
 	return tmpStr, nil
