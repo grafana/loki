@@ -206,6 +206,27 @@ func Test_lineFormatter_Format(t *testing.T) {
 			[]byte("12"),
 			labels.Labels{{Name: "foo", Value: "2.5"}},
 		},
+		{
+			"datetime",
+			newMustLineFormatter("{{ sub (unixEpoch (toDate \"2006-01-02\" \"2021-11-02\")) (unixEpoch (toDate \"2006-01-02\" \"2021-11-01\")) }}"),
+			labels.Labels{},
+			[]byte("86400"),
+			labels.Labels{},
+		},
+		{
+			"dateformat",
+			newMustLineFormatter("{{ date \"2006-01-02\" (toDate \"2006-01-02\" \"2021-11-02\") }}"),
+			labels.Labels{},
+			[]byte("2021-11-02"),
+			labels.Labels{},
+		},
+		{
+			"now",
+			newMustLineFormatter("{{ div (unixEpoch now) (unixEpoch now) }}"),
+			labels.Labels{},
+			[]byte("1"),
+			labels.Labels{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
