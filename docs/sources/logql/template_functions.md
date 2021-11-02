@@ -631,7 +631,7 @@ Example of a query to print a newline per queries stored as a json array in the 
 
 ## date
 
-`date` returns a textual representation of the time value formatted according to layout.
+`date` returns a textual representation of the time value formatted according to the provided [golang datetime layout](https://pkg.go.dev/time#pkg-constants). 
 
 ```template
 { date "2006-01-02" now }}
