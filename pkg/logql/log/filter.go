@@ -241,14 +241,17 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	}
 }
 
+type containsMatch struct {
+	match           []byte
+	caseInsensitive bool
+}
+
 type ContainsAllFilter struct {
-	matches          [][]byte
-	caseInsensitives []bool
+	matches []containsMatch
 }
 
 func (f *ContainsAllFilter) Add(filter ContainsFilter) {
-	f.matches = append(f.matches, filter.match)
-	f.caseInsensitives = append(f.caseInsensitives, filter.caseInsensitive)
+	f.matches = append(f.matches, containsMatch{match: filter.match, caseInsensitive: filter.caseInsensitive})
 }
 
 func (f *ContainsAllFilter) Empty() bool {
@@ -256,11 +259,11 @@ func (f *ContainsAllFilter) Empty() bool {
 }
 
 func (f ContainsAllFilter) Filter(line []byte) bool {
-	for i, match := range f.matches {
-		if f.caseInsensitives[i] {
+	for _, m := range f.matches {
+		if m.caseInsensitive {
 			line = bytes.ToLower(line)
 		}
-		if !bytes.Contains(line, match) {
+		if !bytes.Contains(line, m.match) {
 			return false
 		}
 	}
