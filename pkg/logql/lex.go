@@ -107,6 +107,9 @@ var functionTokens = map[string]int{
 	OpConvBytes:           BYTES_CONV,
 	OpConvDuration:        DURATION_CONV,
 	OpConvDurationSeconds: DURATION_SECONDS_CONV,
+
+	// filterOp
+	OpFilterIP: IP,
 }
 
 type lexer struct {
@@ -193,7 +196,11 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 	}
 
-	if tok, ok := functionTokens[tokenText]; ok && isFunction(l.Scanner) {
+	if tok, ok := functionTokens[tokenText]; ok {
+		if !isFunction(l.Scanner) {
+			lval.str = tokenText
+			return IDENTIFIER
+		}
 		return tok
 	}
 

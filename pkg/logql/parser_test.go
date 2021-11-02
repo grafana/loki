@@ -140,6 +140,16 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{ foo = "bar" }|logfmt|rate="a"`, // rate should also be able to use it as IDENTIFIER
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "rate", "a"))),
+				},
+			),
+		},
+		{
 			in: `rate({ foo = "bar" }[5d])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
@@ -352,6 +362,20 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `{ foo = "bar" , ip="foo"}|logfmt|= ip("127.0.0.1")|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")|ip=ip("6.7.8.9")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar"), mustNewMatcher(labels.MatchEqual, "ip", "foo")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "127.0.0.1"),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+					newLabelFilterExpr(log.NewIPLabelFilter("6.7.8.9", "ip", log.LabelFilterEqual)),
+				},
+			),
+		},
+		{
 			in: `{foo="bar"} |= ip("123.123.123.123")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
@@ -521,6 +545,52 @@ func TestParse(t *testing.T) {
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"`, // just using `ip` as a label name(identifier) should work
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"`, // just using `ip` as a label name should work with chaining
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")`, // `ip` should work as both label name and filter in same query
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")|ip=ip("6.7.8.9")`, // `ip` should work as both label name and filter in same query with same name.
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+					newLabelFilterExpr(log.NewIPLabelFilter("6.7.8.9", "ip", log.LabelFilterEqual)),
 				},
 			),
 		},
