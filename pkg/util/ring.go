@@ -18,7 +18,7 @@ func TokenFor(userID, labels string) uint32 {
 // and see if the provided address is in the resulting ReplicationSet
 func IsInReplicationSet(r *ring.Ring, ringKey uint32, address string) (bool, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-	rs, err := r.Get(ringKey, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+	rs, err := r.Get(ringKey, ring.Write, bufDescs, bufHosts, bufZones)
 	if err != nil {
 		return false, err
 	}
