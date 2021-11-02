@@ -362,6 +362,20 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `{ foo = "bar" , ip="foo"}|logfmt|= ip("127.0.0.1")|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")|ip=ip("6.7.8.9")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar"), mustNewMatcher(labels.MatchEqual, "ip", "foo")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "127.0.0.1"),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+					newLabelFilterExpr(log.NewIPLabelFilter("6.7.8.9", "ip", log.LabelFilterEqual)),
+				},
+			),
+		},
+		{
 			in: `{foo="bar"} |= ip("123.123.123.123")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
