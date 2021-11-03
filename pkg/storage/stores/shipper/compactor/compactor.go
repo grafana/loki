@@ -392,12 +392,12 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 	}
 
 	interval := retention.ExtractIntervalFromTableName(tableName)
-	intervalHasExpiredChunks := false
+	intervalMayHaveExpiredChunks := false
 	if c.cfg.RetentionEnabled {
-		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
+		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval)
 	}
 
-	err = table.compact(intervalHasExpiredChunks)
+	err = table.compact(intervalMayHaveExpiredChunks)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
@@ -531,8 +531,8 @@ func (e *expirationChecker) MarkPhaseFinished() {
 	e.deletionExpiryChecker.MarkPhaseFinished()
 }
 
-func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
-	return e.retentionExpiryChecker.IntervalHasExpiredChunks(interval) || e.deletionExpiryChecker.IntervalHasExpiredChunks(interval)
+func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval) bool {
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval)
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {

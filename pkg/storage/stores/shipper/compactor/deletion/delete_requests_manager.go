@@ -195,10 +195,12 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	}
 }
 
-func (d *DeleteRequestsManager) IntervalHasExpiredChunks(_ model.Interval) bool {
+func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval) bool {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
+	// If your request includes just today and there are chunks spanning today and yesterday then
+	// with previous check it won’t process yesterday’s index.
 	return len(d.deleteRequestsToProcess) != 0
 }
 
