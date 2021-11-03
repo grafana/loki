@@ -121,7 +121,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
 		return empty, true, nil
 	}
-	if modified {
+	if !modified {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionNone).Inc()
 		return empty, modified, nil
 	}
