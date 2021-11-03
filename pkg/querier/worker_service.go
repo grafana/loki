@@ -53,7 +53,7 @@ func InitWorkerService(
 
 	internalRouter := mux.NewRouter()
 	for route, handler := range queryRoutesToHandlers {
-		internalRouter.Handle(route, handler)
+		internalRouter.Path(route).Methods("GET", "POST").Handler(handler)
 	}
 
 	// If the querier is running standalone without the query-frontend or query-scheduler, we must register the internal
@@ -140,7 +140,7 @@ func registerRoutesExternally(routes []string, externalRouter *mux.Router, inter
 	)
 
 	for _, route := range routes {
-		externalRouter.Handle(route, httpMiddleware.Wrap(internalHandler))
+		externalRouter.Path(route).Methods("GET", "POST").Handler(httpMiddleware.Wrap(internalHandler))
 	}
 }
 

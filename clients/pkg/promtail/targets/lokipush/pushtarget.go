@@ -94,8 +94,8 @@ func (t *PushTarget) run() error {
 	}
 
 	t.server = srv
-	t.server.HTTP.Handle("/loki/api/v1/push", http.HandlerFunc(t.handleLoki))
-	t.server.HTTP.Handle("/promtail/api/v1/raw", http.HandlerFunc(t.handlePlaintext))
+	t.server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(http.HandlerFunc(t.handleLoki))
+	t.server.HTTP.Path("/promtail/api/v1/raw").Methods("POST").Handler(http.HandlerFunc(t.handlePlaintext))
 
 	go func() {
 		err := srv.Run()
