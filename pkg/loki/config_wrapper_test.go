@@ -1190,28 +1190,66 @@ ingester:
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
 	})
 
-	t.Run("if a ring is explicitly configured, don't override it", func(t *testing.T) {
-		yamlContent := `common:
-  ring:
-    kvstore:
-      store: consul
+	t.Run("if a ring is explicitly configured, don't override any part of it with ingester config", func(t *testing.T) {
+		yamlContent := `
 distributor:
   ring:
     kvstore:
       store: etcd
 ingester:
   lifecycler:
+    heartbeat_period: 5m
     ring:
       kvstore:
         store: inmemory`
 
-		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		config, defaults, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, defaults.Distributor.DistributorRing.HeartbeatPeriod, config.Distributor.DistributorRing.HeartbeatPeriod)
+
 		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
-		assert.Equal(t, "consul", config.Ruler.Ring.KVStore.Store)
-		assert.Equal(t, "consul", config.QueryScheduler.SchedulerRing.KVStore.Store)
-		assert.Equal(t, "consul", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ingester.LifecyclerConfig.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ruler.Ring.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.QueryScheduler.SchedulerRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.CompactorConfig.CompactorRing.HeartbeatPeriod)
+	})
+
+	t.Run("if a ring is explicitly configured, merge common config with unconfigured parts of explicitly configured ring", func(t *testing.T) {
+		yamlContent := `
+common:
+  ring:
+    heartbeat_period: 5m
+    kvstore:
+      store: inmemory
+distributor:
+  ring:
+    kvstore:
+      store: etcd`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Distributor.DistributorRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ingester.LifecyclerConfig.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.Ruler.Ring.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.QueryScheduler.SchedulerRing.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.CompactorConfig.CompactorRing.HeartbeatPeriod)
 	})
 
 	t.Run("ring configs provided via command line take precedence", func(t *testing.T) {

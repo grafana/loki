@@ -81,6 +81,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyDynamicRingConfigs(r, &defaults)
 
+		appendLoopbackInterface(r, &defaults)
+
 		if err := applyTokensFilePath(r); err != nil {
 			return err
 		}
@@ -112,8 +114,9 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 // the list of default interface names
 func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.Ring, defaults.Common.Ring) {
-	        // common ring is provided, use that for all rings
-		useCommonRingConfig(r, defaults)
+		// common ring is provided, use that for all rings, merging with
+		// any specific configs provided for each ring
+		applyConfigToRings(r, defaults, r.Common.Ring, true)
 		return
 	}
 
@@ -122,26 +125,25 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 		applyMemberlistConfig(r)
 	} else {
 		// neither common ring nor memberlist set, use ingester ring configuration for all rings
-		useIngesterRingConfig(r, defaults)
+		// that have not been configured. Don't merge any ingester ring configurations for rings
+		// that deviate from the default in any way.
+		ingesterRingCfg := util.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
+		applyConfigToRings(r, defaults, ingesterRingCfg, false)
 	}
-
-}
-
-func useCommonRingConfig(r, defaults *ConfigWrapper) {
-	// if the default ingester config is detected, then it's safe to override with the common config
-	shouldOverrideIngester := reflect.DeepEqual(r.Ingester.LifecyclerConfig, defaults.Ingester.LifecyclerConfig)
-
-	// append the loopback after checking if the default is enabled, as it mutates the current
-	appendLoopbackInterface(r, defaults)
-
-	numTokens := 128 //this is the default used by the ingester and ruler
-	applyConfigToRings(r, r.Common.Ring, numTokens, shouldOverrideIngester)
 }
 
 //applyConfigToRings will reuse a given RingConfig everywhere else we have a ring configured.
-func applyConfigToRings(r *ConfigWrapper, rc util.RingConfig, defaultNumTokens int, overrideIngester bool) {
-	//Ingester
-	if overrideIngester {
+//`mergeWithExisting` will be true when applying the common config, false when applying the ingester
+//config. This decision was made since the ingester ring copying behavior is likely to be less intuitive,
+//and was added as a stop-gap to prevent the new rings in 2.4 from breaking existing configs before 2.4 that only had an ingester
+//ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
+//any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
+//derivations, with the derivations taking precedence.
+func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
+	//Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
+	//change ingester ring values when applying the common config, so there's no need for the DeepEqual
+	//check here.
+	if mergeWithExisting {
 		r.Ingester.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
 		r.Ingester.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
 		r.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -157,60 +159,56 @@ func applyConfigToRings(r *ConfigWrapper, rc util.RingConfig, defaultNumTokens i
 	}
 
 	// Distributor
-	r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
-	r.Distributor.DistributorRing.HeartbeatPeriod = rc.HeartbeatPeriod
-	r.Distributor.DistributorRing.InstancePort = rc.InstancePort
-	r.Distributor.DistributorRing.InstanceAddr = rc.InstanceAddr
-	r.Distributor.DistributorRing.InstanceID = rc.InstanceID
-	r.Distributor.DistributorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
-	r.Distributor.DistributorRing.KVStore.Store = rc.KVStore.Store
-	r.Distributor.DistributorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+	if mergeWithExisting || reflect.DeepEqual(r.Distributor.DistributorRing, defaults.Distributor.DistributorRing) {
+		r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Distributor.DistributorRing.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Distributor.DistributorRing.InstancePort = rc.InstancePort
+		r.Distributor.DistributorRing.InstanceAddr = rc.InstanceAddr
+		r.Distributor.DistributorRing.InstanceID = rc.InstanceID
+		r.Distributor.DistributorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Distributor.DistributorRing.KVStore.Store = rc.KVStore.Store
+		r.Distributor.DistributorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+	}
 
 	// Ruler
-	r.Ruler.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-	r.Ruler.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-	r.Ruler.Ring.InstancePort = rc.InstancePort
-	r.Ruler.Ring.InstanceAddr = rc.InstanceAddr
-	r.Ruler.Ring.InstanceID = rc.InstanceID
-	r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-	r.Ruler.Ring.NumTokens = defaultNumTokens
-	r.Ruler.Ring.KVStore.Store = rc.KVStore.Store
-	r.Ruler.Ring.KVStore.StoreConfig = rc.KVStore.StoreConfig
+	if mergeWithExisting || reflect.DeepEqual(r.Ruler.Ring, defaults.Ruler.Ring) {
+		r.Ruler.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Ruler.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Ruler.Ring.InstancePort = rc.InstancePort
+		r.Ruler.Ring.InstanceAddr = rc.InstanceAddr
+		r.Ruler.Ring.InstanceID = rc.InstanceID
+		r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Ruler.Ring.KVStore.Store = rc.KVStore.Store
+		r.Ruler.Ring.KVStore.StoreConfig = rc.KVStore.StoreConfig
+	}
 
 	// Query Scheduler
-	r.QueryScheduler.SchedulerRing.HeartbeatTimeout = rc.HeartbeatTimeout
-	r.QueryScheduler.SchedulerRing.HeartbeatPeriod = rc.HeartbeatPeriod
-	r.QueryScheduler.SchedulerRing.InstancePort = rc.InstancePort
-	r.QueryScheduler.SchedulerRing.InstanceAddr = rc.InstanceAddr
-	r.QueryScheduler.SchedulerRing.InstanceID = rc.InstanceID
-	r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
-	r.QueryScheduler.SchedulerRing.InstanceZone = rc.InstanceZone
-	r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-	r.QueryScheduler.SchedulerRing.KVStore.Store = rc.KVStore.Store
-	r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+	if mergeWithExisting || reflect.DeepEqual(r.QueryScheduler.SchedulerRing, defaults.QueryScheduler.SchedulerRing) {
+		r.QueryScheduler.SchedulerRing.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.QueryScheduler.SchedulerRing.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.QueryScheduler.SchedulerRing.InstancePort = rc.InstancePort
+		r.QueryScheduler.SchedulerRing.InstanceAddr = rc.InstanceAddr
+		r.QueryScheduler.SchedulerRing.InstanceID = rc.InstanceID
+		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.QueryScheduler.SchedulerRing.InstanceZone = rc.InstanceZone
+		r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.QueryScheduler.SchedulerRing.KVStore.Store = rc.KVStore.Store
+		r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+	}
 
 	// Compactor
-	r.CompactorConfig.CompactorRing.HeartbeatTimeout = rc.HeartbeatTimeout
-	r.CompactorConfig.CompactorRing.HeartbeatPeriod = rc.HeartbeatPeriod
-	r.CompactorConfig.CompactorRing.InstancePort = rc.InstancePort
-	r.CompactorConfig.CompactorRing.InstanceAddr = rc.InstanceAddr
-	r.CompactorConfig.CompactorRing.InstanceID = rc.InstanceID
-	r.CompactorConfig.CompactorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
-	r.CompactorConfig.CompactorRing.InstanceZone = rc.InstanceZone
-	r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-	r.CompactorConfig.CompactorRing.KVStore.Store = rc.KVStore.Store
-	r.CompactorConfig.CompactorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
-}
-
-// useIngesterRingConfig will override all other rings to use the ingester's ring configuration
-func useIngesterRingConfig(r, defaults *ConfigWrapper) {
-	appendLoopbackInterface(r, defaults)
-
-	ingesterRingCfg := util.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
-	numTokens := r.Ingester.LifecyclerConfig.NumTokens
-
-	// we're using the ingester config here, so never need to override it
-	applyConfigToRings(r, ingesterRingCfg, numTokens, false)
+	if mergeWithExisting || reflect.DeepEqual(r.CompactorConfig.CompactorRing, defaults.CompactorConfig.CompactorRing) {
+		r.CompactorConfig.CompactorRing.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.CompactorConfig.CompactorRing.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.CompactorConfig.CompactorRing.InstancePort = rc.InstancePort
+		r.CompactorConfig.CompactorRing.InstanceAddr = rc.InstanceAddr
+		r.CompactorConfig.CompactorRing.InstanceID = rc.InstanceID
+		r.CompactorConfig.CompactorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.CompactorConfig.CompactorRing.InstanceZone = rc.InstanceZone
+		r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.CompactorConfig.CompactorRing.KVStore.Store = rc.KVStore.Store
+		r.CompactorConfig.CompactorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -287,12 +285,24 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.Frontend.FrontendV2.InfNames = append(cfg.Config.Frontend.FrontendV2.InfNames, loopbackIface)
 	}
 
+	if reflect.DeepEqual(cfg.Distributor.DistributorRing.InstanceInterfaceNames, defaults.Distributor.DistributorRing.InstanceInterfaceNames) {
+		cfg.Distributor.DistributorRing.InstanceInterfaceNames = append(cfg.Distributor.DistributorRing.InstanceInterfaceNames, loopbackIface)
+	}
+
 	if reflect.DeepEqual(cfg.Common.Ring.InstanceInterfaceNames, defaults.Common.Ring.InstanceInterfaceNames) {
 		cfg.Common.Ring.InstanceInterfaceNames = append(cfg.Common.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
 	if reflect.DeepEqual(cfg.CompactorConfig.CompactorRing.InstanceInterfaceNames, defaults.CompactorConfig.CompactorRing.InstanceInterfaceNames) {
 		cfg.CompactorConfig.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorConfig.CompactorRing.InstanceInterfaceNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.QueryScheduler.SchedulerRing.InstanceInterfaceNames, defaults.QueryScheduler.SchedulerRing.InstanceInterfaceNames) {
+		cfg.QueryScheduler.SchedulerRing.InstanceInterfaceNames = append(cfg.QueryScheduler.SchedulerRing.InstanceInterfaceNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.Ruler.Ring.InstanceInterfaceNames, defaults.Ruler.Ring.InstanceInterfaceNames) {
+		cfg.Ruler.Ring.InstanceInterfaceNames = append(cfg.Ruler.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
