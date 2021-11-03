@@ -27,7 +27,7 @@ import (
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
-// Can't use a totally empty yaml file or it causes weird behavior in the unmarhsalling.
+// Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.
 const minimalConfig = `---
 schema_config:
   configs:
@@ -1093,7 +1093,7 @@ func TestLoopbackAppendingToFrontendV2(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, defaultIface)
 
-	t.Run("when using common or ingester ring configs, loopback should be added interface names", func(t *testing.T) {
+	t.Run("when using common or ingester ring configs, loopback should be added to interface names", func(t *testing.T) {
 		config, _, err := configWrapperFromYAML(t, minimalConfig, []string{})
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Frontend.FrontendV2.InfNames)

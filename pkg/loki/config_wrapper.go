@@ -111,17 +111,18 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 // When using the ingester or common ring config, the loopback interface will be appended to the end of
 // the list of default interface names
 func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
-	if reflect.DeepEqual(r.Common.Ring, defaults.Common.Ring) {
-		// common ring not set, so use memberlist for all rings if set
-		if len(r.MemberlistKV.JoinMembers) > 0 {
-			applyMemberlistConfig(r)
-		} else {
-			// neither common ring nor memberlist set, use ingester ring configuration for all rings
-			useIngesterRingConfig(r, defaults)
-		}
-	} else {
-		// common ring is provided, use that for all rings
+	if !reflect.DeepEqual(r.Common.Ring, defaults.Common.Ring) {
+	        // common ring is provided, use that for all rings
 		useCommonRingConfig(r, defaults)
+		return
+	}
+
+	// common ring not set, so use memberlist for all rings if set
+	if len(r.MemberlistKV.JoinMembers) > 0 {
+		applyMemberlistConfig(r)
+	} else {
+		// neither common ring nor memberlist set, use ingester ring configuration for all rings
+		useIngesterRingConfig(r, defaults)
 	}
 
 }
@@ -297,7 +298,7 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
 // The idea here is that if a user explicitly configured the memberlist configuration section, they probably want to be using memberlist
-// for all their ring configurations.  Since a user can still explicitly override a specific ring configuration
+// for all their ring configurations. Since a user can still explicitly override a specific ring configuration
 // (for example, use consul for the distributor), it seems harmless to take a guess at better defaults here.
 func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
