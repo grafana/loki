@@ -19,6 +19,7 @@
 * [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
 * [4629](https://github.com/grafana/loki/pull/4629) **owen-d**: Default the WAL to enabled in the Loki jsonnet library
 * [4625](https://github.com/grafana/loki/pull/4625) **sandeepsukhani**: Logs Deletion: Fix issues in processing of delete requests
+* [4556](https://github.com/grafana/loki/pull/4556) **james-callahan**: Remove `promtail_instance` label that was was added by promtail when scraping `gcplog` target.
 
 # 2.3.0 (2021/08/06)
 
@@ -823,7 +824,7 @@ This is a small change but very helpful!
 
 Thank you @dlemel8 for this PR! Now you can start Loki with `-verify-config` to make sure your config is valid and Loki will exit with a status code 0 if it is!
 
-### All Changes 
+### All Changes
 
 #### Loki
 * [2804](https://github.com/grafana/loki/pull/2804) **slim-bean**: Loki: log any chunk fetch failure
@@ -1002,17 +1003,17 @@ The first only applies if you are running Promtail with both `--stdin` and `--se
 
 The second is a minor rework to how Promtail handles a very specific error when attempting to read the size of a file and failing to do so.
 
-Upgrading Promtail from 1.6.0 to 1.6.1 is only necessary if you have logs full of `msg="error getting tail position and/or size"`, 
+Upgrading Promtail from 1.6.0 to 1.6.1 is only necessary if you have logs full of `msg="error getting tail position and/or size"`,
 the code changed in this release has been unchanged for a long time and we suspect very few people are seeing this issue.
 
-No changes to any other components (Loki, Logcli, etc) are included in this release. 
+No changes to any other components (Loki, Logcli, etc) are included in this release.
 
 ## 1.6.0 (2020-08-13)
 
 It's the second thursday of the eighth month of the year which means it's time for another Loki Release!!
 
-Before we highlight important features and changes, congratulations to [@adityacs](https://github.com/adityacs), who is the newest member of the Loki team! 
-Aditya has been regularly contributing to the Loki project for the past year, with each contribution better than the last. 
+Before we highlight important features and changes, congratulations to [@adityacs](https://github.com/adityacs), who is the newest member of the Loki team!
+Aditya has been regularly contributing to the Loki project for the past year, with each contribution better than the last.
 Many of the items on the following list were thanks to his hard work. Thank you, Aditya, and welcome to the team!
 
 I think we might have set a new record with 189 PR's in this release!
@@ -1035,18 +1036,18 @@ Check the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/sourc
 
 #### Query language enhancements
 
-* [2150](https://github.com/grafana/loki/pull/2150) introduces `bytes_rate`, which calculates the per second byte rate of a log stream, and `bytes_over_time`, which returns the byte size of a log stream. 
-* [2182](https://github.com/grafana/loki/pull/2182) introduces a long list of comparison operators, which will let you write queries like `count_over_time({foo="bar"}[1m]) > 10`. Check out the PR for a more detailed description. 
+* [2150](https://github.com/grafana/loki/pull/2150) introduces `bytes_rate`, which calculates the per second byte rate of a log stream, and `bytes_over_time`, which returns the byte size of a log stream.
+* [2182](https://github.com/grafana/loki/pull/2182) introduces a long list of comparison operators, which will let you write queries like `count_over_time({foo="bar"}[1m]) > 10`. Check out the PR for a more detailed description.
 
 #### Loki performance improvements
 
-* [2216](https://github.com/grafana/loki/pull/2216), [2218](https://github.com/grafana/loki/pull/2218), and [2219](https://github.com/grafana/loki/pull/2219) all improve how memory is allocated and reused for queries. 
-* [2239](https://github.com/grafana/loki/pull/2239) is a huge improvement for certain cases in which a query covers a large number of streams that all overlap in time. Overlapping data is now internally cached while Loki works to sort all the streams into the proper time order. 
+* [2216](https://github.com/grafana/loki/pull/2216), [2218](https://github.com/grafana/loki/pull/2218), and [2219](https://github.com/grafana/loki/pull/2219) all improve how memory is allocated and reused for queries.
+* [2239](https://github.com/grafana/loki/pull/2239) is a huge improvement for certain cases in which a query covers a large number of streams that all overlap in time. Overlapping data is now internally cached while Loki works to sort all the streams into the proper time order.
 * [2293](https://github.com/grafana/loki/pull/2293) was a big refactor to how Loki internally processes log queries vs. metric queries, creating separate code paths to further optimize metric queries. Metric query performance is now 2 to 10 times faster.
 
 If you are using the query-frontend:
 
-* [2441](https://github.com/grafana/loki/pull/2441) improves how label queries can be split and queried in parallel 
+* [2441](https://github.com/grafana/loki/pull/2441) improves how label queries can be split and queried in parallel
 * [2123](https://github.com/grafana/loki/pull/2123) allows queries to the `series` API to be split by time and parallelized; and last but most significant
 * [1927](https://github.com/grafana/loki/pull/1927) allows for a much larger range of queries to be sharded and performed in parallel. Query sharding is a topic in itself, but as a rough summary, this type of sharding is not time dependent and leverages how data is already stored by Loki to be able to split queries up into 16 separate pieces to be queried at the same time.
 
@@ -1054,7 +1055,7 @@ If you are using the query-frontend:
 
 * [2296](https://github.com/grafana/loki/pull/2296) allows Promtail to expose the Loki Push API. With this, you can push from any client to Promtail as if it were Loki, and Promtail can then forward those logs to another Promtail or to Loki. There are some good use cases for this with the Loki Docker Logging Driver; if you want an easier way to configure pipelines or expose metrics collection, point your Docker drivers at a Promtail instance.
 * [2282](https://github.com/grafana/loki/pull/2282) contains an example Amazon Lambda where you can use a fan-in approach and ingestion timestamping in Promtail to work around `out of order` issues with multiple Lambdas processing the same log stream. This is one way to get logs from a high-cardinality source without adding a high-cardinality label.
-* [2060](https://github.com/grafana/loki/pull/2060) introduces the `Replace` stage, which lets you find and replace or remove text inside a log line. Combined with [2422](https://github.com/grafana/loki/pull/2422) and [2480](https://github.com/grafana/loki/pull/2480), you can now find and replace sensitive data in a log line like a password or email address and replace it with ****, or hash the value to prevent readability, while still being able to trace the value through your logs. Last on the list of pipeline additions, 
+* [2060](https://github.com/grafana/loki/pull/2060) introduces the `Replace` stage, which lets you find and replace or remove text inside a log line. Combined with [2422](https://github.com/grafana/loki/pull/2422) and [2480](https://github.com/grafana/loki/pull/2480), you can now find and replace sensitive data in a log line like a password or email address and replace it with ****, or hash the value to prevent readability, while still being able to trace the value through your logs. Last on the list of pipeline additions,
 * [2496](https://github.com/grafana/loki/pull/2496) adds a `Drop` pipeline stage, which lets you drop log lines based on several criteria options including regex matching content, line length, or the age of the log line. The last two are useful to prevent sending to Loki logs that you know would be rejected based on configured limits in the Loki server.
 
 #### Logstash output plugin
@@ -1067,14 +1068,14 @@ If you are using the query-frontend:
 
 #### Logcli
 
-* [2470](https://github.com/grafana/loki/pull/2470) allows you to color code your log lines based on their stream labels for a nice visual indicator of streams. 
+* [2470](https://github.com/grafana/loki/pull/2470) allows you to color code your log lines based on their stream labels for a nice visual indicator of streams.
 * [2497](https://github.com/grafana/loki/pull/2497) expands on the series API query to Loki with the`--analyze-labels` flag, which can show you a detailed breakdown of your label key and value combinations. This is very useful for finding improper label usage in Loki or labels with high cardinality.
 * [2482](https://github.com/grafana/loki/pull/2482), in which LogCLI will automatically batch requests to Loki to allow making queries with a `--limit=` far larger than the server side limit defined in Loki. LogCLI will dispatch the request in a series of queries configured by the `--batch=` parameter (which defaults to 1000) until the requested limit is reached!
 
 #### Misc
 
-* [2453](https://github.com/grafana/loki/pull/2453) improves the error messages when a query times out, as `Context Deadline Exceeded` wasn’t the most intuitive. 
-* [2336](https://github.com/grafana/loki/pull/2336) provides two new flags that will print the entire Loki config object at startup. Be warned there are a lot of config options, and many won’t apply to your setup (such as storage configs you aren’t using), but this can be a really useful tool when troubleshooting. Sticking with the theme of best for last, 
+* [2453](https://github.com/grafana/loki/pull/2453) improves the error messages when a query times out, as `Context Deadline Exceeded` wasn’t the most intuitive.
+* [2336](https://github.com/grafana/loki/pull/2336) provides two new flags that will print the entire Loki config object at startup. Be warned there are a lot of config options, and many won’t apply to your setup (such as storage configs you aren’t using), but this can be a really useful tool when troubleshooting. Sticking with the theme of best for last,
 * [2224](https://github.com/grafana/loki/pull/2224) and [2288](https://github.com/grafana/loki/pull/2288) improve support for running Loki with a shared Ring using memberlist while not requiring Consul or Etcd. We need to follow up soon with some better documentation or a blog post on this!
 
 
@@ -1295,8 +1296,8 @@ If you are using the query-frontend:
 
 It's been a busy month and a half since 1.4.0 was released, and a lot of new improvements have been added to Loki since!
 
-Be prepared for some configuration changes that may cause some bumps when upgrading, 
-we apologize for this but are always striving to reach the right compromise of code simplicity and user/operating experience. 
+Be prepared for some configuration changes that may cause some bumps when upgrading,
+we apologize for this but are always striving to reach the right compromise of code simplicity and user/operating experience.
 
 In this case we opted to keep a simplified configuration inline with Cortex rather than a more complicated and error prone internal config mapping or difficult to implement support for multiple config names for the same feature.
 
@@ -1304,7 +1305,7 @@ This does result in breaking config changes for some configurations, however, th
 
 ### Important Notes
 
-**Be prepared for breaking config changes.**  Loki 1.5.0 vendors cortex [v1.0.1-0.20200430170006-3462eb63f324](https://github.com/cortexproject/cortex/commit/3462eb63f324c649bbaa122933bc591b710f4e48), 
+**Be prepared for breaking config changes.**  Loki 1.5.0 vendors cortex [v1.0.1-0.20200430170006-3462eb63f324](https://github.com/cortexproject/cortex/commit/3462eb63f324c649bbaa122933bc591b710f4e48),
 there were substantial breaking config changes in Cortex 1.0 which standardized config options, and fixed typos.
 
 **The Loki docker image user has changed to no longer be root**
@@ -1394,7 +1395,7 @@ We now GPG sign helm packages!
 * [2095](https://github.com/grafana/loki/pull/2095) **cyriltovena**: Adds backtick for the quoted string token lexer.
 * [2093](https://github.com/grafana/loki/pull/2093) **cyriltovena**: Fixes unit in stats request log.
 * [2088](https://github.com/grafana/loki/pull/2088) **slim-bean**: Loki: allow no encoding/compression on chunks
-* [2078](https://github.com/grafana/loki/pull/2078) **owen-d**: removes yolostring 
+* [2078](https://github.com/grafana/loki/pull/2078) **owen-d**: removes yolostring
 * [2073](https://github.com/grafana/loki/pull/2073) **slim-bean**: Loki: Allow configuring query_store_max_look_back_period when running a filesystem store and boltdb-shipper
 * [2064](https://github.com/grafana/loki/pull/2064) **cyriltovena**: Reverse entry iterator pool
 * [2059](https://github.com/grafana/loki/pull/2059) **cyriltovena**: Recover from panic in http and grpc handlers.
@@ -1593,8 +1594,8 @@ The `stdin` functionality also works without `--dry-run` allowing you to feed an
 
 These two extensions to LogQL now let you execute queries like this:
 
-    * `sum(rate({app="foo"}[5m])) * 2` 
-    * `sum(rate({app="foo"}[5m]))/1e6` 
+    * `sum(rate({app="foo"}[5m])) * 2`
+    * `sum(rate({app="foo"}[5m]))/1e6`
 
 * [1678](https://github.com/grafana/loki/pull/1678) **slim-bean**: promtail: metrics pipeline count all log lines
 
@@ -1800,7 +1801,7 @@ There are many other important fixes and improvements to Loki, way too many to c
 
 ### What's New?? ###
 
-With 1.3.0 we are excited to announce several improvements focusing on performance! 
+With 1.3.0 we are excited to announce several improvements focusing on performance!
 
 First and most significant is the Query Frontend:
 
@@ -1816,7 +1817,7 @@ We are currently testing out LZ4 and snappy, LZ4 seemed like a good fit however 
 
 * [1438](https://github.com/grafana/loki/pull/1438) **pstibrany**: pkg/ingester: added sync period flags
 
-Extending on the work done by @bboreham on Cortex, @pstibrany added a few new flags and code to synchronize chunks between ingesters, which reduces the number of chunks persisted to object stores and therefore also reduces the number of chunks loaded on queries and the amount of de-duplication work which needs to be done.  
+Extending on the work done by @bboreham on Cortex, @pstibrany added a few new flags and code to synchronize chunks between ingesters, which reduces the number of chunks persisted to object stores and therefore also reduces the number of chunks loaded on queries and the amount of de-duplication work which needs to be done.
 
 As mentioned above, LZ4 was in some cases compressing the same data with a different result which was interfering with this change, we are still investigating the cause of this issue (It may be in how we implemented something, or may be in the compression code itself).  For now we have switched to snappy which has seen a reduction in data written to the object store from almost 3x the source data (with a replication factor of 3) to about 1.5x, saving a lot of duplicated log storage!
 
