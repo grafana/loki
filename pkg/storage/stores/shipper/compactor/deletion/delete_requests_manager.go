@@ -195,15 +195,11 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	}
 }
 
-func (d *DeleteRequestsManager) IntervalHasExpiredChunks(interval model.Interval) bool {
+func (d *DeleteRequestsManager) IntervalHasExpiredChunks(_ model.Interval) bool {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	if len(d.deleteRequestsToProcess) == 0 {
-		return false
-	}
-
-	return true
+	return len(d.deleteRequestsToProcess) != 0
 }
 
 func (d *DeleteRequestsManager) DropFromIndex(_ retention.ChunkEntry, _ model.Time, _ model.Time) bool {
