@@ -134,7 +134,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		return nil
 	}
 
-	empty, markCount, err := t.tableMarker.MarkForDelete(t.ctx, t.name, t.compactedDB)
+	empty, modified, err := t.tableMarker.MarkForDelete(t.ctx, t.name, t.compactedDB)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		return t.removeFilesFromStorage(indexFiles)
 	}
 
-	if markCount == 0 && !compacted {
+	if !modified && !compacted {
 		// we didn't make a modification so let's just return
 		return nil
 	}
