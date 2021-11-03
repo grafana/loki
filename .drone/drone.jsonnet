@@ -337,6 +337,18 @@ local manifest(apps) = pipeline('manifest') {
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
   },
+  pipeline('benchmark-cron') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    node: { type: 'no-parallel' },
+    steps: [
+      run('LogQL', ['go test -mod=vendor -bench=Benchmark -benchtime 20x ./pkg/logql/'])
+    ],
+    //trigger: {event: ['cron'], cron: ['loki-bench']},
+    //when: condition('include').tagMain,
+  },
 ] + [
   multiarch_image(arch)
   for arch in archs
