@@ -1006,6 +1006,11 @@ lifecycler:
     # CLI flag: -distributor.replication-factor
     [replication_factor: <int> | default = 3]
 
+    # True to enable the zone-awareness and replicate ingested samples across
+    # different availability zones.
+    # CLI flag: -distributor.zone-awareness-enabled
+    [zone_awareness_enabled: <boolean> | default = false]
+
   # The number of tokens the lifecycler will generate and put into the ring if
   # it joined without transferring tokens from another lifecycler.
   # CLI flag: -ingester.num-tokens
@@ -1034,6 +1039,10 @@ lifecycler:
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
   [final_sleep: <duration> | default = 0s]
+
+  # The availability zone where this instance is running.
+  # CLI flag: -ingester.availability-zone
+  [availability_zone: <string> | default = ""]
 
 # Number of times to try and transfer chunks when leaving before
 # falling back to flushing to the store. Zero = no transfers are done.

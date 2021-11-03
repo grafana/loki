@@ -275,13 +275,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
 	}
 
-	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
-	var descs [maxExpectedReplicationSet]ring.InstanceDesc
-
+	var (
+		bufDescs [ring.GetBufferSize]ring.InstanceDesc
+		bufHosts [ring.GetBufferSize]string
+		bufZones [ring.GetBufferSize]string
+	)
 	samplesByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	for i, key := range keys {
-		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0], nil, nil)
+		replicationSet, err := d.ingestersRing.Get(key, ring.Write, bufDescs[:0], bufHosts[:0], bufZones[:0])
 		if err != nil {
 			return nil, err
 		}
