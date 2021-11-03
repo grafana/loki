@@ -75,8 +75,6 @@ steps:
   image: plugins/docker
   name: build-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -95,8 +93,6 @@ steps:
   image: plugins/docker
   name: build-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -115,8 +111,6 @@ steps:
   image: plugins/docker
   name: build-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: true
     password:
@@ -135,8 +129,6 @@ steps:
   image: plugins/docker
   name: publish-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
@@ -155,8 +147,6 @@ steps:
   image: plugins/docker
   name: publish-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
@@ -175,8 +165,6 @@ steps:
   image: plugins/docker
   name: publish-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: false
     password:
@@ -210,8 +198,6 @@ steps:
   image: plugins/docker
   name: build-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -230,8 +216,6 @@ steps:
   image: plugins/docker
   name: build-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -250,8 +234,6 @@ steps:
   image: plugins/docker
   name: build-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: true
     password:
@@ -270,8 +252,6 @@ steps:
   image: plugins/docker
   name: publish-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
@@ -290,8 +270,6 @@ steps:
   image: plugins/docker
   name: publish-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
@@ -310,8 +288,6 @@ steps:
   image: plugins/docker
   name: publish-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: false
     password:
@@ -345,8 +321,6 @@ steps:
   image: plugins/docker
   name: build-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -365,8 +339,6 @@ steps:
   image: plugins/docker
   name: build-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -385,8 +357,6 @@ steps:
   image: plugins/docker
   name: build-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: true
     password:
@@ -405,8 +375,6 @@ steps:
   image: plugins/docker
   name: publish-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
@@ -425,8 +393,6 @@ steps:
   image: plugins/docker
   name: publish-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
@@ -445,8 +411,6 @@ steps:
   image: plugins/docker
   name: publish-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: false
     password:
@@ -480,8 +444,6 @@ steps:
   image: plugins/docker
   name: build-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: true
     password:
@@ -500,8 +462,6 @@ steps:
   image: plugins/docker
   name: publish-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: false
     password:
@@ -535,8 +495,6 @@ steps:
   image: plugins/docker
   name: build-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: true
     password:
@@ -555,8 +513,6 @@ steps:
   image: plugins/docker
   name: publish-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: false
     password:
@@ -590,8 +546,6 @@ steps:
   image: plugins/docker
   name: build-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
     dry_run: true
     password:
@@ -610,8 +564,6 @@ steps:
   image: plugins/docker
   name: publish-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
     dry_run: false
     password:
@@ -927,8 +879,6 @@ steps:
   settings:
     access_key:
       from_secret: ecr_key
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: tools/lambda-promtail/Dockerfile
     dry_run: false
     region: us-east-1
@@ -986,6 +936,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 8eff3701dc727b9917aee80fd0c796f886775c9f1119eadce65b11535aad3819
+hmac: b51ec8dfc84d0be83827fc851b21b81e1091886be480d675f51485b647e58001
 
 ...
