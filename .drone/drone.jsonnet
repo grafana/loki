@@ -323,9 +323,9 @@ local manifest(apps) = pipeline('manifest') {
       path: 'loki',
     },
     steps: [
-      make('test', container=false) { depends_on: ['clone'] },
-      make('lint', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
+      make('test', container=false) { depends_on: ['clone','check-generated-files'] },
+      make('lint', container=false) { depends_on: ['clone','check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
         name: 'shellcheck',

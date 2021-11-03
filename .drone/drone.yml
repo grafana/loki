@@ -3,23 +3,25 @@ kind: pipeline
 name: check
 steps:
 - commands:
+  - make BUILD_IN_CONTAINER=false check-generated-files
+  depends_on:
+  - clone
+  image: grafana/loki-build-image:0.18.0
+  name: check-generated-files
+- commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
+  - check-generated-files
   image: grafana/loki-build-image:0.18.0
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
+  - check-generated-files
   image: grafana/loki-build-image:0.18.0
   name: lint
-- commands:
-  - make BUILD_IN_CONTAINER=false check-generated-files
-  depends_on:
-  - clone
-  image: grafana/loki-build-image:0.18.0
-  name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
@@ -984,6 +986,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 55440faa2728a5b8abbd213c2cf198e01f00201ba7143391924da1b9aa02c350
+hmac: 8eff3701dc727b9917aee80fd0c796f886775c9f1119eadce65b11535aad3819
 
 ...
