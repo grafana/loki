@@ -1006,7 +1006,7 @@ lifecycler:
     # CLI flag: -distributor.replication-factor
     [replication_factor: <int> | default = 3]
 
-    # True to enable the zone-awareness and replicate ingested samples across
+    # Set to true to enable zone-awareness and replicate ingested samples across
     # different availability zones.
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
