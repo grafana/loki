@@ -44,25 +44,8 @@ type Config struct {
 }
 
 // RegisterFlags registers distributor-related flags.
-//
-// Since they are registered through an external library, we override some of them to set
-// different default values.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
-	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
-
-	cfg.DistributorRing.RegisterFlags(throwaway)
-
-	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
-	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
-	throwaway.VisitAll(func(f *flag.Flag) {
-		// Ignore errors when setting new values. We have a test to verify that it works.
-		switch f.Name {
-		case "distributor.ring.store":
-			_ = f.Value.Set("inmemory")
-		}
-
-		fs.Var(f.Value, f.Name, f.Usage)
-	})
+	cfg.DistributorRing.RegisterFlags(fs)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
