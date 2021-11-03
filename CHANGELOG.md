@@ -18,6 +18,7 @@
 * [4603](https://github.com/grafana/loki/pull/4603) **garrettlish**: Add date time sprig template functions in logql label/line formatter
 * [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
 * [4629](https://github.com/grafana/loki/pull/4629) **owen-d**: Default the WAL to enabled in the Loki jsonnet library
+* [4625](https://github.com/grafana/loki/pull/4625) **sandeepsukhani**: Logs Deletion: Fix issues in processing of delete requests
 
 # 2.3.0 (2021/08/06)
 
