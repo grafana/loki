@@ -95,19 +95,41 @@ type andFilters struct {
 
 // NewAndFilters creates a new filter which matches only if all filters match
 func NewAndFilters(filters []Filterer) Filterer {
-	// Make sure we take care of panics in case a nil or noop filter is passed.
+	containsAllFilter := containsAllFilter{}
+	regexpFilters := make([]Filterer, 0)
 	n := 0
 	for _, filter := range filters {
-		if !(filter == nil || filter == TrueFilter) {
-			// Keep filter
-			filters[n] = filter
+		// Make sure we take care of panics in case a nil or noop filter is passed.
+		if filter == nil || filter == TrueFilter {
+			// Skip filter
 			n++
+		} else {
+			switch c := filter.(type) {
+			case containsFilter:
+				// Join all contain filters.
+				containsAllFilter.Add(c)
+			case regexpFilter:
+				regexpFilters = append(regexpFilters, c)
+			default:
+				// Keep filter
+				filters[n] = filter
+				n++
+			}
 		}
 	}
 	filters = filters[:n]
 
+	if !containsAllFilter.Empty() {
+		filters = append(filters, containsAllFilter)
+	}
+
+	// Push regex filters to end
+	filters = append(filters, regexpFilters...)
+
 	if len(filters) == 0 {
 		return TrueFilter
+	} else if len(filters) == 1 {
+		return filters[0]
 	}
 
 	return andFilters{
@@ -173,7 +195,7 @@ func (a orFilter) ToStage() Stage {
 	}
 }
 
-type RegexpFilter struct {
+type regexpFilter struct {
 	*regexp.Regexp
 }
 
@@ -184,18 +206,18 @@ func newRegexpFilter(re string, match bool) (Filterer, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := RegexpFilter{reg}
+	f := regexpFilter{reg}
 	if match {
 		return f, nil
 	}
 	return newNotFilter(f), nil
 }
 
-func (r RegexpFilter) Filter(line []byte) bool {
+func (r regexpFilter) Filter(line []byte) bool {
 	return r.Match(line)
 }
 
-func (r RegexpFilter) ToStage() Stage {
+func (r regexpFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, r.Filter(line)
@@ -203,19 +225,19 @@ func (r RegexpFilter) ToStage() Stage {
 	}
 }
 
-type ContainsFilter struct {
+type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
 }
 
-func (l ContainsFilter) Filter(line []byte) bool {
+func (l containsFilter) Filter(line []byte) bool {
 	if l.caseInsensitive {
 		line = bytes.ToLower(line)
 	}
 	return bytes.Contains(line, l.match)
 }
 
-func (l ContainsFilter) ToStage() Stage {
+func (l containsFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, l.Filter(line)
@@ -223,7 +245,7 @@ func (l ContainsFilter) ToStage() Stage {
 	}
 }
 
-func (l ContainsFilter) String() string {
+func (l containsFilter) String() string {
 	return string(l.match)
 }
 
@@ -235,7 +257,7 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if caseInsensitive {
 		match = bytes.ToLower(match)
 	}
-	return ContainsFilter{
+	return containsFilter{
 		match:           match,
 		caseInsensitive: caseInsensitive,
 	}
@@ -246,19 +268,19 @@ type containsMatch struct {
 	caseInsensitive bool
 }
 
-type ContainsAllFilter struct {
+type containsAllFilter struct {
 	matches []containsMatch
 }
 
-func (f *ContainsAllFilter) Add(filter ContainsFilter) {
+func (f *containsAllFilter) Add(filter containsFilter) {
 	f.matches = append(f.matches, containsMatch{match: filter.match, caseInsensitive: filter.caseInsensitive})
 }
 
-func (f *ContainsAllFilter) Empty() bool {
+func (f *containsAllFilter) Empty() bool {
 	return len(f.matches) == 0
 }
 
-func (f ContainsAllFilter) Filter(line []byte) bool {
+func (f containsAllFilter) Filter(line []byte) bool {
 	for _, m := range f.matches {
 		if m.caseInsensitive {
 			line = bytes.ToLower(line)
@@ -270,7 +292,7 @@ func (f ContainsAllFilter) Filter(line []byte) bool {
 	return true
 }
 
-func (f ContainsAllFilter) ToStage() Stage {
+func (f containsAllFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, f.Filter(line)

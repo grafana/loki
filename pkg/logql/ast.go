@@ -388,30 +388,6 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 		}
 	}
 
-	// Join all contain filters if there are any and push regular expressions to the end.
-	containsAllFilter := log.ContainsAllFilter{}
-	regexpFilters := make([]log.Filterer, 0)
-	n := 0
-	for _, filter := range acc {
-		switch c := filter.(type) {
-		case log.ContainsFilter:
-			containsAllFilter.Add(c)
-		case log.RegexpFilter:
-			regexpFilters = append(regexpFilters, c)
-		default:
-			// Keep filter
-			acc[n] = filter
-			n++
-		}
-	}
-	acc = acc[:n]
-
-	if !containsAllFilter.Empty() {
-		acc = append(acc, containsAllFilter)
-	}
-
-	acc = append(acc, regexpFilters...)
-
 	if len(acc) == 1 {
 		return acc[0], nil
 	}

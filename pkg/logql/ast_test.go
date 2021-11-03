@@ -341,8 +341,8 @@ func BenchmarkContainsFilter(b *testing.B) {
 	}
 
 	benchmarks := []struct {
-		name  string
-		expr  string
+		name string
+		expr string
 	}{
 		{
 			"AllMatches",
@@ -353,8 +353,12 @@ func BenchmarkContainsFilter(b *testing.B) {
 			`{app="foo"} |= "foo" |= "not" |= "in" |= "there"`,
 		},
 		{
-			"MixedFilters",
+			"MixedFiltersTrue",
 			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world"`,
+		},
+		{
+			"MixedFiltersFalse",
+			`{app="foo"} |= "baz" != "not" |~ "hello.*bar" != "there" |= "world"`,
 		},
 		{
 			"GreedyRegex",
