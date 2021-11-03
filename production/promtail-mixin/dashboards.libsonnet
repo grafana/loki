@@ -20,20 +20,6 @@ local loki_mixin_utils = import 'loki-mixin/dashboards/dashboard-utils.libsonnet
 
       matchers:: [utils.selector.eq('job', '$namespace/$name')],
       selector:: std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in (cfg.clusterMatchers + dashboards['promtail.json'].matchers)]),
-
-      templateLabels:: (
-      [
-        {
-          variable:: 'namespace',
-          label:: 'namespace',
-          query:: 'kube_pod_container_info{image=~".*promtail.*"}',
-        },
-        {
-          variable:: 'name',
-          label:: 'created_by_name',
-          query:: 'kube_pod_info{namespace="$namespace",pod=~"promtail.*"}',
-        },
-      ]),
     } +
     dashboard.dashboard('Loki / Promtail')
     .addClusterSelectorTemplates(false)
@@ -86,39 +72,6 @@ local loki_mixin_utils = import 'loki-mixin/dashboards/dashboard-utils.libsonnet
           extra_selectors=dashboards['promtail.json'].clusterMatchers
         )
       )
-    ){
-      templating+: {
-        list+: [
-          {
-            allValue: null,
-            current: {
-              text: 'prod',
-              value: 'prod',
-            },
-            datasource: '$datasource',
-            hide: 0,
-            includeAll: false,
-            label: l.variable,
-            multi: false,
-            name: l.variable,
-            options: [
-
-            ],
-            query: 'label_values(%s, %s)' % [l.query, l.label],
-            refresh: 1,
-            regex: '',
-            sort: 2,
-            tagValuesQuery: '',
-            tags: [
-
-            ],
-            tagsQuery: '',
-            type: 'query',
-            useTags: false,
-          }
-          for l in dashboards['promtail.json'].templateLabels
-        ],
-      },
-    },
+    )
   },
 }
