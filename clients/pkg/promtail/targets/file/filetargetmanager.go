@@ -243,16 +243,12 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 				}
 			}
 
-			key := labels.String()
+			key := fmt.Sprintf("%s:%s", path, labels.String())
 			targets[key] = struct{}{}
-			if tgt, ok := s.targets[key]; ok {
-				if tgt.UpdatePath(string(path)) {
-					level.Debug(s.log).Log("msg", "updating target, path changed", "labels", labels.String())
-				} else {
-					dropped = append(dropped, target.NewDroppedTarget("ignoring target, already exists", discoveredLabels))
-					level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
-					s.metrics.failedTargets.WithLabelValues("exists").Inc()
-				}
+			if _, ok := s.targets[key]; ok {
+				dropped = append(dropped, target.NewDroppedTarget("ignoring target, already exists", discoveredLabels))
+				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
+				s.metrics.failedTargets.WithLabelValues("exists").Inc()
 				continue
 			}
 
