@@ -11,7 +11,7 @@ Unfortunately Loki is software and software is hard and sometimes we are forced 
 
 If we have any expectation of difficulty upgrading we will document it here.
 
-As more versions are released it becomes more likely unexpected problems arise moving between multiple versions at once. 
+As more versions are released it becomes more likely unexpected problems arise moving between multiple versions at once.
 If possible try to stay current and do sequential updates. If you want to skip versions, try it in a development environment before attempting to upgrade production.
 
 
@@ -19,6 +19,8 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ### Loki
 
+#### Promtail no longer insert `promtail_instance` label when scraping `gcplog` target
+* [4556](https://github.com/grafana/loki/pull/4556) **james-callahan**: Remove `promtail_instance` label that was being added by promtail when scraping `gcplog` target.
 
 #### Ingester Lifecycler `final_sleep` now defaults to `0s`
 * [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
@@ -219,7 +221,7 @@ You could consider multiplying your current `max_query_parallelism` setting by 1
 
 
 
-### Promtail 
+### Promtail
 
 For 2.0 we eliminated the long deprecated `entry_parser` configuration in Promtail configs, however in doing so we introduced a very confusing and erroneous default behavior:
 
@@ -285,7 +287,7 @@ For the most part, there are very few impactful changes and for most this will b
 
 The default config file in the docker image, as well as the default helm values.yaml and jsonnet for Tanka all specify a schema definition to make things easier to get started.
 
->**If you have not specified your own config file with your own schema definition (or you do not have a custom schema definition in your values.yaml), upgrading to 2.0 will break things!** 
+>**If you have not specified your own config file with your own schema definition (or you do not have a custom schema definition in your values.yaml), upgrading to 2.0 will break things!**
 
 In 2.0 the defaults are now v11 schema and the `boltdb-shipper` index type.
 
@@ -311,7 +313,7 @@ If you are providing your own values.yaml file then there is no _required_ actio
 
 We suggest using the included [values.yaml file from the 1.6.0 tag](https://raw.githubusercontent.com/grafana/loki/v1.6.0/production/helm/loki/values.yaml)
 
-This matches what the default values.yaml file had prior to 2.0 and is necessary for Loki to work post 2.0 
+This matches what the default values.yaml file had prior to 2.0 and is necessary for Loki to work post 2.0
 
 As mentioned above, you should also consider looking at moving to the v11 schema and boltdb-shipper [see below](#upgrading-schema-to-use-boltdb-shipper-andor-v11-schema) for more information.
 
@@ -334,10 +336,10 @@ This likely only affects a small portion of tanka users because the default sche
           schema: 'v11',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
-            period: '168h',        
+            period: '168h',
           },
         }],
-      },    
+      },
     },
   }
 }
@@ -349,7 +351,7 @@ This likely only affects a small portion of tanka users because the default sche
 
 Changing the jsonnet config to use the `boltdb-shipper` type is the same as [below](#upgrading-schema-to-use-boltdb-shipper-andor-v11-schema) where you need to add a new schema section.
 
-**HOWEVER** Be aware when you change `using_boltdb_shipper: true` the deployment type for the ingesters and queriers will change to statefulsets! Statefulsets are required for the ingester and querier using boltdb-shipper. 
+**HOWEVER** Be aware when you change `using_boltdb_shipper: true` the deployment type for the ingesters and queriers will change to statefulsets! Statefulsets are required for the ingester and querier using boltdb-shipper.
 
 ##### Docker (e.g. docker-compose)
 
@@ -412,7 +414,7 @@ If you happen to have `results_cache.max_freshness` set please use `limits_confi
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../clients/promtail/configuration/#pipeline_stages" >}}) instead. 
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../clients/promtail/configuration/#pipeline_stages" >}}) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 
@@ -440,12 +442,12 @@ schema_config:
         prefix: index_
         period: 24h              ⑤
 ```
-① Make sure all of these match your current schema config  
-② Make sure this matches your previous schema version, Helm for example is likely v9  
-③ Make sure this is a date in the **FUTURE** keep in mind Loki only knows UTC so make sure it's a future UTC date  
-④ Make sure this matches your existing config (e.g. maybe you were using gcs for your object_store)  
-⑤ 24h is required for boltdb-shipper  
- 
+① Make sure all of these match your current schema config
+② Make sure this matches your previous schema version, Helm for example is likely v9
+③ Make sure this is a date in the **FUTURE** keep in mind Loki only knows UTC so make sure it's a future UTC date
+④ Make sure this matches your existing config (e.g. maybe you were using gcs for your object_store)
+⑤ 24h is required for boltdb-shipper
+
 There are more examples on the [Storage description page]({{< relref "../storage/_index.md#examples" >}}) including the information you need to setup the `storage` section for boltdb-shipper.
 
 
@@ -455,7 +457,7 @@ There are more examples on the [Storage description page]({{< relref "../storage
 
 In 1.5.0 we changed the Loki user to not run as root which created problems binding to port 80.
 To address this we updated the docker image to add the NET_BIND_SERVICE capability to the loki process
-which allowed Loki to bind to port 80 as a non root user, so long as the underlying system allowed that 
+which allowed Loki to bind to port 80 as a non root user, so long as the underlying system allowed that
 linux capability.
 
 This has proved to be a problem for many reasons and in PR [2294](https://github.com/grafana/loki/pull/2294/files)
@@ -500,7 +502,7 @@ TL;DR
 
 The following label have been changed in both the Helm and Ksonnet Promtail scrape configs:
 
-`instance` -> `pod`  
+`instance` -> `pod`
 `container_name` -> `container`
 
 
@@ -534,7 +536,7 @@ If you are not on `schema: v11` this would be a good opportunity to make that ch
 
 **NOTE** If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
 
-There was also a significant overhaul to how boltdb-shipper internals, this should not be visible to a user but as this 
+There was also a significant overhaul to how boltdb-shipper internals, this should not be visible to a user but as this
 feature is experimental and under development bug are possible!
 
 The most noticeable change if you look in the storage, Loki no longer updates an existing file and instead creates a
@@ -577,7 +579,7 @@ loki_canary_response_latency            ->      loki_canary_response_latency_sec
 ### Ksonnet Changes
 
 In `production/ksonnet/loki/config.libsonnet` the variable `storage_backend` used to have a default value of `'bigtable,gcs'`.
-This has been changed to providing no default and will error if not supplied in your environment jsonnet, 
+This has been changed to providing no default and will error if not supplied in your environment jsonnet,
 here is an example of what you should add to have the same behavior as the default (namespace and cluster should already be defined):
 
 ```jsonnet
