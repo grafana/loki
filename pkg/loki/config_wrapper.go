@@ -69,10 +69,11 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return errors.New("dst is not a Loki ConfigWrapper")
 		}
 
-		// If nobody has defined any frontend address or scheduler address
+		// If nobody has defined any frontend address, scheduler address, or downstream url
 		// we can default to using the query scheduler ring for scheduler discovery.
 		if r.Worker.FrontendAddress == "" &&
 			r.Worker.SchedulerAddress == "" &&
+			r.Frontend.DownstreamURL == "" &&
 			r.Frontend.FrontendV2.SchedulerAddress == "" {
 			r.QueryScheduler.UseSchedulerRing = true
 		}
