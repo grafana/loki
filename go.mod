@@ -36,7 +36,6 @@ require (
 	github.com/go-logfmt/logfmt v0.5.1
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
-	github.com/gofrs/uuid v4.0.0+incompatible
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.4
@@ -162,6 +161,7 @@ require (
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/go-zookeeper/zk v1.0.2 // indirect
 	github.com/gofrs/flock v0.7.1 // indirect
+	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/status v1.1.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.0.0 // indirect
