@@ -203,16 +203,7 @@ func (d *DeleteRequestsManager) IntervalHasExpiredChunks(interval model.Interval
 		return false
 	}
 
-	for _, deleteRequest := range d.deleteRequestsToProcess {
-		if intervalsOverlap(interval, model.Interval{
-			Start: deleteRequest.StartTime,
-			End:   deleteRequest.EndTime,
-		}) {
-			return true
-		}
-	}
-
-	return false
+	return true
 }
 
 func (d *DeleteRequestsManager) DropFromIndex(_ retention.ChunkEntry, _ model.Time, _ model.Time) bool {
