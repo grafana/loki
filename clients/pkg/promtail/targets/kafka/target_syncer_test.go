@@ -171,7 +171,6 @@ func Test_validateConfig(t *testing.T) {
 			&scrapeconfig.Config{
 				KafkaConfig: &scrapeconfig.KafkaTargetConfig{
 					Brokers: []string{"foo"},
-					Topics:  []string{"bar"},
 				},
 			},
 			true,
@@ -182,7 +181,6 @@ func Test_validateConfig(t *testing.T) {
 				KafkaConfig: &scrapeconfig.KafkaTargetConfig{
 					Brokers: []string{"foo"},
 					Topics:  []string{"bar"},
-					GroupID: "foo",
 				},
 			},
 			false,
@@ -190,7 +188,7 @@ func Test_validateConfig(t *testing.T) {
 				KafkaConfig: &scrapeconfig.KafkaTargetConfig{
 					Brokers: []string{"foo"},
 					Topics:  []string{"bar"},
-					GroupID: "foo",
+					GroupID: "promtail",
 					Version: "2.1.1",
 				},
 			},

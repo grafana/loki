@@ -71,11 +71,11 @@ func NewSyncer(
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 
 	switch cfg.KafkaConfig.Assignor {
-	case "sticky":
+	case sarama.StickyBalanceStrategyName:
 		config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategySticky
-	case "roundrobin":
+	case sarama.RoundRobinBalanceStrategyName:
 		config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
-	case "range", "":
+	case sarama.RangeBalanceStrategyName, "":
 		config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
 	default:
 		return nil, fmt.Errorf("unrecognized consumer group partition assignor: %s", cfg.KafkaConfig.Assignor)
@@ -257,8 +257,8 @@ func validateConfig(cfg *scrapeconfig.Config) error {
 		return errors.New("no topics given to be consumed")
 	}
 
-	if len(cfg.KafkaConfig.GroupID) == 0 {
-		return errors.New("no Kafka consumer group defined")
+	if cfg.KafkaConfig.GroupID == "" {
+		cfg.KafkaConfig.GroupID = "promtail"
 	}
 	return nil
 }
