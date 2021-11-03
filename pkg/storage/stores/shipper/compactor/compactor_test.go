@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
+	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
 func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
@@ -23,6 +24,10 @@ func setupTestCompactor(t *testing.T, tempDir string) *Compactor {
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
 	cfg.SharedStoreType = "filesystem"
 	cfg.RetentionEnabled = false
+
+	if loopbackIFace, err := loki_net.LoopbackInterfaceName(); err == nil {
+		cfg.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorRing.InstanceInterfaceNames, loopbackIFace)
+	}
 
 	require.NoError(t, cfg.Validate())
 
