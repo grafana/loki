@@ -5236,7 +5236,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
+              "expr": "sum(rate(loki_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
               "intervalFactor": 1,
               "legendFormat": "{{status_code}}-{{operation}}",
               "refId": "A"
