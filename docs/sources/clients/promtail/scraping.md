@@ -207,7 +207,7 @@ Here `project_id` and `subscription` are the only required fields.
 
 Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with pubsub subscription to receive logs from.
 
-It also support `relabeling` and `pipeline` stages just like other targets.
+It also supports `relabeling` and `pipeline` stages just like other targets.
 
 When Promtail receives GCP logs the labels that are set on the GCP resources are available as internal labels. Like in the example above, the `__project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`. See [Relabeling](#relabeling) for more information.
 
