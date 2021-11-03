@@ -203,7 +203,6 @@
       ingester: {
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
-        max_transfer_retries: 60,
 
         lifecycler: {
           ring: {
