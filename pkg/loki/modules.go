@@ -133,7 +133,7 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 		return
 	}
 	prometheus.MustRegister(t.ring)
-	t.Server.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
+	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
 	return t.ring, nil
 }
 
@@ -604,7 +604,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
 
-		t.Server.HTTP.Path("/ruler/ring").Methods("GET").Handler(t.ruler)
+		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
 		cortex_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
@@ -670,7 +670,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Server.HTTP.Path("/compactor/ring").Methods("GET").Handler(t.compactor)
+	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		t.Server.HTTP.Path("/loki/api/admin/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler)))
 		t.Server.HTTP.Path("/loki/api/admin/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler)))
@@ -709,7 +709,7 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 
 	schedulerpb.RegisterSchedulerForFrontendServer(t.Server.GRPC, s)
 	schedulerpb.RegisterSchedulerForQuerierServer(t.Server.GRPC, s)
-	t.Server.HTTP.Path("/scheduler/ring").Methods("GET").Handler(s)
+	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(s)
 	t.queryScheduler = s
 	return s, nil
 }
