@@ -19,6 +19,8 @@ type topicManager struct {
 	matches  []string
 }
 
+// newTopicManager fetches topics and returns matchings one based on list of requested topics.
+// If a topic starts with a '^' it is treated as a regexp and can match multiple topics.
 func newTopicManager(client topicClient, topics []string) (*topicManager, error) {
 	var (
 		patterns []*regexp.Regexp

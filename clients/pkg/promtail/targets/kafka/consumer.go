@@ -28,6 +28,8 @@ type TargetDiscoverer interface {
 	NewTarget(sarama.ConsumerGroupSession, sarama.ConsumerGroupClaim) (RunnableTarget, error)
 }
 
+// consumer handle a group consumer instance.
+// It will create a new target for every consumer claim using the `TargetDiscoverer`.
 type consumer struct {
 	sarama.ConsumerGroup
 	discoverer TargetDiscoverer
@@ -42,6 +44,7 @@ type consumer struct {
 	droppedTargets []target.Target
 }
 
+// start starts the consumer for a given list of topics.
 func (c *consumer) start(ctx context.Context, topics []string) {
 	c.wg.Wait()
 	c.wg.Add(1)
@@ -74,7 +77,7 @@ func (c *consumer) start(ctx context.Context, topics []string) {
 	}()
 }
 
-// ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
+// ConsumeClaim creates a target for the given received claim and start reading message from it.
 func (c *consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	c.wg.Add(1)
 	defer c.wg.Done()
@@ -107,6 +110,7 @@ func (c *consumer) Cleanup(sarama.ConsumerGroupSession) error {
 	return nil
 }
 
+// stop stops the consumer.
 func (c *consumer) stop() {
 	c.cancel()
 	c.wg.Wait()

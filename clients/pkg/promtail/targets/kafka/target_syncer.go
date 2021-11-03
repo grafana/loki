@@ -30,13 +30,6 @@ type TopicManager interface {
 	Topics() ([]string, error)
 }
 
-type Consumer interface {
-	getActiveTargets() []target.Target
-	getDroppedTargets() []target.Target
-	start(ctx context.Context, topics []string)
-	stop()
-}
-
 type TargetSyncer struct {
 	logger log.Logger
 	cfg    scrapeconfig.Config
