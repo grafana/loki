@@ -45,10 +45,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
         if multi then
           d.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
-          .addMultiTemplate('namespace', 'loki_build_info', 'namespace')
+          .addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
         else
           d.addTemplate('cluster', 'loki_build_info', 'cluster')
-          .addTemplate('namespace', 'loki_build_info', 'namespace'),
+          .addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
     },
 
   jobMatcher(job)::
