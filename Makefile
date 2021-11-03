@@ -275,7 +275,7 @@ test: all
 #########
 
 clean-protos:
-	rm $(PROTO_GOS)
+	rm -rf $(PROTO_GOS)
 
 clean:
 	rm -rf clients/cmd/promtail/promtail
