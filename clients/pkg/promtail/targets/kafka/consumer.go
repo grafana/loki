@@ -58,7 +58,8 @@ func (c *consumer) start(ctx context.Context, topics []string) {
 		for {
 			// Calling Consume in an infinite loop in case rebalancing is kicking in.
 			// In which case all claims will be renewed.
-			if err := c.ConsumerGroup.Consume(c.ctx, topics, c); err != nil {
+			err := c.ConsumerGroup.Consume(c.ctx, topics, c)
+			if err != nil && err != context.Canceled {
 				level.Error(c.logger).Log("msg", "error from the consumer, retrying...", "err", err)
 				// backoff before re-trying.
 				backoff.Wait()
@@ -68,7 +69,7 @@ func (c *consumer) start(ctx context.Context, topics []string) {
 				level.Error(c.logger).Log("msg", "maximun error from the consumer reached", "last_err", err)
 				return
 			}
-			if c.ctx.Err() != nil {
+			if c.ctx.Err() != nil || err == context.Canceled {
 				level.Info(c.logger).Log("msg", "stopping consumer", "topics", fmt.Sprintf("%+v", topics))
 				return
 			}
