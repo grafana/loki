@@ -292,15 +292,15 @@ scrape_configs:
   relabel_configs:
       - action: replace
         source_labels:
-          - __topic
+          - __meta_kafka_topic
         target_label: topic
       - action: replace
         source_labels:
-          - __partition
+          - __meta_kafka_partition
         target_label: partition
       - action: replace
         source_labels:
-          - __group_id
+          - __meta_kafka_group_id
         target_label: group
 ```
 

@@ -190,10 +190,10 @@ func (ts *TargetSyncer) Stop() error {
 // NewTarget creates a new targets based on the current kafka claim and group session.
 func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) (RunnableTarget, error) {
 	discoveredLabels := model.LabelSet{
-		"__topic":     model.LabelValue(claim.Topic()),
-		"__partition": model.LabelValue(fmt.Sprintf("%d", claim.Partition())),
-		"__member_id": model.LabelValue(session.MemberID()),
-		"__group_id":  model.LabelValue(ts.cfg.KafkaConfig.GroupID),
+		"__meta_kafka_topic":     model.LabelValue(claim.Topic()),
+		"__meta_kafka_partition": model.LabelValue(fmt.Sprintf("%d", claim.Partition())),
+		"__meta_kafka_member_id": model.LabelValue(session.MemberID()),
+		"__meta_kafka_group_id":  model.LabelValue(ts.cfg.KafkaConfig.GroupID),
 	}
 	labelMap := make(map[string]string)
 	for k, v := range discoveredLabels.Clone().Merge(ts.cfg.KafkaConfig.Labels) {

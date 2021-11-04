@@ -942,10 +942,10 @@ labels:
 
 The list of labels below are discovered when consuming kafka:
 
-- `__topic`: The current topic for where the message has been read.
-- `__partition`: The partition id where the message has been read.
-- `__member_id`: the consumer group member id.
-- `__group_id`: the consumer group id.
+- `__meta_kafka_topic`: The current topic for where the message has been read.
+- `__meta_kafka_partition`: The partition id where the message has been read.
+- `__meta_kafka_member_id`: the consumer group member id.
+- `__meta_kafka_group_id`: the consumer group id.
 
 To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
 

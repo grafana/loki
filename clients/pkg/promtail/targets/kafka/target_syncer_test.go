@@ -84,7 +84,7 @@ func Test_NewTarget(t *testing.T) {
 			JobName: "foo",
 			RelabelConfigs: []*relabel.Config{
 				{
-					SourceLabels: model.LabelNames{"__topic"},
+					SourceLabels: model.LabelNames{"__meta_kafka_topic"},
 					TargetLabel:  "topic",
 					Replacement:  "$1",
 					Action:       relabel.Replace,
@@ -110,7 +110,7 @@ func Test_NewTarget(t *testing.T) {
 		InitialOffset: 1,
 	}, tg.Details())
 	require.Equal(t, model.LabelSet{"static": "static1", "topic": "foo"}, tg.Labels())
-	require.Equal(t, model.LabelSet{"__member_id": "foo", "__partition": "10", "__topic": "foo", "__group_id": "group_1"}, tg.DiscoveredLabels())
+	require.Equal(t, model.LabelSet{"__meta_kafka_member_id": "foo", "__meta_kafka_partition": "10", "__meta_kafka_topic": "foo", "__meta_kafka_group_id": "group_1"}, tg.DiscoveredLabels())
 }
 
 func Test_NewDroppedTarget(t *testing.T) {
@@ -131,7 +131,7 @@ func Test_NewDroppedTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "dropping target, no labels", tg.Details())
 	require.Equal(t, model.LabelSet(nil), tg.Labels())
-	require.Equal(t, model.LabelSet{"__member_id": "foo", "__partition": "10", "__topic": "foo", "__group_id": "group1"}, tg.DiscoveredLabels())
+	require.Equal(t, model.LabelSet{"__meta_kafka_member_id": "foo", "__meta_kafka_partition": "10", "__meta_kafka_topic": "foo", "__meta_kafka_group_id": "group1"}, tg.DiscoveredLabels())
 }
 
 func Test_validateConfig(t *testing.T) {
