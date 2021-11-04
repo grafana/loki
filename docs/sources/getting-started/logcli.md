@@ -437,7 +437,7 @@ You can consume log lines from your `stdin` instead of Loki servers.
 
 Say you have log files in your local, and just want to do run some LogQL queries for that, `--stdin` flag can help.
 
-***NOTE: Currently it doesn't support any type of metric queries**
+**NOTE: Currently it doesn't support any type of metric queries**
 
 You may have to use `stdin` flag for several reasons
 1. Quick way to check and validate a LogQL expressions.
