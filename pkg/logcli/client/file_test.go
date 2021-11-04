@@ -81,7 +81,7 @@ func TestFileClient_QueryRangeLogQueries(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, loghttp.QueryStatusSuccess, resp.Status)
-			assert.Equal(t, resp.Data.ResultType, loghttp.ResultTypeStream)
+			assert.Equal(t, string(resp.Data.ResultType), loghttp.ResultTypeStream)
 			assertStreams(t, resp.Data.Result, c.expected)
 		})
 	}
@@ -143,7 +143,7 @@ func TestFileClient_Query(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, loghttp.QueryStatusSuccess, resp.Status)
-			assert.Equal(t, resp.Data.ResultType, loghttp.ResultTypeStream)
+			assert.Equal(t, string(resp.Data.ResultType), loghttp.ResultTypeStream)
 			assertStreams(t, resp.Data.Result, c.expected)
 		})
 	}
