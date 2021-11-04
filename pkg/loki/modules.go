@@ -237,17 +237,30 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/tail":                http.HandlerFunc(t.Querier.TailHandler),
 		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
 
 		"/api/prom/query":               http.HandlerFunc(t.Querier.LogQueryHandler),
 		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/api/prom/tail":                http.HandlerFunc(t.Querier.TailHandler),
 		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
 	}
+
+	// We always want to register tail routes externally, tail requests are different from normal queries, they
+	// are HTTP requests that get upgraded to websocket requests and need to be handled/kept open by the Queriers.
+	// The frontend has code to proxy these requests, however when running in the same processes
+	// (such as target=All or target=Read) we don't want the frontend to proxy and instead we want the Queriers
+	// to directly register these routes.
+	// In practice this means we always want the queriers to register the tail routes externally, when a querier
+	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
+	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
+	// on the external router.
+	var alwaysExternalHandlers = map[string]http.Handler{
+		"/loki/api/v1/tail": http.HandlerFunc(t.Querier.TailHandler),
+		"/api/prom/tail":    http.HandlerFunc(t.Querier.TailHandler),
+	}
+
 	return querier.InitWorkerService(
-		querierWorkerServiceConfig, queryHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+		querierWorkerServiceConfig, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
 	)
 }
 
@@ -479,7 +492,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	).Wrap(frontendHandler)
 
 	var defaultHandler http.Handler
-	if t.Cfg.Frontend.TailProxyURL != "" {
+	// If this process also acts as a Querier we don't do any proxying of tail requests
+	if t.Cfg.Frontend.TailProxyURL != "" && !t.isModuleActive(Querier) {
 		httpMiddleware := middleware.Merge(
 			t.HTTPAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
@@ -511,9 +525,13 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/series").Methods("GET", "POST").Handler(frontendHandler)
 
-	// defer tail endpoints to the default handler
-	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(defaultHandler)
-	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(defaultHandler)
+	// Only register tailing requests if this process does not act as a Querier
+	// If this process is also a Querier the Querier will register the tail endpoints.
+	if !t.isModuleActive(Querier) {
+		// defer tail endpoints to the default handler
+		t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(defaultHandler)
+		t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(defaultHandler)
+	}
 
 	if t.frontend == nil {
 		return services.NewIdleService(nil, func(_ error) error {
