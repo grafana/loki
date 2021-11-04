@@ -60,7 +60,7 @@ node:
   type: no-parallel
 steps:
 - commands:
-  - go test -mod=vendor -bench=Benchmark -benchtime 20x ./pkg/logql/
+  - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/
   image: grafana/loki-build-image:0.18.0
   name: LogQL
 workspace:
@@ -997,6 +997,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 4fc9f9b8227fdd7c0bdfec1e32f5a646cd6fe666a73cb1f3ca12788496c5d557
+hmac: 16be2aa465fa8d25c608c333a96c406eeb4fa952fc58aaab787902e25e1e059a
 
 ...

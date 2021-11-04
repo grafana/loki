@@ -344,7 +344,7 @@ local manifest(apps) = pipeline('manifest') {
     },
     node: { type: 'no-parallel' },
     steps: [
-      run('LogQL', ['go test -mod=vendor -bench=Benchmark -benchtime 20x ./pkg/logql/'])
+      run('LogQL', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/'])
     ],
     //trigger: {event: ['cron'], cron: ['loki-bench']},
     //when: condition('include').tagMain,
