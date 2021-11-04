@@ -145,7 +145,7 @@ func (r *LokiStackReconciler) SetupWithManager(mgr manager.Manager) error {
 }
 
 func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
-	return bld.
+	bld = bld.
 		For(&lokiv1beta1.LokiStack{}, createOrUpdateOnlyPred).
 		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.ServiceAccount{}, updateOrDeleteOnlyPred).
@@ -153,8 +153,13 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&appsv1.Deployment{}, updateOrDeleteOnlyPred).
 		Owns(&appsv1.StatefulSet{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.ClusterRole{}, updateOrDeleteOnlyPred).
-		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
-		Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred).
-		Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
-		Complete(r)
+		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred)
+
+	if r.Flags.EnableGatewayRoute {
+		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)
+	} else {
+		bld = bld.Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred)
+	}
+
+	return bld.Complete(r)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
 	"github.com/ViaQ/loki-operator/internal/external/k8s/k8sfakes"
+	"github.com/ViaQ/loki-operator/internal/manifests"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/require"
 
@@ -70,65 +71,82 @@ func TestLokiStackController_RegistersCustomResourceForCreateOrUpdate(t *testing
 }
 
 func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *testing.T) {
-	b := &k8sfakes.FakeBuilder{}
 	k := &k8sfakes.FakeClient{}
-	c := &LokiStackReconciler{Client: k, Scheme: scheme}
-
-	b.ForReturns(b)
-	b.OwnsReturns(b)
-
-	err := c.buildController(b)
-	require.NoError(t, err)
-
-	// Require Owns-Calls for all owned resources
-	require.Equal(t, 9, b.OwnsCallCount())
 
 	// Require owned resources
 	type test struct {
-		obj  client.Object
-		pred builder.OwnsOption
+		obj   client.Object
+		index int
+		flags manifests.FeatureFlags
+		pred  builder.OwnsOption
 	}
 	table := []test{
 		{
-			obj:  &corev1.ConfigMap{},
+			obj:   &corev1.ConfigMap{},
+			index: 0,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &corev1.ServiceAccount{},
+			index: 1,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &corev1.Service{},
+			index: 2,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &appsv1.Deployment{},
+			index: 3,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &appsv1.StatefulSet{},
+			index: 4,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &rbacv1.ClusterRole{},
+			index: 5,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &rbacv1.ClusterRoleBinding{},
+			index: 6,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &networkingv1.Ingress{},
+			index: 7,
+			flags: manifests.FeatureFlags{
+				EnableGatewayRoute: false,
+			},
 			pred: updateOrDeleteOnlyPred,
 		},
 		{
-			obj:  &corev1.ServiceAccount{},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			obj:  &corev1.Service{},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			obj:  &appsv1.Deployment{},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			obj:  &appsv1.StatefulSet{},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			obj:  &rbacv1.ClusterRole{},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			obj:  &rbacv1.ClusterRoleBinding{},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			obj:  &networkingv1.Ingress{},
-			pred: updateOrDeleteOnlyPred,
-		},
-		{
-			obj:  &routev1.Route{},
+			obj:   &routev1.Route{},
+			index: 7,
+			flags: manifests.FeatureFlags{
+				EnableGatewayRoute: true,
+			},
 			pred: updateOrDeleteOnlyPred,
 		},
 	}
-	for i, tst := range table {
+	for _, tst := range table {
+		b := &k8sfakes.FakeBuilder{}
+		b.ForReturns(b)
+		b.OwnsReturns(b)
+
+		c := &LokiStackReconciler{Client: k, Scheme: scheme, Flags: tst.flags}
+		err := c.buildController(b)
+		require.NoError(t, err)
+
+		// Require Owns-Calls for all owned resources
+		require.Equal(t, 8, b.OwnsCallCount())
+
 		// Require Owns-call options to have delete predicate only
-		obj, opts := b.OwnsArgsForCall(i)
+		obj, opts := b.OwnsArgsForCall(tst.index)
 		require.Equal(t, tst.obj, obj)
 		require.Equal(t, tst.pred, opts[0])
 	}

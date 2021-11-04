@@ -18,6 +18,10 @@ import (
 // tenant mode. Currently nothing is applied for modes static and dynamic. For mode openshift-logging
 // the tenant spec is filled with defaults for authentication and authorization.
 func ApplyGatewayDefaultOptions(opts *Options) error {
+	if opts.Stack.Tenants == nil {
+		return nil
+	}
+
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1beta1.Static, lokiv1beta1.Dynamic:
 		return nil // continue using user input
@@ -37,6 +41,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {
 			return kverrors.Wrap(err, "failed to merge defaults for mode openshift logging")
 		}
+
 	}
 
 	return nil

@@ -19,4 +19,4 @@ commonLabels:
 
 patchesStrategicMerge:
 - manager_related_image_patch.yaml
-- manager_run_flags_patch.yaml
+- manager_image_pull_policy_patch.yaml

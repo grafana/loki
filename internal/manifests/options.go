@@ -42,6 +42,7 @@ type FeatureFlags struct {
 	EnableServiceMonitors           bool
 	EnableTLSServiceMonitorConfig   bool
 	EnableGateway                   bool
+	EnableGatewayRoute              bool
 }
 
 // TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.

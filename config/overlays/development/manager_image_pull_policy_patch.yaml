@@ -7,5 +7,4 @@ spec:
     spec:
       containers:
         - name: manager
-          args:
-          - "--with-lokistack-gateway"
+          imagePullPolicy: Always

@@ -400,6 +400,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
+							ServiceAccountName: "gateway",
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,

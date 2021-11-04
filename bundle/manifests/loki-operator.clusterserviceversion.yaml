@@ -581,6 +581,7 @@ spec:
               containers:
               - args:
                 - --with-lokistack-gateway
+                - --with-lokistack-gateway-route
                 - --with-cert-signing-service
                 - --with-service-monitors
                 - --with-tls-service-monitors

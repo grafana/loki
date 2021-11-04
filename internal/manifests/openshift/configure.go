@@ -92,6 +92,7 @@ func ConfigureGatewayDeployment(
 	gwContainer.Args = gwArgs
 
 	p := corev1.PodSpec{
+		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
 			*gwContainer,
 			newOPAOpenShiftContainer(sercretVolumeName, tlsDir, certFile, keyFile, withTLS),
