@@ -44,9 +44,7 @@ const (
 	defaultBlockSize = 256 * 1024
 )
 
-var (
-	HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
-)
+var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
 
 type HeadBlockFmt byte
 
@@ -725,7 +723,6 @@ func (c *MemChunk) reorder() error {
 }
 
 func (c *MemChunk) ConvertHead(desired HeadBlockFmt) error {
-
 	if c.head != nil && c.head.Format() != desired {
 		newH, err := c.head.Convert(desired)
 		if err != nil {
@@ -856,7 +853,6 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
 	}
 	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
-
 }
 
 // Iterator implements Chunk.
@@ -932,7 +928,6 @@ func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
 		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
 		newChunk = NewMemChunk(c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
-
 	}
 
 	for itr.Next() {
@@ -1114,7 +1109,6 @@ type bufferedIterator struct {
 
 	err error
 
-	decBuf   []byte // The buffer for decoding the lengths.
 	buf      []byte // The buffer for a single entry.
 	currLine []byte // the current line, this is the same as the buffer but sliced the the line size.
 	currTs   int64
@@ -1131,7 +1125,6 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 		reader:    nil, // will be initialized later
 		bufReader: nil, // will be initialized later
 		pool:      pool,
-		decBuf:    make([]byte, binary.MaxVarintLen64),
 	}
 }
 
@@ -1233,7 +1226,6 @@ func (si *bufferedIterator) close() {
 		si.buf = nil
 	}
 	si.origBytes = nil
-	si.decBuf = nil
 }
 
 func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline) iter.EntryIterator {
