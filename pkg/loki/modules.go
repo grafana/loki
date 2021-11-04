@@ -494,7 +494,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	var defaultHandler http.Handler
 	// If this process also acts as a Querier we don't do any proxying of tail requests
-	if t.Cfg.Frontend.TailProxyURL != "" && !t.ModuleManager.IsModuleRegistered(Querier) {
+	if t.Cfg.Frontend.TailProxyURL != "" && !t.isModuleEnabled(Querier) {
 		httpMiddleware := middleware.Merge(
 			t.HTTPAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
@@ -528,7 +528,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	// Only register tailing requests if this process does not act as a Querier
 	// If this process is also a Querier the Querier will register the tail endpoints.
-	if !t.ModuleManager.IsModuleRegistered(Querier) {
+	if !t.isModuleEnabled(Querier) {
 		// defer tail endpoints to the default handler
 		t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(defaultHandler)
 		t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(defaultHandler)

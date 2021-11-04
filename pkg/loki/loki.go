@@ -209,6 +209,7 @@ type Loki struct {
 	// set during initialization
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
+	deps          map[string][]string
 
 	Server                   *server.Server
 	ring                     *ring.Ring
@@ -481,7 +482,24 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
+	t.deps = deps
 	t.ModuleManager = mm
 
 	return nil
+}
+
+func (t *Loki) isModuleEnabled(m string) bool {
+	for _, tg := range t.Cfg.Target {
+		if tg == m {
+			return true
+		}
+		if k, ok := t.deps[tg]; ok {
+			for _, dp := range k {
+				if dp == m {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
