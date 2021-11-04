@@ -69,6 +69,7 @@ func TestLoki_isModuleEnabled(t1 *testing.T) {
 		{name: "Target Query Frontend does not include Querier", target: flagext.StringSliceCSV{"query-frontend"}, module: Querier, want: false},
 		{name: "Multi target includes querier", target: flagext.StringSliceCSV{"query-frontend", "query-scheduler", "querier"}, module: Querier, want: true},
 		{name: "Multi target does not include distributor", target: flagext.StringSliceCSV{"query-frontend", "query-scheduler", "querier"}, module: Distributor, want: false},
+		{name: "Test recursive dep, Ingester -> TenantConfigs -> RuntimeConfig", target: flagext.StringSliceCSV{"ingester"}, module: RuntimeConfig, want: true},
 	}
 	for _, tt := range tests {
 		t1.Run(tt.name, func(t1 *testing.T) {
@@ -79,8 +80,8 @@ func TestLoki_isModuleEnabled(t1 *testing.T) {
 			}
 			err := t.setupModuleManager()
 			assert.NoError(t1, err)
-			if got := t.isModuleEnabled(tt.module); got != tt.want {
-				t1.Errorf("isModuleEnabled() = %v, want %v", got, tt.want)
+			if got := t.isModuleActive(tt.module); got != tt.want {
+				t1.Errorf("isModuleActive() = %v, want %v", got, tt.want)
 			}
 		})
 	}

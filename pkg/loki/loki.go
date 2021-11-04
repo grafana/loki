@@ -488,16 +488,26 @@ func (t *Loki) setupModuleManager() error {
 	return nil
 }
 
-func (t *Loki) isModuleEnabled(m string) bool {
-	for _, tg := range t.Cfg.Target {
-		if tg == m {
+func (t *Loki) isModuleActive(m string) bool {
+	for _, target := range t.Cfg.Target {
+		if target == m {
 			return true
 		}
-		if k, ok := t.deps[tg]; ok {
-			for _, dp := range k {
-				if dp == m {
-					return true
-				}
+		if t.recursiveIsModuleActive(target, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *Loki) recursiveIsModuleActive(target, m string) bool {
+	if targetDeps, ok := t.deps[target]; ok {
+		for _, dep := range targetDeps {
+			if dep == m {
+				return true
+			}
+			if t.recursiveIsModuleActive(dep, m) {
+				return true
 			}
 		}
 	}
