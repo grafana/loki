@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"math"
 	"net/url"
@@ -152,9 +151,9 @@ func main() {
 		}
 
 		// When `--stdin` flag is set, stream selector is optional in the query.
-		// But logQL package through parser error if stream selector is not provided.
+		// But logQL package throw parser error if stream selector is not provided.
 		// So we inject "dummy" stream selector if not provided by user already.
-		// Which brings down to two way of using LogQL query.
+		// Which brings down to two ways of using LogQL query under `--stdin`.
 		// 1. Query with stream selector(e.g: `{foo="bar"}|="error"`)
 		// 2. Query without stream selector (e.g: `|="error"`)
 
@@ -190,7 +189,6 @@ func main() {
 		if *tail || *follow {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
-			fmt.Println("Debug: Query string", rangeQuery.QueryString)
 			rangeQuery.DoQuery(queryClient, out, *statistics)
 		}
 	case instantQueryCmd.FullCommand():

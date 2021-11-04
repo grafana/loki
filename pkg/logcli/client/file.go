@@ -261,16 +261,12 @@ func newFileIterator(
 		Labels: labels.String(),
 	}
 
-	// fmt.Println("directions", params.Direction)
-
 	// reverse all the input lines if direction == FORWARD
 	if params.Direction == logproto.FORWARD {
 		sort.Slice(lines, func(i, j int) bool {
 			return i > j
 		})
 	}
-
-	// timestamps := assignTimestamps(lines, params.Start.Unix(), params.End.Unix())
 
 	for _, line := range lines {
 		parsedLine, _, ok := pipeline.ProcessString(line)
@@ -279,8 +275,7 @@ func newFileIterator(
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: time.Now(),
-			// Timestamp: time.Unix(timestamps[line], 0),
-			Line: parsedLine,
+			Line:      parsedLine,
 		})
 	}
 

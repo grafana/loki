@@ -16,7 +16,6 @@ import (
 )
 
 func TestFileClient_QueryRangeLogQueries(t *testing.T) {
-
 	input := []string{
 		`level=info event="loki started" caller=main.go ts=1625995076`,
 		`level=info event="runtime loader started" caller=main.go ts=1625995077`,
@@ -82,13 +81,72 @@ func TestFileClient_QueryRangeLogQueries(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, loghttp.QueryStatusSuccess, resp.Status)
+			assert.Equal(t, resp.Data.ResultType, loghttp.ResultTypeStream)
 			assertStreams(t, resp.Data.Result, c.expected)
 		})
 	}
 }
 
 func TestFileClient_Query(t *testing.T) {
+	input := []string{
+		`level=info event="loki started" caller=main.go ts=1625995076`,
+		`level=info event="runtime loader started" caller=main.go ts=1625995077`,
+		`level=error event="unable to read rules directory" file="/tmp/rules" caller=rules.go ts=1625995090`,
+		`level=error event="failed to apply wal" error="/tmp/wal/ corrupted" caller=wal.go ts=1625996090`,
+		`level=info event="loki ready" caller=main.go ts=1625996095`,
+	}
 
+	reversed := make([]string, len(input))
+	copy(reversed, input)
+	sort.Slice(reversed, func(i, j int) bool {
+		return i > j
+	})
+
+	now := time.Now()
+
+	cases := []struct {
+		name           string
+		limit          int
+		ts             time.Time
+		direction      logproto.Direction
+		expectedStatus loghttp.QueryStatus
+		expected       []string
+	}{
+		{
+			name:           "return-all-logs-backward",
+			limit:          10, // more than input
+			ts:             now.Add(-1 * time.Hour),
+			direction:      logproto.BACKWARD,
+			expectedStatus: loghttp.QueryStatusSuccess,
+			expected:       input,
+		},
+		{
+			name:           "return-all-logs-forward",
+			limit:          10, // more than input
+			ts:             now.Add(-1 * time.Hour),
+			direction:      logproto.FORWARD,
+			expectedStatus: loghttp.QueryStatusSuccess,
+			expected:       reversed,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			client := NewFileClient(io.NopCloser(strings.NewReader(strings.Join(input, "\n"))))
+			resp, err := client.Query(
+				`{foo="bar"}`, // label matcher doesn't matter.
+				c.limit,
+				c.ts,
+				c.direction,
+				true,
+			)
+
+			require.NoError(t, err)
+			require.Equal(t, loghttp.QueryStatusSuccess, resp.Status)
+			assert.Equal(t, resp.Data.ResultType, loghttp.ResultTypeStream)
+			assertStreams(t, resp.Data.Result, c.expected)
+		})
+	}
 }
 
 func TestFileClient_ListLabelNames(t *testing.T) {
