@@ -376,7 +376,7 @@ docker-driver: docker-driver-clean
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
 	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) clients/cmd/docker-driver
-	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) clients/cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
 clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -384,7 +384,7 @@ clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 
 docker-driver-push: docker-driver
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	docker plugin push $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
+	docker plugin push $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 
 docker-driver-enable:
 	docker plugin enable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
@@ -392,7 +392,7 @@ docker-driver-enable:
 docker-driver-clean:
 	-docker plugin disable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	-docker plugin rm $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	-docker plugin rm $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
+	-docker plugin rm $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 	rm -rf clients/cmd/docker-driver/rootfs
 
 #####################
@@ -478,11 +478,10 @@ define push
 endef
 
 # push-image(app)
-# pushes the app, also as :latest and :master
+# pushes the app, also as :main
 define push-image
 	$(call push,$(1),$(IMAGE_TAG))
-	$(call push,$(1),master)
-	$(call push,$(1),latest)
+	$(call push,$(1),main)
 endef
 
 # promtail
