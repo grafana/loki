@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

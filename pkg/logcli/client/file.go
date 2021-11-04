@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	logqllog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/util/marshal"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 )
@@ -211,28 +213,6 @@ func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
 }
 
-// assignTimestamps assigns the generated timestamp for each input log line based on start and end
-// of the query.
-// start and end are unix timestamps in secs.
-func assignTimestamps(lines []string, start, end int64) map[string]int64 {
-	res := make(map[string]int64)
-
-	n := int64(len(lines))
-
-	if end < start {
-		panic("`start` cannot be after `end`")
-	}
-
-	step := (end - start) / n
-
-	for i, line := range lines {
-		fmt.Println("line", line, "ts", (step*int64(i+1) + start))
-		res[line] = (step * int64(i+1)) + start
-	}
-
-	return res
-}
-
 func newFileIterator(
 	ctx context.Context,
 	r io.Reader,
@@ -247,10 +227,7 @@ func newFileIterator(
 		return nil, err
 	}
 	lines := strings.FieldsFunc(string(b), func(r rune) bool {
-		if r == '\n' {
-			return true
-		}
-		return false
+		return r == '\n'
 	})
 
 	if len(lines) == 0 {
