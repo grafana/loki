@@ -337,15 +337,15 @@ func (a *S3ObjectClient) Stop() {}
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	_, err := a.S3.DeleteObject(&s3.DeleteObjectInput{
-		Bucket: aws.String(a.bucketFromKey(objectKey)),
-		Key:    aws.String(objectKey),
-	})
-	if err != nil {
-		return err
-	}
+	return instrument.CollectedRequest(ctx, "S3.DeleteObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		deleteObjectInput := &s3.DeleteObjectInput{
+			Bucket: aws.String(a.bucketFromKey(objectKey)),
+			Key:    aws.String(objectKey),
+		}
 
-	return nil
+		_, err := a.S3.DeleteObjectWithContext(ctx, deleteObjectInput)
+		return err
+	})
 }
 
 // bucketFromKey maps a key to a bucket name
