@@ -100,10 +100,7 @@ func NewAndFilters(filters []Filterer) Filterer {
 	n := 0
 	for _, filter := range filters {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
-		if filter == nil || filter == TrueFilter {
-			// Skip filter
-			n++
-		} else {
+		if !(filter == nil || filter == TrueFilter) {
 			switch c := filter.(type) {
 			case containsFilter:
 				// Join all contain filters.
@@ -263,17 +260,12 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	}
 }
 
-type containsMatch struct {
-	match           []byte
-	caseInsensitive bool
-}
-
 type containsAllFilter struct {
-	matches []containsMatch
+	matches []containsFilter
 }
 
 func (f *containsAllFilter) Add(filter containsFilter) {
-	f.matches = append(f.matches, containsMatch{match: filter.match, caseInsensitive: filter.caseInsensitive})
+	f.matches = append(f.matches, filter)
 }
 
 func (f *containsAllFilter) Empty() bool {
