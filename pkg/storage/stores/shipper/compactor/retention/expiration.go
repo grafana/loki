@@ -15,7 +15,7 @@ import (
 
 type ExpirationChecker interface {
 	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval)
-	IntervalHasExpiredChunks(interval model.Interval) bool
+	IntervalMayHaveExpiredChunks(interval model.Interval) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
 	MarkPhaseFinished()
@@ -65,7 +65,7 @@ func (e *expirationChecker) MarkPhaseStarted() {
 func (e *expirationChecker) MarkPhaseFailed()   {}
 func (e *expirationChecker) MarkPhaseFinished() {}
 
-func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
+func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval) bool {
 	return interval.Start.Before(e.latestRetentionStartTime)
 }
 

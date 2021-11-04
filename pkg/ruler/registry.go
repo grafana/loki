@@ -381,6 +381,7 @@ func newStorageRegistryMetrics(reg prometheus.Registerer) *storageRegistryMetric
 		reg: reg,
 		appenderReady: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "appender_ready",
+			Help: "Whether a WAL appender is ready to accept samples (1) or not (0)",
 		}, []string{"tenant"}),
 	}
 

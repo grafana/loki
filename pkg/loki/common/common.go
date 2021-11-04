@@ -8,13 +8,15 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // Config holds common config that can be shared between multiple other config sections
 type Config struct {
-	PathPrefix    string  `yaml:"path_prefix"`
-	Storage       Storage `yaml:"storage"`
-	PersistTokens bool    `yaml:"persist_tokens"`
+	PathPrefix    string          `yaml:"path_prefix"`
+	Storage       Storage         `yaml:"storage"`
+	PersistTokens bool            `yaml:"persist_tokens"`
+	Ring          util.RingConfig `yaml:"ring"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {

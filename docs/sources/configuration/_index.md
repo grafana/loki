@@ -296,7 +296,7 @@ engine:
 ## query_scheduler_config
 
 The `query_scheduler_config` block configures the Loki query scheduler.
-  
+
 ```yaml
 # Maximum number of outstanding requests per tenant per query-scheduler.
 # In-flight requests above this limit will fail with HTTP response status code
@@ -544,6 +544,25 @@ remote_write:
   # Enable remote-write functionality.
   # CLI flag: -ruler.remote-write.enabled
   [enabled: <boolean> | default = false]
+  # Minimum period to wait between refreshing remote-write reconfigurations.
+  # This should be greater than or equivalent to -limits.per-user-override-period.
+  [config_refresh_period: <duration> | default = 10s]
+
+  wal:
+    # The directory in which to write tenant WAL files. Each tenant will have its own
+    # directory one level below this directory.
+    [dir: <string> | default = "ruler-wal"]
+    # Frequency with which to run the WAL truncation process.
+    [truncate_frequency: <duration> | default = 60m]
+    # Minimum and maximum time series should exist in the WAL for.
+    [min_age: <duration> | default = 5m]
+    [max_age: <duration> | default = 4h]
+
+  wal_cleaner:
+    # The minimum age of a WAL to consider for cleaning.
+    [min_age: <duration> | default = 12h]
+    # How often to run the WAL cleaner.
+    [period: <duration> | default = 0s (disabled)]
 
   client:
     # The URL of the endpoint to send samples to.
@@ -553,12 +572,18 @@ remote_write:
     [remote_timeout: <duration> | default = 30s]
 
     # Custom HTTP headers to be sent along with each remote write request.
-    # Be aware that headers that are set by Prometheus itself can't be overwritten.
+    # Be aware that headers that are set by Loki itself can't be overwritten.
     headers:
       [<string>: <string> ...]
 
-    # HTTP proxy server to use to connect to the targets.
-    [proxy_url: <string>]
+    # List of remote write relabel configurations.
+    write_relabel_configs:
+      [- <relabel_config> ...]
+ 
+    # Name of the remote write config, which if specified must be unique among remote write configs.
+    # The name will be used in metrics and logging in place of a generated value to help users distinguish between
+    # remote write configs.
+    [name: <string>]
 
     # Sets the `Authorization` header on every remote write request with the
     # configured username and password.
@@ -568,31 +593,77 @@ remote_write:
       [password: <secret>]
       [password_file: <string>]
 
-    # `Authorization` header configuration.
+    # Optional `Authorization` header configuration.
     authorization:
       # Sets the authentication type.
       [type: <string> | default: Bearer]
       # Sets the credentials. It is mutually exclusive with
       # `credentials_file`.
       [credentials: <secret>]
-      # Sets the credentials with the credentials read from the configured file.
+      # Sets the credentials to the credentials read from the configured file.
       # It is mutually exclusive with `credentials`.
       [credentials_file: <filename>]
 
+    # Optionally configures AWS's Signature Verification 4 signing process to
+    # sign requests. Cannot be set at the same time as basic_auth, authorization, or oauth2.
+    # To use the default credentials from the AWS SDK, use `sigv4: {}`.
+    sigv4:
+      # The AWS region. If blank, the region from the default credentials chain
+      # is used.
+      [region: <string>]
+
+      # The AWS API keys. If blank, the environment variables `AWS_ACCESS_KEY_ID`
+      # and `AWS_SECRET_ACCESS_KEY` are used.
+      [access_key: <string>]
+      [secret_key: <secret>]
+
+      # Named AWS profile used to authenticate.
+      [profile: <string>]
+
+      # AWS Role ARN, an alternative to using AWS API keys.
+      [role_arn: <string>]
+
+    # Configures the remote write request's TLS settings.
     tls_config:
       # CA certificate to validate API server certificate with.
       [ca_file: <filename>]
-
       # Certificate and key files for client cert authentication to the server.
       [cert_file: <filename>]
       [key_file: <filename>]
-
       # ServerName extension to indicate the name of the server.
       # https://tools.ietf.org/html/rfc4366#section-3.1
       [server_name: <string>]
-
       # Disable validation of the server certificate.
       [insecure_skip_verify: <boolean>]
+
+    # Optional proxy URL.
+    [proxy_url: <string>]
+
+    # Configure whether HTTP requests follow HTTP 3xx redirects.
+    [follow_redirects: <bool> | default = true]
+
+    # Configures the queue used to write to remote storage.
+    queue_config:
+      # Number of samples to buffer per shard before we block reading of more
+      # samples from the WAL. It is recommended to have enough capacity in each
+      # shard to buffer several requests to keep throughput up while processing
+      # occasional slow remote requests.
+      [capacity: <int> | default = 2500]
+      # Maximum number of shards, i.e. amount of concurrency.
+      [max_shards: <int> | default = 200]
+      # Minimum number of shards, i.e. amount of concurrency.
+      [min_shards: <int> | default = 1]
+      # Maximum number of samples per send.
+      [max_samples_per_send: <int> | default = 500]
+      # Maximum time a sample will wait in buffer.
+      [batch_send_deadline: <duration> | default = 5s]
+      # Initial retry delay. Gets doubled for every retry.
+      [min_backoff: <duration> | default = 30ms]
+      # Maximum retry delay.
+      [max_backoff: <duration> | default = 100ms]
+      # Retry upon receiving a 429 status code from the remote-write storage.
+      # This is experimental and might change in the future.
+      [retry_on_http_429: <boolean> | default = false]
 
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
@@ -1033,7 +1104,7 @@ lifecycler:
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
-  [final_sleep: <duration> | default = 30s]
+  [final_sleep: <duration> | default = 0s]
 
 # Number of times to try and transfer chunks when leaving before
 # falling back to flushing to the store. Zero = no transfers are done.
@@ -2027,8 +2098,7 @@ compactor_ring:
 
 ## limits_config
 
-The `limits_config` block configures global and per-tenant limits for ingesting
-logs in Loki.
+The `limits_config` block configures global and per-tenant limits in Loki.
 
 ```yaml
 # Whether the ingestion rate limit should be applied individually to each
@@ -2169,10 +2239,6 @@ logs in Loki.
 # If no rule is matched the `retention_period` is used.
 [retention_stream: <array> | default = none]
 
-# Capacity of remote-write queues; if a queue exceeds its capacity it will evict oldest samples.
-# CLI flag: -ruler.remote-write.queue-capacity
-[ruler_remote_write_queue_capacity: <int> | default = 10000]
-
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file
 # (runtime_config.file in YAML).
 # CLI flag: -limits.per-user-override-config
@@ -2216,6 +2282,49 @@ logs in Loki.
 # The default value of 0 does not set a limit.
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0]
+
+# Disable recording rules remote-write.
+[ruler_remote_write_disabled: <bool> | default = false]
+
+# The URL of the endpoint to send samples to.
+[ruler_remote_write_url: <string>]
+
+# Timeout for requests to the remote write endpoint.
+[ruler_remote_write_timeout: <duration>]
+
+# Custom HTTP headers to be sent along with each remote write request.
+# Be aware that headers that are set by Loki itself can't be overwritten.
+[ruler_remote_write_headers: <headers>]
+
+# List of remote write relabel configurations.
+[ruler_remote_write_relabel_configs: <relabel_config>]
+
+# Number of samples to buffer per shard before we block reading of more
+# samples from the WAL. It is recommended to have enough capacity in each
+# shard to buffer several requests to keep throughput up while processing
+# occasional slow remote requests.
+[ruler_remote_write_queue_capacity: <int>]
+
+# Minimum number of shards, i.e. amount of concurrency.
+[ruler_remote_write_queue_min_shards: <int>]
+
+# Maximum number of shards, i.e. amount of concurrency.
+[ruler_remote_write_queue_max_shards: <int>]
+
+# Maximum number of samples per send.
+[ruler_remote_write_queue_max_samples_per_send: <int>]
+
+# Maximum time a sample will wait in buffer.
+[ruler_remote_write_queue_batch_send_deadline: <duration>]
+
+# Initial retry delay. Gets doubled for every retry.
+[ruler_remote_write_queue_min_backoff: <duration>]
+
+# Maximum retry delay.
+[ruler_remote_write_queue_max_backoff: <duration>]
+# Retry upon receiving a 429 status code from the remote-write storage.
+# This is experimental and might change in the future.
+[ruler_remote_write_queue_retry_on_ratelimit: <bool>]
 ```
 
 ### grpc_client_config

@@ -207,7 +207,7 @@ func Test_EmptyTable(t *testing.T) {
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
 		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 		require.NoError(t, err)
-		empty, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
+		empty, _, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 		require.NoError(t, err)
 		require.True(t, empty)
@@ -457,6 +457,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		expiry                []chunkExpiry
 		expectedDeletedSeries []map[uint64]struct{}
 		expectedEmpty         []bool
+		expectedModified      []bool
 	}{
 		{
 			name: "no chunk and series deleted",
@@ -474,6 +475,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				false,
 			},
+			expectedModified: []bool{
+				false,
+			},
 		},
 		{
 			name: "only one chunk in store which gets deleted",
@@ -489,6 +493,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				nil,
 			},
 			expectedEmpty: []bool{
+				true,
+			},
+			expectedModified: []bool{
 				true,
 			},
 		},
@@ -512,6 +519,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				false,
 			},
+			expectedModified: []bool{
+				true,
+			},
 		},
 		{
 			name: "one of two chunks deleted",
@@ -532,6 +542,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedEmpty: []bool{
 				false,
+			},
+			expectedModified: []bool{
+				true,
 			},
 		},
 		{
@@ -558,6 +571,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				false,
 			},
+			expectedModified: []bool{
+				true,
+			},
 		},
 		{
 			name: "one big chunk partially deleted for yesterdays table without rewrite",
@@ -579,6 +595,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				true, false,
 			},
+			expectedModified: []bool{
+				true, true,
+			},
 		},
 		{
 			name: "one big chunk partially deleted for yesterdays table with rewrite",
@@ -599,6 +618,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedEmpty: []bool{
 				false, false,
+			},
+			expectedModified: []bool{
+				true, true,
 			},
 		},
 	} {
@@ -628,10 +650,11 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 
 					cr, err := newChunkRewriter(chunkClient, schema.config, table.name, tx.Bucket(bucketName))
 					require.NoError(t, err)
-					empty, err := markforDelete(context.Background(), table.name, noopWriter{}, it, seriesCleanRecorder,
+					empty, isModified, err := markforDelete(context.Background(), table.name, noopWriter{}, it, seriesCleanRecorder,
 						expirationChecker, cr)
 					require.NoError(t, err)
 					require.Equal(t, tc.expectedEmpty[i], empty)
+					require.Equal(t, tc.expectedModified[i], isModified)
 					return nil
 				})
 				require.NoError(t, err)
@@ -671,7 +694,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 		err := table.DB.Update(func(tx *bbolt.Tx) error {
 			it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 			require.NoError(t, err)
-			empty, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
+			empty, _, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
 				NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
 			require.NoError(t, err)
 			if i == 7 {

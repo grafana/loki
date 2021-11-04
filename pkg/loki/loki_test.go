@@ -42,12 +42,7 @@ func TestFlagDefaults(t *testing.T) {
 		gotFlags[splittedLine] = nextLine
 	}
 
-	flagToCheck := "-distributor.ring.store"
-	require.Contains(t, gotFlags, flagToCheck)
-	require.Equal(t, c.Distributor.DistributorRing.KVStore.Store, "inmemory")
-	require.Contains(t, gotFlags[flagToCheck], "(default \"inmemory\")")
-
-	flagToCheck = "-server.grpc.keepalive.min-time-between-pings"
+	flagToCheck := "-server.grpc.keepalive.min-time-between-pings"
 	require.Contains(t, gotFlags, flagToCheck)
 	require.Equal(t, c.Server.GRPCServerMinTimeBetweenPings, 10*time.Second)
 	require.Contains(t, gotFlags[flagToCheck], "(default 10s)")

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -131,7 +131,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if err != nil {
 		return nil, errors.Wrap(err, "create KV store client")
 	}
-	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig(ringNumTokens)
+	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig(ringNumTokens, util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid ring lifecycler config")
 	}
@@ -149,13 +149,9 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	}
 
 	ringCfg := cfg.CompactorRing.ToRingConfig(ringReplicationFactor)
-	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r), util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring client")
-	}
-
-	if r != nil {
-		r.MustRegister(compactor.ring)
 	}
 
 	compactor.subservices, err = services.NewManager(compactor.ringLifecycler, compactor.ring)
@@ -292,7 +288,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 			return nil
 		case <-syncTicker.C:
 			bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-			rs, err := c.ring.Get(ringKeyOfLeader, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+			rs, err := c.ring.Get(ringKeyOfLeader, ring.Write, bufDescs, bufHosts, bufZones)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "error asking ring for who should run the compactor, will check again", "err", err)
 				continue
@@ -392,12 +388,12 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string) error {
 	}
 
 	interval := retention.ExtractIntervalFromTableName(tableName)
-	intervalHasExpiredChunks := false
+	intervalMayHaveExpiredChunks := false
 	if c.cfg.RetentionEnabled {
-		intervalHasExpiredChunks = c.expirationChecker.IntervalHasExpiredChunks(interval)
+		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval)
 	}
 
-	err = table.compact(intervalHasExpiredChunks)
+	err = table.compact(intervalMayHaveExpiredChunks)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
@@ -531,8 +527,8 @@ func (e *expirationChecker) MarkPhaseFinished() {
 	e.deletionExpiryChecker.MarkPhaseFinished()
 }
 
-func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
-	return e.retentionExpiryChecker.IntervalHasExpiredChunks(interval) || e.deletionExpiryChecker.IntervalHasExpiredChunks(interval)
+func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval) bool {
+	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval)
 }
 
 func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {
