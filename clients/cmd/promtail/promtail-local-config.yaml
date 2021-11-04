@@ -15,4 +15,4 @@ scrape_configs:
       - localhost
     labels:
       job: varlogs
-      __path__: /home/kaviraj/src/loki/testlogs.txt
+      __path__: /var/log/*log

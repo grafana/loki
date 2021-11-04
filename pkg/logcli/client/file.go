@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cespare/xxhash"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -36,7 +34,7 @@ var (
 )
 
 // FileClient is a type of LogCLI client that do LogQL on log lines from
-// the given file directly, instead sending it to the Loki servers.
+// the given file directly, instead get log lines from Loki servers.
 type FileClient struct {
 	r           io.ReadCloser
 	labels      []string
@@ -210,77 +208,78 @@ func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 }
 
 func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	expr, err := params.Expr()
-	if err != nil {
-		panic(err)
-	}
+	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
+	// expr, err := params.Expr()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	sampleExtractor, err := expr.Extractor()
-	if err != nil {
-		panic(err)
-	}
+	// sampleExtractor, err := expr.Extractor()
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	streamSample := sampleExtractor.ForStream(labels.Labels{
-		labels.Label{Name: "foo", Value: "bar"},
-	})
+	// streamSample := sampleExtractor.ForStream(labels.Labels{
+	// 	labels.Label{Name: "foo", Value: "bar"},
+	// })
 
-	it := NewFileSampleIterator(q.r, params.Start, params.End, "source:logcli", streamSample)
+	// it := NewFileSampleIterator(q.r, params.Start, params.End, "source:logcli", streamSample)
 
-	return it, nil
+	// return it, nil
 }
 
-type FileSampleIterator struct {
-	s          *bufio.Scanner
-	labels     string
-	err        error
-	sp         logqllog.StreamSampleExtractor
-	curr       logproto.Sample
-	start, end time.Time
-}
+// type FileSampleIterator struct {
+// 	s          *bufio.Scanner
+// 	labels     string
+// 	err        error
+// 	sp         logqllog.StreamSampleExtractor
+// 	curr       logproto.Sample
+// 	start, end time.Time
+// }
 
-func NewFileSampleIterator(r io.Reader, start, end time.Time, labels string, sp logqllog.StreamSampleExtractor) *FileSampleIterator {
-	s := bufio.NewScanner(r)
-	s.Split(bufio.ScanLines)
-	return &FileSampleIterator{
-		s:      s,
-		labels: labels,
-		sp:     sp,
-		start:  start,
-		end:    end,
-	}
-}
+// func NewFileSampleIterator(r io.Reader, start, end time.Time, labels string, sp logqllog.StreamSampleExtractor) *FileSampleIterator {
+// 	s := bufio.NewScanner(r)
+// 	s.Split(bufio.ScanLines)
+// 	return &FileSampleIterator{
+// 		s:      s,
+// 		labels: labels,
+// 		sp:     sp,
+// 		start:  start,
+// 		end:    end,
+// 	}
+// }
 
-func (f *FileSampleIterator) Next() bool {
-	for f.s.Scan() {
-		value, _, ok := f.sp.Process([]byte(f.s.Text()))
-		ts := f.start.Add(2 * time.Minute)
-		if ok {
-			f.curr = logproto.Sample{
-				Timestamp: ts.UnixNano(),
-				Value:     value,
-				Hash:      xxhash.Sum64(f.s.Bytes()),
-			}
-			return true
-		}
-	}
-	return false
-}
+// func (f *FileSampleIterator) Next() bool {
+// 	for f.s.Scan() {
+// 		value, _, ok := f.sp.Process([]byte(f.s.Text()))
+// 		ts := f.start.Add(2 * time.Minute)
+// 		if ok {
+// 			f.curr = logproto.Sample{
+// 				Timestamp: ts.UnixNano(),
+// 				Value:     value,
+// 				Hash:      xxhash.Sum64(f.s.Bytes()),
+// 			}
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
 
-func (f *FileSampleIterator) Sample() logproto.Sample {
-	return f.curr
-}
+// func (f *FileSampleIterator) Sample() logproto.Sample {
+// 	return f.curr
+// }
 
-func (f *FileSampleIterator) Labels() string {
-	return f.labels
-}
+// func (f *FileSampleIterator) Labels() string {
+// 	return f.labels
+// }
 
-func (f *FileSampleIterator) Error() error {
-	return f.err
-}
+// func (f *FileSampleIterator) Error() error {
+// 	return f.err
+// }
 
-func (f *FileSampleIterator) Close() error {
-	return nil
-}
+// func (f *FileSampleIterator) Close() error {
+// 	return nil
+// }
 
 // this is the generated timestamp for each input log line based on start and end
 // of the query.
@@ -332,7 +331,7 @@ func newFileIterator(
 		Labels: labels.String(),
 	}
 
-	fmt.Println("directions", params.Direction)
+	// fmt.Println("directions", params.Direction)
 
 	// reverse all the input lines if direction == FORWARD
 	if params.Direction == logproto.FORWARD {
