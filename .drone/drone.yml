@@ -3,23 +3,25 @@ kind: pipeline
 name: check
 steps:
 - commands:
+  - make BUILD_IN_CONTAINER=false check-generated-files
+  depends_on:
+  - clone
+  image: grafana/loki-build-image:0.18.0
+  name: check-generated-files
+- commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
+  - check-generated-files
   image: grafana/loki-build-image:0.18.0
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
+  - check-generated-files
   image: grafana/loki-build-image:0.18.0
   name: lint
-- commands:
-  - make BUILD_IN_CONTAINER=false check-generated-files
-  depends_on:
-  - clone
-  image: grafana/loki-build-image:0.18.0
-  name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
@@ -73,8 +75,6 @@ steps:
   image: plugins/docker
   name: build-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -93,8 +93,6 @@ steps:
   image: plugins/docker
   name: build-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -113,8 +111,6 @@ steps:
   image: plugins/docker
   name: build-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: true
     password:
@@ -133,8 +129,6 @@ steps:
   image: plugins/docker
   name: publish-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
@@ -153,8 +147,6 @@ steps:
   image: plugins/docker
   name: publish-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
@@ -173,8 +165,6 @@ steps:
   image: plugins/docker
   name: publish-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: false
     password:
@@ -208,8 +198,6 @@ steps:
   image: plugins/docker
   name: build-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -228,8 +216,6 @@ steps:
   image: plugins/docker
   name: build-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -248,8 +234,6 @@ steps:
   image: plugins/docker
   name: build-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: true
     password:
@@ -268,8 +252,6 @@ steps:
   image: plugins/docker
   name: publish-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
@@ -288,8 +270,6 @@ steps:
   image: plugins/docker
   name: publish-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
@@ -308,8 +288,6 @@ steps:
   image: plugins/docker
   name: publish-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: false
     password:
@@ -343,8 +321,6 @@ steps:
   image: plugins/docker
   name: build-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -363,8 +339,6 @@ steps:
   image: plugins/docker
   name: build-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -383,8 +357,6 @@ steps:
   image: plugins/docker
   name: build-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: true
     password:
@@ -403,8 +375,6 @@ steps:
   image: plugins/docker
   name: publish-loki-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
@@ -423,8 +393,6 @@ steps:
   image: plugins/docker
   name: publish-loki-canary-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
@@ -443,8 +411,6 @@ steps:
   image: plugins/docker
   name: publish-logcli-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: cmd/logcli/Dockerfile
     dry_run: false
     password:
@@ -478,8 +444,6 @@ steps:
   image: plugins/docker
   name: build-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: true
     password:
@@ -498,8 +462,6 @@ steps:
   image: plugins/docker
   name: publish-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: false
     password:
@@ -533,8 +495,6 @@ steps:
   image: plugins/docker
   name: build-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: true
     password:
@@ -553,8 +513,6 @@ steps:
   image: plugins/docker
   name: publish-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile
     dry_run: false
     password:
@@ -588,8 +546,6 @@ steps:
   image: plugins/docker
   name: build-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
     dry_run: true
     password:
@@ -608,8 +564,6 @@ steps:
   image: plugins/docker
   name: publish-promtail-image
   settings:
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: clients/cmd/promtail/Dockerfile.arm32
     dry_run: false
     password:
@@ -925,8 +879,6 @@ steps:
   settings:
     access_key:
       from_secret: ecr_key
-    build_args:
-    - TOUCH_PROTOS=1
     dockerfile: tools/lambda-promtail/Dockerfile
     dry_run: false
     region: us-east-1
@@ -984,6 +936,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 55440faa2728a5b8abbd213c2cf198e01f00201ba7143391924da1b9aa02c350
+hmac: b51ec8dfc84d0be83827fc851b21b81e1091886be480d675f51485b647e58001
 
 ...
