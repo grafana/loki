@@ -8,8 +8,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 

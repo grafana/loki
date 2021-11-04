@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

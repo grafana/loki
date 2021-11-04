@@ -11,12 +11,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"

@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -189,7 +191,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
 		}
-		lifecyclerCfg, err := cfg.SchedulerRing.ToLifecyclerConfig(ringNumTokens)
+		lifecyclerCfg, err := cfg.SchedulerRing.ToLifecyclerConfig(ringNumTokens, log)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid ring lifecycler config")
 		}
@@ -207,14 +209,11 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		}
 
 		ringCfg := cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
-		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}
 
-		if registerer != nil {
-			registerer.MustRegister(s.ring)
-		}
 		svcs = append(svcs, s.ringLifecycler, s.ring)
 	} else {
 		// Always run if no scheduler ring is being used.

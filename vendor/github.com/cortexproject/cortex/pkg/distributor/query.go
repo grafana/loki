@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/ring"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -15,7 +16,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"

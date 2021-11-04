@@ -3,7 +3,7 @@ package util
 import (
 	"hash/fnv"
 
-	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/grafana/dskit/ring"
 )
 
 // TokenFor generates a token used for finding ingesters from ring
