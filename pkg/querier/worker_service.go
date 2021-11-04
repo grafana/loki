@@ -46,6 +46,7 @@ type WorkerServiceConfig struct {
 func InitWorkerService(
 	cfg WorkerServiceConfig,
 	queryRoutesToHandlers map[string]http.Handler,
+	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
 	externalHandler http.Handler,
 	authMiddleware middleware.Interface,
@@ -120,6 +121,12 @@ func InitWorkerService(
 
 	//Querier worker's max concurrent requests must be the same as the querier setting
 	(*cfg.QuerierWorkerConfig).MaxConcurrentRequests = cfg.QuerierMaxConcurrent
+
+	// There are some routes which are always registered on the external router, add them now and
+	// wrap them with the httpMiddleware
+	for route, handler := range alwaysExternalRoutesToHandlers {
+		externalRouter.Path(route).Methods("GET", "POST").Handler(httpMiddleware.Wrap(handler))
+	}
 
 	//Return a querier worker pointed to the internal querier HTTP handler so there is not a conflict in routes between the querier
 	//and the query frontend
