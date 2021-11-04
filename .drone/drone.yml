@@ -65,6 +65,11 @@ steps:
   - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/
   image: grafana/loki-build-image:0.18.0
   name: LogQL
+trigger:
+  cron:
+  - loki-bench
+  event:
+  - cron
 workspace:
   base: /src
   path: loki
@@ -949,6 +954,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: f4663240961e497e809a0cb957f5871496d097a847a2e537dd8250775d884de7
+hmac: e35dcf196bab53ff7ab343e2bd44e6a96d17d1a2b71da639bdba26eab4f39c06
 
 ...
