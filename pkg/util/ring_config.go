@@ -6,12 +6,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-kit/log"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/ring"
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -64,8 +66,8 @@ func (cfg *RingConfig) RegisterFlagsWithPrefix(flagsPrefix, storePrefix string, 
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the compactor ring config.
-func (cfg *RingConfig) ToLifecyclerConfig(numTokens int) (ring.BasicLifecyclerConfig, error) {
-	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames)
+func (cfg *RingConfig) ToLifecyclerConfig(numTokens int, logger log.Logger) (ring.BasicLifecyclerConfig, error) {
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger)
 	if err != nil {
 		return ring.BasicLifecyclerConfig{}, err
 	}

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -131,7 +131,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	if err != nil {
 		return nil, errors.Wrap(err, "create KV store client")
 	}
-	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig(ringNumTokens)
+	lifecyclerCfg, err := cfg.CompactorRing.ToLifecyclerConfig(ringNumTokens, util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid ring lifecycler config")
 	}
@@ -149,13 +149,9 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	}
 
 	ringCfg := cfg.CompactorRing.ToRingConfig(ringReplicationFactor)
-	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r), util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring client")
-	}
-
-	if r != nil {
-		r.MustRegister(compactor.ring)
 	}
 
 	compactor.subservices, err = services.NewManager(compactor.ringLifecycler, compactor.ring)
