@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"net/url"
 	"os"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/config"
@@ -149,6 +151,22 @@ func main() {
 			rangeQuery.Step = defaultQueryRangeStep(rangeQuery.Start, rangeQuery.End)
 		}
 
+		// When `--stdin` flag is set, stream selector is optional in the query.
+		// But logQL package through parser error if stream selector is not provided.
+		// So we inject "dummy" stream selector if not provided by user already.
+		// Which brings down to two way of using LogQL query.
+		// 1. Query with stream selector(e.g: `{foo="bar"}|="error"`)
+		// 2. Query without stream selector (e.g: `|="error"`)
+
+		qs := rangeQuery.QueryString
+		if strings.HasPrefix(strings.TrimSpace(qs), "|") {
+			// inject the dummy stream selector
+			qs = `{source="logcli"}` + qs
+			rangeQuery.QueryString = qs
+		}
+
+		// `--limit` doesn't make sense when using `--stdin` flag.
+		rangeQuery.Limit = math.MaxInt // TODO(kavi): is it a good idea?
 	}
 
 	switch cmd {
@@ -172,6 +190,7 @@ func main() {
 		if *tail || *follow {
 			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
 		} else {
+			fmt.Println("Debug: Query string", rangeQuery.QueryString)
 			rangeQuery.DoQuery(queryClient, out, *statistics)
 		}
 	case instantQueryCmd.FullCommand():
