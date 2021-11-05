@@ -2322,7 +2322,7 @@ This way, one doesn't have to replicate configs in multiple places.
 [persist_tokens: <boolean>: default = false]
 
 # A common ring config to be used by all Loki rings.
-# If a common ring is given, its values are used as fallback to non-set ring values. For instance,
+# If a common ring is given, its values are used to define any undefined ring values. For instance,
 # you can expect the `heartbeat_period` defined in the common section to be used by the distributor's ring,
 # but only if the distributor's ring itself doesn't have a `heartbeat_period` set.
 [ring: <ring_config>]
