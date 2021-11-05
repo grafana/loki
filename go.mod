@@ -102,6 +102,8 @@ require (
 	k8s.io/klog v1.0.0
 )
 
+require github.com/xdg-go/scram v1.0.2
+
 require (
 	cloud.google.com/go v0.94.1 // indirect
 	cloud.google.com/go/kms v1.0.0 // indirect
@@ -243,6 +245,8 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
+	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
+	github.com/xdg-go/stringprep v1.0.2 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20200816102855-ee81675732da // indirect
 	go.etcd.io/etcd v3.3.25+incompatible // indirect
 	go.etcd.io/etcd/api/v3 v3.5.0 // indirect
