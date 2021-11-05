@@ -8,7 +8,8 @@ common:
   path_prefix: /tmp/loki
   storage:
     filesystem:
-      directory: /tmp/loki/chunks
+      chunks_directory: /tmp/loki/chunks
+      rules_directory: /tmp/loki/rules
   replication_factor: 1
   ring:
     instance_addr: 127.0.0.1

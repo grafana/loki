@@ -348,11 +348,8 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
-			// We don't use the path from the storage_config because we would put rules in with chunks
-			// Instead use the path prefix and create a `rules` directory.
-			prefix := strings.TrimSuffix(r.Common.PathPrefix, "/")
-			r.Ruler.StoreConfig.Local = local.Config{Directory: fmt.Sprintf("%s/rules", prefix)}
-			r.StorageConfig.FSConfig = r.Common.Storage.FSConfig
+			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
 		}
 	}

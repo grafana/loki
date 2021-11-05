@@ -6,7 +6,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -32,7 +31,7 @@ type Storage struct {
 	GCS      gcp.GCSConfig           `yaml:"gcs"`
 	Azure    azure.BlobStorageConfig `yaml:"azure"`
 	Swift    openstack.SwiftConfig   `yaml:"swift"`
-	FSConfig local.FSConfig          `yaml:"filesystem"`
+	FSConfig FilesystemConfig        `yaml:"filesystem"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -41,4 +40,14 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
 	s.Swift.RegisterFlagsWithPrefix(prefix+".swift", f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix+".filesystem", f)
+}
+
+type FilesystemConfig struct {
+	ChunksDirectory string `yaml:"chunks_directory"`
+	RulesDirectory  string `yaml:"rules_directory"`
+}
+
+func (cfg *FilesystemConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.ChunksDirectory, prefix+".chunk-directory", "", "Directory to store chunks in.")
+	f.StringVar(&cfg.RulesDirectory, prefix+".rules-directory", "", "Directory to store rules in.")
 }
