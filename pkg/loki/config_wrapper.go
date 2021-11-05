@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
@@ -256,7 +257,7 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 		prefix := strings.TrimSuffix(r.Common.PathPrefix, "/")
 
 		if r.Ruler.RulePath == defaults.Ruler.RulePath {
-			r.Ruler.RulePath = fmt.Sprintf("%s/rules", prefix)
+			r.Ruler.RulePath = fmt.Sprintf("%s/rules-temp", prefix)
 		}
 
 		if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
@@ -347,7 +348,10 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
-			r.Ruler.StoreConfig.Local = r.Common.Storage.FSConfig.ToCortexLocalConfig()
+			// We don't use the path from the storage_config because we would put rules in with chunks
+			// Instead use the path prefix and create a `rules` directory.
+			prefix := strings.TrimSuffix(r.Common.PathPrefix, "/")
+			r.Ruler.StoreConfig.Local = local.Config{Directory: fmt.Sprintf("%s/rules", prefix)}
 			r.StorageConfig.FSConfig = r.Common.Storage.FSConfig
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
 		}

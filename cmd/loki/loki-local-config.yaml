@@ -15,16 +15,6 @@ common:
     kvstore:
       store: inmemory
 
-#ingester:
-#  lifecycler:
-#    address: 127.0.0.1
-#    ring:
-#      kvstore:
-#        store: inmemory
-#      replication_factor: 1
-#  chunk_idle_period: 1h       # Any chunk not receiving new logs in this time will be flushed
-#  chunk_retain_period: 30s    # Must be greater than index read cache TTL if using an index cache (Default index read cache TTL is 5m)
-
 schema_config:
   configs:
     - from: 2020-10-24
@@ -35,18 +25,5 @@ schema_config:
         prefix: index_
         period: 24h
 
-#storage_config:
-#  boltdb_shipper:
-#    cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
-
-#chunk_store_config:
-#  max_look_back_period: 0s
-
-#table_manager:
-#  retention_deletes_enabled: false
-#  retention_period: 0s
-
 ruler:
-  storage:
-    type: local
   alertmanager_url: http://localhost:9093
