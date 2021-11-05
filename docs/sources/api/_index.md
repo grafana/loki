@@ -951,7 +951,6 @@ Displays a web page with the ruler hash ring status, including the state, health
 
 ### List rule groups
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /loki/api/v1/rules
@@ -999,8 +998,6 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
 
 ### Get rule groups by namespace
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 GET /loki/api/v1/rules/{namespace}
 ```
@@ -1024,8 +1021,6 @@ rules:
 
 ### Get rule group
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 GET /loki/api/v1/rules/{namespace}/{groupName}
 ```
@@ -1033,8 +1028,6 @@ GET /loki/api/v1/rules/{namespace}/{groupName}
 Returns the rule group matching the request namespace and group name.
 
 ### Set rule group
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 POST /loki/api/v1/rules/{namespace}
@@ -1073,8 +1066,6 @@ Deletes a rule group by namespace and group name. This endpoints returns `202` o
 
 ### Delete namespace
 
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
-
 ```
 DELETE /loki/api/v1/rules/{namespace}
 ```
@@ -1082,8 +1073,6 @@ DELETE /loki/api/v1/rules/{namespace}
 Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
 
 ### List rules
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/rules
@@ -1094,8 +1083,6 @@ Prometheus-compatible rules endpoint to list alerting and recording rules that a
 For more information, refer to the [Prometheus rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation.
 
 ### List alerts
-
-<span style="background-color:#f3f973;">This experimental endpoint is disabled by default and can be enabled via the -experimental.ruler.enable-api CLI flag or the YAML config option.</span>
 
 ```
 GET /prometheus/api/v1/alerts
