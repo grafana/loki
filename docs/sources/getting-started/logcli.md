@@ -120,6 +120,7 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
+	  --stdin            Take input logs from stdin
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
@@ -275,6 +276,7 @@ Flags:
                            timestamps [Local, UTC]
       --cpuprofile=""      Specify the location for writing a CPU profile.
       --memprofile=""      Specify the location for writing a memory profile.
+	  --stdin              Take input logs from stdin
       --addr="http://localhost:3100"
                            Server address. Can also be set using LOKI_ADDR env
                            var.
@@ -346,6 +348,7 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
+	  --stdin            Take input logs from stdin
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
@@ -402,6 +405,7 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
+	  --stdin            Take input logs from stdin
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
@@ -450,7 +454,7 @@ You may have to use `stdin` flag for several reasons
    - So stream selector in the query is optional e.g just `|="timeout"|logfmt|level="error"` is same as `{foo="bar"}|="timeout|logfmt|level="error"`
 
 **Examples**
-1. Line filter - `cat mylog.log | logcli query '|="too many open connections"'`
-2. Label matcher - `echo 'msg="timeout happened" level="warning"' | logcli query '|logfmt|level="warning"'`
-3. Different parsers (logfmt, json, pattern, regexp) - `cat mylog.log | logcli query '|pattern <ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>'`
-4. Line formatters - `cat mylog.log | logcli query '|logfmt|line_format "{{.query}} {{.duration}}"'`
+1. Line filter - `cat mylog.log | logcli --stdin query '|="too many open connections"'`
+2. Label matcher - `echo 'msg="timeout happened" level="warning"' | logcli --stdin query '|logfmt|level="warning"'`
+3. Different parsers (logfmt, json, pattern, regexp) - `cat mylog.log | logcli --stdin query '|pattern <ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>'`
+4. Line formatters - `cat mylog.log | logcli --stdin query '|logfmt|line_format "{{.query}} {{.duration}}"'`
