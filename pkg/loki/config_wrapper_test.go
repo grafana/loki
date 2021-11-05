@@ -94,7 +94,7 @@ common:
   path_prefix: /opt/loki`
 			config, _ := testContext(configFileString, nil)
 
-			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
@@ -105,7 +105,7 @@ common:
   path_prefix: /opt/loki/`
 			config, _ := testContext(configFileString, nil)
 
-			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
@@ -1119,7 +1119,7 @@ func TestLoopbackAppendingToFrontendV2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Frontend.FrontendV2.InfNames)
 		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Ingester.LifecyclerConfig.InfNames)
-		assert.Equal(t, []string{defaultIface}, config.Common.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Common.Ring.InstanceInterfaceNames)
 	})
 
 	t.Run("loopback shouldn't be in FrontendV2 interface names if set by user", func(t *testing.T) {
@@ -1296,13 +1296,13 @@ distributor:
 common:
   ring:
     kvstore:
-      store: consul`
+      store: etcd`
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
-		assert.Equal(t, "consul", config.Distributor.DistributorRing.KVStore.Store)
-		assert.Equal(t, "consul", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
-		assert.Equal(t, "consul", config.Ruler.Ring.KVStore.Store)
-		assert.Equal(t, "consul", config.QueryScheduler.SchedulerRing.KVStore.Store)
-		assert.Equal(t, "consul", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
 	})
 }
