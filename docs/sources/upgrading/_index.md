@@ -15,17 +15,19 @@ As more versions are released it becomes more likely unexpected problems arise m
 If possible try to stay current and do sequential updates. If you want to skip versions, try it in a development environment before attempting to upgrade production.
 
 
-## Master / Unreleased
+## Main / Unreleased
+
+## 2.4.0
 
 ### Loki
 
-#### Promtail no longer insert `promtail_instance` label when scraping `gcplog` target
-* [4556](https://github.com/grafana/loki/pull/4556) **james-callahan**: Remove `promtail_instance` label that was being added by promtail when scraping `gcplog` target.
-
 #### Ingester Lifecycler `final_sleep` now defaults to `0s`
+
 * [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
 
-This changes the default value for the `final_sleep` property of the ingester's lifecycler from `30s` to `0s`
+This final sleep exists to keep Loki running for long enough to get one final Prometheus scrape before shutting down, however it also causes Loki to sit idle for 30s on shutdown which is an annoying experience for many people.
+
+We decided the default would be better to disable this sleep behavior but anyone can set this config variable directly to return to the previous behavior.
 
 #### Ingester WAL now defaults to on, and chunk transfers are disabled by default
 
@@ -53,7 +55,7 @@ ingester:
 ```
 
 #### Memberlist config now automatically applies to all non-configured rings
-PR [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
+* [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
 
 This change affects the behavior of the ingester, distributor, and ruler rings. Previously, if you wanted to use memberlist for all of these rings, you
 had to provide a `memberlist` configuration as well as specify `store: memberlist` for the `kvstore` of each of the rings you wanted to use memberlist.
@@ -80,7 +82,7 @@ ruler:
 
 Now, if your provide a `memberlist` configuration with at least one `join_members`, loki will default all rings to use a `kvstore` of type `memberlist`.
 You can change this behavior by overriding specific configurations. For example, if you wanted to use `consul` for you `ruler` rings, but `memberlist`
-for the `ingester` and `distributor`, you could do so with the following config:
+for the `ingester` and `distributor`, you could do so with the following config (although we don't know why someone would want to do this):
 
 ```yaml
 memberlist:
@@ -113,9 +115,16 @@ server:
   grpc_server_ping_without_stream_allowed: true
 ```
 
-Please manually provide the values of `5m` and `true` (respectively) in your config if you rely on those values.
+[This issue](https://github.com/grafana/loki/issues/4375) has some more information on the change. 
 
--_add changes here which are unreleased_
+#### Some metric prefixes have changed from `cortex_` to `loki_`
+
+* [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com/grafana/loki/pull/4253) **jordanrushing**: Metrics related to chunk storage and runtime config have changed their prefixes from `cortex_` to `loki_`.
+
+```
+cortex_runtime_config* -> loki_runtime_config*
+cortex_chunks_store* -> loki_chunks_store*
+```
 
 ### Loki Config
 
@@ -137,13 +146,16 @@ present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_
 | max_streams_per_user | 0 (no limit) | 10000 |
 | reject_old_samples | true | false |
 | reject_old_samples_max_age | "168h" | "336h" |
+| per_stream_rate_limit | 3MB | - |
+| per_stream_rate_limit_burst | 15MB | - |
 
-#### Some metric prefixes have changed from `cortex_` to `loki_`
 
-PR [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com/grafana/loki/pull/4253) **jordanrushing**: Metrics related to chunk storage and runtime config have changed their prefixes from `cortex_` to `loki_`.
+### Promtail
 
-- `cortex_runtime_config*` -> `loki_runtime_config*`
-- `cortex_chunks_store*` -> `loki_chunks_store*`
+Here are important upgrade considerations for Promtail
+
+#### Promtail no longer insert `promtail_instance` label when scraping `gcplog` target
+* [4556](https://github.com/grafana/loki/pull/4556) **james-callahan**: Remove `promtail_instance` label that was being added by promtail when scraping `gcplog` target.
 
 #### Fork cortex chunk storage into Loki
 
@@ -160,8 +172,6 @@ For now, you should just ignore them.
 2021-11-04 15:30:02.437939 I | proto: duplicate proto type registered: purgeplan.ChunkDetails
 ...
 ```
-
--_add changes here which are unreleased_
 
 ## 2.3.0
 
