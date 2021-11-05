@@ -5,8 +5,6 @@ weight: 40
 
 # Matching IP addresses
 
-<span style="background-color:#f3f973;">Matching IP addresses is an experimental feature.</span>
-
 LogQL supports matching IP addresses.
 
 With logs such as
