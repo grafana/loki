@@ -18,7 +18,7 @@ func TestPool(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, enc := range supportedEncoding {
 		enc := enc
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 200; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -54,7 +54,7 @@ func TestPool(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	runtime.GC()
 
-	if !assert.LessOrEqual(t, runtime.NumGoroutine(), 2) {
+	if !assert.LessOrEqual(t, runtime.NumGoroutine(), 100) {
 		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 	}
 }
