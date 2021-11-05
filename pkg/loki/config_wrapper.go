@@ -442,6 +442,10 @@ func applyFIFOCacheConfig(r *ConfigWrapper) {
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
 	if !isRedisSet(resultsCacheConfig) && !isMemcacheSet(resultsCacheConfig) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
+		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
+		// so instead we will override them here.
+		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.MaxSizeBytes = "1GB"
+		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.Validity = 1 * time.Hour
 	}
 }
 

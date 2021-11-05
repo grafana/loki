@@ -1842,8 +1842,6 @@ chunks:
 The `compactor_config` block configures the compactor component. This component periodically
 compacts index shards to more performant forms.
 
-<span style="background-color:#f3f973;">Retention through the Compactor is experimental.</span>
-
 ```yaml
 # Directory where files can be downloaded for compaction.
 # CLI flag: -boltdb.shipper.compactor.working-directory
@@ -2364,7 +2362,7 @@ kvstore:
 
   # The prefix for the keys in the store. Should end with a /.
   # CLI flag: -<prefix>.prefix
-  [prefix: <string> | default = "schedulers/"]
+  [prefix: <string> | default = "collectors/"]
 
   # The consul_config configures the consul client.
   [consul: <consul_config>]
