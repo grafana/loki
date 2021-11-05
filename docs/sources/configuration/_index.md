@@ -314,83 +314,8 @@ The `query_scheduler_config` block configures the Loki query scheduler.
 [use_scheduler_ring: <boolean> | default = false]
 
 # The hash ring configuration. This option is required only if use_scheduler_ring is true
-scheduler_ring:
-  # The key-value store used to share the hash ring across multiple instances.
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -scheduler.ring.store
-    [store: <string> | default = "memberlist"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -scheduler.ring.prefix
-    [prefix: <string> | default = "schedulers/"]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: scheduler.ring
-    [consul: <consul_config>]
-
-    # The etcd_config configures the etcd client.
-    # The CLI flags prefix for this block config is: scheduler.ring
-    [etcd: <etcd_config>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -scheduler.ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -scheduler.ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -scheduler.ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -scheduler.ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Interval between heartbeats sent to the ring. 0 = disabled.
-  # CLI flag: -scheduler.ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 15s]
-
-  # The heartbeat timeout after which store gateways are considered unhealthy
-  # within the ring. 0 = never (timeout disabled). This option needs be set both
-  # on the store-gateway and querier when running in microservices mode.
-  # CLI flag: -scheduler.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # File path where tokens are stored. If empty, tokens are neither stored at
-  # shutdown nor restored at startup.
-  # CLI flag: -scheduler.ring.tokens-file-path
-  [tokens_file_path: <string> | default = ""]
-
-  # True to enable zone-awareness and replicate blocks across different
-  # availability zones.
-  # CLI flag: -scheduler.ring.zone-awareness-enabled
-  [zone_awareness_enabled: <boolean> | default = false]
-
-  # Name of network interface to read addresses from.
-  # CLI flag: -scheduler.ring.instance-interface-names
-  [instance_interface_names: <list of string> | default = [eth0 en0]]
-
-  # IP address to advertise in the ring.
-  # CLI flag: -scheduler.ring.instance-addr
-  [instance_addr: <list of string> | default = first from instance_interface_names]
-
-  # Port to advertise in the ring
-  # CLI flag: -scheduler.ring.instance-port
-  [instance_port: <list of string> | default = server.grpc-listen-port]
-
-  # Instance ID to register in the ring.
-  # CLI flag: -scheduler.ring.instance-id
-  [instance_id: <list of string> | default = os.Hostname()]
-
-  # The availability zone where this instance is running. Required if
-  # zone-awareness is enabled.
-  # CLI flag: -scheduler.ring.instance-availability-zone
-  [instance_availability_zone: <string> | default = ""]
+# The CLI flags prefix for this block config is scheduler.ring
+[scheduler_ring: <ring_config>]
 ```
 
 ## query_frontend_config
@@ -717,62 +642,9 @@ remote_write:
 # CLI flag: -ruler.search-pending-for
 [search_pending_for: <duration> | default = 5m]
 
-ring:
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -ruler.ring.store
-    [store: <string> | default = "consul"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -ruler.ring.prefix
-    [prefix: <string> | default = "rulers/"]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: ruler.ring
-    [consul: <consul_config>]
-
-    # The etcd_config configures the etcd client.
-    # The CLI flags prefix for this block config is: ruler.ring
-    [etcd: <etcd_config>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -ruler.ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -ruler.ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -ruler.ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -ruler.ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Period at which to heartbeat to the ring.
-  # CLI flag: -ruler.ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 5s]
-
-  # The heartbeat timeout after which rulers are considered unhealthy within the
-  # ring.
-  # CLI flag: -ruler.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # Number of tokens for each ingester.
-  # CLI flag: -ruler.ring.num-tokens
-  [num_tokens: <int> | default = 128]
-
-# Period with which to attempt to flush rule groups.
-# CLI flag: -ruler.flush-period
-[flush_period: <duration> | default = 1m]
-
-# Enable the Ruler API.
-# CLI flag: -ruler.enable-api
-[enable_api: <boolean> | default = false]
+# Ring used by Loki ruler.
+# The CLI flags prefix for this block config is ruler.ring
+[ring: <ring_config>]
 ```
 
 ## azure_storage_config
@@ -2017,83 +1889,8 @@ compacts index shards to more performant forms.
 [max_compaction_parallelism: <int> | default = 1]
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
-compactor_ring:
-  # The key-value store used to share the hash ring across multiple instances.
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -boltdb.shipper.compactor.ring.store
-    [store: <string> | default = "memberlist"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -boltdb.shipper.compactor.ring.prefix
-    [prefix: <string> | default = "compactors/"]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
-    [consul: <consul_config>]
-
-    # The etcd_config configures the etcd client.
-    # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
-    [etcd: <etcd_config>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Interval between heartbeats sent to the ring. 0 = disabled.
-  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 15s]
-
-  # The heartbeat timeout after which store gateways are considered unhealthy
-  # within the ring. 0 = never (timeout disabled). This option needs be set both
-  # on the store-gateway and querier when running in microservices mode.
-  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # File path where tokens are stored. If empty, tokens are neither stored at
-  # shutdown nor restored at startup.
-  # CLI flag: -boltdb.shipper.compactor.ring.tokens-file-path
-  [tokens_file_path: <string> | default = ""]
-
-  # True to enable zone-awareness and replicate blocks across different
-  # availability zones.
-  # CLI flag: -boltdb.shipper.compactor.ring.zone-awareness-enabled
-  [zone_awareness_enabled: <boolean> | default = false]
-
-  # Name of network interface to read addresses from.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-interface-names
-  [instance_interface_names: <list of string> | default = [eth0 en0]]
-
-  # IP address to advertise in the ring.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-addr
-  [instance_addr: <list of string> | default = first from instance_interface_names]
-
-  # Port to advertise in the ring
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-port
-  [instance_port: <list of string> | default = server.grpc-listen-port]
-
-  # Instance ID to register in the ring.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-id
-  [instance_id: <list of string> | default = os.Hostname()]
-
-  # The availability zone where this instance is running. Required if
-  # zone-awareness is enabled.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
-  [instance_availability_zone: <string> | default = ""]
+# The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
+[compactor_ring: <ring_config>]
 ```
 
 ## limits_config
@@ -2523,6 +2320,12 @@ This way, one doesn't have to replicate configs in multiple places.
 # When true, the ingester, compactor and query_scheduler ring tokens will be saved to files in the path_prefix directory
 # Loki will error if you set this to true and path_prefix is empty.
 [persist_tokens: <boolean>: default = false]
+
+# A common ring config to be used by all Loki rings.
+# If a common ring is given, its values are used as fallback to non-set ring values. For instance,
+# you can expect the `heartbeat_period` defined in the common section to be used by the distributor's ring,
+# but only if the distributor's ring itself doesn't have a `heartbeat_period` set.
+[ring: <ring_config>]
 ```
 
 ### common_storage_config
@@ -2545,6 +2348,87 @@ If any specific configs for an object storage client have been provided elsewher
 
 # Configures a (local) filesystem as the common storage.
 [filesystem: <local_storage_config>]
+```
+
+### ring_config
+
+The `ring_config` blocks defines a ring configuration used by Loki component.
+
+```yaml
+# The key-value store used to share the hash ring across multiple instances.
+kvstore:
+  # Backend storage to use for the ring. Supported values are: consul, etcd,
+  # inmemory, memberlist, multi.
+  # CLI flag: -<prefix>.store
+  [store: <string> | default = "memberlist"]
+
+  # The prefix for the keys in the store. Should end with a /.
+  # CLI flag: -<prefix>.prefix
+  [prefix: <string> | default = "schedulers/"]
+
+  # The consul_config configures the consul client.
+  [consul: <consul_config>]
+
+  # The etcd_config configures the etcd client.
+  [etcd: <etcd_config>]
+
+  multi:
+    # Primary backend storage used by multi-client.
+    # CLI flag: -<prefix>.multi.primary
+    [primary: <string> | default = ""]
+
+    # Secondary backend storage used by multi-client.
+    # CLI flag: -<prefix>.multi.secondary
+    [secondary: <string> | default = ""]
+
+    # Mirror writes to secondary store.
+    # CLI flag: -<prefix>.multi.mirror-enabled
+    [mirror_enabled: <boolean> | default = false]
+
+    # Timeout for storing value to secondary store.
+    # CLI flag: -<prefix>.multi.mirror-timeout
+    [mirror_timeout: <duration> | default = 2s]
+
+# Interval between heartbeats sent to the ring. 0 = disabled.
+# CLI flag: -<prefix>.heartbeat-period
+[heartbeat_period: <duration> | default = 15s]
+
+# The heartbeat timeout after which store gateways are considered unhealthy
+# within the ring. 0 = never (timeout disabled). This option needs be set both
+# on the store-gateway and querier when running in microservices mode.
+# CLI flag: -<prefix>.heartbeat-timeout
+[heartbeat_timeout: <duration> | default = 1m]
+
+# File path where tokens are stored. If empty, tokens are neither stored at
+# shutdown nor restored at startup.
+# CLI flag: -<prefix>.tokens-file-path
+[tokens_file_path: <string> | default = ""]
+
+# True to enable zone-awareness and replicate blocks across different
+# availability zones.
+# CLI flag: -<prefix>.zone-awareness-enabled
+[zone_awareness_enabled: <boolean> | default = false]
+
+# Name of network interface to read addresses from.
+# CLI flag: -<prefix>.instance-interface-names
+[instance_interface_names: <list of string> | default = [eth0 en0]]
+
+# IP address to advertise in the ring.
+# CLI flag: -<prefix>.instance-addr
+[instance_addr: <list of string> | default = first from instance_interface_names]
+
+# Port to advertise in the ring
+# CLI flag: -<prefix>.instance-port
+[instance_port: <list of string> | default = server.grpc-listen-port]
+
+# Instance ID to register in the ring.
+# CLI flag: -<prefix>.instance-id
+[instance_id: <list of string> | default = os.Hostname()]
+
+# The availability zone where this instance is running. Required if
+# zone-awareness is enabled.
+# CLI flag: -<prefix>.instance-availability-zone
+[instance_availability_zone: <string> | default = ""]
 ```
 
 ## Runtime Configuration file
