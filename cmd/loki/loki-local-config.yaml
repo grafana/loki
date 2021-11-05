@@ -12,7 +12,6 @@ common:
 
 ingester:
   lifecycler:
-    address: 127.0.0.1
     ring:
       kvstore:
         store: inmemory
