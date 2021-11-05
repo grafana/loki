@@ -145,6 +145,22 @@ PR [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com
 - `cortex_runtime_config*` -> `loki_runtime_config*`
 - `cortex_chunks_store*` -> `loki_chunks_store*`
 
+#### Fork cortex chunk storage into Loki
+
+PR [#3842](https://github.com/grafana/loki/pull/3842) **cyriltovena**: Fork cortex chunk storage into Loki.
+
+Since Cortex doesn't plan to use `chunk` package anymore, we decided to fork it into our storage package to
+be able to evolve and modify it easily. However, as a side-effect, while Cortex doesn't remove this package from
+its source code, we have duplicated protos being registered, which raises messages similar to the ones below.
+For now, you should just ignore them.
+
+```
+2021-11-04 15:30:02.437911 I | proto: duplicate proto type registered: purgeplan.DeletePlan
+2021-11-04 15:30:02.437936 I | proto: duplicate proto type registered: purgeplan.ChunksGroup
+2021-11-04 15:30:02.437939 I | proto: duplicate proto type registered: purgeplan.ChunkDetails
+...
+```
+
 -_add changes here which are unreleased_
 
 ## 2.3.0
