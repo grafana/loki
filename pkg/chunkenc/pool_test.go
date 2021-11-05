@@ -1,0 +1,60 @@
+package chunkenc
+
+import (
+	"bytes"
+	"io"
+	"os"
+	"runtime"
+	"runtime/pprof"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestPool(t *testing.T) {
+	var wg sync.WaitGroup
+	for _, enc := range supportedEncoding {
+		enc := enc
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				var (
+					buf   = bytes.NewBuffer(nil)
+					res   = make([]byte, 1024)
+					wpool = getWriterPool(enc)
+					rpool = getReaderPool(enc)
+				)
+
+				w := wpool.GetWriter(buf)
+				defer wpool.PutWriter(w)
+				_, err := w.Write([]byte("test"))
+				require.NoError(t, err)
+				require.NoError(t, w.Close())
+
+				require.True(t, buf.Len() != 0, enc)
+				r := rpool.GetReader(bytes.NewBuffer(buf.Bytes()))
+				defer rpool.PutReader(r)
+				n, err := r.Read(res)
+				if err != nil {
+					require.Error(t, err, io.EOF)
+				}
+				require.Equal(t, 4, n, enc.String())
+				require.Equal(t, []byte("test"), res[:n], enc)
+			}()
+		}
+	}
+
+	wg.Wait()
+
+	runtime.GC()
+	time.Sleep(20 * time.Millisecond)
+	runtime.GC()
+
+	if !assert.LessOrEqual(t, runtime.NumGoroutine(), 2) {
+		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+	}
+}
