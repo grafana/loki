@@ -35,7 +35,7 @@ func TestOverridesExporter_noConfig(t *testing.T) {
 func TestOverridesExporter_withConfig(t *testing.T) {
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
-			MaxQueriersPerTenant: 5,
+			MaxGlobalStreamsPerUser: 1,
 		},
 	}
 	overrides, _ := NewOverrides(Limits{}, newMockTenantLimits(tenantLimits))

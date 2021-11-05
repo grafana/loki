@@ -719,7 +719,7 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 	t.Cfg.QueryScheduler.SchedulerRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
-	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, disabledShuffleShardingLimits{}, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
