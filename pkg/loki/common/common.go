@@ -13,14 +13,18 @@ import (
 
 // Config holds common config that can be shared between multiple other config sections
 type Config struct {
-	PathPrefix    string          `yaml:"path_prefix"`
-	Storage       Storage         `yaml:"storage"`
-	PersistTokens bool            `yaml:"persist_tokens"`
-	Ring          util.RingConfig `yaml:"ring"`
+	PathPrefix        string          `yaml:"path_prefix"`
+	Storage           Storage         `yaml:"storage"`
+	PersistTokens     bool            `yaml:"persist_tokens"`
+	ReplicationFactor int             `yaml:"replication_factor"`
+	Ring              util.RingConfig `yaml:"ring"`
 }
 
-func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Storage.RegisterFlagsWithPrefix("common.storage", f)
+func (c *Config) RegisterFlags(_ *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+	throwaway.IntVar(&c.ReplicationFactor, "common.replication-factor", 3, "How many ingesters incoming data should be replicated to.")
+	c.Storage.RegisterFlagsWithPrefix("common.storage", throwaway)
+	c.Ring.RegisterFlagsWithPrefix("", "collectors/", throwaway)
 }
 
 type Storage struct {

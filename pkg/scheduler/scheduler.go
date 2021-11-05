@@ -133,7 +133,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.QuerierForgetDelay = 0
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query scheduler create a ring and the frontend and frontend_worker use this ring to get the addresses of the query schedulers. If frontend_address and scheduler_address are not present in the config this value will be toggle by Loki to true")
-	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "schedulers/", f)
+	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f)
 }
 
 // NewScheduler creates a new Scheduler.

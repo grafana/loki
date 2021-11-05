@@ -159,6 +159,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
 	}
 
 	// Distributor
@@ -169,8 +170,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Distributor.DistributorRing.InstanceAddr = rc.InstanceAddr
 		r.Distributor.DistributorRing.InstanceID = rc.InstanceID
 		r.Distributor.DistributorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.Distributor.DistributorRing.KVStore.Store = rc.KVStore.Store
-		r.Distributor.DistributorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.Distributor.DistributorRing.KVStore = rc.KVStore
 	}
 
 	// Ruler
@@ -181,8 +181,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ruler.Ring.InstanceAddr = rc.InstanceAddr
 		r.Ruler.Ring.InstanceID = rc.InstanceID
 		r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.Ruler.Ring.KVStore.Store = rc.KVStore.Store
-		r.Ruler.Ring.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.Ruler.Ring.KVStore = rc.KVStore
 	}
 
 	// Query Scheduler
@@ -195,8 +194,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.QueryScheduler.SchedulerRing.InstanceZone = rc.InstanceZone
 		r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.QueryScheduler.SchedulerRing.KVStore.Store = rc.KVStore.Store
-		r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.QueryScheduler.SchedulerRing.KVStore = rc.KVStore
 	}
 
 	// Compactor
@@ -209,8 +207,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.CompactorConfig.CompactorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.CompactorConfig.CompactorRing.InstanceZone = rc.InstanceZone
 		r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.CompactorConfig.CompactorRing.KVStore.Store = rc.KVStore.Store
-		r.CompactorConfig.CompactorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.CompactorConfig.CompactorRing.KVStore = rc.KVStore
 	}
 }
 
