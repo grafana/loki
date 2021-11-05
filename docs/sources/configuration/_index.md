@@ -2362,7 +2362,7 @@ kvstore:
 
   # The prefix for the keys in the store. Should end with a /.
   # CLI flag: -<prefix>.prefix
-  [prefix: <string> | default = "schedulers/"]
+  [prefix: <string> | default = "collectors/"]
 
   # The consul_config configures the consul client.
   [consul: <consul_config>]
