@@ -17,7 +17,6 @@ import (
 	cortex_aws "github.com/cortexproject/cortex/pkg/chunk/aws"
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
-	cortex_local "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 
 	"github.com/grafana/loki/pkg/loki/common"
@@ -199,7 +198,7 @@ memberlist:
 		//    gcs: gcp.GCSConfig
 		//    s3: aws.S3Config
 		//    swift: openstack.SwiftConfig
-		//    filesystem: local.FSConfig
+		//    filesystem: Filesystem
 
 		t.Run("does not automatically configure cloud object storage", func(t *testing.T) {
 			config, defaults := testContext(emptyConfigString, nil)
@@ -446,18 +445,15 @@ memberlist:
 			fsConfig := `common:
   storage:
     filesystem:
-      directory: /tmp/foo`
+      chunks_directory: /tmp/chunks
+      rules_directory: /tmp/rules`
 
 			config, defaults := testContext(fsConfig, nil)
 
 			assert.Equal(t, "local", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_local.Config{
-				config.Ruler.StoreConfig.Local,
-				config.StorageConfig.FSConfig.ToCortexLocalConfig(),
-			} {
-				assert.Equal(t, "/tmp/foo", actual.Directory)
-			}
+			assert.Equal(t, "/tmp/rules", config.Ruler.StoreConfig.Local.Directory)
+			assert.Equal(t, "/tmp/chunks", config.StorageConfig.FSConfig.Directory)
 
 			//should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
@@ -616,7 +612,8 @@ storage_config:
 					configString: `common:
   storage:
     filesystem:
-      directory: /tmp/foo`,
+      chunks_directory: /tmp/chunks
+      rules_directory: /tmp/rules`,
 					expected: storage.StorageTypeFileSystem,
 				},
 			} {

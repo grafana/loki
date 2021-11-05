@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
@@ -343,7 +344,11 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, defaults.StorageConfig.FSConfig) {
+	filesystemDefaults := common.FilesystemConfig{}
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+	filesystemDefaults.RegisterFlagsWithPrefix("", throwaway)
+
+	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, filesystemDefaults) {
 		configsFound++
 
 		applyConfig = func(r *ConfigWrapper) {
