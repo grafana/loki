@@ -50,11 +50,10 @@ func TestPool(t *testing.T) {
 
 	wg.Wait()
 
-	runtime.GC()
-	time.Sleep(20 * time.Millisecond)
-	runtime.GC()
-
-	if !assert.LessOrEqual(t, runtime.NumGoroutine(), 100) {
+	if !assert.Eventually(t, func() bool {
+		runtime.GC()
+		return runtime.NumGoroutine() <= 50
+	}, 5*time.Second, 10*time.Millisecond) {
 		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 	}
 }
