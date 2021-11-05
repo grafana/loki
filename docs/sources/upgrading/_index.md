@@ -21,6 +21,23 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ### Loki
 
+#### Log messages on startup: proto: duplicate proto type registered:
+
+PR [#3842](https://github.com/grafana/loki/pull/3842) **cyriltovena**: Fork cortex chunk storage into Loki.
+
+Since Cortex doesn't plan to use the `chunk` package anymore, we decided to fork it into our storage package to
+be able to evolve and modify it easily. However, as a side-effect, we still vendor Cortex which includes this forked
+code and protobuf files resulting in log messages like these at startup:
+
+```
+2021-11-04 15:30:02.437911 I | proto: duplicate proto type registered: purgeplan.DeletePlan
+2021-11-04 15:30:02.437936 I | proto: duplicate proto type registered: purgeplan.ChunksGroup
+2021-11-04 15:30:02.437939 I | proto: duplicate proto type registered: purgeplan.ChunkDetails
+...
+```
+
+The messages are harmless and we will work to remove them in the future.
+
 #### Ingester Lifecycler `final_sleep` now defaults to `0s`
 
 * [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
@@ -149,6 +166,11 @@ present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_
 | per_stream_rate_limit | 3MB | - |
 | per_stream_rate_limit_burst | 15MB | - |
 
+#### Change of configuration defaults
+
+| config | new default | old default|
+| chunk_retain_period | 30s | 0s |
+| chunk_idle_period |  |  |
 
 ### Promtail
 
@@ -157,21 +179,6 @@ Here are important upgrade considerations for Promtail
 #### Promtail no longer insert `promtail_instance` label when scraping `gcplog` target
 * [4556](https://github.com/grafana/loki/pull/4556) **james-callahan**: Remove `promtail_instance` label that was being added by promtail when scraping `gcplog` target.
 
-#### Fork cortex chunk storage into Loki
-
-PR [#3842](https://github.com/grafana/loki/pull/3842) **cyriltovena**: Fork cortex chunk storage into Loki.
-
-Since Cortex doesn't plan to use `chunk` package anymore, we decided to fork it into our storage package to
-be able to evolve and modify it easily. However, as a side-effect, while Cortex doesn't remove this package from
-its source code, we have duplicated protos being registered, which raises messages similar to the ones below.
-For now, you should just ignore them.
-
-```
-2021-11-04 15:30:02.437911 I | proto: duplicate proto type registered: purgeplan.DeletePlan
-2021-11-04 15:30:02.437936 I | proto: duplicate proto type registered: purgeplan.ChunksGroup
-2021-11-04 15:30:02.437939 I | proto: duplicate proto type registered: purgeplan.ChunkDetails
-...
-```
 
 ## 2.3.0
 
