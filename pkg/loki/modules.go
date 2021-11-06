@@ -337,7 +337,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 		switch true {
-		case t.Cfg.isModuleEnabled(Ingester):
+		case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
 			// We do not want ingester to unnecessarily keep downloading files
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
 			// Use fifo cache for caching index in memory.
@@ -353,7 +353,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 				},
 			}
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
 			// We do not want query to do any updates to index
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
@@ -370,7 +370,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		boltdbShipperMinIngesterQueryStoreDuration := boltdbShipperMinIngesterQueryStoreDuration(t.Cfg)
 		switch true {
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
 			// Do not use the AsyncStore if the querier is configured with QueryStoreOnly set to true
 			if t.Cfg.Querier.QueryStoreOnly {
 				break
