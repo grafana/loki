@@ -3,7 +3,7 @@ name: publish_docs
 on:
   push:
     branches:
-    - main
+    - release-2.4
     paths:
     - 'docs/sources/**'
 
