@@ -5,6 +5,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/Shopify/sarama"
+	"github.com/grafana/dskit/flagext"
+
 	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
@@ -244,6 +247,52 @@ type KafkaTargetConfig struct {
 
 	// Rebalancing strategy to use. (e.g sticky, roundrobin or range)
 	Assignor string `yaml:"assignor"`
+
+	// Authentication strategy with Kafka brokers
+	Authentication KafkaAuthentication `yaml:"authentication"`
+}
+
+// KafkaAuthenticationType specifies method to authenticate with Kafka brokers
+type KafkaAuthenticationType string
+
+const (
+	// KafkaAuthenticationTypeNone represents using no authentication
+	KafkaAuthenticationTypeNone = "none"
+	// KafkaAuthenticationTypeSSL represents using SSL/TLS to authenticate
+	KafkaAuthenticationTypeSSL = "ssl"
+	// KafkaAuthenticationTypeSASL represents using SASL to authenticate
+	KafkaAuthenticationTypeSASL = "sasl"
+)
+
+// KafkaAuthentication describe the configuration for authentication with Kafka brokers
+type KafkaAuthentication struct {
+	// Type is authentication type
+	// Possible values: none, sasl and ssl (defaults to none).
+	Type KafkaAuthenticationType `yaml:"type"`
+
+	// TLSConfig is used for TLS encryption and authentication with Kafka brokers
+	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
+
+	// SASLConfig is used for SASL authentication with Kafka brokers
+	SASLConfig KafkaSASLConfig `yaml:"sasl_config,omitempty"`
+}
+
+// KafkaSASLConfig describe the SASL configuration for authentication with Kafka brokers
+type KafkaSASLConfig struct {
+	// SASL mechanism. Supports PLAIN, SCRAM-SHA-256 and SCRAM-SHA-512
+	Mechanism sarama.SASLMechanism `yaml:"mechanism"`
+
+	// SASL Username
+	User string `yaml:"user"`
+
+	// SASL Password for the User
+	Password flagext.Secret `yaml:"password"`
+
+	// UseTLS sets whether TLS is used with SASL
+	UseTLS bool `yaml:"use_tls"`
+
+	// TLSConfig is used for SASL over TLS. It is used only when UseTLS is true
+	TLSConfig promconfig.TLSConfig `yaml:",inline"`
 }
 
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
