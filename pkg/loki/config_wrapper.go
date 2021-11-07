@@ -473,7 +473,7 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 // for at least as long as the TTL on the index queries cache.
 func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Set the retain period to the cache validity plus one minute. One minute is arbitray but leaves some
+		// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
 		// buffer to make sure the chunks are there until the index entries expire.
 		cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
 	}
