@@ -251,7 +251,12 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 	}, nil
 }
 
-func (o *Overrides) AllByUserID() map[string]*Limits { return o.tenantLimits.AllByUserID() }
+func (o *Overrides) AllByUserID() map[string]*Limits {
+	if o.tenantLimits != nil {
+		return o.tenantLimits.AllByUserID()
+	}
+	return nil
+}
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).
