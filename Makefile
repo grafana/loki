@@ -599,8 +599,9 @@ fmt-jsonnet:
 		xargs -n 1 -- jsonnetfmt -i
 
 lint-scripts:
+    # Ignore https://github.com/koalaman/shellcheck/wiki/SC2312
 	@find . -name '*.sh' -not -path '*/vendor/*' -print0 | \
-		xargs -0 -n1 shellcheck -x -o all
+		xargs -0 -n1 shellcheck -e SC2312 -x -o all
 
 
 # search for dead link in our documentation.
