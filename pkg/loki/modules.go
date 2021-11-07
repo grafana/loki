@@ -340,15 +340,16 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
 			// We do not want ingester to unnecessarily keep downloading files
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
-			// Use fifo cache for caching index in memory.
+			// Use fifo cache for caching index in memory, this also significantly helps performance.
 			t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
 					MaxSizeBytes: "200 MB",
-					// We snapshot the index in ingesters every minute for reads so reduce the index cache validity by a minute.
-					// This is usually set in StorageConfig.IndexCacheValidity but since this is exclusively used for caching the index entries,
-					// I(Sandeep) am setting it here which also helps reduce some CPU cycles and allocations required for
-					// unmarshalling the cached data to check the expiry.
+					// This is a small hack to save some CPU cycles.
+					// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
+					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
+					// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
+					// having to deserialize the object.
 					Validity: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
