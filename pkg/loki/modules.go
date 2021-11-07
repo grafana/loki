@@ -337,23 +337,28 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 		switch true {
-		case t.Cfg.isModuleEnabled(Ingester):
+		case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
 			// We do not want ingester to unnecessarily keep downloading files
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
-			// Use fifo cache for caching index in memory.
+			// Use fifo cache for caching index in memory, this also significantly helps performance.
 			t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
 					MaxSizeBytes: "200 MB",
-					// We snapshot the index in ingesters every minute for reads so reduce the index cache validity by a minute.
-					// This is usually set in StorageConfig.IndexCacheValidity but since this is exclusively used for caching the index entries,
-					// I(Sandeep) am setting it here which also helps reduce some CPU cycles and allocations required for
-					// unmarshalling the cached data to check the expiry.
+					// This is a small hack to save some CPU cycles.
+					// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
+					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
+					// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
+					// having to deserialize the object.
 					Validity: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
+			// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
+			// have query gaps on chunks flushed after an index entry is cached by keeping them retained in the ingester
+			// and queried as part of live data until the cache TTL expires on the index entry.
+			t.Cfg.Ingester.RetainPeriod = t.Cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
 			// We do not want query to do any updates to index
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
@@ -370,7 +375,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		boltdbShipperMinIngesterQueryStoreDuration := boltdbShipperMinIngesterQueryStoreDuration(t.Cfg)
 		switch true {
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
 			// Do not use the AsyncStore if the querier is configured with QueryStoreOnly set to true
 			if t.Cfg.Querier.QueryStoreOnly {
 				break

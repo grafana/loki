@@ -1303,3 +1303,31 @@ common:
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
 	})
 }
+
+func Test_applyChunkRetain(t *testing.T) {
+	t.Run("chunk retain is unchanged if no index queries cache is defined", func(t *testing.T) {
+		yamlContent := ``
+		config, defaults, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, defaults.Ingester.RetainPeriod, config.Ingester.RetainPeriod)
+	})
+
+	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
+		yamlContent := `
+storage_config:
+  index_cache_validity: 10m
+  index_queries_cache_config:
+    memcached:
+      batch_size: 256
+      parallelism: 10
+    memcached_client:
+      consistent_hash: true
+      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      service: memcached-client
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
+	})
+
+}
