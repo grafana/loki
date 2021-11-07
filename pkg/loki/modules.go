@@ -353,6 +353,10 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 					Validity: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
+			// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
+			// have query gaps on chunks flushed after an index entry is cached by keeping them retained in the ingester
+			// and queried as part of live data until the cache TTL expires on the index entry.
+			t.Cfg.Ingester.RetainPeriod = t.Cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
 		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
 			// We do not want query to do any updates to index

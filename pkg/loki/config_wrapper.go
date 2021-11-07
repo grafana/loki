@@ -101,6 +101,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyFIFOCacheConfig(r)
 		applyIngesterFinalSleep(r)
+		applyChunkRetain(r, &defaults)
 
 		return nil
 	}
@@ -463,4 +464,17 @@ func isMemcacheSet(cfg cortexcache.Config) bool {
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.FinalSleep = 0 * time.Second
+}
+
+// applyChunkRetain is used to set chunk retain based on having an index query cache configured
+// We retain chunks for at least as long as the index queries cache TTL. When an index entry is
+// cached, any chunks flushed after that won't be in the cached entry. To make sure their data is
+// available the RetainPeriod keeps them available in the ingesters live data. We want to retain them
+// for at least as long as the TTL on the index queries cache.
+func applyChunkRetain(cfg, defaults *ConfigWrapper) {
+	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
+		// Set the retain period to the cache validity plus one minute. One minute is arbitray but leaves some
+		// buffer to make sure the chunks are there until the index entries expire.
+		cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+	}
 }
