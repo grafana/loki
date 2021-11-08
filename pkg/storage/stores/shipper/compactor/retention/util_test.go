@@ -29,7 +29,7 @@ import (
 )
 
 func dayFromTime(t model.Time) chunk.DayTime {
-	parsed, err := time.Parse("2006-01-02", t.Time().Format("2006-01-02"))
+	parsed, err := time.Parse("2006-01-02", t.Time().In(time.UTC).Format("2006-01-02"))
 	if err != nil {
 		panic(err)
 	}
