@@ -56,6 +56,24 @@ workspace:
   base: /src
   path: loki
 ---
+kind: pipeline
+name: benchmark-cron
+node:
+  type: no-parallel
+steps:
+- commands:
+  - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/
+  image: grafana/loki-build-image:0.18.0
+  name: LogQL
+trigger:
+  cron:
+  - loki-bench
+  event:
+  - cron
+workspace:
+  base: /src
+  path: loki
+---
 depends_on:
 - check
 kind: pipeline
@@ -936,6 +954,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 7b6eb119ab31c369dda4d65a5b26aae344e0dd4815196bfef75f93e99ebb202b
+hmac: 6b8d9fa66b043f8338f674bb0c4deb881195d23d9ce048ad1ed284483b873ee3
 
 ...
