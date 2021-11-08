@@ -70,6 +70,12 @@ trigger:
   - loki-bench
   event:
   - cron
+when:
+  ref:
+    include:
+    - refs/heads/main
+    - refs/heads/k??
+    - refs/tags/v*
 workspace:
   base: /src
   path: loki
@@ -954,6 +960,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 6b8d9fa66b043f8338f674bb0c4deb881195d23d9ce048ad1ed284483b873ee3
+hmac: d01fd567ac05af566f782cc8ad25381206dc7f572e9845316938456449fe92c6
 
 ...
