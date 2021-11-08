@@ -301,7 +301,7 @@ scrape_configs:
 ```
 
 Only the `brokers` and `topics` is required.
-see the [configuration](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#kafka) section for more information.
+see the [configuration](../../configuration/#kafka) section for more information.
 
 ## Relabeling
 

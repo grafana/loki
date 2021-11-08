@@ -14,18 +14,146 @@ If we have any expectation of difficulty upgrading we will document it here.
 As more versions are released it becomes more likely unexpected problems arise moving between multiple versions at once.
 If possible try to stay current and do sequential updates. If you want to skip versions, try it in a development environment before attempting to upgrade production.
 
+# Checking for config changes
 
-## Master / Unreleased
+Using docker you can check changes between 2 versions of Loki with a command like this:
+
+```
+export OLD_LOKI=2.3.0
+export NEW_LOKI=2.4.0
+export CONFIG_FILE=loki-local-config.yaml
+diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
+```
+
+the `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
+
+The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
+
+## Main / Unreleased
+
+## 2.4.0
+
+The following are important changes which should be reviewed and understood prior to upgrading Loki.
 
 ### Loki
 
-#### Promtail no longer insert `promtail_instance` label when scraping `gcplog` target
-* [4556](https://github.com/grafana/loki/pull/4556) **james-callahan**: Remove `promtail_instance` label that was being added by promtail when scraping `gcplog` target.
+The following changes pertain to upgrading Loki.
+
+#### The single binary no longer runs a table-manager
+
+Single binary Loki means running loki with `-target=all` which is the default if no `-target` flag is passed.
+
+This will impact anyone in the following scenarios:
+
+1. Running a single binary Loki with any index type other than `boltdb-shipper` or `boltdb`
+2. Relying on retention with the configs `retention_deletes_enabled` and `retention_period`
+
+Anyone in situation #1 who is not using `boltdb-shipper` or `boltdb` (e.g. `cassandra` or `bigtable`) should modify their Loki command to include `-target=all,table-manager` this will instruct Loki to run a table-manager for you.
+
+Anyone in situation #2, you have two options, the first (and not recommended) is to run Loki with a table-manager by adding `-target=all,table-manager`.
+
+The second and recommended solution, is to use deletes via the compactor:
+
+```
+compactor:
+  retention_enabled: true
+limits_config:
+  retention_period: [30d]
+```
+
+See the [retention docs](../operations/storage/retention) for more info.
+
+#### Log messages on startup: proto: duplicate proto type registered:
+
+PR [#3842](https://github.com/grafana/loki/pull/3842) **cyriltovena**: Fork cortex chunk storage into Loki.
+
+Since Cortex doesn't plan to use the `chunk` package anymore, we decided to fork it into our storage package to
+be able to evolve and modify it easily. However, as a side-effect, we still vendor Cortex which includes this forked
+code and protobuf files resulting in log messages like these at startup:
+
+```
+2021-11-04 15:30:02.437911 I | proto: duplicate proto type registered: purgeplan.DeletePlan
+2021-11-04 15:30:02.437936 I | proto: duplicate proto type registered: purgeplan.ChunksGroup
+2021-11-04 15:30:02.437939 I | proto: duplicate proto type registered: purgeplan.ChunkDetails
+...
+```
+
+The messages are harmless and we will work to remove them in the future.
+
+#### Change of some default limits to common values
+
+PR [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: the default value of some limits were changed to protect users from overwhelming their cluster with ingestion load caused by relying on default configs.
+
+We suggest you double check if the following parameters are
+present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_user`
+`max_query_length` `max_query_parallelism` `max_streams_per_user`
+`reject_old_samples` `reject_old_samples_max_age`. If they are not present, we recommend you double check that the new values will not negatively impact your system. The changes are:
+
+| config | new default | old default |
+| --- | --- | --- |
+| ingestion_rate_strategy | "global" | "local" |
+| max_global_streams_per_user | 5000 | 0 (no limit) |
+| max_query_length | "721h" | "0h" (no limit) |
+| max_query_parallelism | 32 | 14 |
+| max_streams_per_user | 0 (no limit) | 10000 |
+| reject_old_samples | true | false |
+| reject_old_samples_max_age | "168h" | "336h" |
+| per_stream_rate_limit | 3MB | - |
+| per_stream_rate_limit_burst | 15MB | - |
+
+#### Change of configuration defaults
+
+| config | new default | old default|
+| --- | --- | --- |
+| chunk_retain_period | 30s | 0s |
+| chunk_idle_period | 1h | 30m |
+| chunk_target_size | 1048576 | 1572864 |
+
+* chunk_retain_period is necessary when using an index queries cache which is not enabled by default. If you have configured an index_queries_cache_config section make sure that you set chunk_retain_period larger than your cache TTL
+* chunk_idle_period is how long before a chunk which receives no logs is flushed.
+* chunk_target_size was increased to flush slightly larger chunks, if using memcache for a chunks store make sure it will accept files up to 1.5MB in size.
+
+#### In memory FIFO caches enabled by default
+
+Loki now enables a results cache and chunks cache in memory to improve performance. This can however increase memory usage as the cache's by default are allowed to consume up to 1GB of memory.
+
+If you would like to disable these caches or change this memory limit:
+
+Disable:
+
+```
+chunk_store_config:
+  chunk_cache_config:
+    enable_fifocache: false
+query_range:
+  results_cache:
+    cache:
+      enable_fifocache: false
+```
+
+Resize:
+
+```
+chunk_store_config:
+  chunk_cache_config:
+    enable_fifocache: true
+    fifocache:
+      max_size_bytes: 500MB
+query_range:
+  results_cache:
+    cache:
+      enable_fifocache: true
+      fifocache:
+        max_size_bytes: 500MB
+```
 
 #### Ingester Lifecycler `final_sleep` now defaults to `0s`
+
 * [4608](https://github.com/grafana/loki/pull/4608) **trevorwhitney**: Change default value of ingester lifecycler's `final_sleep` from `30s` to `0s`
 
-This changes the default value for the `final_sleep` property of the ingester's lifecycler from `30s` to `0s`
+This final sleep exists to keep Loki running for long enough to get one final Prometheus scrape before shutting down, however it also causes Loki to sit idle for 30s on shutdown which is an annoying experience for many people.
+
+We decided the default would be better to disable this sleep behavior but anyone can set this config variable directly to return to the previous behavior.
 
 #### Ingester WAL now defaults to on, and chunk transfers are disabled by default
 
@@ -53,7 +181,7 @@ ingester:
 ```
 
 #### Memberlist config now automatically applies to all non-configured rings
-PR [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
+* [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
 
 This change affects the behavior of the ingester, distributor, and ruler rings. Previously, if you wanted to use memberlist for all of these rings, you
 had to provide a `memberlist` configuration as well as specify `store: memberlist` for the `kvstore` of each of the rings you wanted to use memberlist.
@@ -80,7 +208,7 @@ ruler:
 
 Now, if your provide a `memberlist` configuration with at least one `join_members`, loki will default all rings to use a `kvstore` of type `memberlist`.
 You can change this behavior by overriding specific configurations. For example, if you wanted to use `consul` for you `ruler` rings, but `memberlist`
-for the `ingester` and `distributor`, you could do so with the following config:
+for the `ingester` and `distributor`, you could do so with the following config (although we don't know why someone would want to do this):
 
 ```yaml
 memberlist:
@@ -113,39 +241,24 @@ server:
   grpc_server_ping_without_stream_allowed: true
 ```
 
-Please manually provide the values of `5m` and `true` (respectively) in your config if you rely on those values.
-
--_add changes here which are unreleased_
-
-### Loki Config
-
-#### Change of some default limits to common values
-
-PR [4415](https://github.com/grafana/loki/pull/4415) **DylanGuedes**: the default value of some limits were changed to protect users from overwhelming their cluster with ingestion load caused by relying on default configs.
-
-We suggest you double check if the following parameters are
-present in your Loki config: `ingestion_rate_strategy`, `max_global_streams_per_user`
-`max_query_length` `max_query_parallelism` `max_streams_per_user`
-`reject_old_samples` `reject_old_samples_max_age`. If they are not present, we recommend you double check that the new values will not negatively impact your system. The changes are:
-
-| config | new default | old default |
-| --- | --- | --- |
-| ingestion_rate_strategy | "global" | "local" |
-| max_global_streams_per_user | 5000 | 0 (no limit) |
-| max_query_length | "721h" | "0h" (no limit) |
-| max_query_parallelism | 32 | 14 |
-| max_streams_per_user | 0 (no limit) | 10000 |
-| reject_old_samples | true | false |
-| reject_old_samples_max_age | "168h" | "336h" |
+[This issue](https://github.com/grafana/loki/issues/4375) has some more information on the change. 
 
 #### Some metric prefixes have changed from `cortex_` to `loki_`
 
-PR [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com/grafana/loki/pull/4253) **jordanrushing**: Metrics related to chunk storage and runtime config have changed their prefixes from `cortex_` to `loki_`.
+* [#3842](https://github.com/grafana/loki/pull/3842)/[#4253](https://github.com/grafana/loki/pull/4253) **jordanrushing**: Metrics related to chunk storage and runtime config have changed their prefixes from `cortex_` to `loki_`.
 
-- `cortex_runtime_config*` -> `loki_runtime_config*`
-- `cortex_chunks_store*` -> `loki_chunks_store*`
+```
+cortex_runtime_config* -> loki_runtime_config*
+cortex_chunks_store* -> loki_chunks_store*
+```
 
--_add changes here which are unreleased_
+### Promtail
+
+The following changes pertain to upgrading Promtail.
+
+#### Promtail no longer insert `promtail_instance` label when scraping `gcplog` target
+* [4556](https://github.com/grafana/loki/pull/4556) **james-callahan**: Remove `promtail_instance` label that was being added by promtail when scraping `gcplog` target.
+
 
 ## 2.3.0
 

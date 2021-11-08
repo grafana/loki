@@ -8,9 +8,11 @@ import (
 	"time"
 
 	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
@@ -99,6 +101,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyFIFOCacheConfig(r)
 		applyIngesterFinalSleep(r)
+		applyChunkRetain(r, &defaults)
 
 		return nil
 	}
@@ -159,6 +162,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = r.Common.ReplicationFactor
 	}
 
 	// Distributor
@@ -169,8 +173,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Distributor.DistributorRing.InstanceAddr = rc.InstanceAddr
 		r.Distributor.DistributorRing.InstanceID = rc.InstanceID
 		r.Distributor.DistributorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.Distributor.DistributorRing.KVStore.Store = rc.KVStore.Store
-		r.Distributor.DistributorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.Distributor.DistributorRing.KVStore = rc.KVStore
 	}
 
 	// Ruler
@@ -181,8 +184,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ruler.Ring.InstanceAddr = rc.InstanceAddr
 		r.Ruler.Ring.InstanceID = rc.InstanceID
 		r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.Ruler.Ring.KVStore.Store = rc.KVStore.Store
-		r.Ruler.Ring.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.Ruler.Ring.KVStore = rc.KVStore
 	}
 
 	// Query Scheduler
@@ -195,8 +197,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.QueryScheduler.SchedulerRing.InstanceZone = rc.InstanceZone
 		r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.QueryScheduler.SchedulerRing.KVStore.Store = rc.KVStore.Store
-		r.QueryScheduler.SchedulerRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.QueryScheduler.SchedulerRing.KVStore = rc.KVStore
 	}
 
 	// Compactor
@@ -209,8 +210,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.CompactorConfig.CompactorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.CompactorConfig.CompactorRing.InstanceZone = rc.InstanceZone
 		r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.CompactorConfig.CompactorRing.KVStore.Store = rc.KVStore.Store
-		r.CompactorConfig.CompactorRing.KVStore.StoreConfig = rc.KVStore.StoreConfig
+		r.CompactorConfig.CompactorRing.KVStore = rc.KVStore
 	}
 }
 
@@ -259,7 +259,7 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 		prefix := strings.TrimSuffix(r.Common.PathPrefix, "/")
 
 		if r.Ruler.RulePath == defaults.Ruler.RulePath {
-			r.Ruler.RulePath = fmt.Sprintf("%s/rules", prefix)
+			r.Ruler.RulePath = fmt.Sprintf("%s/rules-temp", prefix)
 		}
 
 		if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
@@ -345,13 +345,17 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, defaults.StorageConfig.FSConfig) {
+	filesystemDefaults := common.FilesystemConfig{}
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+	filesystemDefaults.RegisterFlagsWithPrefix("", throwaway)
+
+	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, filesystemDefaults) {
 		configsFound++
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
-			r.Ruler.StoreConfig.Local = r.Common.Storage.FSConfig.ToCortexLocalConfig()
-			r.StorageConfig.FSConfig = r.Common.Storage.FSConfig
+			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeFileSystem
 		}
 	}
@@ -439,6 +443,10 @@ func applyFIFOCacheConfig(r *ConfigWrapper) {
 	resultsCacheConfig := r.QueryRange.ResultsCacheConfig.CacheConfig
 	if !isRedisSet(resultsCacheConfig) && !isMemcacheSet(resultsCacheConfig) {
 		r.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache = true
+		// The query results fifocache is still in Cortex so we couldn't change the flag defaults
+		// so instead we will override them here.
+		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.MaxSizeBytes = "1GB"
+		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.Validity = 1 * time.Hour
 	}
 }
 
@@ -460,4 +468,17 @@ func isMemcacheSet(cfg cortexcache.Config) bool {
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.FinalSleep = 0 * time.Second
+}
+
+// applyChunkRetain is used to set chunk retain based on having an index query cache configured
+// We retain chunks for at least as long as the index queries cache TTL. When an index entry is
+// cached, any chunks flushed after that won't be in the cached entry. To make sure their data is
+// available the RetainPeriod keeps them available in the ingesters live data. We want to retain them
+// for at least as long as the TTL on the index queries cache.
+func applyChunkRetain(cfg, defaults *ConfigWrapper) {
+	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
+		// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
+		// buffer to make sure the chunks are there until the index entries expire.
+		cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+	}
 }

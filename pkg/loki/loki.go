@@ -209,6 +209,7 @@ type Loki struct {
 	// set during initialization
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
+	deps          map[string][]string
 
 	Server                   *server.Server
 	ring                     *ring.Ring
@@ -450,7 +451,7 @@ func (t *Loki) setupModuleManager() error {
 		QueryScheduler:           {Server, Overrides, MemberlistKV},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:             {Server},
-		Compactor:                {Server, Overrides},
+		Compactor:                {Server, Overrides, MemberlistKV},
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
@@ -459,7 +460,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) {
+	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
@@ -481,7 +482,34 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
+	t.deps = deps
 	t.ModuleManager = mm
 
 	return nil
+}
+
+func (t *Loki) isModuleActive(m string) bool {
+	for _, target := range t.Cfg.Target {
+		if target == m {
+			return true
+		}
+		if t.recursiveIsModuleActive(target, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *Loki) recursiveIsModuleActive(target, m string) bool {
+	if targetDeps, ok := t.deps[target]; ok {
+		for _, dep := range targetDeps {
+			if dep == m {
+				return true
+			}
+			if t.recursiveIsModuleActive(dep, m) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -130,7 +130,7 @@ local promtail_win() = pipeline('promtail-windows') {
   ],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,main') {
+local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluent-bit') {
@@ -154,7 +154,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
   depends_on: ['check'],
 };
 
-local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,main') {
+local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluentd') {
@@ -178,7 +178,7 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,main')
   depends_on: ['check'],
 };
 
-local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'latest,main') {
+local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'logstash') {
@@ -407,5 +407,5 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [promtail_win()]
-+ [lambda_promtail('latest,main')]
++ [lambda_promtail('main')]
 + [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]

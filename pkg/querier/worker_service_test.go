@@ -22,6 +22,13 @@ func Test_InitQuerierService(t *testing.T) {
 		}),
 	}
 
+	var alwaysExternalHandlers = map[string]http.Handler{
+		"/loki/api/v1/tail": http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			_, err := res.Write([]byte("test tail handler"))
+			require.NoError(t, err)
+		}),
+	}
+
 	testContext := func(config WorkerServiceConfig, authMiddleware middleware.Interface) (*mux.Router, services.Service) {
 		externalRouter := mux.NewRouter()
 
@@ -32,6 +39,7 @@ func Test_InitQuerierService(t *testing.T) {
 		querierWorkerService, err := InitWorkerService(
 			config,
 			mockQueryHandlers,
+			alwaysExternalHandlers,
 			externalRouter,
 			http.HandlerFunc(externalRouter.ServeHTTP),
 			authMiddleware,
@@ -57,6 +65,13 @@ func Test_InitQuerierService(t *testing.T) {
 			externalRouter.ServeHTTP(recorder, request)
 			assert.Equal(t, 200, recorder.Code)
 			assert.Equal(t, "test handler", recorder.Body.String())
+
+			// Tail endpoints always external
+			recorder = httptest.NewRecorder()
+			request = httptest.NewRequest("GET", "/loki/api/v1/tail", nil)
+			externalRouter.ServeHTTP(recorder, request)
+			assert.Equal(t, 200, recorder.Code)
+			assert.Equal(t, "test tail handler", recorder.Body.String())
 		})
 
 		t.Run("wrap external handler with auth middleware", func(t *testing.T) {
@@ -187,6 +202,13 @@ func Test_InitQuerierService(t *testing.T) {
 				request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
 				externalRouter.ServeHTTP(recorder, request)
 				assert.Equal(t, 404, recorder.Code)
+
+				// Tail endpoints always external
+				recorder = httptest.NewRecorder()
+				request = httptest.NewRequest("GET", "/loki/api/v1/tail", nil)
+				externalRouter.ServeHTTP(recorder, request)
+				assert.Equal(t, 200, recorder.Code)
+				assert.Equal(t, "test tail handler", recorder.Body.String())
 			}
 		})
 

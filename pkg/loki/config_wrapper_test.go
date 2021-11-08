@@ -17,7 +17,6 @@ import (
 	cortex_aws "github.com/cortexproject/cortex/pkg/chunk/aws"
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
-	cortex_local "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 
 	"github.com/grafana/loki/pkg/loki/common"
@@ -94,7 +93,7 @@ common:
   path_prefix: /opt/loki`
 			config, _ := testContext(configFileString, nil)
 
-			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
@@ -105,7 +104,7 @@ common:
   path_prefix: /opt/loki/`
 			config, _ := testContext(configFileString, nil)
 
-			assert.EqualValues(t, "/opt/loki/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 		})
@@ -199,7 +198,7 @@ memberlist:
 		//    gcs: gcp.GCSConfig
 		//    s3: aws.S3Config
 		//    swift: openstack.SwiftConfig
-		//    filesystem: local.FSConfig
+		//    filesystem: Filesystem
 
 		t.Run("does not automatically configure cloud object storage", func(t *testing.T) {
 			config, defaults := testContext(emptyConfigString, nil)
@@ -446,18 +445,15 @@ memberlist:
 			fsConfig := `common:
   storage:
     filesystem:
-      directory: /tmp/foo`
+      chunks_directory: /tmp/chunks
+      rules_directory: /tmp/rules`
 
 			config, defaults := testContext(fsConfig, nil)
 
 			assert.Equal(t, "local", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []cortex_local.Config{
-				config.Ruler.StoreConfig.Local,
-				config.StorageConfig.FSConfig.ToCortexLocalConfig(),
-			} {
-				assert.Equal(t, "/tmp/foo", actual.Directory)
-			}
+			assert.Equal(t, "/tmp/rules", config.Ruler.StoreConfig.Local.Directory)
+			assert.Equal(t, "/tmp/chunks", config.StorageConfig.FSConfig.Directory)
 
 			//should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
@@ -616,7 +612,8 @@ storage_config:
 					configString: `common:
   storage:
     filesystem:
-      directory: /tmp/foo`,
+      chunks_directory: /tmp/chunks
+      rules_directory: /tmp/rules`,
 					expected: storage.StorageTypeFileSystem,
 				},
 			} {
@@ -1119,7 +1116,7 @@ func TestLoopbackAppendingToFrontendV2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Frontend.FrontendV2.InfNames)
 		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Ingester.LifecyclerConfig.InfNames)
-		assert.Equal(t, []string{defaultIface}, config.Common.Ring.InstanceInterfaceNames)
+		assert.Equal(t, []string{"eth0", "en0", defaultIface}, config.Common.Ring.InstanceInterfaceNames)
 	})
 
 	t.Run("loopback shouldn't be in FrontendV2 interface names if set by user", func(t *testing.T) {
@@ -1296,13 +1293,41 @@ distributor:
 common:
   ring:
     kvstore:
-      store: consul`
+      store: etcd`
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
-		assert.Equal(t, "consul", config.Distributor.DistributorRing.KVStore.Store)
-		assert.Equal(t, "consul", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
-		assert.Equal(t, "consul", config.Ruler.Ring.KVStore.Store)
-		assert.Equal(t, "consul", config.QueryScheduler.SchedulerRing.KVStore.Store)
-		assert.Equal(t, "consul", config.CompactorConfig.CompactorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
 	})
+}
+
+func Test_applyChunkRetain(t *testing.T) {
+	t.Run("chunk retain is unchanged if no index queries cache is defined", func(t *testing.T) {
+		yamlContent := ``
+		config, defaults, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, defaults.Ingester.RetainPeriod, config.Ingester.RetainPeriod)
+	})
+
+	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
+		yamlContent := `
+storage_config:
+  index_cache_validity: 10m
+  index_queries_cache_config:
+    memcached:
+      batch_size: 256
+      parallelism: 10
+    memcached_client:
+      consistent_hash: true
+      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      service: memcached-client
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
+	})
+
 }

@@ -608,7 +608,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",latest,main" >> .tags
+  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -660,7 +660,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",latest,main" >> .tags
+  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -712,7 +712,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",latest,main" >> .tags
+  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -865,7 +865,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",latest,main" >> .tags
+  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -954,6 +954,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: e35dcf196bab53ff7ab343e2bd44e6a96d17d1a2b71da639bdba26eab4f39c06
+hmac: 6b8d9fa66b043f8338f674bb0c4deb881195d23d9ce048ad1ed284483b873ee3
 
 ...
