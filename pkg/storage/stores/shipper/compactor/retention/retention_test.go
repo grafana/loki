@@ -462,7 +462,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "no chunk and series deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -482,7 +482,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "only one chunk in store which gets deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -502,14 +502,14 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "only one chunk in store which gets partially deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
 					nonDeletedIntervals: []model.Interval{{
-						Start: now.Add(-15 * time.Minute),
-						End:   now,
+						Start: todaysTableInterval.Start,
+						End:   todaysTableInterval.Start.Add(15 * time.Minute),
 					}},
 				},
 			},
@@ -526,8 +526,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "one of two chunks deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -550,8 +550,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "one of two chunks partially deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -560,8 +560,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				{
 					isExpired: true,
 					nonDeletedIntervals: []model.Interval{{
-						Start: now.Add(-15 * time.Minute),
-						End:   now,
+						Start: todaysTableInterval.Start,
+						End:   todaysTableInterval.Start.Add(15 * time.Minute),
 					}},
 				},
 			},
