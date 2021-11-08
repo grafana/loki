@@ -101,7 +101,8 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, params.QueryRequest, stats.CollectTrailer(ctx))
+		stats.FromContext(ctx).AddIngesterReached(1)
+		return client.Query(ctx, params.QueryRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -116,7 +117,8 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
 	resps, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.QuerySample(ctx, params.SampleQueryRequest, stats.CollectTrailer(ctx))
+		stats.FromContext(ctx).AddIngesterReached(1)
+		return client.QuerySample(ctx, params.SampleQueryRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -273,7 +275,6 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 			End:      through.Time(),
 		})
 	})
-
 	if err != nil {
 		return nil, err
 	}

@@ -307,7 +307,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		return nil, err
 	}
 
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
 
 	shard, err := parseShardFromRequest(req.Shards)
@@ -320,7 +320,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		expr.Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.Iterator(ctx, ingStats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
+			iter, err := stream.Iterator(ctx, stats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -345,7 +345,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	var iters []iter.SampleIterator
 
 	var shard *astmapper.ShardAnnotation
@@ -365,7 +365,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		expr.Selector().Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.SampleIterator(ctx, ingStats, req.Start, req.End, extractor.ForStream(stream.labels))
+			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -641,7 +641,7 @@ type QuerierQueryServer interface {
 }
 
 func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	if limit == 0 {
 		// send all batches.
 		for !isDone(ctx) {
@@ -652,12 +652,15 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			if len(batch.Streams) == 0 {
 				return nil
 			}
+			stats.AddIngesterLineSent(int64(size))
+			batch.Stats = stats.Ingester()
 
 			if err := queryServer.Send(batch); err != nil {
 				return err
 			}
-			ingStats.TotalLinesSent += int64(size)
-			ingStats.TotalBatches++
+
+			stats.Reset()
+
 		}
 		return nil
 	}
@@ -674,17 +677,19 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			return nil
 		}
 
+		stats.AddIngesterLineSent(int64(batchSize))
+		batch.Stats = stats.Ingester()
+
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
-		ingStats.TotalLinesSent += int64(batchSize)
-		ingStats.TotalBatches++
+		stats.Reset()
 	}
 	return nil
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
@@ -694,11 +699,15 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 			return nil
 		}
 
+		stats.AddIngesterLineSent(int64(size))
+		batch.Stats = stats.Ingester()
+
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
-		ingStats.TotalLinesSent += int64(size)
-		ingStats.TotalBatches++
+
+		stats.Reset()
+
 	}
 	return nil
 }

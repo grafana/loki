@@ -202,7 +202,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 		return nil, err
 	}
 
-	storeStats := stats.GetStoreData(ctx)
+	stats := stats.FromContext(ctx)
 
 	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
@@ -213,7 +213,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 	var filtered int
 	for i := range chks {
 		prefiltered += len(chks[i])
-		storeStats.TotalChunksRef += int64(len(chks[i]))
+		stats.AddChunksRef(int64(len(chks[i])))
 		chks[i] = filterChunksByTime(from, through, chks[i])
 		filtered += len(chks[i])
 	}

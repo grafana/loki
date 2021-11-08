@@ -49,9 +49,7 @@ var (
 	})
 )
 
-var (
-	ErrEntriesExist = errors.New("duplicate push - entries already exist")
-)
+var ErrEntriesExist = errors.New("duplicate push - entries already exist")
 
 func init() {
 	prometheus.MustRegister(chunksCreatedTotal)
@@ -425,7 +423,7 @@ func (s *stream) Bounds() (from, to time.Time) {
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
+func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
@@ -461,8 +459,8 @@ func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, fro
 		}
 	}
 
-	if ingStats != nil {
-		ingStats.TotalChunksMatched += int64(len(iterators))
+	if statsCtx != nil {
+		statsCtx.AddIngesterTotalChunkMatched(int64(len(iterators)))
 	}
 
 	if ordered {
@@ -472,7 +470,7 @@ func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, fro
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, ingStats *stats.IngesterData, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
@@ -498,8 +496,8 @@ func (s *stream) SampleIterator(ctx context.Context, ingStats *stats.IngesterDat
 		}
 	}
 
-	if ingStats != nil {
-		ingStats.TotalChunksMatched += int64(len(iterators))
+	if statsCtx != nil {
+		statsCtx.AddIngesterTotalChunkMatched(int64(len(iterators)))
 	}
 
 	if ordered {

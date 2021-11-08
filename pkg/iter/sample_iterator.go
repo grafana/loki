@@ -143,7 +143,7 @@ type heapSampleIterator struct {
 	heap       *sampleIteratorHeap
 	is         []SampleIterator
 	prefetched bool
-	stats      *stats.ChunkData
+	stats      *stats.Context
 
 	tuples     []sampletuple
 	curr       logproto.Sample
@@ -155,7 +155,7 @@ type heapSampleIterator struct {
 // entries for multiple iterators.
 func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
 	return &heapSampleIterator{
-		stats:  stats.GetChunkData(ctx),
+		stats:  stats.FromContext(ctx),
 		is:     is,
 		heap:   &sampleIteratorHeap{},
 		tuples: make([]sampletuple, 0, len(is)),
@@ -244,7 +244,7 @@ func (i *heapSampleIterator) Next() bool {
 		}
 		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
 		if i.tuples[j] != t {
-			i.stats.TotalDuplicates++
+			i.stats.AddDuplicates(1)
 		}
 		i.requeue(i.tuples[j].SampleIterator, false)
 	}
@@ -302,6 +302,7 @@ func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 }
 
 func (i *sampleQueryClientIterator) Next() bool {
+	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
@@ -310,10 +311,9 @@ func (i *sampleQueryClientIterator) Next() bool {
 			i.err = err
 			return false
 		}
-
-		i.curr = NewSampleQueryResponseIterator(i.client.Context(), batch)
+		stats.JoinIngesters(ctx, batch.Stats)
+		i.curr = NewSampleQueryResponseIterator(ctx, batch)
 	}
-
 	return true
 }
 
@@ -359,7 +359,6 @@ func (w *withCloseSampleIterator) Close() error {
 		if err := w.closeFn(); err != nil {
 			w.errs = append(w.errs, err)
 		}
-
 	})
 	if len(w.errs) == 0 {
 		return nil

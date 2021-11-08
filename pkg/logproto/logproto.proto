@@ -6,6 +6,7 @@ option go_package = "github.com/grafana/loki/pkg/logproto";
 
 import "google/protobuf/timestamp.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "pkg/logqlmodel/stats/stats.proto";
 
 service Pusher {
   rpc Push(PushRequest) returns (PushResponse) {};
@@ -49,18 +50,23 @@ message SampleQueryRequest {
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
 }
 
+message QueryResponse {
+  repeated StreamAdapter streams = 1 [(gogoproto.customtype) = "Stream", (gogoproto.nullable) = true];
+  stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+}
+
 message SampleQueryResponse {
   repeated Series series = 1 [(gogoproto.customtype) = "Series", (gogoproto.nullable) = true];
+  stats.Ingester stats = 2 [(gogoproto.nullable) = false];
 }
+
 
 enum Direction {
   FORWARD = 0;
   BACKWARD = 1;
 }
 
-message QueryResponse {
-  repeated StreamAdapter streams = 1 [(gogoproto.customtype) = "Stream", (gogoproto.nullable) = true];
-}
+
 
 message LabelRequest {
   string name = 1;

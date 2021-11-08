@@ -1644,7 +1644,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		Store: newMockChunkStore(newOverlappingStreams(200, 200)),
 	}
 	b.ResetTimer()
-	ctx := user.InjectOrgID(stats.NewContext(context.Background()), "fake")
+	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
 		it, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
@@ -1665,9 +1665,9 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	r := stats.Snapshot(ctx, time.Since(start))
-	b.Log("Total chunks:" + fmt.Sprintf("%d", r.Store.TotalChunksRef))
-	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.Store.DecompressedBytes))
+	r := statsCtx.Result(time.Since(start))
+	b.Log("Total chunks:" + fmt.Sprintf("%d", r.TotalChunksRef()))
+	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.TotalDecompressedBytes()))
 }
 
 func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
