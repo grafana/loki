@@ -208,7 +208,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 	if cfg.WAL.Enabled {
 		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error creating WAL folder at '%s': %w", cfg.WAL.Dir, err)
 		}
 	}
 
