@@ -15,6 +15,16 @@ To discover available brokers you can use the `make print-brokers`.
 
 Finally to stop the compose stack use `make stop-kafka`. This will result in all topics being lost with their messages.
 
+## Running secure kafka locally
+
+To test authentication, you need to start the Kafka container which is configured with authentication.
+
+You can also use `make start-kafka` in appropriate directory like `sasl-scram` you need.
+
+In addition, you need to create certificates using `make create-certs` when using SSL/TLS.
+
+If you don't need to authenticate, you should use the tools in `plain` directory.
+
 ## Working with Topic
 
 In Kafka before sending messages you need to create and select the topic you want to use for the exchange.

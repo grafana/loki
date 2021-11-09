@@ -73,6 +73,10 @@ func NewSyncer(
 	default:
 		return nil, fmt.Errorf("unrecognized consumer group partition assignor: %s", cfg.KafkaConfig.Assignor)
 	}
+	config, err = withAuthentication(*config, cfg.KafkaConfig.Authentication)
+	if err != nil {
+		return nil, fmt.Errorf("error setting up kafka authentication: %w", err)
+	}
 	client, err := sarama.NewClient(cfg.KafkaConfig.Brokers, config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating kafka client: %w", err)
@@ -111,6 +115,74 @@ func NewSyncer(
 	t.discoverer = t
 	t.loop()
 	return t, nil
+}
+
+func withAuthentication(cfg sarama.Config, authCfg scrapeconfig.KafkaAuthentication) (*sarama.Config, error) {
+	if len(authCfg.Type) == 0 || authCfg.Type == scrapeconfig.KafkaAuthenticationTypeNone {
+		return &cfg, nil
+	}
+
+	switch authCfg.Type {
+	case scrapeconfig.KafkaAuthenticationTypeSSL:
+		return withSSLAuthentication(cfg, authCfg)
+	case scrapeconfig.KafkaAuthenticationTypeSASL:
+		return withSASLAuthentication(cfg, authCfg)
+	default:
+		return nil, fmt.Errorf("unsupported authentication type %s", authCfg.Type)
+	}
+}
+
+func withSSLAuthentication(cfg sarama.Config, authCfg scrapeconfig.KafkaAuthentication) (*sarama.Config, error) {
+	cfg.Net.TLS.Enable = true
+	tc, err := createTLSConfig(authCfg.TLSConfig)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Net.TLS.Config = tc
+	return &cfg, nil
+}
+
+func withSASLAuthentication(cfg sarama.Config, authCfg scrapeconfig.KafkaAuthentication) (*sarama.Config, error) {
+	cfg.Net.SASL.Enable = true
+	cfg.Net.SASL.User = authCfg.SASLConfig.User
+	cfg.Net.SASL.Password = authCfg.SASLConfig.Password.Value
+	cfg.Net.SASL.Mechanism = authCfg.SASLConfig.Mechanism
+	if cfg.Net.SASL.Mechanism == "" {
+		cfg.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+	}
+
+	supportedMechanism := []string{
+		sarama.SASLTypeSCRAMSHA512,
+		sarama.SASLTypeSCRAMSHA256,
+		sarama.SASLTypePlaintext,
+	}
+	if !util.StringSliceContains(supportedMechanism, string(authCfg.SASLConfig.Mechanism)) {
+		return nil, fmt.Errorf("error unsupported sasl mechanism: %s", authCfg.SASLConfig.Mechanism)
+	}
+
+	if cfg.Net.SASL.Mechanism == sarama.SASLTypeSCRAMSHA512 {
+		cfg.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
+			return &XDGSCRAMClient{
+				HashGeneratorFcn: SHA512,
+			}
+		}
+	}
+	if cfg.Net.SASL.Mechanism == sarama.SASLTypeSCRAMSHA256 {
+		cfg.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
+			return &XDGSCRAMClient{
+				HashGeneratorFcn: SHA256,
+			}
+		}
+	}
+	if authCfg.SASLConfig.UseTLS {
+		tc, err := createTLSConfig(authCfg.SASLConfig.TLSConfig)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Net.TLS.Config = tc
+		cfg.Net.TLS.Enable = true
+	}
+	return &cfg, nil
 }
 
 func (ts *TargetSyncer) loop() {

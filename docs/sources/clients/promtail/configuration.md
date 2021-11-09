@@ -928,6 +928,40 @@ By default, timestamps are assigned by Promtail when the message is read, if you
 # Kafka version to connect to.
 [version: <string> | default = "2.2.1"]
 
+# Optional authentication configuration with Kafka brokers
+authentication:
+  # Type is authentication type. Supported values [none, ssl, sasl]
+  [type: <string> | default = "none"]
+  
+  # TLS configuration for authentication and encryption. It is used only when authentication type is ssl.
+  tls_config:
+    [ <tls_config> ]
+  
+  # SASL configuration for authentication. It is used only when authentication type is sasl.
+  sasl_config:
+    # SASL mechanism. Supported values [PLAIN, SCRAM-SHA-256, SCRAM-SHA-512]
+    [mechanism: <string> | default = "PLAIN"]
+    
+    # The user name to use for SASL authentication
+    [user: <string>]
+    
+    # The password to use for SASL authentication
+    [password: <secret>]
+    
+    # If true, SASL authentication is executed over TLS  
+    [use_tls: <boolean> | default = false]
+    
+    # The CA file to use to verify the server
+    [ca_file: <string>]
+
+    # Validates that the server name in the server's certificate
+    # is this value.
+    [server_name: <string>]
+
+    # If true, ignores the server certificate being signed by an
+    # unknown CA.
+    [insecure_skip_verify: <boolean> | default = false]
+    
 
 # Label map to add to every log line read from kafka
 labels:

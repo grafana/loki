@@ -4,7 +4,7 @@ TOPIC ?= promtail
 RF ?= 1
 PARTS ?= 3
 
-BROKER_LIST := $(shell ./broker-list.sh $(HOST_IP))
+BROKER_LIST := $(shell ../broker-list.sh $(HOST_IP))
 DOCKER_RUN := docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -e HOST_IP=$(HOST_IP) -i -t wurstmeister/kafka /bin/bash -c
 
 start-kafka:

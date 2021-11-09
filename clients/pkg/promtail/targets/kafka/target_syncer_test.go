@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/common/config"
+
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
@@ -207,4 +210,145 @@ func Test_validateConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_withAuthentication(t *testing.T) {
+	var (
+		tlsConf = config.TLSConfig{
+			CAFile:             "testdata/example.com.ca.pem",
+			CertFile:           "testdata/example.com.pem",
+			KeyFile:            "testdata/example.com-key.pem",
+			ServerName:         "example.com",
+			InsecureSkipVerify: true,
+		}
+		expectedTLSConf, _ = createTLSConfig(config.TLSConfig{
+			CAFile:             "testdata/example.com.ca.pem",
+			CertFile:           "testdata/example.com.pem",
+			KeyFile:            "testdata/example.com-key.pem",
+			ServerName:         "example.com",
+			InsecureSkipVerify: true,
+		})
+		cfg = sarama.NewConfig()
+	)
+
+	// no authentication
+	noAuthCfg, err := withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type: scrapeconfig.KafkaAuthenticationTypeNone,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, false, noAuthCfg.Net.TLS.Enable)
+	assert.Equal(t, false, noAuthCfg.Net.SASL.Enable)
+	assert.NoError(t, noAuthCfg.Validate())
+
+	// specify unsupported auth type
+	illegalAuthTypeCfg, err := withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type: "illegal",
+	})
+	assert.NotNil(t, err)
+	assert.Nil(t, illegalAuthTypeCfg)
+
+	// mTLS authentication
+	mTLSCfg, err := withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type:      scrapeconfig.KafkaAuthenticationTypeSSL,
+		TLSConfig: tlsConf,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, true, mTLSCfg.Net.TLS.Enable)
+	assert.NotNil(t, mTLSCfg.Net.TLS.Config)
+	assert.Equal(t, "example.com", mTLSCfg.Net.TLS.Config.ServerName)
+	assert.Equal(t, true, mTLSCfg.Net.TLS.Config.InsecureSkipVerify)
+	assert.Equal(t, expectedTLSConf.Certificates, mTLSCfg.Net.TLS.Config.Certificates)
+	assert.NotNil(t, mTLSCfg.Net.TLS.Config.RootCAs)
+	assert.NoError(t, mTLSCfg.Validate())
+
+	// mTLS authentication expect ignore sasl
+	mTLSCfg, err = withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type:      scrapeconfig.KafkaAuthenticationTypeSSL,
+		TLSConfig: tlsConf,
+		SASLConfig: scrapeconfig.KafkaSASLConfig{
+			Mechanism: sarama.SASLTypeSCRAMSHA256,
+			User:      "user",
+			Password: flagext.Secret{
+				Value: "pass",
+			},
+			UseTLS: false,
+		},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, false, mTLSCfg.Net.SASL.Enable)
+
+	// SASL/PLAIN
+	saslCfg, err := withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type: scrapeconfig.KafkaAuthenticationTypeSASL,
+		SASLConfig: scrapeconfig.KafkaSASLConfig{
+			Mechanism: sarama.SASLTypePlaintext,
+			User:      "user",
+			Password: flagext.Secret{
+				Value: "pass",
+			},
+		},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, false, saslCfg.Net.TLS.Enable)
+	assert.Equal(t, true, saslCfg.Net.SASL.Enable)
+	assert.Equal(t, "user", saslCfg.Net.SASL.User)
+	assert.Equal(t, "pass", saslCfg.Net.SASL.Password)
+	assert.Equal(t, sarama.SASLTypePlaintext, string(saslCfg.Net.SASL.Mechanism))
+	assert.NoError(t, saslCfg.Validate())
+
+	// SASL/SCRAM
+	saslCfg, err = withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type: scrapeconfig.KafkaAuthenticationTypeSASL,
+		SASLConfig: scrapeconfig.KafkaSASLConfig{
+			Mechanism: sarama.SASLTypeSCRAMSHA512,
+			User:      "user",
+			Password: flagext.Secret{
+				Value: "pass",
+			},
+		},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, false, saslCfg.Net.TLS.Enable)
+	assert.Equal(t, true, saslCfg.Net.SASL.Enable)
+	assert.Equal(t, "user", saslCfg.Net.SASL.User)
+	assert.Equal(t, "pass", saslCfg.Net.SASL.Password)
+	assert.Equal(t, sarama.SASLTypeSCRAMSHA512, string(saslCfg.Net.SASL.Mechanism))
+	assert.NoError(t, saslCfg.Validate())
+
+	// SASL unsupported mechanism
+	_, err = withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type: scrapeconfig.KafkaAuthenticationTypeSASL,
+		SASLConfig: scrapeconfig.KafkaSASLConfig{
+			Mechanism: sarama.SASLTypeGSSAPI,
+			User:      "user",
+			Password: flagext.Secret{
+				Value: "pass",
+			},
+		},
+	})
+	assert.Error(t, err)
+	assert.Equal(t, err.Error(), "error unsupported sasl mechanism: GSSAPI")
+
+	// SASL over TLS
+	saslCfg, err = withAuthentication(*cfg, scrapeconfig.KafkaAuthentication{
+		Type: scrapeconfig.KafkaAuthenticationTypeSASL,
+		SASLConfig: scrapeconfig.KafkaSASLConfig{
+			Mechanism: sarama.SASLTypeSCRAMSHA512,
+			User:      "user",
+			Password: flagext.Secret{
+				Value: "pass",
+			},
+			UseTLS:    true,
+			TLSConfig: tlsConf,
+		},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, true, saslCfg.Net.TLS.Enable)
+	assert.Equal(t, true, saslCfg.Net.SASL.Enable)
+	assert.NotNil(t, saslCfg.Net.TLS.Config)
+	assert.Equal(t, "example.com", saslCfg.Net.TLS.Config.ServerName)
+	assert.Equal(t, true, saslCfg.Net.TLS.Config.InsecureSkipVerify)
+	assert.Equal(t, expectedTLSConf.Certificates, saslCfg.Net.TLS.Config.Certificates)
+	assert.NotNil(t, saslCfg.Net.TLS.Config.RootCAs)
+	assert.NoError(t, saslCfg.Validate())
 }
