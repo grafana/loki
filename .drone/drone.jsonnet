@@ -338,7 +338,14 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       run('LogQL', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/'])
     ],
-    trigger: {event: ['cron'], cron: ['loki-bench']},
+    trigger+: {
+      event+: {
+        include+: ['cron'],
+      },
+      cron+: {
+        include+: ['loki-bench'],
+      },
+    },
   },
 ] + [
   multiarch_image(arch)
