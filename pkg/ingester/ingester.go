@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -208,14 +209,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 	if cfg.WAL.Enabled {
 		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
-			path := cfg.WAL.Dir
-      
 			// Best effort try to make path absolute for easier debugging.
-			path, _ = filepath.Abs(cfg.WAL.Dir)
+			path, _ := filepath.Abs(cfg.WAL.Dir)
 			if path == "" {
 				path = cfg.WAL.Dir
 			}
-      
+
 			return nil, fmt.Errorf("creating WAL folder at %q: %w", path, err)
 		}
 	}
