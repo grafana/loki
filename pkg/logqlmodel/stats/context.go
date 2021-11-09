@@ -195,8 +195,9 @@ func (r Result) TotalDecompressedLines() int64 {
 	return r.Querier.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.DecompressedLines
 }
 
-func (c *Context) AddIngesterLineSent(i int64) {
-	atomic.AddInt64(&c.ingester.TotalLinesSent, i)
+func (c *Context) AddIngesterBatch(size int64) {
+	atomic.AddInt64(&c.ingester.TotalBatches, 1)
+	atomic.AddInt64(&c.ingester.TotalLinesSent, size)
 }
 
 func (c *Context) AddIngesterTotalChunkMatched(i int64) {
@@ -252,7 +253,7 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.TotalLinesSent", r.Ingester.TotalLinesSent,
 		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
 		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
-		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime*int64(time.Second)),
+		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),
 		"Ingester.HeadChunkBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.HeadChunkBytes)),
 		"Ingester.HeadChunkLines", r.Ingester.Store.Chunk.HeadChunkLines,
 		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.DecompressedBytes)),
@@ -262,7 +263,7 @@ func (r Result) Log(log log.Logger) {
 
 		"Querier.TotalChunksRef", r.Querier.Store.TotalChunksRef,
 		"Querier.TotalChunksDownloaded", r.Querier.Store.TotalChunksDownloaded,
-		"Querier.ChunksDownloadTime", time.Duration(r.Querier.Store.ChunksDownloadTime*int64(time.Second)),
+		"Querier.ChunksDownloadTime", time.Duration(r.Querier.Store.ChunksDownloadTime),
 		"Querier.HeadChunkBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.HeadChunkBytes)),
 		"Querier.HeadChunkLines", r.Querier.Store.Chunk.HeadChunkLines,
 		"Querier.DecompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.DecompressedBytes)),
