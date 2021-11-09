@@ -67,9 +67,11 @@ steps:
   name: LogQL
 trigger:
   cron:
-  - loki-bench
+    include:
+    - loki-bench
   event:
-  - cron
+    include:
+    - cron
 workspace:
   base: /src
   path: loki
@@ -954,6 +956,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 6b8d9fa66b043f8338f674bb0c4deb881195d23d9ce048ad1ed284483b873ee3
+hmac: 51902a0ab9982aa73cf0151076af99808912bfd357dff8184f408d40cc70d140
 
 ...
