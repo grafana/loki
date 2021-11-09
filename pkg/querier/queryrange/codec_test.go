@@ -868,27 +868,38 @@ func (badReader) Read(p []byte) (n int, err error) {
 var (
 	statsResultString = `"stats" : {
 		"ingester" : {
-			"compressedBytes": 1,
-			"decompressedBytes": 2,
-			"decompressedLines": 3,
-			"headChunkBytes": 4,
-			"headChunkLines": 5,
+			"store": {
+				"chunk":{
+					"compressedBytes": 1,
+					"decompressedBytes": 2,
+					"decompressedLines": 3,
+					"headChunkBytes": 4,
+					"headChunkLines": 5,
+					"totalDuplicates": 8
+				},
+				"chunksDownloadTime": 0,
+				"totalChunksRef": 0,
+				"totalChunksDownloaded": 0
+			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
-			"totalDuplicates": 8,
 			"totalLinesSent": 9,
 			"totalReached": 10
 		},
-		"store": {
-			"compressedBytes": 11,
-			"decompressedBytes": 12,
-			"decompressedLines": 13,
-			"headChunkBytes": 14,
-			"headChunkLines": 15,
-			"chunksDownloadTime": 16,
-			"totalChunksRef": 17,
-			"totalChunksDownloaded": 18,
-			"totalDuplicates": 19
+		"querier": {
+			"store" : {
+				"chunk": {
+					"compressedBytes": 11,
+					"decompressedBytes": 12,
+					"decompressedLines": 13,
+					"headChunkBytes": 14,
+					"headChunkLines": 15,
+					"totalDuplicates": 19
+				},
+				"chunksDownloadTime": 16,
+				"totalChunksRef": 17,
+				"totalChunksDownloaded": 18
+			}
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
