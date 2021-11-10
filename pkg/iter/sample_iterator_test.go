@@ -2,7 +2,9 @@ package iter
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -94,6 +96,7 @@ var varSeries = logproto.Series{
 		sample(1), sample(2), sample(3),
 	},
 }
+
 var carSeries = logproto.Series{
 	Labels: `{foo="car"}`,
 	Samples: []logproto.Sample{
@@ -145,7 +148,6 @@ func (f *fakeSampleClient) Recv() (*logproto.SampleQueryResponse, error) {
 func (fakeSampleClient) Context() context.Context { return context.Background() }
 func (fakeSampleClient) CloseSend() error         { return nil }
 func TestNewSampleQueryClientIterator(t *testing.T) {
-
 	it := NewSampleQueryClientIterator(&fakeSampleClient{
 		series: [][]logproto.Series{
 			{varSeries},
@@ -273,4 +275,42 @@ func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
 	// A second call to Close should return the same error
 	err2 := it.Close()
 	assert.Equal(t, err, err2)
+}
+
+func BenchmarkHeapSampleIterator(b *testing.B) {
+	var (
+		ctx          = context.Background()
+		series       []logproto.Series
+		entriesCount = 10000
+		seriesCount  = 100
+	)
+	for i := 0; i < seriesCount; i++ {
+		series = append(series, logproto.Series{
+			Labels: fmt.Sprintf(`{i="%d"}`, i),
+		})
+	}
+	for i := 0; i < entriesCount; i++ {
+		series[i%seriesCount].Samples = append(series[i%seriesCount].Samples, logproto.Sample{
+			Timestamp: int64(seriesCount - i),
+			Value:     float64(i),
+		})
+	}
+	rand.Shuffle(len(series), func(i, j int) {
+		series[i], series[j] = series[j], series[i]
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		var itrs []SampleIterator
+		for i := 0; i < seriesCount; i++ {
+			itrs = append(itrs, NewSeriesIterator(series[i]))
+		}
+		b.StartTimer()
+		it := NewHeapSampleIterator(ctx, itrs)
+		for it.Next() {
+			it.Sample()
+		}
+		it.Close()
+	}
 }

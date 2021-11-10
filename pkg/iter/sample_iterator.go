@@ -154,10 +154,11 @@ type heapSampleIterator struct {
 // NewHeapSampleIterator returns a new iterator which uses a heap to merge together
 // entries for multiple iterators.
 func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
+	h := sampleIteratorHeap(make([]SampleIterator, 0, len(is)))
 	return &heapSampleIterator{
 		stats:  stats.GetChunkData(ctx),
 		is:     is,
-		heap:   &sampleIteratorHeap{},
+		heap:   &h,
 		tuples: make([]sampletuple, 0, len(is)),
 	}
 }
@@ -208,6 +209,16 @@ func (i *heapSampleIterator) Next() bool {
 
 	if i.heap.Len() == 0 {
 		return false
+	}
+
+	// shortcut for the last iterator.
+	if i.heap.Len() == 1 {
+		i.curr = i.heap.Peek().Sample()
+		i.currLabels = i.heap.Peek().Labels()
+		if !i.heap.Peek().Next() {
+			i.heap.Pop()
+		}
+		return true
 	}
 
 	// We support multiple entries with the same timestamp, and we want to
@@ -359,7 +370,6 @@ func (w *withCloseSampleIterator) Close() error {
 		if err := w.closeFn(); err != nil {
 			w.errs = append(w.errs, err)
 		}
-
 	})
 	if len(w.errs) == 0 {
 		return nil
