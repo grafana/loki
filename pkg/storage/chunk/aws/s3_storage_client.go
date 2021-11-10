@@ -414,6 +414,9 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			_, requestErr := a.S3.PutObjectWithContext(ctx, putObjectInput)
 			return requestErr
 		})
+		if err == nil {
+			return nil
+		}
 		retries.Wait()
 	}
 	return errors.Wrap(err, "failed to put s3 object")
