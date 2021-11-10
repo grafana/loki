@@ -392,22 +392,31 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		putObjectInput := &s3.PutObjectInput{
-			Body:   object,
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	err := ctx.Err()
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return errors.Wrap(ctx.Err(), "ctx related error during s3 putObject")
 		}
+		err = instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			putObjectInput := &s3.PutObjectInput{
+				Body:   object,
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
+				Key:    aws.String(objectKey),
+			}
 
-		if a.sseConfig != nil {
-			putObjectInput.ServerSideEncryption = aws.String(a.sseConfig.ServerSideEncryption)
-			putObjectInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
-			putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
-		}
+			if a.sseConfig != nil {
+				putObjectInput.ServerSideEncryption = aws.String(a.sseConfig.ServerSideEncryption)
+				putObjectInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
+				putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
+			}
 
-		_, err := a.S3.PutObjectWithContext(ctx, putObjectInput)
-		return err
-	})
+			_, requestErr := a.S3.PutObjectWithContext(ctx, putObjectInput)
+			return requestErr
+		})
+		retries.Wait()
+	}
+	return errors.Wrap(err, "failed to put s3 object")
 }
 
 // List implements chunk.ObjectClient.
