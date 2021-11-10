@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -93,7 +94,7 @@ func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)
 	}
-	chunk, err := parseNewExternalKey(userID, externalKey)
+	chunk, err := parseNewerExternalKey(userID, externalKey)
 	if err != nil {
 		return Chunk{}, err
 	}
@@ -176,9 +177,85 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 	}, nil
 }
 
+func parseNewerExternalKey(userID, key string) (Chunk, error) {
+	// Parse user
+	userIdx := strings.Index(key, "/")
+	if userIdx == -1 || userIdx+1 >= len(key) {
+		return Chunk{}, errInvalidChunkID(key)
+	}
+	if userID != key[:userIdx] {
+		return Chunk{}, errors.WithStack(ErrWrongMetadata)
+	}
+	// Parse period, but throw away
+	hexParts := key[userIdx+1:]
+	partsBytes := unsafeGetBytes(hexParts)
+	h, i := readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding period")
+	}
+	_, err := strconv.ParseUint(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing period")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse shard, but throw away
+	h, i = readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding shard")
+	}
+	_, err = strconv.ParseUint(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing shard")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse fingerprint
+	h, i = readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding fingerprint")
+	}
+	fingerprint, err := strconv.ParseUint(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing fingerprint")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse start
+	h, i = readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding start")
+	}
+	from, err := strconv.ParseInt(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing start")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse through
+	h, i = readOneHexPart(partsBytes)
+	if i == 0 || i+1 >= len(partsBytes) {
+		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding through")
+	}
+	through, err := strconv.ParseInt(unsafeGetString(h), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing through")
+	}
+	partsBytes = partsBytes[i+1:]
+	// Parse checksum
+	checksum, err := strconv.ParseUint(unsafeGetString(partsBytes), 16, 64)
+	if err != nil {
+		return Chunk{}, errors.Wrap(err, "parsing checksum")
+	}
+	return Chunk{
+		UserID:      userID,
+		Fingerprint: model.Fingerprint(fingerprint),
+		From:        model.Time(from),
+		Through:     model.Time(through),
+		Checksum:    uint32(checksum),
+		ChecksumSet: true,
+	}, nil
+}
+
 func readOneHexPart(hex []byte) (part []byte, i int) {
 	for i < len(hex) {
-		if hex[i] != ':' {
+		if hex[i] != ':' && hex[i] != '/' {
 			i++
 			continue
 		}
@@ -199,9 +276,23 @@ func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
 }
 
+// <user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>
+func (c *Chunk) ExternalKey() string {
+	period := time.Hour
+	shard := uint64(c.Fingerprint) % 16
+	// reduce the fingerprint into the <period> space to act as jitter
+	jitter := uint64(c.Fingerprint) % uint64(period)
+	// The fingerprint (hash, uniformly distributed) allows us to gradually
+	// write into the next <period>, "warming" it up in a linear fashion wrt time.
+	// This means that if we're 10% into the current period, 10% of fingerprints will
+	// be written into the next period instead.
+	prefix := (uint64(c.From.UnixNano()) + jitter) % uint64(period)
+	return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", c.UserID, prefix, shard, uint64(c.Fingerprint), int64(c.From), int64(c.Through), c.Checksum)
+}
+
 // ExternalKey returns the key you can use to fetch this chunk from external
 // storage. For newer chunks, this key includes a checksum.
-func (c *Chunk) ExternalKey() string {
+func (c *Chunk) OldExternalKey() string {
 	// Some chunks have a checksum stored in dynamodb, some do not.  We must
 	// generate keys appropriately.
 	if c.ChecksumSet {
