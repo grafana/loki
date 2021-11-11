@@ -364,8 +364,8 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	}
 
 	return f, nil
-}
-*/
+}*/
+
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 
 	acc := make([]log.Filterer, 0)
@@ -390,6 +390,12 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 
 	if len(acc) == 1 {
 		return acc[0], nil
+	}
+
+	// The accumulation is right to left so it needs to be reversed.
+	for i := len(acc)/2 - 1; i >= 0; i-- {
+		opp := len(acc) - 1 - i
+		acc[i], acc[opp] = acc[opp], acc[i]
 	}
 
 	return log.NewAndFilters(acc), nil
