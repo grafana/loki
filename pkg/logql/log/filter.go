@@ -95,7 +95,7 @@ type andFilters struct {
 
 // NewAndFilters creates a new filter which matches only if all filters match
 func NewAndFilters(filters []Filterer) Filterer {
-	containsAllFilter := containsAllFilter{}
+	var containsFilterAcc *containsAllFilter = nil
 	regexpFilters := make([]Filterer, 0)
 	n := 0
 	for _, filter := range filters {
@@ -103,11 +103,24 @@ func NewAndFilters(filters []Filterer) Filterer {
 		if !(filter == nil || filter == TrueFilter) {
 			switch c := filter.(type) {
 			case containsFilter:
+				// Start accumulating contains filters.
+				if containsFilterAcc == nil {
+					containsFilterAcc = &containsAllFilter{}
+				}
+
 				// Join all contain filters.
-				containsAllFilter.Add(c)
+				containsFilterAcc.Add(c)
 			case regexpFilter:
 				regexpFilters = append(regexpFilters, c)
+
 			default:
+				// Finish accumulating contains filters.
+				if containsFilterAcc != nil {
+					filters[n] = containsFilterAcc
+					n++
+					containsFilterAcc = nil
+				}
+
 				// Keep filter
 				filters[n] = filter
 				n++
@@ -116,12 +129,14 @@ func NewAndFilters(filters []Filterer) Filterer {
 	}
 	filters = filters[:n]
 
-	if !containsAllFilter.Empty() {
-		filters = append(filters, containsAllFilter)
+	if containsFilterAcc != nil {
+		filters = append(filters, containsFilterAcc)
 	}
 
 	// Push regex filters to end
-	filters = append(filters, regexpFilters...)
+	if len(regexpFilters) > 0 {
+		filters = append(filters, regexpFilters...)
+	}
 
 	if len(filters) == 0 {
 		return TrueFilter
