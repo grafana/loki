@@ -43,7 +43,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   local service = k.core.v1.service,
 
   query_frontend_service:
-    $.util.grpclbServiceFor($.query_frontend_deployment,) +
+    $.util.grpclbServiceFor($.query_frontend_deployment) +
     // Make sure that query frontend worker, running in the querier, do resolve
     // each query-frontend pod IP and NOT the service IP. To make it, we do NOT
     // use the service cluster IP so that when the service DNS is resolved it
