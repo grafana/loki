@@ -35,7 +35,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   local container = k.core.v1.container,
   query_scheduler_container:: if $._config.query_scheduler_enabled then
     container.new('query-scheduler', $._images.query_scheduler) +
-    container.withPorts($.util.defaultPorts) +
+    container.withPorts($.util.grpclbDefaultPorts) +
     container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +
     k.util.resourcesRequests('2', '600Mi') +
@@ -58,7 +58,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   // Headless to make sure resolution gets IP address of target pods, and not service IP.
   query_scheduler_discovery_service: if !$._config.query_scheduler_enabled then {} else
-    k.util.serviceFor($.query_scheduler_deployment) +
+    $.util.grpclbServiceFor($.query_scheduler_deployment) +
     service.mixin.spec.withPublishNotReadyAddresses(true) +
     service.mixin.spec.withClusterIp('None') +
     service.mixin.metadata.withName('query-scheduler-discovery'),
