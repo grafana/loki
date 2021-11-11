@@ -95,7 +95,7 @@ type andFilters struct {
 
 // NewAndFilters creates a new filter which matches only if all filters match
 func NewAndFilters(filters []Filterer) Filterer {
-	var containsFilterAcc *containsAllFilter = nil
+	var containsFilterAcc *containsAllFilter
 	regexpFilters := make([]Filterer, 0)
 	n := 0
 	for _, filter := range filters {
