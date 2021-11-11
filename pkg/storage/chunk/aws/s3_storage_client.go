@@ -392,6 +392,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+	bucket := a.bucketFromKey(objectKey)
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	err := ctx.Err()
 	for retries.Ongoing() {
@@ -401,7 +402,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 		err = instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			putObjectInput := &s3.PutObjectInput{
 				Body:   object,
-				Bucket: aws.String(a.bucketFromKey(objectKey)),
+				Bucket: aws.String(bucket),
 				Key:    aws.String(objectKey),
 			}
 
