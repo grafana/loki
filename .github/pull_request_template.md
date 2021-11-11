@@ -1,7 +1,7 @@
 <!--  Thanks for sending a pull request!  Before submitting:
 
 1. Read our CONTRIBUTING.md guide
-2. Name your PR as `<Feature Area>: Describe your change`. 
+2. Name your PR as `<Feature Area>: Describe your change`.
   a. Do not end the title with punctuation. It will be added in the changelog.
   b. Start with an imperative verb. Example: Fix the latency between System A and System B.
   c. Use sentence case, not title case.
@@ -20,4 +20,4 @@ Fixes #<issue number>
 **Checklist**
 - [ ] Documentation added
 - [ ] Tests updated
-
+- [ ] Add an entry in the `CHANGELOG.md` about the changes.

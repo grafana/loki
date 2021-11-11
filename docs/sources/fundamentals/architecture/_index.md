@@ -16,41 +16,102 @@ index and in stored chunks.
 
 ## Modes of operation
 
-![modes_diagram](modes_of_operation.png)
+As an application, 
+Loki is built out of many component microservices,
+and is designed to run as a horizontally-scalable distributed system.
+Loki's unique design compiles the code of the entire distributed system into
+a single binary or Docker image.
+The behavior of that single binary is controlled with
+the `-target` command-line flag and defines one of three modes of operation.
 
-Loki has a set of [components](#components), which
-are internally referred to as modules. Each component spawns a gRPC server for
-internal traffic and an HTTP/1 server for external API requests. All components
-come with an HTTP/1 server, but most only expose readiness, health, and metrics
-endpoints.
+Configuration for each deployed instance of the binary
+further specifies which components it runs.
 
-Loki can run as a single binary; all components are part of the same process.
-Or, Loki can run components as microservices.
-As microservices, the cluster is horizontally scalable.
+Loki is designed to easily redeploy a cluster under a different mode
+as your needs change,
+with no configuration changes or minimal configuration changes.
 
-When invoked, the `-target` flag on the
-command line or the `target: <string>` configuration determines
-the components' mode: single binary or microservices.
-A `target` value of `all` runs Loki in single binary mode.
-A `target` value of one of the components invokes that component
-as its own microservice. 
+### Monolithic mode
 
-Each component of Loki, such as the ingesters and distributors, communicate with
-one another over gRPC using the gRPC listen port defined in the Loki configuration.
-When running components as a single binary, this is still true: each component,
-although running in the same process, will connect to each other over the local
-network for inter-component communication.
+The simplest mode of operation sets `-target=all`.
+This is the default target,
+and it does not need to be specified.
+This is monolithic mode;
+it runs all of Loki’s microservice components inside a single process
+as a single binary or Docker image.
 
-The single process mode is ideally suited for local development, small workloads,
-and for evaluation purposes. The single binary mode can be scaled to multiple
-processes with the following limitations:
+![monolithic mode diagram](monolithic-mode.png)
 
-1. Local index and local storage cannot currently be used
-   with more than one replica, as each replica must be able to
-   access the same storage backend, and local storage is not safe for concurrent
-   access.
-1. Individual components cannot be scaled independently, so it is not possible
-   to have more read components than write components.
+Monolithic mode is useful for getting started quickly to experiment with Loki,
+as well as for small read/write volumes of up to approximately 100GB per day.
+
+Horizontally scale up a monolithic mode deployment to more instances
+by using a shared object store, and by configuring the
+[`memberlist_config` section](../../configuration/#memberlist_config)
+to share state between all instances.
+
+High availability can be configured by running two Loki instances
+using `memberlist_config` configuration and a shared object store.
+
+Route traffic to all the Loki instances in a round robin fashion.
+
+Query parallelization is limited to the quantity of instances
+and the query parallelism defined.
+
+### Simple scalable deployment mode
+
+If your volume of logs exceeds a few hundred GB a day,
+or if you would like to separate read and write concerns,
+Loki provides the simple scalable deployment mode.
+This deployment mode can scale to several TBs of logs per day and more.
+Consider the microservices mode approach for very large Loki installations.
+
+![simple scalable deployment mode diagram](simple-scalable.png)
+
+In this mode the component microservices of Loki are bundled into two targets:
+`-target=read` and `-target=write`.
+
+There are advantages to separating the read and write paths:
+
+* higher availability of write path by providing dedicated nodes
+* separately scalable read path to add/remove query performance on demand
+
+The simple scalable deployment mode requires a load balancer in front of Loki,
+which directs `/loki/api/v1/push` traffic to the write nodes.
+All other requests go to the read nodes.
+Traffic should be sent in a round robin fashion.
+
+The simple scalable deployment of Loki can scale to
+several TBs of logs per day and more.
+
+### Microservices mode
+
+The microservices deployment mode instantiates components of Loki
+as distinct processes.
+Each process is invoked specifying its `target`:
+
+* ingester
+* distributor
+* query-frontend
+* query-scheduler
+* querier
+* index-gateway
+* ruler
+* compactor
+
+![microservices mode diagram](microservices-mode.png)
+
+Running components as individual microservices allows scaling up
+by increasing the quantity of microservices.
+The customized cluster has better observability of the individual components.
+Microservices mode deployments are the most efficient Loki installations.
+However, they are also the most complex to set up and maintain.
+
+Microservices mode is recommended for very large Loki clusters
+or for clusters that require more control over scaling and cluster operations.
+
+Microservices mode works best with Kubernetes deployments.
+There are Jsonnet and distributed Helm chart installations.
 
 ## Components
 

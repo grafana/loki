@@ -96,9 +96,9 @@ func TestTable_Compaction(t *testing.T) {
 	}
 }
 
-type TableMarkerFunc func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error)
+type TableMarkerFunc func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
 
-func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
+func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
 	return t(ctx, tableName, db)
 }
 
@@ -114,8 +114,8 @@ func TestTable_CompactionRetention(t *testing.T) {
 				_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
 				require.True(t, os.IsNotExist(err))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
-				return true, 100, nil
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return true, true, nil
 			}),
 		},
 		"marked table": {
@@ -127,8 +127,8 @@ func TestTable_CompactionRetention(t *testing.T) {
 				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
 				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
-				return false, 100, nil
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return false, true, nil
 			}),
 		},
 		"already compacted table": {
@@ -140,8 +140,8 @@ func TestTable_CompactionRetention(t *testing.T) {
 				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
 				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
-				return false, 100, nil
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return false, true, nil
 			}),
 		},
 		"not modified": {
@@ -153,8 +153,8 @@ func TestTable_CompactionRetention(t *testing.T) {
 				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
 				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
 			},
-			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
-				return false, 0, nil
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return false, false, nil
 			}),
 		},
 	} {

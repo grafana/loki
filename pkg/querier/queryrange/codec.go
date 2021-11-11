@@ -238,6 +238,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 			StartTs: req.Start.UTC(),
 			EndTs:   req.End.UTC(),
 			Path:    r.URL.Path,
+			Shards:  req.Shards,
 		}, nil
 	case LabelNamesOp:
 		req, err := loghttp.ParseLabelQuery(r)

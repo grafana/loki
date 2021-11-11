@@ -9,11 +9,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog"
@@ -28,6 +30,7 @@ const (
 	GcplogScrapeConfigs  = "gcplogScrapeConfigs"
 	PushScrapeConfigs    = "pushScrapeConfigs"
 	WindowsEventsConfigs = "windowsEventsConfigs"
+	KafkaConfigs         = "KafkaConfigs"
 )
 
 type targetManager interface {
@@ -52,6 +55,7 @@ func NewTargetManagers(
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
+	clientConfigs ...client.Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
 	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
@@ -80,7 +84,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
 		case cfg.WindowsConfig != nil:
 			targetScrapeConfigs[WindowsEventsConfigs] = append(targetScrapeConfigs[WindowsEventsConfigs], cfg)
-
+		case cfg.KafkaConfig != nil:
+			targetScrapeConfigs[KafkaConfigs] = append(targetScrapeConfigs[KafkaConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -189,6 +194,13 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make windows target manager")
 			}
 			targetManagers = append(targetManagers, windowsTargetManager)
+		case KafkaConfigs:
+			kafkaTargetManager, err := kafka.NewTargetManager(reg, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make kafka target manager")
+			}
+			targetManagers = append(targetManagers, kafkaTargetManager)
+
 		default:
 			return nil, errors.New("unknown scrape config")
 		}

@@ -4,9 +4,9 @@ import (
 	"flag"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -44,9 +44,7 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 		// If the user has specified a downstream Prometheus, then we should use that.
 		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL, http.DefaultTransport)
 		return rt, nil, nil, err
-	case ring != nil:
-		fallthrough
-	case cfg.FrontendV2.SchedulerAddress != "":
+	case cfg.FrontendV2.SchedulerAddress != "" || ring != nil:
 		// If query-scheduler address is configured, use Frontend.
 		if cfg.FrontendV2.Addr == "" {
 			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames)

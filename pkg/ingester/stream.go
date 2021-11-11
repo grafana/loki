@@ -182,7 +182,8 @@ func (s *stream) Push(
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
 
-	if counter > 0 && counter <= s.entryCt {
+	isReplay := counter > 0
+	if isReplay && counter <= s.entryCt {
 		var byteCt int
 		for _, e := range entries {
 			byteCt += len(e.Line)
@@ -209,8 +210,12 @@ func (s *stream) Push(
 	var rateLimitedSamples, rateLimitedBytes int
 	defer func() {
 		if outOfOrderSamples > 0 {
-			validation.DiscardedSamples.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderSamples))
-			validation.DiscardedBytes.WithLabelValues(validation.OutOfOrder, s.tenant).Add(float64(outOfOrderBytes))
+			name := validation.OutOfOrder
+			if s.unorderedWrites {
+				name = validation.TooFarBehind
+			}
+			validation.DiscardedSamples.WithLabelValues(name, s.tenant).Add(float64(outOfOrderSamples))
+			validation.DiscardedBytes.WithLabelValues(name, s.tenant).Add(float64(outOfOrderBytes))
 		}
 		if rateLimitedSamples > 0 {
 			validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
@@ -252,13 +257,13 @@ func (s *stream) Push(
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		if s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrOutOfOrder})
+		if !isReplay && s.unorderedWrites && !s.highestTs.IsZero() && s.highestTs.Add(-s.cfg.MaxChunkAge/2).After(entries[i].Timestamp) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind})
 			outOfOrderSamples++
 			outOfOrderBytes += len(entries[i].Line)
 		} else if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
-			if err == chunkenc.ErrOutOfOrder {
+			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
 			}
@@ -324,11 +329,12 @@ func (s *stream) Push(
 	if len(failedEntriesWithError) > 0 {
 		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
 		_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
-		if lastEntryWithErr.e != chunkenc.ErrOutOfOrder && !ok {
+		outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
+		if !outOfOrder && !ok {
 			return bytesAdded, lastEntryWithErr.e
 		}
 		var statusCode int
-		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
+		if outOfOrder {
 			statusCode = http.StatusBadRequest
 		}
 		if ok {

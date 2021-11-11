@@ -211,7 +211,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 	}
 }
 
-func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
+func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		expirationChecker expirationChecker
@@ -252,7 +252,7 @@ func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalHasExpiredChunks(tc.interval))
+			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalMayHaveExpiredChunks(tc.interval))
 		})
 	}
 }

@@ -13,53 +13,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
       showMultiCluster:: true,
       clusterLabel:: 'cluster',
 
-      namespaceType:: 'query',
-      namespaceQuery::
-        if cfg.showMultiCluster then
-          'kube_pod_container_info{cluster="$cluster", image=~".*(loki|logs).*", container!="loki-canary"}'
-        else
-          'kube_pod_container_info',
-
-      assert (cfg.namespaceType == 'custom' || cfg.namespaceType == 'query') : "Only types 'query' and 'custom' are allowed for dashboard variable 'namespace'",
-
       matchers:: {
         cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
         distributor: [utils.selector.re('job', '($namespace)/distributor')],
         ingester: [utils.selector.re('job', '($namespace)/ingester')],
         querier: [utils.selector.re('job', '($namespace)/querier')],
       },
-
-      templateLabels:: [
-        {
-          name:: 'logs',
-          type:: 'datasource',
-          query:: 'loki',
-        },
-        {
-          name:: 'datasource',
-          type:: 'datasource',
-          query:: 'prometheus',
-        },
-      ] + (
-        if cfg.showMultiCluster then [
-          {
-            variable:: 'cluster',
-            label:: cfg.clusterLabel,
-            query:: 'kube_pod_container_info{image=~".*(loki|logs).*", container!="loki-canary"}',
-            datasource:: '$datasource',
-            type:: 'query',
-          },
-        ] else []
-      ) + [
-        {
-          variable:: 'namespace',
-          label:: 'namespace',
-          query:: cfg.namespaceQuery,
-          datasource:: '$datasource',
-          type:: cfg.namespaceType,
-        },
-      ],
-    } + lokiOperational + {
+    }
+    + lokiOperational + {
       annotations:
         if dashboards['loki-operational.json'].showAnnotations
         then super.annotations
@@ -188,72 +149,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
         }
         for p in super.panels
       ],
-      templating: {
-        list+: [
-          {
-            hide: 0,
-            includeAll: false,
-            label: null,
-            multi: false,
-            name: l.name,
-            options: [],
-            query: l.query,
-            refresh: 1,
-            regex: '',
-            skipUrlSync: false,
-            type: l.type,
-          }
-          for l in dashboards['loki-operational.json'].templateLabels
-          if l.type == 'datasource'
-        ] + [
-          {
-            allValue: null,
-            current:
-              if l.type == 'custom' then {
-                text: l.query,
-                value: l.query,
-              } else {},
-            datasource: l.datasource,
-            hide: 0,
-            includeAll: false,
-            label: l.variable,
-            multi: false,
-            name: l.variable,
-            options: [],
-            query:
-              if l.type == 'query' then
-                'label_values(%s, %s)' % [l.query, l.label]
-              else
-                l.query,
-            refresh: 1,
-            regex: '',
-            sort: 2,
-            tagValuesQuery: '',
-            tags: [],
-            tagsQuery: '',
-            type: l.type,
-            useTags: false,
-          }
-          for l in dashboards['loki-operational.json'].templateLabels
-          if l.type == 'query' || l.type == 'custom'
-        ],
-      },
-    } + {
-      // ugly hack, copy pasta the tag/link
-      // code from the loki-mixin
-      tags: ['loki'],
-      links+: [
-        {
-          asDropdown: true,
-          icon: 'external link',
-          includeVars: true,
-          keepTime: true,
-          tags: $._config.tags,
-          targetBlank: false,
-          title: 'Loki Dashboards',
-          type: 'dashboards',
-        },
-      ],
-    },
+    } +
+      $.dashboard('Loki / Operational')
+      // TODO (callum) For this cluster the cluster template is not actually
+      // added since the json defines the template array, we just need the tags
+      // and links from this function until they're moved to a separate function.
+      .addClusterSelectorTemplates(false)
   },
 }

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -160,11 +162,13 @@ func Test_SeriesQuery(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	indexShards := 2
 
 	// just some random values
 	cfg := defaultConfig()
 	cfg.SyncPeriod = 1 * time.Minute
 	cfg.SyncMinUtilization = 0.20
+	cfg.IndexShards = indexShards
 
 	instance := newInstance(cfg, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil)
 
@@ -209,6 +213,22 @@ func Test_SeriesQuery(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				{Labels: map[string]string{"app": "test", "job": "varlogs"}},
+				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+			},
+		},
+		{
+			"overlapping request with shard param",
+			&logproto.SeriesRequest{
+				Start:  currentTime.Add(1 * time.Nanosecond),
+				End:    currentTime.Add(7 * time.Nanosecond),
+				Groups: []string{`{job="varlogs"}`},
+				Shards: []string{astmapper.ShardAnnotation{
+					Shard: 1,
+					Of:    indexShards,
+				}.String()},
+			},
+			[]logproto.SeriesIdentifier{
+				// Separated by shard number
 				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
 			},
 		},

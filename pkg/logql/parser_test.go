@@ -140,6 +140,16 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{ foo = "bar" }|logfmt|rate="a"`, // rate should also be able to use it as IDENTIFIER
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "rate", "a"))),
+				},
+			),
+		},
+		{
 			in: `rate({ foo = "bar" }[5d])`,
 			exp: &RangeAggregationExpr{
 				Left: &LogRange{
@@ -352,6 +362,20 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `{ foo = "bar" , ip="foo"}|logfmt|= ip("127.0.0.1")|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")|ip=ip("6.7.8.9")`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar"), mustNewMatcher(labels.MatchEqual, "ip", "foo")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "127.0.0.1"),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+					newLabelFilterExpr(log.NewIPLabelFilter("6.7.8.9", "ip", log.LabelFilterEqual)),
+				},
+			),
+		},
+		{
 			in: `{foo="bar"} |= ip("123.123.123.123")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
@@ -521,6 +545,52 @@ func TestParse(t *testing.T) {
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"`, // just using `ip` as a label name(identifier) should work
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"`, // just using `ip` as a label name should work with chaining
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")`, // `ip` should work as both label name and filter in same query
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt|ip="2.3.4.5"|ip="abc"|ipaddr=ip("4.5.6.7")|ip=ip("6.7.8.9")`, // `ip` should work as both label name and filter in same query with same name.
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
+					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
+					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
+					newLabelFilterExpr(log.NewIPLabelFilter("6.7.8.9", "ip", log.LabelFilterEqual)),
 				},
 			),
 		},
@@ -938,10 +1008,14 @@ func TestParse(t *testing.T) {
 			`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
-				&BinOpOptions{},
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
 				mustNewBinOpExpr(
 					OpTypeDiv,
-					&BinOpOptions{},
+					&BinOpOptions{
+						VectorMatching: &VectorMatching{Card: CardOneToOne},
+					},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
@@ -1001,10 +1075,14 @@ func TestParse(t *testing.T) {
 					`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
-				&BinOpOptions{},
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
 				mustNewBinOpExpr(
 					OpTypePow,
-					&BinOpOptions{},
+					&BinOpOptions{
+						VectorMatching: &VectorMatching{Card: CardOneToOne},
+					},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
@@ -1065,7 +1143,9 @@ func TestParse(t *testing.T) {
 					`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
-				&BinOpOptions{},
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
 					&LogRange{
 						Left: &MatchersExpr{
@@ -1084,7 +1164,9 @@ func TestParse(t *testing.T) {
 				),
 				mustNewBinOpExpr(
 					OpTypeDiv,
-					&BinOpOptions{},
+					&BinOpOptions{
+						VectorMatching: &VectorMatching{Card: CardOneToOne},
+					},
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&LogRange{
 							Left: &MatchersExpr{
@@ -1128,7 +1210,9 @@ func TestParse(t *testing.T) {
 						)`,
 			exp: mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
-					&BinOpOptions{},
+					&BinOpOptions{
+						VectorMatching: &VectorMatching{Card: CardOneToOne},
+					},
 					newRangeAggregationExpr(
 						&LogRange{
 							Left: newPipelineExpr(
@@ -1156,9 +1240,13 @@ func TestParse(t *testing.T) {
 						/
 							count_over_time({namespace="tns"}[5m])
 						) * 100`,
-			exp: mustNewBinOpExpr(OpTypeMul, &BinOpOptions{}, mustNewVectorAggregationExpr(
+			exp: mustNewBinOpExpr(OpTypeMul, &BinOpOptions{
+				VectorMatching: &VectorMatching{Card: CardOneToOne},
+			}, mustNewVectorAggregationExpr(
 				mustNewBinOpExpr(OpTypeDiv,
-					&BinOpOptions{},
+					&BinOpOptions{
+						VectorMatching: &VectorMatching{Card: CardOneToOne},
+					},
 					newRangeAggregationExpr(
 						&LogRange{
 							Left: newPipelineExpr(
@@ -1187,7 +1275,9 @@ func TestParse(t *testing.T) {
 			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
-				&BinOpOptions{},
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						&LogRange{
@@ -1213,9 +1303,13 @@ func TestParse(t *testing.T) {
 			in: `1 + -2 / 1`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
-				&BinOpOptions{},
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
 				&LiteralExpr{value: 1},
-				mustNewBinOpExpr(OpTypeDiv, &BinOpOptions{}, &LiteralExpr{value: -2}, &LiteralExpr{value: 1}),
+				mustNewBinOpExpr(OpTypeDiv, &BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				}, &LiteralExpr{value: -2}, &LiteralExpr{value: 1}),
 			),
 		},
 		{
@@ -1223,8 +1317,12 @@ func TestParse(t *testing.T) {
 			in: `1 + 1 - -1`,
 			exp: mustNewBinOpExpr(
 				OpTypeSub,
-				&BinOpOptions{},
-				mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{}, &LiteralExpr{value: 1}, &LiteralExpr{value: 1}),
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
+				mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				}, &LiteralExpr{value: 1}, &LiteralExpr{value: 1}),
 				&LiteralExpr{value: -1},
 			),
 		},
@@ -2109,7 +2207,8 @@ func TestParse(t *testing.T) {
 										) by (namespace,instance)
 							) by (foo,bar)
 					`,
-			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false},
+			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{
+				VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool: false},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						newLogRange(&PipelineExpr{
@@ -2190,7 +2289,7 @@ func TestParse(t *testing.T) {
 										) by (namespace,instance)
 							) by (foo)
 					`,
-			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false, VectorMatching: &VectorMatching{On: false, Include: []string{"bar"}}},
+			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false, VectorMatching: &VectorMatching{Card: CardOneToOne, On: false, MatchingLabels: []string{"bar"}}},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						newLogRange(&PipelineExpr{
@@ -2271,7 +2370,7 @@ func TestParse(t *testing.T) {
 										) by (namespace,instance)
 							) by (foo)
 					`,
-			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false, VectorMatching: &VectorMatching{On: true, Include: []string{"foo"}}},
+			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false, VectorMatching: &VectorMatching{Card: CardOneToOne, On: true, MatchingLabels: []string{"foo"}}},
 				mustNewVectorAggregationExpr(
 					newRangeAggregationExpr(
 						newLogRange(&PipelineExpr{
@@ -2340,6 +2439,149 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in: `
+			sum by (foo,bar) (
+				quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+								) by (namespace,instance)
+					)
+					+ ignoring (bar) group_left (foo)
+					avg(
+						avg_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+							| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
+										) by (namespace,instance)
+							) by (foo)
+					`,
+			exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false, VectorMatching: &VectorMatching{Card: CardManyToOne, Include: []string{"foo"}, On: false, MatchingLabels: []string{"bar"}}},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&PipelineExpr{
+							Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							MultiStages: MultiStageExpr{
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&LabelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", ""),
+							nil),
+						OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					),
+					OpTypeSum,
+					&Grouping{Groups: []string{"foo", "bar"}},
+					nil,
+				),
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						newLogRange(&PipelineExpr{
+							Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							MultiStages: MultiStageExpr{
+								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLabelParserExpr(OpParserTypeJSON, ""),
+								&LabelFilterExpr{
+									LabelFilterer: log.NewOrLabelFilter(
+										log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+										log.NewAndLabelFilter(
+											log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status_code", 500.0),
+											log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status_code", 200.0),
+										),
+									),
+								},
+								newLineFmtExpr("blip{{ .foo }}blop {{.status_code}}"),
+								newLabelFmtExpr([]log.LabelFmt{
+									log.NewRenameLabelFmt("foo", "bar"),
+									log.NewTemplateLabelFmt("status_code", "buzz{{.bar}}"),
+								}),
+							},
+						},
+							5*time.Minute,
+							newUnwrapExpr("foo", ""),
+							nil),
+						OpRangeTypeAvg, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, nil,
+					),
+					OpTypeAvg,
+					&Grouping{Groups: []string{"foo"}},
+					nil,
+				),
+			),
+		},
+		{
+			in: `
+			sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_right (app) sum by (app) (count_over_time({app="foo"}[1m]))
+					`,
+			exp: mustNewBinOpExpr(OpTypeGT, &BinOpOptions{ReturnBool: true, VectorMatching: &VectorMatching{Card: CardOneToMany, Include: []string{"app"}, On: true, MatchingLabels: nil}},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&LogRange{
+							Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							Interval: 1 * time.Minute,
+						},
+						OpRangeTypeCount, nil, nil,
+					),
+					OpTypeSum,
+					&Grouping{Groups: []string{"app", "machine"}},
+					nil,
+				),
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&LogRange{
+							Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							Interval: 1 * time.Minute,
+						},
+						OpRangeTypeCount, nil, nil,
+					),
+					OpTypeSum,
+					&Grouping{Groups: []string{"app"}},
+					nil,
+				),
+			),
+		},
+		{
+			in: `
+			sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_right sum by (app) (count_over_time({app="foo"}[1m]))
+					`,
+			exp: mustNewBinOpExpr(OpTypeGT, &BinOpOptions{ReturnBool: true, VectorMatching: &VectorMatching{Card: CardOneToMany, Include: nil, On: true, MatchingLabels: nil}},
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&LogRange{
+							Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							Interval: 1 * time.Minute,
+						},
+						OpRangeTypeCount, nil, nil,
+					),
+					OpTypeSum,
+					&Grouping{Groups: []string{"app", "machine"}},
+					nil,
+				),
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&LogRange{
+							Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+							Interval: 1 * time.Minute,
+						},
+						OpRangeTypeCount, nil, nil,
+					),
+					OpTypeSum,
+					&Grouping{Groups: []string{"app"}},
+					nil,
+				),
+			),
+		},
+		{
+			in: `
 			label_replace(
 				sum by (foo,bar) (
 					quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
@@ -2358,7 +2600,7 @@ func TestParse(t *testing.T) {
 				"(.*)"
 				)`,
 			exp: mustNewLabelReplaceExpr(
-				mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{ReturnBool: false},
+				mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool: false},
 					mustNewVectorAggregationExpr(
 						newRangeAggregationExpr(
 							newLogRange(&PipelineExpr{
@@ -2497,7 +2739,7 @@ func TestParse(t *testing.T) {
 				Op: OpTypeGT,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: nil,
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				SampleExpr: &RangeAggregationExpr{
 					Left: &LogRange{
@@ -2521,7 +2763,7 @@ func TestParse(t *testing.T) {
 				Op: OpTypeGT,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: nil,
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				SampleExpr: &RangeAggregationExpr{
 					Left: &LogRange{
@@ -2544,7 +2786,7 @@ func TestParse(t *testing.T) {
 				Op: OpTypeOr,
 				Opts: &BinOpOptions{
 					ReturnBool:     false,
-					VectorMatching: nil,
+					VectorMatching: &VectorMatching{},
 				},
 				SampleExpr: &RangeAggregationExpr{
 					Left: &LogRange{
@@ -2557,7 +2799,7 @@ func TestParse(t *testing.T) {
 					Op: OpTypeGT,
 					Opts: &BinOpOptions{
 						ReturnBool:     false,
-						VectorMatching: nil,
+						VectorMatching: &VectorMatching{Card: CardOneToOne},
 					},
 					SampleExpr: &RangeAggregationExpr{
 						Left: &LogRange{

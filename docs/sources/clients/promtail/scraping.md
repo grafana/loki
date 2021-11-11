@@ -182,7 +182,7 @@ You can relabel default labels via [Relabeling](#relabeling) if required.
 Providing a path to a bookmark is mandatory, it will be used to persist the last event processed and allow
 resuming the target without skipping logs.
 
-see the [configuration](./configuration.md#windows_events) section for more information.
+see the [configuration](https://grafana.com/docs/loki/latest/clients/promtail/configuration/#windows_events) section for more information.
 
 ## Gcplog scraping
 Promtail supports scraping cloud resource logs(say GCS bucket logs, Load Balancer logs, Kubernetes Cluster logs) from GCP.
@@ -207,13 +207,9 @@ Here `project_id` and `subscription` are the only required fields.
 
 Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with pubsub subscription to receive logs from.
 
-It also support `relabeling` and `pipeline` stages just like other targets. 
+It also supports `relabeling` and `pipeline` stages just like other targets.
 
 When Promtail receives GCP logs the labels that are set on the GCP resources are available as internal labels. Like in the example above, the `__project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`. See [Relabeling](#relabeling) for more information.
-
-Log entries scraped by `gcplog` will add an additional label called `promtail_instance`. This label uniquely identifies each Promtail instance trying to scrape gcplog (from a single `subscription_id`).
-We need this unique identifier to avoid out-of-order errors from Loki servers when Loki is not configured to [accept out-of-order writes](../../../configuration/#accept-out-of-order-writes).
-If two Promtail instances rewrite the timestamp of log entries (with same labelset) at the same time, the log entries may reach Loki servers at different times. This can cause Loki servers to reject the out-of-order log entry.
 
 ## Syslog Receiver
 
@@ -270,6 +266,42 @@ destination d_loki {
 ```
 action(type="omfwd" protocol="tcp" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted")
 ```
+
+
+## Kafka
+
+Promtail supports reading message from Kafka using a consumer group.
+The Kafka targets can be configured using the `kafka` stanza:
+
+```yaml
+scrape_configs:
+- job_name: kafka
+  kafka:
+    brokers:
+    - my-kafka-0.org:50705
+    - my-kafka-1.org:50705
+    topics:
+    - ^promtail.*
+    - some_fixed_topic
+    labels:
+      job: kafka
+  relabel_configs:
+      - action: replace
+        source_labels:
+          - __meta_kafka_topic
+        target_label: topic
+      - action: replace
+        source_labels:
+          - __meta_kafka_partition
+        target_label: partition
+      - action: replace
+        source_labels:
+          - __meta_kafka_group_id
+        target_label: group
+```
+
+Only the `brokers` and `topics` is required.
+see the [configuration](../../configuration/#kafka) section for more information.
 
 ## Relabeling
 

@@ -14,13 +14,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -128,12 +128,11 @@ func (t *Loki) initServer() (services.Service, error) {
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
+	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
 	if err != nil {
 		return
 	}
-	prometheus.MustRegister(t.ring)
-	t.Server.HTTP.Handle("/ring", t.ring)
+	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
 	return t.ring, nil
 }
 
@@ -205,8 +204,8 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
-	t.Server.HTTP.Handle("/api/prom/push", pushHandler)
-	t.Server.HTTP.Handle("/loki/api/v1/push", pushHandler)
+	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
+	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
 	return t.distributor, nil
 }
 
@@ -238,17 +237,30 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/loki/api/v1/tail":                http.HandlerFunc(t.Querier.TailHandler),
 		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
 
 		"/api/prom/query":               http.HandlerFunc(t.Querier.LogQueryHandler),
 		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
-		"/api/prom/tail":                http.HandlerFunc(t.Querier.TailHandler),
 		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
 	}
+
+	// We always want to register tail routes externally, tail requests are different from normal queries, they
+	// are HTTP requests that get upgraded to websocket requests and need to be handled/kept open by the Queriers.
+	// The frontend has code to proxy these requests, however when running in the same processes
+	// (such as target=All or target=Read) we don't want the frontend to proxy and instead we want the Queriers
+	// to directly register these routes.
+	// In practice this means we always want the queriers to register the tail routes externally, when a querier
+	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
+	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
+	// on the external router.
+	var alwaysExternalHandlers = map[string]http.Handler{
+		"/loki/api/v1/tail": http.HandlerFunc(t.Querier.TailHandler),
+		"/api/prom/tail":    http.HandlerFunc(t.Querier.TailHandler),
+	}
+
 	return querier.InitWorkerService(
-		querierWorkerServiceConfig, queryHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
+		querierWorkerServiceConfig, queryHandlers, alwaysExternalHandlers, t.Server.HTTP, t.Server.HTTPServer.Handler, t.HTTPAuthMiddleware,
 	)
 }
 
@@ -268,7 +280,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
-	t.Server.HTTP.Path("/flush").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)))
+	t.Server.HTTP.Path("/flush").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)))
 	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)))
 
 	return t.Ingester, nil
@@ -325,23 +337,28 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 		switch true {
-		case t.Cfg.isModuleEnabled(Ingester):
+		case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
 			// We do not want ingester to unnecessarily keep downloading files
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeWriteOnly
-			// Use fifo cache for caching index in memory.
+			// Use fifo cache for caching index in memory, this also significantly helps performance.
 			t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
 					MaxSizeBytes: "200 MB",
-					// We snapshot the index in ingesters every minute for reads so reduce the index cache validity by a minute.
-					// This is usually set in StorageConfig.IndexCacheValidity but since this is exclusively used for caching the index entries,
-					// I(Sandeep) am setting it here which also helps reduce some CPU cycles and allocations required for
-					// unmarshalling the cached data to check the expiry.
+					// This is a small hack to save some CPU cycles.
+					// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
+					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
+					// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
+					// having to deserialize the object.
 					Validity: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 				},
 			}
+			// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
+			// have query gaps on chunks flushed after an index entry is cached by keeping them retained in the ingester
+			// and queried as part of live data until the cache TTL expires on the index entry.
+			t.Cfg.Ingester.RetainPeriod = t.Cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
 			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = boltdbShipperQuerierIndexUpdateDelay(t.Cfg) + 2*time.Minute
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
 			// We do not want query to do any updates to index
 			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 		default:
@@ -358,7 +375,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	if loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
 		boltdbShipperMinIngesterQueryStoreDuration := boltdbShipperMinIngesterQueryStoreDuration(t.Cfg)
 		switch true {
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler):
+		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
 			// Do not use the AsyncStore if the querier is configured with QueryStoreOnly set to true
 			if t.Cfg.Querier.QueryStoreOnly {
 				break
@@ -480,7 +497,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	).Wrap(frontendHandler)
 
 	var defaultHandler http.Handler
-	if t.Cfg.Frontend.TailProxyURL != "" {
+	// If this process also acts as a Querier we don't do any proxying of tail requests
+	if t.Cfg.Frontend.TailProxyURL != "" && !t.isModuleActive(Querier) {
 		httpMiddleware := middleware.Merge(
 			t.HTTPAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
@@ -501,20 +519,24 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	} else {
 		defaultHandler = frontendHandler
 	}
-	t.Server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
-	t.Server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
-	t.Server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
-	t.Server.HTTP.Handle("/loki/api/v1/labels", frontendHandler)
-	t.Server.HTTP.Handle("/loki/api/v1/label/{name}/values", frontendHandler)
-	t.Server.HTTP.Handle("/loki/api/v1/series", frontendHandler)
-	t.Server.HTTP.Handle("/api/prom/query", frontendHandler)
-	t.Server.HTTP.Handle("/api/prom/label", frontendHandler)
-	t.Server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
-	t.Server.HTTP.Handle("/api/prom/series", frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/label").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/labels").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/api/prom/query").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/api/prom/label").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/api/prom/series").Methods("GET", "POST").Handler(frontendHandler)
 
-	// defer tail endpoints to the default handler
-	t.Server.HTTP.Handle("/loki/api/v1/tail", defaultHandler)
-	t.Server.HTTP.Handle("/api/prom/tail", defaultHandler)
+	// Only register tailing requests if this process does not act as a Querier
+	// If this process is also a Querier the Querier will register the tail endpoints.
+	if !t.isModuleActive(Querier) {
+		// defer tail endpoints to the default handler
+		t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(defaultHandler)
+		t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(defaultHandler)
+	}
 
 	if t.frontend == nil {
 		return services.NewIdleService(nil, func(_ error) error {
@@ -604,7 +626,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	// Expose HTTP endpoints.
 	if t.Cfg.Ruler.EnableAPI {
 
-		t.Server.HTTP.Handle("/ruler/ring", t.ruler)
+		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
 		cortex_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
 
 		// Prometheus Rule API Routes
@@ -652,6 +674,15 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 }
 
 func (t *Loki) initCompactor() (services.Service, error) {
+	// Set some config sections from other config sections in the config struct
+	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.CompactorConfig.CompactorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+
+	if !loki_storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) {
+		level.Info(util_log.Logger).Log("msg", "Not using boltdb-shipper index, not starting compactor")
+		return nil, nil
+	}
+
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
 		return nil, err
@@ -661,6 +692,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
+	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		t.Server.HTTP.Path("/loki/api/admin/delete").Methods("PUT", "POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler)))
 		t.Server.HTTP.Path("/loki/api/admin/delete").Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler)))
@@ -699,7 +731,7 @@ func (t *Loki) initQueryScheduler() (services.Service, error) {
 
 	schedulerpb.RegisterSchedulerForFrontendServer(t.Server.GRPC, s)
 	schedulerpb.RegisterSchedulerForQuerierServer(t.Server.GRPC, s)
-	t.Server.HTTP.Handle("/scheduler/ring", s)
+	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(s)
 	t.queryScheduler = s
 	return s, nil
 }

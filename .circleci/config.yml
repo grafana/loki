@@ -56,9 +56,6 @@ jobs:
       - checkout
       - setup_remote_docker
       - run:
-          name: touch-protos
-          command: make touch-protos
-      - run:
           name: build
           command: make GOOS=windows GOGC=10 promtail
 

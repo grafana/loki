@@ -1,6 +1,9 @@
-// Package level implements leveled logging on top of Go kit's log package. To
-// use the level package, create a logger as per normal in your func main, and
-// wrap it with level.NewFilter.
+// Package level implements leveled logging on top of Go kit's log package.
+//
+// Deprecated: Use github.com/go-kit/log/level instead.
+//
+// To use the level package, create a logger as per normal in your func main,
+// and wrap it with level.NewFilter.
 //
 //    var logger log.Logger
 //    logger = log.NewLogfmtLogger(os.Stderr)

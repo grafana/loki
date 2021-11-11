@@ -612,3 +612,40 @@ Example of a query to print a newline per queries stored as a json array in the 
 ```logql
 {job="cortex/querier"} |= "finish in prometheus" | logfmt | line_format "{{ range $q := fromJson .queries }} {{ $q.query }} {{ end }}"
 ```
+
+## now
+
+`now` returns the current local time.
+
+```template
+{{ now }}
+```
+
+## toDate
+
+`toDate` parses a formatted string and returns the time value it represents.
+
+```template
+{{ toDate "2006-01-02" "2021-11-02" }}
+```
+
+## date
+
+`date` returns a textual representation of the time value formatted according to the provided [golang datetime layout](https://pkg.go.dev/time#pkg-constants). 
+
+```template
+{ date "2006-01-02" now }}
+```
+
+## unixEpoch
+
+`unixEpoch` returns the number of seconds elapsed since January 1, 1970 UTC.
+
+```template
+{ unixEpoch now }}
+```
+
+Example of a query to filter cortex querier jobs which create time is 1 day before:
+```logql
+{job="cortex/querier"} | label_format nowEpoch=`{{(unixEpoch now)}}`,createDateEpoch=`{{unixEpoch (toDate "2006-01-02" .createDate)}}` | label_format dateTimeDiff="{{sub .nowEpoch .createDateEpoch}}" | dateTimeDiff > 86400
+```

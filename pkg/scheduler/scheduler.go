@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -28,8 +30,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	lokiutil "github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
@@ -41,6 +45,23 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
+
+	// ringKey is the key under which we store the store gateways ring in the KVStore.
+	ringKey = "scheduler"
+
+	// ringNameForServer is the name of the ring used by the compactor server.
+	ringNameForServer = "scheduler"
+
+	// ringReplicationFactor should be 2 because we want 2 schedulers.
+	ringReplicationFactor = 2
+
+	// ringNumTokens sets our single token in the ring,
+	// we only need to insert 1 token to be used for leader election purposes.
+	ringNumTokens = 1
+
+	// ringCheckPeriod is how often we check the ring to see if this instance is still in
+	// the replicaset of instances to act as schedulers.
+	ringCheckPeriod = 3 * time.Second
 )
 
 // Scheduler is responsible for queueing and dispatching queries to Queriers.
@@ -71,10 +92,14 @@ type Scheduler struct {
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
+	schedulerRunning         prometheus.Gauge
 
 	// Ring used for finding schedulers
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
+
+	// Controls for this being a chosen scheduler
+	shouldRun atomic.Bool
 }
 
 type requestKey struct {
@@ -84,6 +109,7 @@ type requestKey struct {
 
 type connectedFrontend struct {
 	connections int
+	frontend    schedulerpb.SchedulerForFrontend_FrontendLoopServer
 
 	// This context is used for running all queries from the same frontend.
 	// When last frontend connection is closed, context is canceled.
@@ -96,8 +122,8 @@ type Config struct {
 	QuerierForgetDelay      time.Duration     `yaml:"-"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
-	UseSchedulerRing bool       `yaml:"use_scheduler_ring"`
-	SchedulerRing    RingConfig `yaml:"scheduler_ring,omitempty"`
+	UseSchedulerRing bool                `yaml:"use_scheduler_ring"`
+	SchedulerRing    lokiutil.RingConfig `yaml:"scheduler_ring,omitempty"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -107,7 +133,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.QuerierForgetDelay = 0
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query scheduler create a ring and the frontend and frontend_worker use this ring to get the addresses of the query schedulers. If frontend_address and scheduler_address are not present in the config this value will be toggle by Loki to true")
-	cfg.SchedulerRing.RegisterFlags(f)
+	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f)
 }
 
 // NewScheduler creates a new Scheduler.
@@ -145,12 +171,17 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Name: "cortex_query_scheduler_connected_frontend_clients",
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
+	s.schedulerRunning = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_query_scheduler_running",
+		Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
+	})
 
 	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
 	svcs := []services.Service{s.requestQueue, s.activeUsers}
 
 	if cfg.UseSchedulerRing {
+		s.shouldRun.Store(false)
 		ringStore, err := kv.NewClient(
 			cfg.SchedulerRing.KVStore,
 			ring.GetCodec(),
@@ -160,7 +191,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
 		}
-		lifecyclerCfg, err := cfg.SchedulerRing.ToLifecyclerConfig()
+		lifecyclerCfg, err := cfg.SchedulerRing.ToLifecyclerConfig(ringNumTokens, log)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid ring lifecycler config")
 		}
@@ -172,21 +203,21 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		delegate = ring.NewTokensPersistencyDelegate(cfg.SchedulerRing.TokensFilePath, ring.JOINING, delegate, log)
 		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.SchedulerRing.HeartbeatTimeout, delegate, log)
 
-		s.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, log, registerer)
+		s.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, log, registerer)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring lifecycler")
 		}
 
-		ringCfg := cfg.SchedulerRing.ToRingConfig()
-		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+		ringCfg := cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
+		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}
 
-		if registerer != nil {
-			registerer.MustRegister(s.ring)
-		}
 		svcs = append(svcs, s.ringLifecycler, s.ring)
+	} else {
+		// Always run if no scheduler ring is being used.
+		s.shouldRun.Store(true)
 	}
 
 	var err error
@@ -233,7 +264,7 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 	defer s.frontendDisconnected(frontendAddress)
 
 	// Response to INIT. If scheduler is not running, we skip for-loop, send SHUTTING_DOWN and exit this method.
-	if s.State() == services.Running {
+	if s.State() == services.Running && s.shouldRun.Load() {
 		if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
 			return err
 		}
@@ -307,6 +338,7 @@ func (s *Scheduler) frontendConnected(frontend schedulerpb.SchedulerForFrontend_
 	if cf == nil {
 		cf = &connectedFrontend{
 			connections: 0,
+			frontend:    frontend,
 		}
 		cf.ctx, cf.cancel = context.WithCancel(context.Background())
 		s.connectedFrontends[msg.FrontendAddress] = cf
@@ -601,12 +633,54 @@ func (s *Scheduler) starting(ctx context.Context) (err error) {
 }
 
 func (s *Scheduler) running(ctx context.Context) error {
+	t := time.NewTicker(ringCheckPeriod)
+	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case err := <-s.subservicesWatcher.Chan():
 			return errors.Wrap(err, "scheduler subservice failed")
+		case <-t.C:
+			if !s.cfg.UseSchedulerRing {
+				continue
+			}
+			isInSet, err := lokiutil.IsInReplicationSet(s.ring, lokiutil.RingKeyOfLeader, s.ringLifecycler.GetInstanceAddr())
+			if err != nil {
+				level.Error(s.log).Log("msg", "failed to query the ring to see if scheduler instance is in ReplicatonSet, will try again", "err", err)
+				continue
+			}
+			s.setRunState(isInSet)
+		}
+	}
+}
+
+func (s *Scheduler) setRunState(isInSet bool) {
+
+	if isInSet {
+		if s.shouldRun.CAS(false, true) {
+			// Value was swapped, meaning this was a state change from stopped to running.
+			level.Info(s.log).Log("msg", "this scheduler is in the ReplicationSet, will now accept requests.")
+			s.schedulerRunning.Set(1)
+		}
+	} else {
+		if s.shouldRun.CAS(true, false) {
+			// Value was swapped, meaning this was a state change from running to stopped,
+			// we need to send shutdown to all the connected frontends.
+			level.Info(s.log).Log("msg", "this scheduler is no longer in the ReplicationSet, disconnecting frontends, canceling queries and no longer accepting requests.")
+
+			// Send a shutdown message to the connected frontends, there is no way to break the blocking Recv() in the FrontendLoop()
+			// so we send a message to the frontend telling them we are shutting down so they will disconnect.
+			// When FrontendLoop() exits for the connected querier all the inflight queries and queued queries will be canceled.
+			s.connectedFrontendsMu.Lock()
+			defer s.connectedFrontendsMu.Unlock()
+			for _, f := range s.connectedFrontends {
+				// We ignore any errors here because there isn't really an action to take and because
+				// the frontends are also discovering the ring changes and may already be disconnected
+				// or have disconnected.
+				_ = f.frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN})
+			}
+			s.schedulerRunning.Set(0)
 		}
 	}
 }
@@ -656,7 +730,7 @@ func (s *Scheduler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc rin
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := ring.GenerateTokens(RingNumTokens-len(tokens), takenTokens)
+	newTokens := ring.GenerateTokens(ringNumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

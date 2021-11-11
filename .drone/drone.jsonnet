@@ -130,7 +130,7 @@ local promtail_win() = pipeline('promtail-windows') {
   ],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,main') {
+local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluent-bit') {
@@ -154,7 +154,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
   depends_on: ['check'],
 };
 
-local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,main') {
+local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'fluentd') {
@@ -178,7 +178,7 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,main')
   depends_on: ['check'],
 };
 
-local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'latest,main') {
+local logstash() = pipeline('logstash-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // dry run for everything that is not tag or main
     clients_docker('amd64', 'logstash') {
@@ -210,7 +210,6 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
       when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
-        build_args: ['TOUCH_PROTOS=1'],
       },
     },
   ] + [
@@ -218,9 +217,7 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
     clients_docker(arch, 'promtail') {
       depends_on: ['image-tag'],
       when: condition('include').tagMain,
-      settings+: {
-        build_args: ['TOUCH_PROTOS=1'],
-      },
+      settings+: {},
     },
   ],
   depends_on: ['check'],
@@ -249,9 +246,7 @@ local lambda_promtail(tags='') = pipeline('lambda-promtail'){
     lambda_promtail_ecr('lambda-promtail') {
       depends_on: ['image-tag'],
       when: condition('include').tagMain,
-      settings+: {
-        build_args: ['TOUCH_PROTOS=1'],
-      },
+      settings+: {},
     },
   ],
   depends_on: ['check'],
@@ -265,7 +260,6 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
       when: condition('exclude').tagMain,
       settings+: {
         dry_run: true,
-        build_args: ['TOUCH_PROTOS=1'],
       },
     }
     for app in apps
@@ -274,9 +268,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     docker(arch, app) {
       depends_on: ['image-tag'],
       when: condition('include').tagMain,
-      settings+: {
-        build_args: ['TOUCH_PROTOS=1'],
-      },
+      settings+: {},
     }
     for app in apps
   ],
@@ -323,9 +315,9 @@ local manifest(apps) = pipeline('manifest') {
       path: 'loki',
     },
     steps: [
-      make('test', container=false) { depends_on: ['clone'] },
-      make('lint', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
+      make('test', container=false) { depends_on: ['clone','check-generated-files'] },
+      make('lint', container=false) { depends_on: ['clone','check-generated-files'] },
       make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
       {
         name: 'shellcheck',
@@ -336,6 +328,24 @@ local manifest(apps) = pipeline('manifest') {
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
+  },
+  pipeline('benchmark-cron') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    node: { type: 'no-parallel' },
+    steps: [
+      run('LogQL', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/'])
+    ],
+    trigger+: {
+      event+: {
+        include+: ['cron'],
+      },
+      cron+: {
+        include+: ['loki-bench'],
+      },
+    },
   },
 ] + [
   multiarch_image(arch)
@@ -403,5 +413,5 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [promtail_win()]
-+ [lambda_promtail('latest,main')]
++ [lambda_promtail('main')]
 + [github_secret, pull_secret, docker_username_secret, docker_password_secret, ecr_key, ecr_secret_key, deploy_configuration]

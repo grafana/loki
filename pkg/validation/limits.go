@@ -126,7 +126,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", true, "Reject old samples.")
 
-	_ = l.RejectOldSamplesMaxAge.Set("14d")
+	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
 	_ = l.CreationGracePeriod.Set("10m")
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
@@ -135,7 +135,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable.")
-	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", false, "(Experimental) Allow out of order writes.")
+	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", true, "Allow out of order writes.")
 
 	_ = l.PerStreamRateLimit.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
@@ -209,13 +209,7 @@ func (l *Limits) Validate() error {
 				return fmt.Errorf("retention period must be >= 24h was %s", rule.Period)
 			}
 			// populate matchers during validation
-			l.StreamRetention[i] = StreamRetention{
-				Period:   rule.Period,
-				Priority: rule.Priority,
-				Selector: rule.Selector,
-				Matchers: matchers,
-			}
-
+			l.StreamRetention[i].Matchers = matchers
 		}
 	}
 	return nil
@@ -257,7 +251,12 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 	}, nil
 }
 
-func (o *Overrides) AllByUserID() map[string]*Limits { return o.tenantLimits.AllByUserID() }
+func (o *Overrides) AllByUserID() map[string]*Limits {
+	if o.tenantLimits != nil {
+		return o.tenantLimits.AllByUserID()
+	}
+	return nil
+}
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).

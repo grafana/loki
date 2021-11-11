@@ -1,0 +1,121 @@
+package kafka
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Shopify/sarama"
+	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+)
+
+// Consumergroup handler
+type testConsumerGroupHandler struct {
+	handler sarama.ConsumerGroupHandler
+	ctx     context.Context
+	topics  []string
+
+	returnErr error
+
+	consuming atomic.Bool
+}
+
+func (c *testConsumerGroupHandler) Consume(ctx context.Context, topics []string, handler sarama.ConsumerGroupHandler) error {
+	if c.returnErr != nil {
+		return c.returnErr
+	}
+	c.ctx = ctx
+	c.topics = topics
+	c.handler = handler
+	c.consuming.Store(true)
+	<-ctx.Done()
+	c.consuming.Store(false)
+	return nil
+}
+
+func (c testConsumerGroupHandler) Errors() <-chan error {
+	return nil
+}
+
+func (c testConsumerGroupHandler) Close() error {
+	return nil
+}
+
+type testSession struct {
+	markedMessage []*sarama.ConsumerMessage
+}
+
+func (s *testSession) Claims() map[string][]int32                                               { return nil }
+func (s *testSession) MemberID() string                                                         { return "foo" }
+func (s *testSession) GenerationID() int32                                                      { return 10 }
+func (s *testSession) MarkOffset(topic string, partition int32, offset int64, metadata string)  {}
+func (s *testSession) Commit()                                                                  {}
+func (s *testSession) ResetOffset(topic string, partition int32, offset int64, metadata string) {}
+func (s *testSession) MarkMessage(msg *sarama.ConsumerMessage, metadata string) {
+	s.markedMessage = append(s.markedMessage, msg)
+}
+func (s *testSession) Context() context.Context { return context.Background() }
+
+type testClaim struct {
+	topic     string
+	partition int32
+	offset    int64
+	messages  chan *sarama.ConsumerMessage
+}
+
+func newTestClaim(topic string, partition int32, offset int64) *testClaim {
+	return &testClaim{
+		topic:     topic,
+		partition: partition,
+		offset:    offset,
+		messages:  make(chan *sarama.ConsumerMessage),
+	}
+}
+
+func (t *testClaim) Topic() string                            { return t.topic }
+func (t *testClaim) Partition() int32                         { return t.partition }
+func (t *testClaim) InitialOffset() int64                     { return t.offset }
+func (t *testClaim) HighWaterMarkOffset() int64               { return 0 }
+func (t *testClaim) Messages() <-chan *sarama.ConsumerMessage { return t.messages }
+func (t *testClaim) Send(m *sarama.ConsumerMessage) {
+	t.messages <- m
+}
+
+func (t *testClaim) Stop() {
+	close(t.messages)
+}
+
+func Test_TargetRun(t *testing.T) {
+	session, claim := &testSession{}, newTestClaim("footopic", 10, 12)
+	var closed bool
+	fc := fake.New(
+		func() {
+			closed = true
+		},
+	)
+	tg := NewTarget(session, claim, model.LabelSet{"foo": "bar"}, model.LabelSet{"buzz": "bazz"}, fc, true)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		tg.run()
+	}()
+
+	for i := 0; i < 10; i++ {
+		claim.Send(&sarama.ConsumerMessage{
+			Timestamp: time.Unix(0, int64(i)),
+			Value:     []byte(fmt.Sprintf("%d", i)),
+		})
+	}
+	claim.Stop()
+	wg.Wait()
+	require.Len(t, session.markedMessage, 10)
+	require.Len(t, fc.Received(), 10)
+	require.True(t, closed)
+}

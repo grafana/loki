@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos format
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
@@ -8,6 +8,7 @@
 .PHONY: benchmark-store, drone, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
+.PHONY: clean clean-protos
 
 SHELL = /usr/bin/env bash
 
@@ -128,10 +129,10 @@ binfmt:
 ################
 # Main Targets #
 ################
-all: promtail logcli loki loki-canary check-generated-files
+all: promtail logcli loki loki-canary
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: touch-protobuf-sources yacc ragel protos clients/pkg/promtail/server/ui/assets_vfsdata.go
+check-generated-files: yacc ragel protos clients/pkg/promtail/server/ui/assets_vfsdata.go
 	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
@@ -139,14 +140,6 @@ check-generated-files: touch-protobuf-sources yacc ragel protos clients/pkg/prom
 		echo "(Don't forget to check in the generated files when finished)\n"; \
 		exit 1; \
 	fi
-
-# Trick used to ensure that protobuf files are always compiled even if not changed, because the
-# tooling may have been upgraded and the compiled output may be different. We're not using a
-# PHONY target so that we can control where we want to touch it.
-touch-protobuf-sources:
-	for def in $(PROTO_DEFS); do \
-		touch $$def; \
-	done
 
 ##########
 # Logcli #
@@ -165,8 +158,8 @@ cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
 # Loki #
 ########
 
-loki: protos yacc ragel cmd/loki/loki
-loki-debug: protos yacc ragel cmd/loki/loki-debug
+loki: cmd/loki/loki
+loki-debug: cmd/loki/loki-debug
 
 cmd/loki/loki: $(APP_GO_FILES) cmd/loki/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -180,7 +173,7 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 # Loki-Canary #
 ###############
 
-loki-canary: protos yacc ragel cmd/loki-canary/loki-canary
+loki-canary: cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -281,6 +274,9 @@ test: all
 # Clean #
 #########
 
+clean-protos:
+	rm -rf $(PROTO_GOS)
+
 clean:
 	rm -rf clients/cmd/promtail/promtail
 	rm -rf cmd/loki/loki
@@ -340,13 +336,9 @@ endif
 # Protobufs #
 #############
 
-protos: $(PROTO_GOS)
+protos: clean-protos $(PROTO_GOS)
 
-# use with care. This signals to make that the proto definitions don't need recompiling.
-touch-protos:
-	for proto in $(PROTO_GOS); do [ -f "./$${proto}" ] && touch "$${proto}" && echo "touched $${proto}"; done
-
-%.pb.go: $(PROTO_DEFS)
+%.pb.go:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
@@ -384,7 +376,7 @@ docker-driver: docker-driver-clean
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
 	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) clients/cmd/docker-driver
-	docker plugin create $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH) clients/cmd/docker-driver
+	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
 clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -392,7 +384,7 @@ clients/cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 
 docker-driver-push: docker-driver
 	docker plugin push $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	docker plugin push $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
+	docker plugin push $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 
 docker-driver-enable:
 	docker plugin enable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
@@ -400,7 +392,7 @@ docker-driver-enable:
 docker-driver-clean:
 	-docker plugin disable $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
 	-docker plugin rm $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH)
-	-docker plugin rm $(LOKI_DOCKER_DRIVER):latest$(PLUGIN_ARCH)
+	-docker plugin rm $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH)
 	rm -rf clients/cmd/docker-driver/rootfs
 
 #####################
@@ -486,11 +478,10 @@ define push
 endef
 
 # push-image(app)
-# pushes the app, also as :latest and :master
+# pushes the app, also as :main
 define push-image
 	$(call push,$(1),$(IMAGE_TAG))
-	$(call push,$(1),master)
-	$(call push,$(1),latest)
+	$(call push,$(1),main)
 endef
 
 # promtail
@@ -608,8 +599,9 @@ fmt-jsonnet:
 		xargs -n 1 -- jsonnetfmt -i
 
 lint-scripts:
+    # Ignore https://github.com/koalaman/shellcheck/wiki/SC2312
 	@find . -name '*.sh' -not -path '*/vendor/*' -print0 | \
-		xargs -0 -n1 shellcheck -x -o all
+		xargs -0 -n1 shellcheck -e SC2312 -x -o all
 
 
 # search for dead link in our documentation.

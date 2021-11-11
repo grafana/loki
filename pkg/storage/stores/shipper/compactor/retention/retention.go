@@ -30,8 +30,8 @@ const (
 )
 
 type TableMarker interface {
-	// MarkForDelete marks chunks to delete for a given table and returns if it's empty and how many marks were created.
-	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error)
+	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
+	MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error)
 }
 
 type Marker struct {
@@ -57,7 +57,7 @@ func NewMarker(workingDirectory string, config storage.SchemaConfig, expiration 
 }
 
 // MarkForDelete marks all chunks expired for a given table.
-func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
+func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
@@ -66,26 +66,26 @@ func (t *Marker) MarkForDelete(ctx context.Context, tableName string, db *bbolt.
 	}()
 	level.Debug(util_log.Logger).Log("msg", "starting to process table", "table", tableName)
 
-	empty, markCount, err := t.markTable(ctx, tableName, db)
+	empty, modified, err := t.markTable(ctx, tableName, db)
 	if err != nil {
 		status = statusFailure
-		return false, 0, err
+		return false, false, err
 	}
-	return empty, markCount, nil
+	return empty, modified, nil
 }
 
-func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) (bool, int64, error) {
+func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
 	schemaCfg, ok := schemaPeriodForTable(t.config, tableName)
 	if !ok {
-		return false, 0, fmt.Errorf("could not find schema for table: %s", tableName)
+		return false, false, fmt.Errorf("could not find schema for table: %s", tableName)
 	}
 
 	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to create marker writer: %w", err)
+		return false, false, fmt.Errorf("failed to create marker writer: %w", err)
 	}
 
-	var empty bool
+	var empty, modified bool
 	err = db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(bucketName)
 		if bucket == nil {
@@ -104,7 +104,7 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 			return err
 		}
 
-		empty, err = markforDelete(ctx, tableName, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg, tableName), t.expiration, chunkRewriter)
+		empty, modified, err = markforDelete(ctx, tableName, markerWriter, chunkIt, newSeriesCleaner(bucket, schemaCfg, tableName), t.expiration, chunkRewriter)
 		if err != nil {
 			return err
 		}
@@ -115,30 +115,31 @@ func (t *Marker) markTable(ctx context.Context, tableName string, db *bbolt.DB) 
 		return nil
 	})
 	if err != nil {
-		return false, 0, err
+		return false, false, err
 	}
 	if empty {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionDeleted).Inc()
-		return empty, markerWriter.Count(), nil
+		return empty, true, nil
 	}
-	if markerWriter.Count() == 0 {
+	if !modified {
 		t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionNone).Inc()
-		return empty, markerWriter.Count(), nil
+		return empty, modified, nil
 	}
 	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, tableActionModified).Inc()
-	return empty, markerWriter.Count(), nil
+	return empty, modified, nil
 }
 
-func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, error) {
+func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWriter, chunkIt ChunkEntryIterator, seriesCleaner SeriesCleaner, expiration ExpirationChecker, chunkRewriter *chunkRewriter) (bool, bool, error) {
 	seriesMap := newUserSeriesMap()
 	// tableInterval holds the interval for which the table is expected to have the chunks indexed
 	tableInterval := ExtractIntervalFromTableName(tableName)
 	empty := true
+	modified := false
 	now := model.Now()
 
 	for chunkIt.Next() {
 		if chunkIt.Err() != nil {
-			return false, chunkIt.Err()
+			return false, false, chunkIt.Err()
 		}
 		c := chunkIt.Entry()
 		seriesMap.Add(c.SeriesID, c.UserID, c.Labels)
@@ -148,7 +149,7 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 			if len(nonDeletedIntervals) > 0 {
 				wroteChunks, err := chunkRewriter.rewriteChunk(ctx, c, nonDeletedIntervals)
 				if err != nil {
-					return false, err
+					return false, false, err
 				}
 
 				if wroteChunks {
@@ -159,15 +160,16 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 			}
 
 			if err := chunkIt.Delete(); err != nil {
-				return false, err
+				return false, false, err
 			}
+			modified = true
 
 			// Mark the chunk for deletion only if it is completely deleted, or this is the last table that the chunk is index in.
 			// For a partially deleted chunk, if we delete the source chunk before all the tables which index it are processed then
 			// the retention would fail because it would fail to find it in the storage.
 			if len(nonDeletedIntervals) == 0 || c.Through <= tableInterval.End {
 				if err := marker.Put(c.ChunkID); err != nil {
-					return false, err
+					return false, false, err
 				}
 			}
 			continue
@@ -180,8 +182,9 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 		if c.Through.After(tableInterval.End) {
 			if expiration.DropFromIndex(c, tableInterval.End, now) {
 				if err := chunkIt.Delete(); err != nil {
-					return false, err
+					return false, false, err
 				}
+				modified = true
 				continue
 			}
 		}
@@ -190,13 +193,13 @@ func markforDelete(ctx context.Context, tableName string, marker MarkerStorageWr
 		seriesMap.MarkSeriesNotDeleted(c.SeriesID, c.UserID)
 	}
 	if empty {
-		return true, nil
+		return true, true, nil
 	}
 	if ctx.Err() != nil {
-		return false, ctx.Err()
+		return false, false, ctx.Err()
 	}
 
-	return false, seriesMap.ForEach(func(info userSeriesInfo) error {
+	return false, modified, seriesMap.ForEach(func(info userSeriesInfo) error {
 		if !info.isDeleted {
 			return nil
 		}

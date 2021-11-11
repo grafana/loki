@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -46,14 +46,33 @@ type WorkerServiceConfig struct {
 func InitWorkerService(
 	cfg WorkerServiceConfig,
 	queryRoutesToHandlers map[string]http.Handler,
+	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
 	externalHandler http.Handler,
 	authMiddleware middleware.Interface,
 ) (serve services.Service, err error) {
 
+	// Create a couple Middlewares used to handle panics, perform auth, and parse Form's in http request
+	internalMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+		authMiddleware,
+		serverutil.NewPrepopulateMiddleware(),
+	)
+	// External middleware also needs to set JSON content type headers
+	externalMiddleware := middleware.Merge(
+		internalMiddleware,
+		serverutil.ResponseJSONMiddleware(),
+	)
+
 	internalRouter := mux.NewRouter()
 	for route, handler := range queryRoutesToHandlers {
-		internalRouter.Handle(route, handler)
+		internalRouter.Path(route).Methods("GET", "POST").Handler(handler)
+	}
+
+	// There are some routes which are always registered on the external router, add them now and
+	// wrap them with the externalMiddleware
+	for route, handler := range alwaysExternalRoutesToHandlers {
+		externalRouter.Path(route).Methods("GET", "POST").Handler(externalMiddleware.Wrap(handler))
 	}
 
 	// If the querier is running standalone without the query-frontend or query-scheduler, we must register the internal
@@ -70,7 +89,10 @@ func InitWorkerService(
 			idx++
 		}
 
-		registerRoutesExternally(routes, externalRouter, internalRouter, authMiddleware)
+		// Register routes externally
+		for _, route := range routes {
+			externalRouter.Path(route).Methods("GET", "POST").Handler(externalMiddleware.Wrap(internalRouter))
+		}
 
 		//If no frontend or scheduler address has been configured, then there is no place for the
 		//querier worker to request work from, so no need to start a worker service
@@ -107,16 +129,7 @@ func InitWorkerService(
 			return "internalQuerier"
 		}))
 
-	// If queries are processed using the external HTTP Server, we need wrap the internal querier with
-	// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
-	// request context, as well as make sure any x-www-url-formencoded params are correctly parsed
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-		authMiddleware,
-		serverutil.NewPrepopulateMiddleware(),
-	)
-
-	internalHandler = httpMiddleware.Wrap(internalHandler)
+	internalHandler = internalMiddleware.Wrap(internalHandler)
 
 	//Querier worker's max concurrent requests must be the same as the querier setting
 	(*cfg.QuerierWorkerConfig).MaxConcurrentRequests = cfg.QuerierMaxConcurrent
@@ -129,19 +142,6 @@ func InitWorkerService(
 		httpgrpc_server.NewServer(internalHandler),
 		util_log.Logger,
 		prometheus.DefaultRegisterer)
-}
-
-func registerRoutesExternally(routes []string, externalRouter *mux.Router, internalHandler http.Handler, authMiddleware middleware.Interface) {
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-		authMiddleware,
-		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
-	)
-
-	for _, route := range routes {
-		externalRouter.Handle(route, httpMiddleware.Wrap(internalHandler))
-	}
 }
 
 func querierRunningStandalone(cfg WorkerServiceConfig) bool {
