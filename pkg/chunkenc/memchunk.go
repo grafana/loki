@@ -1109,7 +1109,6 @@ type bufferedIterator struct {
 
 	err error
 
-	decBuf   []byte // The buffer for decoding the lengths.
 	buf      []byte // The buffer for a single entry.
 	currLine []byte // the current line, this is the same as the buffer but sliced the the line size.
 	currTs   int64
@@ -1126,7 +1125,6 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 		reader:    nil, // will be initialized later
 		bufReader: nil, // will be initialized later
 		pool:      pool,
-		decBuf:    make([]byte, binary.MaxVarintLen64),
 	}
 }
 
@@ -1228,7 +1226,6 @@ func (si *bufferedIterator) close() {
 		si.buf = nil
 	}
 	si.origBytes = nil
-	si.decBuf = nil
 }
 
 func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline) iter.EntryIterator {
