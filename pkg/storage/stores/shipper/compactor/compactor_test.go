@@ -95,7 +95,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	}
 
 	compactor := setupTestCompactor(t, tempDir)
-	err = compactor.RunCompaction(context.Background())
+	err = compactor.RunCompaction(context.Background(), true)
 	require.NoError(t, err)
 
 	for name := range tables {
