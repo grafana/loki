@@ -81,8 +81,84 @@ func NewAndFilter(left Filterer, right Filterer) Filterer {
 func (a andFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) && a.right.Filter(line)
 }
-
 func (a andFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, a.Filter(line)
+		},
+	}
+}
+
+type andFilters struct {
+	filters []Filterer
+}
+
+// NewAndFilters creates a new filter which matches only if all filters match
+func NewAndFilters(filters []Filterer) Filterer {
+	var containsFilterAcc *containsAllFilter
+	regexpFilters := make([]Filterer, 0)
+	n := 0
+	for _, filter := range filters {
+		// Make sure we take care of panics in case a nil or noop filter is passed.
+		if !(filter == nil || filter == TrueFilter) {
+			switch c := filter.(type) {
+			case containsFilter:
+				// Start accumulating contains filters.
+				if containsFilterAcc == nil {
+					containsFilterAcc = &containsAllFilter{}
+				}
+
+				// Join all contain filters.
+				containsFilterAcc.Add(c)
+			case regexpFilter:
+				regexpFilters = append(regexpFilters, c)
+
+			default:
+				// Finish accumulating contains filters.
+				if containsFilterAcc != nil {
+					filters[n] = containsFilterAcc
+					n++
+					containsFilterAcc = nil
+				}
+
+				// Keep filter
+				filters[n] = filter
+				n++
+			}
+		}
+	}
+	filters = filters[:n]
+
+	if containsFilterAcc != nil {
+		filters = append(filters, containsFilterAcc)
+	}
+
+	// Push regex filters to end
+	if len(regexpFilters) > 0 {
+		filters = append(filters, regexpFilters...)
+	}
+
+	if len(filters) == 0 {
+		return TrueFilter
+	} else if len(filters) == 1 {
+		return filters[0]
+	}
+
+	return andFilters{
+		filters: filters,
+	}
+}
+
+func (a andFilters) Filter(line []byte) bool {
+	for _, filter := range a.filters {
+		if !filter.Filter(line) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a andFilters) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, a.Filter(line)
@@ -196,6 +272,38 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	return containsFilter{
 		match:           match,
 		caseInsensitive: caseInsensitive,
+	}
+}
+
+type containsAllFilter struct {
+	matches []containsFilter
+}
+
+func (f *containsAllFilter) Add(filter containsFilter) {
+	f.matches = append(f.matches, filter)
+}
+
+func (f *containsAllFilter) Empty() bool {
+	return len(f.matches) == 0
+}
+
+func (f containsAllFilter) Filter(line []byte) bool {
+	for _, m := range f.matches {
+		if m.caseInsensitive {
+			line = bytes.ToLower(line)
+		}
+		if !bytes.Contains(line, m.match) {
+			return false
+		}
+	}
+	return true
+}
+
+func (f containsAllFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, f.Filter(line)
+		},
 	}
 }
 
