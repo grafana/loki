@@ -175,9 +175,7 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
-		if err := stats.JoinResults(ctx, res.Statistics); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "unable to merge downstream results", "err", err)
-		}
+		stats.JoinResults(ctx, res.Statistics)
 	}
 
 	return results, nil

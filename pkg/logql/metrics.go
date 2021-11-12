@@ -109,10 +109,10 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
 	chunkDownloadLatency.WithLabelValues(status, queryType, rt).
-		Observe(stats.Store.ChunksDownloadTime)
-	duplicatesTotal.Add(float64(stats.Store.TotalDuplicates))
+		Observe(stats.ChunksDownloadTime().Seconds())
+	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
-		Add(float64(stats.Store.TotalChunksDownloaded))
+		Add(float64(stats.TotalChunksDownloaded()))
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }
 

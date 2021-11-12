@@ -868,27 +868,38 @@ func (badReader) Read(p []byte) (n int, err error) {
 var (
 	statsResultString = `"stats" : {
 		"ingester" : {
-			"compressedBytes": 1,
-			"decompressedBytes": 2,
-			"decompressedLines": 3,
-			"headChunkBytes": 4,
-			"headChunkLines": 5,
+			"store": {
+				"chunk":{
+					"compressedBytes": 1,
+					"decompressedBytes": 2,
+					"decompressedLines": 3,
+					"headChunkBytes": 4,
+					"headChunkLines": 5,
+					"totalDuplicates": 8
+				},
+				"chunksDownloadTime": 0,
+				"totalChunksRef": 0,
+				"totalChunksDownloaded": 0
+			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
-			"totalDuplicates": 8,
 			"totalLinesSent": 9,
 			"totalReached": 10
 		},
-		"store": {
-			"compressedBytes": 11,
-			"decompressedBytes": 12,
-			"decompressedLines": 13,
-			"headChunkBytes": 14,
-			"headChunkLines": 15,
-			"chunksDownloadTime": 16,
-			"totalChunksRef": 17,
-			"totalChunksDownloaded": 18,
-			"totalDuplicates": 19
+		"querier": {
+			"store" : {
+				"chunk": {
+					"compressedBytes": 11,
+					"decompressedBytes": 12,
+					"decompressedLines": 13,
+					"headChunkBytes": 14,
+					"headChunkLines": 15,
+					"totalDuplicates": 19
+				},
+				"chunksDownloadTime": 16,
+				"totalChunksRef": 17,
+				"totalChunksDownloaded": 18
+			}
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
@@ -1046,26 +1057,35 @@ var (
 			TotalBytesProcessed:     23,
 			TotalLinesProcessed:     24,
 		},
-		Store: stats.Store{
-			CompressedBytes:       11,
-			DecompressedBytes:     12,
-			DecompressedLines:     13,
-			HeadChunkBytes:        14,
-			HeadChunkLines:        15,
-			ChunksDownloadTime:    16,
-			TotalChunksRef:        17,
-			TotalChunksDownloaded: 18,
-			TotalDuplicates:       19,
+		Querier: stats.Querier{
+			Store: stats.Store{
+				Chunk: stats.Chunk{
+					CompressedBytes:   11,
+					DecompressedBytes: 12,
+					DecompressedLines: 13,
+					HeadChunkBytes:    14,
+					HeadChunkLines:    15,
+					TotalDuplicates:   19,
+				},
+				ChunksDownloadTime:    16,
+				TotalChunksRef:        17,
+				TotalChunksDownloaded: 18,
+			},
 		},
+
 		Ingester: stats.Ingester{
-			CompressedBytes:    1,
-			DecompressedBytes:  2,
-			DecompressedLines:  3,
-			HeadChunkBytes:     4,
-			HeadChunkLines:     5,
+			Store: stats.Store{
+				Chunk: stats.Chunk{
+					CompressedBytes:   1,
+					DecompressedBytes: 2,
+					DecompressedLines: 3,
+					HeadChunkBytes:    4,
+					HeadChunkLines:    5,
+					TotalDuplicates:   8,
+				},
+			},
 			TotalBatches:       6,
 			TotalChunksMatched: 7,
-			TotalDuplicates:    8,
 			TotalLinesSent:     9,
 			TotalReached:       10,
 		},

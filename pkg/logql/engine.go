@@ -113,13 +113,12 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	defer timer.ObserveDuration()
 
 	// records query statistics
-	var statResult stats.Result
 	start := time.Now()
-	ctx = stats.NewContext(ctx)
+	statsCtx, ctx := stats.NewContext(ctx)
 
 	data, err := q.Eval(ctx)
 
-	statResult = stats.Snapshot(ctx, time.Since(start))
+	statResult := statsCtx.Result(time.Since(start))
 	statResult.Log(level.Debug(log))
 
 	status := "200"
