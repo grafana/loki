@@ -992,6 +992,8 @@ The `gelf` block configures a GELF UDP listener allowing users to push
 logs to Promtail with the [GELF](https://docs.graylog.org/docs/gelf) protocol.
 Currently only UDP is supported, please submit a feature request if you're interested into TCP support.
 
+> GELF messages can be sent uncompressed or compressed with either GZIP or ZLIB.
+
 Each GELF message received will be encoded in JSON as the log line. For example:
 
 ```json
