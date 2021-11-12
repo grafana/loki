@@ -3355,36 +3355,16 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"full\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
+              "expr": "sum by(reason) (rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/ingester\", namespace=~\"$namespace\"}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/ingester\", namespace=~\"$namespace\"}[$__rate_interval]))",
               "interval": "",
-              "legendFormat": "full",
-              "refId": "B"
+              "legendFormat": "{{ reason }}"
             },
-            {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"synced\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
-              "interval": "",
-              "legendFormat": "synced",
-              "refId": "D"
-            },
-            {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"idle\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
-              "hide": false,
-              "interval": "",
-              "legendFormat": "idle",
-              "refId": "A"
-            },
-            {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"max_age\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
-              "interval": "",
-              "legendFormat": "max_age",
-              "refId": "C"
-            }
           ],
           "thresholds": [],
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "Chunk Flush Reason",
+          "title": "Chunk Flush Reason %",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -6578,3 +6558,4 @@
   "uid": "f6fe30815b172c9da7e813c15ddfe607",
   "version": 1
 }
+
