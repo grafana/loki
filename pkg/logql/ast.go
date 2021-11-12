@@ -334,38 +334,6 @@ func (e *LineFilterExpr) String() string {
 	return sb.String()
 }
 
-/*
-func (e *LineFilterExpr) Filter() (log.Filterer, error) {
-	var f log.Filterer
-
-	switch e.Op {
-	case OpFilterIP:
-		var err error
-		f, err = log.NewIPLineFilter(e.Match, e.Ty)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		var err error // to avoid `f` being shadowed.
-		f, err = log.NewFilter(e.Match, e.Ty)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if e.Left != nil {
-		nextFilter, err := e.Left.Filter()
-		if err != nil {
-			return nil, err
-		}
-		if nextFilter != nil {
-			f = log.NewAndFilter(nextFilter, f)
-		}
-	}
-
-	return f, nil
-}*/
-
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 
 	acc := make([]log.Filterer, 0)
