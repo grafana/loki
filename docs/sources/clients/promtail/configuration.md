@@ -325,6 +325,9 @@ job_name: <string>
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
 
+# Describes how to receive logs from gelf client.
+[gelf: <gelf_config>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -932,25 +935,25 @@ By default, timestamps are assigned by Promtail when the message is read, if you
 authentication:
   # Type is authentication type. Supported values [none, ssl, sasl]
   [type: <string> | default = "none"]
-  
+
   # TLS configuration for authentication and encryption. It is used only when authentication type is ssl.
   tls_config:
     [ <tls_config> ]
-  
+
   # SASL configuration for authentication. It is used only when authentication type is sasl.
   sasl_config:
     # SASL mechanism. Supported values [PLAIN, SCRAM-SHA-256, SCRAM-SHA-512]
     [mechanism: <string> | default = "PLAIN"]
-    
+
     # The user name to use for SASL authentication
     [user: <string>]
-    
+
     # The password to use for SASL authentication
     [password: <secret>]
-    
-    # If true, SASL authentication is executed over TLS  
+
+    # If true, SASL authentication is executed over TLS
     [use_tls: <boolean> | default = false]
-    
+
     # The CA file to use to verify the server
     [ca_file: <string>]
 
@@ -961,7 +964,7 @@ authentication:
     # If true, ignores the server certificate being signed by an
     # unknown CA.
     [insecure_skip_verify: <boolean> | default = false]
-    
+
 
 # Label map to add to every log line read from kafka
 labels:
@@ -972,7 +975,7 @@ labels:
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
-#### Available Labels
+**Available Labels:**
 
 The list of labels below are discovered when consuming kafka:
 
@@ -980,6 +983,45 @@ The list of labels below are discovered when consuming kafka:
 - `__meta_kafka_partition`: The partition id where the message has been read.
 - `__meta_kafka_member_id`: the consumer group member id.
 - `__meta_kafka_group_id`: the consumer group id.
+
+To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
+
+### GELF
+
+The `gelf` block configures a GELF UDP listener allowing users to push
+logs to Promtail with the [GELF](https://docs.graylog.org/docs/gelf) protocol.
+Currently only UDP is supported, please submit a feature request if you're interested into TCP support.
+
+Each GELF message received will be encoded in JSON as the log line. For example:
+
+```json
+{"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
+```
+
+You can leverage [pipeline stages](pipeline_stages) with the GELF target,
+if for example, you want to parse the log line and extract more labels or change the log line format.
+
+```yaml
+# UDP address to listen on. Has the format of "host:port". Default to 0.0.0.0:12201
+listen_address: <string>
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# Whether Promtail should pass on the timestamp from the incoming gelf message.
+# When false, or if no timestamp is present on the gelf message, Promtail will assign the current timestamp to the log when it was processed.
+# Default is false
+use_incoming_timestamp: <bool>
+
+```
+
+**Available Labels:**
+
+- `__gelf_message_level`: The GELF level as string.
+- `__gelf_message_host`: The host sending the GELF message.
+- `__gelf_message_version`: The GELF level message version set by the client.
+- `__gelf_message_facility`: The GELF facility.
 
 To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
 

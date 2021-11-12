@@ -303,6 +303,34 @@ scrape_configs:
 Only the `brokers` and `topics` is required.
 see the [configuration](../../configuration/#kafka) section for more information.
 
+## GELF
+
+Promtail supports listening message using the [GELF](https://docs.graylog.org/docs/gelf) UDP protocol.
+The GELF targets can be configured using the `gelf` stanza:
+
+```yaml
+scrape_configs:
+- job_name: gelf
+  gelf:
+    listen_address: "0.0.0.0:12201"
+    use_incoming_timestamp: true
+    labels:
+      job: gelf
+  relabel_configs:
+      - action: replace
+        source_labels:
+          - __gelf_message_host
+        target_label: host
+      - action: replace
+        source_labels:
+          - __gelf_message_level
+        target_label: level
+      - action: replace
+        source_labels:
+          - __gelf_message_facility
+        target_label: facility
+```
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.

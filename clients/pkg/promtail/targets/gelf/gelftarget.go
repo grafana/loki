@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 
