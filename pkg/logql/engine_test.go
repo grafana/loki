@@ -1996,14 +1996,14 @@ func TestEngine_RangeQuery(t *testing.T) {
 type statsQuerier struct{}
 
 func (statsQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	st := stats.GetChunkData(ctx)
-	st.DecompressedBytes++
+	st := stats.FromContext(ctx)
+	st.AddDecompressedBytes(1)
 	return iter.NoopIterator, nil
 }
 
 func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
-	st := stats.GetChunkData(ctx)
-	st.DecompressedBytes++
+	st := stats.FromContext(ctx)
+	st.AddDecompressedBytes(1)
 	return iter.NoopIterator, nil
 }
 
@@ -2019,7 +2019,7 @@ func TestEngine_Stats(t *testing.T) {
 	})
 	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 	require.NoError(t, err)
-	require.Equal(t, int64(1), r.Statistics.Store.DecompressedBytes)
+	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
 }
 
 type errorIteratorQuerier struct {

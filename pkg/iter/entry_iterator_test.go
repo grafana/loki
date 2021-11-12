@@ -14,8 +14,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
-const testSize = 10
-const defaultLabels = "{foo=\"baz\"}"
+const (
+	testSize      = 10
+	defaultLabels = "{foo=\"baz\"}"
+)
 
 func TestIterator(t *testing.T) {
 	for i, tc := range []struct {
@@ -486,7 +488,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.FORWARD,
 			6,
@@ -503,7 +506,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.BACKWARD,
 			6,
@@ -517,7 +521,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.FORWARD,
 			0,
@@ -531,26 +536,25 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.BACKWARD,
 			0,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			ctx := context.Background()
-			ctx = stats.NewContext(ctx)
+			_, ctx := stats.NewContext(context.Background())
 			it := NewHeapIterator(ctx, test.iters, test.direction)
 			defer it.Close()
 			for it.Next() {
 			}
-			require.Equal(t, test.expectedDuplicates, stats.GetChunkData(ctx).TotalDuplicates)
+			require.Equal(t, test.expectedDuplicates, stats.FromContext(ctx).Result(0).TotalDuplicates())
 		})
 	}
 }
 
 func Test_timeRangedIterator_Next(t *testing.T) {
-
 	tests := []struct {
 		mint   time.Time
 		maxt   time.Time

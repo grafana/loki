@@ -534,7 +534,7 @@ func TestChunkStats(t *testing.T) {
 		entry.Timestamp = entry.Timestamp.Add(time.Nanosecond)
 	}
 	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
-	ctx := stats.NewContext(context.Background())
+	statsCtx, ctx := stats.NewContext(context.Background())
 
 	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
 	if err != nil {
@@ -546,12 +546,12 @@ func TestChunkStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	// test on a chunk filling up
-	s := stats.Snapshot(ctx, time.Since(first))
+	s := statsCtx.Result(time.Since(first))
 	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
 	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
 
-	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
-	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
+	require.Equal(t, int64(expectedSize), s.TotalDecompressedBytes())
+	require.Equal(t, int64(inserted), s.TotalDecompressedLines())
 
 	b, err := c.Bytes()
 	if err != nil {
@@ -563,7 +563,7 @@ func TestChunkStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx = stats.NewContext(context.Background())
+	statsCtx, ctx = stats.NewContext(context.Background())
 	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
 	if err != nil {
 		t.Fatal(err)
@@ -573,12 +573,12 @@ func TestChunkStats(t *testing.T) {
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s = stats.Snapshot(ctx, time.Since(first))
+	s = statsCtx.Result(time.Since(first))
 	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
 	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
 
-	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
-	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
+	require.Equal(t, int64(expectedSize), s.TotalDecompressedBytes())
+	require.Equal(t, int64(inserted), s.TotalDecompressedLines())
 }
 
 func TestIteratorClose(t *testing.T) {
@@ -635,7 +635,6 @@ func BenchmarkWrite(b *testing.B) {
 	i := int64(0)
 
 	for _, f := range HeadBlockFmts {
-
 		for _, enc := range testEncoding {
 			b.Run(fmt.Sprintf("%v-%v", f, enc), func(b *testing.B) {
 				for n := 0; n < b.N; n++ {

@@ -522,9 +522,8 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	// initialize stats collection for ingester queries and set grpc trailer with stats.
-	ctx := stats.NewContext(queryServer.Context())
-	defer stats.SendAsTrailer(ctx, queryServer)
+	// initialize stats collection for ingester queries.
+	_, ctx := stats.NewContext(queryServer.Context())
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -563,9 +562,8 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
-	// initialize stats collection for ingester queries and set grpc trailer with stats.
-	ctx := stats.NewContext(queryServer.Context())
-	defer stats.SendAsTrailer(ctx, queryServer)
+	// initialize stats collection for ingester queries.
+	_, ctx := stats.NewContext(queryServer.Context())
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {

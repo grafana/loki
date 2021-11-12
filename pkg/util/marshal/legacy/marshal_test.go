@@ -45,27 +45,38 @@ var queryTests = []struct {
 			],
 			"stats" : {
 				"ingester" : {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					},
 					"totalBatches": 0,
 					"totalChunksMatched": 0,
-					"totalDuplicates": 0,
 					"totalLinesSent": 0,
 					"totalReached": 0
 				},
-				"store": {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
-					"chunksDownloadTime": 0,
-					"totalChunksRef": 0,
-					"totalChunksDownloaded": 0,
-					"totalDuplicates": 0
+				"querier": {
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					}
 				},
 				"summary": {
 					"bytesProcessedPerSecond": 0,
@@ -144,7 +155,6 @@ var tailTests = []struct {
 }
 
 func Test_WriteQueryResponseJSON(t *testing.T) {
-
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
 		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b)
@@ -155,7 +165,6 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 }
 
 func Test_WriteLabelResponseJSON(t *testing.T) {
-
 	for i, labelTest := range labelTests {
 		var b bytes.Buffer
 		err := WriteLabelResponseJSON(labelTest.actual, &b)
@@ -166,7 +175,6 @@ func Test_WriteLabelResponseJSON(t *testing.T) {
 }
 
 func Test_MarshalTailResponse(t *testing.T) {
-
 	for i, tailTest := range tailTests {
 		// marshal model object
 		bytes, err := json.Marshal(tailTest.actual)

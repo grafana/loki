@@ -660,11 +660,11 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
 	defer log.Finish()
 	start := time.Now()
-	storeStats := stats.GetStoreData(ctx)
+	stats := stats.FromContext(ctx)
 	var totalChunks int64
 	defer func() {
-		storeStats.ChunksDownloadTime += time.Since(start)
-		storeStats.TotalChunksDownloaded += totalChunks
+		stats.AddChunksDownloadTime(time.Since(start))
+		stats.AddChunksDownloaded(totalChunks)
 	}()
 
 	chksByFetcher := map[*chunk.Fetcher][]*LazyChunk{}
