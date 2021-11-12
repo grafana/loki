@@ -1029,10 +1029,10 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 			}
 			for _, test := range []string{
 				`{app="foo"}`,
-				/*`{app="foo"} != "foo"`,
+				`{app="foo"} != "foo"`,
 				`{app="foo"} != "foo" | logfmt `,
 				`{app="foo"} != "foo" | logfmt | duration > 10ms`,
-				`{app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"`,*/
+				`{app="foo"} != "foo" | logfmt | duration > 10ms and component="tsdb"`,
 			} {
 				b.Run(test, func(b *testing.B) {
 					b.ReportAllocs()

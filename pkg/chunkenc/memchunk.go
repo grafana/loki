@@ -1129,6 +1129,10 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 }
 
 func (si *bufferedIterator) Next() bool {
+	if si.closed {
+		return false
+	}
+
 	if !si.closed && si.reader == nil {
 		// initialize reader now, hopefully reusing one of the previous readers
 		si.reader = si.pool.GetReader(bytes.NewBuffer(si.origBytes))
@@ -1151,10 +1155,6 @@ func (si *bufferedIterator) Next() bool {
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
-	if si.bufReader == nil {
-		_ = fmt.Errorf("Buffer is nil")
-		// bad
-	}
 	ts, err := binary.ReadVarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
