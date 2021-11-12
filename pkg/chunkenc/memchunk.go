@@ -1151,6 +1151,10 @@ func (si *bufferedIterator) Next() bool {
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
+	if si.bufReader == nil {
+		_ = fmt.Errorf("Buffer is nil")
+		// bad
+	}
 	ts, err := binary.ReadVarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
