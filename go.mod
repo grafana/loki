@@ -102,7 +102,10 @@ require (
 	k8s.io/klog v1.0.0
 )
 
-require github.com/xdg-go/scram v1.0.2
+require (
+	github.com/xdg-go/scram v1.0.2
+	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0
+)
 
 require (
 	cloud.google.com/go v0.94.1 // indirect

@@ -1536,6 +1536,9 @@ google.golang.org/protobuf/types/known/emptypb
 google.golang.org/protobuf/types/known/fieldmaskpb
 google.golang.org/protobuf/types/known/timestamppb
 google.golang.org/protobuf/types/known/wrapperspb
+# gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0
+## explicit
+gopkg.in/Graylog2/go-gelf.v2/gelf
 # gopkg.in/alecthomas/kingpin.v2 v2.2.6
 ## explicit
 gopkg.in/alecthomas/kingpin.v2

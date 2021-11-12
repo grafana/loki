@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
@@ -30,7 +31,8 @@ const (
 	GcplogScrapeConfigs  = "gcplogScrapeConfigs"
 	PushScrapeConfigs    = "pushScrapeConfigs"
 	WindowsEventsConfigs = "windowsEventsConfigs"
-	KafkaConfigs         = "KafkaConfigs"
+	KafkaConfigs         = "kafkaConfigs"
+	GelfConfigs          = "gelfConfigs"
 )
 
 type targetManager interface {
@@ -86,6 +88,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[WindowsEventsConfigs] = append(targetScrapeConfigs[WindowsEventsConfigs], cfg)
 		case cfg.KafkaConfig != nil:
 			targetScrapeConfigs[KafkaConfigs] = append(targetScrapeConfigs[KafkaConfigs], cfg)
+		case cfg.GelfConfig != nil:
+			targetScrapeConfigs[GelfConfigs] = append(targetScrapeConfigs[GelfConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -109,6 +113,7 @@ func NewTargetManagers(
 		fileMetrics   *file.Metrics
 		syslogMetrics *syslog.Metrics
 		gcplogMetrics *gcplog.Metrics
+		gelfMetrics   *gelf.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -118,6 +123,9 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[GcplogScrapeConfigs]) > 0 {
 		gcplogMetrics = gcplog.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[GelfConfigs]) > 0 {
+		gelfMetrics = gelf.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -200,6 +208,12 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make kafka target manager")
 			}
 			targetManagers = append(targetManagers, kafkaTargetManager)
+		case GelfConfigs:
+			gelfTargetManager, err := gelf.NewTargetManager(gelfMetrics, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make gelf target manager")
+			}
+			targetManagers = append(targetManagers, gelfTargetManager)
 
 		default:
 			return nil, errors.New("unknown scrape config")
