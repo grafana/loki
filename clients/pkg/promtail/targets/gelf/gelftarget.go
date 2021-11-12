@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -40,6 +42,7 @@ type Target struct {
 	relabelConfig []*relabel.Config
 	gelfReader    *gelf.Reader
 	encodeBuff    *bytes.Buffer
+	wg            sync.WaitGroup
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -82,7 +85,9 @@ func NewTarget(
 }
 
 func (t *Target) run() {
+	t.wg.Add(1)
 	go func() {
+		defer t.wg.Done()
 		for {
 			select {
 			case <-t.ctx.Done():
@@ -182,5 +187,9 @@ func (t *Target) Details() interface{} {
 // Stop shuts down the GelfTarget.
 func (t *Target) Stop() {
 	t.ctxCancel()
+	if err := t.gelfReader.Close(); err != nil {
+		level.Error(t.logger).Log("msg", "error while closing gelf reader", "err", err)
+	}
+	t.wg.Wait()
 	t.handler.Stop()
 }
