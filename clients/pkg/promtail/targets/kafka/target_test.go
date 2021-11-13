@@ -94,6 +94,7 @@ func (t *testClaim) Stop() {
 func Test_TargetRun(t *testing.T) {
 	tc := []struct {
 		name           string
+		inMessageKey   string
 		inLS           model.LabelSet
 		inDiscoveredLS model.LabelSet
 		relabels       []*relabel.Config
@@ -101,13 +102,15 @@ func Test_TargetRun(t *testing.T) {
 	}{
 		{
 			name:           "no relabel config",
+			inMessageKey:   "foo",
 			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
 			inLS:           model.LabelSet{"buzz": "bazz"},
 			relabels:       nil,
 			expectedLS:     model.LabelSet{"buzz": "bazz"},
 		},
 		{
-			name:           "with relabel config for message key",
+			name:           "message key with relabel config",
+			inMessageKey:   "foo",
 			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
 			inLS:           model.LabelSet{"buzz": "bazz"},
 			relabels: []*relabel.Config{
@@ -120,6 +123,22 @@ func Test_TargetRun(t *testing.T) {
 				},
 			},
 			expectedLS: model.LabelSet{"buzz": "bazz", "message_key": "foo"},
+		},
+		{
+			name:           "no message key with relabel config",
+			inMessageKey:   "",
+			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
+			inLS:           model.LabelSet{"buzz": "bazz"},
+			relabels: []*relabel.Config{
+				{
+					SourceLabels: model.LabelNames{"__meta_kafka_message_key"},
+					Regex:        relabel.MustNewRegexp("(.*)"),
+					TargetLabel:  "message_key",
+					Replacement:  "$1",
+					Action:       "replace",
+				},
+			},
+			expectedLS: model.LabelSet{"buzz": "bazz", "message_key": "none"},
 		},
 	}
 	for _, tt := range tc {
@@ -144,7 +163,7 @@ func Test_TargetRun(t *testing.T) {
 				claim.Send(&sarama.ConsumerMessage{
 					Timestamp: time.Unix(0, int64(i)),
 					Value:     []byte(fmt.Sprintf("%d", i)),
-					Key:       []byte("foo"),
+					Key:       []byte(tt.inMessageKey),
 				})
 			}
 			claim.Stop()
