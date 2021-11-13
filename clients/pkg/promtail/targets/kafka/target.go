@@ -61,24 +61,30 @@ const (
 	labelKeyKafkaMessageKey = "__meta_kafka_message_key"
 )
 
+func (t *Target) messageKeyLabel() (useLabel bool, labelName model.LabelName) {
+	lbs := format([]labels.Label{{
+		Name:  labelKeyKafkaMessageKey,
+		Value: defaultKafkaMessageKey,
+	}}, t.relabelConfig)
+	for k := range lbs {
+		return true, k
+	}
+	return false, ""
+}
+
 func (t *Target) run() {
 	defer t.client.Stop()
 
+	useMessageKey, mkLabel := t.messageKeyLabel()
 	for message := range t.claim.Messages() {
-		mk := string(message.Key)
-		if len(mk) == 0 {
-			mk = defaultKafkaMessageKey
-		}
-
-		lbs := format([]labels.Label{{
-			Name:  labelKeyKafkaMessageKey,
-			Value: mk,
-		}}, t.relabelConfig)
 		out := t.lbs.Clone()
-		if len(lbs) > 0 {
-			out = out.Merge(lbs)
+		if useMessageKey {
+			mk := string(message.Key)
+			if len(mk) == 0 {
+				mk = defaultKafkaMessageKey
+			}
+			out = out.Merge(model.LabelSet{mkLabel: model.LabelValue(mk)})
 		}
-
 		t.client.Chan() <- api.Entry{
 			Entry: logproto.Entry{
 				Line:      string(message.Value),
