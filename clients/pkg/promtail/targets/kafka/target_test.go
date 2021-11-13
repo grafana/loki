@@ -101,14 +101,14 @@ func Test_TargetRun(t *testing.T) {
 	}{
 		{
 			name:           "no relabel config",
-			inDiscoveredLS: model.LabelSet{"__kafka_meta_foo": "bar"},
+			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
 			inLS:           model.LabelSet{"buzz": "bazz"},
 			relabels:       nil,
 			expectedLS:     model.LabelSet{"buzz": "bazz"},
 		},
 		{
 			name:           "with relabel config for message key",
-			inDiscoveredLS: model.LabelSet{"__kafka_meta_foo": "bar"},
+			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
 			inLS:           model.LabelSet{"buzz": "bazz"},
 			relabels: []*relabel.Config{
 				{
