@@ -3,10 +3,11 @@ package kafka
 import (
 	"strings"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 func format(lbs labels.Labels, cfg []*relabel.Config) model.LabelSet {
