@@ -80,9 +80,12 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ```yaml
 # A comma-separated list of components to run.
 # The default value "all" runs Loki in single binary mode.
-# The value "read" is an alias to run only read-path related components (ex: querier, query-frontend, etc) but all in the same process.
-# The value "write" is an alias to run only write-path related components (ex: distributor, compactor) but all in the same process.
-# Supported values: all, compactor, distributor, ingester, querier, query-scheduler, ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
+# The value "read" is an alias to run only read-path related components such as
+# the querier and query-frontend, but all in the same process.
+# The value "write" is an alias to run only write-path related components such as
+# the distributor and compactor, but all in the same process.
+# Supported values: all, compactor, distributor, ingester, querier, query-scheduler,
+#  ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -505,9 +508,10 @@ remote_write:
     write_relabel_configs:
       [- <relabel_config> ...]
  
-    # Name of the remote write config, which if specified must be unique among remote write configs.
-    # The name will be used in metrics and logging in place of a generated value to help users distinguish between
-    # remote write configs.
+    # Name of the remote write config, which if specified must be unique among remote 
+    # write configs.
+    # The name will be used in metrics and logging in place of a generated value
+    # to help users distinguish between remote write configs.
     [name: <string>]
 
     # Sets the `Authorization` header on every remote write request with the
@@ -1048,8 +1052,8 @@ lifecycler:
 [max_chunk_age: <duration> | default = 1h]
 
 # How far in the past an ingester is allowed to query the store for data.
-# This is only useful for running multiple Loki binaries with a shared ring with a `filesystem` store,
-# which is NOT shared between the binaries.
+# This is only useful for running multiple Loki binaries with a shared ring
+# with a `filesystem` store, which is NOT shared between the binaries.
 # When using any "shared" object store like S3 or GCS, this value must always be left as 0.
 # It is an error to configure this to a non-zero value when using any object store other
 # than `filesystem`.
@@ -1066,8 +1070,9 @@ lifecycler:
 # CLI flag: -ingester.autoforget-unhealthy
 [autoforget_unhealthy: <boolean> | default = false]
 
-# The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file system
-# in order to guarantee persistence of acknowledged data in the event of a process crash.
+# The ingester WAL (Write Ahead Log) records incoming logs and stores them on
+# the local file systems in order to guarantee persistence of acknowledged data
+# in the event of a process crash.
 wal:
   # Enables writing to WAL.
   # CLI flag: -ingester.wal-enabled
@@ -1085,8 +1090,8 @@ wal:
   # CLI flag: ingester.checkpoint-duration
   [checkpoint_duration: <duration> | default = 5m]
 
-  # Maximum memory size the WAL may use during replay. After hitting this it will flush data to storage
-  # before continuing.
+  # Maximum memory size the WAL may use during replay. After hitting this,
+  # it will flush data to storage before continuing.
   # A unit suffix (KB, MB, GB) may be applied.
   [replay_memory_ceiling: <string> | default = 4GB]
 
@@ -2030,8 +2035,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 #   priority: 1
 #   period: 744h
 # Selector is a Prometheus labels matchers that will apply the `period` retention only if
-# the stream is matching. In case multiple stream are matching, the highest priority will be picked.
-# If no rule is matched the `retention_period` is used.
+# the stream is matching. In case multiple stream are matching, the highest
+# priority will be picked. If no rule is matched the `retention_period` is used.
 [retention_stream: <array> | default = none]
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file
@@ -2039,8 +2044,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -limits.per-user-override-config
 [per_tenant_override_config: <string>]
 
-# Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.reload-period
-# (runtime_config.period in YAML).
+# Feature renamed to 'runtime configuration'; flag deprecated in favor of
+# -runtime-config.reload-period (runtime_config.period in YAML).
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
 
@@ -2070,7 +2075,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -ingester.per-stream-rate-limit-burst
 [per_stream_rate_limit_burst: <string|int> | default = "15MB"]
 
-# Limit how far back in time series data and metadata can be queried, up until lookback duration ago.
+# Limit how far back in time series data and metadata can be queried,
+# up until lookback duration ago.
 # This limit is enforced in the query frontend, the querier and the ruler.
 # If the requested time range is outside the allowed range, the request will not fail,
 # but will be modified to only query data within the allowed time range. 
@@ -2318,14 +2324,16 @@ This way, one doesn't have to replicate configs in multiple places.
 # How many times incoming data should be replicated to the ingester component.
 [replication_factor: <int> | default = 3]
 
-# When true, the ingester, compactor and query_scheduler ring tokens will be saved to files in the path_prefix directory
-# Loki will error if you set this to true and path_prefix is empty.
+# When true, the ingester, compactor, and query_scheduler ring tokens will be saved
+# to files in the path_prefix directory. Loki will error if you set this to true
+# and path_prefix is empty.
 [persist_tokens: <boolean>: default = false]
 
-# A common ring config to be used by all Loki rings.
-# If a common ring is given, its values are used to define any undefined ring values. For instance,
-# you can expect the `heartbeat_period` defined in the common section to be used by the distributor's ring,
-# but only if the distributor's ring itself doesn't have a `heartbeat_period` set.
+# A common ring configuration to be used by all Loki rings.
+# If a common ring is given, its values are used to define any undefined ring values.
+# For instance, you can expect the `heartbeat_period` defined in the common section
+# to be used by the distributor's ring, but only if the distributor's ring itself
+# doesn't have a `heartbeat_period` set.
 [ring: <ring_config>]
 ```
 
