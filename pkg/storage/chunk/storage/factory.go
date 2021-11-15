@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
-	"github.com/grafana/loki/pkg/storage/chunk/purger"
 )
 
 // Supported storage engines
@@ -95,8 +94,6 @@ type Config struct {
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 
-	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
-
 	GrpcConfig grpc.Config `yaml:"grpc_store"`
 }
 
@@ -109,7 +106,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
-	cfg.DeleteStoreConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
 
