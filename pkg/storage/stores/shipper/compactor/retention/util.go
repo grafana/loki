@@ -53,6 +53,7 @@ func ExtractIntervalFromTableName(tableName string) model.Interval {
 	}
 
 	interval.Start = model.TimeFromUnix(tableNumber * 86400)
-	interval.End = interval.Start.Add(24 * time.Hour)
+	// subtract a millisecond here so that interval only covers a single table since adding 24 hours ends up covering the start time of next table as well.
+	interval.End = interval.Start.Add(24*time.Hour) - 1
 	return interval
 }
