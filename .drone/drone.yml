@@ -52,6 +52,10 @@ steps:
   - clone
   image: grafana/loki-build-image:0.18.0
   name: check-example-config-doc
+trigger:
+  event:
+  - push
+  - pull_request
 workspace:
   base: /src
   path: loki
@@ -198,6 +202,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -321,6 +329,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -444,6 +456,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -495,6 +511,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -546,6 +566,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -597,6 +621,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -649,6 +677,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -701,6 +733,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -753,6 +789,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - docker-amd64
@@ -857,6 +897,10 @@ steps:
   - go test .\clients\pkg\promtail\targets\windows\... -v
   image: golang:windowsservercore-1809
   name: test
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -912,6 +956,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 get:
   name: pat
@@ -956,6 +1004,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 51902a0ab9982aa73cf0151076af99808912bfd357dff8184f408d40cc70d140
+hmac: f6b69b7568765a77ee58c8db118be08c1db77953b9facb117c7849bcbc94d4f1
 
 ...
