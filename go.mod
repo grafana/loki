@@ -11,6 +11,7 @@ require (
 	github.com/openshift/api v0.0.0-20210901140736-d8ed1449662d // release-4.9
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.48.0
 	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/common v0.32.0
 	github.com/stretchr/testify v1.7.0
 	k8s.io/api v0.22.1
 	k8s.io/apimachinery v0.22.1

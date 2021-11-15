@@ -51,6 +51,8 @@ REGISTRY_ORG ?= openshift-logging
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= quay.io/$(REGISTRY_ORG)/loki-operator-bundle:$(VERSION)
 
+CALCULATOR_IMG ?= quay.io/$(REGISTRY_ORG)/storage-size-calculator:latest
+
 GO_FILES := $(shell find . -type f -name '*.go')
 
 # Image URL to use all building/pushing image targets
@@ -100,6 +102,9 @@ bin/loki-broker: $(GO_FILES) | generate
 
 manager: deps generate ## Build manager binary
 	go build -o bin/manager main.go
+
+size-calculator: deps generate ## Build size-calculator binary
+	go build -o bin/size-calculator main.go
 
 go-generate: ## Run go generate
 	go generate ./...
@@ -191,3 +196,25 @@ olm-deploy-example: olm-deploy olm-deploy-example-storage-secret ## Deploy examp
 olm-undeploy: $(OPERATOR_SDK) ## Cleanup deployments of the operator bundle and the operator via OLM on an OpenShift cluster selected via KUBECONFIG.
 	$(OPERATOR_SDK) cleanup loki-operator
 	kubectl delete ns $(CLUSTER_LOGGING_NS)
+
+.PHONY: deploy-size-calculator
+ifeq ($(findstring openshift-logging,$(CALCULATOR_IMG)),openshift-logging)
+deploy-size-calculator: ## Deploy storage size calculator (OpenShift only!)
+	$(error Set variable REGISTRY_ORG to use a custom container registry org account for local development)
+else
+deploy-size-calculator:  $(KUSTOMIZE) ## Deploy storage size calculator (OpenShift only!)
+	kubectl apply -f config/overlays/openshift/size-calculator/cluster_monitoring_config.yaml
+	kubectl apply -f config/overlays/openshift/size-calculator/user_workload_monitoring_config.yaml
+	./hack/deploy-prometheus-secret.sh
+	$(KUSTOMIZE) build config/overlays/openshift/size-calculator | kubectl apply -f -
+endif
+
+.PHONY: undeploy-size-calculator
+undeploy-size-calculator: ## Undeploy storage size calculator
+	$(KUSTOMIZE) build config/overlays/openshift/size-calculator | kubectl delete -f -
+
+oci-build-calculator: ## Build the calculator image
+	$(OCI_RUNTIME) build -f calculator.Dockerfile -t $(CALCULATOR_IMG) .
+
+oci-push-calculator: ## Push the calculator image
+	$(OCI_RUNTIME) push $(CALCULATOR_IMG)

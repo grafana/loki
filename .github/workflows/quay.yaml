@@ -9,6 +9,7 @@ env:
   IMAGE_ORGANIZATION: openshift-logging
   IMAGE_OPERATOR_NAME: loki-operator
   IMAGE_BUNDLE_NAME: loki-operator-bundle
+  IMAGE_CALCULATOR_NAME: storage-size-calculator
 
 jobs:
  publish-manager:
@@ -85,5 +86,44 @@ jobs:
        with:
          context: .
          file: bundle.Dockerfile
+         push: true
+         tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
+
+ publish-size-calculator:
+   runs-on: ubuntu-latest
+   steps:
+     - uses: actions/checkout@master
+
+     - name: Set up QEMU
+       uses: docker/setup-qemu-action@v1
+
+     - name: Set up Docker Buildx
+       uses: docker/setup-buildx-action@v1
+
+     - name: Login to Quay.io
+       uses: docker/login-action@v1
+       with:
+         registry: quay.io
+         logout: true
+         username: ${{ secrets.OPENSHIFT_LOGGING_USER }}
+         password: ${{ secrets.OPENSHIFT_LOGGING_PASS }}
+
+     - name: Get image tags
+       id: image_tags
+       run: |
+         echo -n ::set-output name=IMAGE_TAGS::
+         PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_CALCULATOR_NAME"
+         TAGS=("$PULLSPEC:latest", "$PULLSPEC:v0.0.1")
+         BUILD_DATE="$(date -u +'%Y-%m-%d')"
+         VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+         VCS_REF="$(git rev-parse --short HEAD)"
+         TAGS+=("$PULLSPEC:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
+         ( IFS=$','; echo "${TAGS[*]}" )
+
+     - name: Build and publish image on quay.io
+       uses: docker/build-push-action@v2
+       with:
+         context: .
+         file: calculator.Dockerfile
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
