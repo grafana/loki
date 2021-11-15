@@ -34,7 +34,7 @@ func TestFormat(t *testing.T) {
 			},
 			relabel: []*relabel.Config{
 				{
-					SourceLabels: model.LabelNames{"__backend_service_name"},
+					SourceLabels: model.LabelNames{"__gcp_resource_labels_backend_service_name"},
 					Separator:    ";",
 					Regex:        relabel.MustNewRegexp("(.*)"),
 					TargetLabel:  "backend_service_name",
@@ -42,7 +42,7 @@ func TestFormat(t *testing.T) {
 					Replacement:  "$1",
 				},
 				{
-					SourceLabels: model.LabelNames{"__bucket_name"},
+					SourceLabels: model.LabelNames{"__gcp_resource_labels_bucket_name"},
 					Separator:    ";",
 					Regex:        relabel.MustNewRegexp("(.*)"),
 					TargetLabel:  "bucket_name",
@@ -54,7 +54,6 @@ func TestFormat(t *testing.T) {
 			expected: api.Entry{
 				Labels: model.LabelSet{
 					"jobname":              "pubsub-test",
-					"resource_type":        "gcs",
 					"backend_service_name": "http-loki",
 					"bucket_name":          "loki-bucket",
 				},
@@ -75,8 +74,7 @@ func TestFormat(t *testing.T) {
 			useIncomingTimestamp: true,
 			expected: api.Entry{
 				Labels: model.LabelSet{
-					"jobname":       "pubsub-test",
-					"resource_type": "gcs",
+					"jobname": "pubsub-test",
 				},
 				Entry: logproto.Entry{
 					Timestamp: mustTime(t, "2020-12-22T15:01:23.045123456Z"),
@@ -94,8 +92,7 @@ func TestFormat(t *testing.T) {
 			},
 			expected: api.Entry{
 				Labels: model.LabelSet{
-					"jobname":       "pubsub-test",
-					"resource_type": "gcs",
+					"jobname": "pubsub-test",
 				},
 				Entry: logproto.Entry{
 					Timestamp: time.Now(),

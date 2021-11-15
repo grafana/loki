@@ -53,11 +53,12 @@ func format(
 
 	// mandatory label for gcplog
 	lbs := labels.NewBuilder(nil)
-	lbs.Set("resource_type", ge.Resource.Type)
+	lbs.Set("__gcp_logname", ge.LogName)
+	lbs.Set("__gcp_resource_type", ge.Resource.Type)
 
 	// labels from gcp log entry. Add it as internal labels
 	for k, v := range ge.Resource.Labels {
-		lbs.Set("__"+util.SnakeCase(k), v)
+		lbs.Set("__gcp_resource_labels_"+util.SnakeCase(k), v)
 	}
 
 	var processed labels.Labels
