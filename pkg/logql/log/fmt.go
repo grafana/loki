@@ -95,23 +95,35 @@ func init() {
 type LineFormatter struct {
 	*template.Template
 	buf *bytes.Buffer
+
+	requiredLabelNamesMap map[string]struct{}
+	requiredLabelNames    []string
 }
 
 // NewFormatter creates a new log line formatter from a given text template.
 func NewFormatter(tmpl string) (*LineFormatter, error) {
 	t, err := template.New("line").Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid line template: %s", err)
+		return nil, fmt.Errorf("invalid line template: %w", err)
+	}
+	names := uniqueString(listNodeFields([]parse.Node{t.Root}))
+	namesMap := make(map[string]struct{}, len(names))
+	for _, s := range names {
+		namesMap[s] = struct{}{}
 	}
 	return &LineFormatter{
-		Template: t,
-		buf:      bytes.NewBuffer(make([]byte, 4096)),
+		Template:              t,
+		buf:                   bytes.NewBuffer(make([]byte, 4096)),
+		requiredLabelNamesMap: namesMap,
+		requiredLabelNames:    names,
 	}, nil
 }
 
 func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
-	if err := lf.Template.Execute(lf.buf, lbs.Labels().Map()); err != nil {
+
+	model := lf.buildModel(lbs)
+	if err := lf.Template.Execute(lf.buf, model); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		return line, true
 	}
@@ -121,19 +133,39 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	return res, true
 }
 
-func (lf *LineFormatter) RequiredLabelNames() []string {
-	return uniqueString(listNodeFields(lf.Root))
+func (lf *LineFormatter) buildModel(lbs *LabelsBuilder) interface{} {
+	labels := lbs.Labels()
+	model := make(map[string]string, len(lf.requiredLabelNamesMap))
+	if len(lf.requiredLabelNames) > 0 {
+		for _, l := range labels {
+			if _, ok := lf.requiredLabelNamesMap[l.Name]; ok {
+				model[l.Name] = l.Value
+			}
+		}
+	}
+	return model
 }
 
-func listNodeFields(node parse.Node) []string {
+func (lf *LineFormatter) RequiredLabelNames() []string {
+	return lf.requiredLabelNames
+}
+
+func listNodeFields(nodes []parse.Node) []string {
 	var res []string
-	if node.Type() == parse.NodeAction {
-		res = append(res, listNodeFieldsFromPipe(node.(*parse.ActionNode).Pipe)...)
-	}
-	res = append(res, listNodeFieldsFromBranch(node)...)
-	if ln, ok := node.(*parse.ListNode); ok {
-		for _, n := range ln.Nodes {
-			res = append(res, listNodeFields(n)...)
+	for _, node := range nodes {
+		switch node.Type() {
+		case parse.NodePipe:
+			res = append(res, listNodeFieldsFromPipe(node.(*parse.PipeNode))...)
+		case parse.NodeAction:
+			res = append(res, listNodeFieldsFromPipe(node.(*parse.ActionNode).Pipe)...)
+		case parse.NodeList:
+			res = append(res, listNodeFields(node.(*parse.ListNode).Nodes)...)
+		case parse.NodeCommand:
+			res = append(res, listNodeFields(node.(*parse.CommandNode).Args)...)
+		case parse.NodeIf, parse.NodeWith, parse.NodeRange:
+			res = append(res, listNodeFieldsFromBranch(node)...)
+		case parse.NodeField:
+			res = append(res, node.(*parse.FieldNode).Ident...)
 		}
 	}
 	return res
@@ -156,10 +188,10 @@ func listNodeFieldsFromBranch(node parse.Node) []string {
 		res = append(res, listNodeFieldsFromPipe(b.Pipe)...)
 	}
 	if b.List != nil {
-		res = append(res, listNodeFields(b.List)...)
+		res = append(res, listNodeFields(b.List.Nodes)...)
 	}
 	if b.ElseList != nil {
-		res = append(res, listNodeFields(b.ElseList)...)
+		res = append(res, listNodeFields(b.ElseList.Nodes)...)
 	}
 	return res
 }
@@ -167,11 +199,7 @@ func listNodeFieldsFromBranch(node parse.Node) []string {
 func listNodeFieldsFromPipe(p *parse.PipeNode) []string {
 	var res []string
 	for _, c := range p.Cmds {
-		for _, a := range c.Args {
-			if f, ok := a.(*parse.FieldNode); ok {
-				res = append(res, f.Ident...)
-			}
-		}
+		res = append(res, listNodeFields(c.Args)...)
 	}
 	return res
 }
@@ -210,6 +238,9 @@ type labelFormatter struct {
 type LabelsFormatter struct {
 	formats []labelFormatter
 	buf     *bytes.Buffer
+
+	requiredLabelNamesMap map[string]struct{}
+	requiredLabelNames    []string
 }
 
 // NewLabelsFormatter creates a new formatter that can format multiple labels at once.
@@ -220,6 +251,8 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		return nil, err
 	}
 	formats := make([]labelFormatter, 0, len(fmts))
+	var names []string
+
 	for _, fm := range fmts {
 		toAdd := labelFormatter{LabelFmt: fm}
 		if !fm.Rename {
@@ -228,12 +261,19 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.Name, err)
 			}
 			toAdd.tmpl = t
+			names = uniqueString(append(names, listNodeFields([]parse.Node{t.Root})...))
 		}
 		formats = append(formats, toAdd)
 	}
+	namesMap := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		namesMap[n] = struct{}{}
+	}
 	return &LabelsFormatter{
-		formats: formats,
-		buf:     bytes.NewBuffer(make([]byte, 1024)),
+		formats:               formats,
+		buf:                   bytes.NewBuffer(make([]byte, 1024)),
+		requiredLabelNamesMap: namesMap,
+		requiredLabelNames:    names,
 	}, nil
 }
 
@@ -253,6 +293,19 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
+func (lf *LabelsFormatter) buildModel(lbs *LabelsBuilder) interface{} {
+	labels := lbs.Labels()
+	model := make(map[string]string, len(lf.requiredLabelNamesMap))
+	if len(lf.requiredLabelNames) > 0 {
+		for _, l := range labels {
+			if _, ok := lf.requiredLabelNamesMap[l.Name]; ok {
+				model[l.Name] = l.Value
+			}
+		}
+	}
+	return model
+}
+
 func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	var data interface{}
 	for _, f := range lf.formats {
@@ -266,7 +319,7 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		}
 		lf.buf.Reset()
 		if data == nil {
-			data = lbs.Labels().Map()
+			data = lf.buildModel(lbs)
 		}
 		if err := f.tmpl.Execute(lf.buf, data); err != nil {
 			lbs.SetErr(errTemplateFormat)
@@ -284,8 +337,8 @@ func (lf *LabelsFormatter) RequiredLabelNames() []string {
 			names = append(names, fm.Value)
 			continue
 		}
-		names = append(names, listNodeFields(fm.tmpl.Root)...)
 	}
+	names = append(names, lf.requiredLabelNames...)
 	return uniqueString(names)
 }
 
