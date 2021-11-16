@@ -224,18 +224,6 @@ func Test_InitQuerierService(t *testing.T) {
 			}
 		})
 
-		t.Run("set the worker's max concurrent request to the same as the max concurrent setting for the querier", func(t *testing.T) {
-			for _, config := range nonStandaloneTargetPermutations {
-				workerConfig := querier_worker.Config{}
-				config.QuerierWorkerConfig = &workerConfig
-				config.QuerierMaxConcurrent = 42
-
-				testContext(config, nil)
-
-				assert.Equal(t, 42, workerConfig.MaxConcurrentRequests)
-			}
-		})
-
 		t.Run("always return a query worker service", func(t *testing.T) {
 			for _, config := range nonStandaloneTargetPermutations {
 				workerConfig := querier_worker.Config{}
