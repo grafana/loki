@@ -65,6 +65,13 @@ steps:
   - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...
   image: grafana/loki-build-image:0.18.0
   name: All
+trigger:
+  cron:
+    include:
+    - loki-bench
+  event:
+    include:
+    - cron
 workspace:
   base: /src
   path: loki
@@ -949,6 +956,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: a3958a39f9e391a85ba2507da918d648b9cdc56b6162edf5fb6332a8a548be58
+hmac: e9bf0aa0f9949cfc7eda3e598970299f041f673a161b4e99c342e3af2b936022
 
 ...
