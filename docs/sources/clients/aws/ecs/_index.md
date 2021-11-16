@@ -119,7 +119,7 @@ curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/
 },
 ```
 
-The `log_router` container image is the [Fluent bit Loki docker image][fluentbit loki image] which contains the Loki plugin pre-installed. As you can see the `firelensConfiguration` type is set to `fluentbit` and we've also added `options` to enable ECS log metadata. This will be useful when querying your logs with Loki [LogQL][logql] label matchers.
+The `log_router` container image is the [Fluent bit Loki docker image][fluentbit loki image] which contains the Loki plugin pre-installed. As you can see the `firelensConfiguration` type is set to `fluentbit` and we've also added `options` to enable ECS log metadata. This will be useful when querying your logs with Loki LogQL label matchers.
 
 > The `logConfiguration` is mostly there for debugging the fluent-bit container, but feel free to remove that part when you're done testing and configuring.
 
@@ -214,7 +214,7 @@ You can now access the ECS console and you should see your task running. Now let
 
 Using the `Log Labels` dropdown you should be able to discover your workload via the ECS metadata, which is also visible if you expand a log line.
 
-That's it ! Make sure to checkout the [LogQL][logql] to learn more about Loki powerful query language.
+That's it ! Make sure to checkout LogQL to learn more about Loki powerful query language.
 
 [create an vpc]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-subnets-commands-example.html
 [ECS]: https://aws.amazon.com/ecs/
