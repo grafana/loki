@@ -16,7 +16,7 @@ import (
 
 func TestMemcached(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
-		client := newMockMemcache()
+		client := newMockMemcachedBasicClient()
 		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client,
 			"test", nil, log.NewNopLogger())
 
@@ -24,7 +24,7 @@ func TestMemcached(t *testing.T) {
 	})
 
 	t.Run("batched", func(t *testing.T) {
-		client := newMockMemcache()
+		client := newMockMemcachedBasicClient()
 		memcache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 5,
@@ -69,15 +69,15 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	}
 }
 
-// mockMemcache whose calls fail 1/3rd of the time.
+// mockMemcachedBasicClient whose calls fail 1/3rd of the time.
 type mockMemcacheFailing struct {
-	*mockMemcache
+	*mockMemcachedBasicClient
 	calls atomic.Uint64
 }
 
-func newMockMemcacheFailing() *mockMemcacheFailing {
+func newMockMemcachedBasicClientFailing() *mockMemcacheFailing {
 	return &mockMemcacheFailing{
-		mockMemcache: newMockMemcache(),
+		mockMemcachedBasicClient: newMockMemcachedBasicClient(),
 	}
 }
 
@@ -87,12 +87,12 @@ func (c *mockMemcacheFailing) GetMulti(keys []string) (map[string]*memcache.Item
 		return nil, errors.New("fail")
 	}
 
-	return c.mockMemcache.GetMulti(keys)
+	return c.mockMemcachedBasicClient.GetMulti(keys)
 }
 
 func TestMemcacheFailure(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
-		client := newMockMemcacheFailing()
+		client := newMockMemcachedBasicClientFailing()
 		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client,
 			"test", nil, log.NewNopLogger())
 
@@ -100,7 +100,7 @@ func TestMemcacheFailure(t *testing.T) {
 	})
 
 	t.Run("batched", func(t *testing.T) {
-		client := newMockMemcacheFailing()
+		client := newMockMemcachedBasicClientFailing()
 		memcache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 5,
