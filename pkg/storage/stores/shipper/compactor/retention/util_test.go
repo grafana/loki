@@ -274,7 +274,7 @@ func TestExtractIntervalFromTableName(t *testing.T) {
 
 	calculateInterval := func(tm model.Time) (m model.Interval) {
 		m.Start = tm - tm%millisecondsInDay
-		m.End = m.Start + millisecondsInDay
+		m.End = m.Start + millisecondsInDay - 1
 		return
 	}
 

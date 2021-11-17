@@ -1,5 +1,9 @@
 ## Main
 
+* [4736](https://github.com/grafana/loki/pull/4736) **sandeepsukhani**: allow applying retention at different interval than compaction
+* [4744](https://github.com/grafana/loki/pull/4744) **cyriltovena**: Promtail: Adds GELF UDP support.
+* [4741](https://github.com/grafana/loki/pull/4741) **sandeepsukhani**: index cleanup fixes while applying retention
+
 # 2.4.1 (2021/11/07)
 
 Release notes for 2.4.1 can be found on the [release notes page](https://grafana.com/docs/loki/latest/release-notes/v2-4/)
@@ -9,7 +13,6 @@ Release notes for 2.4.1 can be found on the [release notes page](https://grafana
 * [4687](https://github.com/grafana/loki/pull/4687) **owen-d**: overrides checks for nil tenant limits on AllByUserID
 * [4683](https://github.com/grafana/loki/pull/4683) **owen-d**: Adds replication_factor doc to common config
 * [4681](https://github.com/grafana/loki/pull/4681) **slim-bean**: Loki: check new Read target when initializing boltdb-shipper store
-* [4736](https://github.com/grafana/loki/pull/4736) **sandeepsukhani**: allow applying retention at different interval than compaction
 
 # 2.4.0 (2021/11/05)
 

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
@@ -89,7 +88,7 @@ func (t *Loki) initServer() (services.Service, error) {
 	prometheus.MustRegister(version.NewCollector("loki"))
 
 	// Loki handles signals on its own.
-	cortex.DisableSignalHandling(&t.Cfg.Server)
+	DisableSignalHandling(&t.Cfg.Server)
 	serv, err := server.New(t.Cfg.Server)
 	if err != nil {
 		return nil, err
@@ -108,7 +107,7 @@ func (t *Loki) initServer() (services.Service, error) {
 		return svs
 	}
 
-	s := cortex.NewServerService(t.Server, servicesToWaitFor)
+	s := NewServerService(t.Server, servicesToWaitFor)
 
 	// Best effort to propagate the org ID from the start.
 	t.Server.HTTPServer.Handler = func(next http.Handler) http.Handler {
@@ -213,6 +212,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
+	// Querier worker's max concurrent requests must be the same as the querier setting
+	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 
 	var err error
 	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.overrides)
@@ -231,7 +232,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
-	var queryHandlers = map[string]http.Handler{
+	queryHandlers := map[string]http.Handler{
 		"/loki/api/v1/query_range":         http.HandlerFunc(t.Querier.RangeQueryHandler),
 		"/loki/api/v1/query":               http.HandlerFunc(t.Querier.InstantQueryHandler),
 		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
@@ -254,7 +255,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
-	var alwaysExternalHandlers = map[string]http.Handler{
+	alwaysExternalHandlers := map[string]http.Handler{
 		"/loki/api/v1/tail": http.HandlerFunc(t.Querier.TailHandler),
 		"/api/prom/tail":    http.HandlerFunc(t.Querier.TailHandler),
 	}
@@ -464,7 +465,6 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
 		prometheus.DefaultRegisterer)
-
 	if err != nil {
 		return nil, err
 	}
@@ -781,4 +781,62 @@ func boltdbShipperIngesterIndexUploadDelay() time.Duration {
 // avoid missing any logs or chunk ids due to async nature of BoltDB Shipper.
 func boltdbShipperMinIngesterQueryStoreDuration(cfg Config) time.Duration {
 	return cfg.Ingester.MaxChunkAge + boltdbShipperIngesterIndexUploadDelay() + boltdbShipperQuerierIndexUpdateDelay(cfg) + 2*time.Minute
+}
+
+// NewServerService constructs service from Server component.
+// servicesToWaitFor is called when server is stopping, and should return all
+// services that need to terminate before server actually stops.
+// N.B.: this function is NOT Cortex specific, please let's keep it that way.
+// Passed server should not react on signals. Early return from Run function is considered to be an error.
+func NewServerService(serv *server.Server, servicesToWaitFor func() []services.Service) services.Service {
+	serverDone := make(chan error, 1)
+
+	runFn := func(ctx context.Context) error {
+		go func() {
+			defer close(serverDone)
+			serverDone <- serv.Run()
+		}()
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-serverDone:
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("server stopped unexpectedly")
+		}
+	}
+
+	stoppingFn := func(_ error) error {
+		// wait until all modules are done, and then shutdown server.
+		for _, s := range servicesToWaitFor() {
+			_ = s.AwaitTerminated(context.Background())
+		}
+
+		// shutdown HTTP and gRPC servers (this also unblocks Run)
+		serv.Shutdown()
+
+		// if not closed yet, wait until server stops.
+		<-serverDone
+		level.Info(util_log.Logger).Log("msg", "server stopped")
+		return nil
+	}
+
+	return services.NewBasicService(nil, runFn, stoppingFn)
+}
+
+// DisableSignalHandling puts a dummy signal handler
+func DisableSignalHandling(config *server.Config) {
+	config.SignalHandler = make(ignoreSignalHandler)
+}
+
+type ignoreSignalHandler chan struct{}
+
+func (dh ignoreSignalHandler) Loop() {
+	<-dh
+}
+
+func (dh ignoreSignalHandler) Stop() {
+	close(dh)
 }

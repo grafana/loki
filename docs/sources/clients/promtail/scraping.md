@@ -197,7 +197,9 @@ Configs are set in `gcplog` section in `scrape_config`
       labels:
         job: "gcplog"
     relabel_configs:
-      - source_labels: ['__project_id']
+      - source_labels: ['__gcp_resource_type']
+        target_label: 'resource_type'
+      - source_labels: ['__gcp_resource_labels_project_id']
         target_label: 'project'
 ```
 Here `project_id` and `subscription` are the only required fields.
@@ -209,7 +211,11 @@ Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with p
 
 It also supports `relabeling` and `pipeline` stages just like other targets.
 
-When Promtail receives GCP logs the labels that are set on the GCP resources are available as internal labels. Like in the example above, the `__project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`. See [Relabeling](#relabeling) for more information.
+When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):
+  - `__gcp_logname`
+  - `__gcp_resource_type`
+  - `__gcp_resource_labels_<NAME>`
+    In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
 
 ## Syslog Receiver
 
@@ -302,6 +308,34 @@ scrape_configs:
 
 Only the `brokers` and `topics` is required.
 see the [configuration](../../configuration/#kafka) section for more information.
+
+## GELF
+
+Promtail supports listening message using the [GELF](https://docs.graylog.org/docs/gelf) UDP protocol.
+The GELF targets can be configured using the `gelf` stanza:
+
+```yaml
+scrape_configs:
+- job_name: gelf
+  gelf:
+    listen_address: "0.0.0.0:12201"
+    use_incoming_timestamp: true
+    labels:
+      job: gelf
+  relabel_configs:
+      - action: replace
+        source_labels:
+          - __gelf_message_host
+        target_label: host
+      - action: replace
+        source_labels:
+          - __gelf_message_level
+        target_label: level
+      - action: replace
+        source_labels:
+          - __gelf_message_facility
+        target_label: facility
+```
 
 ## Relabeling
 
