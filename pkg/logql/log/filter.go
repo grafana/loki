@@ -335,12 +335,30 @@ func parseRegexpFilter(re string, match bool) (Filterer, error) {
 	// attempt to improve regex with tricks
 	f, ok := simplify(reg)
 	if !ok {
-		return newRegexpFilter(re, match)
+		allNonGreedy(reg)
+		return newRegexpFilter(reg.String(), match)
 	}
 	if match {
 		return f, nil
 	}
 	return newNotFilter(f), nil
+}
+
+// allNonGreedy turns greedy qunatifiers such as `.*` and `.+` into non-greedy ones. This is the same effect as writing
+// `.*?` and `.+?`. This is only save because we use `Match`. If we were to find the exact position and lenght of the match
+// we would not be allowed to make this optimization.
+func allNonGreedy(regs ...*syntax.Regexp) {
+	clearCapture(regs...)
+	for _, re := range regs {
+		switch re.Op {
+		case syntax.OpCapture, syntax.OpConcat, syntax.OpAlternate:
+			allNonGreedy(re.Sub...)
+		case syntax.OpStar, syntax.OpPlus:
+			re.Flags = re.Flags | syntax.NonGreedy
+		default:
+			continue	
+		}
+	}
 }
 
 // simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
