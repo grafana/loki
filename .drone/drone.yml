@@ -843,6 +843,9 @@ steps:
     username:
       from_secret: docker_username
 trigger:
+  event:
+  - push
+  - pull_request
   ref:
     include:
     - refs/heads/main
@@ -876,6 +879,9 @@ steps:
     images_json:
       from_secret: deploy_config
 trigger:
+  event:
+  - push
+  - pull_request
   ref:
     include:
     - refs/heads/main
@@ -1004,6 +1010,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: f6b69b7568765a77ee58c8db118be08c1db77953b9facb117c7849bcbc94d4f1
+hmac: 04a7c03da7709e0a7313aca44cbc489ff8ec6d5ae0afc91df9de1f46893c7c8b
 
 ...

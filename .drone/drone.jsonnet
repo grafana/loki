@@ -383,11 +383,11 @@ local manifest(apps) = pipeline('manifest') {
   logstash(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
-    trigger: condition('include').tagMain,
+    trigger+: condition('include').tagMain,
   },
 ] + [
   pipeline('deploy') {
-    trigger: condition('include').tagMain,
+    trigger+: condition('include').tagMain,
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
