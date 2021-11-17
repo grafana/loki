@@ -63,7 +63,7 @@ import (
 // so we store re2-exhaustive.txt.bz2 in the repository and decompress it on the fly.
 //
 func TestRE2Search(t *testing.T) {
-	//testRE2(t, "testdata/re2-search.txt")
+	testRE2(t, "testdata/re2-search.txt")
 	testRE2(t, "testdata/re2-exhaustive.txt.bz2")
 }
 
