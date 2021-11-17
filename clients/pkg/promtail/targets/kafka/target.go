@@ -61,29 +61,24 @@ const (
 	labelKeyKafkaMessageKey = "__meta_kafka_message_key"
 )
 
-func (t *Target) messageKeyLabel() (useLabel bool, labelName model.LabelName) {
-	lbs := format([]labels.Label{{
-		Name:  labelKeyKafkaMessageKey,
-		Value: defaultKafkaMessageKey,
-	}}, t.relabelConfig)
-	for k := range lbs {
-		return true, k
-	}
-	return false, ""
-}
-
 func (t *Target) run() {
 	defer t.client.Stop()
-
-	useMessageKey, mkLabel := t.messageKeyLabel()
 	for message := range t.claim.Messages() {
+		mk := string(message.Key)
+		if len(mk) == 0 {
+			mk = defaultKafkaMessageKey
+		}
+
+		// TODO: Possibly need to format after merging with discovered labels because we can specify multiple labels in source labels
+		// https://github.com/grafana/loki/pull/4745#discussion_r750022234
+		lbs := format([]labels.Label{{
+			Name:  labelKeyKafkaMessageKey,
+			Value: mk,
+		}}, t.relabelConfig)
+
 		out := t.lbs.Clone()
-		if useMessageKey {
-			mk := string(message.Key)
-			if len(mk) == 0 {
-				mk = defaultKafkaMessageKey
-			}
-			out = out.Merge(model.LabelSet{mkLabel: model.LabelValue(mk)})
+		if len(lbs) > 0 {
+			out = out.Merge(lbs)
 		}
 		t.client.Chan() <- api.Entry{
 			Entry: logproto.Entry{
