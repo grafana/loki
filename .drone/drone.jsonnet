@@ -337,13 +337,13 @@ local manifest(apps) = pipeline('manifest') {
     },
     node: { type: 'no-parallel' },
     steps: [
-      run('LogQL', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/'])
+      run('All', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...']),
     ],
     trigger: {
       event: {
         include: ['cron'],
       },
-      cron+: {
+      cron: {
         include: ['loki-bench'],
       },
     },

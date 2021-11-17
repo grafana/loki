@@ -379,7 +379,6 @@ func (i *queryClientIterator) Close() error {
 
 type nonOverlappingIterator struct {
 	labels    string
-	i         int
 	iterators []EntryIterator
 	curr      EntryIterator
 }
@@ -403,7 +402,6 @@ func (i *nonOverlappingIterator) Next() bool {
 		if i.curr != nil {
 			i.curr.Close()
 		}
-		i.i++
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 

@@ -1129,6 +1129,10 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 }
 
 func (si *bufferedIterator) Next() bool {
+	if si.closed {
+		return false
+	}
+
 	if !si.closed && si.reader == nil {
 		// initialize reader now, hopefully reusing one of the previous readers
 		si.reader = si.pool.GetReader(bytes.NewBuffer(si.origBytes))
