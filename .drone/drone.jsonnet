@@ -20,6 +20,7 @@ local pipeline(name) = {
   kind: 'pipeline',
   name: name,
   steps: [],
+  trigger: { event: ["push", "pull_request"] },
 };
 
 local secret(name, vault_path, vault_key) = {
@@ -338,12 +339,12 @@ local manifest(apps) = pipeline('manifest') {
     steps: [
       run('LogQL', ['go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/'])
     ],
-    trigger+: {
-      event+: {
-        include+: ['cron'],
+    trigger: {
+      event: {
+        include: ['cron'],
       },
       cron+: {
-        include+: ['loki-bench'],
+        include: ['loki-bench'],
       },
     },
   },
