@@ -160,7 +160,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 ## server_config
 
-The `server_config` block configures the HTTP and gRPC server of the launched service(s):
+The `server_config` block is defined within the `server` section.
+It configures the HTTP and gRPC server communication of the launched service(s).
 
 ```yaml
 # HTTP server listen host
@@ -223,7 +224,8 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 
 ## distributor_config
 
-The `distributor_config` block configures the Loki Distributor.
+The `distributor_config` block is defined within the `distributor` section.
+It configures the distributor component.
 
 ```yaml
 # Configures the distributors ring, used when the "global" ingestion rate
