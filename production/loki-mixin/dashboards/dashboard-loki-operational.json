@@ -2117,7 +2117,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |= \"level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} | logfmt | level=\"error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2125,7 +2125,7 @@
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "",
+          "title": "Error Log Rate",
           "tooltip": {
             "shared": true,
             "sort": 2,
@@ -2179,7 +2179,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |= \"level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} | logfmt | level=\"error\"",
               "refId": "A"
             }
           ],
@@ -2655,8 +2655,8 @@
           "gridPos": {
             "h": 7,
             "w": 6,
-            "x": 6,
-            "y": 29
+            "x": 0,
+            "y": 36
           },
           "hiddenSeries": false,
           "id": 37,
@@ -2745,7 +2745,7 @@
           "fillGradient": 0,
           "gridPos": {
             "h": 3,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 29
           },
@@ -2781,7 +2781,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |= \"level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} | logfmt | level=\"error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2789,7 +2789,7 @@
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "",
+          "title": "Error Log Rate",
           "tooltip": {
             "shared": true,
             "sort": 2,
@@ -2830,7 +2830,7 @@
           "datasource": "$logs",
           "gridPos": {
             "h": 18,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 32
           },
@@ -2843,7 +2843,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |= \"level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} | logfmt | level=\"error\"",
               "refId": "A"
             }
           ],
@@ -2864,7 +2864,7 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 36
+            "y": 41
           },
           "hiddenSeries": false,
           "id": 67,
@@ -3581,8 +3581,8 @@
           "gridPos": {
             "h": 7,
             "w": 6,
-            "x": 6,
-            "y": 32
+            "x": 0,
+            "y": 39
           },
           "hiddenSeries": false,
           "id": 69,
@@ -3671,7 +3671,7 @@
           "fillGradient": 0,
           "gridPos": {
             "h": 3,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 32
           },
@@ -3707,7 +3707,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |= \"level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} | logfmt |  level=\"error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -3715,7 +3715,7 @@
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "",
+          "title": "Error Log Rate",
           "tooltip": {
             "shared": true,
             "sort": 2,
@@ -3756,7 +3756,7 @@
           "datasource": "$logs",
           "gridPos": {
             "h": 18,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 35
           },
@@ -3769,7 +3769,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |= \"level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} | logfmt | level=\"error\"",
               "refId": "A"
             }
           ],
@@ -3790,7 +3790,7 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 39
+            "y": 46
           },
           "hiddenSeries": false,
           "id": 70,
