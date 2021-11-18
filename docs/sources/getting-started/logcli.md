@@ -120,7 +120,7 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-	  --stdin            Take input logs from stdin
+      --stdin            Take input logs from stdin
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
@@ -276,7 +276,7 @@ Flags:
                            timestamps [Local, UTC]
       --cpuprofile=""      Specify the location for writing a CPU profile.
       --memprofile=""      Specify the location for writing a memory profile.
-	  --stdin              Take input logs from stdin
+      --stdin              Take input logs from stdin
       --addr="http://localhost:3100"
                            Server address. Can also be set using LOKI_ADDR env
                            var.
@@ -348,7 +348,7 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-	  --stdin            Take input logs from stdin
+      --stdin            Take input logs from stdin
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
@@ -405,7 +405,7 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-	  --stdin            Take input logs from stdin
+      --stdin            Take input logs from stdin
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.

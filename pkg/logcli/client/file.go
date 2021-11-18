@@ -234,9 +234,7 @@ func newFileIterator(
 		return iter.NoopIterator, nil
 	}
 
-	stream := logproto.Stream{
-		Labels: labels.String(),
-	}
+	streams := map[uint64]*logproto.Stream{}
 
 	// reverse all the input lines if direction == FORWARD
 	if params.Direction == logproto.FORWARD {
@@ -246,19 +244,39 @@ func newFileIterator(
 	}
 
 	for _, line := range lines {
-		parsedLine, _, ok := pipeline.ProcessString(line)
+		parsedLine, parsedLabels, ok := pipeline.ProcessString(line)
 		if !ok {
 			continue
 		}
+
+		var stream *logproto.Stream
+		lhash := parsedLabels.Hash()
+		if stream, ok = streams[lhash]; !ok {
+			stream = &logproto.Stream{
+				Labels: parsedLabels.String(),
+			}
+			streams[lhash] = stream
+		}
+
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: time.Now(),
 			Line:      parsedLine,
 		})
 	}
 
-	return iter.NewHeapIterator(
+	if len(streams) == 0 {
+		return iter.NoopIterator, nil
+	}
+
+	streamResult := make([]logproto.Stream, 0, len(streams))
+
+	for _, stream := range streams {
+		streamResult = append(streamResult, *stream)
+	}
+
+	return iter.NewStreamsIterator(
 		ctx,
-		[]iter.EntryIterator{iter.NewStreamIterator(stream)},
+		streamResult,
 		params.Direction,
 	), nil
 }
