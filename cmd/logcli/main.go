@@ -365,6 +365,9 @@ func mustParse(t string, defaultTime time.Time) time.Time {
 	return ret
 }
 
+// This method is to duplicate the same logic of `step` value from `start` and `end`
+// done on the loki server side.
+// https://github.com/grafana/loki/blob/main/pkg/loghttp/params.go
 func defaultQueryRangeStep(start, end time.Time) time.Duration {
 	step := int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
 	return time.Duration(step) * time.Second
