@@ -218,6 +218,18 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tenantID, err := tenant.TenantID(r.Context())
+	if err != nil {
+		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+	level.Info(logger).Log("msg", "starting to tail logs", "tenant", tenantID, "selectors", req.Query)
+
+	defer func() {
+		level.Info(logger).Log("msg", "ended tailing logs", "tenant", tenantID, "selectors", req.Query)
+	}()
+
 	defer func() {
 		if err := conn.Close(); err != nil {
 			level.Error(logger).Log("msg", "Error closing websocket", "err", err)
