@@ -206,7 +206,7 @@ func (q *querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract pipeline for logs: %w", err)
 	}
-	return newFileIterator(ctx, q.r, q.labels, params, pipeline.ForStream(q.labels))
+	return newFileIterator(ctx, q.r, params, pipeline.ForStream(q.labels))
 }
 
 func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -216,7 +216,6 @@ func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 func newFileIterator(
 	ctx context.Context,
 	r io.Reader,
-	labels labels.Labels,
 	params logql.SelectLogParams,
 	pipeline logqllog.StreamPipeline,
 ) (iter.EntryIterator, error) {
