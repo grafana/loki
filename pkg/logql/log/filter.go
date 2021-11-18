@@ -358,7 +358,7 @@ func allNonGreedy(regs ...*syntax.Regexp) {
 		case syntax.OpStar, syntax.OpPlus:
 			re.Flags = re.Flags | syntax.NonGreedy
 		default:
-			continue	
+			continue
 		}
 	}
 }
