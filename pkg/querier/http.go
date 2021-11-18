@@ -227,7 +227,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	level.Info(logger).Log("msg", "starting to tail logs", "tenant", tenantID, "selectors", req.Query)
 
 	defer func() {
-		level.Info(logger).Log("msg", "ended tailing logs", "tenant-id", tenantID, "selectors", req.Query)
+		level.Info(logger).Log("msg", "ended tailing logs", "tenant", tenantID, "selectors", req.Query)
 	}()
 
 	defer func() {
