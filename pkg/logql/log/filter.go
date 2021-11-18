@@ -346,7 +346,9 @@ func parseRegexpFilter(re string, match bool) (Filterer, error) {
 
 // allNonGreedy turns greedy quantifiers such as `.*` and `.+` into non-greedy ones. This is the same effect as writing
 // `.*?` and `.+?`. This is only safe because we use `Match`. If we were to find the exact position and length of the match
-// we would not be allowed to make this optimization.
+// we would not be allowed to make this optimization. `Match` can return quicker because it is not looking for the longest match.
+// Prepending the expression with `(?U)` or passing `NonGreedy` to the expression compiler is not enough since it will
+// just negate `.*` and `.*?`.
 func allNonGreedy(regs ...*syntax.Regexp) {
 	clearCapture(regs...)
 	for _, re := range regs {
