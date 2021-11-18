@@ -165,7 +165,7 @@ func main() {
 		}
 
 		// `--limit` doesn't make sense when using `--stdin` flag.
-		rangeQuery.Limit = math.MaxInt // TODO(kavi): is it a good idea?
+		rangeQuery.Limit = math.MaxInt64 // TODO(kavi): is it a good idea?
 	}
 
 	switch cmd {

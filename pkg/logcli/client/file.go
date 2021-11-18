@@ -236,17 +236,10 @@ func newFileIterator(
 
 	streams := map[uint64]*logproto.Stream{}
 
-	// reverse all the input lines if direction == FORWARD
-	if params.Direction == logproto.FORWARD {
-		sort.Slice(lines, func(i, j int) bool {
-			return i > j
-		})
-	}
-
-	for _, line := range lines {
+	processLine := func(line string) {
 		parsedLine, parsedLabels, ok := pipeline.ProcessString(line)
 		if !ok {
-			continue
+			return
 		}
 
 		var stream *logproto.Stream
@@ -262,6 +255,16 @@ func newFileIterator(
 			Timestamp: time.Now(),
 			Line:      parsedLine,
 		})
+	}
+
+	if params.Direction == logproto.FORWARD {
+		for _, line := range lines {
+			processLine(line)
+		}
+	} else {
+		for i := len(lines) - 1; i >= 0; i-- {
+			processLine(lines[i])
+		}
 	}
 
 	if len(streams) == 0 {
