@@ -4,22 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
-
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/util"
 )
@@ -267,18 +264,12 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		"__meta_kafka_member_id": model.LabelValue(session.MemberID()),
 		"__meta_kafka_group_id":  model.LabelValue(ts.cfg.KafkaConfig.GroupID),
 	}
+	details := newDetails(session, claim)
 	labelMap := make(map[string]string)
 	for k, v := range discoveredLabels.Clone().Merge(ts.cfg.KafkaConfig.Labels) {
 		labelMap[string(k)] = string(v)
 	}
-	lbs := relabel.Process(labels.FromMap(labelMap), ts.cfg.RelabelConfigs...)
-	details := newDetails(session, claim)
-	labelOut := model.LabelSet(util.LabelsToMetric(lbs))
-	for k := range labelOut {
-		if strings.HasPrefix(string(k), "__") {
-			delete(labelOut, k)
-		}
-	}
+	labelOut := format(labels.FromMap(labelMap), ts.cfg.RelabelConfigs)
 	if len(labelOut) == 0 {
 		level.Warn(ts.logger).Log("msg", "dropping target", "reason", "no labels", "details", details, "discovered_labels", discoveredLabels.String())
 		return &runnableDroppedTarget{
@@ -300,6 +291,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		claim,
 		discoveredLabels,
 		labelOut,
+		ts.cfg.RelabelConfigs,
 		pipeline.Wrap(ts.client),
 		ts.cfg.KafkaConfig.UseIncomingTimestamp,
 	)

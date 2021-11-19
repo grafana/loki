@@ -155,5 +155,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
       // added since the json defines the template array, we just need the tags
       // and links from this function until they're moved to a separate function.
       .addClusterSelectorTemplates(false)
+      .addLog()
   },
 }

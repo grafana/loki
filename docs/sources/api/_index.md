@@ -6,7 +6,7 @@ weight: 900
 # Grafana Loki HTTP API
 
 Grafana Loki exposes an HTTP API for pushing, querying, and tailing log data.
-Note that [authenticating](../operations/authentication/) against the API is
+Note that authenticating against the API is
 out of scope for Loki.
 
 ## Microservices mode
@@ -157,7 +157,7 @@ And `<stream value>` is:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -302,7 +302,7 @@ And `<stream value>` is:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -635,7 +635,7 @@ Response:
 }
 ```
 
-See [statistics](#Statistics) for information about the statistics returned by Loki.
+See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
 

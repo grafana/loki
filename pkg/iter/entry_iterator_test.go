@@ -3,6 +3,7 @@ package iter
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -633,4 +634,42 @@ func TestNonOverlappingClose(t *testing.T) {
 
 	require.Equal(t, true, a.closed.Load())
 	require.Equal(t, true, b.closed.Load())
+}
+
+func BenchmarkHeapIterator(b *testing.B) {
+	var (
+		ctx          = context.Background()
+		streams      []logproto.Stream
+		entriesCount = 10000
+		streamsCount = 100
+	)
+	for i := 0; i < streamsCount; i++ {
+		streams = append(streams, logproto.Stream{
+			Labels: fmt.Sprintf(`{i="%d"}`, i),
+		})
+	}
+	for i := 0; i < entriesCount; i++ {
+		streams[i%streamsCount].Entries = append(streams[i%streamsCount].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, int64(streamsCount-i)),
+			Line:      fmt.Sprintf("%d", i),
+		})
+	}
+	rand.Shuffle(len(streams), func(i, j int) {
+		streams[i], streams[j] = streams[j], streams[i]
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		var itrs []EntryIterator
+		for i := 0; i < streamsCount; i++ {
+			itrs = append(itrs, NewStreamIterator(streams[i]))
+		}
+		b.StartTimer()
+		it := NewHeapIterator(ctx, itrs, logproto.BACKWARD)
+		for it.Next() {
+			it.Entry()
+		}
+		it.Close()
+	}
 }

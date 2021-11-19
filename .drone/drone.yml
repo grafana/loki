@@ -66,9 +66,9 @@ node:
   type: no-parallel
 steps:
 - commands:
-  - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/
+  - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...
   image: grafana/loki-build-image:0.18.0
-  name: LogQL
+  name: All
 trigger:
   cron:
     include:
@@ -1008,6 +1008,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 1820473d9eee13e6a7248f39f99e6a8bddb0cd31edc3dffb5c3ebd58e7d23334
+hmac: db6af9f4901433a3c34557e0e0d2da2b6db499e9d3f1d11ad598d470386e77a3
 
 ...

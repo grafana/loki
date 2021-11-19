@@ -157,9 +157,9 @@ func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto
 	result := &heapIterator{is: is, stats: stats.FromContext(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
-		result.heap = &iteratorMaxHeap{}
+		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
 	case logproto.FORWARD:
-		result.heap = &iteratorMinHeap{}
+		result.heap = &iteratorMinHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
 	default:
 		panic("bad direction")
 	}
@@ -218,6 +218,16 @@ func (i *heapIterator) Next() bool {
 
 	if i.heap.Len() == 0 {
 		return false
+	}
+
+	// shortcut for the last iterator.
+	if i.heap.Len() == 1 {
+		i.currEntry = i.heap.Peek().Entry()
+		i.currLabels = i.heap.Peek().Labels()
+		if !i.heap.Peek().Next() {
+			i.heap.Pop()
+		}
+		return true
 	}
 
 	// We support multiple entries with the same timestamp, and we want to
@@ -379,7 +389,6 @@ func (i *queryClientIterator) Close() error {
 
 type nonOverlappingIterator struct {
 	labels    string
-	i         int
 	iterators []EntryIterator
 	curr      EntryIterator
 }
@@ -403,7 +412,6 @@ func (i *nonOverlappingIterator) Next() bool {
 		if i.curr != nil {
 			i.curr.Close()
 		}
-		i.i++
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 

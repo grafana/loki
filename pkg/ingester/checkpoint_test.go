@@ -500,16 +500,12 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	streams := buildStreams()
 	instances := make([]*instance, 10)
 
-	limits, err := validation.NewOverrides(validation.Limits{
-		MaxLocalStreamsPerUser: 1000,
-		IngestionRateMB:        1e4,
-		IngestionBurstSizeMB:   1e4,
-	}, nil)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
-		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, nil, noopWAL{}, NilMetrics, nil, nil)
+		inst := newInstance(defaultConfig(), fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{
