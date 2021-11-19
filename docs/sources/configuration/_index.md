@@ -331,6 +331,12 @@ The query_frontend_config configures the Loki query-frontend.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 100]
 
+# If a querier disconnects without sending notification about graceful shutdown,
+# the query-frontend will keep the querier in the tenant's shard until the forget
+# delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.
+# CLI flag: -query-frontend.querier-forget-delay
+[querier_forget_delay: <duration> | default = 0]
+
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = false]
@@ -356,7 +362,7 @@ The query_frontend_config configures the Loki query-frontend.
 # query-scheduler instances.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
 # CLI flag: -frontend.scheduler-dns-lookup-period
-[scheduler_dns_lookup_period: <duration> | default = 3s]
+[scheduler_dns_lookup_period: <duration> | default = 10s]
 
 # Number of concurrent workers forwarding queries to single query-scheduler.
 # CLI flag: -frontend.scheduler-worker-concurrency
@@ -967,10 +973,14 @@ lifecycler:
   # CLI flag: -ingester.join-after
   [join_after: <duration> | default = 0s]
 
+  # Observe tokens after generating to resolve collisions. Useful when using gossiping ring.
+  # CLI flag: -ingester.observe-period
+  [observe_period: <duration> | default = 0s]
+
   # Minimum duration to wait before becoming ready. This is to work around race
   # conditions with ingesters exiting and updating the ring.
   # CLI flag: -ingester.min-ready-duration
-  [min_ready_duration: <duration> | default = 1m]
+  [min_ready_duration: <duration> | default = 15s]
 
   # Name of network interfaces to read addresses from.
   # CLI flag: -ingester.lifecycler.interface
@@ -980,12 +990,12 @@ lifecycler:
 
   # Duration to sleep before exiting to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
-  [final_sleep: <duration> | default = 0s]
+  [final_sleep: <duration> | default = 30s]
 
 # Number of times to try and transfer chunks when leaving before
 # falling back to flushing to the store. Zero = no transfers are done.
 # CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 10]
+[max_transfer_retries: <int> | default = 0]
 
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
@@ -1001,7 +1011,7 @@ lifecycler:
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period
-[chunk_retain_period: <duration> | default = 15m]
+[chunk_retain_period: <duration> | default = 0]
 
 # How long chunks should sit in-memory with no updates before
 # being flushed if they don't hit the max block size. This means
@@ -1018,10 +1028,10 @@ lifecycler:
 # A target _compressed_ size in bytes for chunks.
 # This is a desired size not an exact size, chunks may be slightly bigger
 # or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period)
-# The default value of 0 for this will create chunks with a fixed 10 blocks,
+# The value 0 for this will create chunks with a fixed 10 blocks,
 # A non zero value will create chunks with a variable number of blocks to meet the target size.
 # CLI flag: -ingester.chunk-target-size
-[chunk_target_size: <int> | default = 0]
+[chunk_target_size: <int> | default = 1572864]
 
 # The compression algorithm to use for chunks. (supported: gzip, lz4, snappy)
 # You should choose your algorithm depending on your need:
@@ -1602,7 +1612,7 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
-    # Configures the gRPC client used to connect to the Index Gateway gRPC server.
+    # ures the gRPC client used to connect to the Index Gateway gRPC server.
     # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
     [grpc_client_config: <grpc_client_config>]
 
@@ -1680,11 +1690,11 @@ background:
 memcached:
   # Configures how long keys stay in memcached.
   # CLI flag: -<prefix>.memcached.expiration
-  expiration: <duration>
+  expiration: <duration> | default = 0
 
   # Configures how many keys to fetch in each batch request.
   # CLI flag: -<prefix>.memcached.batchsize
-  batch_size: <int>
+  batch_size: <int> | default = 1024
 
   # Maximum active requests to memcached.
   # CLI flag: -<prefix>.memcached.parallelism
@@ -1720,7 +1730,24 @@ memcached_client:
 
   # Whether or not to use a consistent hash to discover multiple memcached servers.
   # CLI flag: -<prefix>.memcached.consistent-hash
-  [consistent_hash: <bool>]
+  [consistent_hash: <bool> | default = bool]
+
+  # Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).
+  # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
+  [circuit_breaker_consecutive_failures: <int> | default = 10]
+
+  # Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).
+  # CLI flag: -<prefix>.memcached.circuit-breaker-timeout
+  [circuit_breaker_timeout: <duration> | default = 10s]
+
+  # Reset circuit-breaker counts after this long (if zero then never reset).
+  # CLI flag: -<prefix>.memcached.circuit-breaker-interval
+  [circuit_breaker_interval: <duration> | default = 10s]
+
+  # The maximum size of an item stored in memcached.
+  # Bigger items are not stored. If set to 0, no maximum size is enforced.
+  # CLI flag: -<prefix>.memcached.max-item-size
+  [max_item_size: <int> | default = 0]
 
 redis:
   # Redis Server endpoint to use for caching. A comma-separated list of endpoints
@@ -1734,7 +1761,7 @@ redis:
 
   # Maximum time to wait before giving up on redis requests.
   # CLI flag: -<prefix>.redis.timeout
-  [timeout: <duration> | default = 100ms]
+  [timeout: <duration> | default = 500ms]
 
   # How long keys stay in the redis.
   # CLI flag: -<prefix>.redis.expiration
@@ -1742,7 +1769,7 @@ redis:
 
   # Database index.
   # CLI flag: -<prefix>.redis.db
-  [db: <int>]
+  [db: <int> | default = 0]
 
   # Maximum number of connections in the pool.
   # CLI flag: -<prefix>.redis.pool-size
@@ -1755,6 +1782,10 @@ redis:
   # Enables connecting to redis with TLS.
   # CLI flag: -<prefix>.redis.tls-enabled
   [tls_enabled: <boolean> | default = false]
+
+  # Skip validating server certificate.
+  # CLI flag: -<prefix>.redis.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <bool> | default = false]
 
   # Close connections after remaining idle for this duration.
   # If the value is zero, then idle connections are not closed.
@@ -1777,8 +1808,9 @@ fifocache:
   [max_size_items: <int> | default = 0]
 
   # The expiry duration for the cache.
+  # The default value of 0 means that it will never get expired.
   # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 1h]
+  [validity: <duration> | default = 0s]
 ```
 
 ## schema_config
@@ -1961,17 +1993,21 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [max_streams_per_user: <int> | default = 0]
 
 # Maximum line size on ingestion path. Example: 256kb.
-# There is no limit when unset.
+# There is no limit when unset or set to 0.
 # CLI flag: -distributor.max-line-size
-[max_line_size: <string> | default = none ]
+[max_line_size: <string> | default = 0 ]
 
 # Truncate log lines when they exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
-[max_line_size_truncate: <boolean> | default = false ]
+[max_line_size_truncate: <bool> | default = false ]
 
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
+
+# Maximum number of active streams per user, per ingester. 0 to disable.
+# CLI flag: -ingester.max-streams-per-user
+[max_streams_per_user: <int> | default 0]
 
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic
@@ -2008,6 +2044,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Maximum number of stream matchers per query.
 # CLI flag: -querier.max-streams-matcher-per-query
 [max_streams_matchers_per_query: <int> | default = 1000]
+
+# Limit the number of concurrent tail requests.
+# CLI flag: -querier.max-concurrent-tail-requests
+[max_concurrent_tail_requests: <int> | default = 10]
 
 # Duration to delay the evaluation of rules to ensure.
 # CLI flag: -ruler.evaluation-delay-duration
