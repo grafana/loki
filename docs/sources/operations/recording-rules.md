@@ -71,7 +71,7 @@ so a `Persistent Volume` should be utilised.
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
-a per-tenant basis. Most of the configuration options [defined here](../../configuration/#ruler_config)
+a per-tenant basis. Most of the configuration options [defined here](../../configuration/#ruler)
 have [override options](../../configuration/#limits_config) (which can be also applied at runtime!).
 
 ### Tuning
