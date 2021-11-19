@@ -3,8 +3,6 @@ package query
 import (
 	"bytes"
 	"context"
-	"log"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,74 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
-
-func Test_subtract(t *testing.T) {
-	type args struct {
-		a loghttp.LabelSet
-		b loghttp.LabelSet
-	}
-	tests := []struct {
-		name string
-		args args
-		want loghttp.LabelSet
-	}{
-		{
-			"Subtract labels source > target",
-			args{
-				mustParseLabels(`{foo="bar", bar="foo"}`),
-				mustParseLabels(`{bar="foo", foo="foo", baz="baz"}`),
-			},
-			mustParseLabels(`{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target",
-			args{
-				mustParseLabels(`{foo="bar", bar="foo"}`),
-				mustParseLabels(`{bar="foo"}`),
-			},
-			mustParseLabels(`{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target no sub",
-			args{
-				mustParseLabels(`{foo="bar", bar="foo"}`),
-				mustParseLabels(`{fo="bar"}`),
-			},
-			mustParseLabels(`{bar="foo", foo="bar"}`),
-		},
-		{
-			"Subtract labels source = target no sub",
-			args{
-				mustParseLabels(`{foo="bar"}`),
-				mustParseLabels(`{fiz="buz"}`),
-			},
-			mustParseLabels(`{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(`{foo="bar"}`),
-				mustParseLabels(`{fiz="buz", foo="baz"}`),
-			},
-			mustParseLabels(`{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(`{a="b", foo="bar", baz="baz", fizz="fizz"}`),
-				mustParseLabels(`{foo="bar", baz="baz", buzz="buzz", fizz="fizz"}`),
-			},
-			mustParseLabels(`{a="b"}`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := subtract(tt.args.a, tt.args.b); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("subtract() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
 
 func Test_batch(t *testing.T) {
 	tests := []struct {
@@ -420,16 +350,6 @@ func Test_batch(t *testing.T) {
 			assert.Equal(t, tt.expectedCalls, tc.queryRangeCalls)
 		})
 	}
-}
-
-func mustParseLabels(s string) loghttp.LabelSet {
-	l, err := marshal.NewLabelSet(s)
-
-	if err != nil {
-		log.Fatalf("Failed to parse %s", s)
-	}
-
-	return l
 }
 
 type testQueryClient struct {
