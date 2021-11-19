@@ -135,7 +135,7 @@ func journalTargetWithReader(
 	entryFunc journalEntryFunc,
 ) (*JournalTarget, error) {
 
-	positionPath := fmt.Sprintf("journal-%s", jobName)
+	positionPath := positions.CursorKey(jobName)
 	position := positions.GetString(positionPath)
 
 	if readerFunc == nil {

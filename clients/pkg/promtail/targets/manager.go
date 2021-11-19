@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/cloudflare"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
@@ -33,6 +34,7 @@ const (
 	WindowsEventsConfigs = "windowsEventsConfigs"
 	KafkaConfigs         = "kafkaConfigs"
 	GelfConfigs          = "gelfConfigs"
+	CloudflareConfigs    = "cloudflareConfigs"
 )
 
 type targetManager interface {
@@ -90,6 +92,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[KafkaConfigs] = append(targetScrapeConfigs[KafkaConfigs], cfg)
 		case cfg.GelfConfig != nil:
 			targetScrapeConfigs[GelfConfigs] = append(targetScrapeConfigs[GelfConfigs], cfg)
+		case cfg.CloudflareConfig != nil:
+			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -214,7 +218,16 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make gelf target manager")
 			}
 			targetManagers = append(targetManagers, gelfTargetManager)
-
+		case CloudflareConfigs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
+			cfTargetManager, err := cloudflare.NewTargetManager(reg, logger, pos, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
+			}
+			targetManagers = append(targetManagers, cfTargetManager)
 		default:
 			return nil, errors.New("unknown scrape config")
 		}
