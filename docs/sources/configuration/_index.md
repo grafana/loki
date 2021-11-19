@@ -1011,7 +1011,7 @@ lifecycler:
 
 # How long chunks should be retained in-memory after they've been flushed.
 # CLI flag: -ingester.chunks-retain-period
-[chunk_retain_period: <duration> | default = 0]
+[chunk_retain_period: <duration> | default = 0s]
 
 # How long chunks should sit in-memory with no updates before
 # being flushed if they don't hit the max block size. This means
@@ -1612,7 +1612,7 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
-    # ures the gRPC client used to connect to the Index Gateway gRPC server.
+    # Configures the gRPC client used to connect to the Index Gateway gRPC server.
     # The CLI flags prefix for this block config is: boltdb.shipper.index-gateway-client
     [grpc_client_config: <grpc_client_config>]
 
