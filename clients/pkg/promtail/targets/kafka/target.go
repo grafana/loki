@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
+
 	"github.com/Shopify/sarama"
 	"github.com/prometheus/common/model"
 
@@ -29,6 +32,7 @@ type Target struct {
 	claim                sarama.ConsumerGroupClaim
 	session              sarama.ConsumerGroupSession
 	client               api.EntryHandler
+	relabelConfig        []*relabel.Config
 	useIncomingTimestamp bool
 }
 
@@ -36,6 +40,7 @@ func NewTarget(
 	session sarama.ConsumerGroupSession,
 	claim sarama.ConsumerGroupClaim,
 	discoveredLabels, lbs model.LabelSet,
+	relabelConfig []*relabel.Config,
 	client api.EntryHandler,
 	useIncomingTimestamp bool,
 ) *Target {
@@ -46,20 +51,41 @@ func NewTarget(
 		claim:                claim,
 		session:              session,
 		client:               client,
+		relabelConfig:        relabelConfig,
 		useIncomingTimestamp: useIncomingTimestamp,
 	}
 }
 
+const (
+	defaultKafkaMessageKey  = "none"
+	labelKeyKafkaMessageKey = "__meta_kafka_message_key"
+)
+
 func (t *Target) run() {
 	defer t.client.Stop()
-
 	for message := range t.claim.Messages() {
+		mk := string(message.Key)
+		if len(mk) == 0 {
+			mk = defaultKafkaMessageKey
+		}
+
+		// TODO: Possibly need to format after merging with discovered labels because we can specify multiple labels in source labels
+		// https://github.com/grafana/loki/pull/4745#discussion_r750022234
+		lbs := format([]labels.Label{{
+			Name:  labelKeyKafkaMessageKey,
+			Value: mk,
+		}}, t.relabelConfig)
+
+		out := t.lbs.Clone()
+		if len(lbs) > 0 {
+			out = out.Merge(lbs)
+		}
 		t.client.Chan() <- api.Entry{
 			Entry: logproto.Entry{
 				Line:      string(message.Value),
 				Timestamp: timestamp(t.useIncomingTimestamp, message.Timestamp),
 			},
-			Labels: t.lbs.Clone(),
+			Labels: out,
 		}
 		t.session.MarkMessage(message, "")
 	}

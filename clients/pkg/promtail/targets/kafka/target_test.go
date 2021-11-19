@@ -10,6 +10,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 )
@@ -91,31 +92,90 @@ func (t *testClaim) Stop() {
 }
 
 func Test_TargetRun(t *testing.T) {
-	session, claim := &testSession{}, newTestClaim("footopic", 10, 12)
-	var closed bool
-	fc := fake.New(
-		func() {
-			closed = true
+	tc := []struct {
+		name           string
+		inMessageKey   string
+		inLS           model.LabelSet
+		inDiscoveredLS model.LabelSet
+		relabels       []*relabel.Config
+		expectedLS     model.LabelSet
+	}{
+		{
+			name:           "no relabel config",
+			inMessageKey:   "foo",
+			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
+			inLS:           model.LabelSet{"buzz": "bazz"},
+			relabels:       nil,
+			expectedLS:     model.LabelSet{"buzz": "bazz"},
 		},
-	)
-	tg := NewTarget(session, claim, model.LabelSet{"foo": "bar"}, model.LabelSet{"buzz": "bazz"}, fc, true)
+		{
+			name:           "message key with relabel config",
+			inMessageKey:   "foo",
+			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
+			inLS:           model.LabelSet{"buzz": "bazz"},
+			relabels: []*relabel.Config{
+				{
+					SourceLabels: model.LabelNames{"__meta_kafka_message_key"},
+					Regex:        relabel.MustNewRegexp("(.*)"),
+					TargetLabel:  "message_key",
+					Replacement:  "$1",
+					Action:       "replace",
+				},
+			},
+			expectedLS: model.LabelSet{"buzz": "bazz", "message_key": "foo"},
+		},
+		{
+			name:           "no message key with relabel config",
+			inMessageKey:   "",
+			inDiscoveredLS: model.LabelSet{"__meta_kafka_foo": "bar"},
+			inLS:           model.LabelSet{"buzz": "bazz"},
+			relabels: []*relabel.Config{
+				{
+					SourceLabels: model.LabelNames{"__meta_kafka_message_key"},
+					Regex:        relabel.MustNewRegexp("(.*)"),
+					TargetLabel:  "message_key",
+					Replacement:  "$1",
+					Action:       "replace",
+				},
+			},
+			expectedLS: model.LabelSet{"buzz": "bazz", "message_key": "none"},
+		},
+	}
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			session, claim := &testSession{}, newTestClaim("footopic", 10, 12)
+			var closed bool
+			fc := fake.New(
+				func() {
+					closed = true
+				},
+			)
+			tg := NewTarget(session, claim, tt.inDiscoveredLS, tt.inLS, tt.relabels, fc, true)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		tg.run()
-	}()
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				tg.run()
+			}()
 
-	for i := 0; i < 10; i++ {
-		claim.Send(&sarama.ConsumerMessage{
-			Timestamp: time.Unix(0, int64(i)),
-			Value:     []byte(fmt.Sprintf("%d", i)),
+			for i := 0; i < 10; i++ {
+				claim.Send(&sarama.ConsumerMessage{
+					Timestamp: time.Unix(0, int64(i)),
+					Value:     []byte(fmt.Sprintf("%d", i)),
+					Key:       []byte(tt.inMessageKey),
+				})
+			}
+			claim.Stop()
+			wg.Wait()
+			re := fc.Received()
+
+			require.Len(t, session.markedMessage, 10)
+			require.Len(t, re, 10)
+			require.True(t, closed)
+			for _, e := range re {
+				require.Equal(t, tt.expectedLS.String(), e.Labels.String())
+			}
 		})
 	}
-	claim.Stop()
-	wg.Wait()
-	require.Len(t, session.markedMessage, 10)
-	require.Len(t, fc.Received(), 10)
-	require.True(t, closed)
 }
