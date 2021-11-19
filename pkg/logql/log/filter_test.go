@@ -55,19 +55,19 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"(?i)foo", true, newContainsFilter([]byte("foo"), true), true},
 
 		// regex we are not supporting.
-		{"[a-z]+foo", false, nil, false},
-		{".+foo", false, nil, false},
-		{".*fo.*o", false, nil, false},
-		{`\d`, false, nil, false},
-		{`\sfoo`, false, nil, false},
+		{"[a-z]+foo", true, nil, false},
+		{".+foo", true, nil, false},
+		{".*fo.*o", true, nil, false},
+		{`\d`, true, nil, false},
+		{`\sfoo`, true, nil, false},
 		{`foo?`, false, nil, false},
-		{`foo{1,2}bar{2,3}`, false, nil, false},
-		{`foo|\d*bar`, false, nil, false},
-		{`foo|fo{1,2}`, false, nil, false},
-		{`foo|fo\d*`, false, nil, false},
-		{`foo|fo\d+`, false, nil, false},
-		{`(\w\d+)`, false, nil, false},
-		{`.*f.*oo|fo{1,2}`, false, nil, false},
+		{`foo{1,2}bar{2,3}`, true, nil, false},
+		{`foo|\d*bar`, true, nil, false},
+		{`foo|fo{1,2}`, true, nil, false},
+		{`foo|fo\d*`, true, nil, false},
+		{`foo|fo\d+`, true, nil, false},
+		{`(\w\d+)`, true, nil, false},
+		{`.*f.*oo|fo{1,2}`, true, nil, false},
 	} {
 		t.Run(test.re, func(t *testing.T) {
 			d, err := newRegexpFilter(test.re, test.match)
@@ -83,7 +83,9 @@ func Test_SimplifiedRegex(t *testing.T) {
 			}
 			// otherwise ensure we have different filter
 			require.NotEqual(t, f, d)
-			require.Equal(t, test.expected, f)
+			if test.expected != nil {
+				require.Equal(t, test.expected, f)
+			}
 			// tests all lines with both filter, they should have the same result.
 			for _, line := range fixtures {
 				l := []byte(line)
