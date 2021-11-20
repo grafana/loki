@@ -7,6 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bmatcuk/doublestar"
+	"gopkg.in/fsnotify.v1"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,6 +42,10 @@ type FileTargetManager struct {
 	quit    context.CancelFunc
 	syncers map[string]*targetSyncer
 	manager *discovery.Manager
+
+	watcher            *fsnotify.Watcher
+	watchDone          chan struct{}
+	targetEventWatcher chan func(watcher *fsnotify.Watcher)
 }
 
 // NewFileTargetManager creates a new TargetManager.
@@ -55,12 +62,19 @@ func NewFileTargetManager(
 		reg = prometheus.DefaultRegisterer
 	}
 
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
-		log:     logger,
-		quit:    quit,
-		syncers: map[string]*targetSyncer{},
-		manager: discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
+		log:                logger,
+		quit:               quit,
+		watchDone:          make(chan struct{}),
+		watcher:            watcher,
+		targetEventWatcher: make(chan func(*fsnotify.Watcher)),
+		syncers:            map[string]*targetSyncer{},
+		manager:            discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
 	}
 
 	hostname, err := hostname()
@@ -105,30 +119,52 @@ func NewFileTargetManager(
 		}
 
 		s := &targetSyncer{
-			metrics:        metrics,
-			log:            logger,
-			positions:      positions,
-			relabelConfig:  cfg.RelabelConfigs,
-			targets:        map[string]*FileTarget{},
-			droppedTargets: []target.Target{},
-			hostname:       hostname,
-			entryHandler:   pipeline.Wrap(client),
-			targetConfig:   targetConfig,
+			metrics:           metrics,
+			log:               logger,
+			positions:         positions,
+			relabelConfig:     cfg.RelabelConfigs,
+			targets:           map[string]*FileTarget{},
+			droppedTargets:    []target.Target{},
+			hostname:          hostname,
+			entryHandler:      pipeline.Wrap(client),
+			targetConfig:      targetConfig,
+			fileEventWatchers: map[string]chan fsnotify.Event{},
 		}
 		tm.syncers[cfg.JobName] = s
 		configs[cfg.JobName] = cfg.ServiceDiscoveryConfig.Configs()
 	}
 
 	go tm.run()
+	go tm.watch()
 	go util.LogError("running target manager", tm.manager.Run)
 
 	return tm, tm.manager.ApplyConfig(configs)
 }
 
+func (tm *FileTargetManager) watch() {
+	for {
+		select {
+		case f := <-tm.targetEventWatcher:
+			f(tm.watcher)
+		case event := <-tm.watcher.Events:
+			// we only care about Create events
+			if event.Op == fsnotify.Create {
+				for _, s := range tm.syncers {
+					s.sendFileCreateEvent(event)
+				}
+			}
+		case err := <-tm.watcher.Errors:
+			level.Error(tm.log).Log("msg", "error from fswatch", "error", err)
+		case <-tm.watchDone:
+			return
+		}
+	}
+}
+
 func (tm *FileTargetManager) run() {
 	for targetGroups := range tm.manager.SyncCh() {
 		for jobName, groups := range targetGroups {
-			tm.syncers[jobName].sync(groups)
+			tm.syncers[jobName].sync(groups, tm.targetEventWatcher)
 		}
 	}
 }
@@ -146,11 +182,12 @@ func (tm *FileTargetManager) Ready() bool {
 // Stop the TargetManager.
 func (tm *FileTargetManager) Stop() {
 	tm.quit()
-
+	close(tm.watchDone)
 	for _, s := range tm.syncers {
 		s.stop()
 	}
-
+	util.LogError("closing watcher", tm.watcher.Close)
+	close(tm.targetEventWatcher)
 }
 
 // ActiveTargets returns the active targets currently being scraped.
@@ -180,6 +217,8 @@ type targetSyncer struct {
 	entryHandler api.EntryHandler
 	hostname     string
 
+	fileEventWatchers map[string]chan fsnotify.Event
+
 	droppedTargets []target.Target
 	targets        map[string]*FileTarget
 	mtx            sync.Mutex
@@ -189,7 +228,7 @@ type targetSyncer struct {
 }
 
 // sync synchronize target based on received target groups received by service discovery
-func (s *targetSyncer) sync(groups []*targetgroup.Group) {
+func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventWatcher chan func(*fsnotify.Watcher)) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -253,7 +292,9 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			}
 
 			level.Info(s.log).Log("msg", "Adding target", "key", key)
-			t, err := s.newTarget(string(path), labels, discoveredLabels)
+			watcher := make(chan fsnotify.Event)
+			s.fileEventWatchers[string(path)] = watcher
+			t, err := s.newTarget(string(path), labels, discoveredLabels, watcher, targetEventWatcher)
 			if err != nil {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
@@ -277,8 +318,23 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 	s.droppedTargets = dropped
 }
 
-func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig)
+func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
+	for path, watcher := range s.fileEventWatchers {
+		matched, err := doublestar.Match(path, event.Name)
+		if err != nil {
+			level.Error(s.log).Log("msg", "failed to match file", "error", err, "filename", event.Name)
+			continue
+		}
+		if !matched {
+			level.Debug(s.log).Log("msg", "new file does not match glob", "filename", event.Name)
+			continue
+		}
+		watcher <- event
+	}
+}
+
+func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventWatcher chan func(event *fsnotify.Watcher)) (*FileTarget, error) {
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventWatcher)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {
@@ -316,6 +372,10 @@ func (s *targetSyncer) stop() {
 		level.Info(s.log).Log("msg", "Removing target", "key", key)
 		target.Stop()
 		delete(s.targets, key)
+	}
+	for key, watcher := range s.fileEventWatchers {
+		close(watcher)
+		delete(s.fileEventWatchers, key)
 	}
 	s.entryHandler.Stop()
 }
