@@ -45,7 +45,7 @@ type FileTargetManager struct {
 
 	watcher            *fsnotify.Watcher
 	watchDone          chan struct{}
-	targetEventWatcher chan func(watcher *fsnotify.Watcher)
+	targetEventHandler chan func(watcher *fsnotify.Watcher)
 }
 
 // NewFileTargetManager creates a new TargetManager.
@@ -72,7 +72,7 @@ func NewFileTargetManager(
 		quit:               quit,
 		watchDone:          make(chan struct{}),
 		watcher:            watcher,
-		targetEventWatcher: make(chan func(*fsnotify.Watcher)),
+		targetEventHandler: make(chan func(*fsnotify.Watcher)),
 		syncers:            map[string]*targetSyncer{},
 		manager:            discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
 	}
@@ -144,7 +144,7 @@ func NewFileTargetManager(
 func (tm *FileTargetManager) watch() {
 	for {
 		select {
-		case f := <-tm.targetEventWatcher:
+		case f := <-tm.targetEventHandler:
 			f(tm.watcher)
 		case event := <-tm.watcher.Events:
 			// we only care about Create events
@@ -164,7 +164,7 @@ func (tm *FileTargetManager) watch() {
 func (tm *FileTargetManager) run() {
 	for targetGroups := range tm.manager.SyncCh() {
 		for jobName, groups := range targetGroups {
-			tm.syncers[jobName].sync(groups, tm.targetEventWatcher)
+			tm.syncers[jobName].sync(groups, tm.targetEventHandler)
 		}
 	}
 }
@@ -187,7 +187,7 @@ func (tm *FileTargetManager) Stop() {
 		s.stop()
 	}
 	util.LogError("closing watcher", tm.watcher.Close)
-	close(tm.targetEventWatcher)
+	close(tm.targetEventHandler)
 }
 
 // ActiveTargets returns the active targets currently being scraped.
@@ -228,7 +228,7 @@ type targetSyncer struct {
 }
 
 // sync synchronize target based on received target groups received by service discovery
-func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventWatcher chan func(*fsnotify.Watcher)) {
+func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan func(*fsnotify.Watcher)) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -294,7 +294,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventWatcher chan
 			level.Info(s.log).Log("msg", "Adding target", "key", key)
 			watcher := make(chan fsnotify.Event)
 			s.fileEventWatchers[string(path)] = watcher
-			t, err := s.newTarget(string(path), labels, discoveredLabels, watcher, targetEventWatcher)
+			t, err := s.newTarget(string(path), labels, discoveredLabels, watcher, targetEventHandler)
 			if err != nil {
 				dropped = append(dropped, target.NewDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
@@ -333,8 +333,8 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 	}
 }
 
-func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventWatcher chan func(event *fsnotify.Watcher)) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventWatcher)
+func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan func(event *fsnotify.Watcher)) (*FileTarget, error) {
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

@@ -53,7 +53,7 @@ type FileTarget struct {
 	discoveredLabels model.LabelSet
 
 	fileEventWatcher   chan fsnotify.Event
-	targetEventWatcher chan func(watcher *fsnotify.Watcher)
+	targetEventHandler chan func(watcher *fsnotify.Watcher)
 	watches            map[string]struct{}
 	path               string
 	quit               chan struct{}
@@ -75,7 +75,7 @@ func NewFileTarget(
 	discoveredLabels model.LabelSet,
 	targetConfig *Config,
 	fileEventWatcher chan fsnotify.Event,
-	targetEventWatcher chan func(*fsnotify.Watcher),
+	targetEventHandler chan func(*fsnotify.Watcher),
 ) (*FileTarget, error) {
 	t := &FileTarget{
 		logger:             logger,
@@ -90,7 +90,7 @@ func NewFileTarget(
 		tails:              map[string]*tailer{},
 		targetConfig:       targetConfig,
 		fileEventWatcher:   fileEventWatcher,
-		targetEventWatcher: targetEventWatcher,
+		targetEventHandler: targetEventHandler,
 	}
 
 	err := t.sync()
@@ -232,7 +232,7 @@ func (t *FileTarget) startWatching(dirs map[string]struct{}) {
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "watching new directory", "directory", dir)
-		t.targetEventWatcher <- func(watcher *fsnotify.Watcher) {
+		t.targetEventHandler <- func(watcher *fsnotify.Watcher) {
 			if err := watcher.Add(dir); err != nil {
 				level.Error(t.logger).Log("msg", "error adding directory to watcher", "error", err)
 			}
@@ -246,7 +246,7 @@ func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
 			continue
 		}
 		level.Debug(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
-		t.targetEventWatcher <- func(watcher *fsnotify.Watcher) {
+		t.targetEventHandler <- func(watcher *fsnotify.Watcher) {
 			if err := watcher.Remove(dir); err != nil {
 				level.Error(t.logger).Log("msg", " failed to remove directory from watcher", "error", err)
 			}
