@@ -45,7 +45,7 @@ type FileTargetManager struct {
 
 	watcher            *fsnotify.Watcher
 	watchDone          chan struct{}
-	targetEventHandler chan func(watcher *fsnotify.Watcher)
+	targetEventHandler chan fileTargetEvent
 }
 
 // NewFileTargetManager creates a new TargetManager.
@@ -72,7 +72,7 @@ func NewFileTargetManager(
 		quit:               quit,
 		watchDone:          make(chan struct{}),
 		watcher:            watcher,
-		targetEventHandler: make(chan func(*fsnotify.Watcher)),
+		targetEventHandler: make(chan fileTargetEvent),
 		syncers:            map[string]*targetSyncer{},
 		manager:            discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
 	}
@@ -144,8 +144,17 @@ func NewFileTargetManager(
 func (tm *FileTargetManager) watch() {
 	for {
 		select {
-		case f := <-tm.targetEventHandler:
-			f(tm.watcher)
+		case event := <-tm.targetEventHandler:
+			switch event.eventType {
+			case fileTargetEventWatchStart:
+				if err := tm.watcher.Add(event.path); err != nil {
+					level.Error(tm.log).Log("msg", "error adding directory to watcher", "error", err)
+				}
+			case fileTargetEventWatchStop:
+				if err := tm.watcher.Remove(event.path); err != nil {
+					level.Error(tm.log).Log("msg", " failed to remove directory from watcher", "error", err)
+				}
+			}
 		case event := <-tm.watcher.Events:
 			// we only care about Create events
 			if event.Op == fsnotify.Create {
@@ -228,7 +237,7 @@ type targetSyncer struct {
 }
 
 // sync synchronize target based on received target groups received by service discovery
-func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan func(*fsnotify.Watcher)) {
+func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan fileTargetEvent) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -333,7 +342,7 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 	}
 }
 
-func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan func(event *fsnotify.Watcher)) (*FileTarget, error) {
+func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
 	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler)
 }
 
