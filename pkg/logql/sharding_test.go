@@ -72,6 +72,7 @@ func TestMappingEquivalence(t *testing.T) {
 				logproto.FORWARD,
 				uint32(limit),
 				nil,
+				"",
 			)
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")

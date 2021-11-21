@@ -214,6 +214,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
+			"",
 		))
 	} else {
 		query = eng.Query(logql.NewLiteralParams(
@@ -225,6 +226,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
+			"",
 		))
 	}
 

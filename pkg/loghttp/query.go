@@ -245,6 +245,7 @@ type InstantQuery struct {
 	Limit     uint32
 	Direction logproto.Direction
 	Shards    []string
+	Hint      string
 }
 
 // ParseInstantQuery parses an InstantQuery request from an http request.
@@ -269,6 +270,8 @@ func ParseInstantQuery(r *http.Request) (*InstantQuery, error) {
 		return nil, err
 	}
 
+	request.Hint = hint(r)
+
 	return request, nil
 }
 
@@ -282,6 +285,7 @@ type RangeQuery struct {
 	Direction logproto.Direction
 	Limit     uint32
 	Shards    []string
+	Hint      string
 }
 
 // ParseRangeQuery parses a RangeQuery request from an http request.
@@ -334,6 +338,8 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	if result.Interval < 0 {
 		return nil, errNegativeInterval
 	}
+
+	result.Hint = hint(r)
 
 	return &result, nil
 }

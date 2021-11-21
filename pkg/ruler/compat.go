@@ -70,6 +70,7 @@ func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyC
 			logproto.FORWARD,
 			0,
 			nil,
+			"",
 		)
 		q := engine.Query(params)
 

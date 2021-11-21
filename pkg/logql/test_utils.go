@@ -224,6 +224,7 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 			query.Params.Direction(),
 			query.Params.Limit(),
 			query.Shards.Encode(),
+			query.Params.Hint(),
 		)
 		res, err := m.Query(params).Exec(ctx)
 		if err != nil {

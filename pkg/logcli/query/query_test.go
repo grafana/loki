@@ -515,7 +515,7 @@ func (t *testQueryClient) Query(queryStr string, limit int, time time.Time, dire
 
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
 
-	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil, "")
 
 	v, err := t.engine.Query(params).Exec(context.Background())
 	if err != nil {

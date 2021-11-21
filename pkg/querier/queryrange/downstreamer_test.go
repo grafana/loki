@@ -298,6 +298,7 @@ func TestInstanceDownstream(t *testing.T) {
 		logproto.BACKWARD,
 		1000,
 		nil,
+		"",
 	)
 	expr, err := logql.ParseExpr(`{foo="bar"}`)
 	require.Nil(t, err)

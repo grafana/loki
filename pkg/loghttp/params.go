@@ -75,6 +75,10 @@ func interval(r *http.Request) (time.Duration, error) {
 	return parseSecondsOrDuration(value)
 }
 
+func hint(r *http.Request) string {
+	return r.Form.Get("hint")
+}
+
 // defaultQueryRangeStep returns the default step used in the query range API,
 // which is dynamically calculated based on the time range
 func defaultQueryRangeStep(start time.Time, end time.Time) int {

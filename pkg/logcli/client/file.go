@@ -78,6 +78,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		direction,
 		uint32(limit),
 		nil,
+		"",
 	)
 
 	query := f.engine.Query(params)
@@ -116,6 +117,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		direction,
 		uint32(limit),
 		nil,
+		"",
 	)
 
 	query := f.engine.Query(params)

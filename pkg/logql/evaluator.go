@@ -35,6 +35,7 @@ type Params interface {
 	Limit() uint32
 	Direction() logproto.Direction
 	Shards() []string
+	Hint() string
 }
 
 func NewLiteralParams(
@@ -44,6 +45,7 @@ func NewLiteralParams(
 	direction logproto.Direction,
 	limit uint32,
 	shards []string,
+	hint string,
 ) LiteralParams {
 	return LiteralParams{
 		qs:        qs,
@@ -54,6 +56,7 @@ func NewLiteralParams(
 		direction: direction,
 		limit:     limit,
 		shards:    shards,
+		hint:      hint,
 	}
 }
 
@@ -65,6 +68,7 @@ type LiteralParams struct {
 	direction      logproto.Direction
 	limit          uint32
 	shards         []string
+	hint           string
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
@@ -92,6 +96,9 @@ func (p LiteralParams) Direction() logproto.Direction { return p.direction }
 
 // Shards impls Params
 func (p LiteralParams) Shards() []string { return p.shards }
+
+// Hint impls Params
+func (p LiteralParams) Hint() string { return p.hint }
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
