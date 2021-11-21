@@ -821,7 +821,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) Hint() string {
-	return p.Hint()
+	return p.GetHint()
 }
 
 type paramsInstantWrapper struct {
@@ -853,7 +853,7 @@ func (p paramsInstantWrapper) Shards() []string {
 }
 
 func (p paramsInstantWrapper) Hint() string {
-	return p.Hint()
+	return p.GetHint()
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrange.PrometheusResponseHeader {

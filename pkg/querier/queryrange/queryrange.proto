@@ -20,6 +20,7 @@ message LokiRequest {
   logproto.Direction direction = 6;
   string path = 7;
   repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
+  string hint = 9;
 }
 
 message LokiInstantRequest {
@@ -29,6 +30,7 @@ message LokiInstantRequest {
   logproto.Direction direction = 4;
   string path = 5;
   repeated string shards = 6 [(gogoproto.jsontag) = "shards"];
+  string hint = 7;
 }
 
 message LokiResponse {
