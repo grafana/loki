@@ -25,3 +25,6 @@ Build and push the container image and then deploy the operator with `make
 oci-build oci-push deploy IMG=quay.io/my-team/loki-operator:latest`.  This will
 deploy to your active Kubernetes/OpenShift cluster defined by your local
 [kubeconfig](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/).
+
+For detailed step-by-step guide on how to start development and testing on Kind and OpenShift, 
+check our [documentation](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md)

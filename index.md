@@ -2,6 +2,12 @@
 
 This is the Kubernetes Operator for Loki provided by the Red Hat OpenShift engineering team. This is currently a work in progress and is subject to large scale changes that will break any dependencies. Do not use this in any production environment.
 
+### Hacking on Loki Operator on kind or OpenShift
+
+* If you want to contribute to this repository, you might need a step-by-step guide on how to start [hacking on Loki-operator with kind](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#hacking-on-loki-operator-using-kind).
+* Also, there is a step-by-step guide on how to test Loki-operator on [OpenShift](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
+* There is also a [basic troubleshooting guide](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#basic-troubleshooting-on-hacking-on-loki-operator) if you run into some common problems.
+
 ### Installation of Storage Size Calculator on OpenShift
 
 * Storage size calculator works out of the box on OpenShift. For non-openshift distributions you will need to create services like prometheus, serviceMonitor, scrape configuration for log-file-metric exporter, promsecret to access the custom prometheus URL, token.
