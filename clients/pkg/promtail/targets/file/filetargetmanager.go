@@ -44,7 +44,6 @@ type FileTargetManager struct {
 	manager *discovery.Manager
 
 	watcher            *fsnotify.Watcher
-	watchDone          chan struct{}
 	targetEventHandler chan fileTargetEvent
 }
 
@@ -70,7 +69,6 @@ func NewFileTargetManager(
 	tm := &FileTargetManager{
 		log:                logger,
 		quit:               quit,
-		watchDone:          make(chan struct{}),
 		watcher:            watcher,
 		targetEventHandler: make(chan fileTargetEvent),
 		syncers:            map[string]*targetSyncer{},
@@ -135,13 +133,13 @@ func NewFileTargetManager(
 	}
 
 	go tm.run()
-	go tm.watch()
+	go tm.watch(ctx)
 	go util.LogError("running target manager", tm.manager.Run)
 
 	return tm, tm.manager.ApplyConfig(configs)
 }
 
-func (tm *FileTargetManager) watch() {
+func (tm *FileTargetManager) watch(ctx context.Context) {
 	for {
 		select {
 		case event := <-tm.targetEventHandler:
@@ -164,7 +162,7 @@ func (tm *FileTargetManager) watch() {
 			}
 		case err := <-tm.watcher.Errors:
 			level.Error(tm.log).Log("msg", "error from fswatch", "error", err)
-		case <-tm.watchDone:
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -191,7 +189,6 @@ func (tm *FileTargetManager) Ready() bool {
 // Stop the TargetManager.
 func (tm *FileTargetManager) Stop() {
 	tm.quit()
-	close(tm.watchDone)
 	for _, s := range tm.syncers {
 		s.stop()
 	}
