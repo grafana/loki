@@ -122,7 +122,7 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler_config](/configuration#ruler_config).
+Further configuration options can be found under [ruler](../configuration#ruler).
 
 ### Operations
 
