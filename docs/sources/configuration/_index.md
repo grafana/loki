@@ -1730,7 +1730,7 @@ memcached_client:
 
   # Whether or not to use a consistent hash to discover multiple memcached servers.
   # CLI flag: -<prefix>.memcached.consistent-hash
-  [consistent_hash: <bool> | default = bool]
+  [consistent_hash: <bool> | default = true]
 
   # Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).
   # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
