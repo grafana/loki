@@ -149,7 +149,7 @@ schema_config:
 
 	// Run Loki querier in a different go routine and with custom /config handler.
 	go func() {
-		err := loki.Run(RunOpts{customConfigEndpointHandlerFn: customHandler})
+		err := loki.Run(RunOpts{CustomConfigEndpointHandlerFn: customHandler})
 		require.NoError(t, err)
 	}()
 

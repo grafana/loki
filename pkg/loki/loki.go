@@ -282,15 +282,15 @@ func newDefaultConfig() *Config {
 
 // RunOpts configures custom behavior for running Loki.
 type RunOpts struct {
-	// customConfigEndpointHandlerFn is the handlerFunc to be used by the /config endpoint.
+	// CustomConfigEndpointHandlerFn is the handlerFunc to be used by the /config endpoint.
 	// If empty, default handlerFunc will be used.
-	customConfigEndpointHandlerFn func(http.ResponseWriter, *http.Request)
+	CustomConfigEndpointHandlerFn func(http.ResponseWriter, *http.Request)
 }
 
 func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 	configEndpointHandlerFn := configHandler(t.Cfg, newDefaultConfig())
-	if opts.customConfigEndpointHandlerFn != nil {
-		configEndpointHandlerFn = opts.customConfigEndpointHandlerFn
+	if opts.CustomConfigEndpointHandlerFn != nil {
+		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
 }
