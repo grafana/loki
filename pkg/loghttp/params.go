@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,10 @@ import (
 const (
 	defaultQueryLimit = 100
 	defaultSince      = 1 * time.Hour
+)
+
+var (
+	safeHint = regexp.MustCompile("[^a-zA-Z0-9-]+") // only alpha-numeric and `-`
 )
 
 func limit(r *http.Request) (uint32, error) {
@@ -76,7 +81,8 @@ func interval(r *http.Request) (time.Duration, error) {
 }
 
 func hint(r *http.Request) string {
-	return r.Form.Get("hint")
+	h := r.Form.Get("hint")
+	return safeHint.ReplaceAllString(h, "")
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,
