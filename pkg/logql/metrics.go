@@ -21,6 +21,8 @@ const (
 	QueryTypeMetric  = "metric"
 	QueryTypeFilter  = "filter"
 	QueryTypeLimited = "limited"
+	QueryTypeLabels  = "labels"
+	QueryTypeSeries  = "series"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -67,7 +69,7 @@ var (
 	})
 )
 
-func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result, result promql_parser.Value) {
+func RecordRangeAndInstantQueryMetrics(ctx context.Context, p Params, status string, stats stats.Result, result promql_parser.Value) {
 	var (
 		logger        = util_log.WithContext(ctx, util_log.Logger)
 		rt            = string(GetRangeType(p))
@@ -123,6 +125,86 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		Observe(stats.ChunksDownloadTime().Seconds())
 	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
+		Add(float64(stats.TotalChunksDownloaded()))
+	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+}
+
+func RecordLabelQueryMetrics(ctx context.Context, start, end time.Time, label, status string, stats stats.Result) {
+	var (
+		logger      = util_log.WithContext(ctx, util_log.Logger)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeLabels
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"label", label,
+		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
+		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+	)
+
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).
+		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	execLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.Summary.ExecTime)
+	chunkDownloadLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.ChunksDownloadTime().Seconds())
+	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
+	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
+		Add(float64(stats.TotalChunksDownloaded()))
+	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+}
+
+func RecordSeriesQueryMetrics(
+	ctx context.Context,
+	start, end time.Time,
+	match []string,
+	status string,
+	stats stats.Result,
+) {
+	var (
+		logger      = util_log.WithContext(ctx, util_log.Logger)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeSeries
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"match", strings.Join(match, ":"), // not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
+		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
+		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+	)
+
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).
+		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	execLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.Summary.ExecTime)
+	chunkDownloadLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.ChunksDownloadTime().Seconds())
+	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
+	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
 		Add(float64(stats.TotalChunksDownloaded()))
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }

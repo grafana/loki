@@ -26,10 +26,23 @@ const ctxKey ctxKeyType = "stats"
 
 var (
 	defaultMetricRecorder = metricRecorderFn(func(data *queryData) {
-		logql.RecordMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
+		logql.RecordRangeAndInstantQueryMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
 	})
-	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
-	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
+
+	seriesQueryMetricsRecorder = metricRecorderFn(func(data *queryData) {
+		logql.RecordSeriesQueryMetrics(data.ctx, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
+	})
+
+	labelQueryMetricsRecorder = metricRecorderFn(func(data *queryData) {
+		logql.RecordLabelQueryMetrics(data.ctx, data.params.Start(), data.params.End(), data.label, data.status, *data.statistics)
+	})
+
+	// StatsQueryRangeHTTPMiddleware is an http middleware to record stats for query_range filter.
+	StatsRangeQueryHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
+
+	StatsSeriesQueryHTTPMiddleware middleware.Interface = statsHTTPMiddleware(seriesQueryMetricsRecorder)
+
+	StatsLabelQueryHTTPMiddleware middleware.Interface = statsHTTPMiddleware(labelQueryMetricsRecorder)
 )
 
 type metricRecorder interface {
@@ -48,8 +61,9 @@ type queryData struct {
 	statistics *stats.Result
 	result     promql_parser.Value
 	status     string
-
-	recorded bool
+	match      []string // used in `series` query.
+	label      string   // used in `labels` query
+	recorded   bool
 }
 
 func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
@@ -95,6 +109,10 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 					statistics = &r.Statistics
 					res = logqlmodel.Streams(r.Data.Result)
 				case *LokiPromResponse:
+					statistics = &r.Statistics
+				case *LokiSeriesResponse:
+					statistics = &r.Statistics
+				case *LokiLabelNamesResponse:
 					statistics = &r.Statistics
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))

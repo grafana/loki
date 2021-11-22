@@ -66,7 +66,7 @@ func TestLogSlowQuery(t *testing.T) {
 
 	ctx = context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, "Source=logvolhist,Feature=Beta")
 
-	RecordMetrics(ctx, LiteralParams{
+	RecordRangeAndInstantQueryMetrics(ctx, LiteralParams{
 		qs:        `{foo="bar"} |= "buzz"`,
 		direction: logproto.BACKWARD,
 		end:       now,
@@ -131,4 +131,64 @@ func Test_testToKeyValues(t *testing.T) {
 			assert.Equal(t, c.exp, got)
 		})
 	}
+}
+
+func TestLogLabelsQuery(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	util_log.Logger = log.NewLogfmtLogger(buf)
+	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	defer c.Close()
+	opentracing.SetGlobalTracer(tr)
+	sp := opentracing.StartSpan("")
+	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+	now := time.Now()
+	RecordLabelQueryMetrics(ctx, LiteralParams{
+		qs:        `{foo="bar"} |= "buzz"`,
+		direction: logproto.BACKWARD,
+		end:       now,
+		start:     now.Add(-1 * time.Hour),
+	}, "foo", "200", stats.Result{
+		Summary: stats.Summary{
+			BytesProcessedPerSecond: 100000,
+			ExecTime:                25.25,
+			TotalBytesProcessed:     100000,
+		},
+	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+	require.Equal(t,
+		fmt.Sprintf(
+			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo throughput=100kB total_bytes=100kB\n",
+			sp.Context().(jaeger.SpanContext).SpanID().String(),
+		),
+		buf.String())
+	util_log.Logger = log.NewNopLogger()
+}
+
+func TestLogSeriesQuery(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	util_log.Logger = log.NewLogfmtLogger(buf)
+	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	defer c.Close()
+	opentracing.SetGlobalTracer(tr)
+	sp := opentracing.StartSpan("")
+	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+	now := time.Now()
+	RecordSeriesQueryMetrics(ctx, LiteralParams{
+		qs:        `{foo="bar"} |= "buzz"`,
+		direction: logproto.BACKWARD,
+		end:       now,
+		start:     now.Add(-1 * time.Hour),
+	}, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", stats.Result{
+		Summary: stats.Summary{
+			BytesProcessedPerSecond: 100000,
+			ExecTime:                25.25,
+			TotalBytesProcessed:     100000,
+		},
+	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+	require.Equal(t,
+		fmt.Sprintf(
+			"level=info org_id=foo traceID=%s latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" throughput=100kB total_bytes=100kB\n",
+			sp.Context().(jaeger.SpanContext).SpanID().String(),
+		),
+		buf.String())
+	util_log.Logger = log.NewNopLogger()
 }

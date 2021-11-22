@@ -7,6 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/model/labels"
@@ -17,6 +18,7 @@ import (
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -176,7 +178,25 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log, ctx := spanlogger.New(r.Context(), "query.Label")
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.Label(r.Context(), req)
+
+	// record stats about the label query
+	statResult := statsCtx.Result(time.Since(start))
+	statResult.Log(level.Debug(log))
+
+	status := "200"
+	if err != nil {
+		status = "500"
+		// TODO(kavi): adjust status based on all possible errors from `q.Label`
+	}
+
+	logql.RecordLabelQueryMetrics(ctx, *req.Start, *req.End, req.Name, status, statResult)
+
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -325,7 +345,25 @@ func (q *Querier) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log, ctx := spanlogger.New(r.Context(), "query.Series")
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.Series(r.Context(), req)
+
+	// record stats about the label query
+	statResult := statsCtx.Result(time.Since(start))
+	statResult.Log(level.Debug(log))
+
+	status := "200"
+	if err != nil {
+		status = "500"
+		// TODO(kavi): adjust status based on all possible errors from `q.Series`
+	}
+
+	logql.RecordSeriesQueryMetrics(ctx, req.Start, req.End, req.Groups, status, statResult)
+
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return

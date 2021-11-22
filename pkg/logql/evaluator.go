@@ -57,6 +57,22 @@ func NewLiteralParams(
 	}
 }
 
+// func NewLabelsParam(start, end time.Time, label string) LiteralParams {
+// 	return LiteralParams{
+// 		start: start,
+// 		end:   end,
+// 		label: label,
+// 	}
+// }
+
+// func NewSeriesParams(start, end time.Time, streamMatchers []string) LiteralParams {
+// 	return LiteralParams{
+// 		start:          start,
+// 		end:            end,
+// 		streamMatchers: streamMatchers,
+// 	}
+// }
+
 // LiteralParams impls Params
 type LiteralParams struct {
 	qs             string
