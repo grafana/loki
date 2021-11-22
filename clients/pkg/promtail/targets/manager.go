@@ -114,10 +114,11 @@ func NewTargetManagers(
 	}
 
 	var (
-		fileMetrics   *file.Metrics
-		syslogMetrics *syslog.Metrics
-		gcplogMetrics *gcplog.Metrics
-		gelfMetrics   *gelf.Metrics
+		fileMetrics       *file.Metrics
+		syslogMetrics     *syslog.Metrics
+		gcplogMetrics     *gcplog.Metrics
+		gelfMetrics       *gelf.Metrics
+		cloudflareMetrics *cloudflare.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -130,6 +131,9 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[GelfConfigs]) > 0 {
 		gelfMetrics = gelf.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[CloudflareConfigs]) > 0 {
+		cloudflareMetrics = cloudflare.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -223,7 +227,7 @@ func NewTargetManagers(
 			if err != nil {
 				return nil, err
 			}
-			cfTargetManager, err := cloudflare.NewTargetManager(reg, logger, pos, client, scrapeConfigs)
+			cfTargetManager, err := cloudflare.NewTargetManager(cloudflareMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
 			}

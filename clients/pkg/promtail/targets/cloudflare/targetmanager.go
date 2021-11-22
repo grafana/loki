@@ -2,7 +2,6 @@ package cloudflare
 
 import (
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -19,7 +18,7 @@ type TargetManager struct {
 
 // NewTargetManager creates a new cloudflare target managers.
 func NewTargetManager(
-	reg prometheus.Registerer,
+	metrics *Metrics,
 	logger log.Logger,
 	positions positions.Positions,
 	pushClient api.EntryHandler,
@@ -33,11 +32,11 @@ func NewTargetManager(
 		if cfg.CloudflareConfig == nil {
 			continue
 		}
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "cloudflare_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "cloudflare_pipeline"), cfg.PipelineStages, &cfg.JobName, metrics.reg)
 		if err != nil {
 			return nil, err
 		}
-		t, err := NewTarget(logger, pipeline.Wrap(pushClient), positions, cfg.CloudflareConfig)
+		t, err := NewTarget(metrics, log.With(logger, "target", "cloudflare"), pipeline.Wrap(pushClient), positions, cfg.CloudflareConfig)
 		if err != nil {
 			return nil, err
 		}

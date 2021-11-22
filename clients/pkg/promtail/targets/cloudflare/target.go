@@ -7,8 +7,12 @@ import (
 	"time"
 
 	"github.com/buger/jsonparser"
+	"github.com/cloudflare/cloudflare-go"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -23,6 +27,7 @@ type Target struct {
 	handler   api.EntryHandler
 	positions positions.Positions
 	config    *scrapeconfig.CloudflareConfig
+	metrics   *Metrics
 
 	client  Client
 	ctx     context.Context
@@ -30,12 +35,14 @@ type Target struct {
 	wg      sync.WaitGroup
 	to      time.Time // the end of the next pull interval
 	running *atomic.Bool
+	err     error
 }
 
 func NewTarget(
+	metrics *Metrics,
 	logger log.Logger,
 	handler api.EntryHandler,
-	posi positions.Positions,
+	position positions.Positions,
 	config *scrapeconfig.CloudflareConfig,
 ) (*Target, error) {
 	if err := validateConfig(config); err != nil {
@@ -45,7 +52,7 @@ func NewTarget(
 	if err != nil {
 		return nil, err
 	}
-	pos, err := posi.Get(positions.CursorKey(config.ZoneID))
+	pos, err := position.Get(positions.CursorKey(config.ZoneID))
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +64,9 @@ func NewTarget(
 	t := &Target{
 		logger:    logger,
 		handler:   handler,
-		positions: posi,
+		positions: position,
 		config:    config,
+		metrics:   metrics,
 
 		ctx:     ctx,
 		cancel:  cancel,
@@ -78,10 +86,7 @@ func (t *Target) start() {
 			t.wg.Done()
 			t.running.Store(false)
 		}()
-		for {
-			if t.ctx.Err() != nil {
-				return
-			}
+		for t.ctx.Err() != nil {
 			end := t.to
 			maxEnd := time.Now().Add(-time.Minute)
 			if end.After(maxEnd) {
@@ -89,19 +94,24 @@ func (t *Target) start() {
 			}
 			start := end.Add(-t.config.PullRange)
 
-			err := concurrency.ForEach(context.Background(), splitRequests(start, end, t.config.Workers), t.config.Workers, func(ctx context.Context, job interface{}) error {
+			// Use background context for workers as we don't want to cancel half way through.
+			// In case of errors we stop the target, each worker has it's own retry logic.
+			if err := concurrency.ForEach(context.Background(), splitRequests(start, end, t.config.Workers), t.config.Workers, func(ctx context.Context, job interface{}) error {
 				request := job.(pullRequest)
 				return t.pull(ctx, request.start, request.end)
-			})
-			if err != nil {
-				// todo handle errors.
-				// log.Println(err)
+			}); err != nil {
+				level.Error(t.logger).Log("msg", "failed to pull logs", "err", err, "start", start, "end", end)
+				t.err = err
+				return
 			}
-			// move to the next interval and save the position
+
+			// Sets current timestamp metrics, move to the next interval and saves the position.
+			t.metrics.LastEnd.Set(float64(end.UnixNano()) / 1e9)
 			t.to = end.Add(t.config.PullRange)
 			t.positions.Put(positions.CursorKey(t.config.ZoneID), t.to.UnixNano())
 
-			// if the next window can be fetch do it, if not sleep for a while
+			// If the next window can be fetched do it, if not sleep for a while.
+			// This is because Cloudflare logs should never be pulled between now-1m and now.
 			diff := t.to.Sub(time.Now().Add(-time.Minute))
 			if diff > 0 {
 				select {
@@ -109,35 +119,52 @@ func (t *Target) start() {
 				case <-t.ctx.Done():
 				}
 			}
-			// todo metrics about the lag.
 		}
 	}()
 }
 
+// pull pulls logs from cloudflare for a given time range.
+// It will retry on errors.
 func (t *Target) pull(ctx context.Context, start, end time.Time) error {
-	it, err := t.client.LogpullReceived(ctx, start, end)
-	if err != nil {
-		return err
-	}
-	defer it.Close()
-	for it.Next() {
-		if it.Err() != nil {
-			return it.Err()
-		}
-		line := it.Line()
-		ts, err := jsonparser.GetInt(line, "EdgeStartTimestamp")
+	var (
+		backoff = backoff.New(ctx, backoff.Config{
+			MinBackoff: 1 * time.Second,
+			MaxBackoff: 10 * time.Second,
+			MaxRetries: 5,
+		})
+		err  error
+		errs = multierror.New()
+		it   cloudflare.LogpullReceivedIterator
+	)
+
+	for backoff.Ongoing() {
+		it, err = t.client.LogpullReceived(ctx, start, end)
 		if err != nil {
-			ts = time.Now().UnixNano()
+			errs.Add(err)
+			continue
 		}
-		t.handler.Chan() <- api.Entry{
-			Labels: t.config.Labels.Clone(),
-			Entry: logproto.Entry{
-				Timestamp: time.Unix(0, ts),
-				Line:      string(line),
-			},
+		defer it.Close()
+		for it.Next() {
+			if it.Err() != nil {
+				return it.Err()
+			}
+			line := it.Line()
+			ts, err := jsonparser.GetInt(line, "EdgeStartTimestamp")
+			if err != nil {
+				ts = time.Now().UnixNano()
+			}
+			t.handler.Chan() <- api.Entry{
+				Labels: t.config.Labels.Clone(),
+				Entry: logproto.Entry{
+					Timestamp: time.Unix(0, ts),
+					Line:      string(line),
+				},
+			}
+			t.metrics.Entries.Inc()
 		}
+		return nil
 	}
-	return nil
+	return errs.Err()
 }
 
 func (t *Target) Stop() {
@@ -163,7 +190,11 @@ func (t *Target) Ready() bool {
 }
 
 func (t *Target) Details() interface{} {
-	return nil
+	return map[string]string{
+		"zone_id":  t.config.ZoneID,
+		"error":    t.err.Error(),
+		"position": t.positions.GetString(positions.CursorKey(t.config.ZoneID)),
+	}
 }
 
 type pullRequest struct {
