@@ -19,6 +19,16 @@
                 }
             },
             "version": "master"
+        },
+    {
+      "name": "loki-mixin",
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/loki",
+          "subdir": "production/loki-mixin"
         }
+      },
+      "version": "main"
+    }
     ]
 }
