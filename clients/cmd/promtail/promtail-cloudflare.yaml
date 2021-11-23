@@ -13,5 +13,6 @@ scrape_configs:
   cloudflare:
     api_token: REDACTED
     zone_id: REDACTED
+    fields_type: all
     labels:
       job: cloudflare

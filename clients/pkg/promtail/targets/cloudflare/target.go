@@ -3,6 +3,7 @@ package cloudflare
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,13 +14,15 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
+	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
+
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/common/model"
-	"go.uber.org/atomic"
 )
 
 type Target struct {
@@ -48,7 +51,11 @@ func NewTarget(
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
-	client, err := getClient(config.APIToken, config.ZoneID, nil)
+	fields, err := Fields(FieldsType(config.FieldsType))
+	if err != nil {
+		return nil, err
+	}
+	client, err := getClient(config.APIToken, config.ZoneID, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +93,7 @@ func (t *Target) start() {
 			t.wg.Done()
 			t.running.Store(false)
 		}()
-		for t.ctx.Err() != nil {
+		for t.ctx.Err() == nil {
 			end := t.to
 			maxEnd := time.Now().Add(-time.Minute)
 			if end.After(maxEnd) {
@@ -190,10 +197,13 @@ func (t *Target) Ready() bool {
 }
 
 func (t *Target) Details() interface{} {
+	fields, _ := Fields(FieldsType(t.config.FieldsType))
 	return map[string]string{
-		"zone_id":  t.config.ZoneID,
-		"error":    t.err.Error(),
-		"position": t.positions.GetString(positions.CursorKey(t.config.ZoneID)),
+		"zone_id":        t.config.ZoneID,
+		"error":          t.err.Error(),
+		"position":       t.positions.GetString(positions.CursorKey(t.config.ZoneID)),
+		"last_timestamp": t.to.String(),
+		"fields":         strings.Join(fields, ","),
 	}
 }
 
@@ -219,6 +229,9 @@ func splitRequests(start, end time.Time, workers int) []interface{} {
 }
 
 func validateConfig(cfg *scrapeconfig.CloudflareConfig) error {
+	if cfg.FieldsType == "" {
+		cfg.FieldsType = string(FieldsTypeDefault)
+	}
 	if cfg.APIToken == "" {
 		return errors.New("cloudflare api token is required")
 	}

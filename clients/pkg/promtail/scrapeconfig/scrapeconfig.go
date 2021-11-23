@@ -321,6 +321,14 @@ type CloudflareConfig struct {
 	Workers int `yaml:"workers"`
 	// The timerange to fetch for each pull request that will be spread across workers. Default 1m.
 	PullRange time.Duration `yaml:"pull_range"`
+	// Fields to fetch from cloudflare logs.
+	// Default to default fields.
+	// Available fields type:
+	// - default
+	// - minimal
+	// - extended
+	// - all
+	FieldsType string `yaml:"fields_type"`
 }
 
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
