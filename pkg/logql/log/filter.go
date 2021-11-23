@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"regexp/syntax"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -242,11 +244,47 @@ type containsFilter struct {
 	caseInsensitive bool
 }
 
-func (l containsFilter) Filter(line []byte) bool {
-	if l.caseInsensitive {
-		line = bytes.ToLower(line)
+func (l *containsFilter) Filter(line []byte) bool {
+	if !l.caseInsensitive {
+		return bytes.Contains(line, l.match)
 	}
-	return bytes.Contains(line, l.match)
+	if len(l.match) == 0 {
+		return true
+	}
+	if len(l.match) > len(line) {
+		return false
+	}
+	j := 0
+	for len(line) > 0 {
+		// ascii fast case
+		if c := line[0]; c < utf8.RuneSelf {
+			if c == l.match[j] || c+'a'-'A' == l.match[j] {
+				j++
+				if j == len(l.match) {
+					return true
+				}
+				line = line[1:]
+				continue
+			}
+			line = line[1:]
+			j = 0
+			continue
+		}
+		// unicode slow case
+		lr, lwid := utf8.DecodeRune(line)
+		mr, mwid := utf8.DecodeRune(l.match[j:])
+		if lr == mr || mr == unicode.To(unicode.LowerCase, lr) {
+			j += mwid
+			if j == len(l.match) {
+				return true
+			}
+			line = line[lwid:]
+			continue
+		}
+		line = line[lwid:]
+		j = 0
+	}
+	return false
 }
 
 func (l containsFilter) ToStage() Stage {
@@ -269,7 +307,7 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if caseInsensitive {
 		match = bytes.ToLower(match)
 	}
-	return containsFilter{
+	return &containsFilter{
 		match:           match,
 		caseInsensitive: caseInsensitive,
 	}
