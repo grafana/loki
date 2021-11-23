@@ -104,14 +104,14 @@ func NewAndFilters(filters []Filterer) Filterer {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
 		if !(filter == nil || filter == TrueFilter) {
 			switch c := filter.(type) {
-			case containsFilter:
+			case *containsFilter:
 				// Start accumulating contains filters.
 				if containsFilterAcc == nil {
 					containsFilterAcc = &containsAllFilter{}
 				}
 
 				// Join all contain filters.
-				containsFilterAcc.Add(c)
+				containsFilterAcc.Add(*c)
 			case regexpFilter:
 				regexpFilters = append(regexpFilters, c)
 
@@ -287,7 +287,7 @@ func (l *containsFilter) Filter(line []byte) bool {
 	return false
 }
 
-func (l containsFilter) ToStage() Stage {
+func (l *containsFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, l.Filter(line)
