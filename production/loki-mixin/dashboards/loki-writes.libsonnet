@@ -32,7 +32,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
       ingesterSelector:: selector('ingester'),
     } +
     $.dashboard('Loki / Writes')
-    .addClusterSelectorTemplates(false)
+    .addCluster()
+    .addNamespace()
+    .addTag()
     .addRow(
       $.row('Frontend (cortex_gw)')
       .addPanel(

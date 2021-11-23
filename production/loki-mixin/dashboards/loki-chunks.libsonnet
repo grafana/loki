@@ -28,7 +28,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
     } +
     $.dashboard('Loki / Chunks')
-    .addClusterSelectorTemplates(false)
+    .addCluster()
+    .addNamespace()
+    .addTag()
     .addRow(
       $.row('Active Series / Chunks')
       .addPanel(

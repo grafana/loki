@@ -39,7 +39,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
       querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
     } +
     $.dashboard('Loki / Reads')
-    .addClusterSelectorTemplates(false)
+    .addCluster()
+    .addNamespace()
+    .addTag()
     .addRow(
       $.row('Frontend (cortex_gw)')
       .addPanel(

@@ -5,7 +5,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
     {
       'loki-reads-resources.json':
         ($.dashboard('Loki / Reads Resources'))
-        .addClusterSelectorTemplates(false)
+        .addCluster()
+        .addNamespace()
+        .addTag()
         .addRow(
           $.row('Gateway')
           .addPanel(
