@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bmatcuk/doublestar"
+	"gopkg.in/fsnotify.v1"
+
 	"github.com/go-kit/log"
 	"gopkg.in/yaml.v2"
 
@@ -16,6 +20,43 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 )
+
+func createWatchers(ctx context.Context, path string) (chan fsnotify.Event, chan fileTargetEvent, error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, nil, err
+	}
+	targetEventHandler := make(chan fileTargetEvent)
+	fileEventWatcher := make(chan fsnotify.Event)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				_ = watcher.Close()
+				close(targetEventHandler)
+				close(fileEventWatcher)
+				return
+			case event := <-watcher.Events:
+				switch event.Op {
+				case fsnotify.Create:
+					matched, _ := doublestar.Match(path, event.Name)
+					if matched {
+						fileEventWatcher <- event
+					}
+				default:
+				}
+			case event := <-targetEventHandler:
+				switch event.eventType {
+				case fileTargetEventWatchStart:
+					_ = watcher.Add(event.path)
+				case fileTargetEventWatchStop:
+					_ = watcher.Remove(event.path)
+				}
+			}
+		}
+	}()
+	return fileEventWatcher, targetEventHandler, nil
+}
 
 func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
@@ -51,9 +92,15 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	metrics := NewMetrics(nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fileWatcher, eventHandler, err := createWatchers(ctx, logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
 	target, err := NewFileTarget(metrics, logger, client, ps, logFile, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, fileWatcher, eventHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,9 +190,16 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	metrics := NewMetrics(nil)
-	target, err := NewFileTarget(metrics, logger, client, ps, logFileDir+"*", nil, nil, &Config{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	path := logFileDir + "*"
+	fileWatcher, eventHandler, err := createWatchers(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, fileWatcher, eventHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,9 +285,16 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	metrics := NewMetrics(nil)
-	target, err := NewFileTarget(metrics, logger, client, positions, dirName+"/*.log", nil, nil, &Config{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	path := dirName + "/*.log"
+	fileWatcher, eventHandler, err := createWatchers(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := NewFileTarget(metrics, logger, client, positions, path, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, fileWatcher, eventHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,9 +389,16 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	metrics := NewMetrics(nil)
-	target, err := NewFileTarget(metrics, logger, client, ps, dirName+"/*.log", nil, nil, &Config{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	path := dirName + "/*.log"
+	fileWatcher, eventHandler, err := createWatchers(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, fileWatcher, eventHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +432,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	// Create a new target, keep the same client so we can track what was sent through the handler.
 	target2, err := NewFileTarget(metrics, logger, client, ps2, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, fileWatcher, eventHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,9 +504,16 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	metrics := NewMetrics(nil)
-	target, err := NewFileTarget(metrics, logger, client, ps, dirName+"/*.log", nil, nil, &Config{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	path := dirName + "/*.log"
+	fileWatcher, eventHandler, err := createWatchers(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	})
+	}, fileWatcher, eventHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,15 +608,17 @@ func TestFileTargetSync(t *testing.T) {
 	defer client.Stop()
 
 	metrics := NewMetrics(nil)
-	target, err := NewFileTarget(metrics, logger, client, ps, logDir1+"/*.log", nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	path := logDir1 + "/*.log"
+	fileWatcher, eventHandler, err := createWatchers(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Close the watcher so no fsnotify events occur.
-	if err = target.watcher.Close(); err != nil {
+	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
+		SyncPeriod: 10 * time.Second,
+	}, fileWatcher, eventHandler)
+	if err != nil {
 		t.Fatal(err)
 	}
 
