@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
@@ -120,11 +122,9 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	assert.Eventually(t, func() bool {
+		return len(client.Received()) == 10
+	}, time.Second*10, time.Millisecond*1)
 
 	ftm.Stop()
 	ps.Stop()
@@ -186,11 +186,9 @@ func TestWatchEntireDirectory(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	assert.Eventually(t, func() bool {
+		return len(client.Received()) == 10
+	}, time.Second*10, time.Millisecond*1)
 
 	ftm.Stop()
 	ps.Stop()
@@ -250,11 +248,9 @@ func TestFileRolls(t *testing.T) {
 		}
 		time.Sleep(1 * time.Millisecond)
 	}
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	assert.Eventually(t, func() bool {
+		return len(client.Received()) == 10
+	}, time.Second*10, time.Millisecond*1)
 
 	// Rename the log file to something not in the pattern, then create a new file with the same name.
 	err = os.Rename(logFile, logDirName+"/test.log.1")
@@ -272,11 +268,9 @@ func TestFileRolls(t *testing.T) {
 		}
 		time.Sleep(1 * time.Millisecond)
 	}
-	countdown = 10000
-	for len(client.Received()) != 20 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	assert.Eventually(t, func() bool {
+		return len(client.Received()) == 20
+	}, time.Second*10, time.Millisecond*1)
 
 	ftm.Stop()
 	ps.Stop()
@@ -331,12 +325,9 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		}
 		time.Sleep(1 * time.Millisecond)
 	}
-
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	assert.Eventually(t, func() bool {
+		return len(client.Received()) == 10
+	}, time.Second*10, time.Millisecond*1)
 
 	ftm.Stop()
 	ps.Stop()
@@ -360,12 +351,9 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		}
 		time.Sleep(1 * time.Millisecond)
 	}
-
-	countdown = 10000
-	for len(client.Received()) != 20 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	assert.Eventually(t, func() bool {
+		return len(client.Received()) == 20
+	}, time.Second*10, time.Millisecond*1)
 
 	ftm2.Stop()
 	ps2.Stop()
@@ -431,12 +419,9 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		}
 		time.Sleep(1 * time.Millisecond)
 	}
-
-	countdown := 10000
-	for len(client.Received()) != 20 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
+	assert.Eventually(t, func() bool {
+		return len(client.Received()) == 20
+	}, time.Second*10, time.Millisecond*1)
 
 	ftm.Stop()
 	ps.Stop()

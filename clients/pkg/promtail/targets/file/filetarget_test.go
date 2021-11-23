@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"go.uber.org/atomic"
 	"gopkg.in/fsnotify.v1"
 
@@ -85,12 +87,6 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.tails) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
-	if receivedStartWatch.Load() != 0 {
-		t.Fatal("Expected received starting watch event to be 0 at this point in the test...")
-	}
-	if receivedStopWatch.Load() != 0 {
-		t.Fatal("Expected received stopping watch event to be 0 at this point in the test...")
-	}
 
 	// Create the base dir, still nothing watched.
 	if err = os.MkdirAll(logDir1, 0750); err != nil {
@@ -104,12 +100,6 @@ func TestFileTargetSync(t *testing.T) {
 	}
 	if len(target.tails) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
-	}
-	if receivedStartWatch.Load() != 0 {
-		t.Fatal("Expected received starting watch event to be 0 at this point in the test...")
-	}
-	if receivedStopWatch.Load() != 0 {
-		t.Fatal("Expected received stopping watch event to be 0 at this point in the test...")
 	}
 
 	// Add a file, which should create a watcher and a tailer.
@@ -126,12 +116,9 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.tails) != 1 {
 		t.Fatal("Expected tails to be 1 at this point in the test...")
 	}
-	if receivedStartWatch.Load() != 1 {
-		t.Fatal("Expected received starting watch event to be 1 at this point in the test...")
-	}
-	if receivedStopWatch.Load() != 0 {
-		t.Fatal("Expected received stopping watch event to be 0 at this point in the test...")
-	}
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
 
 	// Add another file, should get another tailer.
 	_, err = os.Create(logDir1File2)
@@ -147,12 +134,6 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.tails) != 2 {
 		t.Fatal("Expected tails to be 2 at this point in the test...")
 	}
-	if receivedStartWatch.Load() != 1 {
-		t.Fatal("Expected received starting watch event to be 1 at this point in the test...")
-	}
-	if receivedStopWatch.Load() != 0 {
-		t.Fatal("Expected received stopping watch event to be 0 at this point in the test...")
-	}
 
 	// Remove one of the files, tailer should stop.
 	if err = os.Remove(logDir1File1); err != nil {
@@ -166,12 +147,6 @@ func TestFileTargetSync(t *testing.T) {
 	}
 	if len(target.tails) != 1 {
 		t.Fatal("Expected tails to be 1 at this point in the test...")
-	}
-	if receivedStartWatch.Load() != 1 {
-		t.Fatal("Expected received starting watch event to be 1 at this point in the test...")
-	}
-	if receivedStopWatch.Load() != 0 {
-		t.Fatal("Expected received stopping watch event to be 0 at this point in the test...")
 	}
 
 	// Remove the entire directory, other tailer should stop and watcher should go away.
@@ -187,16 +162,15 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.tails) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
-	if receivedStartWatch.Load() != 1 {
-		t.Fatal("Expected received starting watch event to be 1 at this point in the test...")
-	}
-	if receivedStopWatch.Load() != 1 {
-		t.Fatal("Expected received stopping watch event to be 1 at this point in the test...")
-	}
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
 
 	target.Stop()
 	ps.Stop()
-
 }
 
 func TestHandleFileCreationEvent(t *testing.T) {
@@ -265,14 +239,9 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		Name: logFile,
 		Op:   fsnotify.Create,
 	}
-	countdown := 10000
-	for len(target.tails) != 1 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-	if len(target.tails) != 1 {
-		t.Fatal("Expected tails to be 1 at this point in the test...")
-	}
+	require.Eventually(t, func() bool {
+		return len(target.tails) == 1
+	}, time.Second*10, time.Millisecond*1, "Expected tails to be 1 at this point in the test...")
 }
 
 func TestToStopTailing(t *testing.T) {
