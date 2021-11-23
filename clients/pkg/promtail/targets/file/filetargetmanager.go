@@ -324,6 +324,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 	s.droppedTargets = dropped
 }
 
+// sendFileCreateEvent sends file creation events to only the targets with matched path.
 func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 	for path, watcher := range s.fileEventWatchers {
 		matched, err := doublestar.Match(path, event.Name)
