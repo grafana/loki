@@ -151,10 +151,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
       ],
     } +
       $.dashboard('Loki / Operational')
-      // TODO (callum) For this cluster the cluster template is not actually
-      // added since the json defines the template array, we just need the tags
-      // and links from this function until they're moved to a separate function.
-      .addClusterSelectorTemplates(false)
-      .addLog()
+      // The queries in this dashboard don't make use of the cluster tempalte label selector
+      // but we keep it here to allow selecting a namespace specific to a certain cluster, the
+      // namespace template variable selectors query uses the cluster value.
+      .addCluster()
+      .addNamespace()
+      .addTag()
   },
 }

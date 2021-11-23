@@ -5,7 +5,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
     {
       'loki-retention.json':
         ($.dashboard('Loki / Retention', uid='retention'))
-        .addClusterSelectorTemplates(false)
+        .addCluster()
+        .addNamespace()
+        .addTag()
         .addLog()
         .addRow(
           $.row('Ressource Usage')

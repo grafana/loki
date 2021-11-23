@@ -52,10 +52,9 @@ local template = import 'grafonnet/template.libsonnet';
 
     } + lokiLogs +
     $.dashboard('Loki / Logs')
-      // TODO (callum) For this cluster the cluster template is not actually
-      // added since the json defines the template array, we just need the tags
-      // and links from this function until they're moved to a separate function.
-      .addClusterSelectorTemplates(false)
+      .addCluster()
+      .addNamespace()
+      .addTag()
       .addLog() +
     {
       panels: [
