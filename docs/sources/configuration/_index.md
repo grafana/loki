@@ -1078,7 +1078,7 @@ lifecycler:
 wal:
   # Enables writing to WAL.
   # CLI flag: -ingester.wal-enabled
-  [enabled: <boolean> | default = false]
+  [enabled: <boolean> | default = true]
 
   # Directory where the WAL data should be stored and/or recovered from.
   # CLI flag: -ingester.wal-dir
