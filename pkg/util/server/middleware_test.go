@@ -35,7 +35,7 @@ func TestQueryTags(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, "http://testing.com", nil)
-			req.Header.Set(QueryTagsHTTPHeader, tc.headerValue)
+			req.Header.Set(string(QueryTagsHTTPHeader), tc.headerValue)
 
 			w := httptest.NewRecorder()
 			checked := false

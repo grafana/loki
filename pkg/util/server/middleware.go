@@ -8,8 +8,12 @@ import (
 	"github.com/weaveworks/common/middleware"
 )
 
-const (
-	QueryTagsHTTPHeader = "X-Query-Tags"
+// NOTE(kavi): Why new type?
+// Our linter won't allow to use basic types like string to be used as key in context.
+type ctxKey string
+
+var (
+	QueryTagsHTTPHeader ctxKey = "X-Query-Tags"
 )
 
 // NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.
@@ -41,7 +45,7 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
-			tags := req.Header.Get(QueryTagsHTTPHeader)
+			tags := req.Header.Get(string(QueryTagsHTTPHeader))
 			if tags != "" {
 				ctx = context.WithValue(ctx, QueryTagsHTTPHeader, tags)
 				req = req.WithContext(ctx)

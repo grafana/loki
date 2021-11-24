@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -25,7 +26,6 @@ const (
 	latencyTypeFast = "fast"
 
 	slowQueryThresholdSecond = float64(10)
-	QueryTagsHTTPHeader      = "X-Query-Tags"
 )
 
 var (
@@ -89,7 +89,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		returnedLines = int(result.(logqlmodel.Streams).Lines())
 	}
 
-	queryTags, _ := ctx.Value(QueryTagsHTTPHeader).(string) // it's ok to be empty.
+	queryTags, _ := ctx.Value(serverutil.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 
 	logValues := make([]interface{}, 0)
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
