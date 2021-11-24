@@ -25,6 +25,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+var defaultBackoff = backoff.Config{
+	MinBackoff: 1 * time.Second,
+	MaxBackoff: 10 * time.Second,
+	MaxRetries: 5,
+}
+
 type Target struct {
 	logger    log.Logger
 	handler   api.EntryHandler
@@ -134,20 +140,17 @@ func (t *Target) start() {
 // It will retry on errors.
 func (t *Target) pull(ctx context.Context, start, end time.Time) error {
 	var (
-		backoff = backoff.New(ctx, backoff.Config{
-			MinBackoff: 1 * time.Second,
-			MaxBackoff: 10 * time.Second,
-			MaxRetries: 5,
-		})
-		err  error
-		errs = multierror.New()
-		it   cloudflare.LogpullReceivedIterator
+		backoff = backoff.New(ctx, defaultBackoff)
+		errs    = multierror.New()
+		it      cloudflare.LogpullReceivedIterator
+		err     error
 	)
 
 	for backoff.Ongoing() {
 		it, err = t.client.LogpullReceived(ctx, start, end)
 		if err != nil {
 			errs.Add(err)
+			backoff.Wait()
 			continue
 		}
 		defer it.Close()
@@ -220,7 +223,8 @@ func splitRequests(start, end time.Time, workers int) []interface{} {
 			start: start.Add(time.Duration(i) * perWorker),
 			end:   start.Add(time.Duration(i+1) * perWorker),
 		}
-		if r.end.After(end) {
+		// If the last worker is smaller than the others, we need to make sure it gets the last chunk.
+		if i == workers-1 && r.end != end {
 			r.end = end
 		}
 		requests = append(requests, r)
