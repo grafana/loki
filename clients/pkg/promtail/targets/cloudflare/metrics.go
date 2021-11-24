@@ -23,7 +23,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	})
 	m.LastEnd = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "promtail",
-		Name:      "cloudflare_target_last_end_timestamp",
+		Name:      "cloudflare_target_highest_timestamp",
 		Help:      "The last cloudflare request end timestamp fetched. This allows to calculate how far the target is behind.",
 	})
 

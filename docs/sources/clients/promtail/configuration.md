@@ -1083,7 +1083,7 @@ that if a position is found in the file for a given zone id, Promtail will resta
 from that position. When no position is found Promtail will start pulling logs from now.
 
 Promtail fetches logs using multiple workers (configurable via `workers`) and request the last available pull range
-(configured via `pull_range`) repeatedly. You can verify the last timestamp fetched by Promtail using the `cloudflare_target_last_end_timestamp` metric.
+(configured via `pull_range`) repeatedly. You can verify the last timestamp fetched by Promtail using the `cloudflare_target_highest_timestamp` metric.
 It's possible that Promtail falls behinds because there's is too much logs to process for each pull.
 Adding more workers, decreasing the pull range or the amount of fields fetched can help this situation.
 
