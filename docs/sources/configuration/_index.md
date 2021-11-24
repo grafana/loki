@@ -977,7 +977,7 @@ lifecycler:
   # CLI flag: -ingester.join-after
   [join_after: <duration> | default = 0s]
 
-  # Observe tokens after generating to resolve collisions. Useful when using gossiping ring.
+  # Observe tokens after generating to resolve collisions. Useful when using a gossip ring.
   # CLI flag: -ingester.observe-period
   [observe_period: <duration> | default = 0s]
 
