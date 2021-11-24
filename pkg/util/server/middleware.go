@@ -8,6 +8,10 @@ import (
 	"github.com/weaveworks/common/middleware"
 )
 
+const (
+	QueryTagsHTTPHeader = "X-Query-Tags"
+)
+
 // NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.
 // This is important because some endpoints can POST x-www-form-urlencoded bodies instead of GET w/ query strings.
 func NewPrepopulateMiddleware() middleware.Interface {
@@ -37,12 +41,11 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
-			tagsKey := "X-Query-Tags"
-			tags := req.Header.Get(tagsKey)
+			tags := req.Header.Get(QueryTagsHTTPHeader)
 			if tags != "" {
-				ctx = context.WithValue(ctx, tagsKey, tags)
+				ctx = context.WithValue(ctx, QueryTagsHTTPHeader, tags)
+				req = req.WithContext(ctx)
 			}
-			req = req.WithContext(ctx)
 		})
 	})
 }

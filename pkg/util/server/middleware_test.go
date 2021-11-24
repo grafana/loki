@@ -35,12 +35,12 @@ func TestQueryTags(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, "http://testing.com", nil)
-			req.Header.Set("X-Query-Tags", tc.headerValue)
+			req.Header.Set(QueryTagsHTTPHeader, tc.headerValue)
 
 			w := httptest.NewRecorder()
 			checked := false
 			mware := ExtractQueryTagsMiddleware().Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				require.Equal(t, tc.headerValue, req.Context().Value("X-Query-Tags").(string))
+				require.Equal(t, tc.headerValue, req.Context().Value(QueryTagsHTTPHeader).(string))
 				checked = true
 			}))
 
