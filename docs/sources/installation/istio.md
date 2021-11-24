@@ -21,7 +21,7 @@ Given that istio will not allow a pod to resolve another pod using an ip address
 
 ### Query Frontend Service
 
-1. Change the name of `grpc` port to `grpclb`. Otherwise the `querier` will not be able to reach the `query-frontend` (for some reason). I believe this is due to some condition in cortex.
+1. Change the name of `grpc` port to `grpclb`. Otherwise the `querier` will not be able to reach the `query-frontend` (for some reason). I believe this is due to some condition in cortex. See https://github.com/grafana/loki/blob/0116aa61c86fa983ddcbbd5e30a2141d2e89081a/production/ksonnet/loki/common.libsonnet#L19
 3. Set the `appProtocol` of `grpclb` to `tcp`
 4. Set `publishNotReadyAddresses` to `true`
 
