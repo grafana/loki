@@ -246,17 +246,17 @@ type containsFilter struct {
 }
 
 func (l *containsFilter) Filter(line []byte) bool {
-	return contains(l.match, line, l.caseInsensitive)
+	return contains(line, l.match, l.caseInsensitive)
 }
 
-func contains(substr, line []byte, caseInsensitive bool) bool {
+func contains(line, substr []byte, caseInsensitive bool) bool {
 	if !caseInsensitive {
 		return bytes.Contains(line, substr)
 	}
-	return containsLower(substr, line)
+	return containsLower(line, substr)
 }
 
-func containsLower(substr, line []byte) bool {
+func containsLower(line, substr []byte) bool {
 	if len(substr) == 0 {
 		return true
 	}
@@ -336,7 +336,7 @@ func (f *containsAllFilter) Empty() bool {
 
 func (f containsAllFilter) Filter(line []byte) bool {
 	for _, m := range f.matches {
-		if !contains(m.match, line, m.caseInsensitive) {
+		if !contains(line, m.match, m.caseInsensitive) {
 			return false
 		}
 	}
