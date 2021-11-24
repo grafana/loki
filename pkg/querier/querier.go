@@ -37,6 +37,8 @@ type interval struct {
 	start, end time.Time
 }
 
+type StoreWrapper func(storage.Store) storage.Store
+
 // Config for a querier.
 type Config struct {
 	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
@@ -47,6 +49,7 @@ type Config struct {
 	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
 	MaxConcurrent                 int              `yaml:"max_concurrent"`
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
+	StoreWrapper                  StoreWrapper     `yaml:"-"`
 }
 
 // RegisterFlags register flags.
@@ -71,6 +74,10 @@ type Querier struct {
 
 // New makes a new Querier.
 func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides) (*Querier, error) {
+	if cfg.StoreWrapper != nil {
+		store = cfg.StoreWrapper(store)
+	}
+
 	querier := Querier{
 		cfg:             cfg,
 		store:           store,
@@ -290,7 +297,6 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	}
 
 	results := append(ingesterValues, storeValues)
-
 	return &logproto.LabelResponse{
 		Values: listutil.MergeStringLists(results...),
 	}, nil
