@@ -331,9 +331,13 @@ The query_frontend_config configures the Loki query-frontend.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 100]
 
-# If a querier disconnects without sending notification about graceful shutdown,
-# the query-frontend will keep the querier in the tenant's shard until the forget
-# delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.
+# In the event a tenant is repeatedly sending queries that leads the querier to crash
+# or getting killed because of out-of-memory, the crashed querier will get disconnected
+# from the query frontend and a new querier will be immediately assigned to the tenant’s shard.
+# This practically invalidates the assumption that shuffle-sharding can be used to reduce the
+# impact between tenants. To mitigate it, this option allows to configure a delay between when
+# a querier disconnects because of a crash and when the crashed querier is actually removed
+# from the tenant's shard.
 # CLI flag: -query-frontend.querier-forget-delay
 [querier_forget_delay: <duration> | default = 0]
 
