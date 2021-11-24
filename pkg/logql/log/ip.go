@@ -192,7 +192,7 @@ func (f *ipFilter) filter(line []byte) bool {
 		}
 		ip, err := netaddr.ParseIP(string(line[start : start+iplen]))
 		if err == nil {
-			if contains(f.matcher, ip) {
+			if containsIP(f.matcher, ip) {
 				return true, 0
 			}
 		}
@@ -223,7 +223,7 @@ func (f *ipFilter) filter(line []byte) bool {
 	return false
 }
 
-func contains(matcher IPMatcher, ip netaddr.IP) bool {
+func containsIP(matcher IPMatcher, ip netaddr.IP) bool {
 	switch m := matcher.(type) {
 	case netaddr.IP:
 		return m.Compare(ip) == 0
