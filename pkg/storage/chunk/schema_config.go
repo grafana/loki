@@ -434,6 +434,19 @@ func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 	return "", fmt.Errorf("no chunk table found for time %v", t)
 }
 
+// SchemaForTime returns the Schema PeriodConfig to use for a given point in time.
+func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
+	for i := range cfg.Configs {
+		if i+1 < len(cfg.Configs) {
+		}
+		// TODO: callum, confirm we can rely on the schema configs being sorted in this order.
+		if t >= cfg.Configs[i].From.Time && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From.Time) {
+			return cfg.Configs[i], nil
+		}
+	}
+	return PeriodConfig{}, fmt.Errorf("no schema config found for time %v", t)
+}
+
 // TableFor calculates the table shard for a given point in time.
 func (cfg *PeriodicTableConfig) TableFor(t model.Time) string {
 	if cfg.Period == 0 { // non-periodic

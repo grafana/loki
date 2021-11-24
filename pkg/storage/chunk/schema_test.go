@@ -454,3 +454,40 @@ func TestV10IndexQueries(t *testing.T) {
 		})
 	}
 }
+
+func TestSchemaForTime(t *testing.T) {
+	schemaCfg := SchemaConfig{Configs: []PeriodConfig{
+		{
+			From:       DayTime{Time: 1564358400000},
+			IndexType:  "grpc-store",
+			ObjectType: "grpc-store",
+			Schema:     "v10",
+			IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 604800000000000,
+				Tags:   nil,
+			},
+			RowShards: 16,
+		},
+		{
+			From:       DayTime{Time: 1564444800000},
+			IndexType:  "grpc-store",
+			ObjectType: "grpc-store",
+			Schema:     "v10",
+			IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 604800000000000,
+				Tags:   nil,
+			},
+			RowShards: 32,
+		},
+	}}
+
+	first, err := schemaCfg.SchemaForTime(model.TimeFromUnix(1564444800 + 100))
+	require.NoError(t, err)
+	require.Equal(t, schemaCfg.Configs[1], first)
+
+	second, err := schemaCfg.SchemaForTime(model.TimeFromUnix(1564358400 + 100))
+	require.NoError(t, err)
+	require.Equal(t, schemaCfg.Configs[0], second)
+}
