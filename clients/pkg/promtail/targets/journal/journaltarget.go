@@ -127,7 +127,7 @@ func NewJournalTarget(
 func journalTargetWithReader(
 	logger log.Logger,
 	handler api.EntryHandler,
-	positions positions.Positions,
+	pos positions.Positions,
 	jobName string,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrapeconfig.JournalTargetConfig,
@@ -136,7 +136,7 @@ func journalTargetWithReader(
 ) (*JournalTarget, error) {
 
 	positionPath := positions.CursorKey(jobName)
-	position := positions.GetString(positionPath)
+	position := pos.GetString(positionPath)
 
 	if readerFunc == nil {
 		readerFunc = defaultJournalReaderFunc
@@ -149,7 +149,7 @@ func journalTargetWithReader(
 	t := &JournalTarget{
 		logger:        logger,
 		handler:       handler,
-		positions:     positions,
+		positions:     pos,
 		positionPath:  positionPath,
 		relabelConfig: relabelConfig,
 		labels:        targetConfig.Labels,
