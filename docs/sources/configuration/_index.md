@@ -1736,15 +1736,18 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.consistent-hash
   [consistent_hash: <bool> | default = true]
 
-  # Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).
+  # Trip the circuit breaker after this number of consecutive dial failures.
+  # A value of 0 disables the circuit breaker.
   # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
   [circuit_breaker_consecutive_failures: <int> | default = 10]
 
-  # Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).
+  # Duration the circuit breaker remains open after tripping.
+  # If set to 0, the duration is 60 seconds.
   # CLI flag: -<prefix>.memcached.circuit-breaker-timeout
   [circuit_breaker_timeout: <duration> | default = 10s]
 
-  # Reset circuit-breaker counts after this long (if zero then never reset).
+  # Reset the circuit breaker counts after this duration.
+  # A value of 0 never resets the circuit breaker.
   # CLI flag: -<prefix>.memcached.circuit-breaker-interval
   [circuit_breaker_interval: <duration> | default = 10s]
 
