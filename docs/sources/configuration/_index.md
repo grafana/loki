@@ -1815,7 +1815,7 @@ fifocache:
   [max_size_items: <int> | default = 0]
 
   # The expiry duration for the cache.
-  # The default value of 0 means that it will never get expired.
+  # The default value of 0 disables expiration.
   # CLI flag: -<prefix>.fifocache.duration
   [validity: <duration> | default = 0s]
 ```
