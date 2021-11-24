@@ -1,4 +1,4 @@
-## Welcome to Loki Operator 
+## Welcome to Loki Operator
 
 This is the Kubernetes Operator for Loki provided by the Red Hat OpenShift engineering team. This is currently a work in progress and is subject to large scale changes that will break any dependencies. Do not use this in any production environment.
 
@@ -7,6 +7,12 @@ This is the Kubernetes Operator for Loki provided by the Red Hat OpenShift engin
 * If you want to contribute to this repository, you might need a step-by-step guide on how to start [hacking on Loki-operator with kind](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#hacking-on-loki-operator-using-kind).
 * Also, there is a step-by-step guide on how to test Loki-operator on [OpenShift](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
 * There is also a [basic troubleshooting guide](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#basic-troubleshooting-on-hacking-on-loki-operator) if you run into some common problems.
+
+### Sending Logs to Loki through the Gateway Component
+
+* The [forwarding logs to LokiStack guide](https://github.com/ViaQ/loki-operator/tree/master/docs/forwarding_logs_to_gateway.md) provides instructions for configuring forwarding clients to ship logs to Loki through the gateway component.
+* This section details [how to connect a Promtail](https://github.com/ViaQ/loki-operator/tree/master/docs/forwarding_logs_to_gateway.md#promtail) installation to the gateway.
+* This section details [how to connect a Grafana Fluentd plugin](https://github.com/ViaQ/loki-operator/tree/master/docs/forwarding_logs_to_gateway.md#fluentd) installation to the gateway.
 
 ### Installation of Storage Size Calculator on OpenShift
 
