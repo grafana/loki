@@ -271,7 +271,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
 	case StorageTypeAWS, StorageTypeS3:
-		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging))
+		store, err := aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
+		return newChunkClientFromStore(store, err, schemaCfg)
 	case StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -282,15 +283,18 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case StorageTypeAzure:
-		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging))
+		store, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
+		return newChunkClientFromStore(store, err, schemaCfg)
 	case StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCS:
-		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging))
+		store, err := gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
+		return newChunkClientFromStore(store, err, schemaCfg)
 	case StorageTypeSwift:
-		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging))
+		store, err := openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
+		return newChunkClientFromStore(store, err, schemaCfg)
 	case StorageTypeCassandra:
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case StorageTypeFileSystem:
@@ -298,7 +302,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClient(store, objectclient.Base64Encoder), nil
+		return objectclient.NewClient(store, objectclient.IdentityEncoder, schemaCfg), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
@@ -306,11 +310,11 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	}
 }
 
-func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client, error) {
+func newChunkClientFromStore(store chunk.ObjectClient, err error, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return objectclient.NewClient(store, nil), nil
+	return objectclient.NewClient(store, nil, schemaCfg), nil
 }
 
 // NewTableClient makes a new table client based on the configuration.

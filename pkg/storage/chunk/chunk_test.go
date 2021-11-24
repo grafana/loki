@@ -192,6 +192,15 @@ func TestParseExternalKey(t *testing.T) {
 			Checksum:    4165752645,
 		}},
 
+		{key: userID + "/2/2/2/270d8f00:270d8f00:f84c5745", chunk: Chunk{
+			UserID:      userID,
+			Fingerprint: model.Fingerprint(2),
+			From:        model.Time(655200000),
+			Through:     model.Time(655200000),
+			ChecksumSet: true,
+			Checksum:    4165752645,
+		}},
+
 		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
 	} {
 		chunk, err := ParseExternalKey(userID, c.key)
@@ -379,6 +388,13 @@ func TestChunk_Slice(t *testing.T) {
 	}
 }
 
+func Benchmark_ParseOldExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := ParseExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+		require.NoError(b, err)
+	}
+}
+
 func TestNewChunkKey(t *testing.T) {
 	c := Chunk{
 		Fingerprint: 100,
@@ -388,16 +404,16 @@ func TestNewChunkKey(t *testing.T) {
 		ChecksumSet: true,
 		Checksum:    12345,
 	}
-	key := c.ExternalKey()
-	newChunk, err := ParseExternalKey("fake", key)
+	key := c.NewExternalKey(2, 1*time.Hour)
+	newChunk, err := parseNewerExternalKey("fake", key)
 	require.Nil(t, err)
 	require.Equal(t, c, newChunk)
-	require.Equal(t, key, newChunk.ExternalKey())
+	require.Equal(t, key, newChunk.NewExternalKey(2, 1*time.Hour))
 }
 
-func Benchmark_ParseExternalKey(b *testing.B) {
+func Benchmark_ParseNewExternalKey(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, err := ParseExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+		_, err := ParseExternalKey("fake", "fake/10001d0c2b1/1/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
 		require.NoError(b, err)
 	}
 }

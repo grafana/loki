@@ -665,7 +665,28 @@ func TestPeriodConfig_Validate(t *testing.T) {
 				IndexTables: PeriodicTableConfig{Period: 0},
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
-			err: "Must have row_shards > 0 (current: 0) for schema (v10)",
+			err: "must have row_shards > 0 (current: 0) for schema (v10)",
+		},
+		{
+			desc: "v12 with RowShards, ChunkPathShardFactor, ChunkPathPeriod",
+			in: PeriodConfig{
+				Schema:               "v12",
+				RowShards:            16,
+				ChunkPathShardFactor: 16,
+				ChunkPathPeriod:      1 * time.Hour,
+				IndexTables:          PeriodicTableConfig{Period: 0},
+				ChunkTables:          PeriodicTableConfig{Period: 0},
+			},
+		},
+		{
+			desc: "v12 without ChunkPathShardFactor, ChunkPathPeriod",
+			in: PeriodConfig{
+				Schema:      "v12",
+				RowShards:   16,
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+			err: "must configure chunk_path_shard_factor and chunk_path_period to values > 0 for schema (v12)",
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -711,4 +732,41 @@ tags:
 	require.NoError(t, err)
 
 	require.Equal(t, yamlFile, string(yamlGenerated))
+}
+
+func TestSchemaForTime(t *testing.T) {
+	schemaCfg := SchemaConfig{Configs: []PeriodConfig{
+		{
+			From:       DayTime{Time: 1564358400000},
+			IndexType:  "grpc-store",
+			ObjectType: "grpc-store",
+			Schema:     "v10",
+			IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 604800000000000,
+				Tags:   nil,
+			},
+			RowShards: 16,
+		},
+		{
+			From:       DayTime{Time: 1564444800000},
+			IndexType:  "grpc-store",
+			ObjectType: "grpc-store",
+			Schema:     "v10",
+			IndexTables: PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 604800000000000,
+				Tags:   nil,
+			},
+			RowShards: 32,
+		},
+	}}
+
+	first, err := schemaCfg.SchemaForTime(model.TimeFromUnix(1564444800 + 100))
+	require.NoError(t, err)
+	require.Equal(t, schemaCfg.Configs[1], first)
+
+	second, err := schemaCfg.SchemaForTime(model.TimeFromUnix(1564358400 + 100))
+	require.NoError(t, err)
+	require.Equal(t, schemaCfg.Configs[0], second)
 }

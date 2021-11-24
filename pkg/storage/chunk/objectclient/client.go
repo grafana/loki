@@ -16,6 +16,8 @@ import (
 // from the underlying ObjectClient
 type KeyEncoder func(string) string
 
+var IdentityEncoder KeyEncoder = func(key string) string { return key }
+
 // Base64Encoder is used to encode chunk keys in base64 before storing/retrieving
 // them from the ObjectClient
 var Base64Encoder = func(key string) string {
@@ -26,13 +28,15 @@ var Base64Encoder = func(key string) string {
 type Client struct {
 	store      chunk.ObjectClient
 	keyEncoder KeyEncoder
+	schema     chunk.SchemaConfig
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
-func NewClient(store chunk.ObjectClient, encoder KeyEncoder) *Client {
+func NewClient(store chunk.ObjectClient, encoder KeyEncoder, schema chunk.SchemaConfig) *Client {
 	return &Client{
 		store:      store,
 		keyEncoder: encoder,
+		schema:     schema,
 	}
 }
 
@@ -47,6 +51,7 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		chunkKeys []string
 		chunkBufs [][]byte
+		key       string
 	)
 
 	for i := range chunks {
@@ -54,7 +59,9 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 		if err != nil {
 			return err
 		}
-		key := chunks[i].ExternalKey()
+
+		key = o.schema.ExternalKey(chunks[i])
+
 		if o.keyEncoder != nil {
 			key = o.keyEncoder(key)
 		}
@@ -86,7 +93,7 @@ func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 }
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	key := c.ExternalKey()
+	key := o.schema.ExternalKey(c)
 	if o.keyEncoder != nil {
 		key = o.keyEncoder(key)
 	}

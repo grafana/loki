@@ -45,7 +45,7 @@ var Fixtures = []testutils.Fixture{
 				metrics:                 newMetrics(nil),
 			}
 			mock := newMockS3()
-			object := objectclient.NewClient(&S3ObjectClient{S3: mock, hedgedS3: mock}, nil)
+			object := objectclient.NewClient(&S3ObjectClient{S3: mock, hedgedS3: mock}, nil, schemaConfig)
 			return index, object, table, schemaConfig, testutils.CloserFunc(func() error {
 				table.Stop()
 				index.Stop()

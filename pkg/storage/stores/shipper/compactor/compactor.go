@@ -191,10 +191,10 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	if c.cfg.RetentionEnabled {
 		var encoder objectclient.KeyEncoder
 		if _, ok := objectClient.(*local.FSObjectClient); ok {
-			encoder = objectclient.Base64Encoder
+			encoder = objectclient.IdentityEncoder
 		}
 
-		chunkClient := objectclient.NewClient(objectClient, encoder)
+		chunkClient := objectclient.NewClient(objectClient, encoder, schemaConfig.SchemaConfig)
 
 		retentionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "retention")
 		c.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)

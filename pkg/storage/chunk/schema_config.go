@@ -34,13 +34,15 @@ var (
 
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
-	From        DayTime             `yaml:"from"`         // used when working with config
-	IndexType   string              `yaml:"store"`        // type of index client to use.
-	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
-	Schema      string              `yaml:"schema"`
-	IndexTables PeriodicTableConfig `yaml:"index"`
-	ChunkTables PeriodicTableConfig `yaml:"chunks"`
-	RowShards   uint32              `yaml:"row_shards"`
+	From                 DayTime             `yaml:"from"`         // used when working with config
+	IndexType            string              `yaml:"store"`        // type of index client to use.
+	ObjectType           string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
+	Schema               string              `yaml:"schema"`
+	IndexTables          PeriodicTableConfig `yaml:"index"`
+	ChunkTables          PeriodicTableConfig `yaml:"chunks"`
+	RowShards            uint32              `yaml:"row_shards"`
+	ChunkPathShardFactor uint64              `yaml:"chunk_path_shard_factor"`
+	ChunkPathPeriod      time.Duration       `yaml:"chunk_path_period"`
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
@@ -128,6 +130,16 @@ func defaultRowShards(schema string) uint32 {
 	}
 }
 
+// ChunkPathPeriod is introduced as a SchemaConfig value in Schema "v12"
+func defaultChunkPathPeriod(schema string) time.Duration {
+	return 1 * time.Hour
+}
+
+// ChunkPathShardFactor is introduced as a SchemaConfig value in Schema "v12"
+func defaultChunkPathShardFactor(schema string) uint64 {
+	return 2
+}
+
 // ForEachAfter will call f() on every entry after t, splitting
 // entries if necessary so there is an entry starting at t
 func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)) {
@@ -188,17 +200,22 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11":
+	case "v10", "v11", "v12":
 		if cfg.RowShards == 0 {
-			return nil, fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
+			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
 
 		v10 := v10Entries{rowShards: cfg.RowShards}
 		if cfg.Schema == "v10" {
 			return newSeriesStoreSchema(buckets, v10), nil
+		} else if cfg.Schema == "v11" {
+			return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
+		} else { // v12
+			if cfg.ChunkPathPeriod == 0 || cfg.ChunkPathShardFactor == 0 {
+				return nil, fmt.Errorf("must configure chunk_path_shard_factor and chunk_path_period to values > 0 for schema (%s)", cfg.Schema)
+			}
+			return newSeriesStoreSchema(buckets, v12Entries{v11Entries{v10}, cfg.ChunkPathShardFactor, cfg.ChunkPathPeriod}), nil
 		}
-
-		return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
 	default:
 		return nil, errInvalidSchemaVersion
 	}
@@ -216,6 +233,12 @@ func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
 func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
+	}
+	if cfg.ChunkPathPeriod == 0 {
+		cfg.ChunkPathPeriod = defaultChunkPathPeriod(cfg.Schema)
+	}
+	if cfg.ChunkPathShardFactor == 0 {
+		cfg.ChunkPathShardFactor = defaultChunkPathShardFactor(cfg.Schema)
 	}
 }
 
@@ -434,6 +457,17 @@ func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 	return "", fmt.Errorf("no chunk table found for time %v", t)
 }
 
+// SchemaForTime returns the Schema PeriodConfig to use for a given point in time.
+func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
+	for i := range cfg.Configs {
+		// TODO: callum, confirm we can rely on the schema configs being sorted in this order.
+		if t >= cfg.Configs[i].From.Time && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From.Time) {
+			return cfg.Configs[i], nil
+		}
+	}
+	return PeriodConfig{}, fmt.Errorf("no schema config found for time %v", t)
+}
+
 // TableFor calculates the table shard for a given point in time.
 func (cfg *PeriodicTableConfig) TableFor(t model.Time) string {
 	if cfg.Period == 0 { // non-periodic
@@ -445,4 +479,30 @@ func (cfg *PeriodicTableConfig) TableFor(t model.Time) string {
 
 func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 	return cfg.Prefix + strconv.Itoa(int(i))
+}
+
+func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
+	p, err := cfg.SchemaForTime(chunk.From)
+	if err == nil && p.Schema >= "v12" {
+		shard := uint64(chunk.Fingerprint) % p.ChunkPathShardFactor
+		// Reduce the fingerprint into the <period> space to act as jitter
+		jitter := uint64(chunk.Fingerprint) % uint64(p.ChunkPathPeriod)
+		// The fingerprint (hash, uniformly distributed) allows us to gradually
+		// write into the next <period>, "warming" it up in a linear fashion wrt time.
+		// This means that if we're 10% into the current period, 10% of fingerprints will
+		// be written into the next period instead.
+		prefix := (uint64(chunk.From.UnixNano()) + jitter) % uint64(p.ChunkPathPeriod)
+		return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", chunk.UserID, prefix, shard, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	} else {
+		// Some chunks have a checksum stored in dynamodb, some do not.  We must
+		// generate keys appropriately.
+		if chunk.ChecksumSet {
+			// This is the inverse of parseNewExternalKey.
+			return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+		}
+		// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
+		// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
+		// See comment on parseExternalKey.
+		return fmt.Sprintf("%s/%d:%d:%d", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
+	}
 }
