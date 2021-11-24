@@ -379,9 +379,32 @@ func TestChunk_Slice(t *testing.T) {
 	}
 }
 
-func Benchmark_ParseExternalKey(b *testing.B) {
+func Benchmark_ParseOldExternalKey(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := ParseExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+		require.NoError(b, err)
+	}
+}
+
+func TestNewChunkKey(t *testing.T) {
+	c := Chunk{
+		Fingerprint: 100,
+		UserID:      "fake",
+		From:        model.TimeFromUnix(1000),
+		Through:     model.TimeFromUnix(5000),
+		ChecksumSet: true,
+		Checksum:    12345,
+	}
+	key := c.ExternalKey()
+	newChunk, err := ParseExternalKey("fake", key)
+	require.Nil(t, err)
+	require.Equal(t, c, newChunk)
+	require.Equal(t, key, newChunk.ExternalKey())
+}
+
+func Benchmark_ParseNewExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := ParseExternalKey("fake", "fake/10001d0c2b1/1/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
 		require.NoError(b, err)
 	}
 }
