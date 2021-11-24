@@ -50,6 +50,7 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 				ctx = context.WithValue(ctx, QueryTagsHTTPHeader, tags)
 				req = req.WithContext(ctx)
 			}
+			next.ServeHTTP(w, req)
 		})
 	})
 }
