@@ -144,9 +144,10 @@ func QueryType(query string) (string, error) {
 	}
 }
 
-// `Source=foo,Feature=beta` -> []interface{}{"source", "foo", "feature", "beta"}
+// tagsToKeyValues converts QueryTags to form that is easy to log.
+// e.g: `Source=foo,Feature=beta` -> []interface{}{"source", "foo", "feature", "beta"}
 // so that we could log nicely!
-// NOTE: if values is not in canonical form e.g: `X-Query-Tag: abc` -> []interface{}{"abc"}
+// If queryTags is not in canonical form then its completely ignored (e.g: `key1=value1,key2=value`)
 func tagsToKeyValues(queryTags string) []interface{} {
 	toks := strings.FieldsFunc(queryTags, func(r rune) bool {
 		return r == ','
@@ -158,6 +159,10 @@ func tagsToKeyValues(queryTags string) []interface{} {
 		val := strings.FieldsFunc(tok, func(r rune) bool {
 			return r == '='
 		})
+
+		if len(val) != 2 {
+			continue
+		}
 		vals = append(vals, val...)
 	}
 

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"regexp"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
@@ -14,6 +15,8 @@ type ctxKey string
 
 var (
 	QueryTagsHTTPHeader ctxKey = "X-Query-Tags"
+	safeQueryTags              = regexp.MustCompile("[^a-zA-Z0-9-=, ]+") // only alpha-numeric, ' ', ',', '=' and `-`
+
 )
 
 // NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.
@@ -46,6 +49,8 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
 			tags := req.Header.Get(string(QueryTagsHTTPHeader))
+			tags = safeQueryTags.ReplaceAllString(tags, "")
+
 			if tags != "" {
 				ctx = context.WithValue(ctx, QueryTagsHTTPHeader, tags)
 				req = req.WithContext(ctx)

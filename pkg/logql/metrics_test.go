@@ -10,6 +10,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/user"
@@ -86,4 +87,48 @@ func TestLogSlowQuery(t *testing.T) {
 		),
 		buf.String())
 	util_log.Logger = log.NewNopLogger()
+}
+
+func Test_testToKeyValues(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		exp  []interface{}
+	}{
+		{
+			name: "canonical-form",
+			in:   "Source=logvolhist",
+			exp: []interface{}{
+				"source",
+				"logvolhist",
+			},
+		},
+		{
+			name: "canonical-form-multiple-values",
+			in:   "Source=logvolhist,Feature=beta",
+			exp: []interface{}{
+				"source",
+				"logvolhist",
+				"feature",
+				"beta",
+			},
+		},
+		{
+			name: "empty",
+			in:   "",
+			exp:  []interface{}{},
+		},
+		{
+			name: "non-canonical form",
+			in:   "abc",
+			exp:  []interface{}{},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := tagsToKeyValues(c.in)
+			assert.Equal(t, c.exp, got)
+		})
+	}
 }
