@@ -150,3 +150,28 @@ spec:
   type: ClusterIP
 
 ```
+
+## Memberlist Service
+
+Set the `appProtocol` of the `http` port to `tcp`
+
+```
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: observability
+  name: loki-memberlist
+  namespace: observability
+spec:
+  clusterIP: None
+  ports:
+    - name: http
+      port: 7946
+      protocol: TCP
+      targetPort: 7946
+      appProtocol: tcp
+  selector:
+    app.kubernetes.io/instance: observability
+    app.kubernetes.io/part-of: memberlist
+```
