@@ -2012,7 +2012,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.max-entries-limit
 [max_entries_limit_per_query: <int> | default = 5000 ]
 
-# Maximum number of active streams per user, per ingester. 0 to disable.
+# Maximum number of active streams per user, per ingester. 0 to make it unlimited.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default 0]
 
