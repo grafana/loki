@@ -339,7 +339,7 @@ The query_frontend_config configures the Loki query-frontend.
 # a querier disconnects because of a crash and when the crashed querier is actually removed
 # from the tenant's shard.
 # CLI flag: -query-frontend.querier-forget-delay
-[querier_forget_delay: <duration> | default = 0]
+[querier_forget_delay: <duration> | default = 0s]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
