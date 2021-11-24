@@ -170,7 +170,6 @@ func TestJournalTarget_JSON(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		require.Equal(t, expectMsg, client.Received()[i].Line)
 	}
-
 }
 
 func TestJournalTarget_Since(t *testing.T) {
@@ -265,7 +264,7 @@ func TestJournalTarget_Cursor_NotTooOld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ps.PutString("journal-test", "foobar")
+	ps.PutString(positions.CursorKey("test"), "foobar")
 
 	client := fake.New(func() {})
 
