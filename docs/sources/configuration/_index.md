@@ -1999,10 +1999,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.enforce-metric-name
 [enforce_metric_name: <boolean> | default = true]
 
-# Maximum number of active streams per user, per ingester. 0 to disable.
-# CLI flag: -ingester.max-streams-per-user
-[max_streams_per_user: <int> | default = 0]
-
 # Maximum line size on ingestion path. Example: 256kb.
 # There is no limit when unset or set to 0.
 # CLI flag: -distributor.max-line-size
