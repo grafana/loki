@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -28,6 +29,20 @@ func ResponseJSONMiddleware() middleware.Interface {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 			next.ServeHTTP(w, req)
+		})
+	})
+}
+
+func ExtractQueryTagsMiddleware() middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := req.Context()
+			tagsKey := "X-Query-Tags"
+			tags := req.Header.Get(tagsKey)
+			if tags != "" {
+				ctx = context.WithValue(ctx, tagsKey, tags)
+			}
+			req = req.WithContext(ctx)
 		})
 	})
 }

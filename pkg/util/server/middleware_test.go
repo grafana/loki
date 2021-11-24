@@ -8,8 +8,48 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestQueryTags(t *testing.T) {
+	for _, tc := range []struct {
+		desc        string
+		method      string
+		headerValue string
+		body        io.Reader
+		error       bool
+	}{
+		{
+			desc:        "single-value",
+			method:      "GET",
+			headerValue: `Source=logvolhist`,
+			body:        nil,
+		},
+		{
+			desc:        "multiple-values",
+			method:      "POST",
+			headerValue: `Source=logvolhist,Statate=beta`,
+			body:        nil,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, "http://testing.com", nil)
+			req.Header.Set("X-Query-Tags", tc.headerValue)
+
+			w := httptest.NewRecorder()
+			checked := false
+			mware := ExtractQueryTagsMiddleware().Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				require.Equal(t, tc.headerValue, req.Context().Value("X-Query-Tags").(string))
+				checked = true
+			}))
+
+			mware.ServeHTTP(w, req)
+
+			assert.True(t, true, checked)
+		})
+	}
+}
 
 func TestPrepopulate(t *testing.T) {
 	success := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

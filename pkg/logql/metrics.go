@@ -88,6 +88,8 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		returnedLines = int(result.(logqlmodel.Streams).Lines())
 	}
 
+	queryTags, _ := ctx.Value("X-Query-Tags").(string) // it's ok to be empty.
+
 	// we also log queries, useful for troubleshooting slow queries.
 	level.Info(logger).Log(
 		"latency", latencyType, // this can be used to filter log lines.
@@ -98,6 +100,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"step", p.Step(),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
+		"query_tags", queryTags,
 		"limit", p.Limit(),
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
