@@ -320,7 +320,7 @@ type CloudflareConfig struct {
 	// The amount of workers to use for parsing cloudflare logs. Default to 3.
 	Workers int `yaml:"workers"`
 	// The timerange to fetch for each pull request that will be spread across workers. Default 1m.
-	PullRange time.Duration `yaml:"pull_range"`
+	PullRange model.Duration `yaml:"pull_range"`
 	// Fields to fetch from cloudflare logs.
 	// Default to default fields.
 	// Available fields type:

@@ -26,10 +26,10 @@ func Test_CloudflareTarget(t *testing.T) {
 			APIToken:  "foo",
 			ZoneID:    "bar",
 			Labels:    model.LabelSet{"job": "cloudflare"},
-			PullRange: time.Minute,
+			PullRange: model.Duration(time.Minute),
 		}
 		end      = time.Unix(0, time.Hour.Nanoseconds())
-		start    = time.Unix(0, time.Hour.Nanoseconds()-cfg.PullRange.Nanoseconds())
+		start    = time.Unix(0, time.Hour.Nanoseconds()-int64(cfg.PullRange))
 		client   = fake.New(func() {})
 		cfClient = newFakeCloudflareClient()
 	)
@@ -42,17 +42,17 @@ func Test_CloudflareTarget(t *testing.T) {
 	require.NoError(t, err)
 
 	// setup response for the first pull batch of 1 minutes.
-	cfClient.On("LogpullReceived", mock.Anything, start, start.Add(cfg.PullRange/3)).Return(&fakeLogIterator{
+	cfClient.On("LogpullReceived", mock.Anything, start, start.Add(time.Duration(cfg.PullRange/3))).Return(&fakeLogIterator{
 		logs: []string{
 			`{"EdgeStartTimestamp":1, "EdgeRequestHost":"foo.com"}`,
 		},
 	}, nil)
-	cfClient.On("LogpullReceived", mock.Anything, start.Add(cfg.PullRange/3), start.Add(2*cfg.PullRange/3)).Return(&fakeLogIterator{
+	cfClient.On("LogpullReceived", mock.Anything, start.Add(time.Duration(cfg.PullRange/3)), start.Add(time.Duration(2*cfg.PullRange/3))).Return(&fakeLogIterator{
 		logs: []string{
 			`{"EdgeStartTimestamp":2, "EdgeRequestHost":"bar.com"}`,
 		},
 	}, nil)
-	cfClient.On("LogpullReceived", mock.Anything, start.Add(2*cfg.PullRange/3), end).Return(&fakeLogIterator{
+	cfClient.On("LogpullReceived", mock.Anything, start.Add(time.Duration(2*cfg.PullRange/3)), end).Return(&fakeLogIterator{
 		logs: []string{
 			`{"EdgeStartTimestamp":3, "EdgeRequestHost":"buzz.com"}`,
 			`{"EdgeRequestHost":"fuzz.com"}`,
@@ -107,7 +107,7 @@ func Test_CloudflareTargetError(t *testing.T) {
 			APIToken:  "foo",
 			ZoneID:    "bar",
 			Labels:    model.LabelSet{"job": "cloudflare"},
-			PullRange: time.Minute,
+			PullRange: model.Duration(time.Minute),
 		}
 		end      = time.Unix(0, time.Hour.Nanoseconds())
 		client   = fake.New(func() {})
@@ -167,7 +167,7 @@ func Test_validateConfig(t *testing.T) {
 				APIToken:   "foo",
 				ZoneID:     "bar",
 				Workers:    3,
-				PullRange:  time.Minute,
+				PullRange:  model.Duration(time.Minute),
 				FieldsType: string(FieldsTypeDefault),
 			},
 			false,

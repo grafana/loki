@@ -105,7 +105,7 @@ func (t *Target) start() {
 			if end.After(maxEnd) {
 				end = maxEnd
 			}
-			start := end.Add(-t.config.PullRange)
+			start := end.Add(-time.Duration(t.config.PullRange))
 
 			// Use background context for workers as we don't want to cancel half way through.
 			// In case of errors we stop the target, each worker has it's own retry logic.
@@ -120,7 +120,7 @@ func (t *Target) start() {
 
 			// Sets current timestamp metrics, move to the next interval and saves the position.
 			t.metrics.LastEnd.Set(float64(end.UnixNano()) / 1e9)
-			t.to = end.Add(t.config.PullRange)
+			t.to = end.Add(time.Duration(t.config.PullRange))
 			t.positions.Put(positions.CursorKey(t.config.ZoneID), t.to.UnixNano())
 
 			// If the next window can be fetched do it, if not sleep for a while.
@@ -243,7 +243,7 @@ func validateConfig(cfg *scrapeconfig.CloudflareConfig) error {
 		return errors.New("cloudflare zone id is required")
 	}
 	if cfg.PullRange == 0 {
-		cfg.PullRange = time.Minute
+		cfg.PullRange = model.Duration(time.Minute)
 	}
 	if cfg.Workers == 0 {
 		cfg.Workers = 3
