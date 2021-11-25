@@ -349,7 +349,16 @@ func (r *Reader) run() {
 		// or times out based on the above SetReadDeadline call.
 		err := unmarshal.ReadTailResponseJSON(tailResponse, r.conn)
 		if err != nil {
-			fmt.Fprintf(r.w, "error reading websocket, will retry in 10 seconds: %s\n", err)
+			var reason string
+			netErr, ok := err.(net.Error)
+			if ok && netErr.Timeout() {
+				reason = "timeout tailing new logs"
+			} else {
+				reason = "error reading websocket"
+			}
+
+			fmt.Fprintf(r.w, "%s, will retry in 10 seconds: %s\n", reason, err)
+
 			// Even though we sleep between connection retries, we found it's possible to DOS Loki if the connection
 			// succeeds but some other error is returned, so also sleep here before retrying.
 			<-time.After(10 * time.Second)
