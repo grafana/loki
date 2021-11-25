@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
 const (
@@ -78,6 +79,7 @@ type S3Config struct {
 	SignatureVersion string              `yaml:"signature_version"`
 	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
+	Hedging          hedging.Config      `yaml:"hedging"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -122,6 +124,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry when s3 get Object")
+	cfg.Hedging.RegisterFlagsWithPrefix(prefix+"s3.", f)
 }
 
 // Validate config and returns error on failure
@@ -162,25 +165,23 @@ type S3ObjectClient struct {
 	cfg         S3Config
 	bucketNames []string
 	S3          s3iface.S3API
+	hedgedS3    s3iface.S3API
 	sseConfig   *SSEParsedConfig
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
 func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
-	s3Config, bucketNames, err := buildS3Config(cfg)
+	bucketNames, err := buckets(cfg)
+	if err != nil {
+		return nil, err
+	}
+	s3Client, err := buildS3Client(cfg, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
-
-	sess, err := session.NewSession(s3Config)
+	s3ClientHedging, err := buildS3Client(cfg, true)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create new s3 session")
-	}
-
-	s3Client := s3.New(sess)
-
-	if cfg.SignatureVersion == SignatureVersionV2 {
-		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
+		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
 
 	sseCfg, err := buildSSEParsedConfig(cfg)
@@ -191,6 +192,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	client := S3ObjectClient{
 		cfg:         cfg,
 		S3:          s3Client,
+		hedgedS3:    s3ClientHedging,
 		bucketNames: bucketNames,
 		sseConfig:   sseCfg,
 	}
@@ -234,7 +236,7 @@ func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
 	}
 }
 
-func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
+func buildS3Client(cfg S3Config, hedging bool) (*s3.S3, error) {
 	var s3Config *aws.Config
 	var err error
 
@@ -242,7 +244,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	if cfg.S3.URL != nil {
 		s3Config, err = awscommon.ConfigFromURL(cfg.S3.URL)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else {
 		s3Config = &aws.Config{}
@@ -266,7 +268,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
-		return nil, nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
+		return nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
@@ -282,7 +284,7 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		tlsConfig.RootCAs = x509.NewCertPool()
 		data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		tlsConfig.RootCAs.AppendCertsFromPEM(data)
 	}
@@ -310,11 +312,31 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	if cfg.Inject != nil {
 		transport = cfg.Inject(transport)
 	}
-
-	s3Config = s3Config.WithHTTPClient(&http.Client{
+	httpClient := &http.Client{
 		Transport: transport,
-	})
+	}
 
+	if hedging {
+		httpClient = cfg.Hedging.Client(httpClient)
+	}
+
+	s3Config = s3Config.WithHTTPClient(httpClient)
+
+	sess, err := session.NewSession(s3Config)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create new s3 session")
+	}
+
+	s3Client := s3.New(sess)
+
+	if cfg.SignatureVersion == SignatureVersionV2 {
+		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
+	}
+
+	return s3Client, nil
+}
+
+func buckets(cfg S3Config) ([]string, error) {
 	// bucketnames
 	var bucketNames []string
 	if cfg.S3.URL != nil {
@@ -326,10 +348,9 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	}
 
 	if len(bucketNames) == 0 {
-		return nil, nil, errors.New("at least one bucket name must be specified")
+		return nil, errors.New("at least one bucket name must be specified")
 	}
-
-	return s3Config, bucketNames, nil
+	return bucketNames, nil
 }
 
 // Stop fulfills the chunk.ObjectClient interface
@@ -376,7 +397,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 		}
 		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
-			resp, requestErr = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
 				Key:    aws.String(objectKey),
 			})

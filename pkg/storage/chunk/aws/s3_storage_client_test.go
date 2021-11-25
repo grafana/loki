@@ -2,13 +2,18 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,6 +77,68 @@ func TestRequestMiddleware(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.expected, strings.Trim(string(buffer), "\n\x00"))
+		})
+	}
+}
+
+func Test_Hedging(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		expectedCalls int32
+		hedgeAt       time.Duration
+		upTo          int
+		do            func(c *S3ObjectClient)
+	}{
+		{
+			"deletes are not hedged",
+			1,
+			5,
+			10,
+			func(c *S3ObjectClient) {
+				_ = c.DeleteObject(context.Background(), "foo")
+			},
+		},
+		{
+			"gets are hedged",
+			3,
+			5,
+			3,
+			func(c *S3ObjectClient) {
+				_, _ = c.GetObject(context.Background(), "foo")
+			},
+		},
+		{
+			"gets are not hedged when not configured",
+			1,
+			0,
+			0,
+			func(c *S3ObjectClient) {
+				_, _ = c.GetObject(context.Background(), "foo")
+			},
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			count := int32(0)
+
+			c, err := NewS3ObjectClient(S3Config{
+				Hedging: hedging.Config{
+					At:   tc.hedgeAt,
+					UpTo: tc.upTo,
+				},
+				BackoffConfig: backoff.Config{MaxRetries: 1},
+				BucketNames:   "foo",
+				Inject: func(next http.RoundTripper) http.RoundTripper {
+					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+						time.Sleep(1 * time.Second)
+						atomic.AddInt32(&count, 1)
+						return nil, errors.New("foo")
+					})
+				},
+			})
+			require.NoError(t, err)
+			tc.do(c)
+			require.Equal(t, tc.expectedCalls, count)
 		})
 	}
 }

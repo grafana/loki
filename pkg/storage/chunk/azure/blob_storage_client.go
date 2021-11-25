@@ -6,12 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/mattn/go-ieproxy"
 
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -19,6 +22,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
@@ -51,6 +55,26 @@ var (
 			"https://%s.blob.core.usgovcloudapi.net/%s",
 		},
 	}
+
+	// default Azure http client.
+	defaultClient = &http.Client{
+		Transport: &http.Transport{
+			Proxy: ieproxy.GetProxyFunc(),
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+				DualStack: true,
+			}).Dial,
+			MaxIdleConns:           0,
+			MaxIdleConnsPerHost:    100,
+			IdleConnTimeout:        90 * time.Second,
+			TLSHandshakeTimeout:    10 * time.Second,
+			ExpectContinueTimeout:  1 * time.Second,
+			DisableKeepAlives:      false,
+			DisableCompression:     false,
+			MaxResponseHeaderBytes: 0,
+		},
+	}
 )
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
@@ -66,6 +90,8 @@ type BlobStorageConfig struct {
 	MaxRetries         int            `yaml:"max_retries"`
 	MinRetryDelay      time.Duration  `yaml:"min_retry_delay"`
 	MaxRetryDelay      time.Duration  `yaml:"max_retry_delay"`
+
+	Hedging hedging.Config `yaml:"hedging"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -86,6 +112,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.IntVar(&c.MaxRetries, prefix+"azure.max-retries", 5, "Number of retries for a request which times out.")
 	f.DurationVar(&c.MinRetryDelay, prefix+"azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
 	f.DurationVar(&c.MaxRetryDelay, prefix+"azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
+	c.Hedging.RegisterFlagsWithPrefix(prefix+"azure.", f)
 }
 
 func (c *BlobStorageConfig) ToCortexAzureConfig() cortex_azure.BlobStorageConfig {
@@ -148,7 +175,7 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 }
 
 func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
-	blockBlobURL, err := b.getBlobURL(objectKey)
+	blockBlobURL, err := b.getBlobURL(objectKey, true)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +190,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	blockBlobURL, err := b.getBlobURL(objectKey)
+	blockBlobURL, err := b.getBlobURL(objectKey, false)
 	if err != nil {
 		return err
 	}
@@ -176,7 +203,7 @@ func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io
 	return err
 }
 
-func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
+func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobURL, error) {
 	blobID = strings.Replace(blobID, ":", "-", -1)
 
 	// generate url for new chunk blob
@@ -185,7 +212,7 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 		return azblob.BlockBlobURL{}, err
 	}
 
-	azPipeline, err := b.newPipeline()
+	azPipeline, err := b.newPipeline(hedging)
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
@@ -199,7 +226,7 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 		return azblob.ContainerURL{}, err
 	}
 
-	azPipeline, err := b.newPipeline()
+	azPipeline, err := b.newPipeline(false)
 	if err != nil {
 		return azblob.ContainerURL{}, err
 	}
@@ -207,13 +234,13 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 	return azblob.NewContainerURL(*u, azPipeline), nil
 }
 
-func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
+func (b *BlobStorage) newPipeline(hedging bool) (pipeline.Pipeline, error) {
 	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
 	if err != nil {
 		return nil, err
 	}
 
-	return azblob.NewPipeline(credential, azblob.PipelineOptions{
+	opts := azblob.PipelineOptions{
 		Retry: azblob.RetryOptions{
 			Policy:        azblob.RetryPolicyExponential,
 			MaxTries:      (int32)(b.cfg.MaxRetries),
@@ -221,7 +248,26 @@ func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
 			RetryDelay:    b.cfg.MinRetryDelay,
 			MaxRetryDelay: b.cfg.MaxRetryDelay,
 		},
-	}), nil
+	}
+
+	opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+		return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+			resp, err := defaultClient.Do(request.WithContext(ctx))
+			return pipeline.NewHTTPResponse(resp), err
+		}
+	})
+
+	if hedging {
+		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+			client := b.cfg.Hedging.Client(defaultClient)
+			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+				resp, err := client.Do(request.WithContext(ctx))
+				return pipeline.NewHTTPResponse(resp), err
+			}
+		})
+	}
+
+	return azblob.NewPipeline(credential, opts), nil
 }
 
 // List implements chunk.ObjectClient.
@@ -259,7 +305,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 }
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
-	blockBlobURL, err := b.getBlobURL(blobID)
+	blockBlobURL, err := b.getBlobURL(blobID, false)
 	if err != nil {
 		return err
 	}
