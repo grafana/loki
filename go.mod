@@ -174,7 +174,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
-	github.com/google/gofuzz v1.1.0 // indirect
+	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20210827144239-02619b876842 // indirect
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.1.0 // indirect
@@ -284,7 +284,7 @@ replace k8s.io/api => k8s.io/api v0.21.0
 
 replace k8s.io/apimachinery => k8s.io/apimachinery v0.21.0
 
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.10.1
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
