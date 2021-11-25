@@ -262,9 +262,49 @@ field from the journal was transformed into a label called `host` through
 ### Syslog-NG Output Configuration
 
 ```
-destination d_loki {
-  syslog("localhost" transport("tcp") port(<promtail_port>));
+destination d_loki { 
+  network("localhost" transport("tcp") port("<promtail_port>") flags(syslog-protocol));
 };
+```
+
+#### Long App Names
+If your Application has a too long name, it can cause issues. 
+This workaround writes the PROGRAM into a seperate field and unsets it.
+After this it is possible to remap it in Promtail
+
+```
+rewrite r_rewrite_set_appname {
+  set("${PROGRAM}", value(".SDATA.custom@99770.appname"));
+};
+
+rewrite r_rewrite_unset{
+  unset(value("PROGRAM"));
+};
+
+log {
+  source(s_net);
+  rewrite(r_rewrite_set_appname);
+  rewrite(r_rewrite_unset);
+  destination(d_loki);
+};
+```
+
+Promtail:
+```
+    - job_name: syslog
+      syslog:
+        listen_address: 0.0.0.0:7514
+        max_message_length: 65536
+        label_structured_data: true
+      relabel_configs:
+        - source_labels: ['__syslog_message_hostname']
+          target_label: 'hostname'
+        - source_labels: ['__syslog_message_severity']
+          target_label: 'severity'
+        - source_labels: ['__syslog_message_facility']
+          target_label: 'facility'
+        - source_labels: ['__syslog_message_sd_custom_99770_appname']
+          target_label: 'appname'
 ```
 
 ### Rsyslog Output Configuration
