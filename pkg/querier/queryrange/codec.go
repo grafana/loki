@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 var LokiCodec = &Codec{}
@@ -256,6 +257,13 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 }
 
 func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Request, error) {
+
+	header := make(http.Header)
+	queryTags := getQueryTags(ctx)
+	if queryTags != "" {
+		header.Set(string(serverutil.QueryTagsHTTPHeader), queryTags)
+	}
+
 	switch request := r.(type) {
 	case *LokiRequest:
 		params := url.Values{
@@ -281,7 +289,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 
 		return req.WithContext(ctx), nil
@@ -303,7 +311,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 		return req.WithContext(ctx), nil
 	case *LokiLabelNamesRequest:
@@ -321,7 +329,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 		return req.WithContext(ctx), nil
 	case *LokiInstantRequest:
@@ -344,7 +352,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 
 		return req.WithContext(ctx), nil
@@ -855,4 +863,9 @@ func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryra
 	}
 
 	return promHeaders
+}
+
+func getQueryTags(ctx context.Context) string {
+	v, _ := ctx.Value(serverutil.QueryTagsHTTPHeader).(string) // it's ok to be empty
+	return v
 }
