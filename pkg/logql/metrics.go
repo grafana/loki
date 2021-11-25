@@ -91,8 +91,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 
 	queryTags, _ := ctx.Value(serverutil.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 
-	logValues := make([]interface{}, 0)
-	logValues = append(logValues, tagsToKeyValues(queryTags)...)
+	logValues := make([]interface{}, 0, 20)
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
@@ -108,6 +107,8 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 	}...)
+
+	logValues = append(logValues, tagsToKeyValues(queryTags)...)
 
 	// we also log queries, useful for troubleshooting slow queries.
 	level.Info(logger).Log(
