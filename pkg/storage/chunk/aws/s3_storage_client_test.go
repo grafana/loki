@@ -99,24 +99,24 @@ func Test_Hedging(t *testing.T) {
 				_ = c.DeleteObject(context.Background(), "foo")
 			},
 		},
-		// {
-		// 	"gets are hedged",
-		// 	3,
-		// 	20 * time.Nanosecond,
-		// 	3,
-		// 	func(c *S3ObjectClient) {
-		// 		_, _ = c.GetObject(context.Background(), "foo")
-		// 	},
-		// },
-		// {
-		// 	"gets are not hedged when not configured",
-		// 	1,
-		// 	0,
-		// 	0,
-		// 	func(c *S3ObjectClient) {
-		// 		_, _ = c.GetObject(context.Background(), "foo")
-		// 	},
-		// },
+		{
+			"gets are hedged",
+			3,
+			20 * time.Nanosecond,
+			3,
+			func(c *S3ObjectClient) {
+				_, _ = c.GetObject(context.Background(), "foo")
+			},
+		},
+		{
+			"gets are not hedged when not configured",
+			1,
+			0,
+			0,
+			func(c *S3ObjectClient) {
+				_, _ = c.GetObject(context.Background(), "foo")
+			},
+		},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,12 +127,12 @@ func Test_Hedging(t *testing.T) {
 					At:   tc.hedgeAt,
 					UpTo: tc.upTo,
 				},
-				BackoffConfig: backoff.Config{MaxRetries: 1},
-				BucketNames:   "foo",
+				AccessKeyID:     "foo",
+				SecretAccessKey: "bar",
+				BackoffConfig:   backoff.Config{MaxRetries: 1},
+				BucketNames:     "foo",
 				Inject: func(next http.RoundTripper) http.RoundTripper {
 					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-						fmt.Println(req.Method)
-						fmt.Println(req.URL.String())
 						count.Inc()
 						time.Sleep(200 * time.Millisecond)
 						return nil, errors.New("foo")
