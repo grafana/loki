@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
@@ -66,11 +66,11 @@ func Test_Hedging(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			count := int32(0)
+			count := atomic.NewInt32(0)
 			// hijack the client to count the number of calls
 			defaultClient = &http.Client{
 				Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-					atomic.AddInt32(&count, 1)
+					count.Inc()
 					time.Sleep(200 * time.Millisecond)
 					return nil, errors.New("fo")
 				}),
@@ -86,7 +86,7 @@ func Test_Hedging(t *testing.T) {
 			})
 			require.NoError(t, err)
 			tc.do(c)
-			require.Equal(t, tc.expectedCalls, count)
+			require.Equal(t, tc.expectedCalls, count.Load())
 		})
 	}
 }

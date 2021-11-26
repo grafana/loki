@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
@@ -120,7 +120,7 @@ func Test_Hedging(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			count := int32(0)
+			count := atomic.NewInt32(0)
 
 			c, err := NewS3ObjectClient(S3Config{
 				Hedging: hedging.Config{
@@ -131,7 +131,7 @@ func Test_Hedging(t *testing.T) {
 				BucketNames:   "foo",
 				Inject: func(next http.RoundTripper) http.RoundTripper {
 					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-						atomic.AddInt32(&count, 1)
+						count.Inc()
 						time.Sleep(200 * time.Millisecond)
 						return nil, errors.New("foo")
 					})
@@ -139,7 +139,7 @@ func Test_Hedging(t *testing.T) {
 			})
 			require.NoError(t, err)
 			tc.do(c)
-			require.Equal(t, tc.expectedCalls, count)
+			require.Equal(t, tc.expectedCalls, count.Load())
 		})
 	}
 }

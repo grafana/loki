@@ -3,12 +3,12 @@ package openstack
 import (
 	"context"
 	"net/http"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
@@ -66,7 +66,7 @@ func Test_Hedging(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			count := int32(0)
+			count := atomic.NewInt32(0)
 			// hijack the transport to count the number of calls
 			defaultTransport = RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				// fake auth
@@ -87,7 +87,7 @@ func Test_Hedging(t *testing.T) {
 						Body:       http.NoBody,
 					}, nil
 				}
-				atomic.AddInt32(&count, 1)
+				count.Inc()
 				time.Sleep(200 * time.Millisecond)
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -111,7 +111,7 @@ func Test_Hedging(t *testing.T) {
 			})
 			require.NoError(t, err)
 			tc.do(c)
-			require.Equal(t, tc.expectedCalls, atomic.LoadInt32(&count))
+			require.Equal(t, tc.expectedCalls, count.Load())
 		})
 	}
 }
