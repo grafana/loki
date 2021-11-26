@@ -66,7 +66,7 @@ func TestRequestMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg.Inject = tt.fn
-			client, err := NewS3ObjectClient(cfg)
+			client, err := NewS3ObjectClient(cfg, hedging.Config{})
 			require.NoError(t, err)
 
 			readCloser, err := client.GetObject(context.Background(), "key")
@@ -126,10 +126,6 @@ func Test_Hedging(t *testing.T) {
 			count := atomic.NewInt32(0)
 
 			c, err := NewS3ObjectClient(S3Config{
-				Hedging: hedging.Config{
-					At:   tc.hedgeAt,
-					UpTo: tc.upTo,
-				},
 				AccessKeyID:     "foo",
 				SecretAccessKey: "bar",
 				BackoffConfig:   backoff.Config{MaxRetries: 1},
@@ -141,6 +137,9 @@ func Test_Hedging(t *testing.T) {
 						return nil, errors.New("foo")
 					})
 				},
+			}, hedging.Config{
+				At:   tc.hedgeAt,
+				UpTo: tc.upTo,
 			})
 			require.NoError(t, err)
 			tc.do(c)

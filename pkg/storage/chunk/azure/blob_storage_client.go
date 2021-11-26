@@ -90,8 +90,6 @@ type BlobStorageConfig struct {
 	MaxRetries         int            `yaml:"max_retries"`
 	MinRetryDelay      time.Duration  `yaml:"min_retry_delay"`
 	MaxRetryDelay      time.Duration  `yaml:"max_retry_delay"`
-
-	Hedging hedging.Config `yaml:"hedging"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -112,7 +110,6 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.IntVar(&c.MaxRetries, prefix+"azure.max-retries", 5, "Number of retries for a request which times out.")
 	f.DurationVar(&c.MinRetryDelay, prefix+"azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
 	f.DurationVar(&c.MaxRetryDelay, prefix+"azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
-	c.Hedging.RegisterFlagsWithPrefix(prefix+"azure.", f)
 }
 
 func (c *BlobStorageConfig) ToCortexAzureConfig() cortex_azure.BlobStorageConfig {
@@ -136,14 +133,16 @@ func (c *BlobStorageConfig) ToCortexAzureConfig() cortex_azure.BlobStorageConfig
 type BlobStorage struct {
 	// blobService storage.Serv
 	cfg          *BlobStorageConfig
+	hedgingCfg   hedging.Config
 	containerURL azblob.ContainerURL
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
-func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
+func NewBlobStorage(cfg *BlobStorageConfig, hedgingCfg hedging.Config) (*BlobStorage, error) {
 	log.WarnExperimentalUse("Azure Blob Storage")
 	blobStorage := &BlobStorage{
-		cfg: cfg,
+		cfg:        cfg,
+		hedgingCfg: hedgingCfg,
 	}
 
 	var err error
@@ -259,7 +258,7 @@ func (b *BlobStorage) newPipeline(hedging bool) (pipeline.Pipeline, error) {
 
 	if hedging {
 		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
-			client := b.cfg.Hedging.Client(defaultClient)
+			client := b.hedgingCfg.Client(defaultClient)
 			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
 				resp, err := client.Do(request.WithContext(ctx))
 				return pipeline.NewHTTPResponse(resp), err

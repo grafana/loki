@@ -469,6 +469,9 @@ storage:
   # Configures backend rule storage for a local filesystem directory.
   [local: <local_storage_config>]
 
+  # The `hedging_config` configures how to hedge requests for the storage.
+  [hedging: <hedging_config>]
+
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
   # Enable remote-write functionality.
@@ -703,17 +706,6 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
-
-hedging:
-  # Optional. Default is 0 (disabled)
-  # Example: "at: 500ms"
-  # If set to a non-zero value another request will be issued at the provided duration. Recommended to
-  # be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
-  # used with queriers and has minimal to no impact on other pieces.
-  [at: <duration> | default = 0]
-  # Optional. Default is 2
-  # The maximum amount of requests to be issued.
-  [up_to: <int> | default = 2]
 ```
 
 ## gcs_storage_config
@@ -733,17 +725,6 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # The duration after which the requests to GCS should be timed out.
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
-
-hedging:
-  # Optional. Default is 0 (disabled)
-  # Example: "at: 500ms"
-  # If set to a non-zero value another request will be issued at the provided duration. Recommended to
-  # be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
-  # used with queriers and has minimal to no impact on other pieces.
-  [at: <duration> | default = 0]
-  # Optional. Default is 2
-  # The maximum amount of requests to be issued.
-  [up_to: <int> | default = 2]
 ```
 
 ## s3_storage_config
@@ -808,17 +789,6 @@ http_config:
   # endpoint.
   # CLI flag: -<prefix>.s3.http.ca-file
   [ca_file: <string> | default = ""]
-
-hedging:
-  # Optional. Default is 0 (disabled)
-  # Example: "at: 500ms"
-  # If set to a non-zero value another request will be issued at the provided duration. Recommended to
-  # be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
-  # used with queriers and has minimal to no impact on other pieces.
-  [at: <duration> | default = 0]
-  # Optional. Default is 2
-  # The maximum amount of requests to be issued.
-  [up_to: <int> | default = 2]
 ```
 
 ## swift_storage_config
@@ -884,17 +854,26 @@ The `swift_storage_config` configures Swift as a general storage for different d
 # Name of the Swift container to put chunks in.
 # CLI flag: -<prefix>.swift.container-name
 [container_name: <string> | default = "cortex"]
+```
 
-hedging:
-  # Optional. Default is 0 (disabled)
-  # Example: "at: 500ms"
-  # If set to a non-zero value another request will be issued at the provided duration. Recommended to
-  # be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
-  # used with queriers and has minimal to no impact on other pieces.
-  [at: <duration> | default = 0]
-  # Optional. Default is 2
-  # The maximum amount of requests to be issued.
-  [up_to: <int> | default = 2]
+## hedging_config
+
+The `hedging_config` configures how to hedge requests for the storage.
+
+Hedged requests is sending a secondary request until the first request has been outstanding for more than a configure expected latency
+for this class of requests.
+You should configure the latency based on your p99 of object store requests.
+
+```yaml
+# Optional. Default is 0 (disabled)
+# Example: "at: 500ms"
+# If set to a non-zero value another request will be issued at the provided duration. Recommended to
+# be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
+# used with queriers and has minimal to no impact on other pieces.
+[at: <duration> | default = 0]
+# Optional. Default is 2
+# The maximum amount of requests to be issued.
+[up_to: <int> | default = 2]
 ```
 
 ## local_storage_config
@@ -2404,6 +2383,9 @@ If any specific configuration for an object storage client have been provided el
 
 # Configures a (local) filesystem as the common storage.
 [filesystem: <local_storage_config>]
+
+# The `hedging_config` configures how to hedge requests for the storage.
+[hedging: <hedging_config>]
 ```
 
 ### ring_config

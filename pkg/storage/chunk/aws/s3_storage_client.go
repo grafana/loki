@@ -79,7 +79,6 @@ type S3Config struct {
 	SignatureVersion string              `yaml:"signature_version"`
 	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config"`
-	Hedging          hedging.Config      `yaml:"hedging"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -124,7 +123,6 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
 	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry when s3 get Object")
-	cfg.Hedging.RegisterFlagsWithPrefix(prefix+"s3.", f)
 }
 
 // Validate config and returns error on failure
@@ -162,7 +160,8 @@ func (cfg *HTTPConfig) ToCortexHTTPConfig() cortex_aws.HTTPConfig {
 }
 
 type S3ObjectClient struct {
-	cfg         S3Config
+	cfg S3Config
+
 	bucketNames []string
 	S3          s3iface.S3API
 	hedgedS3    s3iface.S3API
@@ -170,16 +169,16 @@ type S3ObjectClient struct {
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
+func NewS3ObjectClient(cfg S3Config, hedgingCfg hedging.Config) (*S3ObjectClient, error) {
 	bucketNames, err := buckets(cfg)
 	if err != nil {
 		return nil, err
 	}
-	s3Client, err := buildS3Client(cfg, false)
+	s3Client, err := buildS3Client(cfg, hedgingCfg, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
-	s3ClientHedging, err := buildS3Client(cfg, true)
+	s3ClientHedging, err := buildS3Client(cfg, hedgingCfg, true)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build s3 config")
 	}
@@ -236,7 +235,7 @@ func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
 	}
 }
 
-func buildS3Client(cfg S3Config, hedging bool) (*s3.S3, error) {
+func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
 	var s3Config *aws.Config
 	var err error
 
@@ -317,7 +316,7 @@ func buildS3Client(cfg S3Config, hedging bool) (*s3.S3, error) {
 	}
 
 	if hedging {
-		httpClient = cfg.Hedging.Client(httpClient)
+		httpClient = hedgingCfg.Client(httpClient)
 	}
 
 	s3Config = s3Config.WithHTTPClient(httpClient)

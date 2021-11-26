@@ -72,11 +72,10 @@ func Test_Hedging(t *testing.T) {
 			c, err := NewBlobStorage(&BlobStorageConfig{
 				ContainerName: "foo",
 				Environment:   azureGlobal,
-				Hedging: hedging.Config{
-					At:   tc.hedgeAt,
-					UpTo: tc.upTo,
-				},
-				MaxRetries: 1,
+				MaxRetries:    1,
+			}, hedging.Config{
+				At:   tc.hedgeAt,
+				UpTo: tc.upTo,
 			})
 			require.NoError(t, err)
 			tc.do(c)

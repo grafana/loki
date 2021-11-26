@@ -28,11 +28,10 @@ type GCSObjectClient struct {
 
 // GCSConfig is config for the GCS Chunk Client.
 type GCSConfig struct {
-	BucketName       string         `yaml:"bucket_name"`
-	ChunkBufferSize  int            `yaml:"chunk_buffer_size"`
-	RequestTimeout   time.Duration  `yaml:"request_timeout"`
-	EnableOpenCensus bool           `yaml:"enable_opencensus"`
-	Hedging          hedging.Config `yaml:"hedging"`
+	BucketName       string        `yaml:"bucket_name"`
+	ChunkBufferSize  int           `yaml:"chunk_buffer_size"`
+	RequestTimeout   time.Duration `yaml:"request_timeout"`
+	EnableOpenCensus bool          `yaml:"enable_opencensus"`
 
 	Insecure bool `yaml:"-"`
 }
@@ -48,7 +47,6 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.ChunkBufferSize, prefix+"gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enabled OpenCensus (OC) instrumentation for all requests.")
-	cfg.Hedging.RegisterFlagsWithPrefix(prefix+"gcs.", f)
 }
 
 func (cfg *GCSConfig) ToCortexGCSConfig() cortex_gcp.GCSConfig {
@@ -61,16 +59,16 @@ func (cfg *GCSConfig) ToCortexGCSConfig() cortex_gcp.GCSConfig {
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
-func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, error) {
-	return newGCSObjectClient(ctx, cfg, storage.NewClient)
+func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config) (*GCSObjectClient, error) {
+	return newGCSObjectClient(ctx, cfg, hedgingCfg, storage.NewClient)
 }
 
-func newGCSObjectClient(ctx context.Context, cfg GCSConfig, clientFactory ClientFactory) (*GCSObjectClient, error) {
-	bucket, err := newBucketHandle(ctx, cfg, false, clientFactory)
+func newGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, clientFactory ClientFactory) (*GCSObjectClient, error) {
+	bucket, err := newBucketHandle(ctx, cfg, hedgingCfg, false, clientFactory)
 	if err != nil {
 		return nil, err
 	}
-	hedgingBucket, err := newBucketHandle(ctx, cfg, true, clientFactory)
+	hedgingBucket, err := newBucketHandle(ctx, cfg, hedgingCfg, true, clientFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +79,7 @@ func newGCSObjectClient(ctx context.Context, cfg GCSConfig, clientFactory Client
 	}, nil
 }
 
-func newBucketHandle(ctx context.Context, cfg GCSConfig, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
+func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
 	var opts []option.ClientOption
 	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure)
 	if err != nil {
@@ -89,7 +87,7 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedging bool, clientFac
 	}
 
 	if hedging {
-		httpClient = cfg.Hedging.Client(httpClient)
+		httpClient = hedgingCfg.Client(httpClient)
 	}
 
 	opts = append(opts, option.WithHTTPClient(httpClient))

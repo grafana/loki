@@ -62,10 +62,9 @@ func Test_Hedging(t *testing.T) {
 			c, err := newGCSObjectClient(ctx, GCSConfig{
 				BucketName: "test-bucket",
 				Insecure:   true,
-				Hedging: hedging.Config{
-					At:   tc.hedgeAt,
-					UpTo: tc.upTo,
-				},
+			}, hedging.Config{
+				At:   tc.hedgeAt,
+				UpTo: tc.upTo,
 			}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
 				opts = append(opts, option.WithEndpoint(server.URL))
 				opts = append(opts, option.WithoutAuthentication())

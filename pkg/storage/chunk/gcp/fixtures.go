@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/testutils"
 )
@@ -80,7 +81,7 @@ func (f *fixture) Clients() (
 
 	if f.gcsObjectClient {
 		var c *GCSObjectClient
-		c, err = newGCSObjectClient(ctx, GCSConfig{BucketName: "chunks"}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
+		c, err = newGCSObjectClient(ctx, GCSConfig{BucketName: "chunks"}, hedging.Config{}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
 			return f.gcssrv.Client(), nil
 		})
 		if err != nil {

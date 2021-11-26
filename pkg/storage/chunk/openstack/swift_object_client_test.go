@@ -98,10 +98,9 @@ func Test_Hedging(t *testing.T) {
 					ConnectTimeout: 10 * time.Second,
 					RequestTimeout: 10 * time.Second,
 				},
-				Hedging: hedging.Config{
-					At:   tc.hedgeAt,
-					UpTo: tc.upTo,
-				},
+			}, hedging.Config{
+				At:   tc.hedgeAt,
+				UpTo: tc.upTo,
 			})
 			require.NoError(t, err)
 			tc.do(c)

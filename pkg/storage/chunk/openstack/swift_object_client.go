@@ -36,8 +36,6 @@ type SwiftObjectClient struct {
 // SwiftConfig is config for the Swift Chunk Client.
 type SwiftConfig struct {
 	cortex_swift.Config `yaml:",inline"`
-
-	Hedging hedging.Config `yaml:"hedging"`
 }
 
 // RegisterFlags registers flags.
@@ -53,7 +51,6 @@ func (cfg *SwiftConfig) Validate() error {
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Hedging.RegisterFlagsWithPrefix(prefix+"swift.", f)
 }
 
 func (cfg *SwiftConfig) ToCortexSwiftConfig() cortex_openstack.SwiftConfig {
@@ -63,10 +60,10 @@ func (cfg *SwiftConfig) ToCortexSwiftConfig() cortex_openstack.SwiftConfig {
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
-func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
+func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObjectClient, error) {
 	log.WarnExperimentalUse("OpenStack Swift Storage")
 
-	c, err := createConnection(cfg, false)
+	c, err := createConnection(cfg, hedgingCfg, false)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +71,7 @@ func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
 	if err := c.ContainerCreate(cfg.ContainerName, nil); err != nil {
 		return nil, err
 	}
-	hedging, err := createConnection(cfg, true)
+	hedging, err := createConnection(cfg, hedgingCfg, true)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +82,7 @@ func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
 	}, nil
 }
 
-func createConnection(cfg SwiftConfig, hedging bool) (*swift.Connection, error) {
+func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
 	// Create a connection
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
@@ -113,7 +110,7 @@ func createConnection(cfg SwiftConfig, hedging bool) (*swift.Connection, error) 
 		c.DomainId = cfg.UserDomainID
 	}
 	if hedging {
-		c.Transport = cfg.Hedging.RoundTripper(c.Transport)
+		c.Transport = hedgingCfg.RoundTripper(c.Transport)
 	}
 
 	err := c.Authenticate()
