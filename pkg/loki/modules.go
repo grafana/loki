@@ -489,6 +489,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}
 
 	frontendHandler = middleware.Merge(
+		serverutil.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -500,6 +501,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	// If this process also acts as a Querier we don't do any proxying of tail requests
 	if t.Cfg.Frontend.TailProxyURL != "" && !t.isModuleActive(Querier) {
 		httpMiddleware := middleware.Merge(
+			serverutil.ExtractQueryTagsMiddleware(),
 			t.HTTPAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)

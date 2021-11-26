@@ -54,6 +54,7 @@ func InitWorkerService(
 
 	// Create a couple Middlewares used to handle panics, perform auth, parse forms in http request, and set content type in response
 	handlerMiddleware := middleware.Merge(
+		serverutil.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		authMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
