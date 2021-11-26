@@ -26,9 +26,9 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 var LokiCodec = &Codec{}
@@ -261,7 +261,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 	header := make(http.Header)
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
-		header.Set(string(serverutil.QueryTagsHTTPHeader), queryTags)
+		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
 	switch request := r.(type) {
@@ -866,6 +866,6 @@ func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryra
 }
 
 func getQueryTags(ctx context.Context) string {
-	v, _ := ctx.Value(serverutil.QueryTagsHTTPHeader).(string) // it's ok to be empty
+	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
 	return v
 }

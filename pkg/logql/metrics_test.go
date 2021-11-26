@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 func TestQueryType(t *testing.T) {
@@ -64,7 +64,7 @@ func TestLogSlowQuery(t *testing.T) {
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
 
-	ctx = context.WithValue(ctx, serverutil.QueryTagsHTTPHeader, "Source=logvolhist,Feature=Beta")
+	ctx = context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, "Source=logvolhist,Feature=Beta")
 
 	RecordMetrics(ctx, LiteralParams{
 		qs:        `{foo="bar"} |= "buzz"`,
