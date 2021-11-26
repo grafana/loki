@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -28,21 +29,14 @@ func Test_Hedging(t *testing.T) {
 		do            func(c *BlobStorage)
 	}{
 		{
-			"deletes are not hedged",
-			1,
+			"delete/put/list are not hedged",
+			3,
 			20 * time.Nanosecond,
 			10,
 			func(c *BlobStorage) {
 				_ = c.DeleteObject(context.Background(), "foo")
-			},
-		},
-		{
-			"list are not hedged",
-			1,
-			20 * time.Nanosecond,
-			10,
-			func(c *BlobStorage) {
 				_, _, _ = c.List(context.Background(), "foo", "/")
+				_ = c.PutObject(context.Background(), "foo", bytes.NewReader([]byte("bar")))
 			},
 		},
 		{
