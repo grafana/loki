@@ -21,8 +21,8 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cristalhq/hedgedhttp v0.6.1
 	github.com/cortexproject/cortex v1.10.1-0.20211124141505-4e9fc3a2b5ab
+	github.com/cristalhq/hedgedhttp v0.6.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
