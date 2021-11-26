@@ -404,11 +404,11 @@ func TestNewChunkKey(t *testing.T) {
 		ChecksumSet: true,
 		Checksum:    12345,
 	}
-	key := c.ExternalKey()
-	newChunk, err := ParseExternalKey("fake", key)
+	key := c.NewExternalKey(2, 1*time.Hour)
+	newChunk, err := parseNewerExternalKey("fake", key)
 	require.Nil(t, err)
 	require.Equal(t, c, newChunk)
-	require.Equal(t, key, newChunk.ExternalKey())
+	require.Equal(t, key, newChunk.NewExternalKey(2, 1*time.Hour))
 }
 
 func Benchmark_ParseNewExternalKey(b *testing.B) {
