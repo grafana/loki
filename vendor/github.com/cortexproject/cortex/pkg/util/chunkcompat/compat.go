@@ -4,7 +4,7 @@ import (
 	"bytes"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"

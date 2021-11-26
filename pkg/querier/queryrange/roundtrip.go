@@ -11,7 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -349,7 +349,8 @@ func NewLabelsTripperware(
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
+			// Do not forward any request header.
+			return queryrange.NewRoundTripper(next, codec, nil, queryRangeMiddleware...)
 		}
 		return next
 	}, nil

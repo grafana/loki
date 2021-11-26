@@ -272,7 +272,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 		}
 
 		for _, entries := range rec.RefEntries {
-			worker := int(entries.Ref % uint64(len(inputs)))
+			worker := int(uint64(entries.Ref) % uint64(len(inputs)))
 			inputs[worker] <- recoveryInput{
 				userID: rec.UserID,
 				data:   entries,

@@ -1,7 +1,7 @@
 package util
 
-// copy and modification of github.com/prometheus/prometheus/pkg/relabel/relabel.go
-// reason: the custom types in github.com/prometheus/prometheus/pkg/relabel/relabel.go are difficult to unmarshal
+// copy and modification of github.com/prometheus/prometheus/model/relabel/relabel.go
+// reason: the custom types in github.com/prometheus/prometheus/model/relabel/relabel.go are difficult to unmarshal
 type RelabelConfig struct {
 	// A list of labels from which values are taken and concatenated
 	// with the configured separator in order.

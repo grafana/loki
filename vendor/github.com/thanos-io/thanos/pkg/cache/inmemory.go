@@ -8,14 +8,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	lru "github.com/hashicorp/golang-lru/simplelru"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/thanos-io/thanos/pkg/model"
 	"gopkg.in/yaml.v2"
+
+	"github.com/thanos-io/thanos/pkg/model"
 )
 
 var (

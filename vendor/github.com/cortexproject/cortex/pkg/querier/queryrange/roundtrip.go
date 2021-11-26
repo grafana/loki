@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -59,6 +60,8 @@ type Config struct {
 	CacheResults           bool `yaml:"cache_results"`
 	MaxRetries             int  `yaml:"max_retries"`
 	ShardedQueries         bool `yaml:"parallelise_shardable_queries"`
+	// List of headers which query_range middleware chain would forward to downstream querier.
+	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -68,6 +71,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
+	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
@@ -213,7 +217,7 @@ func NewTripperware(
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
+			queryrange := NewRoundTripper(next, codec, cfg.ForwardHeaders, queryRangeMiddleware...)
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				op := "query"
@@ -244,14 +248,16 @@ type roundTripper struct {
 	next    http.RoundTripper
 	handler Handler
 	codec   Codec
+	headers []string
 }
 
 // NewRoundTripper merges a set of middlewares into an handler, then inject it into the `next` roundtripper
 // using the codec to translate requests and responses.
-func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middleware) http.RoundTripper {
+func NewRoundTripper(next http.RoundTripper, codec Codec, headers []string, middlewares ...Middleware) http.RoundTripper {
 	transport := roundTripper{
-		next:  next,
-		codec: codec,
+		next:    next,
+		codec:   codec,
+		headers: headers,
 	}
 	transport.handler = MergeMiddlewares(middlewares...).Wrap(&transport)
 	return transport
@@ -259,7 +265,8 @@ func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middlew
 
 func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 
-	request, err := q.codec.DecodeRequest(r.Context(), r)
+	// include the headers specified in the roundTripper during decoding the request.
+	request, err := q.codec.DecodeRequest(r.Context(), r, q.headers)
 	if err != nil {
 		return nil, err
 	}

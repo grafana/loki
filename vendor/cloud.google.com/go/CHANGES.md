@@ -1,5 +1,34 @@
 # Changes
 
+## [0.97.0](https://www.github.com/googleapis/google-cloud-go/compare/v0.96.0...v0.97.0) (2021-09-29)
+
+
+### Features
+
+* **internal** add Retry func to testutil from samples repository [#4902](https://github.com/googleapis/google-cloud-go/pull/4902)
+
+## [0.96.0](https://www.github.com/googleapis/google-cloud-go/compare/v0.95.0...v0.96.0) (2021-09-28)
+
+
+### Features
+
+* **civil:** add IsEmpty function to time, date and datetime ([#4728](https://www.github.com/googleapis/google-cloud-go/issues/4728)) ([88bfa64](https://www.github.com/googleapis/google-cloud-go/commit/88bfa64d6df2f3bb7d41e0b8f56717dd3de790e2)), refs [#4727](https://www.github.com/googleapis/google-cloud-go/issues/4727)
+* **internal/godocfx:** detect preview versions ([#4899](https://www.github.com/googleapis/google-cloud-go/issues/4899)) ([9b60844](https://www.github.com/googleapis/google-cloud-go/commit/9b608445ce9ebabbc87a50e85ce6ef89125031d2))
+* **internal:** provide wrapping for retried errors ([#4797](https://www.github.com/googleapis/google-cloud-go/issues/4797)) ([ce5f4db](https://www.github.com/googleapis/google-cloud-go/commit/ce5f4dbab884e847a2d9f1f8f3fcfd7df19a505a))
+
+
+### Bug Fixes
+
+* **internal/gapicgen:** restore fmting proto files ([#4789](https://www.github.com/googleapis/google-cloud-go/issues/4789)) ([5606b54](https://www.github.com/googleapis/google-cloud-go/commit/5606b54b97bb675487c6c138a4081c827218f933))
+* **internal/trace:** use xerrors.As for trace ([#4813](https://www.github.com/googleapis/google-cloud-go/issues/4813)) ([05fe61c](https://www.github.com/googleapis/google-cloud-go/commit/05fe61c5aa4860bdebbbe3e91a9afaba16aa6184))
+
+## [0.95.0](https://www.github.com/googleapis/google-cloud-go/compare/v0.94.1...v0.95.0) (2021-09-21)
+
+### Bug Fixes
+
+* **internal/gapicgen:** add a temporary import ([#4756](https://www.github.com/googleapis/google-cloud-go/issues/4756)) ([4d9c046](https://www.github.com/googleapis/google-cloud-go/commit/4d9c046b66a2dc205e2c14b676995771301440da))
+* **compute/metadata:** remove heavy gax dependency ([#4784](https://www.github.com/googleapis/google-cloud-go/issues/4784)) ([ea00264](https://www.github.com/googleapis/google-cloud-go/commit/ea00264428137471805f2ec67f04f3a5a42928fa))
+
 ### [0.94.1](https://www.github.com/googleapis/google-cloud-go/compare/v0.94.0...v0.94.1) (2021-09-02)
 
 

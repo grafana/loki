@@ -7,14 +7,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/tracing"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -28,16 +29,24 @@ import (
 	"github.com/thanos-io/thanos/pkg/tracing"
 )
 
+// InfoStoreServer packs a store server with extra methods in order
+// to be able to obtain information about a particular store.
+type InfoStoreServer interface {
+	storepb.StoreServer
+	LabelSet() []labelpb.ZLabelSet
+	TimeRange() (int64, int64)
+}
+
 // MultiTSDBStore implements the Store interface backed by multiple TSDBStore instances.
 // TODO(bwplotka): Remove this and use Proxy instead. Details: https://github.com/thanos-io/thanos/issues/2864
 type MultiTSDBStore struct {
 	logger     log.Logger
 	component  component.SourceStoreAPI
-	tsdbStores func() map[string]storepb.StoreServer
+	tsdbStores func() map[string]InfoStoreServer
 }
 
 // NewMultiTSDBStore creates a new MultiTSDBStore.
-func NewMultiTSDBStore(logger log.Logger, _ prometheus.Registerer, component component.SourceStoreAPI, tsdbStores func() map[string]storepb.StoreServer) *MultiTSDBStore {
+func NewMultiTSDBStore(logger log.Logger, _ prometheus.Registerer, component component.SourceStoreAPI, tsdbStores func() map[string]InfoStoreServer) *MultiTSDBStore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -88,6 +97,42 @@ func (s *MultiTSDBStore) Info(ctx context.Context, req *storepb.InfoRequest) (*s
 	}
 
 	return resp, nil
+}
+
+func (s *MultiTSDBStore) LabelSet() []labelpb.ZLabelSet {
+	stores := s.tsdbStores()
+	if len(stores) == 0 {
+		return []labelpb.ZLabelSet{}
+	}
+
+	// We can rely on every underlying TSDB to only have one labelset, so this
+	// will always allocate the correct length immediately.
+	lsets := make([]labelpb.ZLabelSet, 0, len(stores))
+	for _, store := range stores {
+		lsets = append(lsets, store.LabelSet()...)
+	}
+
+	return lsets
+}
+
+func (s *MultiTSDBStore) TimeRange() (int64, int64) {
+	stores := s.tsdbStores()
+	if len(stores) == 0 {
+		return math.MinInt64, math.MaxInt64
+	}
+
+	var minTime, maxTime int64 = math.MaxInt64, math.MinInt64
+	for _, store := range stores {
+		storeMinTime, storeMaxTime := store.TimeRange()
+		if minTime > storeMinTime {
+			minTime = storeMinTime
+		}
+		if maxTime < storeMaxTime {
+			maxTime = storeMaxTime
+		}
+	}
+
+	return minTime, maxTime
 }
 
 type tenantSeriesSetServer struct {

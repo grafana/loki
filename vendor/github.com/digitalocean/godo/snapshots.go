@@ -75,7 +75,7 @@ func (s *SnapshotsServiceOp) ListVolume(ctx context.Context, opt *ListOptions) (
 	return s.list(ctx, opt, &listOpt)
 }
 
-// Get retrieves an snapshot by id.
+// Get retrieves a snapshot by id.
 func (s *SnapshotsServiceOp) Get(ctx context.Context, snapshotID string) (*Snapshot, *Response, error) {
 	return s.get(ctx, snapshotID)
 }

@@ -107,8 +107,9 @@ func (p *BucketedBytes) Put(b *[]byte) {
 		return
 	}
 
+	sz := cap(*b)
 	for i, bktSize := range p.sizes {
-		if cap(*b) > bktSize {
+		if sz > bktSize {
 			continue
 		}
 		*b = (*b)[:0]
@@ -118,13 +119,11 @@ func (p *BucketedBytes) Put(b *[]byte) {
 
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
-
 	// We could assume here that our users will not make the slices larger
 	// but lets be on the safe side to avoid an underflow of p.usedTotal.
-	sz := uint64(cap(*b))
-	if sz >= p.usedTotal {
+	if uint64(sz) >= p.usedTotal {
 		p.usedTotal = 0
 	} else {
-		p.usedTotal -= sz
+		p.usedTotal -= uint64(sz)
 	}
 }

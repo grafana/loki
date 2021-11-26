@@ -1030,6 +1030,11 @@ func (c *EC2) WaitUntilSnapshotCompletedWithContext(ctx aws.Context, input *Desc
 				Matcher: request.PathAllWaiterMatch, Argument: "Snapshots[].State",
 				Expected: "completed",
 			},
+			{
+				State:   request.FailureWaiterState,
+				Matcher: request.PathAnyWaiterMatch, Argument: "Snapshots[].State",
+				Expected: "error",
+			},
 		},
 		Logger: c.Config.Logger,
 		NewRequest: func(opts []request.Option) (*request.Request, error) {
