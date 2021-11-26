@@ -19,7 +19,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -52,7 +52,7 @@ var (
 type Codec interface {
 	Merger
 	// DecodeRequest decodes a Request from an http request.
-	DecodeRequest(context.Context, *http.Request) (Request, error)
+	DecodeRequest(_ context.Context, request *http.Request, forwardHeaders []string) (Request, error)
 	// DecodeResponse decodes a Response from an http response.
 	// The original request is also passed as a parameter this is useful for implementation that needs the request
 	// to merge result or build the result correctly.
@@ -187,7 +187,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	return &response, nil
 }
 
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
+func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
@@ -222,6 +222,16 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	result.Query = r.FormValue("query")
 	result.Path = r.URL.Path
 
+	// Include the specified headers from http request in prometheusRequest.
+	for _, header := range forwardHeaders {
+		for h, hv := range r.Header {
+			if strings.EqualFold(h, header) {
+				result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
+				break
+			}
+		}
+	}
+
 	for _, value := range r.Header.Values(cacheControlHeader) {
 		if strings.Contains(value, noStoreValue) {
 			result.CachingOptions.Disabled = true
@@ -247,12 +257,20 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Requ
 		Path:     promReq.Path,
 		RawQuery: params.Encode(),
 	}
+	var h = http.Header{}
+
+	for _, hv := range promReq.Headers {
+		for _, v := range hv.Values {
+			h.Add(hv.Name, v)
+		}
+	}
+
 	req := &http.Request{
 		Method:     "GET",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
 		Body:       http.NoBody,
-		Header:     http.Header{},
+		Header:     h,
 	}
 
 	return req.WithContext(ctx), nil

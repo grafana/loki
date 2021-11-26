@@ -21,25 +21,27 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"google.golang.org/grpc/codes"
+	"gopkg.in/yaml.v2"
+
 	"github.com/thanos-io/thanos/pkg/exemplars/exemplarspb"
+	"github.com/thanos-io/thanos/pkg/httpconfig"
 	"github.com/thanos-io/thanos/pkg/metadata/metadatapb"
 	"github.com/thanos-io/thanos/pkg/rules/rulespb"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/targets/targetspb"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"google.golang.org/grpc/codes"
-	yaml "gopkg.in/yaml.v2"
 )
 
 var (
@@ -84,18 +86,19 @@ func NewClient(c HTTPClient, logger log.Logger, userAgent string) *Client {
 
 // NewDefaultClient returns Client with tracing tripperware.
 func NewDefaultClient() *Client {
+	client, _ := httpconfig.NewHTTPClient(httpconfig.ClientConfig{}, "")
 	return NewWithTracingClient(
 		log.NewNopLogger(),
+		client,
 		"",
 	)
 }
 
 // NewWithTracingClient returns client with tracing tripperware.
-func NewWithTracingClient(logger log.Logger, userAgent string) *Client {
+func NewWithTracingClient(logger log.Logger, httpClient *http.Client, userAgent string) *Client {
+	httpClient.Transport = tracing.HTTPTripperware(log.NewNopLogger(), httpClient.Transport)
 	return NewClient(
-		&http.Client{
-			Transport: tracing.HTTPTripperware(log.NewNopLogger(), http.DefaultTransport),
-		},
+		httpClient,
 		logger,
 		userAgent,
 	)

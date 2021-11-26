@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"3138313838303239383939343230333837363830\"",
+  "etag": "\"3133363930393533313437363430303131373733\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -3230,7 +3230,7 @@
       }
     }
   },
-  "revision": "20210127",
+  "revision": "20211018",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "Bucket": {
@@ -3248,6 +3248,21 @@
             "$ref": "BucketAccessControl"
           },
           "type": "array"
+        },
+        "autoclass": {
+          "description": "The bucket's Autoclass configuration.",
+          "properties": {
+            "enabled": {
+              "description": "Whether or not Autoclass is enabled on this bucket",
+              "type": "boolean"
+            },
+            "toggleTime": {
+              "description": "A date and time in RFC 3339 format representing the instant at which \"enabled\" was last toggled.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "type": "object"
         },
         "billing": {
           "description": "The bucket's billing configuration.",
@@ -3293,6 +3308,19 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "customPlacementConfig": {
+          "description": "The bucket's custom placement configuration for Custom Dual Regions.",
+          "properties": {
+            "dataLocations": {
+              "description": "The list of regional locations in which data is placed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
         },
         "defaultEventBasedHold": {
           "description": "The default value for event-based hold on newly created objects in this bucket. Event-based hold is a way to retain objects indefinitely until an event occurs, signified by the hold's release. After being released, such objects will be subject to bucket-level retention (if any). One sample use case of this flag is for banks to hold loan documents for at least 3 years after loan is paid in full. Here, bucket-level retention is 3 years and the event is loan being paid in full. In this example, these objects will be held intact for any number of years until the event has occurred (event-based hold on the object is released) and then 3 more years after that. That means retention duration of the objects begins from the moment event-based hold transitioned from true to false. Objects under event-based hold cannot be deleted, overwritten or archived until the hold is removed.",
@@ -3536,6 +3564,10 @@
           },
           "type": "object"
         },
+        "rpo": {
+          "description": "The Recovery Point Objective (RPO) of this bucket. Set to ASYNC_TURBO to turn on Turbo Replication on a bucket.",
+          "type": "string"
+        },
         "satisfiesPZS": {
           "description": "Reserved for future use.",
           "type": "boolean"
@@ -3581,13 +3613,6 @@
             }
           },
           "type": "object"
-        },
-        "zoneAffinity": {
-          "description": "The zone or zones from which the bucket is intended to use zonal quota. Requests for data from outside the specified affinities are still allowed but won't be able to use zonal quota. The zone or zones need to be within the bucket location otherwise the requests will fail with a 400 Bad Request response.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
         }
       },
       "type": "object"

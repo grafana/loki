@@ -375,7 +375,7 @@ func (s *AppsServiceOp) ListInstanceSizes(ctx context.Context) ([]*AppInstanceSi
 	return root.InstanceSizes, resp, nil
 }
 
-// GetInstanceSize retreives information about a specific instance size for service, worker, and job components.
+// GetInstanceSize retrieves information about a specific instance size for service, worker, and job components.
 func (s *AppsServiceOp) GetInstanceSize(ctx context.Context, slug string) (*AppInstanceSize, *Response, error) {
 	path := fmt.Sprintf("%s/tiers/instance_sizes/%s", appsBasePath, slug)
 	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)

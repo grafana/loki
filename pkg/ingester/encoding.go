@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/tsdb/record"
 
@@ -69,14 +70,14 @@ func (r *WALRecord) AddEntries(fp uint64, counter int64, entries ...logproto.Ent
 	r.entryIndexMap[fp] = len(r.RefEntries)
 	r.RefEntries = append(r.RefEntries, RefEntries{
 		Counter: counter,
-		Ref:     fp,
+		Ref:     chunks.HeadSeriesRef(fp),
 		Entries: entries,
 	})
 }
 
 type RefEntries struct {
 	Counter int64
-	Ref     uint64
+	Ref     chunks.HeadSeriesRef
 	Entries []logproto.Entry
 }
 
@@ -118,7 +119,7 @@ outer:
 		if len(ref.Entries) < 1 {
 			continue
 		}
-		buf.PutBE64(ref.Ref) // write fingerprint
+		buf.PutBE64(uint64(ref.Ref)) // write fingerprint
 
 		if version >= WALRecordEntriesV2 {
 			buf.PutBE64int64(ref.Counter) // write highest counter value
@@ -145,7 +146,7 @@ func decodeEntries(b []byte, version RecordType, rec *WALRecord) error {
 
 	for len(dec.B) > 0 && dec.Err() == nil {
 		refEntries := RefEntries{
-			Ref: dec.Be64(),
+			Ref: chunks.HeadSeriesRef(dec.Be64()),
 		}
 
 		if version >= WALRecordEntriesV2 {

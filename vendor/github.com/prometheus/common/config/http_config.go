@@ -159,6 +159,9 @@ type OAuth2 struct {
 	Scopes           []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
 	TokenURL         string            `yaml:"token_url" json:"token_url"`
 	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
+
+	// TLSConfig is used to connect to the token URL.
+	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -167,6 +170,7 @@ func (a *OAuth2) SetDirectory(dir string) {
 		return
 	}
 	a.ClientSecretFile = JoinDir(dir, a.ClientSecretFile)
+	a.TLSConfig.SetDirectory(dir)
 }
 
 // HTTPClientConfig configures an HTTP client.
@@ -594,7 +598,25 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 			EndpointParams: mapToValues(rt.config.EndpointParams),
 		}
 
-		tokenSource := config.TokenSource(context.Background())
+		tlsConfig, err := NewTLSConfig(&rt.config.TLSConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		var t http.RoundTripper
+		if len(rt.config.TLSConfig.CAFile) == 0 {
+			t = &http.Transport{TLSClientConfig: tlsConfig}
+		} else {
+			t, err = NewTLSRoundTripper(tlsConfig, rt.config.TLSConfig.CAFile, func(tls *tls.Config) (http.RoundTripper, error) {
+				return &http.Transport{TLSClientConfig: tls}, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: t})
+		tokenSource := config.TokenSource(ctx)
 
 		rt.mtx.Lock()
 		rt.secret = secret
@@ -763,7 +785,6 @@ func NewTLSRoundTripper(
 		return nil, err
 	}
 	t.rt = rt
-
 	_, t.hashCAFile, err = t.getCAWithHash()
 	if err != nil {
 		return nil, err
