@@ -437,8 +437,6 @@ func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 // SchemaForTime returns the Schema PeriodConfig to use for a given point in time.
 func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
 	for i := range cfg.Configs {
-		if i+1 < len(cfg.Configs) {
-		}
 		// TODO: callum, confirm we can rely on the schema configs being sorted in this order.
 		if t >= cfg.Configs[i].From.Time && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From.Time) {
 			return cfg.Configs[i], nil
