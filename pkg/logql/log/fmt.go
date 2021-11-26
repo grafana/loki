@@ -95,9 +95,6 @@ func init() {
 type LineFormatter struct {
 	*template.Template
 	buf *bytes.Buffer
-
-	requiredLabelNamesMap map[string]struct{}
-	requiredLabelNames    []string
 }
 
 // NewFormatter creates a new log line formatter from a given text template.
@@ -106,24 +103,16 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid line template: %w", err)
 	}
-	names := uniqueString(listNodeFields([]parse.Node{t.Root}))
-	namesMap := make(map[string]struct{}, len(names))
-	for _, s := range names {
-		namesMap[s] = struct{}{}
-	}
 	return &LineFormatter{
-		Template:              t,
-		buf:                   bytes.NewBuffer(make([]byte, 4096)),
-		requiredLabelNamesMap: namesMap,
-		requiredLabelNames:    names,
+		Template: t,
+		buf:      bytes.NewBuffer(make([]byte, 4096)),
 	}, nil
 }
 
 func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
 
-	model := lf.buildModel(lbs)
-	if err := lf.Template.Execute(lf.buf, model); err != nil {
+	if err := lf.Template.Execute(lf.buf, lbs.Labels().Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		return line, true
 	}
@@ -133,21 +122,8 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	return res, true
 }
 
-func (lf *LineFormatter) buildModel(lbs *LabelsBuilder) interface{} {
-	labels := lbs.Labels()
-	model := make(map[string]string, len(lf.requiredLabelNamesMap))
-	if len(lf.requiredLabelNames) > 0 {
-		for _, l := range labels {
-			if _, ok := lf.requiredLabelNamesMap[l.Name]; ok {
-				model[l.Name] = l.Value
-			}
-		}
-	}
-	return model
-}
-
 func (lf *LineFormatter) RequiredLabelNames() []string {
-	return lf.requiredLabelNames
+	return uniqueString(listNodeFields([]parse.Node{lf.Root}))
 }
 
 func listNodeFields(nodes []parse.Node) []string {
@@ -238,9 +214,6 @@ type labelFormatter struct {
 type LabelsFormatter struct {
 	formats []labelFormatter
 	buf     *bytes.Buffer
-
-	requiredLabelNamesMap map[string]struct{}
-	requiredLabelNames    []string
 }
 
 // NewLabelsFormatter creates a new formatter that can format multiple labels at once.
@@ -270,10 +243,8 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		namesMap[n] = struct{}{}
 	}
 	return &LabelsFormatter{
-		formats:               formats,
-		buf:                   bytes.NewBuffer(make([]byte, 1024)),
-		requiredLabelNamesMap: namesMap,
-		requiredLabelNames:    names,
+		formats: formats,
+		buf:     bytes.NewBuffer(make([]byte, 1024)),
 	}, nil
 }
 
@@ -293,19 +264,6 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *LabelsFormatter) buildModel(lbs *LabelsBuilder) interface{} {
-	labels := lbs.Labels()
-	model := make(map[string]string, len(lf.requiredLabelNamesMap))
-	if len(lf.requiredLabelNames) > 0 {
-		for _, l := range labels {
-			if _, ok := lf.requiredLabelNamesMap[l.Name]; ok {
-				model[l.Name] = l.Value
-			}
-		}
-	}
-	return model
-}
-
 func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	var data interface{}
 	for _, f := range lf.formats {
@@ -319,7 +277,7 @@ func (lf *LabelsFormatter) Process(l []byte, lbs *LabelsBuilder) ([]byte, bool) 
 		}
 		lf.buf.Reset()
 		if data == nil {
-			data = lf.buildModel(lbs)
+			data = lbs.Labels().Map()
 		}
 		if err := f.tmpl.Execute(lf.buf, data); err != nil {
 			lbs.SetErr(errTemplateFormat)
@@ -337,8 +295,8 @@ func (lf *LabelsFormatter) RequiredLabelNames() []string {
 			names = append(names, fm.Value)
 			continue
 		}
+		names = append(names, listNodeFields([]parse.Node{fm.tmpl.Root})...)
 	}
-	names = append(names, lf.requiredLabelNames...)
 	return uniqueString(names)
 }
 
