@@ -224,7 +224,6 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		return nil, err
 	}
 	formats := make([]labelFormatter, 0, len(fmts))
-	var names []string
 
 	for _, fm := range fmts {
 		toAdd := labelFormatter{LabelFmt: fm}
@@ -234,13 +233,8 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 				return nil, fmt.Errorf("invalid template for label '%s': %s", fm.Name, err)
 			}
 			toAdd.tmpl = t
-			names = uniqueString(append(names, listNodeFields([]parse.Node{t.Root})...))
 		}
 		formats = append(formats, toAdd)
-	}
-	namesMap := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		namesMap[n] = struct{}{}
 	}
 	return &LabelsFormatter{
 		formats: formats,
