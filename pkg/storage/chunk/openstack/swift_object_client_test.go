@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -29,7 +30,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"deletes are not hedged",
 			1,
-			5,
+			20 * time.Nanosecond,
 			10,
 			func(c *SwiftObjectClient) {
 				_ = c.DeleteObject(context.Background(), "foo")
@@ -38,7 +39,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"list are not hedged",
 			1,
-			5,
+			20 * time.Nanosecond,
 			10,
 			func(c *SwiftObjectClient) {
 				_, _, _ = c.List(context.Background(), "foo", "/")
@@ -47,7 +48,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"gets are hedged",
 			3,
-			5,
+			20 * time.Nanosecond,
 			3,
 			func(c *SwiftObjectClient) {
 				_, _ = c.GetObject(context.Background(), "foo")
@@ -86,8 +87,8 @@ func Test_Hedging(t *testing.T) {
 						Body:       http.NoBody,
 					}, nil
 				}
-				time.Sleep(1 * time.Second)
 				atomic.AddInt32(&count, 1)
+				time.Sleep(200 * time.Millisecond)
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       http.NoBody,
@@ -100,8 +101,8 @@ func Test_Hedging(t *testing.T) {
 					ContainerName:  "foo",
 					AuthVersion:    1,
 					Password:       "passwd",
-					ConnectTimeout: 5 * time.Second,
-					RequestTimeout: 5 * time.Second,
+					ConnectTimeout: 10 * time.Second,
+					RequestTimeout: 10 * time.Second,
 				},
 				Hedging: hedging.Config{
 					At:   tc.hedgeAt,
@@ -110,7 +111,7 @@ func Test_Hedging(t *testing.T) {
 			})
 			require.NoError(t, err)
 			tc.do(c)
-			require.Equal(t, tc.expectedCalls, count)
+			require.Equal(t, tc.expectedCalls, atomic.LoadInt32(&count))
 		})
 	}
 }

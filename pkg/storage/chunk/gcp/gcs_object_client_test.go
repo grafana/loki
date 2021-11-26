@@ -26,7 +26,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"deletes are not hedged",
 			1,
-			5,
+			20 * time.Nanosecond,
 			10,
 			func(c *GCSObjectClient) {
 				_ = c.DeleteObject(context.Background(), "foo")
@@ -35,7 +35,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"gets are hedged",
 			3,
-			5,
+			20 * time.Nanosecond,
 			3,
 			func(c *GCSObjectClient) {
 				_, _ = c.GetObject(context.Background(), "foo")
@@ -54,7 +54,7 @@ func Test_Hedging(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			count := int32(0)
-			server := fakeServer(t, 1*time.Second, &count)
+			server := fakeServer(t, 200*time.Millisecond, &count)
 			ctx := context.Background()
 			c, err := newGCSObjectClient(ctx, GCSConfig{
 				BucketName: "test-bucket",
@@ -77,9 +77,8 @@ func Test_Hedging(t *testing.T) {
 
 func fakeServer(t *testing.T, returnIn time.Duration, counter *int32) *httptest.Server {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(returnIn)
-
 		atomic.AddInt32(counter, 1)
+		time.Sleep(returnIn)
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	server.StartTLS()

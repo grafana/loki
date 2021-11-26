@@ -30,7 +30,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"deletes are not hedged",
 			1,
-			5,
+			20 * time.Nanosecond,
 			10,
 			func(c *BlobStorage) {
 				_ = c.DeleteObject(context.Background(), "foo")
@@ -39,7 +39,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"list are not hedged",
 			1,
-			5,
+			20 * time.Nanosecond,
 			10,
 			func(c *BlobStorage) {
 				_, _, _ = c.List(context.Background(), "foo", "/")
@@ -48,7 +48,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"gets are hedged",
 			3,
-			5,
+			20 * time.Nanosecond,
 			3,
 			func(c *BlobStorage) {
 				_, _ = c.GetObject(context.Background(), "foo")
@@ -70,8 +70,8 @@ func Test_Hedging(t *testing.T) {
 			// hijack the client to count the number of calls
 			defaultClient = &http.Client{
 				Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-					time.Sleep(1 * time.Second)
 					atomic.AddInt32(&count, 1)
+					time.Sleep(200 * time.Millisecond)
 					return nil, errors.New("fo")
 				}),
 			}

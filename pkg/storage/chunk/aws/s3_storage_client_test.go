@@ -13,9 +13,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -92,7 +93,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"deletes are not hedged",
 			1,
-			5,
+			20 * time.Nanosecond,
 			10,
 			func(c *S3ObjectClient) {
 				_ = c.DeleteObject(context.Background(), "foo")
@@ -101,7 +102,7 @@ func Test_Hedging(t *testing.T) {
 		{
 			"gets are hedged",
 			3,
-			5,
+			20 * time.Nanosecond,
 			3,
 			func(c *S3ObjectClient) {
 				_, _ = c.GetObject(context.Background(), "foo")
@@ -130,8 +131,8 @@ func Test_Hedging(t *testing.T) {
 				BucketNames:   "foo",
 				Inject: func(next http.RoundTripper) http.RoundTripper {
 					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-						time.Sleep(1 * time.Second)
 						atomic.AddInt32(&count, 1)
+						time.Sleep(200 * time.Millisecond)
 						return nil, errors.New("foo")
 					})
 				},
