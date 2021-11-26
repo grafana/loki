@@ -9,10 +9,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/exemplar"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
@@ -41,7 +41,7 @@ type PusherAppender struct {
 	evaluationDelay time.Duration
 }
 
-func (a *PusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
 	a.labels = append(a.labels, l)
 
 	// Adapt staleness markers for ruler evaluation delay. As the upstream code
@@ -63,7 +63,7 @@ func (a *PusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (
 	return 0, nil
 }
 
-func (a *PusherAppender) AppendExemplar(_ uint64, _ labels.Labels, _ exemplar.Exemplar) (uint64, error) {
+func (a *PusherAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
 	return 0, errors.New("exemplars are unsupported")
 }
 

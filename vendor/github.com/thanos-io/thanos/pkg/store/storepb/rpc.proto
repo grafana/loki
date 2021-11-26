@@ -106,6 +106,12 @@ message SeriesRequest {
   // The content of this field and whether it's supported depends on the
   // implementation of a specific store.
   google.protobuf.Any hints = 9;
+
+  // Query step size in milliseconds.
+  int64 step = 10;
+
+  // Range vector selector range in milliseconds.
+  int64 range = 11;
 }
 
 enum Aggr {

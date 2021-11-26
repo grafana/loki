@@ -8,7 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // Filterer is a interface to filter log lines.
@@ -83,6 +83,7 @@ func NewAndFilter(left Filterer, right Filterer) Filterer {
 func (a andFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) && a.right.Filter(line)
 }
+
 func (a andFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
@@ -245,22 +246,30 @@ type containsFilter struct {
 }
 
 func (l *containsFilter) Filter(line []byte) bool {
-	if !l.caseInsensitive {
-		return bytes.Contains(line, l.match)
+	return contains(line, l.match, l.caseInsensitive)
+}
+
+func contains(line, substr []byte, caseInsensitive bool) bool {
+	if !caseInsensitive {
+		return bytes.Contains(line, substr)
 	}
-	if len(l.match) == 0 {
+	return containsLower(line, substr)
+}
+
+func containsLower(line, substr []byte) bool {
+	if len(substr) == 0 {
 		return true
 	}
-	if len(l.match) > len(line) {
+	if len(substr) > len(line) {
 		return false
 	}
 	j := 0
 	for len(line) > 0 {
 		// ascii fast case
 		if c := line[0]; c < utf8.RuneSelf {
-			if c == l.match[j] || c+'a'-'A' == l.match[j] {
+			if c == substr[j] || c+'a'-'A' == substr[j] {
 				j++
-				if j == len(l.match) {
+				if j == len(substr) {
 					return true
 				}
 				line = line[1:]
@@ -272,10 +281,10 @@ func (l *containsFilter) Filter(line []byte) bool {
 		}
 		// unicode slow case
 		lr, lwid := utf8.DecodeRune(line)
-		mr, mwid := utf8.DecodeRune(l.match[j:])
+		mr, mwid := utf8.DecodeRune(substr[j:])
 		if lr == mr || mr == unicode.To(unicode.LowerCase, lr) {
 			j += mwid
-			if j == len(l.match) {
+			if j == len(substr) {
 				return true
 			}
 			line = line[lwid:]
@@ -327,10 +336,7 @@ func (f *containsAllFilter) Empty() bool {
 
 func (f containsAllFilter) Filter(line []byte) bool {
 	for _, m := range f.matches {
-		if m.caseInsensitive {
-			line = bytes.ToLower(line)
-		}
-		if !bytes.Contains(line, m.match) {
+		if !contains(line, m.match, m.caseInsensitive) {
 			return false
 		}
 	}

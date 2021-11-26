@@ -167,8 +167,8 @@ type RegistrySubscriptionTier struct {
 	IncludedBandwidthBytes uint64 `json:"included_bandwidth_bytes"`
 	MonthlyPriceInCents    uint64 `json:"monthly_price_in_cents"`
 	Eligible               bool   `json:"eligible,omitempty"`
-	// EligibilityReaons is included when Eligible is false, and indicates the
-	// reasons why this tier is not availble to the user.
+	// EligibilityReasons is included when Eligible is false, and indicates the
+	// reasons why this tier is not available to the user.
 	EligibilityReasons []string `json:"eligibility_reasons,omitempty"`
 }
 

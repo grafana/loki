@@ -12,6 +12,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"log"
+	"net"
+	"os"
 	"strings"
 
 	"cloud.google.com/go/compute/metadata"
@@ -28,6 +30,9 @@ import (
 	// Install grpclb, which is required for direct path.
 	_ "google.golang.org/grpc/balancer/grpclb"
 )
+
+// Check env to decide if using google-c2p resolver for DirectPath traffic.
+const enableDirectPathXds = "GOOGLE_CLOUD_ENABLE_DIRECT_PATH_XDS"
 
 // Set at init time by dial_appengine.go. If nil, we're not on App Engine.
 var appengineDialerHook func(context.Context) grpc.DialOption
@@ -134,23 +139,32 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 			o.QuotaProject = internal.QuotaProjectFromCreds(creds)
 		}
 
-		// Attempt Direct Path only if:
-		// * The endpoint is a host:port (or dns:///host:port).
-		// * Credentials are obtained via GCE metadata server, using the default
-		//   service account.
+		// Attempt Direct Path:
 		if o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && isTokenSourceDirectPathCompatible(creds.TokenSource, o) && metadata.OnGCE() {
-			if !strings.HasPrefix(endpoint, "dns:///") {
-				endpoint = "dns:///" + endpoint
-			}
 			grpcOpts = []grpc.DialOption{
-				grpc.WithCredentialsBundle(
-					grpcgoogle.NewComputeEngineCredentials(),
-				),
-				// For now all DirectPath go clients will be using the following lb config, but in future
-				// when different services need different configs, then we should change this to a
-				// per-service config.
-				grpc.WithDisableServiceConfig(),
-				grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"grpclb":{"childPolicy":[{"pick_first":{}}]}}]}`),
+				grpc.WithCredentialsBundle(grpcgoogle.NewComputeEngineCredentials())}
+			if timeoutDialerOption != nil {
+				grpcOpts = append(grpcOpts, timeoutDialerOption)
+			}
+			// Check if google-c2p resolver is enabled for DirectPath
+			// TODO(mohanli): remove grpc version guard once google-api-go-client is able to depends on the latest grpc
+			if grpc.Version >= "1.42" && strings.EqualFold(os.Getenv(enableDirectPathXds), "true") {
+				// google-c2p resolver target must not have a port number
+				if addr, _, err := net.SplitHostPort(endpoint); err == nil {
+					endpoint = "google-c2p:///" + addr
+				} else {
+					endpoint = "google-c2p:///" + endpoint
+				}
+			} else {
+				if !strings.HasPrefix(endpoint, "dns:///") {
+					endpoint = "dns:///" + endpoint
+				}
+				grpcOpts = append(grpcOpts,
+					// For now all DirectPath go clients will be using the following lb config, but in future
+					// when different services need different configs, then we should change this to a
+					// per-service config.
+					grpc.WithDisableServiceConfig(),
+					grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"grpclb":{"childPolicy":[{"pick_first":{}}]}}]}`))
 			}
 			// TODO(cbro): add support for system parameters (quota project, request reason) via chained interceptor.
 		} else {
@@ -181,14 +195,6 @@ func dial(ctx context.Context, insecure bool, o *internal.DialSettings) (*grpc.C
 	grpcOpts = append(grpcOpts, o.GRPCDialOpts...)
 	if o.UserAgent != "" {
 		grpcOpts = append(grpcOpts, grpc.WithUserAgent(o.UserAgent))
-	}
-
-	// TODO(weiranf): This socketopt dialer will be used by default at some
-	// point when isDirectPathEnabled will default to true, we guard it by
-	// the Directpath env var for now once we can introspect user defined
-	// dialer (https://github.com/grpc/grpc-go/issues/2795).
-	if timeoutDialerOption != nil && o.EnableDirectPath && checkDirectPathEndPoint(endpoint) && metadata.OnGCE() {
-		grpcOpts = append(grpcOpts, timeoutDialerOption)
 	}
 
 	return grpc.DialContext(ctx, endpoint, grpcOpts...)

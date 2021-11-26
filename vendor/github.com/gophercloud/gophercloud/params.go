@@ -445,6 +445,9 @@ func BuildHeaders(opts interface{}) (map[string]string, error) {
 
 				// if the field is set, add it to the slice of query pieces
 				if !isZero(v) {
+					if v.Kind() == reflect.Ptr {
+						v = v.Elem()
+					}
 					switch v.Kind() {
 					case reflect.String:
 						optsMap[tags[0]] = v.String()

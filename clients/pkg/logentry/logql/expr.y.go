@@ -5,7 +5,7 @@ package logql
 import __yyfmt__ "fmt"
 
 import (
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type exprSymType struct {

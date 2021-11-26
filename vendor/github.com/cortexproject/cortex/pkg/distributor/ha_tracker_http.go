@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
