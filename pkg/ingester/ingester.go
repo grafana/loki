@@ -82,7 +82,7 @@ type Config struct {
 	WAL WALConfig `yaml:"wal,omitempty"`
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
-	LabelFilterer listutil.LabelValueFilterer  `yaml:"-"`
+	LabelFilterer LabelValueFilterer           `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
@@ -132,6 +132,11 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
+// ChunkFilterer filters chunks based on the metric.
+type LabelValueFilterer interface {
+	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
+}
+
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
 	services.Service
@@ -174,7 +179,7 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter storage.RequestChunkFilterer
-	labelFilter listutil.LabelValueFilterer
+	labelFilter LabelValueFilterer
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -258,7 +263,7 @@ func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
 }
 
-func (i *Ingester) SetLabelFilterer(labelFilter listutil.LabelValueFilterer) {
+func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
 	i.labelFilter = labelFilter
 }
 
@@ -729,14 +734,12 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 	allValues := listutil.MergeStringLists(resp.Values, storeValues)
 
-	if req.Values {
+	if req.Values && i.labelFilter != nil {
 		var filteredValues []string
 
-		if i.labelFilter != nil {
-			filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
-			if err != nil {
-				return nil, err
-			}
+		filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
+		if err != nil {
+			return nil, err
 		}
 
 		return &logproto.LabelResponse{
