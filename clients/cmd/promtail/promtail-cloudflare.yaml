@@ -9,7 +9,7 @@ clients:
   - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
-- job_name: kafka
+- job_name: cloudflare
   cloudflare:
     api_token: REDACTED
     zone_id: REDACTED

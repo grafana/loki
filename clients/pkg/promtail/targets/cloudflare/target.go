@@ -25,6 +25,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+// The minimun window size is 1 minute.
+const minDelay = time.Minute
+
 var defaultBackoff = backoff.Config{
 	MinBackoff: 1 * time.Second,
 	MaxBackoff: 10 * time.Second,
@@ -101,7 +104,7 @@ func (t *Target) start() {
 		}()
 		for t.ctx.Err() == nil {
 			end := t.to
-			maxEnd := time.Now().Add(-time.Minute)
+			maxEnd := time.Now().Add(-minDelay)
 			if end.After(maxEnd) {
 				end = maxEnd
 			}
@@ -125,7 +128,7 @@ func (t *Target) start() {
 
 			// If the next window can be fetched do it, if not sleep for a while.
 			// This is because Cloudflare logs should never be pulled between now-1m and now.
-			diff := t.to.Sub(time.Now().Add(-time.Minute))
+			diff := t.to.Sub(time.Now().Add(-minDelay))
 			if diff > 0 {
 				select {
 				case <-time.After(diff):

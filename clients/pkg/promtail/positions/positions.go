@@ -19,6 +19,7 @@ import (
 const (
 	positionFileMode = 0600
 	cursorKeyPrefix  = "cursor-"
+	journalKeyPrefix = "journal-"
 )
 
 // Config describes where to get position information from.
@@ -192,7 +193,7 @@ func (p *positions) cleanup() {
 		// If the position file is prefixed with cursor, it's a
 		// cursor and not a file on disk.
 		// We still have to support journal files, so we keep the previous check to avoid breaking change.
-		if strings.HasPrefix(k, cursorKeyPrefix) || strings.HasPrefix(k, "journal-") {
+		if strings.HasPrefix(k, cursorKeyPrefix) || strings.HasPrefix(k, journalKeyPrefix) {
 			continue
 		}
 

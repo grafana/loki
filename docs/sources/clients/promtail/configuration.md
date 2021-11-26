@@ -1030,19 +1030,19 @@ use_incoming_timestamp: <bool>
 
 To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
 
-### cloudflare
+### Cloudflare
 
-The `cloudflare` block configures promtail to pull logs from the cloudflare
+The `cloudflare` block configures promtail to pull logs from the Cloudflare
 [Logpull API](https://developers.cloudflare.com/logs/logpull).
 
 > These logs contain data related to the connecting client, the request path through the Cloudflare network, and the response from the origin web server. This data is useful for enriching existing logs on an origin server.
 
 ```yaml
-# The cloudflare API token to use. (Required)
-# You can create a new token by visiting your [cloudflare profile](https://dash.cloudflare.com/profile/api-tokens).
+# The Cloudflare API token to use. (Required)
+# You can create a new token by visiting your [Cloudflare profile](https://dash.cloudflare.com/profile/api-tokens).
 api_token: <string>
 
-# The cloudflare zone id to pull logs for. (Required)
+# The Cloudflare zone id to pull logs for. (Required)
 zone_id: <string>
 
 # The time range to pull logs for. (Default to 1m)
@@ -1076,7 +1076,7 @@ Below shows the different set of fields type available and the fields they inclu
 - `all` includes all `extended` fields and adds `"ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
 "FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
 
-To learn more about each field and their value please refer to the [cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
+To learn more about each field and their value please refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
 Promtail will save his last successful fetched timestamp in the position file. This means
 that if a position is found in the file for a given zone id, Promtail will restart pulling log
@@ -1087,7 +1087,7 @@ Promtail fetches logs using multiple workers (configurable via `workers`) and re
 It's possible that Promtail falls behinds because there's is too much logs to process for each pull.
 Adding more workers, decreasing the pull range or the amount of fields fetched can help this situation.
 
-All cloudflare logs are in json for example:
+All Cloudflare logs are in json for example:
 
 ```json
 {
