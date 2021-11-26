@@ -45,24 +45,41 @@ type BuildOptions struct {
 	EnableCertificateSigningService bool
 }
 
+// TenantData defines the existing tenantID and cookieSecret for lokistack reconcile.
+type TenantData struct {
+	TenantID     string
+	CookieSecret string
+}
+
 // NewOptions returns an openshift options struct.
 func NewOptions(
 	stackName string,
 	gwName, gwNamespace, gwBaseDomain, gwSvcName, gwPortName string,
 	gwLabels map[string]string,
 	enableCertSigningService bool,
+	tenantConfigMap map[string]TenantData,
 ) Options {
 	host := ingressHost(stackName, gwNamespace, gwBaseDomain)
 
 	var authn []AuthenticationSpec
 	for _, name := range defaultTenants {
-		authn = append(authn, AuthenticationSpec{
-			TenantName:     name,
-			TenantID:       uuid.New().String(),
-			ServiceAccount: gwName,
-			RedirectURL:    fmt.Sprintf("http://%s/openshift/%s/callback", host, name),
-			CookieSecret:   newCookieSecret(),
-		})
+		if tenantConfigMap != nil {
+			authn = append(authn, AuthenticationSpec{
+				TenantName:     name,
+				TenantID:       tenantConfigMap[name].TenantID,
+				ServiceAccount: gwName,
+				RedirectURL:    fmt.Sprintf("http://%s/openshift/%s/callback", host, name),
+				CookieSecret:   tenantConfigMap[name].CookieSecret,
+			})
+		} else {
+			authn = append(authn, AuthenticationSpec{
+				TenantName:     name,
+				TenantID:       uuid.New().String(),
+				ServiceAccount: gwName,
+				RedirectURL:    fmt.Sprintf("http://%s/openshift/%s/callback", host, name),
+				CookieSecret:   newCookieSecret(),
+			})
+		}
 	}
 
 	return Options{

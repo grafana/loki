@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ViaQ/loki-operator/internal/manifests/openshift"
+
 	"github.com/ViaQ/logerr/kverrors"
 	"github.com/ViaQ/logerr/log"
 	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
@@ -68,8 +70,9 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 	}
 
 	var (
-		baseDomain    string
-		tenantSecrets []*manifests.TenantSecrets
+		baseDomain      string
+		tenantSecrets   []*manifests.TenantSecrets
+		tenantConfigMap map[string]openshift.TenantData
 	)
 	if flags.EnableGateway && stack.Spec.Tenants != nil {
 		if err = gateway.ValidateModes(stack); err != nil {
@@ -91,6 +94,9 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 			if err != nil {
 				return nil
 			}
+
+			// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
+			tenantConfigMap = gateway.GetTenantConfigMapData(ctx, k, req)
 		}
 	}
 
@@ -105,6 +111,7 @@ func CreateOrUpdateLokiStack(ctx context.Context, req ctrl.Request, k k8s.Client
 		Flags:             flags,
 		ObjectStorage:     *storage,
 		TenantSecrets:     tenantSecrets,
+		TenantConfigMap:   tenantConfigMap,
 	}
 
 	ll.Info("begin building manifests")

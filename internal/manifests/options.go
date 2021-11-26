@@ -25,6 +25,7 @@ type Options struct {
 
 	OpenShiftOptions openshift.Options
 	TenantSecrets    []*TenantSecrets
+	TenantConfigMap  map[string]openshift.TenantData
 }
 
 // ObjectStorage for storage config.

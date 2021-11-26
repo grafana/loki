@@ -36,6 +36,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 			gatewayHTTPPortName,
 			ComponentLabels(LabelGatewayComponent, opts.Name),
 			opts.Flags.EnableCertificateSigningService,
+			opts.TenantConfigMap,
 		)
 
 		if err := mergo.Merge(&opts.OpenShiftOptions, &defaults, mergo.WithOverride); err != nil {

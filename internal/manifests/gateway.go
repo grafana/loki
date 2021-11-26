@@ -331,12 +331,21 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 		gatewaySecrets = append(gatewaySecrets, gatewaySecret)
 	}
 
+	tenantConfigMap := make(map[string]gateway.TenantData)
+	for tenant, tenantData := range opt.TenantConfigMap {
+		tenantConfigMap[tenant] = gateway.TenantData{
+			TenantID:     tenantData.TenantID,
+			CookieSecret: tenantData.CookieSecret,
+		}
+	}
+
 	return gateway.Options{
 		Stack:            opt.Stack,
 		Namespace:        opt.Namespace,
 		Name:             opt.Name,
 		OpenShiftOptions: opt.OpenShiftOptions,
 		TenantSecrets:    gatewaySecrets,
+		TenantConfigMap:  tenantConfigMap,
 	}
 }
 

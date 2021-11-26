@@ -859,7 +859,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// make sure status and status-update calls
 	require.NotZero(t, k.StatusCallCount())
@@ -942,7 +942,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
-	require.NoError(t, err)
+	require.Error(t, err)
 
 	// make sure status and status-update calls
 	require.NotZero(t, k.StatusCallCount())
