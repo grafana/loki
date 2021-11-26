@@ -59,7 +59,7 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 		}
 		p, err := o.schema.SchemaForTime(chunks[i].From)
 		if err == nil && p.Schema == "v12" {
-			key = chunks[i].NewExternalKey()
+			key = chunks[i].NewExternalKey(p.ChunkPathShardFactor, p.ChunkPathPeriod)
 		} else {
 			key = chunks[i].ExternalKey()
 		}

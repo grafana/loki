@@ -34,13 +34,15 @@ var (
 
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
-	From        DayTime             `yaml:"from"`         // used when working with config
-	IndexType   string              `yaml:"store"`        // type of index client to use.
-	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
-	Schema      string              `yaml:"schema"`
-	IndexTables PeriodicTableConfig `yaml:"index"`
-	ChunkTables PeriodicTableConfig `yaml:"chunks"`
-	RowShards   uint32              `yaml:"row_shards"`
+	From                 DayTime             `yaml:"from"`         // used when working with config
+	IndexType            string              `yaml:"store"`        // type of index client to use.
+	ObjectType           string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
+	Schema               string              `yaml:"schema"`
+	IndexTables          PeriodicTableConfig `yaml:"index"`
+	ChunkTables          PeriodicTableConfig `yaml:"chunks"`
+	RowShards            uint32              `yaml:"row_shards"`
+	ChunkPathShardFactor uint64              `yaml:"chunk_path_shard_factor"`
+	ChunkPathPeriod      time.Duration       `yaml:"chunk_path_period"`
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
@@ -188,17 +190,22 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11":
+	case "v10", "v11", "v12":
 		if cfg.RowShards == 0 {
-			return nil, fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
+			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
 
 		v10 := v10Entries{rowShards: cfg.RowShards}
 		if cfg.Schema == "v10" {
 			return newSeriesStoreSchema(buckets, v10), nil
+		} else if cfg.Schema == "v11" {
+			return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
+		} else { // v12
+			if cfg.ChunkPathPeriod == 0 || cfg.ChunkPathShardFactor == 0 {
+				return nil, fmt.Errorf("must configure chunk_path_shard_factor and chunk_path_period to values > 0 for schema (%s)", cfg.Schema)
+			}
+			return newSeriesStoreSchema(buckets, v12Entries{v11Entries{v10}, cfg.ChunkPathShardFactor, cfg.ChunkPathPeriod}), nil
 		}
-
-		return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
 	default:
 		return nil, errInvalidSchemaVersion
 	}

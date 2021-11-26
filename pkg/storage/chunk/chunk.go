@@ -280,10 +280,9 @@ func unsafeGetString(buf []byte) string {
 }
 
 // <user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>
-func (c *Chunk) NewExternalKey() string {
+func (c *Chunk) NewExternalKey(shardFactor uint64, period time.Duration) string {
 	// TODO(jordanrushing): Make period and shard configurable, iterate schema version
-	period := time.Hour
-	shard := uint64(c.Fingerprint) % 16
+	shard := uint64(c.Fingerprint) % shardFactor
 	// Reduce the fingerprint into the <period> space to act as jitter
 	jitter := uint64(c.Fingerprint) % uint64(period)
 	// The fingerprint (hash, uniformly distributed) allows us to gradually

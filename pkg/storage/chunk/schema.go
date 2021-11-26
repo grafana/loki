@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
@@ -964,4 +965,11 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Inde
 			HashValue: string(seriesID),
 		},
 	}, nil
+}
+
+// v12Entries adds ChunkPathShardFactor and ChunkPathPeriod as SchemaConfig values
+type v12Entries struct {
+	v11Entries
+	ChunkPathShardFactor uint64
+	ChunkPathPeriod      time.Duration
 }
