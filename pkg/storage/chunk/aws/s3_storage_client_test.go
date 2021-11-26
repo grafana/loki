@@ -132,6 +132,7 @@ func Test_Hedging(t *testing.T) {
 				Inject: func(next http.RoundTripper) http.RoundTripper {
 					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 						fmt.Println(req.Method)
+						fmt.Println(req.URL.String())
 						count.Inc()
 						time.Sleep(200 * time.Millisecond)
 						return nil, errors.New("foo")
