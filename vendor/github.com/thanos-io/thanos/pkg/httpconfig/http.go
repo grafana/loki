@@ -76,14 +76,14 @@ func (b BasicAuth) IsZero() bool {
 
 // Transport configures client's transport properties.
 type TransportConfig struct {
-	MaxIdleConns          int  `yaml:"max_idle_conns"`
-	MaxIdleConnsPerHost   int  `yaml:"max_idle_conns_per_host"`
-	IdleConnTimeout       int  `yaml:"idle_conn_timeout"`
-	ResponseHeaderTimeout int  `yaml:"response_header_timeout"`
-	ExpectContinueTimeout int  `yaml:"expect_continue_timeout"`
-	MaxConnsPerHost       int  `yaml:"max_conns_per_host"`
-	DisableCompression    bool `yaml:"disable_compression"`
-	TLSHandshakeTimeout   int  `yaml:"tls_handshake_timeout"`
+	MaxIdleConns          int   `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int   `yaml:"max_idle_conns_per_host"`
+	IdleConnTimeout       int64 `yaml:"idle_conn_timeout"`
+	ResponseHeaderTimeout int64 `yaml:"response_header_timeout"`
+	ExpectContinueTimeout int64 `yaml:"expect_continue_timeout"`
+	MaxConnsPerHost       int   `yaml:"max_conns_per_host"`
+	DisableCompression    bool  `yaml:"disable_compression"`
+	TLSHandshakeTimeout   int64 `yaml:"tls_handshake_timeout"`
 }
 
 var defaultTransportConfig TransportConfig = TransportConfig{
@@ -91,10 +91,10 @@ var defaultTransportConfig TransportConfig = TransportConfig{
 	MaxIdleConnsPerHost:   2,
 	ResponseHeaderTimeout: 0,
 	MaxConnsPerHost:       0,
-	IdleConnTimeout:       int(90 * time.Second),
-	ExpectContinueTimeout: int(10 * time.Second),
+	IdleConnTimeout:       int64(90 * time.Second),
+	ExpectContinueTimeout: int64(10 * time.Second),
 	DisableCompression:    false,
-	TLSHandshakeTimeout:   int(10 * time.Second),
+	TLSHandshakeTimeout:   int64(10 * time.Second),
 }
 
 func NewClientConfigFromYAML(cfg []byte) (*ClientConfig, error) {

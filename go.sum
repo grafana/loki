@@ -1774,6 +1774,8 @@ github.com/tencentyun/cos-go-sdk-v5 v0.7.31/go.mod h1:4E4+bQ2gBVJcgEC9Cufwylio4m
 github.com/tent/http-link-go v0.0.0-20130702225549-ac974c61c2f9/go.mod h1:RHkNRtSLfOK7qBTHaeSX1D6BNpI3qw7NTxsmNr4RvN8=
 github.com/thanos-io/thanos v0.19.1-0.20211125080947-19dcc7902d24 h1:pffRQD6Ww6r0zlKx0zmgHpv10Q8nFT8p8RnpMlCp4Ck=
 github.com/thanos-io/thanos v0.19.1-0.20211125080947-19dcc7902d24/go.mod h1:sfnKJG7cDA41ixNL4gsTJEa3w9Qt8lwAjw+dqRMSDG0=
+github.com/thanos-io/thanos v0.19.1-0.20211126105533-c5505f5eaa7d h1:jkXuBsvBkxxDwATzwwho08Xvd/jCu7+E+maw8wrknWk=
+github.com/thanos-io/thanos v0.19.1-0.20211126105533-c5505f5eaa7d/go.mod h1:sfnKJG7cDA41ixNL4gsTJEa3w9Qt8lwAjw+dqRMSDG0=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab h1:7ZR3hmisBWw77ZpO1/o86g+JV3VKlk3d48jopJxzTjU=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab/go.mod h1:eheTFp954zcWZXCU8d0AT76ftsQOTo4DTqkN/h3k1MY=
 github.com/tidwall/gjson v1.6.0/go.mod h1:P256ACg0Mn+j1RXIDXoss50DeIABTYK1PULOJHhxOls=
