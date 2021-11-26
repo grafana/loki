@@ -26,13 +26,15 @@ var Base64Encoder = func(key string) string {
 type Client struct {
 	store      chunk.ObjectClient
 	keyEncoder KeyEncoder
+	schema     chunk.SchemaConfig
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
-func NewClient(store chunk.ObjectClient, encoder KeyEncoder) *Client {
+func NewClient(store chunk.ObjectClient, encoder KeyEncoder, schema chunk.SchemaConfig) *Client {
 	return &Client{
 		store:      store,
 		keyEncoder: encoder,
+		schema:     schema,
 	}
 }
 
@@ -47,6 +49,7 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		chunkKeys []string
 		chunkBufs [][]byte
+		key       string
 	)
 
 	for i := range chunks {
@@ -54,7 +57,12 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 		if err != nil {
 			return err
 		}
-		key := chunks[i].ExternalKey()
+		p, err := o.schema.SchemaForTime(chunks[i].From)
+		if err == nil && p.Schema == "v12" {
+			key = chunks[i].NewExternalKey()
+		} else {
+			key = chunks[i].ExternalKey()
+		}
 		if o.keyEncoder != nil {
 			key = o.keyEncoder(key)
 		}

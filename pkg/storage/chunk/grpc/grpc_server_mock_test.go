@@ -52,8 +52,8 @@ func (s server) DeleteIndex(ctx context.Context, deletes *DeleteIndexRequest) (*
 //
 // Support new and old chunk key formats
 func (s server) PutChunks(ctx context.Context, request *PutChunksRequest) (*empty.Empty, error) {
-	// encoded :=
-	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:fc8fd207" || request.Chunks[0].Key == "fake/1a7ed3f29b2/2/ddf337b84e835f32/171bc00155a:171bc00155a:fc8fd207") {
+	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:fc8fd207") {
+
 		return &empty.Empty{}, nil
 	}
 	err := errors.New("putChunks from storageClient request doesn't match with test from gRPC client")
@@ -61,7 +61,7 @@ func (s server) PutChunks(ctx context.Context, request *PutChunksRequest) (*empt
 }
 
 func (s server) GetChunks(request *GetChunksRequest, chunksServer GrpcStore_GetChunksServer) error {
-	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:fc8fd207" || request.Chunks[0].Key == "fake/1a7ed3f29b2/2/ddf337b84e835f32/171bc00155a:171bc00155a:d9a103b5") &&
+	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:d9a103b5") &&
 		request.Chunks[0].Encoded == nil {
 		return nil
 	}

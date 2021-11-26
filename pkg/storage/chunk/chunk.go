@@ -280,7 +280,7 @@ func unsafeGetString(buf []byte) string {
 }
 
 // <user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>
-func (c *Chunk) ExternalKey() string {
+func (c *Chunk) NewExternalKey() string {
 	// TODO(jordanrushing): Make period and shard configurable, iterate schema version
 	period := time.Hour
 	shard := uint64(c.Fingerprint) % 16
@@ -296,7 +296,7 @@ func (c *Chunk) ExternalKey() string {
 
 // ExternalKey returns the key you can use to fetch this chunk from external
 // storage. For newer chunks, this key includes a checksum.
-func (c *Chunk) OldExternalKey() string {
+func (c *Chunk) ExternalKey() string {
 	// Some chunks have a checksum stored in dynamodb, some do not.  We must
 	// generate keys appropriately.
 	if c.ChecksumSet {

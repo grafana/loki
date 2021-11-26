@@ -192,6 +192,15 @@ func TestParseExternalKey(t *testing.T) {
 			Checksum:    4165752645,
 		}},
 
+		{key: userID + "/2/2/2/270d8f00:270d8f00:f84c5745", chunk: Chunk{
+			UserID:      userID,
+			Fingerprint: model.Fingerprint(2),
+			From:        model.Time(655200000),
+			Through:     model.Time(655200000),
+			ChecksumSet: true,
+			Checksum:    4165752645,
+		}},
+
 		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
 	} {
 		chunk, err := ParseExternalKey(userID, c.key)
