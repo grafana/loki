@@ -93,6 +93,6 @@ func main() {
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
-	err = t.Run()
+	err = t.Run(loki.RunOpts{})
 	util_log.CheckFatal("running loki", err)
 }
