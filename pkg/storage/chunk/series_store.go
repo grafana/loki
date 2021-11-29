@@ -15,6 +15,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -261,9 +262,6 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
-	defer log.Span.Finish()
-
 	// Check if one of the labels is a shard annotation, pass that information to lookupSeriesByMetricNameMatcher,
 	// and remove the label.
 	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
@@ -341,7 +339,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	preIntersectionPerQuery.Observe(float64(preIntersectionCount))
 	postIntersectionPerQuery.Observe(float64(len(ids)))
 
-	level.Debug(log).Log("msg", "post intersection", "ids", len(ids))
+	level.Debug(util_log.WithContext(ctx, util_log.Logger)).
+		Log("msg", "post intersection", "matchers", len(matchers), "ids", len(ids))
 	return ids, nil
 }
 
@@ -352,11 +351,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 }
 
 func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupChunksBySeries")
-	defer log.Span.Finish()
-
-	level.Debug(log).Log("seriesIDs", len(seriesIDs))
-
 	queries := make([]IndexQuery, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetChunksForSeries(from, through, userID, []byte(seriesID))
@@ -365,13 +359,16 @@ func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through mo
 		}
 		queries = append(queries, qs...)
 	}
-	level.Debug(log).Log("queries", len(queries))
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("entries", len(entries))
+	level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log(
+		"msg", "SeriesStore.lookupChunksBySeries",
+		"seriesIDs", len(seriesIDs),
+		"queries", len(queries),
+		"entries", len(entries))
 
 	result, err := c.parseIndexEntries(ctx, entries, nil)
 	return result, err
