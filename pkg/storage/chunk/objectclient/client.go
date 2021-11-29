@@ -16,6 +16,8 @@ import (
 // from the underlying ObjectClient
 type KeyEncoder func(string) string
 
+var IdentityEncoder KeyEncoder = func(key string) string { return key }
+
 // Base64Encoder is used to encode chunk keys in base64 before storing/retrieving
 // them from the ObjectClient
 var Base64Encoder = func(key string) string {

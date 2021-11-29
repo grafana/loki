@@ -130,6 +130,16 @@ func defaultRowShards(schema string) uint32 {
 	}
 }
 
+// ChunkPathPeriod is introduced as a SchemaConfig value in Schema "v12"
+func defaultChunkPathPeriod(schema string) time.Duration {
+	return 1 * time.Hour
+}
+
+// ChunkPathShardFactor is introduced as a SchemaConfig value in Schema "v12"
+func defaultChunkPathShardFactor(schema string) uint64 {
+	return 2
+}
+
 // ForEachAfter will call f() on every entry after t, splitting
 // entries if necessary so there is an entry starting at t
 func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)) {
@@ -223,6 +233,12 @@ func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
 func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
+	}
+	if cfg.ChunkPathPeriod == 0 {
+		cfg.ChunkPathPeriod = defaultChunkPathPeriod(cfg.Schema)
+	}
+	if cfg.ChunkPathShardFactor == 0 {
+		cfg.ChunkPathShardFactor = defaultChunkPathShardFactor(cfg.Schema)
 	}
 }
 
