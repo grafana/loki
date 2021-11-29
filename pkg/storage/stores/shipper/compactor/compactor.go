@@ -191,7 +191,7 @@ func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage
 	if c.cfg.RetentionEnabled {
 		var encoder objectclient.KeyEncoder
 		if _, ok := objectClient.(*local.FSObjectClient); ok {
-			encoder = objectclient.Base64Encoder
+			encoder = objectclient.IdentityEncoder
 		}
 
 		chunkClient := objectclient.NewClient(objectClient, encoder, schemaConfig.SchemaConfig)
