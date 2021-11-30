@@ -31,7 +31,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           distributorSelector:: selector('distributor'),
                           ingesterSelector:: selector('ingester'),
                         } +
-                        $.dashboard('Loki / Writes')
+                        $.dashboard('Loki / Writes', uid='writes')
                         .addCluster()
                         .addNamespace()
                         .addTag()

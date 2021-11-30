@@ -27,7 +27,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in cfg.matchers.ingester]),
 
                         } +
-                        $.dashboard('Loki / Chunks')
+                        $.dashboard('Loki / Chunks', uid='chunks')
                         .addCluster()
                         .addNamespace()
                         .addTag()
