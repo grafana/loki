@@ -9,7 +9,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     then {}
     else
       k.core.v1.container.withEnvMixin([
-        k.core.v1.container.envType.new('JAEGER_REPORTER_MAX_QUEUE_SIZE', $._config.jaeger_reporter_max_queue),
+        k.core.v1.container.envType.new('JAEGER_REPORTER_MAX_QUEUE_SIZE', std.toString($._config.jaeger_reporter_max_queue)),
       ]),
 
   util+:: {
