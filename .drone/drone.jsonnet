@@ -337,6 +337,7 @@ local manifest(apps) = pipeline('manifest') {
     },
     steps: [
       make('lint-jsonnet', container=false) {
+        // Docker image defined at https://github.com/grafana/jsonnet-libs/tree/master/build
         image: 'grafana/jsonnet-build:c8b75df',
         depends_on: ['clone'],
       },
