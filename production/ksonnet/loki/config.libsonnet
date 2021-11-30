@@ -40,7 +40,7 @@
     overrides_configmap_mount_name: 'overrides',
     overrides_configmap_mount_path: '/etc/loki/overrides',
 
-    jaeger_reporter_max_queue: 5000,
+    jaeger_reporter_max_queue: 1000,
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
