@@ -602,7 +602,7 @@ lint-jsonnet:
 			pushd "$$d" >/dev/null && jb install && popd >/dev/null; \
 		fi; \
 	done; \
-	for m in $$(find . -name 'mixin.libsonnet' -print); do \
+	for m in $$(find . -name 'mixin.libsonnet' -not -path '*/vendor/*' -print); do \
 			echo "Linting $$m"; \
 			mixtool lint -J $$(dirname "$$m")/vendor "$$m"; \
 			if [ $$? -ne 0 ]; then \
