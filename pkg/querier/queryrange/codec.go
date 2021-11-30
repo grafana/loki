@@ -257,7 +257,6 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 }
 
 func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Request, error) {
-
 	header := make(http.Header)
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
@@ -371,9 +370,6 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.DecodeResponse")
-	defer sp.Finish()
-
 	var buf []byte
 	var err error
 	if buffer, ok := r.Body.(Buffer); ok {
@@ -381,11 +377,9 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	} else {
 		buf, err = ioutil.ReadAll(r.Body)
 		if err != nil {
-			sp.LogFields(otlog.Error(err))
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 	}
-	sp.LogFields(otlog.Int64("bytes", r.ContentLength))
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
