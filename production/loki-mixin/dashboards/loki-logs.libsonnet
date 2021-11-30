@@ -51,7 +51,7 @@ local template = import 'grafonnet/template.libsonnet';
                         clusterLabel:: 'cluster',
 
                       } + lokiLogs +
-                      $.dashboard('Loki / Logs')
+                      $.dashboard('Loki / Logs', uid='logs')
                       .addCluster()
                       .addNamespace()
                       .addTag()

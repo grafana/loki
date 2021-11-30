@@ -21,7 +21,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        matchers:: [utils.selector.eq('job', '$namespace/$name')],
                        selector:: std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in (cfg.clusterMatchers + dashboards['promtail.json'].matchers)]),
                      } +
-                     dashboard.dashboard('Loki / Promtail')
+                     dashboard.dashboard('Loki / Promtail', uid='promtail')
                      .addClusterSelectorTemplates(false)
                      .addRow(
                        g.row('Targets & Files')

@@ -150,7 +150,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  for p in super.panels
                                ],
                              } +
-                             $.dashboard('Loki / Operational')
+                             $.dashboard('Loki / Operational', uid='operational')
                              // The queries in this dashboard don't make use of the cluster tempalte label selector
                              // but we keep it here to allow selecting a namespace specific to a certain cluster, the
                              // namespace template variable selectors query uses the cluster value.

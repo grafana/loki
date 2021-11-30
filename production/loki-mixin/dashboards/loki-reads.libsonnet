@@ -38,7 +38,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          ingesterSelector:: selector('ingester'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
                        } +
-                       $.dashboard('Loki / Reads')
+                       $.dashboard('Loki / Reads', uid='reads')
                        .addCluster()
                        .addNamespace()
                        .addTag()
