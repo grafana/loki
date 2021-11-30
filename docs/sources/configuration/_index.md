@@ -312,9 +312,9 @@ The `query_scheduler` block configures the Loki query scheduler.
 # This configures the gRPC client used to report errors back to the
 # query-frontend.
 [grpc_client_config: <grpc_client_config>]
- 
+
 # Set to true to have the query schedulers create and place themselves in a ring.
-# If no frontend_address or scheduler_address are present 
+# If no frontend_address or scheduler_address are present
 # anywhere else in the configuration, Loki will toggle this value to true.
 [use_scheduler_ring: <boolean> | default = false]
 
@@ -453,7 +453,7 @@ storage:
   # Method to use for backend rule storage (azure, gcs, s3, swift, local).
   # CLI flag: -ruler.storage.type
   [type: <string> ]
-  
+
   # Configures backend rule storage for Azure.
   [azure: <azure_storage_config>]
 
@@ -468,6 +468,9 @@ storage:
 
   # Configures backend rule storage for a local filesystem directory.
   [local: <local_storage_config>]
+
+  # The `hedging_config` configures how to hedge requests for the storage.
+  [hedging: <hedging_config>]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
@@ -509,8 +512,8 @@ remote_write:
     # List of remote write relabel configurations.
     write_relabel_configs:
       [- <relabel_config> ...]
- 
-    # Name of the remote write config, which if specified must be unique among remote 
+
+    # Name of the remote write config, which if specified must be unique among remote
     # write configs.
     # The name will be used in metrics and logging in place of a generated value
     # to help users distinguish between remote write configs.
@@ -851,6 +854,26 @@ The `swift_storage_config` configures Swift as a general storage for different d
 # Name of the Swift container to put chunks in.
 # CLI flag: -<prefix>.swift.container-name
 [container_name: <string> | default = "cortex"]
+```
+
+## hedging_config
+
+The `hedging_config` configures how to hedge requests for the storage.
+
+Hedged requests is sending a secondary request until the first request has been outstanding for more than a configure expected latency
+for this class of requests.
+You should configure the latency based on your p99 of object store requests.
+
+```yaml
+# Optional. Default is 0 (disabled)
+# Example: "at: 500ms"
+# If set to a non-zero value another request will be issued at the provided duration. Recommended to
+# be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
+# used with queriers and has minimal to no impact on other pieces.
+[at: <duration> | default = 0]
+# Optional. Default is 2
+# The maximum amount of requests to be issued.
+[up_to: <int> | default = 2]
 ```
 
 ## local_storage_config
@@ -1323,11 +1346,11 @@ aws:
     # Minimum duration to back off.
     # CLI flag: -s3.backoff-min-period
     [min_period: <duration> | default = 100ms]
-  
+
     # The duration to back off.
     # CLI flag: -s3.backoff-max-period
     [max_period: <duration> | default = 3s]
-  
+
     # Number of times to back off and retry before failing.
     # CLI flag: -s3.backoff-retries
     [max_retries: <int> | default = 5]
@@ -2081,7 +2104,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # up until lookback duration ago.
 # This limit is enforced in the query frontend, the querier and the ruler.
 # If the requested time range is outside the allowed range, the request will not fail,
-# but will be modified to only query data within the allowed time range. 
+# but will be modified to only query data within the allowed time range.
 # The default value of 0 does not set a limit.
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0]
@@ -2360,6 +2383,9 @@ If any specific configuration for an object storage client have been provided el
 
 # Configures a (local) filesystem as the common storage.
 [filesystem: <local_storage_config>]
+
+# The `hedging_config` configures how to hedge requests for the storage.
+[hedging: <hedging_config>]
 ```
 
 ### ring_config
@@ -2512,7 +2538,7 @@ How far into the past accepted out-of-order log entries may be
 is configurable with `max_chunk_age`.
 `max_chunk_age` defaults to 1 hour.
 Loki calculates the earliest time that out-of-order entries may have
-and be accepted with 
+and be accepted with
 
 ```
 time_of_most_recent_line - (max_chunk_age/2)

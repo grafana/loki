@@ -6,12 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/mattn/go-ieproxy"
 
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -19,6 +22,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
@@ -49,6 +53,26 @@ var (
 		azureUSGovernment: {
 			"https://%s.blob.core.usgovcloudapi.net/%s/%s",
 			"https://%s.blob.core.usgovcloudapi.net/%s",
+		},
+	}
+
+	// default Azure http client.
+	defaultClient = &http.Client{
+		Transport: &http.Transport{
+			Proxy: ieproxy.GetProxyFunc(),
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+				DualStack: true,
+			}).Dial,
+			MaxIdleConns:           0,
+			MaxIdleConnsPerHost:    100,
+			IdleConnTimeout:        90 * time.Second,
+			TLSHandshakeTimeout:    10 * time.Second,
+			ExpectContinueTimeout:  1 * time.Second,
+			DisableKeepAlives:      false,
+			DisableCompression:     false,
+			MaxResponseHeaderBytes: 0,
 		},
 	}
 )
@@ -109,14 +133,16 @@ func (c *BlobStorageConfig) ToCortexAzureConfig() cortex_azure.BlobStorageConfig
 type BlobStorage struct {
 	// blobService storage.Serv
 	cfg          *BlobStorageConfig
+	hedgingCfg   hedging.Config
 	containerURL azblob.ContainerURL
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
-func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
+func NewBlobStorage(cfg *BlobStorageConfig, hedgingCfg hedging.Config) (*BlobStorage, error) {
 	log.WarnExperimentalUse("Azure Blob Storage")
 	blobStorage := &BlobStorage{
-		cfg: cfg,
+		cfg:        cfg,
+		hedgingCfg: hedgingCfg,
 	}
 
 	var err error
@@ -148,7 +174,7 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 }
 
 func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
-	blockBlobURL, err := b.getBlobURL(objectKey)
+	blockBlobURL, err := b.getBlobURL(objectKey, true)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +189,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	blockBlobURL, err := b.getBlobURL(objectKey)
+	blockBlobURL, err := b.getBlobURL(objectKey, false)
 	if err != nil {
 		return err
 	}
@@ -176,7 +202,7 @@ func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io
 	return err
 }
 
-func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
+func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobURL, error) {
 	blobID = strings.Replace(blobID, ":", "-", -1)
 
 	// generate url for new chunk blob
@@ -185,7 +211,7 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 		return azblob.BlockBlobURL{}, err
 	}
 
-	azPipeline, err := b.newPipeline()
+	azPipeline, err := b.newPipeline(hedging)
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
@@ -199,7 +225,7 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 		return azblob.ContainerURL{}, err
 	}
 
-	azPipeline, err := b.newPipeline()
+	azPipeline, err := b.newPipeline(false)
 	if err != nil {
 		return azblob.ContainerURL{}, err
 	}
@@ -207,13 +233,13 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 	return azblob.NewContainerURL(*u, azPipeline), nil
 }
 
-func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
+func (b *BlobStorage) newPipeline(hedging bool) (pipeline.Pipeline, error) {
 	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
 	if err != nil {
 		return nil, err
 	}
 
-	return azblob.NewPipeline(credential, azblob.PipelineOptions{
+	opts := azblob.PipelineOptions{
 		Retry: azblob.RetryOptions{
 			Policy:        azblob.RetryPolicyExponential,
 			MaxTries:      (int32)(b.cfg.MaxRetries),
@@ -221,7 +247,26 @@ func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
 			RetryDelay:    b.cfg.MinRetryDelay,
 			MaxRetryDelay: b.cfg.MaxRetryDelay,
 		},
-	}), nil
+	}
+
+	opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+		return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+			resp, err := defaultClient.Do(request.WithContext(ctx))
+			return pipeline.NewHTTPResponse(resp), err
+		}
+	})
+
+	if hedging {
+		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+			client := b.hedgingCfg.Client(defaultClient)
+			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+				resp, err := client.Do(request.WithContext(ctx))
+				return pipeline.NewHTTPResponse(resp), err
+			}
+		})
+	}
+
+	return azblob.NewPipeline(credential, opts), nil
 }
 
 // List implements chunk.ObjectClient.
@@ -259,7 +304,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 }
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
-	blockBlobURL, err := b.getBlobURL(blobID)
+	blockBlobURL, err := b.getBlobURL(blobID, false)
 	if err != nil {
 		return err
 	}

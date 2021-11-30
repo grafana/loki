@@ -308,6 +308,9 @@ github.com/cortexproject/cortex/pkg/util/spanlogger
 github.com/cortexproject/cortex/pkg/util/test
 github.com/cortexproject/cortex/pkg/util/validation
 github.com/cortexproject/cortex/tools/querytee
+# github.com/cristalhq/hedgedhttp v0.6.1
+## explicit; go 1.16
+github.com/cristalhq/hedgedhttp
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew

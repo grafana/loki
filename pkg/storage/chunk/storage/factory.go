@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/grpc"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/local"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
@@ -95,6 +96,8 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 
 	GrpcConfig grpc.Config `yaml:"grpc_store"`
+
+	Hedging hedging.Config `yaml:"hedging"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -108,6 +111,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
+	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 
 	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or blocks.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading.", f)
@@ -267,7 +271,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
 	case StorageTypeAWS, StorageTypeS3:
-		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config))
+		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging))
 	case StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -278,15 +282,15 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case StorageTypeAzure:
-		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig))
+		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging))
 	case StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCS:
-		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig))
+		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging))
 	case StorageTypeSwift:
-		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift))
+		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging))
 	case StorageTypeCassandra:
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case StorageTypeFileSystem:
@@ -355,13 +359,13 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
 	switch name {
 	case StorageTypeAWS, StorageTypeS3:
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config)
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
 	case StorageTypeGCS:
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
 	case StorageTypeAzure:
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig)
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
 	case StorageTypeSwift:
-		return openstack.NewSwiftObjectClient(cfg.Swift)
+		return openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
 	case StorageTypeFileSystem:

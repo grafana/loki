@@ -146,9 +146,9 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 //any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
 //derivations, with the derivations taking precedence.
 func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
-	//Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
-	//change ingester ring values when applying the common config, so there's no need for the DeepEqual
-	//check here.
+	// Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
+	// change ingester ring values when applying the common config, so there's no need for the DeepEqual
+	// check here.
 	if mergeWithExisting {
 		r.Ingester.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
 		r.Ingester.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
@@ -331,7 +331,7 @@ var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in 
 func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	var applyConfig func(*ConfigWrapper)
 
-	//only one config is allowed
+	// only one config is allowed
 	configsFound := 0
 
 	if !reflect.DeepEqual(cfg.Common.Storage.Azure, defaults.StorageConfig.AzureStorageConfig) {
@@ -341,6 +341,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "azure"
 			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure.ToCortexAzureConfig()
 			r.StorageConfig.AzureStorageConfig = r.Common.Storage.Azure
+			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeAzure
 		}
 	}
@@ -368,6 +369,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS.ToCortexGCSConfig()
 			r.StorageConfig.GCSConfig = r.Common.Storage.GCS
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeGCS
+			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
 
@@ -379,6 +381,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3.ToCortexS3Config()
 			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeS3
+			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
 
@@ -390,6 +393,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift.ToCortexSwiftConfig()
 			r.StorageConfig.Swift = r.Common.Storage.Swift
 			r.CompactorConfig.SharedStoreType = chunk_storage.StorageTypeSwift
+			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
 
