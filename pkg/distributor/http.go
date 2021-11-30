@@ -10,6 +10,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp/push"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -25,7 +26,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err,
 			)
 		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		serverutil.JSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -61,7 +62,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", body,
 			)
 		}
-		http.Error(w, body, int(resp.Code))
+		serverutil.JSONError(w, int(resp.Code), body)
 	} else {
 		if d.tenantConfigs.LogPushRequest(userID) {
 			level.Debug(logger).Log(
@@ -70,6 +71,6 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err.Error(),
 			)
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
 	}
 }
