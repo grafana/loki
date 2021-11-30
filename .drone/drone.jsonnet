@@ -330,6 +330,18 @@ local manifest(apps) = pipeline('manifest') {
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
     ],
   },
+  pipeline('mixins') {
+    workspace: {
+      base: '/src',
+      path: 'loki',
+    },
+    steps: [
+      make('lint-jsonnet', container=false) {
+        image: 'grafana/jsonnet-build:c8b75df',
+        depends_on: ['clone']
+      },
+    ],
+  },
   pipeline('benchmark-cron') {
     workspace: {
       base: '/src',

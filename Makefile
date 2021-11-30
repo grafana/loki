@@ -596,6 +596,19 @@ lint-jsonnet:
 		jsonnetfmt -- "$$f" | diff -u "$$f" -; \
 		RESULT=$$(($$RESULT + $$?)); \
 	done; \
+	for d in $$(find . -name '*-mixin' -a -type d -print); do \
+		if [ -e "$$d/jsonnetfile.json" ]; then \
+			echo "Installing dependencies for $$d"; \
+			pushd "$$d" >/dev/null && jb install && popd >/dev/null; \
+		fi; \
+	done; \
+	for m in $$(find . -name 'mixin.libsonnet' -print); do \
+			echo "Linting $$m"; \
+			mixtool lint -J $$(dirname "$$m")/vendor "$$m"; \
+			if [ $$? -ne 0 ]; then \
+				RESULT=1; \
+			fi; \
+	done; \
 	exit $$RESULT
 
 fmt-jsonnet:
