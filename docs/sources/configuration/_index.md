@@ -1036,7 +1036,7 @@ lifecycler:
 # A target _compressed_ size in bytes for chunks.
 # This is a desired size not an exact size, chunks may be slightly bigger
 # or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period)
-# The value 0 for this will create chunks with a fixed 10 blocks,
+# A value of 0 creates chunks with a fixed 10 blocks,
 # A non zero value will create chunks with a variable number of blocks to meet the target size.
 # CLI flag: -ingester.chunk-target-size
 [chunk_target_size: <int> | default = 1572864]
