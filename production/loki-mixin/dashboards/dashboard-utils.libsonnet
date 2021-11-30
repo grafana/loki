@@ -40,7 +40,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           self.addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
 
       addTag()::
-        self+ {
+        self + {
           tags+: $._config.tags,
           links+: [
             {
