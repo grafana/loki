@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
@@ -54,7 +55,7 @@ func InitWorkerService(
 
 	// Create a couple Middlewares used to handle panics, perform auth, parse forms in http request, and set content type in response
 	handlerMiddleware := middleware.Merge(
-		serverutil.ExtractQueryTagsMiddleware(),
+		httpreq.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		authMiddleware,
 		serverutil.NewPrepopulateMiddleware(),

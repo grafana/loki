@@ -10,7 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -90,14 +90,12 @@ type astMapperware struct {
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 	conf, err := ast.confs.GetConf(r)
+	logger := util_log.WithContext(ctx, ast.logger)
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(ast.logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
+		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
-
-	shardedLog, ctx := spanlogger.New(ctx, "shardedEngine")
-	defer shardedLog.Finish()
 
 	mapper, err := logql.NewShardMapper(int(conf.RowShards), ast.metrics)
 	if err != nil {
@@ -106,10 +104,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	noop, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
-		level.Warn(shardedLog).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
+		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
-	level.Debug(shardedLog).Log("no-op", noop, "mapped", parsed.String())
+	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
 
 	if noop {
 		// the ast can't be mapped to a sharded equivalent

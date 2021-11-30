@@ -45,39 +45,39 @@ local template = import 'grafonnet/template.libsonnet';
     local dashboards = self,
 
     'loki-logs.json': {
-      local cfg = self,
+                        local cfg = self,
 
-      showMultiCluster:: true,
-      clusterLabel:: 'cluster',
+                        showMultiCluster:: true,
+                        clusterLabel:: 'cluster',
 
-    } + lokiLogs +
-    $.dashboard('Loki / Logs')
-      .addCluster()
-      .addNamespace()
-      .addTag()
-      .addLog() +
-    {
-      panels: [
-        p + {
-          targets: [
-            e + {
-              expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
-              else std.strReplace(super.expr, 'cluster="$cluster", ', '')
-            }
-            for e in p.targets
-          ],
-        }
-        for p in super.panels
-      ],
-      templating+: {
-        list+: [
-          deploymentTemplate,
-          podTemplate,
-          containerTemplate,
-          levelTemplate,
-          logTemplate,
-        ],
-      },
-    },
+                      } + lokiLogs +
+                      $.dashboard('Loki / Logs')
+                      .addCluster()
+                      .addNamespace()
+                      .addTag()
+                      .addLog() +
+                      {
+                        panels: [
+                          p {
+                            targets: [
+                              e {
+                                expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
+                                else std.strReplace(super.expr, 'cluster="$cluster", ', ''),
+                              }
+                              for e in p.targets
+                            ],
+                          }
+                          for p in super.panels
+                        ],
+                        templating+: {
+                          list+: [
+                            deploymentTemplate,
+                            podTemplate,
+                            containerTemplate,
+                            levelTemplate,
+                            logTemplate,
+                          ],
+                        },
+                      },
   },
 }

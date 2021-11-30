@@ -26,9 +26,9 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 var LokiCodec = &Codec{}
@@ -257,11 +257,10 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 }
 
 func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Request, error) {
-
 	header := make(http.Header)
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
-		header.Set(string(serverutil.QueryTagsHTTPHeader), queryTags)
+		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
 	switch request := r.(type) {
@@ -371,9 +370,6 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.DecodeResponse")
-	defer sp.Finish()
-
 	var buf []byte
 	var err error
 	if buffer, ok := r.Body.(Buffer); ok {
@@ -381,11 +377,9 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	} else {
 		buf, err = ioutil.ReadAll(r.Body)
 		if err != nil {
-			sp.LogFields(otlog.Error(err))
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 	}
-	sp.LogFields(otlog.Int64("bytes", r.ContentLength))
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
@@ -866,6 +860,6 @@ func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryra
 }
 
 func getQueryTags(ctx context.Context) string {
-	v, _ := ctx.Value(serverutil.QueryTagsHTTPHeader).(string) // it's ok to be empty
+	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
 	return v
 }

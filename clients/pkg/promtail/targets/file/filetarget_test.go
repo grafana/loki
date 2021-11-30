@@ -3,579 +3,22 @@ package file
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"sort"
 	"testing"
 	"time"
 
-	"github.com/bmatcuk/doublestar"
+	"github.com/stretchr/testify/require"
+
+	"go.uber.org/atomic"
 	"gopkg.in/fsnotify.v1"
 
 	"github.com/go-kit/log"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 )
-
-func createWatchers(ctx context.Context, path string) (chan fsnotify.Event, chan fileTargetEvent, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, nil, err
-	}
-	targetEventHandler := make(chan fileTargetEvent)
-	fileEventWatcher := make(chan fsnotify.Event)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				_ = watcher.Close()
-				close(targetEventHandler)
-				close(fileEventWatcher)
-				return
-			case event := <-watcher.Events:
-				switch event.Op {
-				case fsnotify.Create:
-					matched, _ := doublestar.Match(path, event.Name)
-					if matched {
-						fileEventWatcher <- event
-					}
-				default:
-				}
-			case event := <-targetEventHandler:
-				switch event.eventType {
-				case fileTargetEventWatchStart:
-					_ = watcher.Add(event.path)
-				case fileTargetEventWatchStop:
-					_ = watcher.Remove(event.path)
-				}
-			}
-		}
-	}()
-	return fileEventWatcher, targetEventHandler, nil
-}
-
-func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	positionsFileName := dirName + "/positions.yml"
-	logFile := dirName + "/test.log"
-
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dirName) }()
-
-	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	// everything saved was done through channel notifications when target.stop() was called.
-	ps, err := positions.New(logger, positions.Config{
-		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFileName,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := fake.New(func() {})
-	defer client.Stop()
-
-	f, err := os.Create(logFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metrics := NewMetrics(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	fileWatcher, eventHandler, err := createWatchers(ctx, logFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	target, err := NewFileTarget(metrics, logger, client, ps, logFile, nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
-	}, fileWatcher, eventHandler)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		_, err = f.WriteString("test\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-
-	target.Stop()
-	ps.Stop()
-
-	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
-	if err != nil {
-		t.Fatal("Expected to find a positions file but did not", err)
-	}
-	var p positions.File
-	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
-		t.Fatal("Failed to parse positions file:", err)
-	}
-
-	// Assert the position value is in the correct spot.
-	if val, ok := p.Positions[logFile]; ok {
-		if val != "50" {
-			t.Error("Incorrect position found, expected 50, found", val)
-		}
-	} else {
-		t.Error("Positions file did not contain any data for our test log file")
-	}
-
-	// Assert the number of messages the handler received is correct.
-	if len(client.Received()) != 10 {
-		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Received()))
-	}
-
-	// Spot check one of the messages.
-	if client.Received()[0].Line != "test" {
-		t.Error("Expected first log message to be 'test' but was", client.Received()[0])
-	}
-
-}
-
-func TestWatchEntireDirectory(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	positionsFileName := dirName + "/positions.yml"
-	logFileDir := dirName + "/logdir/"
-
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.MkdirAll(logFileDir, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dirName) }()
-
-	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	// everything saved was done through channel notifications when target.stop() was called.
-	ps, err := positions.New(logger, positions.Config{
-		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFileName,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := fake.New(func() {})
-	defer client.Stop()
-
-	f, err := os.Create(logFileDir + "test.log")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metrics := NewMetrics(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	path := logFileDir + "*"
-	fileWatcher, eventHandler, err := createWatchers(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
-	}, fileWatcher, eventHandler)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		_, err = f.WriteString("test\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-
-	target.Stop()
-	ps.Stop()
-
-	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
-	if err != nil {
-		t.Fatal("Expected to find a positions file but did not", err)
-	}
-	var p positions.File
-	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
-		t.Fatal("Failed to parse positions file:", err)
-	}
-
-	// Assert the position value is in the correct spot.
-	if val, ok := p.Positions[logFileDir+"test.log"]; ok {
-		if val != "50" {
-			t.Error("Incorrect position found, expected 50, found", val)
-		}
-	} else {
-		t.Error("Positions file did not contain any data for our test log file")
-	}
-
-	// Assert the number of messages the handler received is correct.
-	if len(client.Received()) != 10 {
-		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.Received()))
-	}
-
-	// Spot check one of the messages.
-	if client.Received()[0].Line != "test" {
-		t.Error("Expected first log message to be 'test' but was", client.Received()[0])
-	}
-
-}
-
-func TestFileRolls(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	positionsFile := dirName + "/positions.yml"
-	logFile := dirName + "/test.log"
-
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dirName) }()
-
-	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	// everything saved was done through channel notifications when target.stop() was called.
-	positions, err := positions.New(logger, positions.Config{
-		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFile,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := fake.New(func() {})
-	defer client.Stop()
-
-	f, err := os.Create(logFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metrics := NewMetrics(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	path := dirName + "/*.log"
-	fileWatcher, eventHandler, err := createWatchers(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	target, err := NewFileTarget(metrics, logger, client, positions, path, nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
-	}, fileWatcher, eventHandler)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		_, err = f.WriteString("test1\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-
-	// Rename the log file to something not in the pattern, then create a new file with the same name.
-	err = os.Rename(logFile, dirName+"/test.log.1")
-	if err != nil {
-		t.Fatal("Failed to rename log file for test", err)
-	}
-	f, err = os.Create(logFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		_, err = f.WriteString("test2\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	countdown = 10000
-	for len(client.Received()) != 20 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-
-	target.Stop()
-	positions.Stop()
-
-	if len(client.Received()) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Received()))
-	}
-
-	// Spot check one of the messages.
-	if client.Received()[0].Line != "test1" {
-		t.Error("Expected first log message to be 'test1' but was", client.Received()[0])
-	}
-
-	// Spot check the first message from the second file.
-	if client.Received()[10].Line != "test2" {
-		t.Error("Expected first log message to be 'test2' but was", client.Received()[10])
-	}
-}
-
-func TestResumesWhereLeftOff(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	positionsFileName := dirName + "/positions.yml"
-	logFile := dirName + "/test.log"
-
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dirName) }()
-
-	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	// everything saved was done through channel notifications when target.stop() was called.
-	ps, err := positions.New(logger, positions.Config{
-		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFileName,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := fake.New(func() {})
-	defer client.Stop()
-
-	f, err := os.Create(logFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metrics := NewMetrics(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	path := dirName + "/*.log"
-	fileWatcher, eventHandler, err := createWatchers(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
-	}, fileWatcher, eventHandler)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		_, err = f.WriteString("test1\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	countdown := 10000
-	for len(client.Received()) != 10 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-
-	target.Stop()
-	ps.Stop()
-
-	// Create another positions (so that it loads from the previously saved positions file).
-	ps2, err := positions.New(logger, positions.Config{
-		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFileName,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a new target, keep the same client so we can track what was sent through the handler.
-	target2, err := NewFileTarget(metrics, logger, client, ps2, dirName+"/*.log", nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
-	}, fileWatcher, eventHandler)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		_, err = f.WriteString("test2\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	countdown = 10000
-	for len(client.Received()) != 20 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-
-	target2.Stop()
-	ps2.Stop()
-
-	if len(client.Received()) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Received()))
-	}
-
-	// Spot check one of the messages.
-	if client.Received()[0].Line != "test1" {
-		t.Error("Expected first log message to be 'test1' but was", client.Received()[0])
-	}
-
-	// Spot check the first message from the second file.
-	if client.Received()[10].Line != "test2" {
-		t.Error("Expected first log message to be 'test2' but was", client.Received()[10])
-	}
-}
-
-func TestGlobWithMultipleFiles(t *testing.T) {
-	w := log.NewSyncWriter(os.Stderr)
-	logger := log.NewLogfmtLogger(w)
-
-	testutils.InitRandom()
-	dirName := "/tmp/" + testutils.RandName()
-	positionsFileName := dirName + "/positions.yml"
-	logFile1 := dirName + "/test.log"
-	logFile2 := dirName + "/dirt.log"
-
-	err := os.MkdirAll(dirName, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dirName) }()
-
-	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	// everything saved was done through channel notifications when target.stop() was called.
-	ps, err := positions.New(logger, positions.Config{
-		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFileName,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := fake.New(func() {})
-	defer client.Stop()
-
-	f1, err := os.Create(logFile1)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metrics := NewMetrics(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	path := dirName + "/*.log"
-	fileWatcher, eventHandler, err := createWatchers(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
-		SyncPeriod: 10 * time.Second,
-	}, fileWatcher, eventHandler)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f2, err := os.Create(logFile2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 10; i++ {
-		_, err = f1.WriteString("test1\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-		_, err = f2.WriteString("dirt1\n")
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	countdown := 10000
-	for len(client.Received()) != 20 && countdown > 0 {
-		time.Sleep(1 * time.Millisecond)
-		countdown--
-	}
-
-	target.Stop()
-	ps.Stop()
-
-	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
-	if err != nil {
-		t.Fatal("Expected to find a positions file but did not", err)
-	}
-	var p positions.File
-	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
-		t.Fatal("Failed to parse positions file:", err)
-	}
-
-	// Assert the position value is in the correct spot.
-	if val, ok := p.Positions[logFile1]; ok {
-		if val != "60" {
-			t.Error("Incorrect position found for file 1, expected 60, found", val)
-		}
-	} else {
-		t.Error("Positions file did not contain any data for our test log file")
-	}
-	if val, ok := p.Positions[logFile2]; ok {
-		if val != "60" {
-			t.Error("Incorrect position found for file 2, expected 60, found", val)
-		}
-	} else {
-		t.Error("Positions file did not contain any data for our test log file")
-	}
-
-	// Assert the number of messages the handler received is correct.
-	if len(client.Received()) != 20 {
-		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.Received()))
-	}
-
-}
 
 func TestFileTargetSync(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
@@ -608,16 +51,31 @@ func TestFileTargetSync(t *testing.T) {
 	defer client.Stop()
 
 	metrics := NewMetrics(nil)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	fakeHandler := make(chan fileTargetEvent)
+	receivedStartWatch := atomic.NewInt32(0)
+	receivedStopWatch := atomic.NewInt32(0)
+	go func() {
+		for {
+			select {
+			case event := <-fakeHandler:
+				switch event.eventType {
+				case fileTargetEventWatchStart:
+					receivedStartWatch.Add(1)
+				case fileTargetEventWatchStop:
+					receivedStopWatch.Add(1)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 	path := logDir1 + "/*.log"
-	fileWatcher, eventHandler, err := createWatchers(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
 	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
-	}, fileWatcher, eventHandler)
+	}, nil, fakeHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,6 +116,9 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.tails) != 1 {
 		t.Fatal("Expected tails to be 1 at this point in the test...")
 	}
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
 
 	// Add another file, should get another tailer.
 	_, err = os.Create(logDir1File2)
@@ -701,10 +162,86 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.tails) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received starting watch event to be 1 at this point in the test...")
+	require.Eventually(t, func() bool {
+		return receivedStartWatch.Load() == 1
+	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
 
 	target.Stop()
 	ps.Stop()
+}
 
+func TestHandleFileCreationEvent(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	testutils.InitRandom()
+	dirName := "/tmp/" + testutils.RandName()
+	positionsFileName := dirName + "/positions.yml"
+	logDir := dirName + "/log"
+	logFile := logDir + "/test1.log"
+
+	err := os.MkdirAll(dirName, 0750)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(dirName) }()
+	if err = os.MkdirAll(logDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Minute,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	metrics := NewMetrics(nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fakeFileHandler := make(chan fsnotify.Event)
+	fakeTargetHandler := make(chan fileTargetEvent)
+	path := logDir + "/*.log"
+	go func() {
+		for {
+			select {
+			case <-fakeTargetHandler:
+				continue
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	target, err := NewFileTarget(metrics, logger, client, ps, path, nil, nil, &Config{
+		// To handle file creation event from channel, set enough long time as sync period
+		SyncPeriod: 10 * time.Minute,
+	}, fakeFileHandler, fakeTargetHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = os.Create(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fakeFileHandler <- fsnotify.Event{
+		Name: logFile,
+		Op:   fsnotify.Create,
+	}
+	require.Eventually(t, func() bool {
+		return len(target.tails) == 1
+	}, time.Second*10, time.Millisecond*1, "Expected tails to be 1 at this point in the test...")
 }
 
 func TestToStopTailing(t *testing.T) {

@@ -3,7 +3,10 @@ package loki
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"io"
+	"io/ioutil"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -85,4 +88,81 @@ func TestLoki_isModuleEnabled(t1 *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoki_CustomRunOptsBehavior(t *testing.T) {
+	yamlConfig := `target: querier
+server:
+  http_listen_port: 3100
+common:
+  path_prefix: /tmp/loki
+  ring:
+    kvstore:
+      store: inmemory
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      row_shards: 10
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h`
+
+	cfgWrapper, _, err := configWrapperFromYAML(t, yamlConfig, nil)
+	require.NoError(t, err)
+
+	loki, err := New(cfgWrapper.Config)
+	require.NoError(t, err)
+
+	lokiHealthCheck := func() error {
+		// wait for Loki HTTP server to be ready.
+		// retries at most 10 times (1 second in total) to avoid infinite loops when no timeout is set.
+		for i := 0; i < 10; i++ {
+			// waits until request to /ready doesn't error.
+			resp, err := http.DefaultClient.Get("http://localhost:3100/ready")
+			if err != nil {
+				time.Sleep(time.Millisecond * 200)
+				continue
+			}
+
+			// waits until /ready returns OK.
+			if resp.StatusCode != http.StatusOK {
+				time.Sleep(time.Millisecond * 200)
+				continue
+			}
+
+			// Loki is healthy.
+			return nil
+		}
+
+		return fmt.Errorf("loki HTTP not healthy")
+	}
+
+	customHandlerInvoked := false
+	customHandler := func(w http.ResponseWriter, _ *http.Request) {
+		customHandlerInvoked = true
+		_, err := w.Write([]byte("abc"))
+		require.NoError(t, err)
+	}
+
+	// Run Loki querier in a different go routine and with custom /config handler.
+	go func() {
+		err := loki.Run(RunOpts{CustomConfigEndpointHandlerFn: customHandler})
+		require.NoError(t, err)
+	}()
+
+	err = lokiHealthCheck()
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Get("http://localhost:3100/config")
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	bBytes, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, string(bBytes), "abc")
+	assert.True(t, customHandlerInvoked)
 }

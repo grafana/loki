@@ -201,9 +201,8 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 		requests  = make([]decodeRequest, 0, len(keys))
 		responses = make(chan decodeResponse)
 		missing   []Chunk
+		logger    = util_log.WithContext(ctx, util_log.Logger)
 	)
-	log, _ := spanlogger.New(ctx, "Fetcher.processCacheResponse")
-	defer log.Span.Finish()
 
 	i, j := 0, 0
 	for i < len(chunks) && j < len(keys) {
@@ -213,7 +212,7 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 			missing = append(missing, chunks[i])
 			i++
 		} else if chunkKey > keys[j] {
-			level.Warn(util_log.Logger).Log("msg", "got chunk from cache we didn't ask for")
+			level.Warn(logger).Log("msg", "got chunk from cache we didn't ask for")
 			j++
 		} else {
 			requests = append(requests, decodeRequest{
@@ -228,7 +227,7 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 	for ; i < len(chunks); i++ {
 		missing = append(missing, chunks[i])
 	}
-	level.Debug(log).Log("chunks", len(chunks), "decodeRequests", len(requests), "missing", len(missing))
+	level.Debug(logger).Log("chunks", len(chunks), "decodeRequests", len(requests), "missing", len(missing))
 
 	go func() {
 		for _, request := range requests {
