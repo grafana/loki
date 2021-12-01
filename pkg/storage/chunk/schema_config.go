@@ -480,3 +480,29 @@ func (cfg *PeriodicTableConfig) TableFor(t model.Time) string {
 func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 	return cfg.Prefix + strconv.Itoa(int(i))
 }
+
+func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
+	p, err := cfg.SchemaForTime(chunk.From)
+	if err == nil && p.Schema >= "v12" {
+		shard := uint64(chunk.Fingerprint) % p.ChunkPathShardFactor
+		// Reduce the fingerprint into the <period> space to act as jitter
+		jitter := uint64(chunk.Fingerprint) % uint64(p.ChunkPathPeriod)
+		// The fingerprint (hash, uniformly distributed) allows us to gradually
+		// write into the next <period>, "warming" it up in a linear fashion wrt time.
+		// This means that if we're 10% into the current period, 10% of fingerprints will
+		// be written into the next period instead.
+		prefix := (uint64(chunk.From.UnixNano()) + jitter) % uint64(p.ChunkPathPeriod)
+		return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", chunk.UserID, prefix, shard, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	} else {
+		// Some chunks have a checksum stored in dynamodb, some do not.  We must
+		// generate keys appropriately.
+		if chunk.ChecksumSet {
+			// This is the inverse of parseNewExternalKey.
+			return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+		}
+		// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
+		// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
+		// See comment on parseExternalKey.
+		return fmt.Sprintf("%s/%d:%d:%d", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
+	}
+}

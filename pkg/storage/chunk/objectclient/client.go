@@ -59,12 +59,9 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 		if err != nil {
 			return err
 		}
-		p, err := o.schema.SchemaForTime(chunks[i].From)
-		if err == nil && p.Schema == "v12" {
-			key = chunks[i].NewExternalKey(p.ChunkPathShardFactor, p.ChunkPathPeriod)
-		} else {
-			key = chunks[i].ExternalKey()
-		}
+
+		key = o.schema.ExternalKey(chunks[i])
+
 		if o.keyEncoder != nil {
 			key = o.keyEncoder(key)
 		}
@@ -96,7 +93,7 @@ func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 }
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	key := c.ExternalKey()
+	key := o.schema.ExternalKey(c)
 	if o.keyEncoder != nil {
 		key = o.keyEncoder(key)
 	}
