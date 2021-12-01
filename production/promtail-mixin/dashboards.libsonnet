@@ -17,7 +17,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     'promtail.json': {
                        local cfg = self,
                      } +
-                     dashboard.dashboard('Loki / Promtail')
+                     dashboard.dashboard('Loki / Promtail', uid='promtail')
                      .addCluster()
                      .addTag()
                      .addTemplate('namespace', 'promtail_build_info{cluster=~"$cluster"}', 'namespace')
