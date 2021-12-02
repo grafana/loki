@@ -35,7 +35,7 @@ type ErrorResponseBody struct {
 }
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	JSONError(w, 404, "page not found")
+	JSONError(w, 404, "not found")
 }
 
 func JSONError(w http.ResponseWriter, code int, message string, args ...interface{}) {
