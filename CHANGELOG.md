@@ -1,5 +1,6 @@
 ## Main
 
+* [4860](https://github.com/grafana/loki/pull/4860) **cyriltovena**: Add rate limiting and metrics to hedging
 * [4826](https://github.com/grafana/loki/pull/4826) **cyriltovena**: Adds the ability to hedge storage requests.
 * [4828](https://github.com/grafana/loki/pull/4282) **chaudum**: Set correct `Content-Type` header in query response
 * [4832](https://github.com/grafana/loki/pull/4832) **taisho6339**: Use http prefix path correctly in Promtail
