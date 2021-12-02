@@ -236,8 +236,7 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 	return azblob.NewContainerURL(*u, azPipeline), nil
 }
 
-func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
-
+func (b *BlobStorage) newPipeline(hedging bool) (pipeline.Pipeline, error) {
 	if b.cfg.UseManagedIdentity == false {
 		credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
 		if err != nil {
