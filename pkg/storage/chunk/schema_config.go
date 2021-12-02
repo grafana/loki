@@ -537,6 +537,6 @@ func (cfg SchemaConfig) newerExternalKey(chunk Chunk, shardFactor uint64, period
 	// write into the next <period>, "warming" it up in a linear fashion wrt time.
 	// This means that if we're 10% into the current period, 10% of fingerprints will
 	// be written into the next period instead.
-	prefix := (uint64(chunk.From.UnixNano()) + jitter) % uint64(p.ChunkPathPeriod)
+	prefix := (uint64(chunk.From.UnixNano()) + jitter) % uint64(period)
 	return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", chunk.UserID, prefix, shard, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }
