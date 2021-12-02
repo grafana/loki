@@ -19,13 +19,14 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/index"
+
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -65,7 +66,7 @@ func newCRC32() hash.Hash32 {
 type BinaryTOC struct {
 	// Symbols holds start to the same symbols section as index related to this index header.
 	Symbols uint64
-	// PostingsOffsetTable holds start to the the same Postings Offset Table section as index related to this index header.
+	// PostingsOffsetTable holds start to the same Postings Offset Table section as index related to this index header.
 	PostingsOffsetTable uint64
 }
 

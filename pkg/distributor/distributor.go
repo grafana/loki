@@ -7,11 +7,11 @@ import (
 	"time"
 
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/ring"
-	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/limiter"
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
@@ -43,9 +43,9 @@ type Config struct {
 	factory ring_client.PoolFactory `yaml:"-"`
 }
 
-// RegisterFlags registers the flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.DistributorRing.RegisterFlags(f)
+// RegisterFlags registers distributor-related flags.
+func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
+	cfg.DistributorRing.RegisterFlags(fs)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -99,7 +99,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		var err error
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false, registerer)
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +255,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, userID, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck

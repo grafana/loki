@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/modtimevfs"
+	"github.com/prometheus/prometheus/util/modtimevfs"
 	"github.com/shurcooL/vfsgen"
 
 	"github.com/grafana/loki/clients/pkg/promtail/server/ui"

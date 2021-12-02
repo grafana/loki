@@ -11,11 +11,12 @@ import (
 	"io"
 	"io/ioutil"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -31,7 +32,12 @@ const (
 	originBucket = "bucket"
 )
 
-var errObjNotFound = errors.Errorf("object not found")
+var (
+	errObjNotFound                 = errors.Errorf("object not found")
+	ErrInvalidBucketCacheKeyFormat = errors.New("key has invalid format")
+	ErrInvalidBucketCacheKeyVerb   = errors.New("key has invalid verb")
+	ErrParseKeyInt                 = errors.New("failed to parse integer in key")
+)
 
 // CachingBucket implementation that provides some caching features, based on passed configuration.
 type CachingBucket struct {
@@ -130,8 +136,8 @@ func (cb *CachingBucket) Iter(ctx context.Context, dir string, f func(string) er
 	}
 
 	cb.operationRequests.WithLabelValues(objstore.OpIter, cfgName).Inc()
-
-	key := cachingKeyIter(dir)
+	iterVerb := BucketCacheKey{Verb: IterVerb, Name: dir}
+	key := iterVerb.String()
 	data := cfg.cache.Fetch(ctx, []string{key})
 	if data[key] != nil {
 		list, err := cfg.codec.Decode(data[key])
@@ -176,7 +182,8 @@ func (cb *CachingBucket) Exists(ctx context.Context, name string) (bool, error) 
 
 	cb.operationRequests.WithLabelValues(objstore.OpExists, cfgName).Inc()
 
-	key := cachingKeyExists(name)
+	existsVerb := BucketCacheKey{Verb: ExistsVerb, Name: name}
+	key := existsVerb.String()
 	hits := cfg.cache.Fetch(ctx, []string{key})
 
 	if ex := hits[key]; ex != nil {
@@ -218,8 +225,10 @@ func (cb *CachingBucket) Get(ctx context.Context, name string) (io.ReadCloser, e
 
 	cb.operationRequests.WithLabelValues(objstore.OpGet, cfgName).Inc()
 
-	contentKey := cachingKeyContent(name)
-	existsKey := cachingKeyExists(name)
+	contentVerb := BucketCacheKey{Verb: ContentVerb, Name: name}
+	contentKey := contentVerb.String()
+	existsVerb := BucketCacheKey{Verb: ExistsVerb, Name: name}
+	existsKey := existsVerb.String()
 
 	hits := cfg.cache.Fetch(ctx, []string{contentKey, existsKey})
 	if hits[contentKey] != nil {
@@ -286,7 +295,8 @@ func (cb *CachingBucket) Attributes(ctx context.Context, name string) (objstore.
 }
 
 func (cb *CachingBucket) cachedAttributes(ctx context.Context, name, cfgName string, cache cache.Cache, ttl time.Duration) (objstore.ObjectAttributes, error) {
-	key := cachingKeyAttributes(name)
+	attrVerb := BucketCacheKey{Verb: AttributesVerb, Name: name}
+	key := attrVerb.String()
 
 	cb.operationRequests.WithLabelValues(objstore.OpAttributes, cfgName).Inc()
 
@@ -357,8 +367,8 @@ func (cb *CachingBucket) cachedGetRange(ctx context.Context, name string, offset
 			end = attrs.Size
 		}
 		totalRequestedBytes += (end - off)
-
-		k := cachingKeyObjectSubrange(name, off, end)
+		objectSubrange := BucketCacheKey{Verb: SubrangeVerb, Name: name, Start: off, End: end}
+		k := objectSubrange.String()
 		keys = append(keys, k)
 		offsetKeys[off] = k
 	}
@@ -421,6 +431,19 @@ func (cb *CachingBucket) fetchMissingSubranges(ctx context.Context, name string,
 			}
 			defer runutil.CloseWithLogOnErr(cb.logger, r, "fetching range [%d, %d]", m.start, m.end)
 
+			var bufSize int64
+			if lastSubrangeOffset >= m.end {
+				bufSize = m.end - m.start
+			} else {
+				bufSize = ((m.end - m.start) - cfg.subrangeSize) + int64(lastSubrangeLength)
+			}
+
+			buf := make([]byte, bufSize)
+			_, err = io.ReadFull(r, buf)
+			if err != nil {
+				return errors.Wrapf(err, "fetching range [%d, %d]", m.start, m.end)
+			}
+
 			for off := m.start; off < m.end && gctx.Err() == nil; off += cfg.subrangeSize {
 				key := cacheKeys[off]
 				if key == "" {
@@ -432,13 +455,9 @@ func (cb *CachingBucket) fetchMissingSubranges(ctx context.Context, name string,
 				if off == lastSubrangeOffset {
 					// The very last subrange in the object may have different length,
 					// if object length isn't divisible by subrange size.
-					subrangeData = make([]byte, lastSubrangeLength)
+					subrangeData = buf[off-m.start : off-m.start+int64(lastSubrangeLength)]
 				} else {
-					subrangeData = make([]byte, cfg.subrangeSize)
-				}
-				_, err := io.ReadFull(r, subrangeData)
-				if err != nil {
-					return errors.Wrapf(err, "fetching range [%d, %d]", m.start, m.end)
+					subrangeData = buf[off-m.start : off-m.start+cfg.subrangeSize]
 				}
 
 				storeToCache := false
@@ -482,24 +501,86 @@ func mergeRanges(input []rng, limit int64) []rng {
 	return input[:last+1]
 }
 
-func cachingKeyAttributes(name string) string {
-	return fmt.Sprintf("attrs:%s", name)
+// VerbType is the type of operation whose result has been stored in the caching bucket's cache.
+type VerbType string
+
+const (
+	ExistsVerb     VerbType = "exists"
+	ContentVerb    VerbType = "content"
+	IterVerb       VerbType = "iter"
+	AttributesVerb VerbType = "attrs"
+	SubrangeVerb   VerbType = "subrange"
+)
+
+type BucketCacheKey struct {
+	Verb  VerbType
+	Name  string
+	Start int64
+	End   int64
 }
 
-func cachingKeyObjectSubrange(name string, start, end int64) string {
-	return fmt.Sprintf("subrange:%s:%d:%d", name, start, end)
+// String returns the string representation of BucketCacheKey.
+func (ck BucketCacheKey) String() string {
+	if ck.Start == 0 && ck.End == 0 {
+		return fmt.Sprintf("%s:%s", ck.Verb, ck.Name)
+	}
+
+	return fmt.Sprintf("%s:%s:%d:%d", ck.Verb, ck.Name, ck.Start, ck.End)
 }
 
-func cachingKeyIter(name string) string {
-	return fmt.Sprintf("iter:%s", name)
+// IsValidVerb checks if the VerbType matches the predefined verbs.
+func IsValidVerb(v VerbType) bool {
+	switch v {
+	case
+		ExistsVerb,
+		ContentVerb,
+		IterVerb,
+		AttributesVerb,
+		SubrangeVerb:
+		return true
+	}
+	return false
 }
 
-func cachingKeyExists(name string) string {
-	return fmt.Sprintf("exists:%s", name)
-}
+// ParseBucketCacheKey parses a string and returns BucketCacheKey.
+func ParseBucketCacheKey(key string) (BucketCacheKey, error) {
+	ck := BucketCacheKey{}
+	slice := strings.Split(key, ":")
+	if len(slice) < 2 {
+		return ck, ErrInvalidBucketCacheKeyFormat
+	}
 
-func cachingKeyContent(name string) string {
-	return fmt.Sprintf("content:%s", name)
+	verb := VerbType(slice[0])
+	if !IsValidVerb(verb) {
+		return BucketCacheKey{}, ErrInvalidBucketCacheKeyVerb
+	}
+
+	if verb == SubrangeVerb {
+		if len(slice) != 4 {
+			return BucketCacheKey{}, ErrInvalidBucketCacheKeyFormat
+		}
+
+		start, err := strconv.ParseInt(slice[2], 10, 64)
+		if err != nil {
+			return BucketCacheKey{}, ErrParseKeyInt
+		}
+
+		end, err := strconv.ParseInt(slice[3], 10, 64)
+		if err != nil {
+			return BucketCacheKey{}, ErrParseKeyInt
+		}
+
+		ck.Start = start
+		ck.End = end
+	} else {
+		if len(slice) != 2 {
+			return BucketCacheKey{}, ErrInvalidBucketCacheKeyFormat
+		}
+	}
+
+	ck.Verb = verb
+	ck.Name = slice[1]
+	return ck, nil
 }
 
 // Reader implementation that uses in-memory subranges.

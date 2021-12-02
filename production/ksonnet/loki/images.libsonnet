@@ -4,7 +4,7 @@
     memcached: 'memcached:1.5.17-alpine',
     memcachedExporter: 'prom/memcached-exporter:v0.6.0',
 
-    loki: 'grafana/loki:2.3.0',
+    loki: 'grafana/loki:2.4.1',
 
     distributor: self.loki,
     ingester: self.loki,
@@ -15,5 +15,6 @@
     ruler: self.loki,
     compactor: self.loki,
     index_gateway: self.loki,
+    overrides_exporter: self.loki,
   },
 }

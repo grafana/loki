@@ -8,12 +8,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
@@ -248,7 +248,8 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 
 	// see if alert condition had any inhabitants at ts-forDuration. We can assume it's still firing because
 	// that's the only condition under which this is queried (via RestoreForState).
-	vec, err := m.queryFunc(m.ctx, rule.Query().String(), m.ts.Add(-rule.HoldDuration()))
+	checkTime := m.ts.Add(-rule.HoldDuration())
+	vec, err := m.queryFunc(m.ctx, rule.Query().String(), checkTime)
 	if err != nil {
 		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "err", err.Error())
 		m.metrics.evaluations.WithLabelValues(statusFailure, m.userID).Inc()
@@ -268,7 +269,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 			Metric: ForStateMetric(smpl.Metric, rule.Name()),
 			Point: promql.Point{
 				T: ts,
-				V: float64(ts),
+				V: float64(checkTime.Unix()),
 			},
 		})
 

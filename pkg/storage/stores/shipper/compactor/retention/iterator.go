@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -125,6 +125,13 @@ func newSeriesCleaner(bucket *bbolt.Bucket, config chunk.PeriodConfig, tableName
 }
 
 func (s *seriesCleaner) Cleanup(userID []byte, lbls labels.Labels) error {
+	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
+	if lbls.Get(labels.MetricName) == "" {
+		lbls = append(lbls, labels.Label{
+			Name:  labels.MetricName,
+			Value: logMetricName,
+		})
+	}
 	_, indexEntries, err := s.schema.GetCacheKeysAndLabelWriteEntries(s.tableInterval.Start, s.tableInterval.End, string(userID), logMetricName, lbls, "")
 	if err != nil {
 		return err

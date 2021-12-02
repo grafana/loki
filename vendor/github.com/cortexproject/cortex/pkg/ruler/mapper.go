@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 )

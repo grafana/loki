@@ -12,7 +12,7 @@ import (
 	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
-	"github.com/prometheus/prometheus/pkg/pool"
+	"github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/logproto"
 )

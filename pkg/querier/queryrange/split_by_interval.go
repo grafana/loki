@@ -102,7 +102,7 @@ func (h *splitByInterval) Process(
 	}
 
 	// don't spawn unnecessary goroutines
-	var p int = parallelism
+	var p = parallelism
 	if len(input) < parallelism {
 		p = len(input)
 	}

@@ -11,8 +11,8 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
@@ -134,7 +134,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		return nil
 	}
 
-	empty, markCount, err := t.tableMarker.MarkForDelete(t.ctx, t.name, t.compactedDB)
+	empty, modified, err := t.tableMarker.MarkForDelete(t.ctx, t.name, t.compactedDB)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		return t.removeFilesFromStorage(indexFiles)
 	}
 
-	if markCount == 0 && !compacted {
+	if !modified && !compacted {
 		// we didn't make a modification so let's just return
 		return nil
 	}

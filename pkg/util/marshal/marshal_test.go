@@ -7,7 +7,7 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
@@ -51,27 +51,38 @@ var queryTests = []struct {
 				],
 				"stats" : {
 					"ingester" : {
-						"compressedBytes": 0,
-						"decompressedBytes": 0,
-						"decompressedLines": 0,
-						"headChunkBytes": 0,
-						"headChunkLines": 0,
+						"store": {
+							"chunksDownloadTime": 0,
+							"totalChunksRef": 0,
+							"totalChunksDownloaded": 0,
+							"chunk" :{
+								"compressedBytes": 0,
+								"decompressedBytes": 0,
+								"decompressedLines": 0,
+								"headChunkBytes": 0,
+								"headChunkLines": 0,
+								"totalDuplicates": 0
+							}
+						},
 						"totalBatches": 0,
 						"totalChunksMatched": 0,
-						"totalDuplicates": 0,
 						"totalLinesSent": 0,
 						"totalReached": 0
 					},
-					"store": {
-						"compressedBytes": 0,
-						"decompressedBytes": 0,
-						"decompressedLines": 0,
-						"headChunkBytes": 0,
-						"headChunkLines": 0,
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"totalDuplicates": 0
+					"querier": {
+						"store": {
+							"chunksDownloadTime": 0,
+							"totalChunksRef": 0,
+							"totalChunksDownloaded": 0,
+							"chunk" :{
+								"compressedBytes": 0,
+								"decompressedBytes": 0,
+								"decompressedLines": 0,
+								"headChunkBytes": 0,
+								"headChunkLines": 0,
+								"totalDuplicates": 0
+							}
+						}
 					},
 					"summary": {
 						"bytesProcessedPerSecond": 0,
@@ -147,27 +158,38 @@ var queryTests = []struct {
 			  ],
 			  "stats" : {
 				"ingester" : {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					},
 					"totalBatches": 0,
 					"totalChunksMatched": 0,
-					"totalDuplicates": 0,
 					"totalLinesSent": 0,
 					"totalReached": 0
 				},
-				"store": {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
-					"chunksDownloadTime": 0,
-					"totalChunksRef": 0,
-					"totalChunksDownloaded": 0,
-					"totalDuplicates": 0
+				"querier": {
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					}
 				},
 				"summary": {
 					"bytesProcessedPerSecond": 0,
@@ -260,27 +282,38 @@ var queryTests = []struct {
 			  ],
 			  "stats" : {
 				"ingester" : {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					},
 					"totalBatches": 0,
 					"totalChunksMatched": 0,
-					"totalDuplicates": 0,
 					"totalLinesSent": 0,
 					"totalReached": 0
 				},
-				"store": {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
-					"chunksDownloadTime": 0,
-					"totalChunksRef": 0,
-					"totalChunksDownloaded": 0,
-					"totalDuplicates": 0
+				"querier": {
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					}
 				},
 				"summary": {
 					"bytesProcessedPerSecond": 0,

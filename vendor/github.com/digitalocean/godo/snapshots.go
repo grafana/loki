@@ -10,7 +10,7 @@ const snapshotBasePath = "v2/snapshots"
 
 // SnapshotsService is an interface for interfacing with the snapshots
 // endpoints of the DigitalOcean API
-// See: https://developers.digitalocean.com/documentation/v2#snapshots
+// See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Snapshots
 type SnapshotsService interface {
 	List(context.Context, *ListOptions) ([]Snapshot, *Response, error)
 	ListVolume(context.Context, *ListOptions) ([]Snapshot, *Response, error)
@@ -75,7 +75,7 @@ func (s *SnapshotsServiceOp) ListVolume(ctx context.Context, opt *ListOptions) (
 	return s.list(ctx, opt, &listOpt)
 }
 
-// Get retrieves an snapshot by id.
+// Get retrieves a snapshot by id.
 func (s *SnapshotsServiceOp) Get(ctx context.Context, snapshotID string) (*Snapshot, *Response, error) {
 	return s.get(ctx, snapshotID)
 }

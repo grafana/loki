@@ -15,11 +15,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -114,6 +114,7 @@ func (m *Matchers) UnmarshalYAML(value *yaml.Node) (err error) {
 type DeletionRequest struct {
 	Matchers  Matchers             `json:"matchers" yaml:"matchers"`
 	Intervals tombstones.Intervals `json:"intervals,omitempty" yaml:"intervals,omitempty"`
+	RequestID string               `json:"request_id,omitempty" yaml:"request_id,omitempty"`
 }
 
 type File struct {

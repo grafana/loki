@@ -9,15 +9,14 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -126,34 +125,27 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 		found, bufs, missed = c.fetch(ctx, keys)
 		return
 	}
-	_ = instr.CollectedRequest(ctx, "Memcache.GetBatched", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
-		found, bufs, missed = c.fetchKeysBatched(ctx, keys)
-		return nil
-	})
+
+	start := time.Now()
+	found, bufs, missed = c.fetchKeysBatched(ctx, keys)
+	c.requestDuration.After(ctx, "Memcache.GetBatched", "200", start)
 	return
 }
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
-	var items map[string]*memcache.Item
-	const method = "Memcache.GetMulti"
-	err := instr.CollectedRequest(ctx, method, c.requestDuration, memcacheStatusCode, func(innerCtx context.Context) error {
-		log, _ := spanlogger.New(innerCtx, method)
-		defer log.Finish()
-		log.LogFields(otlog.Int("keys requested", len(keys)))
-
-		var err error
-		items, err = c.memcache.GetMulti(keys)
-
-		log.LogFields(otlog.Int("keys found", len(items)))
-
-		// Memcached returns partial results even on error.
-		if err != nil {
-			log.Error(err)
-			level.Error(log).Log("msg", "Failed to get keys from memcached", "err", err)
-		}
-		return err
-	})
+	var (
+		err   error
+		start = time.Now()
+		items map[string]*memcache.Item
+	)
+	items, err = c.memcache.GetMulti(keys)
+	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 	if err != nil {
+		level.Error(util_log.WithContext(ctx, c.logger)).Log(
+			"msg", "Failed to get keys from memcached",
+			"keys requested", len(keys),
+			"err", err,
+		)
 		return found, bufs, keys
 	}
 

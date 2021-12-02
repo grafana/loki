@@ -94,6 +94,10 @@ func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) 
 		defer cancel()
 	}
 
+	if len(keys) != len(values) {
+		return fmt.Errorf("MSet the length of keys and values not equal, len(keys)=%d, len(values)=%d", len(keys), len(values))
+	}
+
 	pipe := c.rdb.TxPipeline()
 	for i := range keys {
 		pipe.Set(ctx, keys[i], values[i], c.expiration)

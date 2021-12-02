@@ -19,7 +19,7 @@ func xorInGeneric(d *state, buf []byte) {
 	}
 }
 
-// copyOutGeneric copies ulint64s to a byte buffer.
+// copyOutGeneric copies uint64s to a byte buffer.
 func copyOutGeneric(d *state, b []byte) {
 	for i := 0; len(b) >= 8; i++ {
 		binary.LittleEndian.PutUint64(b, d.a[i])

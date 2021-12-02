@@ -42,19 +42,15 @@ func writeConf() {
 		autoDetect = ieCfg.fAutoDetect
 	}
 
-	// Try WinHTTP default proxy.
-	if defaultCfg, err := getDefaultProxyConfiguration(); err == nil {
-		defer globalFreeWrapper(defaultCfg.lpszProxy)
-		defer globalFreeWrapper(defaultCfg.lpszProxyBypass)
+	if proxy == "" && !autoDetect{
+		// Try WinHTTP default proxy.
+		if defaultCfg, err := getDefaultProxyConfiguration(); err == nil {
+			defer globalFreeWrapper(defaultCfg.lpszProxy)
+			defer globalFreeWrapper(defaultCfg.lpszProxyBypass)
 
-		newProxy := StringFromUTF16Ptr(defaultCfg.lpszProxy)
-		if proxy == "" {
-			proxy = newProxy
-		}
-
-		newProxyByPass := StringFromUTF16Ptr(defaultCfg.lpszProxyBypass)
-		if proxyByPass == "" {
-			proxyByPass = newProxyByPass
+			// Always set both of these (they are a pair, it doesn't make sense to set one here and keep the value of the other from above)
+			proxy = StringFromUTF16Ptr(defaultCfg.lpszProxy)
+			proxyByPass = StringFromUTF16Ptr(defaultCfg.lpszProxyBypass)
 		}
 	}
 
@@ -168,7 +164,27 @@ func parseRegedit(regedit regeditValues) ProxyConf {
 }
 
 func readRegedit() (values regeditValues, err error) {
-	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE)
+	var proxySettingsPerUser uint64 = 1 // 1 is the default value to consider current user
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE)
+	if err == nil {
+		//We had used the below variable tempPrxUsrSettings, because the Golang method GetIntegerValue
+		//sets the value to zero even it fails.
+		tempPrxUsrSettings, _, err := k.GetIntegerValue("ProxySettingsPerUser")
+		if err == nil {
+			//consider the value of tempPrxUsrSettings if it is a success
+			proxySettingsPerUser = tempPrxUsrSettings
+		}
+		k.Close()
+	}
+
+	var hkey registry.Key
+	if proxySettingsPerUser == 0 {
+		hkey = registry.LOCAL_MACHINE
+	} else {
+		hkey = registry.CURRENT_USER
+	}
+
+	k, err = registry.OpenKey(hkey, `Software\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE)
 	if err != nil {
 		return
 	}

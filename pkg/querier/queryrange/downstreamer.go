@@ -7,8 +7,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -131,11 +131,15 @@ func (in instance) For(
 
 	results := make([]logqlmodel.Result, len(queries))
 	for i := 0; i < len(queries); i++ {
-		resp := <-ch
-		if resp.err != nil {
-			return nil, resp.err
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case resp := <-ch:
+			if resp.err != nil {
+				return nil, resp.err
+			}
+			results[resp.i] = resp.res
 		}
-		results[resp.i] = resp.res
 	}
 	return results, nil
 }

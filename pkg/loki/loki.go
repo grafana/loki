@@ -8,20 +8,18 @@ import (
 	"net/http"
 
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/querier/worker"
-	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
-	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/modules"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -34,15 +32,19 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -52,6 +54,7 @@ type Config struct {
 	AuthEnabled bool                   `yaml:"auth_enabled,omitempty"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
+	Common           common.Config            `yaml:"common,omitempty"`
 	Server           server.Config            `yaml:"server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
 	Querier          querier.Config           `yaml:"querier,omitempty"`
@@ -81,10 +84,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	// Set the default module list to 'all'
 	c.Target = []string{All}
 	f.Var(&c.Target, "target", "Comma-separated list of Loki modules to load. "+
-		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. ")
+		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
+		"The aliases 'read' and 'write' can be used to only run components related to the read path or write path, respectively.")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 
-	c.Server.RegisterFlags(f)
+	c.registerServerFlagsWithChangedDefaultValues(f)
+	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -103,6 +108,27 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
+}
+
+func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
+	throwaway := flag.NewFlagSet("throwaway", flag.PanicOnError)
+
+	// Register to throwaway flags first. Default values are remembered during registration and cannot be changed,
+	// but we can take values from throwaway flag set and reregister into supplied flags with new default values.
+	c.Server.RegisterFlags(throwaway)
+
+	throwaway.VisitAll(func(f *flag.Flag) {
+		// Ignore errors when setting new values. We have a test to verify that it works.
+		switch f.Name {
+		case "server.grpc.keepalive.min-time-between-pings":
+			_ = f.Value.Set("10s")
+
+		case "server.grpc.keepalive.ping-without-stream-allowed":
+			_ = f.Value.Set("true")
+		}
+
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -133,6 +159,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Ingester.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
+	}
+	if err := c.LimitsConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid limits config")
 	}
 	if err := c.Worker.Validate(util_log.Logger); err != nil {
 		return errors.Wrap(err, "invalid storage config")
@@ -180,11 +209,13 @@ type Loki struct {
 	// set during initialization
 	ModuleManager *modules.Manager
 	serviceMap    map[string]services.Service
+	deps          map[string][]string
 
 	Server                   *server.Server
 	ring                     *ring.Ring
 	overrides                *validation.Overrides
 	tenantConfigs            *runtime.TenantConfigs
+	TenantLimits             validation.TenantLimits
 	distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Querier                  *querier.Querier
@@ -200,6 +231,7 @@ type Loki struct {
 	MemberlistKV             *memberlist.KVInitService
 	compactor                *compactor.Compactor
 	QueryFrontEndTripperware cortex_tripper.Tripperware
+	queryScheduler           *scheduler.Scheduler
 
 	HTTPAuthMiddleware middleware.Interface
 }
@@ -211,6 +243,7 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
+	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
@@ -235,6 +268,11 @@ func (t *Loki) setupAuthMiddleware() {
 		})
 }
 
+func (t *Loki) setupGRPCRecoveryMiddleware() {
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, serverutil.RecoveryGRPCUnaryInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, serverutil.RecoveryGRPCStreamInterceptor)
+}
+
 func newDefaultConfig() *Config {
 	defaultConfig := &Config{}
 	defaultFS := flag.NewFlagSet("", flag.PanicOnError)
@@ -242,15 +280,30 @@ func newDefaultConfig() *Config {
 	return defaultConfig
 }
 
+// RunOpts configures custom behavior for running Loki.
+type RunOpts struct {
+	// CustomConfigEndpointHandlerFn is the handlerFunc to be used by the /config endpoint.
+	// If empty, default handlerFunc will be used.
+	CustomConfigEndpointHandlerFn func(http.ResponseWriter, *http.Request)
+}
+
+func (t *Loki) bindConfigEndpoint(opts RunOpts) {
+	configEndpointHandlerFn := configHandler(t.Cfg, newDefaultConfig())
+	if opts.CustomConfigEndpointHandlerFn != nil {
+		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
+	}
+	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
+}
+
 // Run starts Loki running, and blocks until a Loki stops.
-func (t *Loki) Run() error {
+func (t *Loki) Run(opts RunOpts) error {
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
 		return err
 	}
 
 	t.serviceMap = serviceMap
-	t.Server.HTTP.Handle("/services", http.HandlerFunc(t.servicesHandler))
+	t.Server.HTTP.Path("/services").Methods("GET").Handler(http.HandlerFunc(t.servicesHandler))
 
 	// get all services, create service manager and tell it to start
 	var servs []services.Service
@@ -264,17 +317,17 @@ func (t *Loki) Run() error {
 	}
 
 	// before starting servers, register /ready handler. It should reflect entire Loki.
-	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
+	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm))
 
-	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthcheck.New(sm))
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
-	// This adds a way to see the config and the changes compared to the defaults
-	t.Server.HTTP.Path("/config").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
+	// Config endpoint adds a way to see the config and the changes compared to the defaults.
+	t.bindConfigEndpoint(opts)
 
 	// Each component serves its version.
-	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").HandlerFunc(versionHandler())
+	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
 
-	t.Server.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
+	t.Server.HTTP.Path("/debug/fgprof").Methods("GET", "POST").Handler(fgprof.Handler())
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
@@ -378,6 +431,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV)
 	mm.RegisterModule(Ring, t.initRing)
 	mm.RegisterModule(Overrides, t.initOverrides)
+	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore)
@@ -392,12 +446,16 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+
 	mm.RegisterModule(All, nil)
+	mm.RegisterModule(Read, nil)
+	mm.RegisterModule(Write, nil)
 
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Overrides:                {RuntimeConfig},
+		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs},
 		Store:                    {Overrides},
@@ -405,24 +463,32 @@ func (t *Loki) setupModuleManager() error {
 		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware},
-		QueryScheduler:           {Server, Overrides},
+		QueryScheduler:           {Server, Overrides, MemberlistKV},
 		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs},
 		TableManager:             {Server},
-		Compactor:                {Server, Overrides},
+		Compactor:                {Server, Overrides, MemberlistKV},
 		IndexGateway:             {Server},
 		IngesterQuerier:          {Ring},
-		All:                      {Querier, Ingester, Distributor, TableManager, Ruler},
+		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
+		Read:                     {QueryScheduler, QueryFrontend, Querier, Ruler, Compactor},
+		Write:                    {Ingester, Distributor},
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
-	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) {
+	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
-	// If we are running Loki with boltdb-shipper as a single binary, without clustered mode(which should always be the case when using inmemory ring),
-	// we should start compactor as well for better user experience.
-	if storage.UsingBoltdbShipper(t.Cfg.SchemaConfig.Configs) && t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store == "inmemory" {
-		deps[All] = append(deps[All], Compactor)
+	// If the query scheduler and querier are running together, make sure the scheduler goes
+	// first to initialize the ring that will also be used by the querier
+	if (t.Cfg.isModuleEnabled(Querier) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+		deps[Querier] = append(deps[Querier], QueryScheduler)
+	}
+
+	// If the query scheduler and query frontend are running together, make sure the scheduler goes
+	// first to initialize the ring that will also be used by the query frontend
+	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(Read) || t.Cfg.isModuleEnabled(All) {
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
 	for mod, targets := range deps {
@@ -431,7 +497,34 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
+	t.deps = deps
 	t.ModuleManager = mm
 
 	return nil
+}
+
+func (t *Loki) isModuleActive(m string) bool {
+	for _, target := range t.Cfg.Target {
+		if target == m {
+			return true
+		}
+		if t.recursiveIsModuleActive(target, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *Loki) recursiveIsModuleActive(target, m string) bool {
+	if targetDeps, ok := t.deps[target]; ok {
+		for _, dep := range targetDeps {
+			if dep == m {
+				return true
+			}
+			if t.recursiveIsModuleActive(dep, m) {
+				return true
+			}
+		}
+	}
+	return false
 }

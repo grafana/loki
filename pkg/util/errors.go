@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -74,6 +74,41 @@ func (es MultiError) Is(target error) bool {
 		if !errors.Is(err, target) {
 			return false
 		}
+	}
+	return true
+}
+
+// IsCancel tells if all errors are either context.Canceled or grpc codes.Canceled.
+func (es MultiError) IsCancel() bool {
+	if len(es) == 0 {
+		return false
+	}
+	for _, err := range es {
+		if errors.Is(err, context.Canceled) {
+			continue
+		}
+		if IsConnCanceled(err) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// IsDeadlineExceeded tells if all errors are either context.DeadlineExceeded or grpc codes.DeadlineExceeded.
+func (es MultiError) IsDeadlineExceeded() bool {
+	if len(es) == 0 {
+		return false
+	}
+	for _, err := range es {
+		if errors.Is(err, context.DeadlineExceeded) {
+			continue
+		}
+		s, ok := status.FromError(err)
+		if ok && s.Code() == codes.DeadlineExceeded {
+			continue
+		}
+		return false
 	}
 	return true
 }

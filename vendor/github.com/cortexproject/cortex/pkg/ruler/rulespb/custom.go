@@ -1,6 +1,6 @@
 package rulespb
 
-import "github.com/prometheus/prometheus/pkg/rulefmt"
+import "github.com/prometheus/prometheus/model/rulefmt"
 
 // RuleGroupList contains a set of rule groups
 type RuleGroupList []*RuleGroupDesc

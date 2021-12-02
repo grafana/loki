@@ -20,9 +20,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/pkg/exemplar"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -279,12 +280,12 @@ func (ce *CircularExemplarStorage) Resize(l int64) int {
 
 	migrated := 0
 
-	if l > 0 {
+	if l > 0 && len(oldBuffer) > 0 {
 		// Rewind previous next index by count with wrap-around.
 		// This math is essentially looking at nextIndex, where we would write the next exemplar to,
 		// and find the index in the old exemplar buffer that we should start migrating exemplars from.
 		// This way we don't migrate exemplars that would just be overwritten when migrating later exemplars.
-		var startIndex int64 = (oldNextIndex - count + int64(len(oldBuffer))) % int64(len(oldBuffer))
+		startIndex := (oldNextIndex - count + int64(len(oldBuffer))) % int64(len(oldBuffer))
 
 		for i := int64(0); i < count; i++ {
 			idx := (startIndex + i) % int64(len(oldBuffer))
@@ -399,4 +400,24 @@ func (ce *CircularExemplarStorage) computeMetrics() {
 	if ce.exemplars[0] != nil {
 		ce.metrics.lastExemplarsTs.Set(float64(ce.exemplars[0].exemplar.Ts) / 1000)
 	}
+}
+
+// IterateExemplars iterates through all the exemplars from oldest to newest appended and calls
+// the given function on all of them till the end (or) till the first function call that returns an error.
+func (ce *CircularExemplarStorage) IterateExemplars(f func(seriesLabels labels.Labels, e exemplar.Exemplar) error) error {
+	ce.lock.RLock()
+	defer ce.lock.RUnlock()
+
+	idx := ce.nextIndex
+	l := len(ce.exemplars)
+	for i := 0; i < l; i, idx = i+1, (idx+1)%l {
+		if ce.exemplars[idx] == nil {
+			continue
+		}
+		err := f(ce.exemplars[idx].ref.seriesLabels, ce.exemplars[idx].exemplar)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -19,6 +19,7 @@
 
 // Supporting services
 (import 'memcached.libsonnet') +
+(import 'overrides-exporter.libsonnet') +
 
 // WAL support
 (import 'wal.libsonnet') +

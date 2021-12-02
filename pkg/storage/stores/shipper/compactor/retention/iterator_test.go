@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
@@ -85,7 +85,7 @@ func Test_SeriesCleaner(t *testing.T) {
 
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
-			// remove c2 chunk
+			// remove c1, c2 chunk
 			err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
 				it, err := newChunkIndexIterator(tx.Bucket(bucketName), tt.config)
 				require.NoError(t, err)
@@ -104,16 +104,16 @@ func Test_SeriesCleaner(t *testing.T) {
 				if err := cleaner.Cleanup(entryFromChunk(c2).UserID, c2.Metric); err != nil {
 					return err
 				}
-				if err := cleaner.Cleanup(entryFromChunk(c1).UserID, c1.Metric); err != nil {
-					return err
-				}
-				return nil
+
+				// remove series for c1 without __name__ label, which should work just fine
+				return cleaner.Cleanup(entryFromChunk(c1).UserID, c1.Metric.WithoutLabels(labels.MetricName))
 			})
 			require.NoError(t, err)
 
 			err = tables[0].DB.View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(bucketName).ForEach(func(k, _ []byte) error {
-					expectedDeleteSeries := entryFromChunk(c2).SeriesID
+					c1SeriesID := entryFromChunk(c1).SeriesID
+					c2SeriesID := entryFromChunk(c2).SeriesID
 					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
 					if !ok {
 						return nil
@@ -121,8 +121,11 @@ func Test_SeriesCleaner(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					if string(expectedDeleteSeries) == string(series) {
-						require.Fail(t, "series should be deleted", expectedDeleteSeries)
+
+					if string(c1SeriesID) == string(series) {
+						require.Fail(t, "series for c1 should be deleted", c1SeriesID)
+					} else if string(c2SeriesID) == string(series) {
+						require.Fail(t, "series for c2 should be deleted", c2SeriesID)
 					}
 
 					return nil

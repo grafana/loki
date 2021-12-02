@@ -3,7 +3,7 @@ package logql
 import (
 	"testing"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -318,7 +318,6 @@ func TestStringer(t *testing.T) {
 			out: `(0 > bool count_over_time({foo="bar"}[1m]))`,
 		},
 		{
-
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
 			out: `(0 > count_over_time({foo="bar"}[1m]))`,
 		},
@@ -332,26 +331,70 @@ func TestStringer(t *testing.T) {
 }
 
 func BenchmarkContainsFilter(b *testing.B) {
-	expr, err := ParseLogSelector(`{app="foo"} |= "foo"`, true)
-	if err != nil {
-		b.Fatal(err)
+	lines := [][]byte{
+		[]byte("hello world foo bar"),
+		[]byte("bar hello world for"),
+		[]byte("hello world foobar and the bar and more bar until the end"),
+		[]byte("hello world foobar and the bar and more bar and more than one hundred characters for sure until the end"),
+		[]byte("hello world foobar and the bar and more bar and more than one hundred characters for sure until the end and yes bar"),
 	}
 
-	p, err := expr.Pipeline()
-	if err != nil {
-		b.Fatal(err)
+	benchmarks := []struct {
+		name string
+		expr string
+	}{
+		{
+			"AllMatches",
+			`{app="foo"} |= "foo" |= "hello" |= "world" |= "bar"`,
+		},
+		{
+			"OneMatches",
+			`{app="foo"} |= "foo" |= "not" |= "in" |= "there"`,
+		},
+		{
+			"MixedFiltersTrue",
+			`{app="foo"} |= "foo" != "not" |~ "hello.*bar" != "there" |= "world"`,
+		},
+		{
+			"MixedFiltersFalse",
+			`{app="foo"} |= "baz" != "not" |~ "hello.*bar" != "there" |= "world"`,
+		},
+		{
+			"GreedyRegex",
+			`{app="foo"} |~ "hello.*bar.*"`,
+		},
+		{
+			"NonGreedyRegex",
+			`{app="foo"} |~ "hello.*?bar.*?"`,
+		},
+		{
+			"ReorderedRegex",
+			`{app="foo"} |~ "hello.*?bar.*?" |= "not"`,
+		},
 	}
 
-	line := []byte("hello world foo bar")
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			expr, err := ParseLogSelector(bm.expr, false)
+			if err != nil {
+				b.Fatal(err)
+			}
 
-	b.ResetTimer()
+			p, err := expr.Pipeline()
+			if err != nil {
+				b.Fatal(err)
+			}
 
-	sp := p.ForStream(labelBar)
-	for i := 0; i < b.N; i++ {
-		if _, _, ok := sp.Process(line); !ok {
-			b.Fatal("doesn't match")
-		}
+			b.ResetTimer()
+			sp := p.ForStream(labelBar)
+			for i := 0; i < b.N; i++ {
+				for _, line := range lines {
+					sp.Process(line)
+				}
+			}
+		})
 	}
+
 }
 
 func Test_parserExpr_Parser(t *testing.T) {
@@ -373,8 +416,8 @@ func Test_parserExpr_Parser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &LabelParserExpr{
-				op:    tt.op,
-				param: tt.param,
+				Op:    tt.op,
+				Param: tt.param,
 			}
 			got, err := e.Stage()
 			if (err != nil) != tt.wantErr {

@@ -179,7 +179,11 @@ func (e ErrDefault403) Error() string {
 	return e.choseErrString()
 }
 func (e ErrDefault404) Error() string {
-	return "Resource not found"
+	e.DefaultErrString = fmt.Sprintf(
+		"Resource not found: [%s %s], error message: %s",
+		e.Method, e.URL, e.Body,
+	)
+	return e.choseErrString()
 }
 func (e ErrDefault405) Error() string {
 	return "Method not allowed"
@@ -273,10 +277,11 @@ func (e ErrTimeOut) Error() string {
 type ErrUnableToReauthenticate struct {
 	BaseError
 	ErrOriginal error
+	ErrReauth   error
 }
 
 func (e ErrUnableToReauthenticate) Error() string {
-	e.DefaultErrString = fmt.Sprintf("Unable to re-authenticate: %s", e.ErrOriginal)
+	e.DefaultErrString = fmt.Sprintf("Unable to re-authenticate: %s: %s", e.ErrOriginal, e.ErrReauth)
 	return e.choseErrString()
 }
 

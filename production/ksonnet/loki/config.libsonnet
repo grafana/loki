@@ -12,10 +12,12 @@
     // flag for tuning things when boltdb-shipper is current or upcoming index type.
     using_boltdb_shipper: true,
 
-    wal_enabled: false,
+    wal_enabled: true,
     query_scheduler_enabled: false,
+    overrides_exporter_enabled: false,
 
     // flags for running ingesters/queriers as a statefulset instead of deployment type.
+    // WAL enabled configurations automatically use statefulsets.
     stateful_ingesters: false,
     ingester_pvc_size: '10Gi',
     ingester_pvc_class: 'fast',
@@ -37,6 +39,8 @@
     // This is the configmap which will be used by workloads.
     overrides_configmap_mount_name: 'overrides',
     overrides_configmap_mount_path: '/etc/loki/overrides',
+
+    jaeger_reporter_max_queue: 1000,
 
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
@@ -202,7 +206,6 @@
       ingester: {
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
-        max_transfer_retries: 60,
 
         lifecycler: {
           ring: {

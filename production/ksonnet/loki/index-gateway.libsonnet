@@ -30,8 +30,7 @@
     pvc.mixin.spec.withStorageClassName($._config.index_gateway_pvc_class)
   else {},
 
-  index_gateway_args:: if $._config.use_index_gateway then {
-    'config.file': '/etc/loki/config/config.yaml',
+  index_gateway_args:: if $._config.use_index_gateway then $._config.commonArgs {
     target: 'index-gateway',
   } else {},
 

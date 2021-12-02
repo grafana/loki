@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
@@ -129,15 +130,18 @@ func sender(renengotiation tls.RenegotiationSupport) Sender {
 	// note that we can't init defaultSenders in init() since it will
 	// execute before calling code has had a chance to enable tracing
 	defaultSenders[renengotiation].init.Do(func() {
-		// Use behaviour compatible with DefaultTransport, but require TLS minimum version.
-		defaultTransport := http.DefaultTransport.(*http.Transport)
+		// copied from http.DefaultTransport with a TLS minimum version.
 		transport := &http.Transport{
-			Proxy:                 defaultTransport.Proxy,
-			DialContext:           defaultTransport.DialContext,
-			MaxIdleConns:          defaultTransport.MaxIdleConns,
-			IdleConnTimeout:       defaultTransport.IdleConnTimeout,
-			TLSHandshakeTimeout:   defaultTransport.TLSHandshakeTimeout,
-			ExpectContinueTimeout: defaultTransport.ExpectContinueTimeout,
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
 			TLSClientConfig: &tls.Config{
 				MinVersion:    tls.VersionTLS12,
 				Renegotiation: renengotiation,
@@ -272,6 +276,7 @@ func DoRetryForAttempts(attempts int, backoff time.Duration) SendDecorator {
 				if err == nil {
 					return resp, err
 				}
+				logger.Instance.Writef(logger.LogError, "DoRetryForAttempts: received error for attempt %d: %v\n", attempt+1, err)
 				if !DelayForBackoff(backoff, attempt, r.Context().Done()) {
 					return nil, r.Context().Err()
 				}
@@ -325,6 +330,9 @@ func doRetryForStatusCodesImpl(s Sender, r *http.Request, count429 bool, attempt
 		// resp and err will both have a value, so in this case we don't want to retry as it will never succeed.
 		if err == nil && !ResponseHasStatusCode(resp, codes...) || IsTokenRefreshError(err) {
 			return resp, err
+		}
+		if err != nil {
+			logger.Instance.Writef(logger.LogError, "DoRetryForStatusCodes: received error for attempt %d: %v\n", attempt+1, err)
 		}
 		delayed := DelayWithRetryAfter(resp, r.Context().Done())
 		// if this was a 429 set the delay cap as specified.
@@ -392,6 +400,7 @@ func DoRetryForDuration(d time.Duration, backoff time.Duration) SendDecorator {
 				if err == nil {
 					return resp, err
 				}
+				logger.Instance.Writef(logger.LogError, "DoRetryForDuration: received error for attempt %d: %v\n", attempt+1, err)
 				if !DelayForBackoff(backoff, attempt, r.Context().Done()) {
 					return nil, r.Context().Err()
 				}

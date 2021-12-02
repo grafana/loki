@@ -7,8 +7,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"golang.org/x/net/context"
@@ -128,13 +129,11 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		stream.lastLine.content = series.LastLine
 		stream.entryCt = series.EntryCt
 		stream.highestTs = series.HighestTs
-		// Always set during replay, then reset to desired value afterward.
-		// This allows replaying unordered WALs into ordered configurations.
-		stream.unorderedWrites = true
 
 		if err != nil {
 			return err
 		}
+		memoryChunks.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredChunksTotal.Add(float64(len(series.Chunks)))
 		r.ing.metrics.recoveredEntriesTotal.Add(float64(entriesAdded))
 		r.ing.replayController.Add(int64(bytesAdded))
@@ -144,7 +143,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		// will use this original reference.
 		got, _ := r.users.LoadOrStore(series.UserID, &sync.Map{})
 		streamsMap := got.(*sync.Map)
-		streamsMap.Store(series.Fingerprint, stream)
+		streamsMap.Store(chunks.HeadSeriesRef(series.Fingerprint), stream)
 
 		return nil
 	})
@@ -274,7 +273,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 		}
 
 		for _, entries := range rec.RefEntries {
-			worker := int(entries.Ref % uint64(len(inputs)))
+			worker := int(uint64(entries.Ref) % uint64(len(inputs)))
 			inputs[worker] <- recoveryInput{
 				userID: rec.UserID,
 				data:   entries,

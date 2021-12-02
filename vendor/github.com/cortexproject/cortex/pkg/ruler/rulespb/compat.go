@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb" //lint:ignore faillint allowed to import other protobuf

@@ -14,14 +14,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"gopkg.in/yaml.v2"
+
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
-	"gopkg.in/yaml.v2"
 )
 
 const (

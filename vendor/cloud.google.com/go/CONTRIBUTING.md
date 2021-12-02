@@ -188,15 +188,23 @@ $ export GCLOUD_TESTS_GOLANG_KEYRING=projects/$GCLOUD_TESTS_GOLANG_PROJECT_ID/lo
 $ gsutil kms authorize -p $GCLOUD_TESTS_GOLANG_PROJECT_ID -k $GCLOUD_TESTS_GOLANG_KEYRING/cryptoKeys/key1
 
 # Create KMS Key in one region for Bigtable
+$ gcloud kms keyrings create $MY_KEYRING --location $MY_SINGLE_LOCATION
 $ gcloud kms keys create key1 --keyring $MY_KEYRING --location $MY_SINGLE_LOCATION --purpose encryption
 # Sets the GCLOUD_TESTS_BIGTABLE_KEYRING environment variable.
 $ export GCLOUD_TESTS_BIGTABLE_KEYRING=projects/$GCLOUD_TESTS_GOLANG_PROJECT_ID/locations/$MY_SINGLE_LOCATION/keyRings/$MY_KEYRING
+# Create a service agent, https://cloud.google.com/bigtable/docs/use-cmek#gcloud:
+$ gcloud beta services identity create \
+    --service=bigtableadmin.googleapis.com \
+    --project $GCLOUD_TESTS_GOLANG_PROJECT_ID
+# Note the service agent email for the agent created.
+$ export SERVICE_AGENT_EMAIL=<service agent email, from last step>
+
 # Authorizes Google Cloud Bigtable to encrypt and decrypt using key1
 $ gcloud kms keys add-iam-policy-binding key1 \
     --keyring $MY_KEYRING \
     --location $MY_SINGLE_LOCATION \
     --role roles/cloudkms.cryptoKeyEncrypterDecrypter \
-    --member "${GCLOUD_TESTS_GOLANG_PROJECT_ID}@${GCLOUD_TESTS_GOLANG_PROJECT_ID}.iam.gserviceaccount.com" \
+    --member "serviceAccount:$SERVICE_AGENT_EMAIL" \
     --project $GCLOUD_TESTS_GOLANG_PROJECT_ID
 ```
 

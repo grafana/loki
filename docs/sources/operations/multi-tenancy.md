@@ -2,9 +2,9 @@
 title: Multi-tenancy
 weight: 50
 ---
-# Loki Multi-Tenancy
+# Grafana Loki Multi-Tenancy
 
-Loki is a multi-tenant system; requests and data for tenant A are isolated from
+Grafana Loki is a multi-tenant system; requests and data for tenant A are isolated from
 tenant B. Requests to the Loki API should include an HTTP header
 (`X-Scope-OrgID`) that identifies the tenant for the request.
 

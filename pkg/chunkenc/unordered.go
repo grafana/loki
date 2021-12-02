@@ -12,7 +12,7 @@ import (
 	"github.com/Workiva/go-datastructures/rangetree"
 	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -164,9 +164,9 @@ func (hb *unorderedHeadBlock) forEntries(
 		maxt: maxt,
 	})
 
-	chunkStats := stats.GetChunkData(ctx)
+	chunkStats := stats.FromContext(ctx)
 	process := func(es *nsEntries) {
-		chunkStats.HeadChunkLines += int64(len(es.entries))
+		chunkStats.AddHeadChunkLines(int64(len(es.entries)))
 
 		// preserve write ordering of entries with the same ts
 		var i int
@@ -183,7 +183,7 @@ func (hb *unorderedHeadBlock) forEntries(
 
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i]
-			chunkStats.HeadChunkBytes += int64(len(line))
+			chunkStats.AddHeadChunkBytes(int64(len(line)))
 			err = entryFn(es.ts, line)
 
 		}
@@ -510,5 +510,4 @@ func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
 		return decodedBlock.Convert(desired)
 	}
 	return decodedBlock, nil
-
 }

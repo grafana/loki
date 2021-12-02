@@ -1,9 +1,10 @@
 ---
 title: LogCLI
+weight: 20
 ---
-# LogCLI, Loki's command-line interface
+# LogCLI, Grafana Loki's command-line interface
 
-LogCLI is the command-line interface to Loki.
+LogCLI is the command-line interface to Grafana Loki.
 It facilitates running [LogQL]({{< relref "../logql/_index.md" >}})
 queries against a Loki instance.
 
@@ -73,13 +74,13 @@ When not set, `--limit` defaults to 30.
 The limit protects the user from overwhelming the system
 for cases in which the specified query would have returned a large quantity
 of log lines.
-The limit also protects the user from unexpectedly large responses. 
+The limit also protects the user from unexpectedly large responses.
 
 The quantity of log line results that arrive in each batch
 is set by the `--batch` option in a `logcli query` command.
 When not set, `--batch` defaults to 1000.
 
-Setting a `--limit` value larger than the `--batch` value causes the 
+Setting a `--limit` value larger than the `--batch` value causes the
 requests from LogCLI to Loki to be batched.
 Loki has a server-side limit that defaults to 5000 for the maximum quantity
 of lines returned for a single query.
@@ -119,7 +120,8 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"  
+      --stdin            Take input logs from stdin
+      --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
       --username=""      Username for HTTP basic auth. Can also be set using
@@ -274,7 +276,8 @@ Flags:
                            timestamps [Local, UTC]
       --cpuprofile=""      Specify the location for writing a CPU profile.
       --memprofile=""      Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"  
+      --stdin              Take input logs from stdin
+      --addr="http://localhost:3100"
                            Server address. Can also be set using LOKI_ADDR env
                            var.
       --username=""        Username for HTTP basic auth. Can also be set using
@@ -307,9 +310,9 @@ Flags:
       --batch=1000         Query batch size to use until 'limit' is reached
       --forward            Scan forwards through logs.
       --no-labels          Do not print any labels
-      --exclude-label=EXCLUDE-LABEL ...  
+      --exclude-label=EXCLUDE-LABEL ...
                            Exclude labels given the provided key during output.
-      --include-label=INCLUDE-LABEL ...  
+      --include-label=INCLUDE-LABEL ...
                            Include labels given the provided key during output.
       --labels-length=0    Set a fixed padding to labels
       --store-config=""    Execute the current query using a configured storage
@@ -345,7 +348,8 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"  
+      --stdin            Take input logs from stdin
+      --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
       --username=""      Username for HTTP basic auth. Can also be set using
@@ -401,7 +405,8 @@ Flags:
                          timestamps [Local, UTC]
       --cpuprofile=""    Specify the location for writing a CPU profile.
       --memprofile=""    Specify the location for writing a memory profile.
-      --addr="http://localhost:3100"  
+      --stdin            Take input logs from stdin
+      --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env
                          var.
       --username=""      Username for HTTP basic auth. Can also be set using
@@ -429,3 +434,27 @@ Flags:
 Args:
   <matcher>  eg '{foo="bar",baz=~".*blip"}'
 ```
+
+### LogCLI `--stdin` usage
+
+You can consume log lines from your `stdin` instead of Loki servers.
+
+Say you have log files in your local, and just want to do run some LogQL queries for that, `--stdin` flag can help.
+
+**NOTE: Currently it doesn't support any type of metric queries**
+
+You may have to use `stdin` flag for several reasons
+1. Quick way to check and validate a LogQL expressions.
+2. Learn basics of LogQL with just Log files and `LogCLI`tool ( without needing set up Loki servers, Grafana etc.)
+3. Easy discussion on public forums. Like Q&A, Share the LogQL expressions.
+
+**NOTES on Usage**
+1. `--limits` flag doesn't have any meaning when using `--stdin` (use pager like `less` for that)
+1. Be aware there are no **labels** when using `--stdin`
+   - So stream selector in the query is optional e.g just `|="timeout"|logfmt|level="error"` is same as `{foo="bar"}|="timeout|logfmt|level="error"`
+
+**Examples**
+1. Line filter - `cat mylog.log | logcli --stdin query '|="too many open connections"'`
+2. Label matcher - `echo 'msg="timeout happened" level="warning"' | logcli --stdin query '|logfmt|level="warning"'`
+3. Different parsers (logfmt, json, pattern, regexp) - `cat mylog.log | logcli --stdin query '|pattern <ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>'`
+4. Line formatters - `cat mylog.log | logcli --stdin query '|logfmt|line_format "{{.query}} {{.duration}}"'`

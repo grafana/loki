@@ -1,17 +1,22 @@
 package targets
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"fmt"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/client"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog"
@@ -26,6 +31,8 @@ const (
 	GcplogScrapeConfigs  = "gcplogScrapeConfigs"
 	PushScrapeConfigs    = "pushScrapeConfigs"
 	WindowsEventsConfigs = "windowsEventsConfigs"
+	KafkaConfigs         = "kafkaConfigs"
+	GelfConfigs          = "gelfConfigs"
 )
 
 type targetManager interface {
@@ -50,6 +57,7 @@ func NewTargetManagers(
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
+	clientConfigs ...client.Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
 	targetScrapeConfigs := make(map[string][]scrapeconfig.Config, 4)
@@ -78,9 +86,12 @@ func NewTargetManagers(
 			targetScrapeConfigs[PushScrapeConfigs] = append(targetScrapeConfigs[PushScrapeConfigs], cfg)
 		case cfg.WindowsConfig != nil:
 			targetScrapeConfigs[WindowsEventsConfigs] = append(targetScrapeConfigs[WindowsEventsConfigs], cfg)
-
+		case cfg.KafkaConfig != nil:
+			targetScrapeConfigs[KafkaConfigs] = append(targetScrapeConfigs[KafkaConfigs], cfg)
+		case cfg.GelfConfig != nil:
+			targetScrapeConfigs[GelfConfigs] = append(targetScrapeConfigs[GelfConfigs], cfg)
 		default:
-			return nil, errors.New("unknown scrape config")
+			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
 	}
 
@@ -102,6 +113,7 @@ func NewTargetManagers(
 		fileMetrics   *file.Metrics
 		syslogMetrics *syslog.Metrics
 		gcplogMetrics *gcplog.Metrics
+		gelfMetrics   *gelf.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -111,6 +123,9 @@ func NewTargetManagers(
 	}
 	if len(targetScrapeConfigs[GcplogScrapeConfigs]) > 0 {
 		gcplogMetrics = gcplog.NewMetrics(reg)
+	}
+	if len(targetScrapeConfigs[GelfConfigs]) > 0 {
+		gelfMetrics = gelf.NewMetrics(reg)
 	}
 
 	for target, scrapeConfigs := range targetScrapeConfigs {
@@ -187,6 +202,19 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make windows target manager")
 			}
 			targetManagers = append(targetManagers, windowsTargetManager)
+		case KafkaConfigs:
+			kafkaTargetManager, err := kafka.NewTargetManager(reg, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make kafka target manager")
+			}
+			targetManagers = append(targetManagers, kafkaTargetManager)
+		case GelfConfigs:
+			gelfTargetManager, err := gelf.NewTargetManager(gelfMetrics, logger, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make gelf target manager")
+			}
+			targetManagers = append(targetManagers, gelfTargetManager)
+
 		default:
 			return nil, errors.New("unknown scrape config")
 		}

@@ -14,8 +14,8 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -282,10 +282,9 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	t.lastUsedAt = time.Now()
 
-	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Table.MultiQueries")
-	defer log.Span.Finish()
+	logger := util_log.WithContext(ctx, util_log.Logger)
 
-	level.Debug(log).Log("table-name", t.name, "query-count", len(queries))
+	level.Debug(logger).Log("table-name", t.name, "query-count", len(queries))
 
 	for name, db := range t.dbs {
 		err := db.View(func(tx *bbolt.Tx) error {
@@ -306,7 +305,7 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 			return err
 		}
 
-		level.Debug(log).Log("queried-db", name)
+		level.Debug(logger).Log("queried-db", name)
 	}
 
 	return nil

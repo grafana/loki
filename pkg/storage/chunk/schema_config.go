@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
@@ -69,7 +69,7 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func (d *DayTime) String() string {
-	return d.Time.Time().Format("2006-01-02")
+	return d.Time.Time().UTC().Format("2006-01-02")
 }
 
 // SchemaConfig contains the config for our chunk index schemas

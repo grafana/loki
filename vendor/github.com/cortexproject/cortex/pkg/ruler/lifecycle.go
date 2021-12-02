@@ -1,7 +1,7 @@
 package ruler
 
 import (
-	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/grafana/dskit/ring"
 )
 
 func (r *Ruler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

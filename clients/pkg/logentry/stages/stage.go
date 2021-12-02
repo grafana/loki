@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -15,24 +15,26 @@ import (
 )
 
 const (
-	StageTypeJSON       = "json"
-	StageTypeRegex      = "regex"
-	StageTypeReplace    = "replace"
-	StageTypeMetric     = "metrics"
-	StageTypeLabel      = "labels"
-	StageTypeLabelDrop  = "labeldrop"
-	StageTypeTimestamp  = "timestamp"
-	StageTypeOutput     = "output"
-	StageTypeDocker     = "docker"
-	StageTypeCRI        = "cri"
-	StageTypeMatch      = "match"
-	StageTypeTemplate   = "template"
-	StageTypePipeline   = "pipeline"
-	StageTypeTenant     = "tenant"
-	StageTypeDrop       = "drop"
-	StageTypeMultiline  = "multiline"
-	StageTypePack       = "pack"
-	StageTypeLabelAllow = "labelallow"
+	StageTypeJSON         = "json"
+	StageTypeLogfmt       = "logfmt"
+	StageTypeRegex        = "regex"
+	StageTypeReplace      = "replace"
+	StageTypeMetric       = "metrics"
+	StageTypeLabel        = "labels"
+	StageTypeLabelDrop    = "labeldrop"
+	StageTypeTimestamp    = "timestamp"
+	StageTypeOutput       = "output"
+	StageTypeDocker       = "docker"
+	StageTypeCRI          = "cri"
+	StageTypeMatch        = "match"
+	StageTypeTemplate     = "template"
+	StageTypePipeline     = "pipeline"
+	StageTypeTenant       = "tenant"
+	StageTypeDrop         = "drop"
+	StageTypeMultiline    = "multiline"
+	StageTypePack         = "pack"
+	StageTypeLabelAllow   = "labelallow"
+	StageTypeStaticLabels = "static_labels"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -121,6 +123,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		if err != nil {
 			return nil, err
 		}
+	case StageTypeLogfmt:
+		s, err = newLogfmtStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
 	case StageTypeRegex:
 		s, err = newRegexStage(logger, cfg)
 		if err != nil {
@@ -188,6 +195,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeLabelAllow:
 		s, err = newLabelAllowStage(cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeStaticLabels:
+		s, err = newStaticLabelsStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}

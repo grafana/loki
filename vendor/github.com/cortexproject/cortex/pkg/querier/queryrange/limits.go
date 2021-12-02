@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/tenant"

@@ -80,7 +80,7 @@ Where default_value is the value to use if the environment variable is undefined
 [server: <server_config>]
 
 # Describes how Promtail connects to multiple instances
-# of Loki, sending logs to each.
+# of Grafana Loki, sending logs to each.
 # WARNING: If one of the remote Loki servers fails to respond or responds
 # with any error which is retryable, this will impact sending logs to any
 # other configured remote Loki servers.  Sending is done on a single thread!
@@ -273,6 +273,12 @@ external_labels:
 
 # Maximum time to wait for a server to respond to a request
 [timeout: <duration> | default = 10s]
+
+# A comma-separated list of labels to include in the stream lag metric `promtail_stream_lag_seconds`.
+# The default value is "filename". A "host" label is always included.
+# The stream lag metric indicates which streams are falling behind on writes to Loki;
+# be mindful about using too many labels, as it can increase cardinality.
+[stream_lag_labels: <string> | default = "filename"]
 ```
 
 ## positions
@@ -313,6 +319,15 @@ job_name: <string>
 # Describes how to receive logs via the Loki push API, (e.g. from other Promtails or the Docker Logging Driver)
 [loki_push_api: <loki_push_api_config>]
 
+# Describes how to scrape logs from the Windows event logs.
+[windows_events: <windows_events_config>]
+
+# Describes how to fetch logs from Kafka via a Consumer group.
+[kafka: <kafka_config>]
+
+# Describes how to receive logs from gelf client.
+[gelf: <gelf_config>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -330,12 +345,12 @@ file_sd_configs:
 # same host.
 kubernetes_sd_configs:
   - [<kubernetes_sd_config>]
-  
-# Describes how to use the Consul Catalog API to discover services registered with the 
+
+# Describes how to use the Consul Catalog API to discover services registered with the
 # consul cluster.
 consul_sd_configs:
   [ - <consul_sd_config> ... ]
-  
+
 # Describes how to use the Consul Agent API to discover services registered with the consul agent
 # running on the same host as Promtail.
 consulagent_sd_configs:
@@ -743,6 +758,15 @@ if many clients are connected. (`ulimit -Sn`)
 # TCP address to listen on. Has the format of "host:port".
 listen_address: <string>
 
+# Configure the receiver to use TLS.
+tls_config:
+  # Certificate and key files sent by the server (required)
+  cert_file: <string>
+  key_file: <string>
+
+  # CA certificate used to validate client certificate. Enables client certificate verification when specified.
+  [ ca_file: <string> ]
+
 # The idle timeout for tcp syslog connections, default is 120 seconds.
 idle_timeout: <duration>
 
@@ -782,9 +806,10 @@ The `loki_push_api` block configures Promtail to expose a [Loki push API](../../
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
-Note the `server` configuration is the same as [server](#server)
+Note the `server` configuration is the same as [server](#server).
 
-
+Promtail also exposes a second endpoint on `/promtail/api/v1/raw` which expects newline-delimited log lines.
+This can be used to send NDJSON or plaintext logs.
 
 ```yaml
 # The push server configuration options
@@ -795,7 +820,8 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 
 # If Promtail should pass on the timestamp from the incoming log or not.
-# When false Promtail will assign the current timestamp to the log when it was processed
+# When false Promtail will assign the current timestamp to the log when it was processed.
+# Does not apply to the plaintext endpoint on `/promtail/api/v1/raw`.
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
@@ -853,7 +879,7 @@ You can add additional labels with the `labels` property.
 # Allows to exclude the user data of each windows event.
 [exclude_event_data: <bool> | default = false]
 
-# Label map to add to every log line sent to the push API
+# Label map to add to every log line read from the windows event log
 labels:
   [ <labelname>: <labelvalue> ... ]
 
@@ -861,6 +887,146 @@ labels:
 # When false Promtail will assign the current timestamp to the log when it was processed
 [use_incoming_timestamp: <bool> | default = false]
 ```
+
+### kafka
+
+The `kafka` block configures Promtail to scrape logs from [Kafka](https://kafka.apache.org/) using a group consumer.
+
+The `brokers` should list available brokers to communicate with the Kafka cluster. Use multiple brokers when you want to increase availability.
+
+The `topics` is the list of topics Promtail will subscribe to. If a topic starts with `^` then a regular expression ([RE2](https://github.com/google/re2/wiki/Syntax)) is used to match topics.
+For instance `^promtail-.*` will match the topic `promtail-dev` and `promtail-prod`. Topics are refreshed every 30 seconds, so if a new topic matches, it will be automatically added without requiring a Promtail restart.
+
+The `group_id` defined the unique consumer group id to use for consuming logs. Each log record published to a topic is delivered to one consumer instance within each subscribing consumer group.
+
+- If all promtail instances have the same consumer group, then the records will effectively be load balanced over the promtail instances.
+- If all promtail instances have different consumer groups, then each record will be broadcast to all promtail instances.
+
+The `group_id` is useful if you want to effectively send the data to multiple loki instances and/or other sinks.
+
+The `assignor` configuration allow you to select the rebalancing strategy to use for the consumer group.
+Rebalancing is the process where a group of consumer instances (belonging to the same group) co-ordinate to own a mutually exclusive set of partitions of topics that the group is subscribed to.
+
+- `range` the default, assigns partitions as ranges to consumer group members.
+- `sticky` assigns partitions to members with an attempt to preserve earlier assignments
+- `roundrobin` assigns partitions to members in alternating order.
+
+The `version` allows to select the kafka version required to connect to the cluster.(default to `2.2.1`)
+
+By default, timestamps are assigned by Promtail when the message is read, if you want to keep the actual message timestamp from Kafka you can set the `use_incoming_timestamp` to true.
+
+```yaml
+# The list of brokers to connect to kafka (Required).
+[brokers: <strings> | default = [""]]
+
+# The list of Kafka topics to consume (Required).
+[topics: <strings> | default = [""]]
+
+# The Kafka consumer group id.
+[group_id: <string> | default = "promtail"]
+
+# The consumer group rebalancing strategy to use. (e.g `sticky`, `roundrobin` or `range`)
+[assignor: <string> | default = "range"]
+
+# Kafka version to connect to.
+[version: <string> | default = "2.2.1"]
+
+# Optional authentication configuration with Kafka brokers
+authentication:
+  # Type is authentication type. Supported values [none, ssl, sasl]
+  [type: <string> | default = "none"]
+
+  # TLS configuration for authentication and encryption. It is used only when authentication type is ssl.
+  tls_config:
+    [ <tls_config> ]
+
+  # SASL configuration for authentication. It is used only when authentication type is sasl.
+  sasl_config:
+    # SASL mechanism. Supported values [PLAIN, SCRAM-SHA-256, SCRAM-SHA-512]
+    [mechanism: <string> | default = "PLAIN"]
+
+    # The user name to use for SASL authentication
+    [user: <string>]
+
+    # The password to use for SASL authentication
+    [password: <secret>]
+
+    # If true, SASL authentication is executed over TLS
+    [use_tls: <boolean> | default = false]
+
+    # The CA file to use to verify the server
+    [ca_file: <string>]
+
+    # Validates that the server name in the server's certificate
+    # is this value.
+    [server_name: <string>]
+
+    # If true, ignores the server certificate being signed by an
+    # unknown CA.
+    [insecure_skip_verify: <boolean> | default = false]
+
+
+# Label map to add to every log line read from kafka
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# If Promtail should pass on the timestamp from the incoming log or not.
+# When false Promtail will assign the current timestamp to the log when it was processed
+[use_incoming_timestamp: <bool> | default = false]
+```
+
+**Available Labels:**
+
+The list of labels below are discovered when consuming kafka:
+
+- `__meta_kafka_topic`: The current topic for where the message has been read.
+- `__meta_kafka_partition`: The partition id where the message has been read.
+- `__meta_kafka_member_id`: The consumer group member id.
+- `__meta_kafka_group_id`: The consumer group id.
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'. 
+
+To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
+
+### GELF
+
+The `gelf` block configures a GELF UDP listener allowing users to push
+logs to Promtail with the [GELF](https://docs.graylog.org/docs/gelf) protocol.
+Currently only UDP is supported, please submit a feature request if you're interested into TCP support.
+
+> GELF messages can be sent uncompressed or compressed with either GZIP or ZLIB.
+
+Each GELF message received will be encoded in JSON as the log line. For example:
+
+```json
+{"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
+```
+
+You can leverage [pipeline stages](pipeline_stages) with the GELF target,
+if for example, you want to parse the log line and extract more labels or change the log line format.
+
+```yaml
+# UDP address to listen on. Has the format of "host:port". Default to 0.0.0.0:12201
+listen_address: <string>
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+# Whether Promtail should pass on the timestamp from the incoming gelf message.
+# When false, or if no timestamp is present on the gelf message, Promtail will assign the current timestamp to the log when it was processed.
+# Default is false
+use_incoming_timestamp: <bool>
+
+```
+
+**Available Labels:**
+
+- `__gelf_message_level`: The GELF level as string.
+- `__gelf_message_host`: The host sending the GELF message.
+- `__gelf_message_version`: The GELF level message version set by the client.
+- `__gelf_message_facility`: The GELF facility.
+
+To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
 
 ### relabel_configs
 
@@ -1257,7 +1423,7 @@ way to filter services or nodes for a service based on arbitrary labels. For
 users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
-  
+
 ### consulagent_sd_config
 
 Consul Agent SD configurations allow retrieving scrape targets from [Consul's](https://www.consul.io)

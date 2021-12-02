@@ -8,7 +8,7 @@ each container will use the default driver unless configured otherwise.
 
 ## Installation
 
-Before configuring the plugin, [install or upgrade the Loki Docker Driver Client](../../docker-driver/)
+Before configuring the plugin, [install or upgrade the Grafana Loki Docker Driver Client](../../docker-driver/)
 
 ## Change the logging driver for a container
 
@@ -208,7 +208,7 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/master/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels, [see associated documentation](../../promtail/stages/). |
 | `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see pipeline stages](#pipeline-stages) and [associated documentation](../../promtail/stages/).                                                                                                                         |
 | `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see relabeling](#relabeling).                                                                                |
-| `loki-tenant-id`                |    No     |                            | Set the tenant id (http header`X-Scope-OrgID`) when sending logs to Loki. It can be overrides by a pipeline stage.                                                                                                                                                            |
+| `loki-tenant-id`                |    No     |                            | Set the tenant id (http header`X-Scope-OrgID`) when sending logs to Loki. It can be overridden by a pipeline stage.                                                                                                                                                            |
 | `loki-tls-ca-file`              |    No     |                            | Set the path to a custom certificate authority.                                                                                                                                                                                                                               |
 | `loki-tls-cert-file`            |    No     |                            | Set the path to a client certificate file.                                                                                                                                                                                                                                    |
 | `loki-tls-key-file`             |    No     |                            | Set the path to a client key.                                                                                                                                                                                                                                                 |

@@ -12,8 +12,7 @@ import (
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -107,9 +106,6 @@ func (tm *TableManager) QueryPages(ctx context.Context, queries []chunk.IndexQue
 func (tm *TableManager) query(ctx context.Context, tableName string, queries []chunk.IndexQuery, callback chunk_util.Callback) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
-
-	log, ctx := spanlogger.New(ctx, "Shipper.Uploads.Query")
-	defer log.Span.Finish()
 
 	table, ok := tm.tables[tableName]
 	if !ok {

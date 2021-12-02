@@ -863,6 +863,7 @@ func (s *Server) handleRawConn(lisAddr string, rawConn net.Conn) {
 	// Finish handshaking (HTTP2)
 	st := s.newHTTP2Transport(conn, authInfo)
 	if st == nil {
+		conn.Close()
 		return
 	}
 
@@ -1115,22 +1116,24 @@ func chainUnaryServerInterceptors(s *Server) {
 	} else if len(interceptors) == 1 {
 		chainedInt = interceptors[0]
 	} else {
-		chainedInt = func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (interface{}, error) {
-			return interceptors[0](ctx, req, info, getChainUnaryHandler(interceptors, 0, info, handler))
-		}
+		chainedInt = chainUnaryInterceptors(interceptors)
 	}
 
 	s.opts.unaryInt = chainedInt
 }
 
-// getChainUnaryHandler recursively generate the chained UnaryHandler
-func getChainUnaryHandler(interceptors []UnaryServerInterceptor, curr int, info *UnaryServerInfo, finalHandler UnaryHandler) UnaryHandler {
-	if curr == len(interceptors)-1 {
-		return finalHandler
-	}
-
-	return func(ctx context.Context, req interface{}) (interface{}, error) {
-		return interceptors[curr+1](ctx, req, info, getChainUnaryHandler(interceptors, curr+1, info, finalHandler))
+func chainUnaryInterceptors(interceptors []UnaryServerInterceptor) UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (interface{}, error) {
+		var i int
+		var next UnaryHandler
+		next = func(ctx context.Context, req interface{}) (interface{}, error) {
+			if i == len(interceptors)-1 {
+				return interceptors[i](ctx, req, info, handler)
+			}
+			i++
+			return interceptors[i-1](ctx, req, info, next)
+		}
+		return next(ctx, req)
 	}
 }
 
@@ -1144,7 +1147,9 @@ func (s *Server) processUnaryRPC(t transport.ServerTransport, stream *transport.
 		if sh != nil {
 			beginTime := time.Now()
 			statsBegin = &stats.Begin{
-				BeginTime: beginTime,
+				BeginTime:      beginTime,
+				IsClientStream: false,
+				IsServerStream: false,
 			}
 			sh.HandleRPC(stream.Context(), statsBegin)
 		}
@@ -1396,22 +1401,24 @@ func chainStreamServerInterceptors(s *Server) {
 	} else if len(interceptors) == 1 {
 		chainedInt = interceptors[0]
 	} else {
-		chainedInt = func(srv interface{}, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error {
-			return interceptors[0](srv, ss, info, getChainStreamHandler(interceptors, 0, info, handler))
-		}
+		chainedInt = chainStreamInterceptors(interceptors)
 	}
 
 	s.opts.streamInt = chainedInt
 }
 
-// getChainStreamHandler recursively generate the chained StreamHandler
-func getChainStreamHandler(interceptors []StreamServerInterceptor, curr int, info *StreamServerInfo, finalHandler StreamHandler) StreamHandler {
-	if curr == len(interceptors)-1 {
-		return finalHandler
-	}
-
-	return func(srv interface{}, ss ServerStream) error {
-		return interceptors[curr+1](srv, ss, info, getChainStreamHandler(interceptors, curr+1, info, finalHandler))
+func chainStreamInterceptors(interceptors []StreamServerInterceptor) StreamServerInterceptor {
+	return func(srv interface{}, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error {
+		var i int
+		var next StreamHandler
+		next = func(srv interface{}, ss ServerStream) error {
+			if i == len(interceptors)-1 {
+				return interceptors[i](srv, ss, info, handler)
+			}
+			i++
+			return interceptors[i-1](srv, ss, info, next)
+		}
+		return next(srv, ss)
 	}
 }
 
@@ -1424,7 +1431,9 @@ func (s *Server) processStreamingRPC(t transport.ServerTransport, stream *transp
 	if sh != nil {
 		beginTime := time.Now()
 		statsBegin = &stats.Begin{
-			BeginTime: beginTime,
+			BeginTime:      beginTime,
+			IsClientStream: sd.ClientStreams,
+			IsServerStream: sd.ServerStreams,
 		}
 		sh.HandleRPC(stream.Context(), statsBegin)
 	}

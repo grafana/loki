@@ -11,8 +11,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 

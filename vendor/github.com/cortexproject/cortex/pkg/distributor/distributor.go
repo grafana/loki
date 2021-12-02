@@ -9,16 +9,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/limiter"
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
@@ -28,12 +31,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/ring"
-	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -211,12 +211,12 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true, reg)
+		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true, log, prometheus.WrapRegistererWithPrefix("cortex_", reg))
 		if err != nil {
 			return nil, err
 		}
 
-		distributorsRing, err = ring.New(cfg.DistributorRing.ToRingConfig(), "distributor", ring.DistributorRingKey, reg)
+		distributorsRing, err = ring.New(cfg.DistributorRing.ToRingConfig(), "distributor", ring.DistributorRingKey, log, prometheus.WrapRegistererWithPrefix("cortex_", reg))
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to initialize distributors' ring client")
 		}
@@ -300,7 +300,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Namespace: "cortex",
 			Name:      "distributor_ingester_append_failures_total",
 			Help:      "The total number of failed batch appends sent to ingesters.",
-		}, []string{"ingester", "type"}),
+		}, []string{"ingester", "type", "status"}),
 		ingesterQueries: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_ingester_queries_total",
@@ -819,17 +819,27 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	if len(metadata) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata).Inc()
+			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata, getErrorStatus(err)).Inc()
 		}
 	}
 	if len(timeseries) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples).Inc()
+			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples, getErrorStatus(err)).Inc()
 		}
 	}
 
 	return err
+}
+
+func getErrorStatus(err error) string {
+	status := "5xx"
+	httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+	if ok && httpResp.Code/100 == 4 {
+		status = "4xx"
+	}
+
+	return status
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.

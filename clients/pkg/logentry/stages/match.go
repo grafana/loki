@@ -1,9 +1,9 @@
 package stages
 
 import (
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"

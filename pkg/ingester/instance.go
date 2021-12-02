@@ -9,12 +9,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
@@ -250,7 +251,7 @@ func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, lock bool, r
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
 		record.Series = append(record.Series, tsdb_record.RefSeries{
-			Ref:    uint64(fp),
+			Ref:    chunks.HeadSeriesRef(fp),
 			Labels: sortedLabels,
 		})
 	} else {
@@ -307,19 +308,12 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		return nil, err
 	}
 
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
 
-	var shard *astmapper.ShardAnnotation
-	shards, err := logql.ParseShards(req.Shards)
+	shard, err := parseShardFromRequest(req.Shards)
 	if err != nil {
 		return nil, err
-	}
-	if len(shards) > 1 {
-		return nil, errors.New("only one shard per ingester query is supported")
-	}
-	if len(shards) == 1 {
-		shard = &shards[0]
 	}
 
 	err = i.forMatchingStreams(
@@ -327,7 +321,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		expr.Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.Iterator(ctx, ingStats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
+			iter, err := stream.Iterator(ctx, stats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -352,7 +346,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	var iters []iter.SampleIterator
 
 	var shard *astmapper.ShardAnnotation
@@ -372,7 +366,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		expr.Selector().Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.SampleIterator(ctx, ingStats, req.Start, req.End, extractor.ForStream(stream.labels))
+			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -418,13 +412,17 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
+	shard, err := parseShardFromRequest(req.Shards)
+	if err != nil {
+		return nil, err
+	}
 
 	var series []logproto.SeriesIdentifier
 
 	// If no matchers were supplied we include all streams.
 	if len(groups) == 0 {
 		series = make([]logproto.SeriesIdentifier, 0, len(i.streams))
-		err = i.forAllStreams(ctx, func(stream *stream) error {
+		err = i.forMatchingStreams(ctx, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req) {
 				series = append(series, logproto.SeriesIdentifier{
@@ -439,7 +437,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	} else {
 		dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
 		for _, matchers := range groups {
-			err = i.forMatchingStreams(ctx, matchers, nil, func(stream *stream) error {
+			err = i.forMatchingStreams(ctx, matchers, shard, func(stream *stream) error {
 				// consider the stream only if it overlaps the request time range
 				if shouldConsiderStream(stream, req) {
 					// exit early when this stream was added by an earlier group
@@ -613,6 +611,21 @@ func (i *instance) openTailersCount() uint32 {
 	return uint32(len(i.tailers))
 }
 
+func parseShardFromRequest(reqShards []string) (*astmapper.ShardAnnotation, error) {
+	var shard *astmapper.ShardAnnotation
+	shards, err := logql.ParseShards(reqShards)
+	if err != nil {
+		return nil, err
+	}
+	if len(shards) > 1 {
+		return nil, errors.New("only one shard per ingester query is supported")
+	}
+	if len(shards) == 1 {
+		shard = &shards[0]
+	}
+	return shard, nil
+}
+
 func isDone(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
@@ -629,7 +642,7 @@ type QuerierQueryServer interface {
 }
 
 func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	if limit == 0 {
 		// send all batches.
 		for !isDone(ctx) {
@@ -640,12 +653,15 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			if len(batch.Streams) == 0 {
 				return nil
 			}
+			stats.AddIngesterBatch(int64(size))
+			batch.Stats = stats.Ingester()
 
 			if err := queryServer.Send(batch); err != nil {
 				return err
 			}
-			ingStats.TotalLinesSent += int64(size)
-			ingStats.TotalBatches++
+
+			stats.Reset()
+
 		}
 		return nil
 	}
@@ -662,17 +678,19 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			return nil
 		}
 
+		stats.AddIngesterBatch(int64(batchSize))
+		batch.Stats = stats.Ingester()
+
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
-		ingStats.TotalLinesSent += int64(batchSize)
-		ingStats.TotalBatches++
+		stats.Reset()
 	}
 	return nil
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
-	ingStats := stats.GetIngesterData(ctx)
+	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
@@ -682,11 +700,15 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 			return nil
 		}
 
+		stats.AddIngesterBatch(int64(size))
+		batch.Stats = stats.Ingester()
+
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
-		ingStats.TotalLinesSent += int64(size)
-		ingStats.TotalBatches++
+
+		stats.Reset()
+
 	}
 	return nil
 }

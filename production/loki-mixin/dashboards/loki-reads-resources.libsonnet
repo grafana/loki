@@ -4,8 +4,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
   grafanaDashboards+:
     {
       'loki-reads-resources.json':
-        ($.dashboard('Loki / Reads Resources'))
-        .addClusterSelectorTemplates(false)
+        ($.dashboard('Loki / Reads Resources', uid='reads-resources'))
+        .addCluster()
+        .addNamespace()
+        .addTag()
         .addRow(
           $.row('Gateway')
           .addPanel(
