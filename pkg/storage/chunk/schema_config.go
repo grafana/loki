@@ -505,24 +505,38 @@ func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 	// but technically strconv.Atoi within the VersionAsInt func can return an error.
 	// if err2 != nil { log maybe? }
 	if err == nil && v >= 12 {
-		shard := uint64(chunk.Fingerprint) % p.ChunkPathShardFactor
-		// Reduce the fingerprint into the <period> space to act as jitter
-		jitter := uint64(chunk.Fingerprint) % uint64(p.ChunkPathPeriod)
-		// The fingerprint (hash, uniformly distributed) allows us to gradually
-		// write into the next <period>, "warming" it up in a linear fashion wrt time.
-		// This means that if we're 10% into the current period, 10% of fingerprints will
-		// be written into the next period instead.
-		prefix := (uint64(chunk.From.UnixNano()) + jitter) % uint64(p.ChunkPathPeriod)
-		return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", chunk.UserID, prefix, shard, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+		return cfg.newerExternalKey(chunk, p.ChunkPathShardFactor, p.ChunkPathPeriod)
 	}
 	// Some chunks have a checksum stored in dynamodb, some do not.  We must
 	// generate keys appropriately.
 	if chunk.ChecksumSet {
-		// This is the inverse of parseNewExternalKey.
-		return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+		return cfg.newExternalKey(chunk)
 	}
+	return cfg.legacyExternalKey(chunk)
+}
+
+// pre-checksum
+func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
 	// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
 	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
-	// See comment on parseExternalKey.
 	return fmt.Sprintf("%s/%d:%d:%d", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
+}
+
+// post-checksum
+func (cfg SchemaConfig) newExternalKey(chunk Chunk) string {
+	// This is the inverse of parseNewExternalKey.
+	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+}
+
+// post-v12
+func (cfg SchemaConfig) newerExternalKey(chunk Chunk, shardFactor uint64, period time.Duration) string {
+	shard := uint64(chunk.Fingerprint) % shardFactor
+	// Reduce the fingerprint into the <period> space to act as jitter
+	jitter := uint64(chunk.Fingerprint) % uint64(period)
+	// The fingerprint (hash, uniformly distributed) allows us to gradually
+	// write into the next <period>, "warming" it up in a linear fashion wrt time.
+	// This means that if we're 10% into the current period, 10% of fingerprints will
+	// be written into the next period instead.
+	prefix := (uint64(chunk.From.UnixNano()) + jitter) % uint64(p.ChunkPathPeriod)
+	return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", chunk.UserID, prefix, shard, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }
