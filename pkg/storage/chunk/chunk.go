@@ -3,13 +3,11 @@ package chunk
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"hash/crc32"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -90,12 +88,16 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // Post-checksums, externals keys become the same across DynamoDB, Memcache
 // and S3.  Numbers become hex encoded.  Keys look like:
 // `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
+//
+// Post-v12, (2) additional prefixes were added to external keys
+// to support better read and write request parallelization:
+// `<user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>`
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
-	if !strings.Contains(externalKey, "/") {
+	if !strings.Contains(externalKey, "/") { // pre-checksum
 		return parseLegacyChunkID(userID, externalKey)
-	} else if strings.Count(externalKey, "/") > 1 {
+	} else if strings.Count(externalKey, "/") == 4 { // v12
 		return parseNewerExternalKey(userID, externalKey)
-	} else {
+	} else { // post-checksum
 		chunk, err := parseNewExternalKey(userID, externalKey)
 		if err != nil {
 			return Chunk{}, err
@@ -105,6 +107,7 @@ func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	}
 }
 
+// pre-checksum
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 3 {
@@ -130,6 +133,7 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	}, nil
 }
 
+// post-checksum
 func parseNewExternalKey(userID, key string) (Chunk, error) {
 	userIdx := strings.Index(key, "/")
 	if userIdx == -1 || userIdx+1 >= len(key) {
@@ -180,6 +184,7 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 	}, nil
 }
 
+// post-v12
 func parseNewerExternalKey(userID, key string) (Chunk, error) {
 	// Parse user
 	userIdx := strings.Index(key, "/")
@@ -277,34 +282,6 @@ func unsafeGetBytes(s string) []byte {
 
 func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
-}
-
-// <user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>
-func (c *Chunk) NewExternalKey(shardFactor uint64, period time.Duration) string {
-	shard := uint64(c.Fingerprint) % shardFactor
-	// Reduce the fingerprint into the <period> space to act as jitter
-	jitter := uint64(c.Fingerprint) % uint64(period)
-	// The fingerprint (hash, uniformly distributed) allows us to gradually
-	// write into the next <period>, "warming" it up in a linear fashion wrt time.
-	// This means that if we're 10% into the current period, 10% of fingerprints will
-	// be written into the next period instead.
-	prefix := (uint64(c.From.UnixNano()) + jitter) % uint64(period)
-	return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", c.UserID, prefix, shard, uint64(c.Fingerprint), int64(c.From), int64(c.Through), c.Checksum)
-}
-
-// ExternalKey returns the key you can use to fetch this chunk from external
-// storage. For newer chunks, this key includes a checksum.
-func (c *Chunk) OldExternalKey() string {
-	// Some chunks have a checksum stored in dynamodb, some do not.  We must
-	// generate keys appropriately.
-	if c.ChecksumSet {
-		// This is the inverse of parseNewExternalKey.
-		return fmt.Sprintf("%s/%x:%x:%x:%x", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through), c.Checksum)
-	}
-	// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
-	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
-	// See comment on parseExternalKey.
-	return fmt.Sprintf("%s/%d:%d:%d", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through))
 }
 
 var writerPool = sync.Pool{

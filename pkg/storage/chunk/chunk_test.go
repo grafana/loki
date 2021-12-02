@@ -426,11 +426,22 @@ func TestNewChunkKey(t *testing.T) {
 		ChecksumSet: true,
 		Checksum:    12345,
 	}
-	key := c.NewExternalKey(2, 1*time.Hour)
+	schemaCfg := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:                 DayTime{Time: 0},
+				Schema:               "v12",
+				RowShards:            16,
+				ChunkPathShardFactor: 2,
+				ChunkPathPeriod:      1 * time.Minute,
+			},
+		},
+	}
+	key := schemaCfg.ExternalKey(c)
 	newChunk, err := parseNewerExternalKey("fake", key)
 	require.Nil(t, err)
 	require.Equal(t, c, newChunk)
-	require.Equal(t, key, newChunk.NewExternalKey(2, 1*time.Hour))
+	require.Equal(t, key, schemaCfg.ExternalKey(newChunk))
 }
 
 func Benchmark_ParseNewExternalKey(b *testing.B) {
