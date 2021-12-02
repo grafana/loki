@@ -145,8 +145,9 @@ func newSampleQuery(query string, start, end time.Time) *logproto.SampleQueryReq
 }
 
 type mockChunkStore struct {
-	chunks []chunk.Chunk
-	client *mockChunkStoreClient
+	schemas chunk.SchemaConfig
+	chunks  []chunk.Chunk
+	client  *mockChunkStoreClient
 }
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
@@ -161,7 +162,7 @@ func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	for _, s := range streams {
 		chunks = append(chunks, newChunk(*s))
 	}
-	return &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}}
+	return &mockChunkStore{schemas: chunk.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: chunk.SchemaConfig{}}}
 }
 
 func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
@@ -197,7 +198,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
-		r, err := chunk.ParseExternalKey("fake", c.ExternalKey())
+		r, err := chunk.ParseExternalKey("fake", m.schemas.ExternalKey(c))
 		if err != nil {
 			panic(err)
 		}
@@ -209,7 +210,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		panic(err)
 	}
 
-	f, err := chunk.NewChunkFetcher(cache, false, m.client)
+	f, err := chunk.NewChunkFetcher(cache, false, m.schemas, m.client)
 	if err != nil {
 		panic(err)
 	}
@@ -218,6 +219,7 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 
 type mockChunkStoreClient struct {
 	chunks []chunk.Chunk
+	scfg   chunk.SchemaConfig
 }
 
 func (m mockChunkStoreClient) Stop() {
@@ -233,7 +235,7 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
 			// only returns chunks requested using the external key
-			if c.ExternalKey() == sc.ExternalKey() {
+			if m.scfg.ExternalKey(c) == m.scfg.ExternalKey((sc)) {
 				res = append(res, sc)
 			}
 		}

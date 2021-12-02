@@ -482,7 +482,7 @@ func (s *ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) erro
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		key := chunks[i].ExternalKey()
+		key := s.schemaCfg.ExternalKey(chunks[i])
 		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
 		if err != nil {
 			return err
@@ -518,7 +518,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 	}
 
 	var buf []byte
-	if err := s.readSession.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
+	if err := s.readSession.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), s.schemaCfg.ExternalKey(input)).
 		WithContext(ctx).Scan(&buf); err != nil {
 		return input, errors.WithStack(err)
 	}

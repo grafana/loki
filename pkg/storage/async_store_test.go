@@ -53,13 +53,24 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	now := time.Now()
 	var chunks []chunk.Chunk
 
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			chunk.PeriodConfig{
+				// Would this actually just result in the same as the default value?
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
 	for i := 0; i < num; i++ {
 		chk := newChunk(buildTestStreams(fooLabelsWithName, timeRange{
 			from: now.Add(time.Duration(i) * time.Minute),
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))
 
-		chunkRef, err := chunk.ParseExternalKey(chk.UserID, chk.ExternalKey())
+		chunkRef, err := chunk.ParseExternalKey(chk.UserID, s.ExternalKey(chk))
 		require.NoError(t, err)
 
 		chunks = append(chunks, chunkRef)
@@ -80,6 +91,18 @@ func buildMockFetchers(num int) []*chunk.Fetcher {
 func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	testChunks := buildMockChunkRef(t, 10)
 	fetchers := buildMockFetchers(3)
+
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			chunk.PeriodConfig{
+				// Would this actually just result in the same as the default value?
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
 	for _, tc := range []struct {
 		name             string
 		storeChunks      [][]chunk.Chunk
@@ -101,7 +124,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 		},
 		{
 			name:             "no chunks from querier",
-			ingesterChunkIDs: convertChunksToChunkIDs(testChunks),
+			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks),
 			ingesterFetcher:  fetchers[0],
 			expectedChunks:   [][]chunk.Chunk{testChunks},
 			expectedFetchers: fetchers[0:1],
@@ -112,7 +135,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 				testChunks[0:5],
 			},
 			storeFetcher:     fetchers[0:1],
-			ingesterChunkIDs: convertChunksToChunkIDs(testChunks[5:]),
+			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[1],
 			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:5],
@@ -127,7 +150,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 				testChunks[5:],
 			},
 			storeFetcher:     fetchers[0:2],
-			ingesterChunkIDs: convertChunksToChunkIDs(testChunks[5:]),
+			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[2],
 			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:5],
@@ -142,7 +165,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 				testChunks[2:5],
 			},
 			storeFetcher:     fetchers[0:2],
-			ingesterChunkIDs: convertChunksToChunkIDs(testChunks[5:]),
+			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[1],
 			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:2],
@@ -157,7 +180,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 				testChunks[2:5],
 			},
 			storeFetcher:     fetchers[0:2],
-			ingesterChunkIDs: convertChunksToChunkIDs(testChunks[5:]),
+			ingesterChunkIDs: convertChunksToChunkIDs(s, testChunks[5:]),
 			ingesterFetcher:  fetchers[2],
 			expectedChunks: [][]chunk.Chunk{
 				testChunks[0:2],
@@ -172,7 +195,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 				testChunks[0:5],
 			},
 			storeFetcher:     fetchers[0:1],
-			ingesterChunkIDs: convertChunksToChunkIDs(append(testChunks[5:], testChunks[5:]...)),
+			ingesterChunkIDs: convertChunksToChunkIDs(s, append(testChunks[5:], testChunks[5:]...)),
 			ingesterFetcher:  fetchers[0],
 			expectedChunks: [][]chunk.Chunk{
 				testChunks,
@@ -188,7 +211,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.ingesterChunkIDs, nil)
 
-			asyncStore := NewAsyncStore(store, ingesterQuerier, 0)
+			asyncStore := NewAsyncStore(store, chunk.SchemaConfig{}, ingesterQuerier, 0)
 
 			chunks, fetchers, err := asyncStore.GetChunkRefs(context.Background(), "fake", model.Now(), model.Now(), nil)
 			require.NoError(t, err)
@@ -245,7 +268,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-			asyncStore := NewAsyncStore(store, ingesterQuerier, tc.queryIngestersWithin)
+			asyncStore := NewAsyncStore(store, chunk.SchemaConfig{}, ingesterQuerier, tc.queryIngestersWithin)
 
 			_, _, err := asyncStore.GetChunkRefs(context.Background(), "fake", tc.queryFrom, tc.queryThrough, nil)
 			require.NoError(t, err)
@@ -259,10 +282,10 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	}
 }
 
-func convertChunksToChunkIDs(chunks []chunk.Chunk) []string {
+func convertChunksToChunkIDs(s chunk.SchemaConfig, chunks []chunk.Chunk) []string {
 	var chunkIDs []string
 	for _, chk := range chunks {
-		chunkIDs = append(chunkIDs, chk.ExternalKey())
+		chunkIDs = append(chunkIDs, s.ExternalKey(chk))
 	}
 
 	return chunkIDs

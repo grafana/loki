@@ -114,7 +114,18 @@ func TestChunkCodec(t *testing.T) {
 			encoded, err := c.chunk.Encoded()
 			require.NoError(t, err)
 
-			have, err := ParseExternalKey(userID, c.chunk.ExternalKey())
+			s := SchemaConfig{
+				Configs: []PeriodConfig{
+					PeriodConfig{
+						// Would this actually just result in the same as the default value?
+						From:      DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
+				},
+			}
+
+			have, err := ParseExternalKey(userID, s.ExternalKey(c.chunk))
 			require.NoError(t, err)
 
 			buf := make([]byte, len(encoded))
@@ -167,7 +178,18 @@ func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
 	haveEncoded, _ := have.Encoded()
 	wantEncoded, _ := want.Encoded()
 	require.Equal(t, haveEncoded, wantEncoded)
-	require.Equal(t, have.ExternalKey(), want.ExternalKey())
+
+	s := SchemaConfig{
+		Configs: []PeriodConfig{
+			PeriodConfig{
+				// Would this actually just result in the same as the default value?
+				From:      DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+	require.Equal(t, s.ExternalKey(have), s.ExternalKey(want))
 }
 
 func TestParseExternalKey(t *testing.T) {

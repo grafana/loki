@@ -295,7 +295,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]log
 	}
 
 	for _, group := range groups {
-		err = fetchLazyChunks(ctx, group)
+		err = fetchLazyChunks(ctx, s.schemaCfg.SchemaConfig, group)
 		if err != nil {
 			return nil, err
 		}
@@ -357,7 +357,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newLogBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
+	return newLogBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
 }
 
 func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -389,7 +389,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(ctx, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+	return newSampleBatchIterator(ctx, s.schemaCfg.SchemaConfig, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
 }
 
 func (s *store) GetSchemaConfigs() []chunk.PeriodConfig {

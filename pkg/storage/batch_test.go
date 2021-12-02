@@ -42,7 +42,18 @@ func Test_batchIterSafeStart(t *testing.T) {
 		newLazyChunk(stream),
 	}
 
-	batch := newBatchChunkIterator(context.Background(), chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil)
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			chunk.PeriodConfig{
+				// Would this actually just result in the same as the default value?
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
+	batch := newBatchChunkIterator(context.Background(), s, chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil)
 
 	// if it was started already, we should see a panic before this
 	time.Sleep(time.Millisecond)
@@ -941,10 +952,21 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 	}
 
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			chunk.PeriodConfig{
+				// Would this actually just result in the same as the default value?
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it, err := newLogBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
+			it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
 			require.NoError(t, err)
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
@@ -1339,13 +1361,24 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		},
 	}
 
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			chunk.PeriodConfig{
+				// Would this actually just result in the same as the default value?
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)
 
-			it, err := newSampleBatchIterator(context.Background(), NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)
+			it, err := newSampleBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()
@@ -1604,7 +1637,7 @@ func Test_IsInvalidChunkError(t *testing.T) {
 }
 
 func TestBatchCancel(t *testing.T) {
-	chunk := func(from time.Time) *LazyChunk {
+	createChunk := func(from time.Time) *LazyChunk {
 		return newLazyChunk(logproto.Stream{
 			Labels: fooLabelsWithName,
 			Entries: []logproto.Entry{
@@ -1620,11 +1653,23 @@ func TestBatchCancel(t *testing.T) {
 		})
 	}
 	chunks := []*LazyChunk{
-		chunk(from), chunk(from.Add(10 * time.Millisecond)), chunk(from.Add(30 * time.Millisecond)),
+		createChunk(from), createChunk(from.Add(10 * time.Millisecond)), createChunk(from.Add(30 * time.Millisecond)),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	it, err := newLogBatchIterator(ctx, NilMetrics, chunks, 1, newMatchers(fooLabels), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
+
+	s := chunk.SchemaConfig{
+		Configs: []chunk.PeriodConfig{
+			chunk.PeriodConfig{
+				// Would this actually just result in the same as the default value?
+				From:      chunk.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
+	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
 	require.NoError(t, err)
 	defer require.NoError(t, it.Close())
 	for it.Next() {

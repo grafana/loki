@@ -667,11 +667,16 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
+	// todo (Callum) ingester should maybe store the whole schema config?
+	s := chunk.SchemaConfig{
+		Configs: i.periodicConfigs,
+	}
+
 	// build the response
 	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
 	for _, chunks := range chunksGroups {
 		for _, chk := range chunks {
-			resp.ChunkIDs = append(resp.ChunkIDs, chk.ExternalKey())
+			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk))
 		}
 	}
 

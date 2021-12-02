@@ -57,19 +57,19 @@ var stores = []struct {
 }
 
 // newTestStore creates a new Store for testing.
-func newTestChunkStore(t require.TestingT, schemaName string) Store {
+func newTestChunkStore(t require.TestingT, schemaName string) (Store, SchemaConfig) {
 	var storeCfg StoreConfig
 	flagext.DefaultValues(&storeCfg)
 	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }
 
-func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg StoreConfig) Store {
+func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg StoreConfig) (Store, SchemaConfig) {
 	schemaCfg := DefaultSchemaConfig("", schemaName, 0)
 
 	schema, err := schemaCfg.Configs[0].CreateSchema()
 	require.NoError(t, err)
 
-	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schema, storeCfg)
+	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schema, storeCfg), schemaCfg
 }
 
 func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg SchemaConfig, schema BaseSchema, storeCfg StoreConfig) Store {
@@ -98,7 +98,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 	require.NoError(t, err)
 
 	store := NewCompositeStore(nil)
-	err = store.addSchema(storeCfg, schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
+	err = store.addSchema(storeCfg, schemaCfg, schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
 	require.NoError(t, err)
 	return store
 }
@@ -190,7 +190,7 @@ func TestChunkStore_Get(t *testing.T) {
 	for _, schema := range schemas {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
-			store := newTestChunkStoreConfig(t, schema, storeCfg)
+			store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
 			if err := store.Put(ctx, []Chunk{
@@ -311,7 +311,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, schema, storeCfg)
+					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
 					if err := store.Put(ctx, []Chunk{
@@ -411,7 +411,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 				t.Run(fmt.Sprintf("%s / %s / %s ", tc.metricName, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running labelNames with metricName", tc.metricName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, schema, storeCfg)
+					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
 					if err := store.Put(ctx, []Chunk{
@@ -518,7 +518,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	for _, schema := range schemas {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
-			store := newTestChunkStoreConfig(t, schema, storeCfg)
+			store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
 			if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
@@ -555,7 +555,7 @@ func TestChunkStoreRandom(t *testing.T) {
 
 	for _, schema := range schemas {
 		t.Run(schema, func(t *testing.T) {
-			store := newTestChunkStore(t, schema)
+			store, _ := newTestChunkStore(t, schema)
 			defer store.Stop()
 
 			// put 100 chunks from 0 to 99
@@ -623,7 +623,7 @@ func TestChunkStoreRandom(t *testing.T) {
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
 	ctx := context.Background()
-	store := newTestChunkStore(t, "v6")
+	store, _ := newTestChunkStore(t, "v6")
 	defer store.Stop()
 
 	// Put 24 chunks 1hr chunks in the store
@@ -695,7 +695,7 @@ func TestIndexCachingWorks(t *testing.T) {
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()
 
-	store := newTestChunkStoreConfig(t, "v9", storeCfg)
+	store, _ := newTestChunkStoreConfig(t, "v9", storeCfg)
 	defer store.Stop()
 
 	storage := store.(CompositeStore).stores[0].Store.(*seriesStore).fetcher.storage.(*MockStorage)
@@ -721,7 +721,7 @@ func BenchmarkIndexCaching(b *testing.B) {
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()
 
-	store := newTestChunkStoreConfig(b, "v9", storeCfg)
+	store, _ := newTestChunkStoreConfig(b, "v9", storeCfg)
 	defer store.Stop()
 
 	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), BenchmarkLabels)
@@ -768,7 +768,7 @@ func TestChunkStoreError(t *testing.T) {
 	} {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema), func(t *testing.T) {
-				store := newTestChunkStore(t, schema)
+				store, _ := newTestChunkStore(t, schema)
 				defer store.Stop()
 
 				matchers, err := parser.ParseMetricSelector(tc.query)
@@ -891,60 +891,60 @@ func TestStore_DeleteChunk(t *testing.T) {
 
 	fooMetricNameMatcher, err := parser.ParseMetricSelector(`foo`)
 	require.NoError(t, err)
-
-	for _, tc := range []struct {
-		name                           string
-		chunks                         []Chunk
-		chunkToDelete                  Chunk
-		partialDeleteInterval          *model.Interval
-		err                            error
-		numChunksToExpectAfterDeletion int
-	}{
-		{
-			name:                           "delete whole chunk",
-			chunkToDelete:                  fooChunk1,
-			numChunksToExpectAfterDeletion: 1,
-		},
-		{
-			name:                           "delete chunk partially at start",
-			chunkToDelete:                  fooChunk1,
-			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From.Add(30 * time.Minute)},
-			numChunksToExpectAfterDeletion: 2,
-		},
-		{
-			name:                           "delete chunk partially at end",
-			chunkToDelete:                  fooChunk1,
-			partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(-30 * time.Minute), End: fooChunk1.Through},
-			numChunksToExpectAfterDeletion: 2,
-		},
-		{
-			name:                           "delete chunk partially in the middle",
-			chunkToDelete:                  fooChunk1,
-			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From.Add(15 * time.Minute), End: fooChunk1.Through.Add(-15 * time.Minute)},
-			numChunksToExpectAfterDeletion: 3,
-		},
-		{
-			name:                           "delete non-existent chunk",
-			chunkToDelete:                  nonExistentChunk,
-			numChunksToExpectAfterDeletion: 2,
-		},
-		{
-			name:                           "delete first second",
-			chunkToDelete:                  fooChunk1,
-			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From},
-			numChunksToExpectAfterDeletion: 2,
-		},
-		{
-			name:                           "delete chunk out of range",
-			chunkToDelete:                  fooChunk1,
-			partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(time.Minute), End: fooChunk1.Through.Add(10 * time.Minute)},
-			numChunksToExpectAfterDeletion: 2,
-			err:                            errors.Wrapf(ErrParialDeleteChunkNoOverlap, "chunkID=%s", fooChunk1.ExternalKey()),
-		},
-	} {
-		for _, schema := range schemas {
+	for _, schema := range schemas {
+		scfg := DefaultSchemaConfig("", schema, 0)
+		for _, tc := range []struct {
+			name                           string
+			chunks                         []Chunk
+			chunkToDelete                  Chunk
+			partialDeleteInterval          *model.Interval
+			err                            error
+			numChunksToExpectAfterDeletion int
+		}{
+			{
+				name:                           "delete whole chunk",
+				chunkToDelete:                  fooChunk1,
+				numChunksToExpectAfterDeletion: 1,
+			},
+			{
+				name:                           "delete chunk partially at start",
+				chunkToDelete:                  fooChunk1,
+				partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From.Add(30 * time.Minute)},
+				numChunksToExpectAfterDeletion: 2,
+			},
+			{
+				name:                           "delete chunk partially at end",
+				chunkToDelete:                  fooChunk1,
+				partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(-30 * time.Minute), End: fooChunk1.Through},
+				numChunksToExpectAfterDeletion: 2,
+			},
+			{
+				name:                           "delete chunk partially in the middle",
+				chunkToDelete:                  fooChunk1,
+				partialDeleteInterval:          &model.Interval{Start: fooChunk1.From.Add(15 * time.Minute), End: fooChunk1.Through.Add(-15 * time.Minute)},
+				numChunksToExpectAfterDeletion: 3,
+			},
+			{
+				name:                           "delete non-existent chunk",
+				chunkToDelete:                  nonExistentChunk,
+				numChunksToExpectAfterDeletion: 2,
+			},
+			{
+				name:                           "delete first second",
+				chunkToDelete:                  fooChunk1,
+				partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From},
+				numChunksToExpectAfterDeletion: 2,
+			},
+			{
+				name:                           "delete chunk out of range",
+				chunkToDelete:                  fooChunk1,
+				partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(time.Minute), End: fooChunk1.Through.Add(10 * time.Minute)},
+				numChunksToExpectAfterDeletion: 2,
+				err:                            errors.Wrapf(ErrParialDeleteChunkNoOverlap, "chunkID=%s", scfg.ExternalKey(fooChunk1)),
+			},
+		} {
 			t.Run(fmt.Sprintf("%s / %s", schema, tc.name), func(t *testing.T) {
-				store := newTestChunkStore(t, schema)
+				store, scfg := newTestChunkStore(t, schema)
 				defer store.Stop()
 
 				// inserting 2 chunks with different labels but same metric name
@@ -957,7 +957,7 @@ func TestStore_DeleteChunk(t *testing.T) {
 				require.Equal(t, 2, len(chunks))
 
 				err = store.DeleteChunk(ctx, tc.chunkToDelete.From, tc.chunkToDelete.Through, userID,
-					tc.chunkToDelete.ExternalKey(), tc.chunkToDelete.Metric, tc.partialDeleteInterval)
+					scfg.ExternalKey(tc.chunkToDelete), tc.chunkToDelete.Metric, tc.partialDeleteInterval)
 
 				if tc.err != nil {
 					require.Error(t, err)
@@ -1023,7 +1023,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 
 	for _, schema := range seriesStoreSchemas {
 		t.Run(schema, func(t *testing.T) {
-			store := newTestChunkStore(t, schema)
+			store, scfg := newTestChunkStore(t, schema)
 			defer store.Stop()
 
 			seriesStore := store.(CompositeStore).stores[0].Store.(*seriesStore)
@@ -1061,7 +1061,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.Equal(t, 2, len(seriesIDs))
 
 			// lets delete a chunk and then delete its series ID
-			err = store.DeleteChunk(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.ExternalKey(), metric1, nil)
+			err = store.DeleteChunk(ctx, fooChunk1.From, fooChunk1.Through, userID, scfg.ExternalKey(fooChunk1), metric1, nil)
 			require.NoError(t, err)
 
 			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric)
@@ -1079,7 +1079,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])
 
 			// lets delete the other chunk partially and try deleting the series ID
-			err = store.DeleteChunk(ctx, fooChunk2.From, fooChunk2.Through, userID, fooChunk2.ExternalKey(), metric2,
+			err = store.DeleteChunk(ctx, fooChunk2.From, fooChunk2.Through, userID, scfg.ExternalKey(fooChunk2), metric2,
 				&model.Interval{Start: fooChunk2.From, End: fooChunk2.From.Add(30 * time.Minute)})
 			require.NoError(t, err)
 
@@ -1117,7 +1117,7 @@ func TestDisableIndexDeduplication(t *testing.T) {
 			}, prometheus.NewRegistry(), log.NewNopLogger())
 			storeCfg.DisableIndexDeduplication = disableIndexDeduplication
 
-			store := newTestChunkStoreConfig(t, "v9", storeCfg)
+			store, _ := newTestChunkStoreConfig(t, "v9", storeCfg)
 			defer store.Stop()
 
 			storage := store.(CompositeStore).stores[0].Store.(*seriesStore).fetcher.storage.(*MockStorage)

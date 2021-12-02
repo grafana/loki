@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -132,12 +133,22 @@ func defaultRowShards(schema string) uint32 {
 
 // ChunkPathPeriod is introduced as a SchemaConfig value in Schema "v12"
 func defaultChunkPathPeriod(schema string) time.Duration {
-	return 1 * time.Hour
+	switch schema {
+	case "v12":
+		return 1 * time.Hour
+	default:
+		return 0
+	}
 }
 
 // ChunkPathShardFactor is introduced as a SchemaConfig value in Schema "v12"
 func defaultChunkPathShardFactor(schema string) uint64 {
-	return 2
+	switch schema {
+	case "v12":
+		return 2
+	default:
+		return 0
+	}
 }
 
 // ForEachAfter will call f() on every entry after t, splitting
@@ -328,6 +339,11 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 	return result
 }
 
+func (cfg *PeriodConfig) VersionAsInt() (int, error) {
+	v := strings.Trim(cfg.Schema, "v")
+	return strconv.Atoi(v)
+}
+
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
 	Prefix string
@@ -483,7 +499,11 @@ func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 
 func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 	p, err := cfg.SchemaForTime(chunk.From)
-	if err == nil && p.Schema >= "v12" {
+	v, _ := p.VersionAsInt()
+	// We shouldn't need to check an error here, the config should already have been validated
+	// but technically strconv.Atoi within the VersionAsInt func can return an error.
+	// if err2 != nil { log maybe? }
+	if err == nil && v >= 12 {
 		shard := uint64(chunk.Fingerprint) % p.ChunkPathShardFactor
 		// Reduce the fingerprint into the <period> space to act as jitter
 		jitter := uint64(chunk.Fingerprint) % uint64(p.ChunkPathPeriod)

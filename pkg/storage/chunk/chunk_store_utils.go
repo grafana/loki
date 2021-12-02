@@ -28,10 +28,10 @@ func filterChunksByTime(from, through model.Time, chunks []Chunk) []Chunk {
 	return filtered
 }
 
-func keysFromChunks(chunks []Chunk) []string {
+func keysFromChunks(s SchemaConfig, chunks []Chunk) []string {
 	keys := make([]string, 0, len(chunks))
 	for _, chk := range chunks {
-		keys = append(keys, chk.ExternalKey())
+		keys = append(keys, s.ExternalKey(chk))
 	}
 
 	return keys
@@ -47,7 +47,7 @@ func labelNamesFromChunks(chunks []Chunk) []string {
 	return result.Strings()
 }
 
-func filterChunksByUniqueFingerprint(chunks []Chunk) ([]Chunk, []string) {
+func filterChunksByUniqueFingerprint(s SchemaConfig, chunks []Chunk) ([]Chunk, []string) {
 	filtered := make([]Chunk, 0, len(chunks))
 	keys := make([]string, 0, len(chunks))
 	uniqueFp := map[model.Fingerprint]struct{}{}
@@ -57,7 +57,7 @@ func filterChunksByUniqueFingerprint(chunks []Chunk) ([]Chunk, []string) {
 			continue
 		}
 		filtered = append(filtered, chunk)
-		keys = append(keys, chunk.ExternalKey())
+		keys = append(keys, s.ExternalKey(chunk))
 		uniqueFp[chunk.Fingerprint] = struct{}{}
 	}
 	return filtered, keys
@@ -81,6 +81,7 @@ outer:
 // and writing back any misses to the cache.  Also responsible for decoding
 // chunks from the cache, in parallel.
 type Fetcher struct {
+	schema     SchemaConfig
 	storage    Client
 	cache      cache.Cache
 	cacheStubs bool
@@ -101,8 +102,9 @@ type decodeResponse struct {
 }
 
 // NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, storage Client) (*Fetcher, error) {
+func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, schema SchemaConfig, storage Client) (*Fetcher, error) {
 	c := &Fetcher{
+		schema:         schema,
 		storage:        storage,
 		cache:          cacher,
 		cacheStubs:     cacheStubs,
@@ -186,7 +188,7 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 			}
 		}
 
-		keys = append(keys, chunks[i].ExternalKey())
+		keys = append(keys, c.schema.ExternalKey(chunks[i]))
 		bufs = append(bufs, encoded)
 	}
 
@@ -206,7 +208,7 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []Chunk, keys
 
 	i, j := 0, 0
 	for i < len(chunks) && j < len(keys) {
-		chunkKey := chunks[i].ExternalKey()
+		chunkKey := c.schema.ExternalKey(chunks[i])
 
 		if chunkKey < keys[j] {
 			missing = append(missing, chunks[i])

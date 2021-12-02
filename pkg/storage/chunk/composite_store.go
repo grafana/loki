@@ -71,10 +71,10 @@ func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index
 		return err
 	}
 
-	return c.addSchema(storeCfg, schema, cfg.From.Time, index, chunks, limits, chunksCache, writeDedupeCache)
+	return c.addSchema(storeCfg, SchemaConfig{Configs: []PeriodConfig{cfg}}, schema, cfg.From.Time, index, chunks, limits, chunksCache, writeDedupeCache)
 }
 
-func (c *CompositeStore) addSchema(storeCfg StoreConfig, schema BaseSchema, start model.Time, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
+func (c *CompositeStore) addSchema(storeCfg StoreConfig, schemaCfg SchemaConfig, schema BaseSchema, start model.Time, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
 	var (
 		err   error
 		store Store
@@ -82,9 +82,9 @@ func (c *CompositeStore) addSchema(storeCfg StoreConfig, schema BaseSchema, star
 
 	switch s := schema.(type) {
 	case SeriesStoreSchema:
-		store, err = newSeriesStore(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
+		store, err = newSeriesStore(storeCfg, schemaCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
 	case StoreSchema:
-		store, err = newStore(storeCfg, s, index, chunks, limits, chunksCache)
+		store, err = newStore(storeCfg, schemaCfg, s, index, chunks, limits, chunksCache)
 	default:
 		err = errors.New("invalid schema type")
 	}
