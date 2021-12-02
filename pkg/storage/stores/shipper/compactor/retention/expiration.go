@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
@@ -15,7 +15,7 @@ import (
 
 type ExpirationChecker interface {
 	Expired(ref ChunkEntry, now model.Time) (bool, []model.Interval)
-	IntervalHasExpiredChunks(interval model.Interval) bool
+	IntervalMayHaveExpiredChunks(interval model.Interval) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
 	MarkPhaseFinished()
@@ -30,7 +30,7 @@ type expirationChecker struct {
 type Limits interface {
 	RetentionPeriod(userID string) time.Duration
 	StreamRetention(userID string) []validation.StreamRetention
-	ForEachTenantLimit(validation.ForEachTenantLimitCallback)
+	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
 }
 
@@ -65,7 +65,7 @@ func (e *expirationChecker) MarkPhaseStarted() {
 func (e *expirationChecker) MarkPhaseFailed()   {}
 func (e *expirationChecker) MarkPhaseFinished() {}
 
-func (e *expirationChecker) IntervalHasExpiredChunks(interval model.Interval) bool {
+func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval) bool {
 	return interval.Start.Before(e.latestRetentionStartTime)
 }
 
@@ -123,7 +123,7 @@ func findSmallestRetentionPeriod(limits Limits) time.Duration {
 		}
 	}
 
-	limits.ForEachTenantLimit(func(userID string, limit *validation.Limits) {
+	for _, limit := range limits.AllByUserID() {
 		if limit.RetentionPeriod < smallestRetentionPeriod {
 			smallestRetentionPeriod = limit.RetentionPeriod
 		}
@@ -132,7 +132,8 @@ func findSmallestRetentionPeriod(limits Limits) time.Duration {
 				smallestRetentionPeriod = streamRetention.Period
 			}
 		}
-	})
+
+	}
 
 	return time.Duration(smallestRetentionPeriod)
 }

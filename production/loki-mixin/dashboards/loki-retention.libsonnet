@@ -1,4 +1,3 @@
-local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
@@ -6,7 +5,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
     {
       'loki-retention.json':
         ($.dashboard('Loki / Retention', uid='retention'))
-        .addClusterSelectorTemplates(false)
+        .addCluster()
+        .addNamespace()
+        .addTag()
         .addLog()
         .addRow(
           $.row('Ressource Usage')
@@ -76,8 +77,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addRow(
           $.row('')
           .addPanel(
+            $.panel('Sweeper Lag') +
             $.queryPanel(['time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{%s} > 0)' % $.namespaceMatcher()], ['lag']) + {
-              yaxes: g.yaxes({ format: 's', min: null }),
+              yaxes: $.yaxes({ format: 's', min: null }),
             },
           )
           .addPanel(

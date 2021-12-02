@@ -76,6 +76,10 @@ var (
 		"floor",
 		"round",
 		"fromJson",
+		"date",
+		"toDate",
+		"now",
+		"unixEpoch",
 	}
 )
 
@@ -97,7 +101,7 @@ type LineFormatter struct {
 func NewFormatter(tmpl string) (*LineFormatter, error) {
 	t, err := template.New("line").Option("missingkey=zero").Funcs(functionMap).Parse(tmpl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid line template: %s", err)
+		return nil, fmt.Errorf("invalid line template: %w", err)
 	}
 	return &LineFormatter{
 		Template: t,
@@ -107,6 +111,7 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 
 func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	lf.buf.Reset()
+
 	if err := lf.Template.Execute(lf.buf, lbs.Labels().Map()); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		return line, true
@@ -118,18 +123,25 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
-	return uniqueString(listNodeFields(lf.Root))
+	return uniqueString(listNodeFields([]parse.Node{lf.Root}))
 }
 
-func listNodeFields(node parse.Node) []string {
+func listNodeFields(nodes []parse.Node) []string {
 	var res []string
-	if node.Type() == parse.NodeAction {
-		res = append(res, listNodeFieldsFromPipe(node.(*parse.ActionNode).Pipe)...)
-	}
-	res = append(res, listNodeFieldsFromBranch(node)...)
-	if ln, ok := node.(*parse.ListNode); ok {
-		for _, n := range ln.Nodes {
-			res = append(res, listNodeFields(n)...)
+	for _, node := range nodes {
+		switch node.Type() {
+		case parse.NodePipe:
+			res = append(res, listNodeFieldsFromPipe(node.(*parse.PipeNode))...)
+		case parse.NodeAction:
+			res = append(res, listNodeFieldsFromPipe(node.(*parse.ActionNode).Pipe)...)
+		case parse.NodeList:
+			res = append(res, listNodeFields(node.(*parse.ListNode).Nodes)...)
+		case parse.NodeCommand:
+			res = append(res, listNodeFields(node.(*parse.CommandNode).Args)...)
+		case parse.NodeIf, parse.NodeWith, parse.NodeRange:
+			res = append(res, listNodeFieldsFromBranch(node)...)
+		case parse.NodeField:
+			res = append(res, node.(*parse.FieldNode).Ident...)
 		}
 	}
 	return res
@@ -152,10 +164,10 @@ func listNodeFieldsFromBranch(node parse.Node) []string {
 		res = append(res, listNodeFieldsFromPipe(b.Pipe)...)
 	}
 	if b.List != nil {
-		res = append(res, listNodeFields(b.List)...)
+		res = append(res, listNodeFields(b.List.Nodes)...)
 	}
 	if b.ElseList != nil {
-		res = append(res, listNodeFields(b.ElseList)...)
+		res = append(res, listNodeFields(b.ElseList.Nodes)...)
 	}
 	return res
 }
@@ -163,11 +175,7 @@ func listNodeFieldsFromBranch(node parse.Node) []string {
 func listNodeFieldsFromPipe(p *parse.PipeNode) []string {
 	var res []string
 	for _, c := range p.Cmds {
-		for _, a := range c.Args {
-			if f, ok := a.(*parse.FieldNode); ok {
-				res = append(res, f.Ident...)
-			}
-		}
+		res = append(res, listNodeFields(c.Args)...)
 	}
 	return res
 }
@@ -216,6 +224,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		return nil, err
 	}
 	formats := make([]labelFormatter, 0, len(fmts))
+
 	for _, fm := range fmts {
 		toAdd := labelFormatter{LabelFmt: fm}
 		if !fm.Rename {
@@ -280,7 +289,7 @@ func (lf *LabelsFormatter) RequiredLabelNames() []string {
 			names = append(names, fm.Value)
 			continue
 		}
-		names = append(names, listNodeFields(fm.tmpl.Root)...)
+		names = append(names, listNodeFields([]parse.Node{fm.tmpl.Root})...)
 	}
 	return uniqueString(names)
 }

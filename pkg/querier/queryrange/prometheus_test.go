@@ -13,35 +13,46 @@ import (
 )
 
 var emptyStats = `"stats": {
+	"ingester" : {
+		"store": {
+			"chunksDownloadTime": 0,
+			"totalChunksRef": 0,
+			"totalChunksDownloaded": 0,
+			"chunk" :{
+				"compressedBytes": 0,
+				"decompressedBytes": 0,
+				"decompressedLines": 0,
+				"headChunkBytes": 0,
+				"headChunkLines": 0,
+				"totalDuplicates": 0
+			}
+		},
+		"totalBatches": 0,
+		"totalChunksMatched": 0,
+		"totalLinesSent": 0,
+		"totalReached": 0
+	},
+	"querier": {
+		"store": {
+			"chunksDownloadTime": 0,
+			"totalChunksRef": 0,
+			"totalChunksDownloaded": 0,
+			"chunk" :{
+				"compressedBytes": 0,
+				"decompressedBytes": 0,
+				"decompressedLines": 0,
+				"headChunkBytes": 0,
+				"headChunkLines": 0,
+				"totalDuplicates": 0
+			}
+		}
+	},
 	"summary": {
 		"bytesProcessedPerSecond": 0,
+		"execTime": 0,
 		"linesProcessedPerSecond": 0,
-		"totalBytesProcessed": 0,
-		"totalLinesProcessed": 0,
-		"execTime": 0.0
-	},
-	"store": {
-		"totalChunksRef": 0,
-		"totalChunksDownloaded": 0,
-		"chunksDownloadTime": 0,
-		"headChunkBytes": 0,
-		"headChunkLines": 0,
-		"decompressedBytes": 0,
-		"decompressedLines": 0,
-		"compressedBytes": 0,
-		"totalDuplicates": 0
-	},
-	"ingester": {
-		"totalReached": 0,
-		"totalChunksMatched": 0,
-		"totalBatches": 0,
-		"totalLinesSent": 0,
-		"headChunkBytes": 0,
-		"headChunkLines": 0,
-		"decompressedBytes": 0,
-		"decompressedLines": 0,
-		"compressedBytes": 0,
-		"totalDuplicates": 0
+		"totalBytesProcessed":0,
+		"totalLinesProcessed":0
 	}
 }`
 

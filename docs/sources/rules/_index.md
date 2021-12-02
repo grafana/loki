@@ -7,7 +7,7 @@ weight: 700
 
 # Rules and the Ruler
 
-Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
+Grafana Loki includes a component called the Ruler, adapted from our upstream project, Cortex. The Ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
 
 This example configuration sources rules from a local disk.
 
@@ -70,15 +70,13 @@ groups:
 
 ## Recording Rules
 
-<span style="background-color:#f3f973;">Recording rules are an experimental feature.</span>
-
 We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules) recording rules. From Prometheus' documentation:
 
 > Recording rules allow you to precompute frequently needed or computationally expensive expressions and save their result as a new set of time series.
 
 > Querying the precomputed result will then often be much faster than executing the original expression every time it is needed. This is especially useful for dashboards, which need to query the same expression repeatedly every time they refresh.
 
-Loki allows you to run [_metric queries_](https://grafana.com/docs/loki/latest/logql/#metric-queries) over your logs, which means
+Loki allows you to run [metric queries](../logql/metric_queries) over your logs, which means
 that you can derive a numeric aggregation from your logs, like calculating the number of requests over time from your NGINX access log.
 
 ### Example
@@ -124,34 +122,11 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler_config](/configuration#ruler_config).
+Further configuration options can be found under [ruler](../configuration#ruler).
 
-### Resilience and Durability
+### Operations
 
-Given the above remote-write configuration, one needs to take into account what would happen if the remote-write receiver
-becomes unavailable.
-
-The Ruler component ensures some durability guarantees by buffering all outgoing writes in an in-memory queue. This queue
-holds all metric samples that are due to be written to the remote-write receiver, and while that receiver is down, the buffer
-will grow in size.
-
-Once the queue is full, the oldest samples will be evicted from the queue. The size of this queue is controllable globally,
-or on a per-tenant basis, with the [`ruler_remote_write_queue_capacity`](/configuration#limits_config) limit setting. By default, this value is set to 10000 samples.
-
-**NOTE**: this queue only exists in-memory at this time; there is no Write-Ahead Log (WAL) functionality available yet.
-This means that if your Ruler instance crashes, all pending metric samples in the queue that have not yet been written will be lost.
-
-### Operational Considerations
-
-Metrics are available to monitor recording rule evaluations and writes.
-
-| Metric  | Description  |
-|---|---|
-| `recording_rules_samples_queued_current`  | Number of samples queued to be remote-written.                                 |
-| `recording_rules_samples_queued_total`    | Total number of samples queued.                                             |
-| `recording_rules_samples_queue_capacity`  | Number of samples that can be queued before eviction of the oldest samples occurs. |
-| `recording_rules_samples_evicted_total`   | Number of samples evicted from queue because the queue is full.                           | 
-| `recording_rules_remote_write_errors`     | Number of samples that failed to be remote-written due to error.               |
+Please refer to the [Recording Rules](../operations/recording-rules/) page.
 
 ## Use cases
 
@@ -255,7 +230,7 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the [configuration documentation](https://grafana.com/docs/loki/latest/configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation](../configuration/), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 
@@ -280,7 +255,7 @@ ruler:
 
 The Ruler supports six kinds of storage: configdb, azure, gcs, s3, swift, and local. Most kinds of storage work with the sharded Ruler configuration in an obvious way, i.e. configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/latest/api/#Ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](../api/#ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```

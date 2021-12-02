@@ -1,6 +1,10 @@
 package chunkenc
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestParseEncoding(t *testing.T) {
 	tests := []struct {
@@ -22,5 +26,11 @@ func TestParseEncoding(t *testing.T) {
 				t.Errorf("ParseEncoding() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsOutOfOrderErr(t *testing.T) {
+	for _, err := range []error{ErrOutOfOrder, ErrTooFarBehind} {
+		require.Equal(t, true, IsOutOfOrderErr(err))
 	}
 }

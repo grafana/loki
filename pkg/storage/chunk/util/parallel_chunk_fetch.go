@@ -23,7 +23,7 @@ var decodeContextPool = sync.Pool{
 func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetParallelChunks")
 	defer log.Finish()
-	log.LogFields(otlog.Int("chunks requested", len(chunks)))
+	log.LogFields(otlog.Int("requested", len(chunks)))
 
 	queuedChunks := make(chan chunk.Chunk)
 
@@ -63,7 +63,7 @@ func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context
 		}
 	}
 
-	log.LogFields(otlog.Int("chunks fetched", len(result)))
+	log.LogFields(otlog.Int("fetched", len(result)))
 	if lastErr != nil {
 		log.Error(lastErr)
 	}

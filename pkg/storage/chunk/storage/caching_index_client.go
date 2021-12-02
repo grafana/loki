@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -292,8 +292,8 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	log, ctx := spanlogger.New(ctx, "cachingIndexClient.cacheFetch")
-	defer log.Finish()
+	log := spanlogger.FromContext(ctx)
+	level.Debug(log).Log("requested", len(keys))
 
 	cacheGets.Add(float64(len(keys)))
 

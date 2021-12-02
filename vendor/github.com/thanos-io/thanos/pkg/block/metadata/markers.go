@@ -9,9 +9,10 @@ import (
 	"io/ioutil"
 	"path"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
@@ -67,6 +68,8 @@ const (
 	// IndexSizeExceedingNoCompactReason is a reason of index being too big (for example exceeding 64GB limit: https://github.com/thanos-io/thanos/issues/1424)
 	// This reason can be ignored when vertical block sharding will be implemented.
 	IndexSizeExceedingNoCompactReason = "index-size-exceeding"
+	// OutOfOrderChunksNoCompactReason is a reason of to no compact block with index contains out of order chunk so that the compaction is not blocked.
+	OutOfOrderChunksNoCompactReason = "block-index-out-of-order-chunk"
 )
 
 // NoCompactMark marker stores reason of block being excluded from compaction if needed.

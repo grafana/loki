@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/validation"
@@ -36,14 +36,16 @@ func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention 
 	return f.perTenant[userID].streamRetention
 }
 
-func (f fakeLimits) ForEachTenantLimit(callback validation.ForEachTenantLimitCallback) {
-	for userID, limit := range f.perTenant {
-		callback(userID, limit.convertToValidationLimit())
-	}
-}
-
 func (f fakeLimits) DefaultLimits() *validation.Limits {
 	return f.defaultLimit.convertToValidationLimit()
+}
+
+func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+	res := make(map[string]*validation.Limits)
+	for userID, ret := range f.perTenant {
+		res[userID] = ret.convertToValidationLimit()
+	}
+	return res
 }
 
 func Test_expirationChecker_Expired(t *testing.T) {
@@ -209,7 +211,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 	}
 }
 
-func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
+func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		expirationChecker expirationChecker
@@ -250,7 +252,7 @@ func TestExpirationChecker_IntervalHasExpiredChunks(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalHasExpiredChunks(tc.interval))
+			require.Equal(t, tc.hasExpiredChunks, tc.expirationChecker.IntervalMayHaveExpiredChunks(tc.interval))
 		})
 	}
 }

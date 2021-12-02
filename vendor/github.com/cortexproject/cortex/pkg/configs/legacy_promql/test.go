@@ -26,7 +26,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/testutil"
@@ -491,7 +491,8 @@ func (t *Test) exec(tc testCommand) error {
 func (t *Test) clear() {
 	if t.storage != nil {
 		if err := t.storage.Close(); err != nil {
-			t.T.Fatalf("closing test storage: %s", err)
+			t.T.Errorf("closing test storage: %s", err)
+			t.T.FailNow()
 		}
 	}
 	if t.cancelCtx != nil {
@@ -508,7 +509,8 @@ func (t *Test) Close() {
 	t.cancelCtx()
 
 	if err := t.storage.Close(); err != nil {
-		t.T.Fatalf("closing test storage: %s", err)
+		t.T.Errorf("closing test storage: %s", err)
+		t.T.FailNow()
 	}
 }
 
@@ -546,17 +548,13 @@ func parseNumber(s string) (float64, error) {
 	return f, nil
 }
 
-type T interface {
-	Fatal(args ...interface{})
-	Fatalf(format string, args ...interface{})
-}
-
 // NewStorage returns a new storage for testing purposes
 // that removes all associated files on closing.
-func NewStorage(t T) storage.Storage {
+func NewStorage(t testutil.T) storage.Storage {
 	dir, err := ioutil.TempDir("", "test_storage")
 	if err != nil {
-		t.Fatalf("Opening test dir failed: %s", err)
+		t.Errorf("Opening test dir failed: %s", err)
+		t.FailNow()
 	}
 
 	// Tests just load data for a series sequentially. Thus we
@@ -566,7 +564,8 @@ func NewStorage(t T) storage.Storage {
 		MaxBlockDuration: int64(24 * time.Hour / time.Millisecond),
 	}, nil)
 	if err != nil {
-		t.Fatalf("Opening test storage failed: %s", err)
+		t.Errorf("Opening test storage failed: %s", err)
+		t.FailNow()
 	}
 	return testStorage{Storage: Adapter(db, int64(0)), dir: dir}
 }

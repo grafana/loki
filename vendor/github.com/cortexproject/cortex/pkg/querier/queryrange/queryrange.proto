@@ -12,6 +12,10 @@ import "google/protobuf/any.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
+message PrometheusRequestHeader {
+  string Name = 1 [(gogoproto.jsontag) = "-"];
+  repeated string Values = 2 [(gogoproto.jsontag) = "-"];
+}
 message PrometheusRequest {
   string path = 1;
   int64 start = 2;
@@ -20,6 +24,7 @@ message PrometheusRequest {
   google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
   string query = 6;
   CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
+  repeated PrometheusRequestHeader Headers = 8 [(gogoproto.jsontag) = "-"];
 }
 
 message PrometheusResponseHeader {

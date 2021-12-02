@@ -143,7 +143,7 @@ type heapIterator struct {
 	}
 	is         []EntryIterator
 	prefetched bool
-	stats      *stats.ChunkData
+	stats      *stats.Context
 
 	tuples     []tuple
 	currEntry  logproto.Entry
@@ -154,12 +154,12 @@ type heapIterator struct {
 // NewHeapIterator returns a new iterator which uses a heap to merge together
 // entries for multiple interators.
 func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
-	result := &heapIterator{is: is, stats: stats.GetChunkData(ctx)}
+	result := &heapIterator{is: is, stats: stats.FromContext(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
-		result.heap = &iteratorMaxHeap{}
+		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
 	case logproto.FORWARD:
-		result.heap = &iteratorMinHeap{}
+		result.heap = &iteratorMinHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
 	default:
 		panic("bad direction")
 	}
@@ -220,6 +220,16 @@ func (i *heapIterator) Next() bool {
 		return false
 	}
 
+	// shortcut for the last iterator.
+	if i.heap.Len() == 1 {
+		i.currEntry = i.heap.Peek().Entry()
+		i.currLabels = i.heap.Peek().Labels()
+		if !i.heap.Peek().Next() {
+			i.heap.Pop()
+		}
+		return true
+	}
+
 	// We support multiple entries with the same timestamp, and we want to
 	// preserve their original order. We look at all the top entries in the
 	// heap with the same timestamp, and pop the ones whose common value
@@ -261,7 +271,7 @@ func (i *heapIterator) Next() bool {
 		}
 		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
 		if i.tuples[j] != t {
-			i.stats.TotalDuplicates++
+			i.stats.AddDuplicates(1)
 		}
 		i.requeue(i.tuples[j].EntryIterator, false)
 	}
@@ -345,6 +355,7 @@ func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logpr
 }
 
 func (i *queryClientIterator) Next() bool {
+	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
@@ -353,8 +364,8 @@ func (i *queryClientIterator) Next() bool {
 			i.err = err
 			return false
 		}
-
-		i.curr = NewQueryResponseIterator(i.client.Context(), batch, i.direction)
+		stats.JoinIngesters(ctx, batch.Stats)
+		i.curr = NewQueryResponseIterator(ctx, batch, i.direction)
 	}
 
 	return true
@@ -378,7 +389,6 @@ func (i *queryClientIterator) Close() error {
 
 type nonOverlappingIterator struct {
 	labels    string
-	i         int
 	iterators []EntryIterator
 	curr      EntryIterator
 }
@@ -402,7 +412,6 @@ func (i *nonOverlappingIterator) Next() bool {
 		if i.curr != nil {
 			i.curr.Close()
 		}
-		i.i++
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 

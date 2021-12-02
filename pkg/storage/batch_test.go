@@ -8,7 +8,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -1162,6 +1162,121 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			from, from.Add(3 * time.Millisecond),
 			2,
 		},
+		"forward last chunk boundaries equal to end": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "1",
+						},
+						{
+							Timestamp: time.Unix(2, 0),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+
+						{
+							Timestamp: time.Unix(2, 0),
+							Line:      "2",
+						},
+						{
+							Timestamp: time.Unix(3, 0),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(3, 0),
+							Line:      "3",
+						},
+						{
+							Timestamp: time.Unix(4, 0),
+							Line:      "4",
+						},
+					},
+				}),
+			},
+			[]logproto.Series{
+				{
+					Labels: fooLabels,
+					Samples: []logproto.Sample{
+						{
+							Timestamp: time.Unix(1, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: time.Unix(2, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			time.Unix(1, 0), time.Unix(3, 0),
+			2,
+		},
+		"forward last chunk boundaries equal to end and start": {
+			[]*LazyChunk{
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "1",
+						},
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "2",
+						},
+					},
+				}),
+				newLazyChunk(logproto.Stream{
+					Labels: fooLabelsWithName,
+					Entries: []logproto.Entry{
+
+						{
+							Timestamp: time.Unix(1, 0),
+							Line:      "2",
+						},
+						{
+							Timestamp: time.Unix(2, 0),
+							Line:      "3",
+						},
+					},
+				}),
+			},
+			[]logproto.Series{
+				{
+					Labels: fooLabels,
+					Samples: []logproto.Sample{
+						{
+							Timestamp: time.Unix(1, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("1"),
+							Value:     1.,
+						},
+						{
+							Timestamp: time.Unix(1, 0).UnixNano(),
+							Hash:      xxhash.Sum64String("2"),
+							Value:     1.,
+						},
+					},
+				},
+			},
+			fooLabelsWithName,
+			time.Unix(1, 0), time.Unix(1, 0),
+			2,
+		},
 		"forward without overlap": {
 			[]*LazyChunk{
 				newLazyChunk(logproto.Stream{
@@ -1529,7 +1644,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		Store: newMockChunkStore(newOverlappingStreams(200, 200)),
 	}
 	b.ResetTimer()
-	ctx := user.InjectOrgID(stats.NewContext(context.Background()), "fake")
+	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
 		it, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
@@ -1550,9 +1665,9 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	r := stats.Snapshot(ctx, time.Since(start))
-	b.Log("Total chunks:" + fmt.Sprintf("%d", r.Store.TotalChunksRef))
-	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.Store.DecompressedBytes))
+	r := statsCtx.Result(time.Since(start))
+	b.Log("Total chunks:" + fmt.Sprintf("%d", r.TotalChunksRef()))
+	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.TotalDecompressedBytes()))
 }
 
 func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {

@@ -1,6 +1,5 @@
-FROM golang:1.16.2 as build
+FROM golang:1.17.2 as build
 
-ARG TOUCH_PROTOS
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki-querytee

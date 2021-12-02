@@ -7,13 +7,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -235,11 +234,20 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 				through = through.Add(time.Nanosecond)
 			}
 		} else {
+
 			from = time.Unix(0, headChunk.Chunk.From.UnixNano())
 
-			// when clipping the from it should never be before the start or equal to the end.
+			// if the start of the batch is equal to the end of the query, since the end is not inclusive we can discard that batch.
+			if from.Equal(it.end) {
+				if it.end != it.start {
+					return nil
+				}
+				// unless end and start are equal in which case start and end are both inclusive.
+				from = it.end
+			}
+			// when clipping the from it should never be before the start.
 			// Doing so would include entries not requested.
-			if from.Before(it.start) || from.Equal(it.end) {
+			if from.Before(it.start) {
 				from = it.start
 			}
 		}
@@ -648,14 +656,15 @@ outer:
 }
 
 func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
-	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
-	defer log.Finish()
-	start := time.Now()
-	storeStats := stats.GetStoreData(ctx)
-	var totalChunks int64
+	var (
+		totalChunks int64
+		start       = time.Now()
+		stats       = stats.FromContext(ctx)
+		logger      = util_log.WithContext(ctx, util_log.Logger)
+	)
 	defer func() {
-		storeStats.ChunksDownloadTime += time.Since(start)
-		storeStats.TotalChunksDownloaded += totalChunks
+		stats.AddChunksDownloadTime(time.Since(start))
+		stats.AddChunksDownloaded(totalChunks)
 	}()
 
 	chksByFetcher := map[*chunk.Fetcher][]*LazyChunk{}
@@ -668,7 +677,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 	if len(chksByFetcher) == 0 {
 		return nil
 	}
-	level.Debug(log).Log("msg", "loading lazy chunks", "chunks", totalChunks)
+	level.Debug(logger).Log("msg", "loading lazy chunks", "chunks", totalChunks)
 
 	errChan := make(chan error)
 	for fetcher, chunks := range chksByFetcher {
@@ -687,9 +696,9 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", err)
+				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
-					level.Error(util_log.Logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
+					level.Error(logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
 					errChan <- nil
 					return
 				}

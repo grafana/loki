@@ -1,9 +1,10 @@
 ---
 title: Promtail
+weight: 10
 ---
 # Promtail
 
-Promtail is an agent which ships the contents of local logs to a private Loki
+Promtail is an agent which ships the contents of local logs to a private Grafana Loki
 instance or [Grafana Cloud](https://grafana.com/oss/loki). It is usually
 deployed to every machine that has applications needed to be monitored.
 
@@ -90,8 +91,8 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 
 ### `GET /metrics`
 
-This endpoint returns Promtail metrics for Prometheus. See
-"[Operations > Observability](../../operations/observability/)" to get a list
+This endpoint returns Promtail metrics for Prometheus. Refer to
+[Observing Grafana Loki](../../operations/observability/) for the list
 of exported metrics.
 
 ### Promtail web server config

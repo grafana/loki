@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -72,7 +72,7 @@ type StoreConfig struct {
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("store.chunks-cache.", "Cache config for chunks. ", f)
 	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
-	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
+	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing.", f)
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
 }
@@ -82,10 +82,7 @@ func (cfg *StoreConfig) Validate(logger log.Logger) error {
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
 	}
-	if err := cfg.WriteDedupeCacheConfig.Validate(); err != nil {
-		return err
-	}
-	return nil
+	return cfg.WriteDedupeCacheConfig.Validate()
 }
 
 type baseStore struct {
@@ -290,8 +287,6 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 
 func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
-	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
-	defer log.Span.Finish()
 
 	if *through < *from {
 		return false, QueryError(fmt.Sprintf("invalid query, through < from (%s < %s)", through, from))
@@ -306,13 +301,13 @@ func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, f
 
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
-		level.Info(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
+		level.Info(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
 		return true, nil
 	}
 
 	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
-		level.Info(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
+		level.Info(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
 	}
 
@@ -320,9 +315,6 @@ func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, f
 }
 
 func (c *baseStore) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
-	log, ctx := spanlogger.New(ctx, "store.validateQuery")
-	defer log.Span.Finish()
-
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, from, through)
 	if err != nil {
 		return "", nil, false, err
@@ -443,10 +435,6 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
-	formattedMatcher := formatMatcher(matcher)
-	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formattedMatcher)
-	defer log.Span.Finish()
-
 	var err error
 	var queries []IndexQuery
 	var labelName string
@@ -462,11 +450,10 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formattedMatcher, "queries", len(queries))
+	unfilteredQueries := len(queries)
 
 	if filter != nil {
 		queries = filter(queries)
-		level.Debug(log).Log("matcher", formattedMatcher, "filteredQueries", len(queries))
 	}
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
@@ -477,13 +464,20 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formattedMatcher, "entries", len(entries))
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formattedMatcher, "ids", len(ids))
+	level.Debug(util_log.WithContext(ctx, util_log.Logger)).
+		Log(
+			"msg", "Store.lookupIdsByMetricNameMatcher",
+			"matcher", formatMatcher(matcher),
+			"queries", unfilteredQueries,
+			"filteredQueries", len(queries),
+			"entries", len(entries),
+			"ids", len(ids),
+		)
 
 	return ids, nil
 }
@@ -499,9 +493,6 @@ func formatMatcher(matcher *labels.Matcher) string {
 }
 
 func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
-	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
-	defer log.Span.Finish()
-
 	// Nothing to do if there are no queries.
 	if len(queries) == 0 {
 		return nil, nil

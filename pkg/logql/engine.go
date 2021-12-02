@@ -10,10 +10,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
@@ -113,13 +113,12 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	defer timer.ObserveDuration()
 
 	// records query statistics
-	var statResult stats.Result
 	start := time.Now()
-	ctx = stats.NewContext(ctx)
+	statsCtx, ctx := stats.NewContext(ctx)
 
 	data, err := q.Eval(ctx)
 
-	statResult = stats.Snapshot(ctx, time.Since(start))
+	statResult := statsCtx.Result(time.Since(start))
 	statResult.Log(level.Debug(log))
 
 	status := "200"

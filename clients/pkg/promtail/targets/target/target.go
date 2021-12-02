@@ -5,7 +5,7 @@ import (
 )
 
 // TargetType is the type of target
-// nolint:golint
+// nolint:revive
 type TargetType string
 
 const (
@@ -29,6 +29,12 @@ const (
 
 	// WindowsTargetType is a Windows event target
 	WindowsTargetType = TargetType("WindowsEvent")
+
+	// KafkaTargetType is a Kafka target
+	KafkaTargetType = TargetType("Kafka")
+
+	// GelfTargetType is a gelf target
+	GelfTargetType = TargetType("gelf")
 )
 
 // Target is a promtail scrape target

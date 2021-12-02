@@ -2117,7 +2117,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |= \"level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} | logfmt | level=\"error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2125,7 +2125,7 @@
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "",
+          "title": "Error Log Rate",
           "tooltip": {
             "shared": true,
             "sort": 2,
@@ -2179,7 +2179,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |= \"level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} | logfmt | level=\"error\"",
               "refId": "A"
             }
           ],
@@ -2655,8 +2655,8 @@
           "gridPos": {
             "h": 7,
             "w": 6,
-            "x": 6,
-            "y": 29
+            "x": 0,
+            "y": 36
           },
           "hiddenSeries": false,
           "id": 37,
@@ -2745,7 +2745,7 @@
           "fillGradient": 0,
           "gridPos": {
             "h": 3,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 29
           },
@@ -2781,7 +2781,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |= \"level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} | logfmt | level=\"error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2789,7 +2789,7 @@
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "",
+          "title": "Error Log Rate",
           "tooltip": {
             "shared": true,
             "sort": 2,
@@ -2830,7 +2830,7 @@
           "datasource": "$logs",
           "gridPos": {
             "h": 18,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 32
           },
@@ -2843,7 +2843,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |= \"level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} | logfmt | level=\"error\"",
               "refId": "A"
             }
           ],
@@ -2864,7 +2864,7 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 36
+            "y": 41
           },
           "hiddenSeries": false,
           "id": 67,
@@ -3355,36 +3355,16 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"full\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
+              "expr": "sum by(reason) (rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/ingester\", namespace=~\"$namespace\"}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/ingester\", namespace=~\"$namespace\"}[$__rate_interval]))",
               "interval": "",
-              "legendFormat": "full",
-              "refId": "B"
+              "legendFormat": "{{ reason }}"
             },
-            {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"synced\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
-              "interval": "",
-              "legendFormat": "synced",
-              "refId": "D"
-            },
-            {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"idle\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
-              "hide": false,
-              "interval": "",
-              "legendFormat": "idle",
-              "refId": "A"
-            },
-            {
-              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"max_age\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
-              "interval": "",
-              "legendFormat": "max_age",
-              "refId": "C"
-            }
           ],
           "thresholds": [],
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "Chunk Flush Reason",
+          "title": "Chunk Flush Reason %",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -3601,8 +3581,8 @@
           "gridPos": {
             "h": 7,
             "w": 6,
-            "x": 6,
-            "y": 32
+            "x": 0,
+            "y": 39
           },
           "hiddenSeries": false,
           "id": 69,
@@ -3691,7 +3671,7 @@
           "fillGradient": 0,
           "gridPos": {
             "h": 3,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 32
           },
@@ -3727,7 +3707,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |= \"level=error\"[1m]))",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} | logfmt |  level=\"error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -3735,7 +3715,7 @@
           "timeFrom": null,
           "timeRegions": [],
           "timeShift": null,
-          "title": "",
+          "title": "Error Log Rate",
           "tooltip": {
             "shared": true,
             "sort": 2,
@@ -3776,7 +3756,7 @@
           "datasource": "$logs",
           "gridPos": {
             "h": 18,
-            "w": 12,
+            "w": 18,
             "x": 12,
             "y": 35
           },
@@ -3789,7 +3769,7 @@
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |= \"level=error\"",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} | logfmt | level=\"error\"",
               "refId": "A"
             }
           ],
@@ -3810,7 +3790,7 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 39
+            "y": 46
           },
           "hiddenSeries": false,
           "id": 70,
@@ -5236,7 +5216,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(cortex_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
+              "expr": "sum(rate(loki_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
               "intervalFactor": 1,
               "legendFormat": "{{status_code}}-{{operation}}",
               "refId": "A"
@@ -6556,79 +6536,6 @@
   "schemaVersion": 25,
   "style": "dark",
   "tags": [],
-  "templating": {
-    "list": [
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": null,
-        "multi": false,
-        "name": "datasource",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": null,
-        "multi": false,
-        "name": "logs",
-        "options": [],
-        "query": "loki",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "allValue": null,
-        "datasource": "$datasource",
-        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", container!=\"loki-canary\"}, cluster)",
-        "hide": 0,
-        "includeAll": false,
-        "label": null,
-        "multi": false,
-        "name": "cluster",
-        "options": [],
-        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", container!=\"loki-canary\"}, cluster)",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
-      },
-      {
-        "allValue": null,
-        "datasource": "$datasource",
-        "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
-        "hide": 0,
-        "includeAll": false,
-        "label": null,
-        "multi": false,
-        "name": "namespace",
-        "options": [],
-        "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\", container!=\"loki-canary\"}, namespace)",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
-      }
-    ]
-  },
   "time": {
     "from": "now-3h",
     "to": "now"
@@ -6651,3 +6558,4 @@
   "uid": "f6fe30815b172c9da7e813c15ddfe607",
   "version": 1
 }
+

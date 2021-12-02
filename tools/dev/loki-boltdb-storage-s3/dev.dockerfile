@@ -1,4 +1,4 @@
-FROM golang:1.16
+FROM golang:1.17
 ENV CGO_ENABLED=0
 RUN go get github.com/go-delve/delve/cmd/dlv
 

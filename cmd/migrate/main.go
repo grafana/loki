@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql"
@@ -52,7 +52,7 @@ func main() {
 	flag.Parse()
 
 	// Create a set of defaults
-	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults()); err != nil {
+	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults(flag.CommandLine)); err != nil {
 		log.Println("Failed parsing defaults config:", err)
 		os.Exit(1)
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -207,7 +207,7 @@ func Test_EmptyTable(t *testing.T) {
 	err := tables[0].DB.Update(func(tx *bbolt.Tx) error {
 		it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 		require.NoError(t, err)
-		empty, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
+		empty, _, err := markforDelete(context.Background(), tables[0].name, noopWriter{}, it, noopCleaner{},
 			NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil)
 		require.NoError(t, err)
 		require.True(t, empty)
@@ -457,11 +457,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		expiry                []chunkExpiry
 		expectedDeletedSeries []map[uint64]struct{}
 		expectedEmpty         []bool
+		expectedModified      []bool
 	}{
 		{
 			name: "no chunk and series deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -474,11 +475,14 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				false,
 			},
+			expectedModified: []bool{
+				false,
+			},
 		},
 		{
 			name: "only one chunk in store which gets deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -491,18 +495,21 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				true,
 			},
+			expectedModified: []bool{
+				true,
+			},
 		},
 		{
 			name: "only one chunk in store which gets partially deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
 					nonDeletedIntervals: []model.Interval{{
-						Start: now.Add(-15 * time.Minute),
-						End:   now,
+						Start: todaysTableInterval.Start,
+						End:   todaysTableInterval.Start.Add(15 * time.Minute),
 					}},
 				},
 			},
@@ -512,12 +519,15 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				false,
 			},
+			expectedModified: []bool{
+				true,
+			},
 		},
 		{
 			name: "one of two chunks deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -533,12 +543,15 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				false,
 			},
+			expectedModified: []bool{
+				true,
+			},
 		},
 		{
 			name: "one of two chunks partially deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, now.Add(-30*time.Minute), now),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, now.Add(-30*time.Minute), now),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -547,8 +560,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				{
 					isExpired: true,
 					nonDeletedIntervals: []model.Interval{{
-						Start: now.Add(-15 * time.Minute),
-						End:   now,
+						Start: todaysTableInterval.Start,
+						End:   todaysTableInterval.Start.Add(15 * time.Minute),
 					}},
 				},
 			},
@@ -557,6 +570,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedEmpty: []bool{
 				false,
+			},
+			expectedModified: []bool{
+				true,
 			},
 		},
 		{
@@ -579,6 +595,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedEmpty: []bool{
 				true, false,
 			},
+			expectedModified: []bool{
+				true, true,
+			},
 		},
 		{
 			name: "one big chunk partially deleted for yesterdays table with rewrite",
@@ -599,6 +618,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedEmpty: []bool{
 				false, false,
+			},
+			expectedModified: []bool{
+				true, true,
 			},
 		},
 	} {
@@ -628,10 +650,11 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 
 					cr, err := newChunkRewriter(chunkClient, schema.config, table.name, tx.Bucket(bucketName))
 					require.NoError(t, err)
-					empty, err := markforDelete(context.Background(), table.name, noopWriter{}, it, seriesCleanRecorder,
+					empty, isModified, err := markforDelete(context.Background(), table.name, noopWriter{}, it, seriesCleanRecorder,
 						expirationChecker, cr)
 					require.NoError(t, err)
 					require.Equal(t, tc.expectedEmpty[i], empty)
+					require.Equal(t, tc.expectedModified[i], isModified)
 					return nil
 				})
 				require.NoError(t, err)
@@ -671,7 +694,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 		err := table.DB.Update(func(tx *bbolt.Tx) error {
 			it, err := newChunkIndexIterator(tx.Bucket(bucketName), schema.config)
 			require.NoError(t, err)
-			empty, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
+			empty, _, err := markforDelete(context.Background(), table.name, noopWriter{}, it, noopCleaner{},
 				NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil)
 			require.NoError(t, err)
 			if i == 7 {

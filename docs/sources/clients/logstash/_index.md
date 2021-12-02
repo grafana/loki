@@ -1,9 +1,10 @@
 ---
 title: Logstash
+weight: 70
 ---
 # Logstash
 
-Loki has a [Logstash](https://www.elastic.co/logstash) output plugin called
+Grafana Loki has a [Logstash](https://www.elastic.co/logstash) output plugin called
 `logstash-output-loki` that enables shipping logs to a Loki
 instance or [Grafana Cloud](https://grafana.com/products/cloud/).
 
@@ -77,7 +78,7 @@ output {
 
     [ca_cert => path | default = nil | required=false]
 
-    [insecure_skip_verify => boolean | default = fasle | required=false]
+    [insecure_skip_verify => boolean | default = false | required=false]
   }
 }
 ```

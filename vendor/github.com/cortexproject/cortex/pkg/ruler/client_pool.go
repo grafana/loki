@@ -3,17 +3,15 @@ package ruler
 import (
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
-
-	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
 // ClientsPool is the interface used to get the client from the pool for a specified address.

@@ -3,6 +3,7 @@ package iter
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -14,8 +15,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
-const testSize = 10
-const defaultLabels = "{foo=\"baz\"}"
+const (
+	testSize      = 10
+	defaultLabels = "{foo=\"baz\"}"
+)
 
 func TestIterator(t *testing.T) {
 	for i, tc := range []struct {
@@ -486,7 +489,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.FORWARD,
 			6,
@@ -503,7 +507,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.BACKWARD,
 			6,
@@ -517,7 +522,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.FORWARD,
 			0,
@@ -531,26 +537,25 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.BACKWARD,
 			0,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			ctx := context.Background()
-			ctx = stats.NewContext(ctx)
+			_, ctx := stats.NewContext(context.Background())
 			it := NewHeapIterator(ctx, test.iters, test.direction)
 			defer it.Close()
 			for it.Next() {
 			}
-			require.Equal(t, test.expectedDuplicates, stats.GetChunkData(ctx).TotalDuplicates)
+			require.Equal(t, test.expectedDuplicates, stats.FromContext(ctx).Result(0).TotalDuplicates())
 		})
 	}
 }
 
 func Test_timeRangedIterator_Next(t *testing.T) {
-
 	tests := []struct {
 		mint   time.Time
 		maxt   time.Time
@@ -629,4 +634,42 @@ func TestNonOverlappingClose(t *testing.T) {
 
 	require.Equal(t, true, a.closed.Load())
 	require.Equal(t, true, b.closed.Load())
+}
+
+func BenchmarkHeapIterator(b *testing.B) {
+	var (
+		ctx          = context.Background()
+		streams      []logproto.Stream
+		entriesCount = 10000
+		streamsCount = 100
+	)
+	for i := 0; i < streamsCount; i++ {
+		streams = append(streams, logproto.Stream{
+			Labels: fmt.Sprintf(`{i="%d"}`, i),
+		})
+	}
+	for i := 0; i < entriesCount; i++ {
+		streams[i%streamsCount].Entries = append(streams[i%streamsCount].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, int64(streamsCount-i)),
+			Line:      fmt.Sprintf("%d", i),
+		})
+	}
+	rand.Shuffle(len(streams), func(i, j int) {
+		streams[i], streams[j] = streams[j], streams[i]
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		var itrs []EntryIterator
+		for i := 0; i < streamsCount; i++ {
+			itrs = append(itrs, NewStreamIterator(streams[i]))
+		}
+		b.StartTimer()
+		it := NewHeapIterator(ctx, itrs, logproto.BACKWARD)
+		for it.Next() {
+			it.Entry()
+		}
+		it.Close()
+	}
 }

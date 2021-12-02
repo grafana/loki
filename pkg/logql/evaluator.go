@@ -3,12 +3,13 @@ package logql
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -168,14 +169,14 @@ func (ev *DefaultEvaluator) StepEvaluator(
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *VectorAggregationExpr:
-		if rangExpr, ok := e.left.(*RangeAggregationExpr); ok && e.operation == OpTypeSum {
+		if rangExpr, ok := e.Left.(*RangeAggregationExpr); ok && e.Operation == OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
 			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr SampleExpr, p Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.left.interval).Add(-rangExpr.left.offset),
-						End:      q.End().Add(-rangExpr.left.offset),
+						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
+						End:      q.End().Add(-rangExpr.Left.Offset),
 						Selector: e.String(), // intentionally send the the vector for reducing labels.
 						Shards:   q.Shards(),
 					},
@@ -183,15 +184,15 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				if err != nil {
 					return nil, err
 				}
-				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.left.offset)
+				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
 		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.left.interval).Add(-e.left.offset),
-				End:      q.End().Add(-e.left.offset),
+				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				End:      q.End().Add(-e.Left.Offset),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
 			},
@@ -199,7 +200,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.left.offset)
+		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *BinOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	case *LabelReplaceExpr:
@@ -215,13 +216,13 @@ func vectorAggEvaluator(
 	expr *VectorAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
-	sort.Strings(expr.grouping.groups)
+	sort.Strings(expr.Grouping.Groups)
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
 
@@ -229,8 +230,8 @@ func vectorAggEvaluator(
 			return false, 0, promql.Vector{}
 		}
 		result := map[uint64]*groupedAggregation{}
-		if expr.operation == OpTypeTopK || expr.operation == OpTypeBottomK {
-			if expr.params < 1 {
+		if expr.Operation == OpTypeTopK || expr.Operation == OpTypeBottomK {
+			if expr.Params < 1 {
 				return next, ts, promql.Vector{}
 			}
 		}
@@ -238,25 +239,25 @@ func vectorAggEvaluator(
 			metric := s.Metric
 
 			var groupingKey uint64
-			if expr.grouping.without {
-				groupingKey, buf = metric.HashWithoutLabels(buf, expr.grouping.groups...)
+			if expr.Grouping.Without {
+				groupingKey, buf = metric.HashWithoutLabels(buf, expr.Grouping.Groups...)
 			} else {
-				groupingKey, buf = metric.HashForLabels(buf, expr.grouping.groups...)
+				groupingKey, buf = metric.HashForLabels(buf, expr.Grouping.Groups...)
 			}
 			group, ok := result[groupingKey]
 			// Add a new group if it doesn't exist.
 			if !ok {
 				var m labels.Labels
 
-				if expr.grouping.without {
+				if expr.Grouping.Without {
 					lb.Reset(metric)
-					lb.Del(expr.grouping.groups...)
+					lb.Del(expr.Grouping.Groups...)
 					lb.Del(labels.MetricName)
 					m = lb.Labels()
 				} else {
-					m = make(labels.Labels, 0, len(expr.grouping.groups))
+					m = make(labels.Labels, 0, len(expr.Grouping.Groups))
 					for _, l := range metric {
-						for _, n := range expr.grouping.groups {
+						for _, n := range expr.Grouping.Groups {
 							if l.Name == n {
 								m = append(m, l)
 								break
@@ -273,19 +274,19 @@ func vectorAggEvaluator(
 				}
 
 				inputVecLen := len(vec)
-				resultSize := expr.params
-				if expr.params > inputVecLen {
+				resultSize := expr.Params
+				if expr.Params > inputVecLen {
 					resultSize = inputVecLen
 				}
-				if expr.operation == OpTypeStdvar || expr.operation == OpTypeStddev {
+				if expr.Operation == OpTypeStdvar || expr.Operation == OpTypeStddev {
 					result[groupingKey].value = 0.0
-				} else if expr.operation == OpTypeTopK {
+				} else if expr.Operation == OpTypeTopK {
 					result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
 					heap.Push(&result[groupingKey].heap, &promql.Sample{
 						Point:  promql.Point{V: s.V},
 						Metric: s.Metric,
 					})
-				} else if expr.operation == OpTypeBottomK {
+				} else if expr.Operation == OpTypeBottomK {
 					result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
 					heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 						Point:  promql.Point{V: s.V},
@@ -294,7 +295,7 @@ func vectorAggEvaluator(
 				}
 				continue
 			}
-			switch expr.operation {
+			switch expr.Operation {
 			case OpTypeSum:
 				group.value += s.V
 
@@ -322,8 +323,8 @@ func vectorAggEvaluator(
 				group.value += delta * (s.V - group.mean)
 
 			case OpTypeTopK:
-				if len(group.heap) < expr.params || group.heap[0].V < s.V || math.IsNaN(group.heap[0].V) {
-					if len(group.heap) == expr.params {
+				if len(group.heap) < expr.Params || group.heap[0].V < s.V || math.IsNaN(group.heap[0].V) {
+					if len(group.heap) == expr.Params {
 						heap.Pop(&group.heap)
 					}
 					heap.Push(&group.heap, &promql.Sample{
@@ -333,8 +334,8 @@ func vectorAggEvaluator(
 				}
 
 			case OpTypeBottomK:
-				if len(group.reverseHeap) < expr.params || group.reverseHeap[0].V > s.V || math.IsNaN(group.reverseHeap[0].V) {
-					if len(group.reverseHeap) == expr.params {
+				if len(group.reverseHeap) < expr.Params || group.reverseHeap[0].V > s.V || math.IsNaN(group.reverseHeap[0].V) {
+					if len(group.reverseHeap) == expr.Params {
 						heap.Pop(&group.reverseHeap)
 					}
 					heap.Push(&group.reverseHeap, &promql.Sample{
@@ -343,12 +344,12 @@ func vectorAggEvaluator(
 					})
 				}
 			default:
-				panic(errors.Errorf("expected aggregation operator but got %q", expr.operation))
+				panic(errors.Errorf("expected aggregation operator but got %q", expr.Operation))
 			}
 		}
 		vec = vec[:0]
 		for _, aggr := range result {
-			switch expr.operation {
+			switch expr.Operation {
 			case OpTypeAvg:
 				aggr.value = aggr.mean
 
@@ -414,11 +415,11 @@ func rangeAggEvaluator(
 	}
 	iter := newRangeVectorIterator(
 		it,
-		expr.left.interval.Nanoseconds(),
+		expr.Left.Interval.Nanoseconds(),
 		q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 	)
-	if expr.operation == OpRangeTypeAbsent {
+	if expr.Operation == OpRangeTypeAbsent {
 		return &absentRangeVectorEvaluator{
 			iter: iter,
 			lbs:  absentLabels(expr),
@@ -525,11 +526,11 @@ func binOpStepEvaluator(
 			return nil, err
 		}
 		return literalStepEvaluator(
-			expr.op,
+			expr.Op,
 			leftLit,
 			rhs,
 			false,
-			expr.opts.ReturnBool,
+			expr.Opts.ReturnBool,
 		)
 	}
 	if rOk {
@@ -538,64 +539,65 @@ func binOpStepEvaluator(
 			return nil, err
 		}
 		return literalStepEvaluator(
-			expr.op,
+			expr.Op,
 			rightLit,
 			lhs,
 			true,
-			expr.opts.ReturnBool,
+			expr.Opts.ReturnBool,
 		)
 	}
 
 	// we have two non literal legs
-	lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+	lse, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 	if err != nil {
 		return nil, err
 	}
-	rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
+	rse, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
 	if err != nil {
 		return nil, err
 	}
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		pairs := map[uint64][2]*promql.Sample{}
-		var ts int64
-
-		// populate pairs
-		for i, eval := range []StepEvaluator{lhs, rhs} {
-			next, timestamp, vec := eval.Next()
-
-			ts = timestamp
-
-			// These should _always_ happen at the same step on each evaluator.
-			if !next {
-				return next, ts, nil
-			}
-
-			for _, sample := range vec {
-				// TODO(owen-d): this seems wildly inefficient: we're calculating
-				// the hash on each sample & step per evaluator.
-				// We seem limited to this approach due to using the StepEvaluator ifc.
-				hash := sample.Metric.Hash()
-				pair := pairs[hash]
-				pair[i] = &promql.Sample{
-					Metric: sample.Metric,
-					Point:  sample.Point,
-				}
-				pairs[hash] = pair
-			}
+		var (
+			ts       int64
+			next     bool
+			lhs, rhs promql.Vector
+		)
+		next, ts, rhs = rse.Next()
+		// These should _always_ happen at the same step on each evaluator.
+		if !next {
+			return next, ts, nil
+		}
+		// build matching signature for each sample in right vector
+		rsigs := make([]uint64, len(rhs))
+		for i, sample := range rhs {
+			rsigs[i] = matchingSignature(sample, expr.Opts)
 		}
 
-		results := make(promql.Vector, 0, len(pairs))
-		for _, pair := range pairs {
-			// merge
-			if merged := mergeBinOp(expr.op, pair[0], pair[1], !expr.opts.ReturnBool, IsComparisonOperator(expr.op)); merged != nil {
-				results = append(results, *merged)
-			}
+		next, ts, lhs = lse.Next()
+		if !next {
+			return next, ts, nil
+		}
+		// build matching signature for each sample in left vector
+		lsigs := make([]uint64, len(lhs))
+		for i, sample := range lhs {
+			lsigs[i] = matchingSignature(sample, expr.Opts)
 		}
 
+		var results promql.Vector
+		switch expr.Op {
+		case OpTypeAnd:
+			results = vectorAnd(lhs, rhs, lsigs, rsigs)
+		case OpTypeOr:
+			results = vectorOr(lhs, rhs, lsigs, rsigs)
+		case OpTypeUnless:
+			results = vectorUnless(lhs, rhs, lsigs, rsigs)
+		default:
+			results, err = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
+		}
 		return true, ts, results
 	}, func() (lastError error) {
-		for _, ev := range []StepEvaluator{lhs, rhs} {
+		for _, ev := range []StepEvaluator{lse, rse} {
 			if err := ev.Close(); err != nil {
 				lastError = err
 			}
@@ -603,7 +605,10 @@ func binOpStepEvaluator(
 		return lastError
 	}, func() error {
 		var errs []error
-		for _, ev := range []StepEvaluator{lhs, rhs} {
+		if err != nil {
+			errs = append(errs, err)
+		}
+		for _, ev := range []StepEvaluator{lse, rse} {
 			if err := ev.Error(); err != nil {
 				errs = append(errs, err)
 			}
@@ -619,37 +624,190 @@ func binOpStepEvaluator(
 	})
 }
 
+func matchingSignature(sample promql.Sample, opts *BinOpOptions) uint64 {
+	if opts == nil || opts.VectorMatching == nil {
+		return sample.Metric.Hash()
+	} else if opts.VectorMatching.On {
+		return sample.Metric.WithLabels(opts.VectorMatching.MatchingLabels...).Hash()
+	} else {
+		return sample.Metric.WithoutLabels(opts.VectorMatching.MatchingLabels...).Hash()
+	}
+}
+
+func vectorBinop(op string, opts *BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
+	// handle one-to-one or many-to-one matching
+	//for one-to-many, swap
+	if opts != nil && opts.VectorMatching.Card == CardOneToMany {
+		lhs, rhs = rhs, lhs
+		lsigs, rsigs = rsigs, lsigs
+	}
+	rightSigs := make(map[uint64]*promql.Sample)
+	matchedSigs := make(map[uint64]map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	// Add all rhs samples to a map so we can easily find matches later.
+	for i, sample := range rhs {
+		sig := rsigs[i]
+		if rightSigs[sig] != nil {
+			side := "right"
+			if opts.VectorMatching.Card == CardOneToMany {
+				side = "left"
+			}
+			return nil, fmt.Errorf("found duplicate series on the %s hand-side"+
+				";many-to-many matching not allowed: matching labels must be unique on one side", side)
+		}
+		rightSigs[sig] = &promql.Sample{
+			Metric: sample.Metric,
+			Point:  sample.Point,
+		}
+	}
+
+	for i, sample := range lhs {
+		ls := &sample
+		sig := lsigs[i]
+		rs, found := rightSigs[sig] // Look for a match in the rhs Vector.
+		if !found {
+			continue
+		}
+
+		metric := resultMetric(ls.Metric, rs.Metric, opts)
+		insertedSigs, exists := matchedSigs[sig]
+		filter := true
+		if opts != nil {
+			if opts.VectorMatching.Card == CardOneToOne {
+				if exists {
+					return nil, errors.New("multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)")
+				}
+				matchedSigs[sig] = nil
+			} else {
+				insertSig := metric.Hash()
+				if !exists {
+					insertedSigs = map[uint64]struct{}{}
+					matchedSigs[sig] = insertedSigs
+				} else if _, duplicate := insertedSigs[insertSig]; duplicate {
+					return nil, errors.New("multiple matches for labels: grouping labels must ensure unique matches")
+				}
+				insertedSigs[insertSig] = struct{}{}
+			}
+			// merge
+			if opts.ReturnBool {
+				filter = false
+			}
+			// swap back before apply binary operator
+			if opts.VectorMatching.Card == CardOneToMany {
+				ls, rs = rs, ls
+			}
+		}
+
+		if merged := mergeBinOp(op, ls, rs, filter, IsComparisonOperator(op)); merged != nil {
+			// replace with labels specified by expr
+			merged.Metric = metric
+			results = append(results, *merged)
+		}
+	}
+	return results, nil
+}
+
+func vectorAnd(lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
+	if len(lhs) == 0 || len(rhs) == 0 {
+		return nil // Short-circuit: AND with nothing is nothing.
+	}
+
+	rightSigs := make(map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	for _, sig := range rsigs {
+		rightSigs[sig] = struct{}{}
+	}
+	for i, ls := range lhs {
+		if _, ok := rightSigs[lsigs[i]]; ok {
+			results = append(results, ls)
+		}
+	}
+	return results
+}
+
+func vectorOr(lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
+	if len(lhs) == 0 {
+		return rhs
+	} else if len(rhs) == 0 {
+		return lhs
+	}
+
+	leftSigs := make(map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	for i, ls := range lhs {
+		leftSigs[lsigs[i]] = struct{}{}
+		results = append(results, ls)
+	}
+	for i, rs := range rhs {
+		if _, ok := leftSigs[rsigs[i]]; !ok {
+			results = append(results, rs)
+		}
+	}
+	return results
+}
+
+func vectorUnless(lhs, rhs promql.Vector, lsigs, rsigs []uint64) promql.Vector {
+	if len(lhs) == 0 || len(rhs) == 0 {
+		return lhs
+	}
+
+	rightSigs := make(map[uint64]struct{})
+	results := make(promql.Vector, 0)
+
+	for _, sig := range rsigs {
+		rightSigs[sig] = struct{}{}
+	}
+
+	for i, ls := range lhs {
+		if _, ok := rightSigs[lsigs[i]]; !ok {
+			results = append(results, ls)
+		}
+	}
+	return results
+}
+
+// resultMetric returns the metric for the given sample(s) based on the Vector
+// binary operation and the matching options.
+func resultMetric(lhs, rhs labels.Labels, opts *BinOpOptions) labels.Labels {
+	lb := labels.NewBuilder(lhs)
+
+	if opts != nil {
+		matching := opts.VectorMatching
+		if matching.Card == CardOneToOne {
+			if matching.On {
+			Outer:
+				for _, l := range lhs {
+					for _, n := range matching.MatchingLabels {
+						if l.Name == n {
+							continue Outer
+						}
+					}
+					lb.Del(l.Name)
+				}
+			} else {
+				lb.Del(matching.MatchingLabels...)
+			}
+		}
+		for _, ln := range matching.Include {
+			// Included labels from the `group_x` modifier are taken from the "one"-side.
+			if v := rhs.Get(ln); v != "" {
+				lb.Set(ln, v)
+			} else {
+				lb.Del(ln)
+			}
+		}
+	}
+
+	return lb.Labels()
+}
+
 func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
-	case OpTypeOr:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			// return the left entry found (prefers left hand side)
-			if left != nil {
-				return left
-			}
-			return right
-		}
-
-	case OpTypeAnd:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			// return left sample if there's a second sample for that label set
-			if left != nil && right != nil {
-				return left
-			}
-			return nil
-		}
-
-	case OpTypeUnless:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			// return left sample if there's not a second sample for that label set
-			if right == nil {
-				return left
-			}
-			return nil
-		}
-
 	case OpTypeAdd:
 		merger = func(left, right *promql.Sample) *promql.Sample {
 			if left == nil || right == nil {
@@ -882,20 +1040,6 @@ func mergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 		if res != nil {
 			return left
 		}
-
-		// otherwise it's been filtered out
-		return res
-	}
-
-	// This only leaves vector comparisons which are not filters.
-	// If we could not find a match but we have a left node to compare, create an entry with a 0 value.
-	// This can occur when we don't find a matching label set in the vectors.
-	if res == nil && left != nil && right == nil {
-		res = &promql.Sample{
-			Metric: left.Metric,
-			Point:  left.Point,
-		}
-		res.Point.V = 0
 	}
 	return res
 }
@@ -949,7 +1093,7 @@ func labelReplaceEvaluator(
 	expr *LabelReplaceExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -970,18 +1114,18 @@ func labelReplaceEvaluator(
 				vec[i].Metric = labels
 				continue
 			}
-			src := s.Metric.Get(expr.src)
-			indexes := expr.re.FindStringSubmatchIndex(src)
+			src := s.Metric.Get(expr.Src)
+			indexes := expr.Re.FindStringSubmatchIndex(src)
 			if indexes == nil {
 				// If there is no match, no replacement should take place.
 				labelCache[hash] = s.Metric
 				continue
 			}
-			res := expr.re.ExpandString([]byte{}, expr.replacement, src, indexes)
+			res := expr.Re.ExpandString([]byte{}, expr.Replacement, src, indexes)
 
-			lb := labels.NewBuilder(s.Metric).Del(expr.dst)
+			lb := labels.NewBuilder(s.Metric).Del(expr.Dst)
 			if len(res) > 0 {
-				lb.Set(expr.dst, string(res))
+				lb.Set(expr.Dst, string(res))
 			}
 			outLbs := lb.Labels()
 			labelCache[hash] = outLbs

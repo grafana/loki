@@ -7,18 +7,23 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 )
 
+type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
+
 type GCSObjectClient struct {
-	cfg    GCSConfig
-	client *storage.Client
-	bucket *storage.BucketHandle
+	cfg GCSConfig
+
+	bucket        *storage.BucketHandle
+	hedgingBucket *storage.BucketHandle
 }
 
 // GCSConfig is config for the GCS Chunk Client.
@@ -27,6 +32,8 @@ type GCSConfig struct {
 	ChunkBufferSize  int           `yaml:"chunk_buffer_size"`
 	RequestTimeout   time.Duration `yaml:"request_timeout"`
 	EnableOpenCensus bool          `yaml:"enable_opencensus"`
+
+	Insecure bool `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -42,36 +49,61 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enabled OpenCensus (OC) instrumentation for all requests.")
 }
 
+func (cfg *GCSConfig) ToCortexGCSConfig() cortex_gcp.GCSConfig {
+	return cortex_gcp.GCSConfig{
+		BucketName:       cfg.BucketName,
+		ChunkBufferSize:  cfg.ChunkBufferSize,
+		RequestTimeout:   cfg.RequestTimeout,
+		EnableOpenCensus: cfg.EnableOpenCensus,
+	}
+}
+
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
-func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, error) {
-	var opts []option.ClientOption
-	instrumentation, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
+func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config) (*GCSObjectClient, error) {
+	return newGCSObjectClient(ctx, cfg, hedgingCfg, storage.NewClient)
+}
+
+func newGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, clientFactory ClientFactory) (*GCSObjectClient, error) {
+	bucket, err := newBucketHandle(ctx, cfg, hedgingCfg, false, clientFactory)
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, instrumentation)
+	hedgingBucket, err := newBucketHandle(ctx, cfg, hedgingCfg, true, clientFactory)
+	if err != nil {
+		return nil, err
+	}
+	return &GCSObjectClient{
+		cfg:           cfg,
+		bucket:        bucket,
+		hedgingBucket: hedgingBucket,
+	}, nil
+}
+
+func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
+	var opts []option.ClientOption
+	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure)
+	if err != nil {
+		return nil, err
+	}
+
+	if hedging {
+		httpClient = hedgingCfg.Client(httpClient)
+	}
+
+	opts = append(opts, option.WithHTTPClient(httpClient))
 	if !cfg.EnableOpenCensus {
 		opts = append(opts, option.WithTelemetryDisabled())
 	}
 
-	client, err := storage.NewClient(ctx, opts...)
+	client, err := clientFactory(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return newGCSObjectClient(cfg, client), nil
-}
 
-func newGCSObjectClient(cfg GCSConfig, client *storage.Client) *GCSObjectClient {
-	bucket := client.Bucket(cfg.BucketName)
-	return &GCSObjectClient{
-		cfg:    cfg,
-		client: client,
-		bucket: bucket,
-	}
+	return client.Bucket(cfg.BucketName), nil
 }
 
 func (s *GCSObjectClient) Stop() {
-	s.client.Close()
 }
 
 // GetObject returns a reader for the specified object key from the configured GCS bucket.
@@ -92,7 +124,7 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 }
 
 func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
-	reader, err := s.bucket.Object(objectKey).NewReader(ctx)
+	reader, err := s.hedgingBucket.Object(objectKey).NewReader(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,11 +144,7 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 		_ = writer.Close()
 		return err
 	}
-	if err := writer.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return writer.Close()
 }
 
 // List implements chunk.ObjectClient.

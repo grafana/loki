@@ -3,44 +3,246 @@ Package stats provides primitives for recording metrics across the query path.
 Statistics are passed through the query context.
 To start a new query statistics context use:
 
-	ctx := stats.NewContext(ctx)
+	statsCtx, ctx := stats.NewContext(ctx)
 
 Then you can update statistics by mutating data by using:
 
-	stats.GetChunkData(ctx)
-	stats.GetIngesterData(ctx)
-	stats.GetStoreData
+	statsCtx.Add...(1)
+
+To get the  statistic from the current context you can use:
+
+	statsCtx := stats.FromContext(ctx)
 
 Finally to get a snapshot of the current query statistic use
 
-	stats.Snapshot(ctx, time.Since(start))
+	statsCtx.Result(time.Since(start))
 
-Ingester statistics are sent across the GRPC stream using Trailers
-see https://github.com/grpc/grpc-go/blob/master/Documentation/grpc-metadata.md
 */
 package stats
 
 import (
 	"context"
-	"errors"
-	fmt "fmt"
 	"sync"
+	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 )
 
-type ctxKeyType string
+type (
+	ctxKeyType string
+	Component  int64
+)
 
 const (
-	trailersKey ctxKeyType = "trailers"
-	chunksKey   ctxKeyType = "chunks"
-	ingesterKey ctxKeyType = "ingester"
-	storeKey    ctxKeyType = "store"
-	resultKey   ctxKeyType = "result" // key for pre-computed results to be merged in  `Snapshot`
-	lockKey     ctxKeyType = "lock"   // key for locking a context when stats is used concurrently
+	statsKey ctxKeyType = "stats"
 )
+
+// Context is the statistics context. It is passed through the query path and accumulates statistics.
+type Context struct {
+	querier  Querier
+	ingester Ingester
+
+	// store is the store statistics collected across the query path
+	store Store
+	// result accumulates results for JoinResult.
+	result Result
+
+	mtx sync.Mutex
+}
+
+// NewContext creates a new statistics context
+func NewContext(ctx context.Context) (*Context, context.Context) {
+	contextData := &Context{}
+	ctx = context.WithValue(ctx, statsKey, contextData)
+	return contextData, ctx
+}
+
+// FromContext returns the statistics context.
+func FromContext(ctx context.Context) *Context {
+	v, ok := ctx.Value(statsKey).(*Context)
+	if !ok {
+		return &Context{}
+	}
+	return v
+}
+
+// Ingester returns the ingester statistics accumulated so far.
+func (c *Context) Ingester() Ingester {
+	return Ingester{
+		TotalReached:       c.ingester.TotalReached,
+		TotalChunksMatched: c.ingester.TotalChunksMatched,
+		TotalBatches:       c.ingester.TotalBatches,
+		TotalLinesSent:     c.ingester.TotalLinesSent,
+		Store:              c.store,
+	}
+}
+
+// Reset clears the statistics.
+func (c *Context) Reset() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	c.store.Reset()
+	c.querier.Reset()
+	c.ingester.Reset()
+	c.result.Reset()
+}
+
+// Result calculates the summary based on store and ingester data.
+func (c *Context) Result(execTime time.Duration) Result {
+	r := c.result
+
+	r.Merge(Result{
+		Querier: Querier{
+			Store: c.store,
+		},
+		Ingester: c.ingester,
+	})
+
+	r.ComputeSummary(execTime)
+
+	return r
+}
+
+// JoinResults merges a Result with the embedded Result in a context in a concurrency-safe manner.
+func JoinResults(ctx context.Context, res Result) {
+	stats := FromContext(ctx)
+	stats.mtx.Lock()
+	defer stats.mtx.Unlock()
+
+	stats.result.Merge(res)
+}
+
+// JoinIngesterResult joins the ingester result statistics in a concurrency-safe manner.
+func JoinIngesters(ctx context.Context, inc Ingester) {
+	stats := FromContext(ctx)
+	stats.mtx.Lock()
+	defer stats.mtx.Unlock()
+
+	stats.ingester.Merge(inc)
+}
+
+// ComputeSummary compute the summary of the statistics.
+func (r *Result) ComputeSummary(execTime time.Duration) {
+	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
+		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
+	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
+		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
+	r.Summary.ExecTime = execTime.Seconds()
+	if execTime != 0 {
+		r.Summary.BytesProcessedPerSecond =
+			int64(float64(r.Summary.TotalBytesProcessed) /
+				execTime.Seconds())
+		r.Summary.LinesProcessedPerSecond =
+			int64(float64(r.Summary.TotalLinesProcessed) /
+				execTime.Seconds())
+	}
+}
+
+func (s *Store) Merge(m Store) {
+	s.TotalChunksRef += m.TotalChunksRef
+	s.TotalChunksDownloaded += m.TotalChunksDownloaded
+	s.ChunksDownloadTime += m.ChunksDownloadTime
+	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
+	s.Chunk.HeadChunkLines += m.Chunk.HeadChunkLines
+	s.Chunk.DecompressedBytes += m.Chunk.DecompressedBytes
+	s.Chunk.DecompressedLines += m.Chunk.DecompressedLines
+	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
+	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
+}
+
+func (q *Querier) Merge(m Querier) {
+	q.Store.Merge(m.Store)
+}
+
+func (i *Ingester) Merge(m Ingester) {
+	i.Store.Merge(m.Store)
+	i.TotalBatches += m.TotalBatches
+	i.TotalLinesSent += m.TotalLinesSent
+	i.TotalChunksMatched += m.TotalChunksMatched
+	i.TotalReached += m.TotalReached
+}
+
+func (r *Result) Merge(m Result) {
+	r.Querier.Merge(m.Querier)
+	r.Ingester.Merge(m.Ingester)
+	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime + m.Summary.ExecTime) * float64(time.Second))))
+}
+
+func (r Result) ChunksDownloadTime() time.Duration {
+	return time.Duration(r.Querier.Store.ChunksDownloadTime + r.Ingester.Store.ChunksDownloadTime)
+}
+
+func (r Result) TotalDuplicates() int64 {
+	return r.Querier.Store.Chunk.TotalDuplicates + r.Ingester.Store.Chunk.TotalDuplicates
+}
+
+func (r Result) TotalChunksDownloaded() int64 {
+	return r.Querier.Store.TotalChunksDownloaded + r.Ingester.Store.TotalChunksDownloaded
+}
+
+func (r Result) TotalChunksRef() int64 {
+	return r.Querier.Store.TotalChunksRef + r.Ingester.Store.TotalChunksRef
+}
+
+func (r Result) TotalDecompressedBytes() int64 {
+	return r.Querier.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.DecompressedBytes
+}
+
+func (r Result) TotalDecompressedLines() int64 {
+	return r.Querier.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.DecompressedLines
+}
+
+func (c *Context) AddIngesterBatch(size int64) {
+	atomic.AddInt64(&c.ingester.TotalBatches, 1)
+	atomic.AddInt64(&c.ingester.TotalLinesSent, size)
+}
+
+func (c *Context) AddIngesterTotalChunkMatched(i int64) {
+	atomic.AddInt64(&c.ingester.TotalChunksMatched, i)
+}
+
+func (c *Context) AddIngesterReached(i int32) {
+	atomic.AddInt32(&c.ingester.TotalReached, i)
+}
+
+func (c *Context) AddHeadChunkLines(i int64) {
+	atomic.AddInt64(&c.store.Chunk.HeadChunkLines, i)
+}
+
+func (c *Context) AddHeadChunkBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.HeadChunkBytes, i)
+}
+
+func (c *Context) AddCompressedBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.CompressedBytes, i)
+}
+
+func (c *Context) AddDecompressedBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.DecompressedBytes, i)
+}
+
+func (c *Context) AddDecompressedLines(i int64) {
+	atomic.AddInt64(&c.store.Chunk.DecompressedLines, i)
+}
+
+func (c *Context) AddDuplicates(i int64) {
+	atomic.AddInt64(&c.store.Chunk.TotalDuplicates, i)
+}
+
+func (c *Context) AddChunksDownloadTime(i time.Duration) {
+	atomic.AddInt64(&c.store.ChunksDownloadTime, int64(i))
+}
+
+func (c *Context) AddChunksDownloaded(i int64) {
+	atomic.AddInt64(&c.store.TotalChunksDownloaded, i)
+}
+
+func (c *Context) AddChunksRef(i int64) {
+	atomic.AddInt64(&c.store.TotalChunksRef, i)
+}
 
 // Log logs a query statistics result.
 func (r Result) Log(log log.Logger) {
@@ -49,24 +251,25 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
 		"Ingester.TotalLinesSent", r.Ingester.TotalLinesSent,
+		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
+		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
+		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),
+		"Ingester.HeadChunkBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.HeadChunkBytes)),
+		"Ingester.HeadChunkLines", r.Ingester.Store.Chunk.HeadChunkLines,
+		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.DecompressedBytes)),
+		"Ingester.DecompressedLines", r.Ingester.Store.Chunk.DecompressedLines,
+		"Ingester.CompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.CompressedBytes)),
+		"Ingester.TotalDuplicates", r.Ingester.Store.Chunk.TotalDuplicates,
 
-		"Ingester.HeadChunkBytes", humanize.Bytes(uint64(r.Ingester.HeadChunkBytes)),
-		"Ingester.HeadChunkLines", r.Ingester.HeadChunkLines,
-		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.DecompressedBytes)),
-		"Ingester.DecompressedLines", r.Ingester.DecompressedLines,
-		"Ingester.CompressedBytes", humanize.Bytes(uint64(r.Ingester.CompressedBytes)),
-		"Ingester.TotalDuplicates", r.Ingester.TotalDuplicates,
-
-		"Store.TotalChunksRef", r.Store.TotalChunksRef,
-		"Store.TotalChunksDownloaded", r.Store.TotalChunksDownloaded,
-		"Store.ChunksDownloadTime", time.Duration(int64(r.Store.ChunksDownloadTime*float64(time.Second))),
-
-		"Store.HeadChunkBytes", humanize.Bytes(uint64(r.Store.HeadChunkBytes)),
-		"Store.HeadChunkLines", r.Store.HeadChunkLines,
-		"Store.DecompressedBytes", humanize.Bytes(uint64(r.Store.DecompressedBytes)),
-		"Store.DecompressedLines", r.Store.DecompressedLines,
-		"Store.CompressedBytes", humanize.Bytes(uint64(r.Store.CompressedBytes)),
-		"Store.TotalDuplicates", r.Store.TotalDuplicates,
+		"Querier.TotalChunksRef", r.Querier.Store.TotalChunksRef,
+		"Querier.TotalChunksDownloaded", r.Querier.Store.TotalChunksDownloaded,
+		"Querier.ChunksDownloadTime", time.Duration(r.Querier.Store.ChunksDownloadTime),
+		"Querier.HeadChunkBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.HeadChunkBytes)),
+		"Querier.HeadChunkLines", r.Querier.Store.Chunk.HeadChunkLines,
+		"Querier.DecompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.DecompressedBytes)),
+		"Querier.DecompressedLines", r.Querier.Store.Chunk.DecompressedLines,
+		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
+		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 	)
 	r.Summary.Log(log)
 }
@@ -79,178 +282,4 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
 		"Summary.ExecTime", time.Duration(int64(s.ExecTime*float64(time.Second))),
 	)
-}
-
-// NewContext creates a new statistics context
-func NewContext(ctx context.Context) context.Context {
-	ctx = injectTrailerCollector(ctx)
-	ctx = context.WithValue(ctx, storeKey, &StoreData{})
-	ctx = context.WithValue(ctx, chunksKey, &ChunkData{})
-	ctx = context.WithValue(ctx, ingesterKey, &IngesterData{})
-	ctx = context.WithValue(ctx, resultKey, &Result{})
-	ctx = context.WithValue(ctx, lockKey, &sync.Mutex{})
-	return ctx
-}
-
-// ChunkData contains chunks specific statistics.
-type ChunkData struct {
-	HeadChunkBytes    int64 `json:"headChunkBytes"`    // Total bytes processed but was already in memory. (found in the headchunk)
-	HeadChunkLines    int64 `json:"headChunkLines"`    // Total lines processed but was already in memory. (found in the headchunk)
-	DecompressedBytes int64 `json:"decompressedBytes"` // Total bytes decompressed and processed from chunks.
-	DecompressedLines int64 `json:"decompressedLines"` // Total lines decompressed and processed from chunks.
-	CompressedBytes   int64 `json:"compressedBytes"`   // Total bytes of compressed chunks (blocks) processed.
-	TotalDuplicates   int64 `json:"totalDuplicates"`   // Total duplicates found while processing.
-}
-
-// GetChunkData returns the chunks statistics data from the current context.
-func GetChunkData(ctx context.Context) *ChunkData {
-	res, ok := ctx.Value(chunksKey).(*ChunkData)
-	if !ok {
-		return &ChunkData{}
-	}
-	return res
-}
-
-// IngesterData contains ingester specific statistics.
-type IngesterData struct {
-	TotalChunksMatched int64 `json:"totalChunksMatched"` // Total of chunks matched by the query from ingesters
-	TotalBatches       int64 `json:"totalBatches"`       // Total of batches sent from ingesters.
-	TotalLinesSent     int64 `json:"totalLinesSent"`     // Total lines sent by ingesters.
-}
-
-// GetIngesterData returns the ingester statistics data from the current context.
-func GetIngesterData(ctx context.Context) *IngesterData {
-	res, ok := ctx.Value(ingesterKey).(*IngesterData)
-	if !ok {
-		return &IngesterData{}
-	}
-	return res
-}
-
-// StoreData contains store specific statistics.
-type StoreData struct {
-	TotalChunksRef        int64         // The total of chunk reference fetched from index.
-	TotalChunksDownloaded int64         // Total number of chunks fetched.
-	ChunksDownloadTime    time.Duration // Time spent fetching chunks.
-}
-
-// GetStoreData returns the store statistics data from the current context.
-func GetStoreData(ctx context.Context) *StoreData {
-	res, ok := ctx.Value(storeKey).(*StoreData)
-	if !ok {
-		return &StoreData{}
-	}
-	return res
-}
-
-// Snapshot compute query statistics from a context using the total exec time.
-func Snapshot(ctx context.Context, execTime time.Duration) Result {
-	// ingester data is decoded from grpc trailers.
-	res := decodeTrailers(ctx)
-	// collect data from store.
-	s, ok := ctx.Value(storeKey).(*StoreData)
-	if ok {
-		res.Store.TotalChunksRef = s.TotalChunksRef
-		res.Store.TotalChunksDownloaded = s.TotalChunksDownloaded
-		res.Store.ChunksDownloadTime = s.ChunksDownloadTime.Seconds()
-	}
-	// collect data from chunks iteration.
-	c, ok := ctx.Value(chunksKey).(*ChunkData)
-	if ok {
-		res.Store.HeadChunkBytes = c.HeadChunkBytes
-		res.Store.HeadChunkLines = c.HeadChunkLines
-		res.Store.DecompressedBytes = c.DecompressedBytes
-		res.Store.DecompressedLines = c.DecompressedLines
-		res.Store.CompressedBytes = c.CompressedBytes
-		res.Store.TotalDuplicates = c.TotalDuplicates
-	}
-
-	existing, err := GetResult(ctx)
-	if err != nil {
-		res.ComputeSummary(execTime)
-		return res
-	}
-
-	existing.Merge(res)
-	existing.ComputeSummary(execTime)
-	return *existing
-
-}
-
-// ComputeSummary calculates the summary based on store and ingester data.
-func (r *Result) ComputeSummary(execTime time.Duration) {
-	// calculate the summary
-	r.Summary.TotalBytesProcessed = r.Store.DecompressedBytes + r.Store.HeadChunkBytes +
-		r.Ingester.DecompressedBytes + r.Ingester.HeadChunkBytes
-	r.Summary.TotalLinesProcessed = r.Store.DecompressedLines + r.Store.HeadChunkLines +
-		r.Ingester.DecompressedLines + r.Ingester.HeadChunkLines
-	r.Summary.ExecTime = execTime.Seconds()
-	if execTime != 0 {
-		r.Summary.BytesProcessedPerSecond =
-			int64(float64(r.Summary.TotalBytesProcessed) /
-				execTime.Seconds())
-		r.Summary.LinesProcessedPerSecond =
-			int64(float64(r.Summary.TotalLinesProcessed) /
-				execTime.Seconds())
-	}
-}
-
-func (r *Result) Merge(m Result) {
-
-	r.Store.TotalChunksRef += m.Store.TotalChunksRef
-	r.Store.TotalChunksDownloaded += m.Store.TotalChunksDownloaded
-	r.Store.ChunksDownloadTime += m.Store.ChunksDownloadTime
-	r.Store.HeadChunkBytes += m.Store.HeadChunkBytes
-	r.Store.HeadChunkLines += m.Store.HeadChunkLines
-	r.Store.DecompressedBytes += m.Store.DecompressedBytes
-	r.Store.DecompressedLines += m.Store.DecompressedLines
-	r.Store.CompressedBytes += m.Store.CompressedBytes
-	r.Store.TotalDuplicates += m.Store.TotalDuplicates
-
-	r.Ingester.TotalReached += m.Ingester.TotalReached
-	r.Ingester.TotalChunksMatched += m.Ingester.TotalChunksMatched
-	r.Ingester.TotalBatches += m.Ingester.TotalBatches
-	r.Ingester.TotalLinesSent += m.Ingester.TotalLinesSent
-	r.Ingester.HeadChunkBytes += m.Ingester.HeadChunkBytes
-	r.Ingester.HeadChunkLines += m.Ingester.HeadChunkLines
-	r.Ingester.DecompressedBytes += m.Ingester.DecompressedBytes
-	r.Ingester.DecompressedLines += m.Ingester.DecompressedLines
-	r.Ingester.CompressedBytes += m.Ingester.CompressedBytes
-	r.Ingester.TotalDuplicates += m.Ingester.TotalDuplicates
-
-	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime + m.Summary.ExecTime) * float64(time.Second))))
-}
-
-// JoinResults merges a Result with the embedded Result in a context in a concurrency-safe manner.
-func JoinResults(ctx context.Context, res Result) error {
-	mtx, err := GetMutex(ctx)
-	if err != nil {
-		return err
-	}
-	mtx.Lock()
-	defer mtx.Unlock()
-
-	v, err := GetResult(ctx)
-	if err != nil {
-		return err
-	}
-	v.Merge(res)
-	return nil
-}
-
-func GetResult(ctx context.Context) (*Result, error) {
-	v, ok := ctx.Value(resultKey).(*Result)
-	if !ok {
-		return nil, errors.New("unpopulated Results key")
-	}
-	return v, nil
-}
-
-// GetChunkData returns the chunks statistics data from the current context.
-func GetMutex(ctx context.Context) (*sync.Mutex, error) {
-	res, ok := ctx.Value(lockKey).(*sync.Mutex)
-	if !ok {
-		return nil, fmt.Errorf("no mutex available under %s", string(lockKey))
-	}
-	return res, nil
 }

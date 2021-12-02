@@ -10,6 +10,7 @@ import (
 func Test_SimplifiedRegex(t *testing.T) {
 	fixtures := []string{
 		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo", "FoO",
+		"foo, 世界", allunicode(), "fooÏbar",
 	}
 	for _, test := range []struct {
 		re         string
@@ -53,21 +54,23 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{".*||||", true, TrueFilter, true},
 		{"", true, TrueFilter, true},
 		{"(?i)foo", true, newContainsFilter([]byte("foo"), true), true},
+		{"(?i)界", true, newContainsFilter([]byte("界"), true), true},
+		{"(?i)ïB", true, newContainsFilter([]byte("ïB"), true), true},
 
 		// regex we are not supporting.
-		{"[a-z]+foo", false, nil, false},
-		{".+foo", false, nil, false},
-		{".*fo.*o", false, nil, false},
-		{`\d`, false, nil, false},
-		{`\sfoo`, false, nil, false},
+		{"[a-z]+foo", true, nil, false},
+		{".+foo", true, nil, false},
+		{".*fo.*o", true, nil, false},
+		{`\d`, true, nil, false},
+		{`\sfoo`, true, nil, false},
 		{`foo?`, false, nil, false},
-		{`foo{1,2}bar{2,3}`, false, nil, false},
-		{`foo|\d*bar`, false, nil, false},
-		{`foo|fo{1,2}`, false, nil, false},
-		{`foo|fo\d*`, false, nil, false},
-		{`foo|fo\d+`, false, nil, false},
-		{`(\w\d+)`, false, nil, false},
-		{`.*f.*oo|fo{1,2}`, false, nil, false},
+		{`foo{1,2}bar{2,3}`, true, nil, false},
+		{`foo|\d*bar`, true, nil, false},
+		{`foo|fo{1,2}`, true, nil, false},
+		{`foo|fo\d*`, true, nil, false},
+		{`foo|fo\d+`, true, nil, false},
+		{`(\w\d+)`, true, nil, false},
+		{`.*f.*oo|fo{1,2}`, true, nil, false},
 	} {
 		t.Run(test.re, func(t *testing.T) {
 			d, err := newRegexpFilter(test.re, test.match)
@@ -83,7 +86,9 @@ func Test_SimplifiedRegex(t *testing.T) {
 			}
 			// otherwise ensure we have different filter
 			require.NotEqual(t, f, d)
-			require.Equal(t, test.expected, f)
+			if test.expected != nil {
+				require.Equal(t, test.expected, f)
+			}
 			// tests all lines with both filter, they should have the same result.
 			for _, line := range fixtures {
 				l := []byte(line)
@@ -91,6 +96,14 @@ func Test_SimplifiedRegex(t *testing.T) {
 			}
 		})
 	}
+}
+
+func allunicode() string {
+	var b []byte
+	for i := 0x00; i < 0x10FFFF; i++ {
+		b = append(b, byte(i))
+	}
+	return string(b)
 }
 
 func Test_TrueFilter(t *testing.T) {
@@ -167,13 +180,21 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	b.ResetTimer()
 	b.Run(fmt.Sprintf("default_%v_%s", match, re), func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			m = d.Filter(l)
+			for j := 0; j < 1e6; j++ {
+				m = d.Filter(l)
+			}
 		}
 	})
 	b.Run(fmt.Sprintf("simplified_%v_%s", match, re), func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			m = s.Filter(l)
+			for j := 0; j < 1e6; j++ {
+				m = s.Filter(l)
+			}
 		}
 	})
 	res = m
+}
+
+func Test_rune(t *testing.T) {
+	require.True(t, newContainsFilter([]byte("foo"), true).Filter([]byte("foo")))
 }

@@ -6,20 +6,21 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -81,6 +82,7 @@ type Config struct {
 	WAL WALConfig `yaml:"wal,omitempty"`
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
+	LabelFilterer LabelValueFilterer           `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
@@ -90,14 +92,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.WAL.RegisterFlags(f)
 
-	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
+	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
-	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
+	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
-	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 0, "")
+	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "How often to cut chunks to synchronize ingesters.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
@@ -124,10 +126,15 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.IndexShards <= 0 {
-		return fmt.Errorf("Invalid ingester index shard factor: %d", cfg.IndexShards)
+		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
 
 	return nil
+}
+
+// ChunkFilterer filters chunks based on the metric.
+type LabelValueFilterer interface {
+	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -172,6 +179,7 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter storage.RequestChunkFilterer
+	labelFilter LabelValueFilterer
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -208,7 +216,13 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 	if cfg.WAL.Enabled {
 		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
-			return nil, err
+			// Best effort try to make path absolute for easier debugging.
+			path, _ := filepath.Abs(cfg.WAL.Dir)
+			if path == "" {
+				path = cfg.WAL.Dir
+			}
+
+			return nil, fmt.Errorf("creating WAL folder at %q: %w", path, err)
 		}
 	}
 
@@ -218,7 +232,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, registerer)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -238,11 +252,19 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
+	if i.cfg.LabelFilterer != nil {
+		i.SetLabelFilterer(i.cfg.LabelFilterer)
+	}
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
+	i.labelFilter = labelFilter
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -522,9 +544,8 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	// initialize stats collection for ingester queries and set grpc trailer with stats.
-	ctx := stats.NewContext(queryServer.Context())
-	defer stats.SendAsTrailer(ctx, queryServer)
+	// initialize stats collection for ingester queries.
+	_, ctx := stats.NewContext(queryServer.Context())
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -563,9 +584,8 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
-	// initialize stats collection for ingester queries and set grpc trailer with stats.
-	ctx := stats.NewContext(queryServer.Context())
-	defer stats.SendAsTrailer(ctx, queryServer)
+	// initialize stats collection for ingester queries.
+	_, ctx := stats.NewContext(queryServer.Context())
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -671,6 +691,10 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
+	if req.Start == nil {
+		return resp, nil
+	}
+
 	// Only continue if the active index type is boltdb-shipper or QueryStore flag is true.
 	boltdbShipperMaxLookBack := i.boltdbShipperMaxLookBack()
 	if boltdbShipperMaxLookBack == 0 && !i.cfg.QueryStore {
@@ -708,8 +732,23 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
+	allValues := listutil.MergeStringLists(resp.Values, storeValues)
+
+	if req.Values && i.labelFilter != nil {
+		var filteredValues []string
+
+		filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
+		if err != nil {
+			return nil, err
+		}
+
+		return &logproto.LabelResponse{
+			Values: filteredValues,
+		}, nil
+	}
+
 	return &logproto.LabelResponse{
-		Values: listutil.MergeStringLists(resp.Values, storeValues),
+		Values: allValues,
 	}, nil
 }
 

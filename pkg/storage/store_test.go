@@ -18,7 +18,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -752,7 +752,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 			},
 		},
 		{
-			"unsharded",
+			"sharded",
 			newQuery(
 				"{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond),
 				[]astmapper.ShardAnnotation{
@@ -1168,4 +1168,126 @@ func Test_OverlappingChunks(t *testing.T) {
 	require.True(t, it.Next())
 	require.Equal(t, "1", it.Entry().Line)
 	require.False(t, it.Next())
+}
+
+func Test_GetSeries(t *testing.T) {
+	var (
+		store = &store{
+			Store: newMockChunkStore([]*logproto.Stream{
+				{
+					Labels: `{foo="bar",buzz="boo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+					},
+				},
+				{
+					Labels: `{foo="buzz"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+					},
+				},
+				{
+					Labels: `{bar="foo"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+					},
+				},
+			}),
+			cfg: Config{
+				MaxChunkBatchSize: 10,
+			},
+			chunkMetrics: NilMetrics,
+		}
+		ctx            = user.InjectOrgID(context.Background(), "test-user")
+		expectedSeries = []logproto.SeriesIdentifier{
+			{
+				Labels: map[string]string{"bar": "foo"},
+			},
+			{
+				Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+			},
+			{
+				Labels: map[string]string{"foo": "buzz"},
+			},
+		}
+	)
+
+	for _, tt := range []struct {
+		name           string
+		req            logql.SelectLogParams
+		expectedSeries []logproto.SeriesIdentifier
+	}{
+		{
+			"all series",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: ``,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+				},
+			},
+			expectedSeries,
+		},
+		{
+			"all series with sharding",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: ``,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 1, Of: 16}.String()},
+				},
+			},
+			expectedSeries,
+		},
+		{
+			"selected series",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: `{buzz=~".oo"}`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+				},
+			},
+			[]logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+				},
+			},
+		},
+		{
+			"selected series with sharding",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: `{buzz=~".oo"}`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 1, Of: 16}.String()},
+				},
+			},
+			[]logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+				},
+			},
+		},
+		{
+			"no match",
+			logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector: `{buzz=~"foo"}`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 10),
+				},
+			},
+			[]logproto.SeriesIdentifier{},
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			series, err := store.GetSeries(ctx, tt.req)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedSeries, series)
+		})
+	}
 }

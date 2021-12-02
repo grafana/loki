@@ -32,16 +32,16 @@ func removeLineformat(expr SampleExpr) {
 			return
 		}
 		// bytes operation count bytes of the log line so line_format changes the result.
-		if rangeExpr.operation == OpRangeTypeBytes ||
-			rangeExpr.operation == OpRangeTypeBytesRate {
+		if rangeExpr.Operation == OpRangeTypeBytes ||
+			rangeExpr.Operation == OpRangeTypeBytesRate {
 			return
 		}
-		pipelineExpr, ok := rangeExpr.left.left.(*PipelineExpr)
+		pipelineExpr, ok := rangeExpr.Left.Left.(*PipelineExpr)
 		if !ok {
 			return
 		}
-		temp := pipelineExpr.pipeline[:0]
-		for i, s := range pipelineExpr.pipeline {
+		temp := pipelineExpr.MultiStages[:0]
+		for i, s := range pipelineExpr.MultiStages {
 			_, ok := s.(*LineFmtExpr)
 			if !ok {
 				temp = append(temp, s)
@@ -50,12 +50,12 @@ func removeLineformat(expr SampleExpr) {
 			// we found a lineFmtExpr, we need to check if it's followed by a labelParser or lineFilter
 			// in which case it could be useful for further processing.
 			var found bool
-			for j := i; j < len(pipelineExpr.pipeline); j++ {
-				if _, ok := pipelineExpr.pipeline[j].(*LabelParserExpr); ok {
+			for j := i; j < len(pipelineExpr.MultiStages); j++ {
+				if _, ok := pipelineExpr.MultiStages[j].(*LabelParserExpr); ok {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.pipeline[j].(*LineFilterExpr); ok {
+				if _, ok := pipelineExpr.MultiStages[j].(*LineFilterExpr); ok {
 					found = true
 					break
 				}
@@ -65,11 +65,11 @@ func removeLineformat(expr SampleExpr) {
 				temp = append(temp, s)
 			}
 		}
-		pipelineExpr.pipeline = temp
+		pipelineExpr.MultiStages = temp
 		// transform into a matcherExpr if there's no more pipeline.
-		if len(pipelineExpr.pipeline) == 0 {
-			rangeExpr.left.left = &MatchersExpr{
-				matchers: rangeExpr.left.left.Matchers(),
+		if len(pipelineExpr.MultiStages) == 0 {
+			rangeExpr.Left.Left = &MatchersExpr{
+				matchers: rangeExpr.Left.Left.Matchers(),
 			}
 		}
 	})

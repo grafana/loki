@@ -3,7 +3,7 @@ title: Single Store (boltdb-shipper)
 ---
 # Single Store Loki (boltdb-shipper index type)
 
-BoltDB Shipper lets you run Loki without any dependency on NoSQL stores for storing index.
+BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.
 This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store or running a self hosted instance of Cassandra.
@@ -104,7 +104,7 @@ This avoids running Queriers and Rulers with a disk for persistence. Disks can b
 To run an Index Gateway, configure [StorageConfig](../../../configuration/#storage_config) and set the `-target` CLI flag to `index-gateway`.
 To connect Queriers and Rulers to the Index Gateway, set the address (with gRPC port) of the Index Gateway with the `-boltdb.shipper.index-gateway-client.server-address` CLI flag or its equivalent YAML value under [StorageConfig](../../../configuration/#storage_config).
 
-Within Kubernetes, if you are not using an Index Gateway, we recommend running an Index Gateway as a StatefulSet with persistent storage for downloading and querying index files. This will obtain better read performance, and it will avoid using node disk.
+When using the Index Gateway within Kubernetes, we recommend using a StatefulSet with persistent storage for downloading and querying index files. This can obtain better read performance, avoids [noisy neighbor problems](https://en.wikipedia.org/wiki/Cloud_computing_issues#Performance_interference_and_noisy_neighbors) by not using the node disk, and avoids the time consuming index downloading step on startup after rescheduling to a new node.
 
 ### Write Deduplication disabled
 

@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -199,7 +199,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 }
 
 func (d dynamoTableClient) DeleteTable(ctx context.Context, name string) error {
-	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+	return d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.CollectedRequest(ctx, "DynamoDB.DeleteTable", d.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := &dynamodb.DeleteTableInput{TableName: aws.String(name)}
 			_, err := d.DynamoDB.DeleteTableWithContext(ctx, input)
@@ -209,11 +209,7 @@ func (d dynamoTableClient) DeleteTable(ctx context.Context, name string) error {
 
 			return nil
 		})
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {

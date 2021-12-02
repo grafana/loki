@@ -86,7 +86,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := LokiCodec.DecodeRequest(context.TODO(), req)
+			got, err := LokiCodec.DecodeRequest(context.TODO(), req, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -117,6 +117,36 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					Data: queryrange.PrometheusData{
 						ResultType: loghttp.ResultTypeMatrix,
 						Result:     sampleStreams,
+					},
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
+			"matrix-empty-streams",
+			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixStringEmptyResult))},
+			nil,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     make([]queryrange.SampleStream, 0), // shouldn't be nil.
+					},
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
+			"vector-empty-streams",
+			&http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(vectorStringEmptyResult))},
+			nil,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeVector,
+						Result:     make([]queryrange.SampleStream, 0), // shouldn't be nil.
 					},
 				},
 				Statistics: statsResult,
@@ -211,7 +241,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Query, req.(*LokiRequest).Query)
 	require.Equal(t, toEncode.Step, req.(*LokiRequest).Step)
@@ -243,7 +273,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("match[]"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Match, req.(*LokiSeriesRequest).Match)
 	require.Equal(t, toEncode.StartTs, req.(*LokiSeriesRequest).StartTs)
@@ -266,7 +296,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
@@ -838,27 +868,38 @@ func (badReader) Read(p []byte) (n int, err error) {
 var (
 	statsResultString = `"stats" : {
 		"ingester" : {
-			"compressedBytes": 1,
-			"decompressedBytes": 2,
-			"decompressedLines": 3,
-			"headChunkBytes": 4,
-			"headChunkLines": 5,
+			"store": {
+				"chunk":{
+					"compressedBytes": 1,
+					"decompressedBytes": 2,
+					"decompressedLines": 3,
+					"headChunkBytes": 4,
+					"headChunkLines": 5,
+					"totalDuplicates": 8
+				},
+				"chunksDownloadTime": 0,
+				"totalChunksRef": 0,
+				"totalChunksDownloaded": 0
+			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
-			"totalDuplicates": 8,
 			"totalLinesSent": 9,
 			"totalReached": 10
 		},
-		"store": {
-			"compressedBytes": 11,
-			"decompressedBytes": 12,
-			"decompressedLines": 13,
-			"headChunkBytes": 14,
-			"headChunkLines": 15,
-			"chunksDownloadTime": 16,
-			"totalChunksRef": 17,
-			"totalChunksDownloaded": 18,
-			"totalDuplicates": 19
+		"querier": {
+			"store" : {
+				"chunk": {
+					"compressedBytes": 11,
+					"decompressedBytes": 12,
+					"decompressedLines": 13,
+					"headChunkBytes": 14,
+					"headChunkLines": 15,
+					"totalDuplicates": 19
+				},
+				"chunksDownloadTime": 16,
+				"totalChunksRef": 17,
+				"totalChunksDownloaded": 18
+			}
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
@@ -905,6 +946,23 @@ var (
 	},
 	"status": "success"
   }`
+	matrixStringEmptyResult = `{
+	"data": {
+	  ` + statsResultString + `
+	  "resultType": "matrix",
+	  "result": []
+	},
+	"status": "success"
+  }`
+	vectorStringEmptyResult = `{
+	"data": {
+	  ` + statsResultString + `
+	  "resultType": "vector",
+	  "result": []
+	},
+	"status": "success"
+  }`
+
 	sampleStreams = []queryrange.SampleStream{
 		{
 			Labels:  []cortexpb.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
@@ -999,26 +1057,35 @@ var (
 			TotalBytesProcessed:     23,
 			TotalLinesProcessed:     24,
 		},
-		Store: stats.Store{
-			CompressedBytes:       11,
-			DecompressedBytes:     12,
-			DecompressedLines:     13,
-			HeadChunkBytes:        14,
-			HeadChunkLines:        15,
-			ChunksDownloadTime:    16,
-			TotalChunksRef:        17,
-			TotalChunksDownloaded: 18,
-			TotalDuplicates:       19,
+		Querier: stats.Querier{
+			Store: stats.Store{
+				Chunk: stats.Chunk{
+					CompressedBytes:   11,
+					DecompressedBytes: 12,
+					DecompressedLines: 13,
+					HeadChunkBytes:    14,
+					HeadChunkLines:    15,
+					TotalDuplicates:   19,
+				},
+				ChunksDownloadTime:    16,
+				TotalChunksRef:        17,
+				TotalChunksDownloaded: 18,
+			},
 		},
+
 		Ingester: stats.Ingester{
-			CompressedBytes:    1,
-			DecompressedBytes:  2,
-			DecompressedLines:  3,
-			HeadChunkBytes:     4,
-			HeadChunkLines:     5,
+			Store: stats.Store{
+				Chunk: stats.Chunk{
+					CompressedBytes:   1,
+					DecompressedBytes: 2,
+					DecompressedLines: 3,
+					HeadChunkBytes:    4,
+					HeadChunkLines:    5,
+					TotalDuplicates:   8,
+				},
+			},
 			TotalBatches:       6,
 			TotalChunksMatched: 7,
-			TotalDuplicates:    8,
 			TotalLinesSent:     9,
 			TotalReached:       10,
 		},
