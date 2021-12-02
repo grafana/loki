@@ -253,13 +253,6 @@ func (b *BlobStorage) newPipeline(hedging bool) (pipeline.Pipeline, error) {
 			},
 		}
 
-		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
-			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
-				resp, err := defaultClient.Do(request.WithContext(ctx))
-				return pipeline.NewHTTPResponse(resp), err
-			}
-		})
-
 		if hedging {
 			opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
 				client := b.hedgingCfg.Client(defaultClient)
