@@ -49,8 +49,6 @@ The response body has the following schema:
 }
 ```
 
-"404 Not Found" errors still return responses with content type `text/plain`.
-
 ### Promtail
 
 #### `gcplog` labels have changed

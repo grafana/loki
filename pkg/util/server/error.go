@@ -34,9 +34,13 @@ type ErrorResponseBody struct {
 	Message string `json:"message"`
 }
 
+func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+	JSONError(w, 404, "page not found")
+}
+
 func JSONError(w http.ResponseWriter, code int, message string, args ...interface{}) {
-	w.WriteHeader(code)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(ErrorResponseBody{
 		Code:    code,
 		Status:  "error",
