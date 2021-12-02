@@ -15,7 +15,7 @@ func TestBackground(t *testing.T) {
 
 	s := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
-			chunk.PeriodConfig{
+			{
 				// Would this actually just result in the same as the default value?
 				From:      chunk.DayTime{Time: 0},
 				Schema:    "v11",

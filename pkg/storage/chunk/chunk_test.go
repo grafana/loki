@@ -116,7 +116,7 @@ func TestChunkCodec(t *testing.T) {
 
 			s := SchemaConfig{
 				Configs: []PeriodConfig{
-					PeriodConfig{
+					{
 						// Would this actually just result in the same as the default value?
 						From:      DayTime{Time: 0},
 						Schema:    "v11",
@@ -181,7 +181,7 @@ func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
 
 	s := SchemaConfig{
 		Configs: []PeriodConfig{
-			PeriodConfig{
+			{
 				// Would this actually just result in the same as the default value?
 				From:      DayTime{Time: 0},
 				Schema:    "v11",

@@ -116,7 +116,7 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
 	s := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
-			chunk.PeriodConfig{
+			{
 				// Would this actually just result in the same as the default value?
 				From:      chunk.DayTime{Time: 0},
 				Schema:    "v11",
@@ -160,7 +160,7 @@ func testCacheMiss(t *testing.T, cache cache.Cache) {
 func testCache(t *testing.T, cache cache.Cache) {
 	s := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
-			chunk.PeriodConfig{
+			{
 				// Would this actually just result in the same as the default value?
 				From:      chunk.DayTime{Time: 0},
 				Schema:    "v11",

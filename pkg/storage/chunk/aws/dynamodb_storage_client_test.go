@@ -32,7 +32,7 @@ func TestChunksPartialError(t *testing.T) {
 	// Create more chunks than we can read in one batch
 	s := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
-			chunk.PeriodConfig{
+			{
 				// Would this actually just result in the same as the default value?
 				From:      chunk.DayTime{Time: 0},
 				Schema:    "v11",

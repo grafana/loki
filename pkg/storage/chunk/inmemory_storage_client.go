@@ -56,7 +56,7 @@ func NewMockStorage() *MockStorage {
 	return &MockStorage{
 		schemaCfg: SchemaConfig{
 			Configs: []PeriodConfig{
-				PeriodConfig{
+				{
 					// Would this actually just result in the same as the default value?
 					From:      DayTime{Time: 0},
 					Schema:    "v11",

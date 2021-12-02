@@ -23,6 +23,7 @@ const (
 	secondsInDay       = int64(24 * time.Hour / time.Second)
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
 	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
+	v12                = "v12"
 )
 
 var (
@@ -134,7 +135,7 @@ func defaultRowShards(schema string) uint32 {
 // ChunkPathPeriod is introduced as a SchemaConfig value in Schema "v12"
 func defaultChunkPathPeriod(schema string) time.Duration {
 	switch schema {
-	case "v12":
+	case v12:
 		return 1 * time.Hour
 	default:
 		return 0
@@ -144,7 +145,7 @@ func defaultChunkPathPeriod(schema string) time.Duration {
 // ChunkPathShardFactor is introduced as a SchemaConfig value in Schema "v12"
 func defaultChunkPathShardFactor(schema string) uint64 {
 	switch schema {
-	case "v12":
+	case v12:
 		return 2
 	default:
 		return 0
@@ -211,7 +212,7 @@ func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
 		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11", "v12":
+	case "v10", "v11", v12:
 		if cfg.RowShards == 0 {
 			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
@@ -513,16 +514,15 @@ func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 		// be written into the next period instead.
 		prefix := (uint64(chunk.From.UnixNano()) + jitter) % uint64(p.ChunkPathPeriod)
 		return fmt.Sprintf("%s/%x/%x/%x/%x:%x:%x", chunk.UserID, prefix, shard, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
-	} else {
-		// Some chunks have a checksum stored in dynamodb, some do not.  We must
-		// generate keys appropriately.
-		if chunk.ChecksumSet {
-			// This is the inverse of parseNewExternalKey.
-			return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
-		}
-		// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
-		// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
-		// See comment on parseExternalKey.
-		return fmt.Sprintf("%s/%d:%d:%d", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
 	}
+	// Some chunks have a checksum stored in dynamodb, some do not.  We must
+	// generate keys appropriately.
+	if chunk.ChecksumSet {
+		// This is the inverse of parseNewExternalKey.
+		return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
+	}
+	// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
+	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
+	// See comment on parseExternalKey.
+	return fmt.Sprintf("%s/%d:%d:%d", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
 }
