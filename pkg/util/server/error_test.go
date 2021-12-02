@@ -2,9 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -54,12 +54,11 @@ func Test_writeError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			WriteError(tt.err, rec)
+			res := &ErrorResponseBody{}
+			json.NewDecoder(rec.Result().Body).Decode(res)
+			require.Equal(t, tt.expectedStatus, res.Code)
 			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
-			b, err := ioutil.ReadAll(rec.Result().Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			require.Equal(t, tt.msg, string(b[:len(b)-1]))
+			require.Equal(t, tt.msg, res.Message)
 		})
 	}
 }
