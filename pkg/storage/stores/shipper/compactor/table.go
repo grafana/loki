@@ -105,6 +105,8 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		if err := t.compactFiles(indexFiles); err != nil {
 			return err
 		}
+
+		// we have compacted the files to a single file so let use upload the compacted db and remove the source files.
 		t.uploadCompactedDB = true
 		t.removeSourceFiles = true
 	} else if !applyRetention && !t.mustRecreateCompactedDB() {
@@ -129,9 +131,11 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 		}
 
 		if empty {
+			// we have deleted all the data so we can remove the source files without uploading the compacted db
 			t.removeSourceFiles = true
 			t.uploadCompactedDB = false
 		} else if modified {
+			// we have modified the compacted db so we need to upload the compacted db and remove the source file(s)
 			t.uploadCompactedDB = true
 			t.removeSourceFiles = true
 		}
@@ -144,6 +148,7 @@ func (t *table) compact(tableHasExpiredStreams bool) error {
 			return err
 		}
 
+		// we have recreated the compacted db so we need to upload the compacted db and remove the source file
 		t.uploadCompactedDB = true
 		t.removeSourceFiles = true
 		t.compactedDBRecreated = true
