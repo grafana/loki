@@ -107,7 +107,7 @@ func (ht *hedgedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	for sent := 0; len(errOverall.Errors) < ht.upto; sent++ {
 		if sent < ht.upto {
 			idx := sent
-			subReq, cancel := reqWithCtx(req, mainCtx)
+			subReq, cancel := reqWithCtx(req, mainCtx, idx != 0)
 			cancels[idx] = cancel
 
 			runInPool(func() {
@@ -174,10 +174,21 @@ type indexedResp struct {
 	Resp  *http.Response
 }
 
-func reqWithCtx(r *http.Request, ctx context.Context) (*http.Request, func()) {
+func reqWithCtx(r *http.Request, ctx context.Context, isHedged bool) (*http.Request, func()) {
 	ctx, cancel := context.WithCancel(ctx)
+	if isHedged {
+		ctx = context.WithValue(ctx, hedgedRequest{}, struct{}{})
+	}
 	req := r.WithContext(ctx)
 	return req, cancel
+}
+
+type hedgedRequest struct{}
+
+// IsHedgedRequest reports when a request is hedged.
+func IsHedgedRequest(r *http.Request) bool {
+	val := r.Context().Value(hedgedRequest{})
+	return val != nil
 }
 
 // atomicCounter is a false sharing safe counter.
