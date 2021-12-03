@@ -1334,8 +1334,7 @@ storage_config:
 
 func Test_replicationFactor(t *testing.T) {
 	t.Run("replication factor is applied when using memberlist", func(t *testing.T) {
-		yamlContent := `---
-memberlist:
+		yamlContent := `memberlist:
   join_members:
     - foo.bar.example.com
 common:
