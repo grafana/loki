@@ -1155,7 +1155,7 @@ All Cloudflare logs are in json for example:
 }
 ```
 
-You can leverage [pipeline stages](pipeline_stages) if for example, you want to parse the json log line and extract more labels or change the log line format.
+You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### relabel_configs
 
