@@ -1077,7 +1077,7 @@ Here are the different set of fields type available and the fields they include 
 - `all` includes all `extended` fields and adds `"ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
 "FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
 
-To learn more about each field and their value please refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
+To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
 Promtail will save his last successful fetched timestamp in the position file. This means
 that if a position is found in the file for a given zone id, Promtail will restart pulling log
