@@ -103,7 +103,7 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 			if statistics != nil {
 				// Re-calculate the summary then log and record metrics for the current query
 				statistics.ComputeSummary(time.Since(start))
-				statistics.Log(logger)
+				statistics.Log(level.Debug(logger))
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
