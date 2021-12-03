@@ -417,7 +417,7 @@ func Benchmark_ParseOldExternalKey(b *testing.B) {
 	}
 }
 
-func TestNewChunkKey(t *testing.T) {
+func TestNewerChunkKey(t *testing.T) {
 	c := Chunk{
 		Fingerprint: 100,
 		UserID:      "fake",
@@ -438,7 +438,55 @@ func TestNewChunkKey(t *testing.T) {
 		},
 	}
 	key := schemaCfg.ExternalKey(c)
-	newChunk, err := parseNewerExternalKey("fake", key)
+	newChunk, err := ParseExternalKey("fake", key)
+	require.Nil(t, err)
+	require.Equal(t, c, newChunk)
+	require.Equal(t, key, schemaCfg.ExternalKey(newChunk))
+}
+
+func TestNewChunkKey(t *testing.T) {
+	c := Chunk{
+		Fingerprint: 100,
+		UserID:      "fake",
+		From:        model.TimeFromUnix(1000),
+		Through:     model.TimeFromUnix(5000),
+		ChecksumSet: true,
+		Checksum:    12345,
+	}
+	schemaCfg := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:      DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+	key := schemaCfg.ExternalKey(c)
+	newChunk, err := ParseExternalKey("fake", key)
+	require.Nil(t, err)
+	require.Equal(t, c, newChunk)
+	require.Equal(t, key, schemaCfg.ExternalKey(newChunk))
+}
+
+// TODO(jordanrushing): Something weird here; we are including <userid>/ in the legacy key and likely shouldn't be
+func TestLegacyChunkKey(t *testing.T) {
+	c := Chunk{
+		Fingerprint: 100,
+		UserID:      "fake",
+		From:        model.TimeFromUnix(1000),
+		Through:     model.TimeFromUnix(5000),
+	}
+	schemaCfg := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:   DayTime{Time: 0},
+				Schema: "v9",
+			},
+		},
+	}
+	key := schemaCfg.ExternalKey(c)
+	newChunk, err := ParseExternalKey("fake", key)
 	require.Nil(t, err)
 	require.Equal(t, c, newChunk)
 	require.Equal(t, key, schemaCfg.ExternalKey(newChunk))

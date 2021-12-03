@@ -498,33 +498,29 @@ func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 	return cfg.Prefix + strconv.Itoa(int(i))
 }
 
+// Generate the appropriate external key based on cfg.Schema, chunk.Checksum, and chunk.From
 func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 	p, err := cfg.SchemaForTime(chunk.From)
 	v, _ := p.VersionAsInt()
-	// We shouldn't need to check an error here, the config should already have been validated
-	// but technically strconv.Atoi within the VersionAsInt func can return an error.
-	// if err2 != nil { log maybe? }
 	if err == nil && v >= 12 {
 		return cfg.newerExternalKey(chunk, p.ChunkPathShardFactor, p.ChunkPathPeriod)
-	}
-	// Some chunks have a checksum stored in dynamodb, some do not.  We must
-	// generate keys appropriately.
-	if chunk.ChecksumSet {
+	} else if chunk.ChecksumSet {
 		return cfg.newExternalKey(chunk)
+	} else {
+		return cfg.legacyExternalKey(chunk)
 	}
-	return cfg.legacyExternalKey(chunk)
 }
 
 // pre-checksum
 func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
-	// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
+	// This is the inverse of chunk.parseLegacyExternalKey, with "<user id>/" prepended.
 	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
 	return fmt.Sprintf("%s/%d:%d:%d", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
 }
 
 // post-checksum
 func (cfg SchemaConfig) newExternalKey(chunk Chunk) string {
-	// This is the inverse of parseNewExternalKey.
+	// This is the inverse of chunk.parseNewExternalKey.
 	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }
 

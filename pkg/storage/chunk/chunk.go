@@ -94,15 +94,22 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // `<user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>`
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") { // pre-checksum
-		return parseLegacyChunkID(userID, externalKey)
+		chunk, err := parseLegacyChunkID(userID, externalKey)
+		if err != nil {
+			return Chunk{}, nil
+		}
+		return chunk, nil
 	} else if strings.Count(externalKey, "/") == 4 { // v12
-		return parseNewerExternalKey(userID, externalKey)
+		chunk, err := parseNewerExternalKey(userID, externalKey)
+		if err != nil {
+			return Chunk{}, nil
+		}
+		return chunk, nil
 	} else { // post-checksum
 		chunk, err := parseNewExternalKey(userID, externalKey)
 		if err != nil {
 			return Chunk{}, err
 		}
-
 		return chunk, nil
 	}
 }
