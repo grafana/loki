@@ -1032,10 +1032,10 @@ To keep discovered labels to your logs use the [relabel_configs](#relabel_config
 
 ### Cloudflare
 
-The `cloudflare` block configures promtail to pull logs from the Cloudflare
+The `cloudflare` block configures Promtail to pull logs from the Cloudflare
 [Logpull API](https://developers.cloudflare.com/logs/logpull).
 
-> These logs contain data related to the connecting client, the request path through the Cloudflare network, and the response from the origin web server. This data is useful for enriching existing logs on an origin server.
+These logs contain data related to the connecting client, the request path through the Cloudflare network, and the response from the origin web server. This data is useful for enriching existing logs on an origin server.
 
 ```yaml
 # The Cloudflare API token to use. (Required)
