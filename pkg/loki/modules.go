@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -489,6 +490,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}
 
 	frontendHandler = middleware.Merge(
+		httpreq.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -500,6 +502,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	// If this process also acts as a Querier we don't do any proxying of tail requests
 	if t.Cfg.Frontend.TailProxyURL != "" && !t.isModuleActive(Querier) {
 		httpMiddleware := middleware.Merge(
+			httpreq.ExtractQueryTagsMiddleware(),
 			t.HTTPAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)

@@ -263,6 +263,10 @@ lint:
 	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
+	# Ensure packages imported by downstream projects (eg. GEM) don't depend on other packages
+	# vendoring Cortex's cortexpb (to avoid conflicting imports in downstream projects).
+	faillint -paths "github.com/grafana/loki/pkg/util/server/...,github.com/grafana/loki/pkg/storage/...,github.com/cortexproject/cortex/pkg/cortexpb" ./pkg/logql/...
+
 ########
 # Test #
 ########
@@ -591,6 +595,19 @@ lint-jsonnet:
 	for f in $$(find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print); do \
 		jsonnetfmt -- "$$f" | diff -u "$$f" -; \
 		RESULT=$$(($$RESULT + $$?)); \
+	done; \
+	for d in $$(find . -name '*-mixin' -a -type d -print); do \
+		if [ -e "$$d/jsonnetfile.json" ]; then \
+			echo "Installing dependencies for $$d"; \
+			pushd "$$d" >/dev/null && jb install && popd >/dev/null; \
+		fi; \
+	done; \
+	for m in $$(find . -name 'mixin.libsonnet' -not -path '*/vendor/*' -print); do \
+			echo "Linting $$m"; \
+			mixtool lint -J $$(dirname "$$m")/vendor "$$m"; \
+			if [ $$? -ne 0 ]; then \
+				RESULT=1; \
+			fi; \
 	done; \
 	exit $$RESULT
 

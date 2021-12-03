@@ -15,11 +15,11 @@
 package metadata
 
 import (
+	"context"
 	"io"
+	"math/rand"
 	"net/http"
 	"time"
-
-	"github.com/googleapis/gax-go/v2"
 )
 
 const (
@@ -30,8 +30,41 @@ var (
 	syscallRetryable = func(err error) bool { return false }
 )
 
+// defaultBackoff is basically equivalent to gax.Backoff without the need for
+// the dependency.
+type defaultBackoff struct {
+	max time.Duration
+	mul float64
+	cur time.Duration
+}
+
+func (b *defaultBackoff) Pause() time.Duration {
+	d := time.Duration(1 + rand.Int63n(int64(b.cur)))
+	b.cur = time.Duration(float64(b.cur) * b.mul)
+	if b.cur > b.max {
+		b.cur = b.max
+	}
+	return d
+}
+
+// sleep is the equivalent of gax.Sleep without the need for the dependency.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	select {
+	case <-ctx.Done():
+		t.Stop()
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 func newRetryer() *metadataRetryer {
-	return &metadataRetryer{bo: &gax.Backoff{Initial: 100 * time.Millisecond}}
+	return &metadataRetryer{bo: &defaultBackoff{
+		cur: 100 * time.Millisecond,
+		max: 30 * time.Second,
+		mul: 2,
+	}}
 }
 
 type backoff interface {

@@ -52,6 +52,27 @@ steps:
   - clone
   image: grafana/loki-build-image:0.18.0
   name: check-example-config-doc
+trigger:
+  event:
+  - push
+  - pull_request
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
+name: mixins
+steps:
+- commands:
+  - make BUILD_IN_CONTAINER=false lint-jsonnet
+  depends_on:
+  - clone
+  image: grafana/jsonnet-build:c8b75df
+  name: lint-jsonnet
+trigger:
+  event:
+  - push
+  - pull_request
 workspace:
   base: /src
   path: loki
@@ -62,9 +83,9 @@ node:
   type: no-parallel
 steps:
 - commands:
-  - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/logql/
+  - go test -mod=vendor -bench=Benchmark -benchtime 20x -timeout 120m ./pkg/...
   image: grafana/loki-build-image:0.18.0
-  name: LogQL
+  name: All
 trigger:
   cron:
     include:
@@ -198,6 +219,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -321,6 +346,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -444,6 +473,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -495,6 +528,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -546,6 +583,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -597,6 +638,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -649,6 +694,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -701,6 +750,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -753,6 +806,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - docker-amd64
@@ -803,6 +860,8 @@ steps:
     username:
       from_secret: docker_username
 trigger:
+  event:
+  - push
   ref:
     include:
     - refs/heads/main
@@ -836,6 +895,8 @@ steps:
     images_json:
       from_secret: deploy_config
 trigger:
+  event:
+  - push
   ref:
     include:
     - refs/heads/main
@@ -857,6 +918,10 @@ steps:
   - go test .\clients\pkg\promtail\targets\windows\... -v
   image: golang:windowsservercore-1809
   name: test
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 depends_on:
 - check
@@ -912,6 +977,10 @@ steps:
       - refs/heads/main
       - refs/heads/k??
       - refs/tags/v*
+trigger:
+  event:
+  - push
+  - pull_request
 ---
 get:
   name: pat
@@ -956,6 +1025,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 51902a0ab9982aa73cf0151076af99808912bfd357dff8184f408d40cc70d140
+hmac: 615276ab546179d2261b1af22830b968afe2e437463f22ac86a349fca3c86428
 
 ...

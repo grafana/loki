@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -82,6 +82,7 @@ type Config struct {
 	WAL WALConfig `yaml:"wal,omitempty"`
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
+	LabelFilterer LabelValueFilterer           `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
@@ -125,10 +126,15 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.IndexShards <= 0 {
-		return fmt.Errorf("Invalid ingester index shard factor: %d", cfg.IndexShards)
+		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
 
 	return nil
+}
+
+// ChunkFilterer filters chunks based on the metric.
+type LabelValueFilterer interface {
+	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -173,6 +179,7 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter storage.RequestChunkFilterer
+	labelFilter LabelValueFilterer
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -245,11 +252,19 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
+	if i.cfg.LabelFilterer != nil {
+		i.SetLabelFilterer(i.cfg.LabelFilterer)
+	}
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
+	i.labelFilter = labelFilter
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -717,8 +732,23 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
+	allValues := listutil.MergeStringLists(resp.Values, storeValues)
+
+	if req.Values && i.labelFilter != nil {
+		var filteredValues []string
+
+		filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
+		if err != nil {
+			return nil, err
+		}
+
+		return &logproto.LabelResponse{
+			Values: filteredValues,
+		}, nil
+	}
+
 	return &logproto.LabelResponse{
-		Values: listutil.MergeStringLists(resp.Values, storeValues),
+		Values: allValues,
 	}, nil
 }
 

@@ -282,10 +282,9 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 
 	t.lastUsedAt = time.Now()
 
-	log, ctx := spanlogger.New(ctx, "Shipper.Downloads.Table.MultiQueries")
-	defer log.Span.Finish()
+	logger := util_log.WithContext(ctx, util_log.Logger)
 
-	level.Debug(log).Log("table-name", t.name, "query-count", len(queries))
+	level.Debug(logger).Log("table-name", t.name, "query-count", len(queries))
 
 	for name, db := range t.dbs {
 		err := db.View(func(tx *bbolt.Tx) error {
@@ -306,7 +305,7 @@ func (t *Table) MultiQueries(ctx context.Context, queries []chunk.IndexQuery, ca
 			return err
 		}
 
-		level.Debug(log).Log("queried-db", name)
+		level.Debug(logger).Log("queried-db", name)
 	}
 
 	return nil

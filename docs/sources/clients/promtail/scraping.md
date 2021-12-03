@@ -304,6 +304,10 @@ scrape_configs:
         source_labels:
           - __meta_kafka_group_id
         target_label: group
+      - action: replace
+        source_labels:
+          - __meta_kafka_message_key
+        target_label: message_key
 ```
 
 Only the `brokers` and `topics` is required.

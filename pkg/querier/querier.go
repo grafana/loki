@@ -290,7 +290,6 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	}
 
 	results := append(ingesterValues, storeValues)
-
 	return &logproto.LabelResponse{
 		Values: listutil.MergeStringLists(results...),
 	}, nil

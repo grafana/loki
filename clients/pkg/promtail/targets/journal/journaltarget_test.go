@@ -11,7 +11,7 @@ import (
 
 	"github.com/coreos/go-systemd/sdjournal"
 	"github.com/go-kit/log"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"

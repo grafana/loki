@@ -197,7 +197,8 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	request, err := rt.codec.DecodeRequest(ctx, r)
+	// Do not forward any request header.
+	request, err := rt.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {
 		return nil, err
 	}

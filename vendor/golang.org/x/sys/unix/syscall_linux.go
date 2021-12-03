@@ -13,7 +13,6 @@ package unix
 
 import (
 	"encoding/binary"
-	"runtime"
 	"syscall"
 	"unsafe"
 )
@@ -144,6 +143,15 @@ func Ppoll(fds []PollFd, timeout *Timespec, sigmask *Sigset_t) (n int, err error
 		return ppoll(nil, 0, timeout, sigmask)
 	}
 	return ppoll(&fds[0], len(fds), timeout, sigmask)
+}
+
+func Poll(fds []PollFd, timeout int) (n int, err error) {
+	var ts *Timespec
+	if timeout >= 0 {
+		ts = new(Timespec)
+		*ts = NsecToTimespec(int64(timeout) * 1e6)
+	}
+	return Ppoll(fds, ts, nil)
 }
 
 //sys	Readlinkat(dirfd int, path string, buf []byte) (n int, err error)
@@ -1820,11 +1828,7 @@ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err e
 //sys	Dup(oldfd int) (fd int, err error)
 
 func Dup2(oldfd, newfd int) error {
-	// Android O and newer blocks dup2; riscv and arm64 don't implement dup2.
-	if runtime.GOOS == "android" || runtime.GOARCH == "riscv64" || runtime.GOARCH == "arm64" {
-		return Dup3(oldfd, newfd, 0)
-	}
-	return dup2(oldfd, newfd)
+	return Dup3(oldfd, newfd, 0)
 }
 
 //sys	Dup3(oldfd int, newfd int, flags int) (err error)
@@ -2315,6 +2319,11 @@ type RemoteIovec struct {
 //sys	PidfdOpen(pid int, flags int) (fd int, err error) = SYS_PIDFD_OPEN
 //sys	PidfdGetfd(pidfd int, targetfd int, flags int) (fd int, err error) = SYS_PIDFD_GETFD
 
+//sys	shmat(id int, addr uintptr, flag int) (ret uintptr, err error)
+//sys	shmctl(id int, cmd int, buf *SysvShmDesc) (result int, err error)
+//sys	shmdt(addr uintptr) (err error)
+//sys	shmget(key int, size int, flag int) (id int, err error)
+
 /*
  * Unimplemented
  */
@@ -2396,10 +2405,6 @@ type RemoteIovec struct {
 // SetRobustList
 // SetThreadArea
 // SetTidAddress
-// Shmat
-// Shmctl
-// Shmdt
-// Shmget
 // Sigaltstack
 // Swapoff
 // Swapon

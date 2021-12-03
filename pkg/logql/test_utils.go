@@ -9,7 +9,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"

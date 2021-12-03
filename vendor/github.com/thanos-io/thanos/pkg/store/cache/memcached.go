@@ -7,12 +7,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 )
@@ -120,7 +121,7 @@ func (c *MemcachedIndexCache) FetchMultiPostings(ctx context.Context, blockID ul
 // StoreSeries sets the series identified by the ulid and id to the value v.
 // The function enqueues the request and returns immediately: the entry will be
 // asynchronously stored in the cache.
-func (c *MemcachedIndexCache) StoreSeries(ctx context.Context, blockID ulid.ULID, id uint64, v []byte) {
+func (c *MemcachedIndexCache) StoreSeries(ctx context.Context, blockID ulid.ULID, id storage.SeriesRef, v []byte) {
 	key := cacheKey{blockID, cacheKeySeries(id)}.string()
 
 	if err := c.memcached.SetAsync(ctx, key, v, memcachedDefaultTTL); err != nil {
@@ -131,11 +132,11 @@ func (c *MemcachedIndexCache) StoreSeries(ctx context.Context, blockID ulid.ULID
 // FetchMultiSeries fetches multiple series - each identified by ID - from the cache
 // and returns a map containing cache hits, along with a list of missing IDs.
 // In case of error, it logs and return an empty cache hits map.
-func (c *MemcachedIndexCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []uint64) (hits map[uint64][]byte, misses []uint64) {
+func (c *MemcachedIndexCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []storage.SeriesRef) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
 	// Build the cache keys, while keeping a map between input id and the cache key
 	// so that we can easily reverse it back after the GetMulti().
 	keys := make([]string, 0, len(ids))
-	keysMapping := map[uint64]string{}
+	keysMapping := map[storage.SeriesRef]string{}
 
 	for _, id := range ids {
 		key := cacheKey{blockID, cacheKeySeries(id)}.string()
@@ -153,7 +154,7 @@ func (c *MemcachedIndexCache) FetchMultiSeries(ctx context.Context, blockID ulid
 
 	// Construct the resulting hits map and list of missing keys. We iterate on the input
 	// list of ids to be able to easily create the list of ones in a single iteration.
-	hits = map[uint64][]byte{}
+	hits = map[storage.SeriesRef][]byte{}
 
 	for _, id := range ids {
 		key, ok := keysMapping[id]

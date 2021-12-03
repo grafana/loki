@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/openstack"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -32,6 +33,7 @@ type Storage struct {
 	Azure    azure.BlobStorageConfig `yaml:"azure"`
 	Swift    openstack.SwiftConfig   `yaml:"swift"`
 	FSConfig FilesystemConfig        `yaml:"filesystem"`
+	Hedging  hedging.Config          `yaml:"hedging"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -40,6 +42,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.Azure.RegisterFlagsWithPrefix(prefix+".azure", f)
 	s.Swift.RegisterFlagsWithPrefix(prefix+".swift", f)
 	s.FSConfig.RegisterFlagsWithPrefix(prefix+".filesystem", f)
+	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 }
 
 type FilesystemConfig struct {

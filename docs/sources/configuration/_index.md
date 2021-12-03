@@ -93,36 +93,37 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [auth_enabled: <boolean> | default = true]
 
 # Configures the server of the launched module(s).
-[server: <server_config>]
+[server: <server>]
 
 # Configures the distributor.
-[distributor: <distributor_config>]
+[distributor: <distributor>]
 
 # Configures the querier. Only appropriate when running all modules or
 # just the querier.
-[querier: <querier_config>]
+[querier: <querier>]
 
 # The query_scheduler block configures the Loki query scheduler.
 # When configured it separates the tenant query queues from the query-frontend
-[query_scheduler: <query_scheduler_config>]
+[query_scheduler: <query_scheduler>]
 
-# The query_frontend_config configures the Loki query-frontend.
-[frontend: <query_frontend_config>]
+# The frontend block configures the Loki query-frontend.
+[frontend: <frontend>]
 
-# The queryrange_config configures the query splitting and caching in the Loki
+# The query_range block configures the query splitting and caching in the Loki
 # query-frontend.
-[query_range: <queryrange_config>]
+[query_range: <query_range>]
 
-# The ruler_config configures the Loki ruler.
-[ruler: <ruler_config>]
+# The ruler block configures the Loki ruler.
+[ruler: <ruler>]
 
-# Configures how the distributor will connect to ingesters. Only appropriate
-# when running all modules, the distributor, or the querier.
-[ingester_client: <ingester_client_config>]
+# The ingester_client block configures how the distributor will connect
+# to ingesters. Only appropriate when running all components, the distributor,
+# or the querier.
+[ingester_client: <ingester_client>]
 
-# Configures the ingester and how the ingester will register itself to a
+# The ingester block configures the ingester and how the ingester will register itself to a
 # key value store.
-[ingester: <ingester_config>]
+[ingester: <ingester>]
 
 # Configures where Loki will store data.
 [storage_config: <storage_config>]
@@ -133,34 +134,35 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the chunk index schema and where it is stored.
 [schema_config: <schema_config>]
 
-# Configures the compactor component which compacts index shards for performance.
-[compactor: <compactor_config>]
+# The compactor block configures the compactor component which compacts index shards for performance.
+[compactor: <compactor>]
 
 # Configures limits per-tenant or globally.
 [limits_config: <limits_config>]
 
-# The frontend_worker_config configures the worker - running within the Loki
+# The frontend_worker configures the worker - running within the Loki
 # querier - picking up and executing queries enqueued by the query-frontend.
-[frontend_worker: <frontend_worker_config>]
+[frontend_worker: <frontend_worker>]
 
-# Configures the table manager for retention.
-[table_manager: <table_manager_config>]
+# The table_manager block configures the table manager for retention.
+[table_manager: <table_manager>]
 
 # Configuration for "runtime config" module, responsible for reloading runtime configuration file.
 [runtime_config: <runtime_config>]
 
 # Configuration for tracing.
-[tracing: <tracing_config>]
+[tracing: <tracing>]
 
-# Common config to be shared between multiple modules.
-# If a more specific config is given in other sections, the related config under this section
-# will be ignored.
-[common: <common_config>]
+# Common configuration to be shared between multiple modules.
+# If a more specific configuration is given in other sections,
+# the related configuration within this section will be ignored.
+[common: <common>]
 ```
 
-## server_config
+## server
 
-The `server_config` block configures the HTTP and gRPC server of the launched service(s):
+The `server` block
+configures the HTTP and gRPC server communication of the launched service(s).
 
 ```yaml
 # HTTP server listen host
@@ -221,9 +223,9 @@ The `server_config` block configures the HTTP and gRPC server of the launched se
 [http_path_prefix: <string> | default = ""]
 ```
 
-## distributor_config
+## distributor
 
-The `distributor_config` block configures the Loki Distributor.
+The `distributor` block configures the distributor component.
 
 ```yaml
 # Configures the distributors ring, used when the "global" ingestion rate
@@ -253,9 +255,9 @@ ring:
   [heartbeat_timeout: <duration> | default = 1m]
 ```
 
-## querier_config
+## querier
 
-The `querier_config` block configures the Loki Querier.
+The `querier` block configures the Loki Querier.
 
 ```yaml
 # Timeout when querying ingesters or storage during the execution of a query request.
@@ -296,9 +298,9 @@ engine:
   [max_look_back_period: <duration> | default = 30s]
 ```
 
-## query_scheduler_config
+## query_scheduler
 
-The `query_scheduler_config` block configures the Loki query scheduler.
+The `query_scheduler` block configures the Loki query scheduler.
 
 ```yaml
 # Maximum number of outstanding requests per tenant per query-scheduler.
@@ -310,9 +312,9 @@ The `query_scheduler_config` block configures the Loki query scheduler.
 # This configures the gRPC client used to report errors back to the
 # query-frontend.
 [grpc_client_config: <grpc_client_config>]
- 
+
 # Set to true to have the query schedulers create and place themselves in a ring.
-# If no frontend_address or scheduler_address are present 
+# If no frontend_address or scheduler_address are present
 # anywhere else in the configuration, Loki will toggle this value to true.
 [use_scheduler_ring: <boolean> | default = false]
 
@@ -321,9 +323,9 @@ The `query_scheduler_config` block configures the Loki query scheduler.
 [scheduler_ring: <ring_config>]
 ```
 
-## query_frontend_config
+## frontend
 
-The query_frontend_config configures the Loki query-frontend.
+The `frontend` block configures the Loki query-frontend.
 
 ```yaml
 # Maximum number of outstanding requests per tenant per frontend; requests
@@ -363,9 +365,9 @@ The query_frontend_config configures the Loki query-frontend.
 [scheduler_worker_concurrency: <int> | default = 5]
 ```
 
-## queryrange_config
+## query_range
 
-The queryrange_config configures the query splitting and caching in the Loki query-frontend.
+The `query_range` block configures query splitting and caching in the Loki query-frontend.
 
 ```yaml
 # Split queries by an interval and execute in parallel, 0 disables it. You
@@ -410,9 +412,9 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = false]
 ```
 
-## ruler_config
+## ruler
 
-The `ruler_config` configures the Loki ruler.
+The `ruler` block configures the Loki ruler.
 
 ```yaml
 # URL of alerts return path.
@@ -451,7 +453,7 @@ storage:
   # Method to use for backend rule storage (azure, gcs, s3, swift, local).
   # CLI flag: -ruler.storage.type
   [type: <string> ]
-  
+
   # Configures backend rule storage for Azure.
   [azure: <azure_storage_config>]
 
@@ -466,6 +468,9 @@ storage:
 
   # Configures backend rule storage for a local filesystem directory.
   [local: <local_storage_config>]
+
+  # The `hedging_config` configures how to hedge requests for the storage.
+  [hedging: <hedging_config>]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
@@ -507,8 +512,8 @@ remote_write:
     # List of remote write relabel configurations.
     write_relabel_configs:
       [- <relabel_config> ...]
- 
-    # Name of the remote write config, which if specified must be unique among remote 
+
+    # Name of the remote write config, which if specified must be unique among remote
     # write configs.
     # The name will be used in metrics and logging in place of a generated value
     # to help users distinguish between remote write configs.
@@ -851,6 +856,26 @@ The `swift_storage_config` configures Swift as a general storage for different d
 [container_name: <string> | default = "cortex"]
 ```
 
+## hedging_config
+
+The `hedging_config` configures how to hedge requests for the storage.
+
+Hedged requests is sending a secondary request until the first request has been outstanding for more than a configure expected latency
+for this class of requests.
+You should configure the latency based on your p99 of object store requests.
+
+```yaml
+# Optional. Default is 0 (disabled)
+# Example: "at: 500ms"
+# If set to a non-zero value another request will be issued at the provided duration. Recommended to
+# be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
+# used with queriers and has minimal to no impact on other pieces.
+[at: <duration> | default = 0]
+# Optional. Default is 2
+# The maximum amount of requests to be issued.
+[up_to: <int> | default = 2]
+```
+
 ## local_storage_config
 
 The `local_storage_config` configures a (local) filesystem as a general storage for different data generated by Loki.
@@ -861,9 +886,9 @@ The `local_storage_config` configures a (local) filesystem as a general storage 
 [directory: <filename> | default = ""]
 ```
 
-## frontend_worker_config
+## frontend_worker
 
-The `frontend_worker_config` configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.
+The `frontend_worker` configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.
 
 ```yaml
 # Address of query frontend service, in host:port format.
@@ -887,9 +912,9 @@ The `frontend_worker_config` configures the worker - running within the Loki que
 [scheduler_address: <string> | default = ""]
 ```
 
-## ingester_client_config
+## ingester_client
 
-The `ingester_client_config` block configures how connections to ingesters
+The `ingester_client` block configures how connections to ingesters
 operate.
 
 ```yaml
@@ -918,9 +943,9 @@ pool_config:
 [grpc_client_config: <grpc_client_config>]
 ```
 
-## ingester_config
+## ingester
 
-The `ingester_config` block configures the Loki Ingesters.
+The `ingester` block configures the Loki Ingesters.
 
 ```yaml
 # Configures how the lifecycle of the ingester will operate
@@ -1076,7 +1101,7 @@ lifecycler:
 wal:
   # Enables writing to WAL.
   # CLI flag: -ingester.wal-enabled
-  [enabled: <boolean> | default = false]
+  [enabled: <boolean> | default = true]
 
   # Directory where the WAL data should be stored and/or recovered from.
   # CLI flag: -ingester.wal-dir
@@ -1321,11 +1346,11 @@ aws:
     # Minimum duration to back off.
     # CLI flag: -s3.backoff-min-period
     [min_period: <duration> | default = 100ms]
-  
+
     # The duration to back off.
     # CLI flag: -s3.backoff-max-period
     [max_period: <duration> | default = 3s]
-  
+
     # Number of times to back off and retry before failing.
     # CLI flag: -s3.backoff-retries
     [max_retries: <int> | default = 5]
@@ -1842,9 +1867,9 @@ chunks:
 [row_shards: <int> | default = 16]
 ```
 
-## compactor_config
+## compactor
 
-The `compactor_config` block configures the compactor component. This component periodically
+The `compactor` block configures the compactor component. This component periodically
 compacts index shards to more performant forms.
 
 ```yaml
@@ -2079,7 +2104,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # up until lookback duration ago.
 # This limit is enforced in the query frontend, the querier and the ruler.
 # If the requested time range is outside the allowed range, the request will not fail,
-# but will be modified to only query data within the allowed time range. 
+# but will be modified to only query data within the allowed time range.
 # The default value of 0 does not set a limit.
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0]
@@ -2173,9 +2198,9 @@ backoff_config:
   [max_retries: <int> | default = 10]
 ```
 
-## table_manager_config
+## table_manager
 
-The `table_manager_config` block configures the Loki table-manager.
+The `table_manager` block configures the Loki table-manager.
 
 ```yaml
 # Master 'off-switch' for table capacity updates, e.g. when troubleshooting.
@@ -2299,9 +2324,9 @@ The `auto_scaling_config` block configures autoscaling for DynamoDB.
 [target: <float> | default = 80]
 ```
 
-## tracing_config
+## tracing
 
-The `tracing_config` block configures tracing for Jaeger. Currently limited to disable auto-configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
+The `tracing` block configures tracing for Jaeger. Currently limited to disable auto-configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.
 
 ```yaml
 # Whether or not tracing should be enabled.
@@ -2309,14 +2334,14 @@ The `tracing_config` block configures tracing for Jaeger. Currently limited to d
 [enabled: <boolean>: default = true]
 ```
 
-## common_config
+## common
 
-The `common_config` block sets common definitions to be shared by different components.
-This way, one doesn't have to replicate configs in multiple places.
+The `common` block sets common definitions to be shared by different components.
+This way, one doesn't have to replicate configuration in multiple places.
 
 ```yaml
-# A common storage config to be used by the different Loki components.
-[storage: <common_storage_config>]
+# A common storage configuration to be used by the different Loki components.
+[storage: <storage>]
 
 # When defined, the given prefix will be present in front of the endpoint paths.
 [path_prefix: <string>]
@@ -2337,10 +2362,11 @@ This way, one doesn't have to replicate configs in multiple places.
 [ring: <ring_config>]
 ```
 
-### common_storage_config
+### storage
 
-The `common_storage_config` block defines a common storage to be reused by different components as a way to facilitate storage configuration.
-If any specific configs for an object storage client have been provided elsewhere in the configuration file, the specific config will supersede the common storage config.
+The common `storage` block defines a common storage to be reused by different
+components as a way to facilitate storage configuration.
+If any specific configuration for an object storage client have been provided elsewhere in the configuration file, the specific configuration will supersede the common storage configuration.
 
 ```yaml
 # Configures Azure as the common storage.
@@ -2357,6 +2383,9 @@ If any specific configs for an object storage client have been provided elsewher
 
 # Configures a (local) filesystem as the common storage.
 [filesystem: <local_storage_config>]
+
+# The `hedging_config` configures how to hedge requests for the storage.
+[hedging: <hedging_config>]
 ```
 
 ### ring_config
@@ -2509,7 +2538,7 @@ How far into the past accepted out-of-order log entries may be
 is configurable with `max_chunk_age`.
 `max_chunk_age` defaults to 1 hour.
 Loki calculates the earliest time that out-of-order entries may have
-and be accepted with 
+and be accepted with
 
 ```
 time_of_most_recent_line - (max_chunk_age/2)

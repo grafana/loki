@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 const (
@@ -88,20 +89,30 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		returnedLines = int(result.(logqlmodel.Streams).Lines())
 	}
 
-	// we also log queries, useful for troubleshooting slow queries.
-	level.Info(logger).Log(
+	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
+
+	logValues := make([]interface{}, 0, 20)
+
+	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
 		"step", p.Step(),
-		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"duration", time.Duration(int64(stats.Summary.ExecTime * float64(time.Second))),
 		"status", status,
 		"limit", p.Limit(),
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+	}...)
+
+	logValues = append(logValues, tagsToKeyValues(queryTags)...)
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(logger).Log(
+		logValues...,
 	)
 
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType).
@@ -132,4 +143,35 @@ func QueryType(query string) (string, error) {
 	default:
 		return "", nil
 	}
+}
+
+// tagsToKeyValues converts QueryTags to form that is easy to log.
+// e.g: `Source=foo,Feature=beta` -> []interface{}{"source", "foo", "feature", "beta"}
+// so that we could log nicely!
+// If queryTags is not in canonical form then its completely ignored (e.g: `key1=value1,key2=value`)
+func tagsToKeyValues(queryTags string) []interface{} {
+	toks := strings.FieldsFunc(queryTags, func(r rune) bool {
+		return r == ','
+	})
+
+	vals := make([]string, 0)
+
+	for _, tok := range toks {
+		val := strings.FieldsFunc(tok, func(r rune) bool {
+			return r == '='
+		})
+
+		if len(val) != 2 {
+			continue
+		}
+		vals = append(vals, val...)
+	}
+
+	res := make([]interface{}, 0, len(vals))
+
+	for _, val := range vals {
+		res = append(res, strings.ToLower(val))
+	}
+
+	return res
 }

@@ -42,7 +42,7 @@
             expr: |||
               promtail_stream_lag_seconds > 10
             |||,
-            'for': '5m',
+            'for': '15m',
             labels: {
               severity: 'warning',
             },

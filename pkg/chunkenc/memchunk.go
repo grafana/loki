@@ -17,7 +17,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
 
@@ -1129,6 +1129,10 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 }
 
 func (si *bufferedIterator) Next() bool {
+	if si.closed {
+		return false
+	}
+
 	if !si.closed && si.reader == nil {
 		// initialize reader now, hopefully reusing one of the previous readers
 		si.reader = si.pool.GetReader(bytes.NewBuffer(si.origBytes))

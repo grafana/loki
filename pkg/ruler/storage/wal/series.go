@@ -6,7 +6,8 @@ package wal
 import (
 	"sync"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 )
 
 // TODO(dannyk): add label set interning
@@ -14,7 +15,7 @@ import (
 type memSeries struct {
 	sync.Mutex
 
-	ref    uint64
+	ref    chunks.HeadSeriesRef
 	lset   labels.Labels
 	lastTs int64
 
@@ -72,7 +73,7 @@ func (m seriesHashmap) set(hash uint64, s *memSeries) {
 	m[hash] = append(l, s)
 }
 
-func (m seriesHashmap) del(hash uint64, ref uint64) {
+func (m seriesHashmap) del(hash uint64, ref chunks.HeadSeriesRef) {
 	var rem []*memSeries
 	for _, s := range m[hash] {
 		if s.ref != ref {
@@ -100,7 +101,7 @@ const (
 // This code is copied from the Prometheus TSDB.
 type stripeSeries struct {
 	size   int
-	series []map[uint64]*memSeries
+	series []map[chunks.HeadSeriesRef]*memSeries
 	hashes []seriesHashmap
 	locks  []stripeLock
 }
@@ -115,13 +116,13 @@ func newStripeSeries() *stripeSeries {
 	stripeSize := defaultStripeSize
 	s := &stripeSeries{
 		size:   stripeSize,
-		series: make([]map[uint64]*memSeries, stripeSize),
+		series: make([]map[chunks.HeadSeriesRef]*memSeries, stripeSize),
 		hashes: make([]seriesHashmap, stripeSize),
 		locks:  make([]stripeLock, stripeSize),
 	}
 
 	for i := range s.series {
-		s.series[i] = map[uint64]*memSeries{}
+		s.series[i] = map[chunks.HeadSeriesRef]*memSeries{}
 	}
 	for i := range s.hashes {
 		s.hashes[i] = seriesHashmap{}
@@ -131,9 +132,9 @@ func newStripeSeries() *stripeSeries {
 
 // gc garbage collects old chunks that are strictly before mint and removes
 // series entirely that have no chunks left.
-func (s *stripeSeries) gc(mint int64) map[uint64]struct{} {
+func (s *stripeSeries) gc(mint int64) map[chunks.HeadSeriesRef]struct{} {
 	var (
-		deleted = map[uint64]struct{}{}
+		deleted = map[chunks.HeadSeriesRef]struct{}{}
 	)
 
 	// Run through all series and find series that haven't been written to
@@ -186,8 +187,8 @@ func (s *stripeSeries) gc(mint int64) map[uint64]struct{} {
 	return deleted
 }
 
-func (s *stripeSeries) getByID(id uint64) *memSeries {
-	i := id & uint64(s.size-1)
+func (s *stripeSeries) getByID(id chunks.HeadSeriesRef) *memSeries {
+	i := uint64(id) & uint64(s.size-1)
 
 	s.locks[i].RLock()
 	series := s.series[i][id]
@@ -212,7 +213,7 @@ func (s *stripeSeries) set(hash uint64, series *memSeries) {
 	s.hashes[i].set(hash, series)
 	s.locks[i].Unlock()
 
-	i = series.ref & uint64(s.size-1)
+	i = uint64(series.ref) & uint64(s.size-1)
 	s.locks[i].Lock()
 	s.series[i][series.ref] = series
 	s.locks[i].Unlock()

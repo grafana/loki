@@ -71,8 +71,8 @@ so a `Persistent Volume` should be utilised.
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
-a per-tenant basis. Most of the configuration options [defined here](../configuration/#ruler_config)
-have [override options](../configuration/#limits_config) (which can be also applied at runtime!).
+a per-tenant basis. Most of the configuration options [defined here](../../configuration/#ruler)
+have [override options](../../configuration/#limits_config) (which can be also applied at runtime!).
 
 ### Tuning
 
@@ -142,3 +142,4 @@ the `loki_ruler_wal_corruptions_repair_failed_total` metric will be incremented.
 ### Found another failure mode?
 
 Please open an [issue](https://github.com/grafana/loki/issues) and tell us about it!
+

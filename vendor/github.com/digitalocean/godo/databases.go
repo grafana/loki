@@ -239,7 +239,7 @@ type DatabaseUpdateMaintenanceRequest struct {
 
 // DatabaseDB represents an engine-specific database created within a database cluster. For SQL
 // databases like PostgreSQL or MySQL, a "DB" refers to a database created on the RDBMS. For instance,
-// a PostgreSQL database server can contain many database schemas, each with it's own settings, access
+// a PostgreSQL database server can contain many database schemas, each with its own settings, access
 // permissions and data. ListDBs will return all databases present on the server.
 type DatabaseDB struct {
 	Name string `json:"name"`

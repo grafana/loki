@@ -72,6 +72,7 @@ message RuleGroup {
     double interval                           = 4 [(gogoproto.jsontag) = "interval" ];
     double evaluation_duration_seconds        = 5 [(gogoproto.jsontag) = "evaluationTime" ]; // TODO: Is it really second?
     google.protobuf.Timestamp last_evaluation = 6 [(gogoproto.jsontag) = "lastEvaluation", (gogoproto.stdtime) = true, (gogoproto.nullable) = false ];
+    int64 limit                               = 9 [(gogoproto.jsontag) = "limit" ];
 
     // Thanos specific.
     PartialResponseStrategy PartialResponseStrategy = 8 [(gogoproto.jsontag) = "partialResponseStrategy" ];

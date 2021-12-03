@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
+	"time"
 
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
@@ -16,11 +18,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )
 
+var defaultTransport http.RoundTripper = &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	MaxIdleConnsPerHost:   512,
+	ExpectContinueTimeout: 5 * time.Second,
+}
+
 type SwiftObjectClient struct {
-	conn *swift.Connection
-	cfg  SwiftConfig
+	conn        *swift.Connection
+	hedgingConn *swift.Connection
+	cfg         SwiftConfig
 }
 
 // SwiftConfig is config for the Swift Chunk Client.
@@ -50,9 +60,29 @@ func (cfg *SwiftConfig) ToCortexSwiftConfig() cortex_openstack.SwiftConfig {
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
-func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
+func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObjectClient, error) {
 	log.WarnExperimentalUse("OpenStack Swift Storage")
 
+	c, err := createConnection(cfg, hedgingCfg, false)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure the container is created, no error is returned if it already exists.
+	if err := c.ContainerCreate(cfg.ContainerName, nil); err != nil {
+		return nil, err
+	}
+	hedging, err := createConnection(cfg, hedgingCfg, true)
+	if err != nil {
+		return nil, err
+	}
+	return &SwiftObjectClient{
+		conn:        c,
+		hedgingConn: hedging,
+		cfg:         cfg,
+	}, nil
+}
+
+func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
 	// Create a connection
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
@@ -70,6 +100,7 @@ func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
 		Domain:         cfg.DomainName,
 		DomainId:       cfg.DomainID,
 		Region:         cfg.RegionName,
+		Transport:      defaultTransport,
 	}
 
 	switch {
@@ -78,32 +109,27 @@ func NewSwiftObjectClient(cfg SwiftConfig) (*SwiftObjectClient, error) {
 	case cfg.UserDomainID != "":
 		c.DomainId = cfg.UserDomainID
 	}
+	if hedging {
+		c.Transport = hedgingCfg.RoundTripper(c.Transport)
+	}
 
-	// Authenticate
 	err := c.Authenticate()
 	if err != nil {
 		return nil, err
 	}
 
-	// Ensure the container is created, no error is returned if it already exists.
-	if err := c.ContainerCreate(cfg.ContainerName, nil); err != nil {
-		return nil, err
-	}
-
-	return &SwiftObjectClient{
-		conn: c,
-		cfg:  cfg,
-	}, nil
+	return c, nil
 }
 
 func (s *SwiftObjectClient) Stop() {
 	s.conn.UnAuthenticate()
+	s.hedgingConn.UnAuthenticate()
 }
 
 // GetObject returns a reader for the specified object key from the configured swift container.
 func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	var buf bytes.Buffer
-	_, err := s.conn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, nil)
+	_, err := s.hedgingConn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, nil)
 	if err != nil {
 		return nil, err
 	}

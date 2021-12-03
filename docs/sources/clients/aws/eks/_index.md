@@ -123,9 +123,9 @@ You can reach your Grafana instance and start exploring your logs. For example i
 
 ## Fetching kubelet logs with systemd
 
-So far we're scrapings logs from containers, but if you want to get more visibility you could also scrape [systemd][systemd] logs from each of your machine. This means you can also get access to `kubelet` logs.
+So far we're scrapings logs from containers, but if you want to get more visibility you could also scrape systemd logs from each of your machine. This means you can also get access to `kubelet` logs.
 
-Let's edit our values file again and `extraScrapeConfigs` to add the [systemd][systemd] job:
+Let's edit our values file again and `extraScrapeConfigs` to add the systemd job:
 
 ```yaml
 extraScrapeConfigs:
@@ -174,12 +174,12 @@ Let go back to Grafana and type in the query below to fetch all logs related to 
 {unit="kubelet.service"} |= "Volume"
 ```
 
-[Filters][Filters] expressions are powerful in [LogQL][LogQL] they help you scan through your logs, in this case it will filter out all your [kubelet][kubelet] logs not having the `Volume` word in it.
+Filter expressions are powerful in LogQL they help you scan through your logs, in this case it will filter out all your [kubelet][kubelet] logs not having the `Volume` word in it.
 
 The workflow is simple, you always select a set of labels matchers first, this way you reduce the data you're planing to scan.(such as an application, a namespace or even a cluster).
-Then you can apply a set of [Filters][Filters] to find the logs you want.
+Then you can apply a set of filters to find the logs you want.
 
-> Promtail also support [syslog][syslog].
+Promtail also supports syslog.
 
 ## Adding Kubernetes events
 
@@ -244,13 +244,10 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [blog ship log with fargate]: https://aws.amazon.com/blogs/containers/how-to-capture-application-logs-when-using-amazon-eks-on-aws-fargate/
 [correlate]: https://grafana.com/blog/2020/03/31/how-to-successfully-correlate-metrics-logs-and-traces-in-grafana/
 [default value file]: https://github.com/grafana/helm-charts/blob/main/charts/promtail/values.yaml
-[systemd]: ../../../installation/helm#run-promtail-with-systemd-journal-support
 [grafana logs namespace]: namespace-grafana.png
 [relabel_configs]:https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
 [syslog]: ../../../installation/helm#run-promtail-with-syslog-support
-[Filters]: https://grafana.com/docs/loki/latest/logql/#line-filter-expression
 [kubelet]: https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/#:~:text=The%20kubelet%20works%20in%20terms,PodSpecs%20are%20running%20and%20healthy.
-[LogQL]: https://grafana.com/docs/loki/latest/logql/
 [blog events]: https://grafana.com/blog/2019/08/21/how-grafana-labs-effectively-pairs-loki-and-kubernetes-events/
 [labels post]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
 [pipeline]: https://grafana.com/docs/loki/latest/clients/promtail/pipelines/

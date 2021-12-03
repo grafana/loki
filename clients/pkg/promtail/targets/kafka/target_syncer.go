@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -13,8 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
@@ -31,10 +29,11 @@ type TopicManager interface {
 }
 
 type TargetSyncer struct {
-	logger log.Logger
-	cfg    scrapeconfig.Config
-	reg    prometheus.Registerer
-	client api.EntryHandler
+	logger   log.Logger
+	cfg      scrapeconfig.Config
+	pipeline *stages.Pipeline
+	reg      prometheus.Registerer
+	client   api.EntryHandler
 
 	topicManager TopicManager
 	consumer
@@ -89,8 +88,11 @@ func NewSyncer(
 	if err != nil {
 		return nil, fmt.Errorf("error creating topic manager: %w", err)
 	}
+	pipeline, err := stages.NewPipeline(log.With(logger, "component", "kafka_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
+	if err != nil {
+		return nil, fmt.Errorf("error creating pipeline: %w", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-
 	t := &TargetSyncer{
 		logger:       logger,
 		ctx:          ctx,
@@ -99,6 +101,7 @@ func NewSyncer(
 		cfg:          cfg,
 		reg:          reg,
 		client:       pushClient,
+		pipeline:     pipeline,
 		close: func() error {
 			if err := group.Close(); err != nil {
 				level.Warn(logger).Log("msg", "error while closing consumer group", "err", err)
@@ -267,18 +270,12 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		"__meta_kafka_member_id": model.LabelValue(session.MemberID()),
 		"__meta_kafka_group_id":  model.LabelValue(ts.cfg.KafkaConfig.GroupID),
 	}
+	details := newDetails(session, claim)
 	labelMap := make(map[string]string)
 	for k, v := range discoveredLabels.Clone().Merge(ts.cfg.KafkaConfig.Labels) {
 		labelMap[string(k)] = string(v)
 	}
-	lbs := relabel.Process(labels.FromMap(labelMap), ts.cfg.RelabelConfigs...)
-	details := newDetails(session, claim)
-	labelOut := model.LabelSet(util.LabelsToMetric(lbs))
-	for k := range labelOut {
-		if strings.HasPrefix(string(k), "__") {
-			delete(labelOut, k)
-		}
-	}
+	labelOut := format(labels.FromMap(labelMap), ts.cfg.RelabelConfigs)
 	if len(labelOut) == 0 {
 		level.Warn(ts.logger).Log("msg", "dropping target", "reason", "no labels", "details", details, "discovered_labels", discoveredLabels.String())
 		return &runnableDroppedTarget{
@@ -289,18 +286,13 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 			},
 		}, nil
 	}
-
-	pipeline, err := stages.NewPipeline(log.With(ts.logger, "component", "kafka_pipeline"), ts.cfg.PipelineStages, &ts.cfg.JobName, ts.reg)
-	if err != nil {
-		return nil, err
-	}
-
 	t := NewTarget(
 		session,
 		claim,
 		discoveredLabels,
 		labelOut,
-		pipeline.Wrap(ts.client),
+		ts.cfg.RelabelConfigs,
+		ts.pipeline.Wrap(ts.client),
 		ts.cfg.KafkaConfig.UseIncomingTimestamp,
 	)
 

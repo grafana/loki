@@ -18014,6 +18014,9 @@ type Bucket struct {
 	// Use the UpdateBucketBundle action to change a bucket's bundle.
 	AbleToUpdateBundle *bool `locationName:"ableToUpdateBundle" type:"boolean"`
 
+	// An object that describes the access log configuration for the bucket.
+	AccessLogConfig *BucketAccessLogConfig `locationName:"accessLogConfig" type:"structure"`
+
 	// An object that describes the access rules of the bucket.
 	AccessRules *AccessRules `locationName:"accessRules" type:"structure"`
 
@@ -18104,6 +18107,12 @@ func (s *Bucket) SetAbleToUpdateBundle(v bool) *Bucket {
 	return s
 }
 
+// SetAccessLogConfig sets the AccessLogConfig field's value.
+func (s *Bucket) SetAccessLogConfig(v *BucketAccessLogConfig) *Bucket {
+	s.AccessLogConfig = v
+	return s
+}
+
 // SetAccessRules sets the AccessRules field's value.
 func (s *Bucket) SetAccessRules(v *AccessRules) *Bucket {
 	s.AccessRules = v
@@ -18185,6 +18194,96 @@ func (s *Bucket) SetTags(v []*Tag) *Bucket {
 // SetUrl sets the Url field's value.
 func (s *Bucket) SetUrl(v string) *Bucket {
 	s.Url = &v
+	return s
+}
+
+// Describes the access log configuration for a bucket in the Amazon Lightsail
+// object storage service.
+//
+// For more information about bucket access logs, see Logging bucket requests
+// using access logging in Amazon Lightsail (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-bucket-access-logs)
+// in the Amazon Lightsail Developer Guide.
+type BucketAccessLogConfig struct {
+	_ struct{} `type:"structure"`
+
+	// The name of the bucket where the access is saved. The destination can be
+	// a Lightsail bucket in the same account, and in the same AWS Region as the
+	// source bucket.
+	//
+	// This parameter is required when enabling the access log for a bucket, and
+	// should be omitted when disabling the access log.
+	Destination *string `locationName:"destination" min:"3" type:"string"`
+
+	// A Boolean value that indicates whether bucket access logging is enabled for
+	// the bucket.
+	//
+	// Enabled is a required field
+	Enabled *bool `locationName:"enabled" type:"boolean" required:"true"`
+
+	// The optional object prefix for the bucket access log.
+	//
+	// The prefix is an optional addition to the object key that organizes your
+	// access log files in the destination bucket. For example, if you specify a
+	// logs/ prefix, then each log object will begin with the logs/ prefix in its
+	// key (for example, logs/2021-11-01-21-32-16-E568B2907131C0C0).
+	//
+	// This parameter can be optionally specified when enabling the access log for
+	// a bucket, and should be omitted when disabling the access log.
+	Prefix *string `locationName:"prefix" min:"1" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s BucketAccessLogConfig) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s BucketAccessLogConfig) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *BucketAccessLogConfig) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "BucketAccessLogConfig"}
+	if s.Destination != nil && len(*s.Destination) < 3 {
+		invalidParams.Add(request.NewErrParamMinLen("Destination", 3))
+	}
+	if s.Enabled == nil {
+		invalidParams.Add(request.NewErrParamRequired("Enabled"))
+	}
+	if s.Prefix != nil && len(*s.Prefix) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Prefix", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetDestination sets the Destination field's value.
+func (s *BucketAccessLogConfig) SetDestination(v string) *BucketAccessLogConfig {
+	s.Destination = &v
+	return s
+}
+
+// SetEnabled sets the Enabled field's value.
+func (s *BucketAccessLogConfig) SetEnabled(v bool) *BucketAccessLogConfig {
+	s.Enabled = &v
+	return s
+}
+
+// SetPrefix sets the Prefix field's value.
+func (s *BucketAccessLogConfig) SetPrefix(v string) *BucketAccessLogConfig {
+	s.Prefix = &v
 	return s
 }
 
@@ -19432,9 +19531,16 @@ type Container struct {
 	//
 	// Container images sourced from your Lightsail container service, that are
 	// registered and stored on your service, start with a colon (:). For example,
-	// :container-service-1.mystaticwebsite.1. Container images sourced from a public
-	// registry like Docker Hub don't start with a colon. For example, nginx:latest
-	// or nginx.
+	// if your container service name is container-service-1, the container image
+	// label is mystaticsite, and you want to use the third (3) version of the registered
+	// container image, then you should specify :container-service-1.mystaticsite.3.
+	// To use the latest version of a container image, specify latest instead of
+	// a version number (for example, :container-service-1.mystaticsite.latest).
+	// Lightsail will automatically use the highest numbered version of the registered
+	// container image.
+	//
+	// Container images sourced from a public registry like Docker Hub don't start
+	// with a colon. For example, nginx:latest or nginx.
 	Image *string `locationName:"image" type:"string"`
 
 	// The open firewall ports of the container.
@@ -21295,7 +21401,7 @@ type CreateContainerServiceInput struct {
 	// ServiceName is a required field
 	ServiceName *string `locationName:"serviceName" min:"1" type:"string" required:"true"`
 
-	// The tag keys and optional values to add to the certificate during create.
+	// The tag keys and optional values to add to the container service during create.
 	//
 	// Use the TagResource action to tag a resource after it's created.
 	//
@@ -41101,6 +41207,9 @@ func (s *UpdateBucketBundleOutput) SetOperations(v []*Operation) *UpdateBucketBu
 type UpdateBucketInput struct {
 	_ struct{} `type:"structure"`
 
+	// An object that describes the access log configuration for the bucket.
+	AccessLogConfig *BucketAccessLogConfig `locationName:"accessLogConfig" type:"structure"`
+
 	// An object that sets the public accessibility of objects in the specified
 	// bucket.
 	AccessRules *AccessRules `locationName:"accessRules" type:"structure"`
@@ -41153,11 +41262,22 @@ func (s *UpdateBucketInput) Validate() error {
 	if s.BucketName != nil && len(*s.BucketName) < 3 {
 		invalidParams.Add(request.NewErrParamMinLen("BucketName", 3))
 	}
+	if s.AccessLogConfig != nil {
+		if err := s.AccessLogConfig.Validate(); err != nil {
+			invalidParams.AddNested("AccessLogConfig", err.(request.ErrInvalidParams))
+		}
+	}
 
 	if invalidParams.Len() > 0 {
 		return invalidParams
 	}
 	return nil
+}
+
+// SetAccessLogConfig sets the AccessLogConfig field's value.
+func (s *UpdateBucketInput) SetAccessLogConfig(v *BucketAccessLogConfig) *UpdateBucketInput {
+	s.AccessLogConfig = v
+	return s
 }
 
 // SetAccessRules sets the AccessRules field's value.
