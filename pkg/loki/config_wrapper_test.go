@@ -1331,3 +1331,17 @@ storage_config:
 	})
 
 }
+
+func Test_repcliationFactor(t *testing.T) {
+	t.Run("replication factor is applied when using memberlist", func(t *testing.T) {
+		yamlContent := `---
+memberlist:
+  join_members:
+    - foo.bar.example.com
+common:
+  replication_factor: 1`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+	})
+}
