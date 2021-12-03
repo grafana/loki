@@ -54,6 +54,6 @@ func TestPool(t *testing.T) {
 		runtime.GC()
 		return runtime.NumGoroutine() <= 50
 	}, 5*time.Second, 10*time.Millisecond) {
-		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+		_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 	}
 }
