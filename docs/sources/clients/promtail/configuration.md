@@ -1061,7 +1061,7 @@ labels:
 ```
 
 By default Promtail fetches logs with the default set of fields.
-Below shows the different set of fields type available and the fields they include :
+Here are the different set of fields type available and the fields they include :
 
 - `default` includes `"ClientIP", "ClientRequestHost", "ClientRequestMethod", "ClientRequestURI", "EdgeEndTimestamp", "EdgeResponseBytes",
 "EdgeRequestHost", "EdgeResponseStatus", "EdgeStartTimestamp", "RayID"`
