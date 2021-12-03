@@ -1045,14 +1045,15 @@ api_token: <string>
 # The Cloudflare zone id to pull logs for. (Required)
 zone_id: <string>
 
-# The time range to pull logs for. (Default to 1m)
-pull_range: <duration>
+# The time range to pull logs for.
+[pull_range: <duration> | default = 1m]
 
-# The amount of workers to pull logs with. (Default to 3)
-workers: <int>
+# The quantity of workers that will pull logs.
+[workers: <int> | default = 3]
 
-# The type list of fields to fetch for logs. (Default default)
-fields_type: <default | minimal | extended | all>
+# The type list of fields to fetch for logs. 
+# Supported values: default, minimal, extended, all.
+[fields_type: <string> | default = default]
 
 # Label map to add to every log message.
 labels:
