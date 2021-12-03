@@ -16,6 +16,12 @@ Instructions for different methods of installing Loki and Promtail.
 - [Install and run locally](local/)
 - [Install from source](install-from-source/)
 
+Instructions for installing loki in certain archticture configurations.
+
+#### Simple Scalable Deployment
+
+- [Install Simple Scalable through Docker Compose](simple-scalable-docker/)
+
 ## General process
 
 In order to run Loki, you must:
