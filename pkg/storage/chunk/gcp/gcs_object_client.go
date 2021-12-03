@@ -9,6 +9,7 @@ import (
 	"cloud.google.com/go/storage"
 	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
@@ -87,7 +88,7 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Conf
 	}
 
 	if hedging {
-		httpClient = hedgingCfg.Client(httpClient)
+		httpClient = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
 	}
 
 	opts = append(opts, option.WithHTTPClient(httpClient))

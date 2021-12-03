@@ -4,11 +4,11 @@ import (
 	"errors"
 	"flag"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/cristalhq/hedgedhttp"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 )
 
@@ -16,19 +16,21 @@ var (
 	ErrTooManyHedgeRequests       = errors.New("too many hedge requests")
 	totalHedgeRequests            prometheus.Counter
 	totalRateLimitedHedgeRequests prometheus.Counter
+	once                          sync.Once
 )
 
 func init() {
-	registerMetrics()
+	initMetrics()
 }
 
-func registerMetrics() {
-	totalHedgeRequests = promauto.NewCounter(prometheus.CounterOpts{
+func initMetrics() {
+	once = sync.Once{}
+	totalHedgeRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "hedged_requests_total",
 		Help: "The total number of hedged requests.",
 	})
 
-	totalRateLimitedHedgeRequests = promauto.NewCounter(prometheus.CounterOpts{
+	totalRateLimitedHedgeRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "hedged_requests_rate_limited_total",
 		Help: "The total number of hedged requests rejected via rate limiting.",
 	})
@@ -59,29 +61,51 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // Client returns a hedged http client.
 // The client transport will be mutated to use the hedged roundtripper.
 func (cfg *Config) Client(client *http.Client) *http.Client {
+	return cfg.ClientWithRegisterer(client, prometheus.DefaultRegisterer)
+}
+
+// ClientWithRegisterer returns a hedged http client with instrumentation registered to the provided registerer.
+// The client transport will be mutated to use the hedged roundtripper.
+func (cfg *Config) ClientWithRegisterer(client *http.Client, reg prometheus.Registerer) *http.Client {
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
 	if client == nil {
 		client = http.DefaultClient
 	}
 	if cfg.At == 0 {
 		return client
 	}
-	client.Transport = cfg.RoundTripper(client.Transport)
+	client.Transport = cfg.RoundTripperWithRegisterer(client.Transport, reg)
 	return client
 }
 
-// RoundTripper returns a hedged roundtripper.
-func (cfg *Config) RoundTripper(next http.RoundTripper) http.RoundTripper {
+// RoundTripperWithRegisterer returns a hedged roundtripper with instrumentation registered to the provided registerer.
+func (cfg *Config) RoundTripperWithRegisterer(next http.RoundTripper, reg prometheus.Registerer) http.RoundTripper {
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
 	if next == nil {
 		next = http.DefaultTransport
 	}
 	if cfg.At == 0 {
 		return next
 	}
+	// register metrics
+	once.Do(func() {
+		reg.MustRegister(totalHedgeRequests)
+		reg.MustRegister(totalRateLimitedHedgeRequests)
+	})
 	return hedgedhttp.NewRoundTripper(
 		cfg.At,
 		cfg.UpTo,
 		newLimitedHedgingRoundTripper(cfg.MaxPerSecond, next),
 	)
+}
+
+// RoundTripper returns a hedged roundtripper.
+func (cfg *Config) RoundTripper(next http.RoundTripper) http.RoundTripper {
+	return cfg.RoundTripperWithRegisterer(next, prometheus.DefaultRegisterer)
 }
 
 type limitedHedgingRoundTripper struct {

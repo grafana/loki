@@ -22,7 +22,7 @@ func resetMetrics() {
 	reg := prometheus.NewRegistry()
 	prometheus.DefaultRegisterer = reg
 	prometheus.DefaultGatherer = reg
-	registerMetrics()
+	initMetrics()
 }
 
 func TestHedging(t *testing.T) {

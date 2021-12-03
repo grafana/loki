@@ -15,6 +15,7 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/mattn/go-ieproxy"
+	"github.com/prometheus/client_golang/prometheus"
 
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -265,7 +266,7 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 
 	if hedging {
 		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
-			client := hedgingCfg.Client(client)
+			client := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
 			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
 				resp, err := client.Do(request.WithContext(ctx))
 				return pipeline.NewHTTPResponse(resp), err
