@@ -1,0 +1,18 @@
+approvals:
+  minimum: 1
+  groups:
+    maintainers:
+      minimum: 1
+      from:
+        users:
+          - adityacs
+          - cyriltovena
+          - dannykopping
+          - davkal
+          - slim-bean
+          - gouthamve
+          - joe-elliott
+          - owen-d
+          - sandeepsukhani
+          - sh0rez
+          - tomwilkie
