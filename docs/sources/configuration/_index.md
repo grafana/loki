@@ -872,8 +872,12 @@ You should configure the latency based on your p99 of object store requests.
 # used with queriers and has minimal to no impact on other pieces.
 [at: <duration> | default = 0]
 # Optional. Default is 2
-# The maximum amount of requests to be issued.
+# The maximum amount of hedge requests to be issued for a given request.
 [up_to: <int> | default = 2]
+# Optional. Default is 5
+# The maximum amount of hedged requests to be issued per seconds.
+[max_per_second: <int> | default = 5]
+
 ```
 
 ## local_storage_config

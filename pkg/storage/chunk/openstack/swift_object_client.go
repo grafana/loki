@@ -12,6 +12,7 @@ import (
 
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	cortex_openstack "github.com/cortexproject/cortex/pkg/chunk/openstack"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
@@ -110,7 +111,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 		c.DomainId = cfg.UserDomainID
 	}
 	if hedging {
-		c.Transport = hedgingCfg.RoundTripper(c.Transport)
+		c.Transport = hedgingCfg.RoundTripperWithRegisterer(c.Transport, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
 	}
 
 	err := c.Authenticate()
