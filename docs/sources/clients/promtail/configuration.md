@@ -1079,16 +1079,16 @@ Here are the different set of fields type available and the fields they include 
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
-Promtail will save his last successful fetched timestamp in the position file. This means
-that if a position is found in the file for a given zone id, Promtail will restart pulling log
-from that position. When no position is found Promtail will start pulling logs from now.
+Promtail saves the last successfully-fetched timestamp in the position file.
+If a position is found in the file for a given zone ID, Promtail will restart pulling logs
+from that position. When no position is found, Promtail will start pulling logs from the current time.
 
-Promtail fetches logs using multiple workers (configurable via `workers`) and request the last available pull range
-(configured via `pull_range`) repeatedly. You can verify the last timestamp fetched by Promtail using the `cloudflare_target_last_requested_end_timestamp` metric.
-It's possible that Promtail falls behinds because there's is too much logs to process for each pull.
-Adding more workers, decreasing the pull range or the amount of fields fetched can help this situation.
+Promtail fetches logs using multiple workers (configurable via `workers`) which request the last available pull range
+(configured via `pull_range`) repeatedly. Verify the last timestamp fetched by Promtail using the `cloudflare_target_last_requested_end_timestamp` metric.
+It is possible for Promtail to fall behind due to having too many log lines to process for each pull.
+Adding more workers, decreasing the pull range, or decreasing the quantity of fields fetched can mitigate this performance issue.
 
-All Cloudflare logs are in json for example:
+All Cloudflare logs are in JSON. Here is an example:
 
 ```json
 {
