@@ -328,8 +328,8 @@ job_name: <string>
 # Describes how to receive logs from gelf client.
 [gelf: <gelf_config>]
 
-# Describes how to pull logs from cloudflare.
-[cloudflare: <cloudflare_config>]
+# Configuration describing how to pull logs from Cloudflare.
+[cloudflare: <cloudflare>]
 
 # Describes how to relabel targets to determine if they should
 # be processed.
