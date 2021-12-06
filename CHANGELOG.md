@@ -14,6 +14,7 @@
 * [4741](https://github.com/grafana/loki/pull/4741) **sandeepsukhani**: index cleanup fixes while applying retention
 * [4813](https://github.com/grafana/loki/pull/4813) **cyriltovena**: Promtail: Adds the ability to pull logs from Cloudflare.
 * [4853](https://github.com/grafana/loki/pull/4853) **sandeepsukhani**: recreate compacted boltdb files from compactor to reduce storage space usage
+* [4875](https://github.com/grafana/loki/pull/4875) **trevorwhitney**: Loki: fix bug where common replication factor wasn't always getting applied
 
 # 2.4.1 (2021/11/07)
 
