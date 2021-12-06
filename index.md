@@ -7,6 +7,7 @@ This is the Kubernetes Operator for Loki provided by the Red Hat OpenShift engin
 * If you want to contribute to this repository, you might need a step-by-step guide on how to start [hacking on Loki-operator with kind](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#hacking-on-loki-operator-using-kind).
 * Also, there is a step-by-step guide on how to test Loki-operator on [OpenShift](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
 * There is also a [basic troubleshooting guide](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md#basic-troubleshooting-on-hacking-on-loki-operator) if you run into some common problems.
+* There is also a [document](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_operator_make_run.md) which demonstrates how to use Loki Operator for development and testing locally without deploying the operator each time on Kind and OpenShift using the `make run` command.
 
 ### Sending Logs to Loki through the Gateway Component
 

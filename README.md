@@ -28,3 +28,6 @@ deploy to your active Kubernetes/OpenShift cluster defined by your local
 
 For detailed step-by-step guide on how to start development and testing on Kind and OpenShift, 
 check our [documentation](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_loki_operator.md)
+
+Also, there is a [document](https://github.com/ViaQ/loki-operator/blob/master/docs/hack_operator_make_run.md) which
+demonstrates how to use Loki Operator for development and testing locally without deploying the operator each time on Kind and OpenShift.
