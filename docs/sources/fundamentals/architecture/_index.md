@@ -69,7 +69,8 @@ Consider the microservices mode approach for very large Loki installations.
 ![simple scalable deployment mode diagram](simple-scalable.png)
 
 In this mode the component microservices of Loki are bundled into two targets:
-`-target=read` and `-target=write`.
+`-target=read` and `-target=write`. The BoltDB [compactor](https://grafana.com/docs/loki/latest/operations/storage/boltdb-shipper/#compactor) 
+service will also run as part of the read path when using either `-target=all` or `-target=read`.
 
 There are advantages to separating the read and write paths:
 
