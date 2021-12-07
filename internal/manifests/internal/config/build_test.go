@@ -13,15 +13,13 @@ func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
 auth_enabled: true
 chunk_store_config:
   chunk_cache_config:
-    enable_fifocache: yes
+    enable_fifocache: true
+    fifocache:
+      max_size_bytes: 500MB
 compactor:
   compaction_interval: 2h
   shared_store: s3
   working_directory: /tmp/loki/compactor
-distributor:
-  ring:
-    kvstore:
-      store: memberlist
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
@@ -35,10 +33,11 @@ frontend_worker:
 ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
-  chunk_idle_period: 2h
-  chunk_retain_period: 1m
-  chunk_target_size: 1572864
+  chunk_idle_period: 1h
+  chunk_retain_period: 30s
+  chunk_target_size: 1048576
   lifecycler:
+    final_sleep: 0s
     heartbeat_period: 5s
     interface_names:
       - eth0
@@ -47,9 +46,11 @@ ingester:
     ring:
       replication_factor: 1
       heartbeat_timeout: 1m
-      kvstore:
-        store: memberlist
-  max_transfer_retries: 60
+  max_transfer_retries: 0
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2500
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
@@ -81,12 +82,14 @@ limits_config:
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
-  max_query_length: 12000h
-  max_query_parallelism: 16
+  max_query_length: 721h
+  max_query_parallelism: 32
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
+  per_stream_rate_limit: 3MB
+  per_stream_rate_limit_burst: 15MB
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -107,7 +110,11 @@ query_range:
   align_queries_with_step: true
   cache_results: true
   max_retries: 5
-  results_cache: {}
+  results_cache:
+    cache:
+      enable_fifocache: true
+      fifocache:
+        max_size_bytes: 500MB
   split_queries_by_interval: 30m
   parallelise_shardable_queries: false
 schema_config:
@@ -121,6 +128,8 @@ schema_config:
       store: boltdb-shipper
 server:
   graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
   grpc_server_max_concurrent_streams: 1000
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
@@ -135,6 +144,8 @@ storage_config:
     cache_ttl: 24h
     resync_interval: 5m
     shared_store: s3
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
   aws:
     s3: http://test.default.svc.cluster.local.:9000
     bucketnames: loki
@@ -185,6 +196,10 @@ overrides:
 			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
 			Port: 3100,
 		},
+		IndexGateway: Address{
+			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
+		},
 		StorageDirectory: "/tmp/loki",
 		ObjectStorage: ObjectStorage{
 			Endpoint:        "http://test.default.svc.cluster.local.:9000",
@@ -196,6 +211,10 @@ overrides:
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
+		},
+		WriteAheadLog: WriteAheadLog{
+			Directory:             "/tmp/wal",
+			IngesterMemoryRequest: 5000,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -210,15 +229,13 @@ func TestBuild_ConfigAndRuntimeConfig_BothGenerated(t *testing.T) {
 auth_enabled: true
 chunk_store_config:
   chunk_cache_config:
-    enable_fifocache: yes
+    enable_fifocache: true
+    fifocache:
+      max_size_bytes: 500MB
 compactor:
   compaction_interval: 2h
   shared_store: s3
   working_directory: /tmp/loki/compactor
-distributor:
-  ring:
-    kvstore:
-      store: memberlist
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
@@ -232,10 +249,11 @@ frontend_worker:
 ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
-  chunk_idle_period: 2h
-  chunk_retain_period: 1m
-  chunk_target_size: 1572864
+  chunk_idle_period: 1h
+  chunk_retain_period: 30s
+  chunk_target_size: 1048576
   lifecycler:
+    final_sleep: 0s
     heartbeat_period: 5s
     interface_names:
       - eth0
@@ -244,9 +262,11 @@ ingester:
     ring:
       replication_factor: 1
       heartbeat_timeout: 1m
-      kvstore:
-        store: memberlist
-  max_transfer_retries: 60
+  max_transfer_retries: 0
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2500
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
@@ -278,12 +298,14 @@ limits_config:
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
-  max_query_length: 12000h
-  max_query_parallelism: 16
+  max_query_length: 721h
+  max_query_parallelism: 32
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
+  per_stream_rate_limit: 3MB
+  per_stream_rate_limit_burst: 15MB
 memberlist:
   abort_if_cluster_join_fails: true
   bind_port: 7946
@@ -304,7 +326,11 @@ query_range:
   align_queries_with_step: true
   cache_results: true
   max_retries: 5
-  results_cache: {}
+  results_cache:
+    cache:
+      enable_fifocache: true
+      fifocache:
+        max_size_bytes: 500MB
   split_queries_by_interval: 30m
   parallelise_shardable_queries: false
 schema_config:
@@ -318,6 +344,8 @@ schema_config:
       store: boltdb-shipper
 server:
   graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
   grpc_server_max_concurrent_streams: 1000
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
@@ -332,6 +360,8 @@ storage_config:
     cache_ttl: 24h
     resync_interval: 5m
     shared_store: s3
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
   aws:
     s3: http://test.default.svc.cluster.local.:9000
     bucketnames: loki
@@ -399,6 +429,10 @@ overrides:
 			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
 			Port: 3100,
 		},
+		IndexGateway: Address{
+			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
+		},
 		StorageDirectory: "/tmp/loki",
 		ObjectStorage: ObjectStorage{
 			Endpoint:        "http://test.default.svc.cluster.local.:9000",
@@ -410,6 +444,10 @@ overrides:
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
+		},
+		WriteAheadLog: WriteAheadLog{
+			Directory:             "/tmp/wal",
+			IngesterMemoryRequest: 5000,
 		},
 	}
 	cfg, rCfg, err := Build(opts)
@@ -452,6 +490,10 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			FQDN: "loki-querier-http-lokistack-dev.default.svc.cluster.local",
 			Port: 3100,
 		},
+		IndexGateway: Address{
+			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
+			Port: 9095,
+		},
 		StorageDirectory: "/tmp/loki",
 		ObjectStorage: ObjectStorage{
 			Endpoint:        "http://test.default.svc.cluster.local.:9000",
@@ -463,6 +505,10 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		QueryParallelism: Parallelism{
 			QuerierCPULimits:      2,
 			QueryFrontendReplicas: 2,
+		},
+		WriteAheadLog: WriteAheadLog{
+			Directory:             "/tmp/wal",
+			IngesterMemoryRequest: 5000,
 		},
 	}
 	cfg, rCfg, err := Build(opts)

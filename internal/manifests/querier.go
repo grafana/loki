@@ -7,7 +7,6 @@ import (
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -17,22 +16,22 @@ import (
 
 // BuildQuerier returns a list of k8s objects for Loki Querier
 func BuildQuerier(opts Options) ([]client.Object, error) {
-	statefulSet := NewQuerierStatefulSet(opts)
+	deployment := NewQuerierDeployment(opts)
 	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureQuerierServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+		if err := configureQuerierServiceMonitorPKI(deployment, opts.Name); err != nil {
 			return nil, err
 		}
 	}
 
 	return []client.Object{
-		statefulSet,
+		deployment,
 		NewQuerierGRPCService(opts),
 		NewQuerierHTTPService(opts),
 	}, nil
 }
 
-// NewQuerierStatefulSet creates a deployment object for a querier
-func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
+// NewQuerierDeployment creates a deployment object for a querier
+func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -110,11 +109,6 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 						ReadOnly:  false,
 						MountPath: config.LokiConfigMountDir,
 					},
-					{
-						Name:      storageVolumeName,
-						ReadOnly:  false,
-						MountPath: dataDirectory,
-					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
@@ -131,19 +125,17 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelQuerierComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1)
 
-	return &appsv1.StatefulSet{
+	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "StatefulSet",
+			Kind:       "Deployment",
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   QuerierName(opts.Name),
 			Labels: l,
 		},
-		Spec: appsv1.StatefulSetSpec{
-			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Querier.Replicas),
+		Spec: appsv1.DeploymentSpec{
+			Replicas: pointer.Int32Ptr(opts.Stack.Template.Querier.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -155,26 +147,8 @@ func NewQuerierStatefulSet(opts Options) *appsv1.StatefulSet {
 				},
 				Spec: podSpec,
 			},
-			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: l,
-						Name:   storageVolumeName,
-					},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{
-							// TODO: should we verify that this is possible with the given storage class first?
-							corev1.ReadWriteOnce,
-						},
-						Resources: corev1.ResourceRequirements{
-							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: opts.ResourceRequirements.Querier.PVCSize,
-							},
-						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
-						VolumeMode:       &volumeFileSystemMode,
-					},
-				},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
 			},
 		},
 	}
@@ -238,7 +212,7 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQuerierServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
+func configureQuerierServiceMonitorPKI(deployment *appsv1.Deployment, stackName string) error {
 	serviceName := serviceNameQuerierHTTP(stackName)
-	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
+	return configureServiceMonitorPKI(&deployment.Spec.Template.Spec, serviceName)
 }

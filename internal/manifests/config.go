@@ -3,7 +3,6 @@ package manifests
 import (
 	"crypto/sha1"
 	"fmt"
-	"strings"
 
 	"github.com/ViaQ/loki-operator/internal/manifests/internal/config"
 	corev1 "k8s.io/api/core/v1"
@@ -59,7 +58,11 @@ func ConfigOptions(opt Options) config.Options {
 			FQDN: fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
 			Port: httpPort,
 		},
-		StorageDirectory: strings.TrimRight(dataDirectory, "/"),
+		IndexGateway: config.Address{
+			FQDN: fqdn(NewIndexGatewayGRPCService(opt).GetName(), opt.Namespace),
+			Port: grpcPort,
+		},
+		StorageDirectory: dataDirectory,
 		ObjectStorage: config.ObjectStorage{
 			Endpoint:        opt.ObjectStorage.Endpoint,
 			Buckets:         opt.ObjectStorage.Buckets,
@@ -70,6 +73,10 @@ func ConfigOptions(opt Options) config.Options {
 		QueryParallelism: config.Parallelism{
 			QuerierCPULimits:      opt.ResourceRequirements.Querier.Requests.Cpu().Value(),
 			QueryFrontendReplicas: opt.Stack.Template.QueryFrontend.Replicas,
+		},
+		WriteAheadLog: config.WriteAheadLog{
+			Directory:             walDirectory,
+			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 	}
 }

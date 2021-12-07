@@ -41,6 +41,9 @@ func TestServicesMatchPorts(t *testing.T) {
 				Gateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 	}
@@ -62,7 +65,7 @@ func TestServicesMatchPorts(t *testing.T) {
 			},
 		},
 		{
-			Containers: NewQuerierStatefulSet(opt).Spec.Template.Spec.Containers,
+			Containers: NewQuerierDeployment(opt).Spec.Template.Spec.Containers,
 			Services: []*corev1.Service{
 				NewQuerierGRPCService(opt),
 				NewQuerierHTTPService(opt),
@@ -86,6 +89,13 @@ func TestServicesMatchPorts(t *testing.T) {
 			Containers: NewGatewayDeployment(opt, sha1C).Spec.Template.Spec.Containers,
 			Services: []*corev1.Service{
 				NewGatewayHTTPService(opt),
+			},
+		},
+		{
+			Containers: NewIndexGatewayStatefulSet(opt).Spec.Template.Spec.Containers,
+			Services: []*corev1.Service{
+				NewIndexGatewayGRPCService(opt),
+				NewIndexGatewayHTTPService(opt),
 			},
 		},
 	}
@@ -150,6 +160,9 @@ func TestServicesMatchLabels(t *testing.T) {
 				Gateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 	}
@@ -171,7 +184,7 @@ func TestServicesMatchLabels(t *testing.T) {
 			},
 		},
 		{
-			Object: NewQuerierStatefulSet(opt),
+			Object: NewQuerierDeployment(opt),
 			Services: []*corev1.Service{
 				NewQuerierGRPCService(opt),
 				NewQuerierHTTPService(opt),
@@ -195,6 +208,13 @@ func TestServicesMatchLabels(t *testing.T) {
 			Object: NewGatewayDeployment(opt, sha1C),
 			Services: []*corev1.Service{
 				NewGatewayHTTPService(opt),
+			},
+		},
+		{
+			Object: NewIndexGatewayStatefulSet(opt),
+			Services: []*corev1.Service{
+				NewIndexGatewayGRPCService(opt),
+				NewIndexGatewayHTTPService(opt),
 			},
 		},
 	}

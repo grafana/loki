@@ -15,24 +15,24 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// BuildIngester builds the k8s objects required to run Loki Ingester
-func BuildIngester(opts Options) ([]client.Object, error) {
-	statefulSet := NewIngesterStatefulSet(opts)
+// BuildIndexGateway returns a list of k8s objects for Loki IndexGateway
+func BuildIndexGateway(opts Options) ([]client.Object, error) {
+	statefulSet := NewIndexGatewayStatefulSet(opts)
 	if opts.Flags.EnableTLSServiceMonitorConfig {
-		if err := configureIngesterServiceMonitorPKI(statefulSet, opts.Name); err != nil {
+		if err := configureIndexGatewayServiceMonitorPKI(statefulSet, opts.Name); err != nil {
 			return nil, err
 		}
 	}
 
 	return []client.Object{
 		statefulSet,
-		NewIngesterGRPCService(opts),
-		NewIngesterHTTPService(opts),
+		NewIndexGatewayGRPCService(opts),
+		NewIndexGatewayHTTPService(opts),
 	}, nil
 }
 
-// NewIngesterStatefulSet creates a deployment object for an ingester
-func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
+// NewIndexGatewayStatefulSet creates a statefulset object for an index-gateway
+func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	podSpec := corev1.PodSpec{
 		Volumes: []corev1.Volume{
 			{
@@ -50,13 +50,13 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
-				Name:  "loki-ingester",
+				Name:  "loki-index-gateway",
 				Resources: corev1.ResourceRequirements{
-					Limits:   opts.ResourceRequirements.Ingester.Limits,
-					Requests: opts.ResourceRequirements.Ingester.Requests,
+					Limits:   opts.ResourceRequirements.IndexGateway.Limits,
+					Requests: opts.ResourceRequirements.IndexGateway.Requests,
 				},
 				Args: []string{
-					"-target=ingester",
+					"-target=index-gateway",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
 				},
@@ -98,11 +98,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 						ContainerPort: grpcPort,
 						Protocol:      protocolTCP,
 					},
-					{
-						Name:          lokiGossipPortName,
-						ContainerPort: gossipPort,
-						Protocol:      protocolTCP,
-					},
 				},
 				VolumeMounts: []corev1.VolumeMount{
 					{
@@ -115,11 +110,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 						ReadOnly:  false,
 						MountPath: dataDirectory,
 					},
-					{
-						Name:      walVolumeName,
-						ReadOnly:  false,
-						MountPath: walDirectory,
-					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
@@ -128,32 +118,33 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 	}
 
-	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
-		podSpec.Tolerations = opts.Stack.Template.Ingester.Tolerations
-		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
+	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {
+		podSpec.Tolerations = opts.Stack.Template.IndexGateway.Tolerations
+		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
 	}
 
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1)
+
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   IngesterName(opts.Name),
+			Name:   IndexGatewayName(opts.Name),
 			Labels: l,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
 			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Ingester.Replicas),
+			Replicas:             pointer.Int32Ptr(opts.Stack.Template.IndexGateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-ingester-%s", opts.Name),
+					Name:        fmt.Sprintf("loki-index-gateway-%s", opts.Name),
 					Labels:      labels.Merge(l, GossipLabels()),
 					Annotations: a,
 				},
@@ -172,26 +163,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: opts.ResourceRequirements.Ingester.PVCSize,
-							},
-						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
-						VolumeMode:       &volumeFileSystemMode,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: l,
-						Name:   walVolumeName,
-					},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{
-							// TODO: should we verify that this is possible with the given storage class first?
-							corev1.ReadWriteOnce,
-						},
-						Resources: corev1.ResourceRequirements{
-							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
+								corev1.ResourceStorage: opts.ResourceRequirements.IndexGateway.PVCSize,
 							},
 						},
 						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
@@ -203,9 +175,9 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	}
 }
 
-// NewIngesterGRPCService creates a k8s service for the ingester GRPC endpoint
-func NewIngesterGRPCService(opts Options) *corev1.Service {
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+// NewIndexGatewayGRPCService creates a k8s service for the index-gateway GRPC endpoint
+func NewIndexGatewayGRPCService(opts Options) *corev1.Service {
+	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
 
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -213,7 +185,7 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   serviceNameIngesterGRPC(opts.Name),
+			Name:   serviceNameIndexGatewayGRPC(opts.Name),
 			Labels: l,
 		},
 		Spec: corev1.ServiceSpec{
@@ -231,10 +203,10 @@ func NewIngesterGRPCService(opts Options) *corev1.Service {
 	}
 }
 
-// NewIngesterHTTPService creates a k8s service for the ingester HTTP endpoint
-func NewIngesterHTTPService(opts Options) *corev1.Service {
-	serviceName := serviceNameIngesterHTTP(opts.Name)
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+// NewIndexGatewayHTTPService creates a k8s service for the index-gateway HTTP endpoint
+func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
+	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
+	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
 	a := serviceAnnotations(serviceName, opts.Flags.EnableCertificateSigningService)
 
 	return &corev1.Service{
@@ -261,7 +233,7 @@ func NewIngesterHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureIngesterServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
-	serviceName := serviceNameIngesterHTTP(stackName)
+func configureIndexGatewayServiceMonitorPKI(statefulSet *appsv1.StatefulSet, stackName string) error {
+	serviceName := serviceNameIndexGatewayHTTP(stackName)
 	return configureServiceMonitorPKI(&statefulSet.Spec.Template.Spec, serviceName)
 }

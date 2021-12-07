@@ -52,6 +52,9 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 				Gateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 	}
@@ -80,6 +83,10 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 		{
 			Service:        NewGatewayHTTPService(opt),
 			ServiceMonitor: NewGatewayServiceMonitor(opt),
+		},
+		{
+			Service:        NewIndexGatewayHTTPService(opt),
+			ServiceMonitor: NewIndexGatewayServiceMonitor(opt),
 		},
 	}
 

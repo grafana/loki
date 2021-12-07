@@ -308,12 +308,19 @@ type LokiTemplateSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Frontend pods"
 	QueryFrontend *LokiComponentSpec `json:"queryFrontend,omitempty"`
 
-	// Gateway defines the lokistack-gateway component spec.
+	// Gateway defines the lokistack gateway component spec.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Gateway pods"
 	Gateway *LokiComponentSpec `json:"gateway,omitempty"`
+
+	// IndexGateway defines the index gateway component spec.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Index Gateway pods"
+	IndexGateway *LokiComponentSpec `json:"indexGateway,omitempty"`
 }
 
 // ObjectStorageSecretSpec is a secret reference containing name only, no namespace.
@@ -416,7 +423,7 @@ type IngestionLimitSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Global Streams per  Tenant"
 	MaxGlobalStreamsPerTenant int32 `json:"maxGlobalStreamsPerTenant,omitempty"`
 
-	// MaxLineSize defines the aximum line size on ingestion path. Units in Bytes.
+	// MaxLineSize defines the maximum line size on ingestion path. Units in Bytes.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional

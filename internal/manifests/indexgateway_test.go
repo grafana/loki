@@ -8,15 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewQuerierDeployment(manifests.Options{
+func TestNewIndexGatewayStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
+	ss := manifests.NewIndexGatewayStatefulSet(manifests.Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
 		Stack: lokiv1beta1.LokiStackSpec{
 			StorageClassName: "standard",
 			Template: &lokiv1beta1.LokiTemplateSpec{
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},
@@ -29,20 +29,20 @@ func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 	require.Equal(t, annotations[expected], "deadbeef")
 }
 
-func TestNewQuerierDeployment_SelectorMatchesLabels(t *testing.T) {
-	// You must set the .spec.selector field of a Deployment to match the labels of
+func TestNewIndexGatewayStatefulSet_SelectorMatchesLabels(t *testing.T) {
+	// You must set the .spec.selector field of a StatefulSet to match the labels of
 	// its .spec.template.metadata.labels. Prior to Kubernetes 1.8, the
 	// .spec.selector field was defaulted when omitted. In 1.8 and later versions,
 	// failing to specify a matching Pod Selector will result in a validation error
-	// during Deployment creation.
+	// during StatefulSet creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	ss := manifests.NewQuerierDeployment(manifests.Options{
+	ss := manifests.NewIndexGatewayStatefulSet(manifests.Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1beta1.LokiStackSpec{
 			StorageClassName: "standard",
 			Template: &lokiv1beta1.LokiTemplateSpec{
-				Querier: &lokiv1beta1.LokiComponentSpec{
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
 			},

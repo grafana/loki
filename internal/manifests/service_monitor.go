@@ -19,6 +19,7 @@ func BuildServiceMonitors(opts Options) []client.Object {
 		NewQuerierServiceMonitor(opts),
 		NewCompactorServiceMonitor(opts),
 		NewQueryFrontendServiceMonitor(opts),
+		NewIndexGatewayServiceMonitor(opts),
 		NewGatewayServiceMonitor(opts),
 	}
 }
@@ -73,6 +74,17 @@ func NewQueryFrontendServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 
 	serviceMonitorName := serviceMonitorName(QueryFrontendName(opts.Name))
 	serviceName := serviceNameQueryFrontendHTTP(opts.Name)
+	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
+
+	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
+}
+
+// NewIndexGatewayServiceMonitor creates a k8s service monitor for the index-gateway component
+func NewIndexGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
+
+	serviceMonitorName := serviceMonitorName(IndexGatewayName(opts.Name))
+	serviceName := serviceNameIndexGatewayHTTP(opts.Name)
 	lokiEndpoint := serviceMonitorEndpoint(lokiHTTPPortName, serviceName, opts.Namespace, opts.Flags.EnableTLSServiceMonitorConfig)
 
 	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)

@@ -15,8 +15,10 @@ import (
 )
 
 const (
+	walVolumeName     = "wal"
 	configVolumeName  = "config"
 	storageVolumeName = "storage"
+	walDirectory      = "/tmp/wal"
 	dataDirectory     = "/tmp/loki"
 	secretDirectory   = "/etc/proxy/secrets"
 )

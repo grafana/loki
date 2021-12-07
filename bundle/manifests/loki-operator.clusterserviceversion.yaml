@@ -128,8 +128,8 @@ spec:
         path: limits.global.ingestion.maxLabelValueLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLineSize defines the aximum line size on ingestion path. Units
-          in Bytes.
+      - description: MaxLineSize defines the maximum line size on ingestion path.
+          Units in Bytes.
         displayName: Max Line Size
         path: limits.global.ingestion.maxLineSize
         x-descriptors:
@@ -191,8 +191,8 @@ spec:
         path: limits.tenants.ingestion.maxLabelValueLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLineSize defines the aximum line size on ingestion path. Units
-          in Bytes.
+      - description: MaxLineSize defines the maximum line size on ingestion path.
+          Units in Bytes.
         displayName: Max Line Size
         path: limits.tenants.ingestion.maxLineSize
         x-descriptors:
@@ -272,12 +272,20 @@ spec:
         path: template.distributor.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
-      - description: Gateway defines the lokistack-gateway component spec.
+      - description: Gateway defines the lokistack gateway component spec.
         displayName: Gateway pods
         path: template.gateway
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.gateway.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: IndexGateway defines the index gateway component spec.
+        displayName: Index Gateway pods
+        path: template.indexGateway
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.indexGateway.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
       - description: Ingester defines the ingester component spec.
@@ -589,7 +597,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.2.0-10
+                  value: quay.io/openshift-logging/loki:v2.4.1
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA

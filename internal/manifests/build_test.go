@@ -106,7 +106,7 @@ func TestBuildAll_WithFeatureFlags_EnableServiceMonitors(t *testing.T) {
 		},
 		{
 			desc:         "service monitor per component created",
-			MonitorCount: 6,
+			MonitorCount: 7,
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -191,6 +191,7 @@ func TestBuildAll_WithFeatureFlags_EnableCertificateSigningService(t *testing.T)
 				NewQuerierHTTPService(tst.BuildOptions),
 				NewQueryFrontendHTTPService(tst.BuildOptions),
 				NewCompactorHTTPService(tst.BuildOptions),
+				NewIndexGatewayHTTPService(tst.BuildOptions),
 				NewGatewayHTTPService(tst.BuildOptions),
 			}
 

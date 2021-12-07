@@ -38,6 +38,10 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 					Tolerations: tolerations,
 					Replicas:    1,
 				},
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Tolerations: tolerations,
+					Replicas:    1,
+				},
 			},
 		},
 		ObjectStorage: ObjectStorage{},
@@ -61,6 +65,9 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 		ObjectStorage: ObjectStorage{},
@@ -77,8 +84,8 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 	})
 
 	t.Run("querier", func(t *testing.T) {
-		assert.Equal(t, tolerations, NewQuerierStatefulSet(optsWithTolerations).Spec.Template.Spec.Tolerations)
-		assert.Empty(t, NewQuerierStatefulSet(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
+		assert.Equal(t, tolerations, NewQuerierDeployment(optsWithTolerations).Spec.Template.Spec.Tolerations)
+		assert.Empty(t, NewQuerierDeployment(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
 	})
 
 	t.Run("ingester", func(t *testing.T) {
@@ -89,6 +96,11 @@ func TestTolerationsAreSetForEachComponent(t *testing.T) {
 	t.Run("compactor", func(t *testing.T) {
 		assert.Equal(t, tolerations, NewCompactorStatefulSet(optsWithTolerations).Spec.Template.Spec.Tolerations)
 		assert.Empty(t, NewCompactorStatefulSet(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
+	})
+
+	t.Run("index_gateway", func(t *testing.T) {
+		assert.Equal(t, tolerations, NewIndexGatewayStatefulSet(optsWithTolerations).Spec.Template.Spec.Tolerations)
+		assert.Empty(t, NewIndexGatewayStatefulSet(optsWithoutTolerations).Spec.Template.Spec.Tolerations)
 	})
 }
 
@@ -117,6 +129,10 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 					NodeSelector: nodeSelectors,
 					Replicas:     1,
 				},
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					NodeSelector: nodeSelectors,
+					Replicas:     1,
+				},
 			},
 		},
 		ObjectStorage: ObjectStorage{},
@@ -140,6 +156,9 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 				QueryFrontend: &lokiv1beta1.LokiComponentSpec{
 					Replicas: 1,
 				},
+				IndexGateway: &lokiv1beta1.LokiComponentSpec{
+					Replicas: 1,
+				},
 			},
 		},
 		ObjectStorage: ObjectStorage{},
@@ -156,8 +175,8 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	})
 
 	t.Run("querier", func(t *testing.T) {
-		assert.Equal(t, nodeSelectors, NewQuerierStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
-		assert.Empty(t, NewQuerierStatefulSet(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Equal(t, nodeSelectors, NewQuerierDeployment(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewQuerierDeployment(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
 	})
 
 	t.Run("ingester", func(t *testing.T) {
@@ -168,5 +187,10 @@ func TestNodeSelectorsAreSetForEachComponent(t *testing.T) {
 	t.Run("compactor", func(t *testing.T) {
 		assert.Equal(t, nodeSelectors, NewCompactorStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
 		assert.Empty(t, NewCompactorStatefulSet(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
+	})
+
+	t.Run("index_gateway", func(t *testing.T) {
+		assert.Equal(t, nodeSelectors, NewIndexGatewayStatefulSet(optsWithNodeSelectors).Spec.Template.Spec.NodeSelector)
+		assert.Empty(t, NewIndexGatewayStatefulSet(optsWithoutNodeSelectors).Spec.Template.Spec.NodeSelector)
 	})
 }

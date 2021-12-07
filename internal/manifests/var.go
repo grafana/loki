@@ -54,6 +54,8 @@ const (
 	LabelQuerierComponent string = "querier"
 	// LabelQueryFrontendComponent is the label value for the query frontend component
 	LabelQueryFrontendComponent string = "query-frontend"
+	// LabelIndexGatewayComponent is the label value for the lokiStack-index-gateway component
+	LabelIndexGatewayComponent string = "index-gateway"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
 )
@@ -114,7 +116,7 @@ func IngesterName(stackName string) string {
 	return fmt.Sprintf("loki-ingester-%s", stackName)
 }
 
-// QuerierName is the name of the querier statefulset
+// QuerierName is the name of the querier deployment
 func QuerierName(stackName string) string {
 	return fmt.Sprintf("loki-querier-%s", stackName)
 }
@@ -122,6 +124,11 @@ func QuerierName(stackName string) string {
 // QueryFrontendName is the name of the query-frontend statefulset
 func QueryFrontendName(stackName string) string {
 	return fmt.Sprintf("loki-query-frontend-%s", stackName)
+}
+
+// IndexGatewayName is the name of the index-gateway statefulset
+func IndexGatewayName(stackName string) string {
+	return fmt.Sprintf("loki-index-gateway-%s", stackName)
 }
 
 // GatewayName is the name of the lokiStack-gateway statefulset
@@ -167,6 +174,14 @@ func serviceNameQueryFrontendGRPC(stackName string) string {
 
 func serviceNameQueryFrontendHTTP(stackName string) string {
 	return fmt.Sprintf("loki-query-frontend-http-%s", stackName)
+}
+
+func serviceNameIndexGatewayHTTP(stackName string) string {
+	return fmt.Sprintf("loki-index-gateway-http-%s", stackName)
+}
+
+func serviceNameIndexGatewayGRPC(stackName string) string {
+	return fmt.Sprintf("loki-index-gateway-grpc-%s", stackName)
 }
 
 func serviceNameGatewayHTTP(stackName string) string {
