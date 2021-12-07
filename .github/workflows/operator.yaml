@@ -1,9 +1,13 @@
-name: go
+name: operator build
 
 on:
   push:
+    paths:
+      - 'operator/**'
     branches: [ master ]
   pull_request:
+    paths:
+      - 'operator/**'
     branches: [ master ]
 
 jobs:
@@ -28,6 +32,7 @@ jobs:
         skip-go-installation: true
         only-new-issues: true
         args: --timeout=2m
+        working-directory: ./operator
 
   build-manager:
     name: Build Manager
@@ -46,6 +51,7 @@ jobs:
       id: go
     - uses: actions/checkout@v2
     - name: Build Manager
+      working-directory: ./operator
       run: |-
         make manager && git diff --exit-code
 
@@ -66,6 +72,7 @@ jobs:
       id: go
     - uses: actions/checkout@v2
     - name: Build Broker
+      working-directory: ./operator
       run: |-
         make bin/loki-broker && git diff --exit-code
 
@@ -84,9 +91,11 @@ jobs:
       id: go
     - uses: actions/checkout@v2
     - name: Run tests
+      working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
+      working-directory: ./operator
       with:
         path-to-profile: profile.cov
         flag-name: Go-${{ matrix.go }}

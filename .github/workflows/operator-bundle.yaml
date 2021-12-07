@@ -1,9 +1,13 @@
-name: olm bundle
+name: operator bundle
 
 on:
   push:
+    paths:
+      - 'operator/**'
     branches: [ master ]
   pull_request:
+    paths:
+      - 'operator/**'
     branches: [ master ]
 
 jobs:
@@ -25,3 +29,4 @@ jobs:
       run: sudo apt-get install make
     - name: make bundle
       run: make bundle
+      working-directory: ./operator

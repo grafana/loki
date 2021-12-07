@@ -1,6 +1,9 @@
-name: quay
+name: operator images
+
 on:
   push:
+    paths:
+      - 'operator/**'
     branches:
       - master
 
@@ -46,7 +49,7 @@ jobs:
      - name: Build and publish image on quay.io
        uses: docker/build-push-action@v2
        with:
-         context: .
+         context: ./operator
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
 
@@ -84,7 +87,7 @@ jobs:
      - name: Build and publish image on quay.io
        uses: docker/build-push-action@v2
        with:
-         context: .
+         context: ./operator
          file: bundle.Dockerfile
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
@@ -123,7 +126,7 @@ jobs:
      - name: Build and publish image on quay.io
        uses: docker/build-push-action@v2
        with:
-         context: .
+         context: ./operator
          file: calculator.Dockerfile
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
