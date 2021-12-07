@@ -18,13 +18,13 @@ set_credentials_from_aws() {
 }
 
 create_secret() {
-  kubectl -n $NAMESPACE delete secret test ||:
-  kubectl -n $NAMESPACE create secret generic test \
-    --from-literal=endpoint=$(echo -n "$ENDPOINT") \
-    --from-literal=region=$(echo -n "$REGION") \
-    --from-literal=bucketnames=$(echo -n "$LOKI_BUCKET_NAME") \
-    --from-literal=access_key_id=$(echo -n "$ACCESS_KEY_ID") \
-    --from-literal=access_key_secret=$(echo -n "$SECRET_ACCESS_KEY")
+  kubectl -n "${NAMESPACE}" delete secret test ||:
+  kubectl -n "${NAMESPACE}" create secret generic test \
+    --from-literal=endpoint="$(echo -n "${ENDPOINT}")" \
+    --from-literal=region="$(echo -n "${REGION}")" \
+    --from-literal=bucketnames="$(echo -n "${LOKI_BUCKET_NAME}")" \
+    --from-literal=access_key_id="$(echo -n "${ACCESS_KEY_ID}")" \
+    --from-literal=access_key_secret="$(echo -n "${SECRET_ACCESS_KEY}")"
 }
 
 main() {
