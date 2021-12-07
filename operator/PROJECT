@@ -1,0 +1,19 @@
+domain: openshift.io
+layout:
+- go.kubebuilder.io/v3
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
+projectName: loki-operator
+repo: github.com/ViaQ/loki-operator
+resources:
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: openshift.io
+  group: loki
+  kind: LokiStack
+  path: github.com/ViaQ/loki-operator/api/v1beta1
+  version: v1beta1
+version: "3"

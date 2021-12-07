@@ -1,0 +1,93 @@
+name: go
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Lint
+      uses: golangci/golangci-lint-action@v2
+      with:
+        version: v1.38
+        skip-go-installation: true
+        only-new-issues: true
+        args: --timeout=2m
+
+  build-manager:
+    name: Build Manager
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Install make
+      run: sudo apt-get install make
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Build Manager
+      run: |-
+        make manager && git diff --exit-code
+
+  build-broker:
+    name: Build Broker
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Install make
+      run: sudo apt-get install make
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Build Broker
+      run: |-
+        make bin/loki-broker && git diff --exit-code
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Run tests
+      run: go test -coverprofile=profile.cov ./...
+    - name: Send coverage
+      uses: shogo82148/actions-goveralls@v1
+      with:
+        path-to-profile: profile.cov
+        flag-name: Go-${{ matrix.go }}
+        shallow: true

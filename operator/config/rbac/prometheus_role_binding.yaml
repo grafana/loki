@@ -1,0 +1,16 @@
+# Grant cluster-monitoring access to openshift-operators-redhat metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus-k8s
+  namespace: openshift-monitoring

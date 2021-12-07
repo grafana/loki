@@ -1,0 +1,81 @@
+tenants:
+{{- if $l := . -}}
+{{- if eq $l.Stack.Tenants.Mode "static" -}}
+{{- range $spec := $l.Stack.Tenants.Authentication }}
+- name: {{ $spec.TenantName }}
+  id: {{ $spec.TenantID }}
+  oidc:
+    {{- range $secret := $l.TenantSecrets }}
+    {{- if eq $secret.TenantName $spec.TenantName -}}
+    {{ if $secret.ClientID }}
+    clientID: {{ $secret.ClientID }}
+    {{- end -}}
+    {{ if $secret.ClientSecret }}
+    clientSecret: {{ $secret.ClientSecret }}
+    {{- end -}}
+    {{ if $secret.IssuerCAPath }}
+    issuerCAPath: {{ $secret.IssuerCAPath }}
+    {{- end -}}
+    {{- end -}}
+    {{- end }}
+    issuerURL: {{ $spec.OIDC.IssuerURL }}
+    redirectURL: {{ $spec.OIDC.RedirectURL }}
+    {{ if $spec.OIDC.UsernameClaim }}
+    usernameClaim: {{ $spec.OIDC.UsernameClaim }}
+    {{- end -}}
+    {{- if $spec.OIDC.GroupClaim }}
+    groupClaim: {{ $spec.OIDC.GroupClaim }}
+    {{- end }}
+  opa:
+    query: data.lokistack.allow
+    paths:
+    - /etc/lokistack-gateway/rbac.yaml
+    - /etc/lokistack-gateway/lokistack-gateway.rego
+{{- end -}}
+{{- else if eq $l.Stack.Tenants.Mode "dynamic" -}}
+{{- if $tenant := $l.Stack.Tenants -}}
+{{- range $spec := $tenant.Authentication }}
+- name: {{ $spec.TenantName }}
+  id: {{ $spec.TenantID }}
+  oidc:
+    {{- range $secret := $l.TenantSecrets }}
+    {{- if eq $secret.TenantName $spec.TenantName -}}
+    {{ if $secret.ClientID }}
+    clientID: {{ $secret.ClientID }}
+    {{- end -}}
+    {{ if $secret.ClientSecret }}
+    clientSecret: {{ $secret.ClientSecret }}
+    {{- end -}}
+    {{ if $secret.IssuerCAPath }}
+    issuerCAPath: {{ $secret.IssuerCAPath }}
+    {{- end -}}
+    {{- end -}}
+    {{- end }}
+    issuerURL: {{ $spec.OIDC.IssuerURL }}
+    redirectURL: {{ $spec.OIDC.RedirectURL }}
+    {{- if $spec.OIDC.UsernameClaim }}
+    usernameClaim: {{ $spec.OIDC.UsernameClaim }}
+    {{- end -}}
+    {{- if $spec.OIDC.GroupClaim }}
+    groupClaim: {{ $spec.OIDC.GroupClaim }}
+    {{- end }}
+  opa:
+    url: {{ $tenant.Authorization.OPA.URL }}
+{{- end -}}
+{{- end -}}
+{{- else if eq $l.Stack.Tenants.Mode "openshift-logging" -}}
+{{- if $tenant := $l.OpenShiftOptions.Authentication -}}
+{{- range $spec := $l.OpenShiftOptions.Authentication }}
+- name: {{ $spec.TenantName }}
+  id: {{ $spec.TenantID }}
+  openshift:
+    serviceAccount: {{ $spec.ServiceAccount }}
+    redirectURL: {{ $spec.RedirectURL }}
+    cookieSecret: {{ $spec.CookieSecret }}
+  opa:
+    url: {{ $l.OpenShiftOptions.Authorization.OPAUrl }}
+    withAccessToken: true
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

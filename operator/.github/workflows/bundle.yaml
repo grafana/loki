@@ -1,0 +1,27 @@
+name: olm bundle
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.16']
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v2
+    - name: Install make
+      run: sudo apt-get install make
+    - name: make bundle
+      run: make bundle
