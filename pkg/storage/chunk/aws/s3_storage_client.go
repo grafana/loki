@@ -382,7 +382,7 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 }
 
 // GetObject returns a reader for the specified object key from the configured S3 bucket.
-func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *s3.GetObjectOutput
 
 	// Map the key into a bucket
@@ -392,7 +392,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	err := ctx.Err()
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return nil, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
+			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
@@ -402,12 +402,16 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			})
 			return requestErr
 		})
+		var size int64
+		if resp.ContentLength != nil {
+			size = *resp.ContentLength
+		}
 		if err == nil {
-			return resp.Body, nil
+			return resp.Body, size, nil
 		}
 		retries.Wait()
 	}
-	return nil, errors.Wrap(err, "failed to get s3 object")
+	return nil, 0, errors.Wrap(err, "failed to get s3 object")
 }
 
 // PutObject into the store

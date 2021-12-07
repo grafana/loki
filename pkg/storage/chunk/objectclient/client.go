@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"io/ioutil"
 
 	"github.com/pkg/errors"
 
@@ -91,19 +90,22 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 		key = o.keyEncoder(key)
 	}
 
-	readCloser, err := o.store.GetObject(ctx, key)
+	readCloser, size, err := o.store.GetObject(ctx, key)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
 	defer readCloser.Close()
 
-	buf, err := ioutil.ReadAll(readCloser)
+	// adds bytes.MinRead to avoid allocations when the size is known.
+	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
+	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
+	_, err = buf.ReadFrom(readCloser)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 
-	if err := c.Decode(decodeContext, buf); err != nil {
+	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 	return c, nil

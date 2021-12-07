@@ -170,35 +170,35 @@ func NewBlobStorage(cfg *BlobStorageConfig, hedgingCfg hedging.Config) (*BlobSto
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
 
-func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}
 	if b.cfg.RequestTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, b.cfg.RequestTimeout)
 	}
 
-	rc, err := b.getObject(ctx, objectKey)
+	rc, size, err := b.getObject(ctx, objectKey)
 	if err != nil {
 		// cancel the context if there is an error.
 		cancel()
-		return nil, err
+		return nil, 0, err
 	}
 	// else return a wrapped ReadCloser which cancels the context while closing the reader.
-	return chunk_util.NewReadCloserWithContextCancelFunc(rc, cancel), nil
+	return chunk_util.NewReadCloserWithContextCancelFunc(rc, cancel), size, nil
 }
 
-func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
+func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
 	blockBlobURL, err := b.getBlobURL(objectKey, true)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Request access to the blob
 	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, noClientKey)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), nil
+	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), downloadResponse.ContentLength(), nil
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {

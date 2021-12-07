@@ -128,14 +128,14 @@ func (s *SwiftObjectClient) Stop() {
 }
 
 // GetObject returns a reader for the specified object key from the configured swift container.
-func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var buf bytes.Buffer
 	_, err := s.hedgingConn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return ioutil.NopCloser(&buf), nil
+	return ioutil.NopCloser(&buf), int64(buf.Len()), nil
 }
 
 // PutObject puts the specified bytes into the configured Swift container at the provided key

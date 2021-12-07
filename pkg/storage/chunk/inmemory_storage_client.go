@@ -399,20 +399,20 @@ func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) e
 	return m.DeleteObject(ctx, chunkID)
 }
 
-func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	if m.mode == MockStorageModeWriteOnly {
-		return nil, errPermissionDenied
+		return nil, 0, errPermissionDenied
 	}
 
 	buf, ok := m.objects[objectKey]
 	if !ok {
-		return nil, errStorageObjectNotFound
+		return nil, 0, errStorageObjectNotFound
 	}
 
-	return ioutil.NopCloser(bytes.NewReader(buf)), nil
+	return ioutil.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
 }
 
 func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
@@ -489,7 +489,7 @@ func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]Sto
 		prefixes[commonPrefix] = struct{}{}
 	}
 
-	var commonPrefixes = []StorageCommonPrefix(nil)
+	commonPrefixes := []StorageCommonPrefix(nil)
 	for p := range prefixes {
 		commonPrefixes = append(commonPrefixes, StorageCommonPrefix(p))
 	}
