@@ -60,7 +60,8 @@ type Chunk struct {
 	Data     prom_chunk.Chunk    `json:"-"`
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
-	encoded []byte
+	encoded     []byte
+	externalKey string
 }
 
 // NewChunk creates a new chunk
@@ -202,6 +203,13 @@ func unsafeGetString(buf []byte) string {
 // ExternalKey returns the key you can use to fetch this chunk from external
 // storage. For newer chunks, this key includes a checksum.
 func (c *Chunk) ExternalKey() string {
+	if c.externalKey == "" {
+		c.externalKey = c.buildExternalKey()
+	}
+	return c.externalKey
+}
+
+func (c *Chunk) buildExternalKey() string {
 	// Some chunks have a checksum stored in dynamodb, some do not.  We must
 	// generate keys appropriately.
 	if c.ChecksumSet {
