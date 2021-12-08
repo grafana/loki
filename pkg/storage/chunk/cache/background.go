@@ -119,7 +119,10 @@ func (c *backgroundCache) writeBackLoop() {
 				return
 			}
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
-			c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+			if err != nil {
+				continue
+			}
 
 		case <-c.quit:
 			return

@@ -28,7 +28,8 @@ func TestRedisCache(t *testing.T) {
 
 	ctx := context.Background()
 
-	c.Store(ctx, keys, bufs)
+	err = c.Store(ctx, keys, bufs)
+	require.NoError(t, err)
 
 	// test hits
 	found, data, missed, _ := c.Fetch(ctx, keys)

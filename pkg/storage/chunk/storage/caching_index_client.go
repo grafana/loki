@@ -199,8 +199,12 @@ func (s *cachingIndexClient) queryPages(ctx context.Context, queries []chunk.Ind
 				callback(query, batch)
 			}
 		}
-		s.cacheStore(ctx, keys, batches)
-		return cardinalityErr
+
+		err := s.cacheStore(ctx, keys, batches)
+		if cardinalityErr != nil {
+			return cardinalityErr
+		}
+		return err
 	}
 }
 

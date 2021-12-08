@@ -84,7 +84,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		bufs     [][]byte
 		missing  []string
 		fetchErr error
-		method         = i.name + ".fetch"
+		method   = i.name + ".fetch"
 	)
 
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
