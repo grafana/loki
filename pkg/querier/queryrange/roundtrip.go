@@ -1,12 +1,14 @@
 package queryrange
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"net/http"
 	"strings"
 	"time"
 
+	cortexcache "github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/log"
@@ -404,7 +406,7 @@ func NewMetricTripperware(
 		if err != nil {
 			return nil, nil, err
 		}
-		c = cache
+		c = transform(cache)
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("results_cache", instrumentMetrics),
@@ -448,6 +450,28 @@ func NewMetricTripperware(
 		}
 		return next
 	}, c, nil
+}
+
+func transform(c cortexcache.Cache) cache.Cache {
+	return &roundtripCache{
+		cache: c,
+	}
+}
+
+type roundtripCache struct {
+	cache cortexcache.Cache
+}
+
+func (r *roundtripCache) Store(ctx context.Context, key []string, buf [][]byte) error {
+	r.cache.Store(ctx, key, buf)
+	return nil
+}
+func (r *roundtripCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+	found, bufs, missing = r.cache.Fetch(ctx, keys)
+	return
+}
+func (r *roundtripCache) Stop() {
+	r.cache.Stop()
 }
 
 // NewInstantMetricTripperware creates a new frontend tripperware responsible for handling metric queries
