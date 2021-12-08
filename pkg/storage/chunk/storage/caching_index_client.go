@@ -270,7 +270,7 @@ func isChunksQuery(q chunk.IndexQuery) bool {
 	return len(q.RangeValueStart) != 0
 }
 
-func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {
+func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) error {
 	cachePuts.Add(float64(len(keys)))
 
 	// We're doing the hashing to handle unicode and key len properly.
@@ -283,12 +283,12 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 		if err != nil {
 			level.Warn(s.logger).Log("msg", "error marshalling ReadBatch", "err", err)
 			cacheEncodeErrs.Inc()
-			return
+			return err
 		}
 		bufs = append(bufs, out)
 	}
 
-	s.cache.Store(ctx, hashed, bufs)
+	return s.cache.Store(ctx, hashed, bufs)
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
