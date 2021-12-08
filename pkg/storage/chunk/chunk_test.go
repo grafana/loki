@@ -410,91 +410,96 @@ func TestChunk_Slice(t *testing.T) {
 	}
 }
 
-func Benchmark_ParseOldExternalKey(b *testing.B) {
+func TestChunkKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		chunk     Chunk
+		schemaCfg SchemaConfig
+		err       error
+	}{
+		{
+			name: "Legacy key (pre-checksum)",
+			chunk: Chunk{
+				Fingerprint: 100,
+				UserID:      "fake",
+				From:        model.TimeFromUnix(1000),
+				Through:     model.TimeFromUnix(5000),
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   DayTime{Time: 0},
+						Schema: "v9",
+					},
+				},
+			},
+		},
+		{
+			name: "New key (post-checksum)",
+			chunk: Chunk{
+				Fingerprint: 100,
+				UserID:      "fake",
+				From:        model.TimeFromUnix(1000),
+				Through:     model.TimeFromUnix(5000),
+				ChecksumSet: true,
+				Checksum:    12345,
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+		{
+			name: "Newer key (post-v12)",
+			chunk: Chunk{
+				Fingerprint: 100,
+				UserID:      "fake",
+				From:        model.TimeFromUnix(1000),
+				Through:     model.TimeFromUnix(5000),
+				ChecksumSet: true,
+				Checksum:    12345,
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:                 DayTime{Time: 0},
+						Schema:               "v12",
+						RowShards:            16,
+						ChunkPathShardFactor: 2,
+						ChunkPathPeriod:      1 * time.Minute,
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := tc.schemaCfg.ExternalKey(tc.chunk)
+			newChunk, err := ParseExternalKey("fake", key)
+			require.Nil(t, err)
+			require.Equal(t, tc.chunk, newChunk)
+			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk))
+		})
+	}
+}
+
+func BenchmarkParseNewerExternalKey(b *testing.B) {
+	benchmarkParseExternalKey(b, "fake/10001d0c2b1/1/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
+}
+func BenchmarkParseNewExternalKey(b *testing.B) {
+	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+}
+func BenchmarkParseLegacyExternalKey(b *testing.B) {
+	benchmarkParseExternalKey(b, "57f628c7f6d57aad:162c699f000:162c69a07eb")
+}
+
+func benchmarkParseExternalKey(b *testing.B, key string) {
 	for i := 0; i < b.N; i++ {
-		_, err := ParseExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
-		require.NoError(b, err)
-	}
-}
-
-func TestNewerChunkKey(t *testing.T) {
-	c := Chunk{
-		Fingerprint: 100,
-		UserID:      "fake",
-		From:        model.TimeFromUnix(1000),
-		Through:     model.TimeFromUnix(5000),
-		ChecksumSet: true,
-		Checksum:    12345,
-	}
-	schemaCfg := SchemaConfig{
-		Configs: []PeriodConfig{
-			{
-				From:                 DayTime{Time: 0},
-				Schema:               "v12",
-				RowShards:            16,
-				ChunkPathShardFactor: 2,
-				ChunkPathPeriod:      1 * time.Minute,
-			},
-		},
-	}
-	key := schemaCfg.ExternalKey(c)
-	newChunk, err := ParseExternalKey("fake", key)
-	require.Nil(t, err)
-	require.Equal(t, c, newChunk)
-	require.Equal(t, key, schemaCfg.ExternalKey(newChunk))
-}
-
-func TestNewChunkKey(t *testing.T) {
-	c := Chunk{
-		Fingerprint: 100,
-		UserID:      "fake",
-		From:        model.TimeFromUnix(1000),
-		Through:     model.TimeFromUnix(5000),
-		ChecksumSet: true,
-		Checksum:    12345,
-	}
-	schemaCfg := SchemaConfig{
-		Configs: []PeriodConfig{
-			{
-				From:      DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
-		},
-	}
-	key := schemaCfg.ExternalKey(c)
-	newChunk, err := ParseExternalKey("fake", key)
-	require.Nil(t, err)
-	require.Equal(t, c, newChunk)
-	require.Equal(t, key, schemaCfg.ExternalKey(newChunk))
-}
-
-// TODO(jordanrushing): Something weird here; we are including <userid>/ in the legacy key and likely shouldn't be
-func TestLegacyChunkKey(t *testing.T) {
-	c := Chunk{
-		Fingerprint: 100,
-		UserID:      "fake",
-		From:        model.TimeFromUnix(1000),
-		Through:     model.TimeFromUnix(5000),
-	}
-	schemaCfg := SchemaConfig{
-		Configs: []PeriodConfig{
-			{
-				From:   DayTime{Time: 0},
-				Schema: "v9",
-			},
-		},
-	}
-	key := schemaCfg.ExternalKey(c)
-	newChunk, err := ParseExternalKey("fake", key)
-	require.Nil(t, err)
-	require.Equal(t, c, newChunk)
-	require.Equal(t, key, schemaCfg.ExternalKey(newChunk))
-}
-
-func Benchmark_ParseNewExternalKey(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		_, err := ParseExternalKey("fake", "fake/10001d0c2b1/1/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
+		_, err := ParseExternalKey("fake", key)
 		require.NoError(b, err)
 	}
 }

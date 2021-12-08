@@ -515,7 +515,7 @@ func (cfg SchemaConfig) ExternalKey(chunk Chunk) string {
 func (cfg SchemaConfig) legacyExternalKey(chunk Chunk) string {
 	// This is the inverse of chunk.parseLegacyExternalKey, with "<user id>/" prepended.
 	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
-	return fmt.Sprintf("%s/%d:%d:%d", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
+	return fmt.Sprintf("%d:%d:%d", (chunk.Fingerprint), int64(chunk.From), int64(chunk.Through))
 }
 
 // post-checksum
