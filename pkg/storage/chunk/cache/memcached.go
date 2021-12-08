@@ -206,7 +206,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 // Store stores the key in the cache.
 func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) error {
-	var err error = nil
+	var err error
 	for i := range keys {
 		cacheErr := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 			item := memcache.Item{

@@ -20,7 +20,7 @@ func IsEmptyTieredCache(cache Cache) bool {
 }
 
 func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte) error {
-	var err error = nil
+	var err error
 	for _, c := range []Cache(t) {
 		cacheErr := c.Store(ctx, keys, bufs)
 		if cacheErr != nil {
@@ -34,7 +34,7 @@ func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 	found := make(map[string][]byte, len(keys))
 	missing := keys
 	previousCaches := make([]Cache, 0, len(t))
-	var err error = nil
+	var err error
 
 	for _, c := range []Cache(t) {
 		var (

@@ -192,7 +192,10 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 		bufs = append(bufs, encoded)
 	}
 
-	c.cache.Store(ctx, keys, bufs)
+	err := c.cache.Store(ctx, keys, bufs)
+	if err != nil {
+		level.Warn(util_log.Logger).Log("msg", "writeBackCache cache store fail", "err", err)
+	}
 	return nil
 }
 

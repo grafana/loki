@@ -313,7 +313,7 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
 	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
 	// tree, to the caches only return found & missed.
-	foundHashes, bufs, _ := s.cache.Fetch(ctx, hashes)
+	foundHashes, bufs, _, _ := s.cache.Fetch(ctx, hashes)
 
 	// Reverse the hash, unmarshal the index entries, check we got what we expected
 	// and that its still valid.

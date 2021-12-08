@@ -73,7 +73,8 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 		chunks = append(chunks, cleanChunk)
 	}
 
-	cache.Store(context.Background(), keys, bufs)
+	err := cache.Store(context.Background(), keys, bufs)
+	require.NoError(t, err)
 	return keys, chunks
 }
 

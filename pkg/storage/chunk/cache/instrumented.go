@@ -83,7 +83,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		found    []string
 		bufs     [][]byte
 		missing  []string
-		fetchErr error = nil
+		fetchErr error
 		method         = i.name + ".fetch"
 	)
 

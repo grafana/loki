@@ -52,7 +52,8 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 		keys = append(keys, fmt.Sprint(i))
 		bufs = append(bufs, []byte(fmt.Sprint(i)))
 	}
-	memcache.Store(ctx, keys, bufs)
+	err := memcache.Store(ctx, keys, bufs)
+	require.NoError(t, err)
 
 	found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
 	for i := 0; i < numKeys; i++ {
@@ -126,7 +127,8 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 		keys = append(keys, fmt.Sprint(i))
 		bufs = append(bufs, []byte(fmt.Sprint(i)))
 	}
-	memcache.Store(ctx, keys, bufs)
+	err := memcache.Store(ctx, keys, bufs)
+	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
 		found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)

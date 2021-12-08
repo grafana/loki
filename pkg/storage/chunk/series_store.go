@@ -473,7 +473,10 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	}
 
 	bufs := make([][]byte, len(keysToCache))
-	c.writeDedupeCache.Store(ctx, keysToCache, bufs)
+	err = c.writeDedupeCache.Store(ctx, keysToCache, bufs)
+	if err != nil {
+		level.Warn(log).Log("msg", "could not Store store in write dedupe cache", "err", err)
+	}
 	return nil
 }
 

@@ -101,7 +101,7 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 			if sp != nil {
 				sp.LogFields(otlog.Int("dropped", num))
 			}
-			return nil// queue is full; give up
+			return nil // queue is full; give up
 		}
 		keys = keys[num:]
 		bufs = bufs[num:]

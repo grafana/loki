@@ -51,7 +51,8 @@ func TestFifoCacheEviction(t *testing.T) {
 			keys = append(keys, key)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		err := c.Store(ctx, keys, values)
+		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
@@ -93,7 +94,8 @@ func TestFifoCacheEviction(t *testing.T) {
 			keys = append(keys, key)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		err = c.Store(ctx, keys, values)
+		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
@@ -139,7 +141,8 @@ func TestFifoCacheEviction(t *testing.T) {
 			copy(value, vstr)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		err = c.Store(ctx, keys, values)
+		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
 		for i := cnt; i < cnt+evicted; i++ {
