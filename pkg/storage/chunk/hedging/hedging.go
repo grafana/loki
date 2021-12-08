@@ -104,7 +104,7 @@ func (cfg *Config) RoundTripperWithRegisterer(next http.RoundTripper, reg promet
 		cfg.At,
 		cfg.UpTo,
 		newLimitedHedgingRoundTripper(cfg.MaxPerSecond, next),
-	), nil
+	)
 }
 
 // RoundTripper returns a hedged roundtripper.
