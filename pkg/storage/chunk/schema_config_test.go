@@ -770,3 +770,45 @@ func TestSchemaForTime(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, schemaCfg.Configs[0], second)
 }
+
+func TestVersionAsInt(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		schemaCfg SchemaConfig
+		expected  int
+	}{
+		{
+			name: "v9",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   DayTime{Time: 0},
+						Schema: "v9",
+					},
+				},
+			},
+			expected: int(9),
+		},
+		{
+			name: "v12",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:                 DayTime{Time: 0},
+						Schema:               "v12",
+						RowShards:            16,
+						ChunkPathShardFactor: 2,
+						ChunkPathPeriod:      1 * time.Minute,
+					},
+				},
+			},
+			expected: int(12),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			version, err := tc.schemaCfg.Configs[0].VersionAsInt()
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, version)
+		})
+	}
+}

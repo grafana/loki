@@ -415,7 +415,6 @@ func TestChunkKeys(t *testing.T) {
 		name      string
 		chunk     Chunk
 		schemaCfg SchemaConfig
-		err       error
 	}{
 		{
 			name: "Legacy key (pre-checksum)",
@@ -480,7 +479,7 @@ func TestChunkKeys(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			key := tc.schemaCfg.ExternalKey(tc.chunk)
 			newChunk, err := ParseExternalKey("fake", key)
-			require.Nil(t, err)
+			require.NoError(t, err)
 			require.Equal(t, tc.chunk, newChunk)
 			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk))
 		})
