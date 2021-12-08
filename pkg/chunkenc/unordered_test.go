@@ -1,7 +1,6 @@
 package chunkenc
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -38,7 +37,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 	var forwardCt int
 	var forwardStop int64
 	err := hb.forEntries(
-		context.Background(),
+		noopStats,
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
@@ -59,7 +58,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 	var backwardCt int
 	var backwardStop int64
 	err = hb.forEntries(
-		context.Background(),
+		noopStats,
 		logproto.BACKWARD,
 		0,
 		math.MaxInt64,
@@ -148,7 +147,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			}
 
 			itr := hb.Iterator(
-				context.Background(),
+				noopStats,
 				tc.dir,
 				0,
 				math.MaxInt64,
@@ -210,7 +209,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			}
 
 			itr := hb.Iterator(
-				context.Background(),
+				noopStats,
 				tc.dir,
 				tc.mint,
 				tc.maxt,
@@ -268,7 +267,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	// unordered, unordered
 
 	// current default block size of 256kb with 75b avg log lines =~ 5.2k lines/block
-	var nWrites = (256 << 10) / 50
+	nWrites := (256 << 10) / 50
 
 	headBlockFn := func() func(int64, string) {
 		hb := &headBlock{}
@@ -352,7 +351,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	require.Equal(t, false, c.head.IsEmpty())
 
 	forward, err := c.Iterator(
-		context.Background(),
+		noopStats,
 		time.Unix(0, 0),
 		time.Unix(100, 0),
 		logproto.FORWARD,
@@ -361,7 +360,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	require.Nil(t, err)
 
 	backward, err := c.Iterator(
-		context.Background(),
+		noopStats,
 		time.Unix(0, 0),
 		time.Unix(100, 0),
 		logproto.BACKWARD,
@@ -370,7 +369,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	require.Nil(t, err)
 
 	smpl := c.SampleIterator(
-		context.Background(),
+		noopStats,
 		time.Unix(0, 0),
 		time.Unix(100, 0),
 		countExtractor,
@@ -419,7 +418,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
-					iterator, err := tc.c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+					iterator, err := tc.c.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 					if err != nil {
 						panic(err)
 					}
@@ -438,7 +437,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
-					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					iterator := tc.c.SampleIterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 					for iterator.Next() {
 						_ = iterator.Sample()
 					}
@@ -449,7 +448,6 @@ func BenchmarkUnorderedRead(b *testing.B) {
 			})
 		}
 	})
-
 }
 
 func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
@@ -458,7 +456,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct := 0
 	var i int64
-	iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+	iterator, err := c.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 	if err != nil {
 		panic(err)
 	}
@@ -475,7 +473,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct = 0
 	i = 0
-	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+	smpl := c.SampleIterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 	for smpl.Next() {
 		next := smpl.Sample().Timestamp
 		require.GreaterOrEqual(t, next, i)
@@ -563,7 +561,6 @@ func TestReorder(t *testing.T) {
 
 			require.Equal(t, exp, b)
 		})
-
 	}
 }
 
@@ -587,7 +584,7 @@ func TestReorderAcrossBlocks(t *testing.T) {
 	from, to := c.Bounds()
 	require.Nil(t, c.Close())
 
-	itr, err := c.Iterator(context.Background(), from, to.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+	itr, err := c.Iterator(noopStats, from, to.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
 	require.Nil(t, err)
 
 	exp := []entry{

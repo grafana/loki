@@ -2,11 +2,11 @@ package chunkenc
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 var testEncoding = []Encoding{
@@ -132,7 +131,7 @@ func TestBlock(t *testing.T) {
 				}
 			}
 
-			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+			it, err := chk.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 			require.NoError(t, err)
 
 			idx := 0
@@ -147,7 +146,7 @@ func TestBlock(t *testing.T) {
 			require.NoError(t, it.Close())
 			require.Equal(t, len(cases), idx)
 
-			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+			sampleIt := chk.SampleIterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 			idx = 0
 			for sampleIt.Next() {
 				s := sampleIt.Sample()
@@ -162,7 +161,7 @@ func TestBlock(t *testing.T) {
 			require.Equal(t, len(cases), idx)
 
 			t.Run("bounded-iteration", func(t *testing.T) {
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
+				it, err := chk.Iterator(noopStats, time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 
 				idx := 2
@@ -197,7 +196,7 @@ func TestReadFormatV1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	it, err := r.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+	it, err := r.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +228,7 @@ func TestRoundtripV2(t *testing.T) {
 
 					assertLines := func(c *MemChunk) {
 						require.Equal(t, enc, c.Encoding())
-						it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+						it, err := c.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -318,7 +317,7 @@ func TestSerialization(t *testing.T) {
 				bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
 				require.NoError(t, err)
 
-				it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+				it, err := bc.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 				for i := 0; i < numSamples; i++ {
 					require.True(t, it.Next())
@@ -329,7 +328,7 @@ func TestSerialization(t *testing.T) {
 				}
 				require.NoError(t, it.Error())
 
-				sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+				sampleIt := bc.SampleIterator(noopStats, time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				for i := 0; i < numSamples; i++ {
 					require.True(t, sampleIt.Next(), i)
 
@@ -376,7 +375,7 @@ func TestChunkFilling(t *testing.T) {
 
 				require.Equal(t, int64(lines), i)
 
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, noopStreamPipeline)
+				it, err := chk.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 				i = 0
 				for it.Next() {
@@ -555,9 +554,9 @@ func TestChunkStats(t *testing.T) {
 		entry.Timestamp = entry.Timestamp.Add(time.Nanosecond)
 	}
 	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
-	statsCtx, ctx := stats.NewContext(context.Background())
+	statsCtx := &fakeStatsContext{}
 
-	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
+	it, err := c.Iterator(statsCtx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,13 +565,9 @@ func TestChunkStats(t *testing.T) {
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// test on a chunk filling up
-	s := statsCtx.Result(time.Since(first))
-	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
-	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
 
-	require.Equal(t, int64(expectedSize), s.TotalDecompressedBytes())
-	require.Equal(t, int64(inserted), s.TotalDecompressedLines())
+	require.Equal(t, int64(expectedSize), statsCtx.decompressedBytes)
+	require.Equal(t, int64(inserted), statsCtx.decompressedLines)
 
 	b, err := c.Bytes()
 	if err != nil {
@@ -584,8 +579,8 @@ func TestChunkStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	statsCtx, ctx = stats.NewContext(context.Background())
-	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
+	statsCtx = &fakeStatsContext{}
+	it, err = cb.Iterator(statsCtx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -594,12 +589,8 @@ func TestChunkStats(t *testing.T) {
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s = statsCtx.Result(time.Since(first))
-	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
-	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
-
-	require.Equal(t, int64(expectedSize), s.TotalDecompressedBytes())
-	require.Equal(t, int64(inserted), s.TotalDecompressedLines())
+	require.Equal(t, int64(expectedSize), statsCtx.decompressedBytes)
+	require.Equal(t, int64(inserted), statsCtx.decompressedLines)
 }
 
 func TestIteratorClose(t *testing.T) {
@@ -633,7 +624,7 @@ func TestIteratorClose(t *testing.T) {
 				} {
 					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
 					inserted := fillChunk(c)
-					iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, noopStreamPipeline)
+					iter, err := c.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, noopStreamPipeline)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -688,18 +679,21 @@ func BenchmarkRead(b *testing.B) {
 		speed float64
 	}
 	result := []res{}
+	mrate := runtime.MemProfileRate
 	for _, bs := range testBlockSizes {
 		for _, enc := range testEncoding {
 			name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 			b.Run(name, func(b *testing.B) {
+				runtime.MemProfileRate = 0
 				chunks, size := generateData(enc, 5, bs, testTargetSize)
 				b.ResetTimer()
 				bytesRead := uint64(0)
 				now := time.Now()
+				runtime.MemProfileRate = mrate
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
 						// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-						iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
+						iterator, err := c.Iterator(noopStats, time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
 						if err != nil {
 							panic(err)
 						}
@@ -721,13 +715,15 @@ func BenchmarkRead(b *testing.B) {
 			name = fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 
 			b.Run(name, func(b *testing.B) {
+				runtime.MemProfileRate = 0
 				chunks, size := generateData(enc, 5, bs, testTargetSize)
 				b.ResetTimer()
 				bytesRead := uint64(0)
 				now := time.Now()
+				runtime.MemProfileRate = mrate
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
-						iterator := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), countExtractor)
+						iterator := c.SampleIterator(noopStats, time.Unix(0, 0), time.Now(), countExtractor)
 						for iterator.Next() {
 							_ = iterator.Sample()
 						}
@@ -760,7 +756,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 			_ = fillChunk(c)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, noopStreamPipeline)
+				iterator, err := c.Iterator(noopStats, time.Unix(0, 0), time.Now(), logproto.BACKWARD, noopStreamPipeline)
 				if err != nil {
 					panic(err)
 				}
@@ -783,7 +779,7 @@ func TestGenerateDataSize(t *testing.T) {
 			bytesRead := uint64(0)
 			for _, c := range chunks {
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, noopStreamPipeline)
+				iterator, err := c.Iterator(noopStats, time.Unix(0, 0), time.Now(), logproto.FORWARD, noopStreamPipeline)
 				if err != nil {
 					panic(err)
 				}
@@ -815,7 +811,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
+				iter := h.Iterator(noopStats, logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
 
 				for iter.Next() {
 					_ = iter.Entry()
@@ -839,7 +835,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
+				iter := h.SampleIterator(noopStats, 0, math.MaxInt64, countExtractor)
 
 				for iter.Next() {
 					_ = iter.Sample()
@@ -900,7 +896,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 				c := createChunk()
 
 				// testing headchunk
-				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
+				it, err := c.Iterator(noopStats, tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
 				require.NoError(t, err)
 				for i := range tt.expect {
 					require.Equal(t, tt.expect[i], it.Next())
@@ -909,7 +905,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 
 				// testing chunk blocks
 				require.NoError(t, c.cut())
-				it, err = c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
+				it, err = c.Iterator(noopStats, tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
 				require.NoError(t, err)
 				for i := range tt.expect {
 					require.Equal(t, tt.expect[i], it.Next())
@@ -928,7 +924,7 @@ func TestMemchunkLongLine(t *testing.T) {
 			for i := 1; i <= 10; i++ {
 				require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: strings.Repeat("e", 200000)}))
 			}
-			it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, noopStreamPipeline)
+			it, err := c.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, noopStreamPipeline)
 			require.NoError(t, err)
 			for i := 1; i <= 10; i++ {
 				require.True(t, it.Next())
@@ -1046,7 +1042,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					}
 					var iters []iter.EntryIterator
 					for _, lbs := range labelsSet {
-						it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, p.ForStream(lbs))
+						it, err := c.Iterator(noopStats, time.Unix(0, 0), time.Now(), logproto.FORWARD, p.ForStream(lbs))
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -1085,7 +1081,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), ex.ForStream(lbs)))
+						iters = append(iters, c.SampleIterator(noopStats, time.Unix(0, 0), time.Now(), ex.ForStream(lbs)))
 					}
 					b.ResetTimer()
 					for n := 0; n < b.N; n++ {
@@ -1122,7 +1118,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 				require.NoError(t, err)
 				p, err := expr.Pipeline()
 				require.NoError(t, err)
-				it, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(0, i), logproto.BACKWARD, p.ForStream(labels.Labels{{Name: "app", Value: "foo"}}))
+				it, err := c.Iterator(noopStats, time.Unix(0, 0), time.Unix(0, i), logproto.BACKWARD, p.ForStream(labels.Labels{{Name: "app", Value: "foo"}}))
 				require.NoError(t, err)
 				for it.Next() {
 					total--
@@ -1194,11 +1190,11 @@ func TestMemChunk_Rebound(t *testing.T) {
 			require.NoError(t, err)
 
 			// iterate originalChunk from slice start to slice end + nanosecond. Adding a nanosecond here to be inclusive of sample at end time.
-			originalChunkItr, err := originalChunk.Iterator(context.Background(), tc.sliceFrom, tc.sliceTo.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			originalChunkItr, err := originalChunk.Iterator(noopStats, tc.sliceFrom, tc.sliceTo.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 			require.NoError(t, err)
 
 			// iterate newChunk for whole chunk interval which should include all the samples in the chunk and hence align it with expected values.
-			newChunkItr, err := newChunk.Iterator(context.Background(), chkFrom, chkThrough, logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			newChunkItr, err := newChunk.Iterator(noopStats, chkFrom, chkThrough, logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 			require.NoError(t, err)
 
 			for {
@@ -1228,4 +1224,59 @@ func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
 	}
 
 	return chk
+}
+
+func Benchmark_MemChunkIterator(b *testing.B) {
+	mrate := runtime.MemProfileRate
+	runtime.MemProfileRate = 0
+	b.StopTimer()
+	f, err := log.NewFilter("bar", labels.MatchEqual)
+	if err != nil {
+		b.Fatal(err)
+	}
+	var (
+		c        = NewMemChunk(EncSnappy, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+		min      = time.Unix(0, 0)
+		max      = time.Now()
+		pipeline = log.NewPipeline([]log.Stage{f.ToStage()})
+	)
+	for i := int64(0); c.SpaceFor(&logproto.Entry{
+		Timestamp: time.Unix(i, 0),
+		Line:      "foo",
+	}); i++ {
+		err := c.Append(&logproto.Entry{
+			Timestamp: time.Unix(i, 0),
+			Line:      "foo",
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	runtime.MemProfileRate = mrate
+	b.StartTimer()
+	b.Run("entry_forward", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			it, err := c.Iterator(noopStats, min, max, logproto.FORWARD, pipeline.ForStream(labels.Labels{}))
+			if err != nil {
+				b.Fatal(err)
+			}
+			for it.Next() {
+			}
+			err = it.Close()
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("sample", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			it := c.SampleIterator(noopStats, min, max, countExtractor)
+			for it.Next() {
+			}
+			err := it.Close()
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }

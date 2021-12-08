@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 var samples = []logproto.Sample{
@@ -34,7 +35,7 @@ var (
 )
 
 func newSampleIterator() iter.SampleIterator {
-	return iter.NewHeapSampleIterator(context.Background(), []iter.SampleIterator{
+	return iter.NewHeapSampleIterator(stats.FromContext(context.Background()), []iter.SampleIterator{
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:  labelFoo.String(),
 			Samples: samples,

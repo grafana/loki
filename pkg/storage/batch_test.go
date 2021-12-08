@@ -1552,6 +1552,7 @@ func TestBuildHeapIterator(t *testing.T) {
 					direction: logproto.FORWARD,
 				},
 				ctx:      ctx,
+				stats:    stats.FromContext(ctx),
 				pipeline: log.NewNoopPipeline(),
 			}
 			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)

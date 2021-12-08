@@ -3,7 +3,6 @@ package chunkenc
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -24,7 +23,6 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 const (
@@ -42,6 +40,8 @@ const (
 	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
 	// different block size in the new chunk which should be fine.
 	defaultBlockSize = 256 * 1024
+	// we decode always the line length and ts as varint
+	entryDataSize = 2 * binary.MaxVarintLen64
 )
 
 var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
@@ -779,7 +779,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(stats StatsContext, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 	var headIterator iter.EntryIterator
@@ -798,7 +798,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		}
 		lastMax = b.maxt
 
-		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
+		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(stats, pipeline))
 	}
 
 	if !c.head.IsEmpty() {
@@ -806,7 +806,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if from < lastMax {
 			ordered = false
 		}
-		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
+		headIterator = c.head.Iterator(stats, direction, mint, maxt, pipeline)
 	}
 
 	if direction == logproto.FORWARD {
@@ -819,7 +819,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if ordered {
 			it = iter.NewNonOverlappingIterator(blockItrs, "")
 		} else {
-			it = iter.NewHeapIterator(ctx, blockItrs, direction)
+			it = iter.NewHeapIterator(stats, blockItrs, direction)
 		}
 
 		return iter.NewTimeRangedIterator(
@@ -852,11 +852,11 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	if ordered {
 		return iter.NewNonOverlappingIterator(blockItrs, ""), nil
 	}
-	return iter.NewHeapIterator(ctx, blockItrs, direction), nil
+	return iter.NewHeapIterator(stats, blockItrs, direction), nil
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (c *MemChunk) SampleIterator(stats StatsContext, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
@@ -872,7 +872,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 			ordered = false
 		}
 		lastMax = b.maxt
-		its = append(its, encBlock{c.encoding, b}.SampleIterator(ctx, extractor))
+		its = append(its, encBlock{c.encoding, b}.SampleIterator(stats, extractor))
 	}
 
 	if !c.head.IsEmpty() {
@@ -880,14 +880,14 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
+		its = append(its, c.head.SampleIterator(stats, mint, maxt, extractor))
 	}
 
 	var it iter.SampleIterator
 	if ordered {
 		it = iter.NewNonOverlappingSampleIterator(its, "")
 	} else {
-		it = iter.NewHeapSampleIterator(ctx, its)
+		it = iter.NewHeapSampleIterator(stats, its)
 	}
 
 	return iter.NewTimeRangedSampleIterator(
@@ -913,7 +913,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
 func (c *MemChunk) Rebound(start, end time.Time) (Chunk, error) {
 	// add a nanosecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+	itr, err := c.Iterator(noopStats, start, end.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return nil, err
 	}
@@ -957,18 +957,18 @@ type encBlock struct {
 	block
 }
 
-func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator {
+func (b encBlock) Iterator(stats StatsContext, pipeline log.StreamPipeline) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline)
+	return newEntryIterator(stats, getReaderPool(b.enc), b.b, pipeline)
 }
 
-func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (b encBlock) SampleIterator(stats StatsContext, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newSampleIterator(ctx, getReaderPool(b.enc), b.b, extractor)
+	return newSampleIterator(stats, getReaderPool(b.enc), b.b, extractor)
 }
 
 func (b block) Offset() int {
@@ -987,12 +987,10 @@ func (b block) MaxTime() int64 {
 	return b.maxt
 }
 
-func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
+func (hb *headBlock) Iterator(stats StatsContext, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
-
-	stats := stats.FromContext(ctx)
 
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
@@ -1042,14 +1040,13 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
 	}
-	return iter.NewStreamsIterator(ctx, streamsResult, direction)
+	return iter.NewStreamsIterator(stats, streamsResult, direction)
 }
 
-func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (hb *headBlock) SampleIterator(stats StatsContext, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
-	stats := stats.FromContext(ctx)
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[uint64]*logproto.Series{}
 	for _, e := range hb.entries {
@@ -1083,7 +1080,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 	for _, s := range series {
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(ctx, seriesRes), func() error {
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(stats, seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
@@ -1101,7 +1098,7 @@ func unsafeGetBytes(s string) []byte {
 
 type bufferedIterator struct {
 	origBytes []byte
-	stats     *stats.Context
+	stats     StatsContext
 
 	bufReader *bufio.Reader
 	reader    io.Reader
@@ -1113,11 +1110,12 @@ type bufferedIterator struct {
 	currLine []byte // the current line, this is the same as the buffer but sliced the the line size.
 	currTs   int64
 
-	closed bool
+	closed            bool
+	decompressedBytes int64
+	decompressedLines int64
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *bufferedIterator {
-	stats := stats.FromContext(ctx)
+func newBufferedIterator(stats StatsContext, pool ReaderPool, b []byte) *bufferedIterator {
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
 		stats:     stats,
@@ -1139,42 +1137,29 @@ func (si *bufferedIterator) Next() bool {
 		si.bufReader = BufReaderPool.Get(si.reader)
 	}
 
-	ts, line, ok := si.moveNext()
-	if !ok {
-		si.Close()
-		return false
-	}
-	// we decode always the line length and ts as varint
-	si.stats.AddDecompressedBytes(int64(len(line)) + 2*binary.MaxVarintLen64)
-	si.stats.AddDecompressedLines(1)
-
-	si.currTs = ts
-	si.currLine = line
-	return true
-}
-
-// moveNext moves the buffer to the next entry
-func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
-	ts, err := binary.ReadVarint(si.bufReader)
+	ts, err := unrolledDecodeVarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
 		}
-		return 0, nil, false
+		si.Close()
+		return false
 	}
 
-	l, err := binary.ReadUvarint(si.bufReader)
+	l, err := unrolledDecodeUVarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
-			return 0, nil, false
+			si.Close()
+			return false
 		}
 	}
 	lineSize := int(l)
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
-		return 0, nil, false
+		si.Close()
+		return false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
@@ -1185,24 +1170,32 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
 			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
-			return 0, nil, false
+			si.Close()
+			return false
 		}
 	}
 	// Then process reading the line.
 	n, err := si.bufReader.Read(si.buf[:lineSize])
 	if err != nil && err != io.EOF {
 		si.err = err
-		return 0, nil, false
+		si.Close()
+		return false
 	}
 	for n < lineSize {
 		r, err := si.bufReader.Read(si.buf[n:lineSize])
 		if err != nil && err != io.EOF {
 			si.err = err
-			return 0, nil, false
+			si.Close()
+			return false
 		}
 		n += r
 	}
-	return ts, si.buf[:lineSize], true
+	si.decompressedBytes += int64(l)
+	si.decompressedLines++
+
+	si.currTs = ts
+	si.currLine = si.buf[:lineSize]
+	return true
 }
 
 func (si *bufferedIterator) Error() error { return si.err }
@@ -1216,6 +1209,8 @@ func (si *bufferedIterator) Close() error {
 }
 
 func (si *bufferedIterator) close() {
+	si.stats.AddDecompressedBytes(si.decompressedBytes + (si.decompressedLines * entryDataSize))
+	si.stats.AddDecompressedLines(si.decompressedLines)
 	if si.reader != nil {
 		si.pool.PutReader(si.reader)
 		si.reader = nil
@@ -1232,9 +1227,9 @@ func (si *bufferedIterator) close() {
 	si.origBytes = nil
 }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline) iter.EntryIterator {
+func newEntryIterator(stats StatsContext, pool ReaderPool, b []byte, pipeline log.StreamPipeline) iter.EntryIterator {
 	return &entryBufferedIterator{
-		bufferedIterator: newBufferedIterator(ctx, pool, b),
+		bufferedIterator: newBufferedIterator(stats, pool, b),
 		pipeline:         pipeline,
 	}
 }
@@ -1267,9 +1262,9 @@ func (e *entryBufferedIterator) Next() bool {
 	return false
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func newSampleIterator(stats StatsContext, pool ReaderPool, b []byte, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	it := &sampleBufferedIterator{
-		bufferedIterator: newBufferedIterator(ctx, pool, b),
+		bufferedIterator: newBufferedIterator(stats, pool, b),
 		extractor:        extractor,
 	}
 	return it

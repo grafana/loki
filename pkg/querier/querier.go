@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage"
 	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
@@ -132,7 +133,7 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		iters = append(iters, storeIter)
 	}
 
-	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
+	return iter.NewHeapIterator(stats.FromContext(ctx), iters, params.Direction), nil
 }
 
 func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -174,7 +175,7 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewHeapSampleIterator(ctx, iters), nil
+	return iter.NewHeapSampleIterator(stats.FromContext(ctx), iters), nil
 }
 
 func (q *Querier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {

@@ -2,7 +2,6 @@ package iter
 
 import (
 	"container/heap"
-	"context"
 	"io"
 	"sync"
 	"time"
@@ -19,6 +18,10 @@ type EntryIterator interface {
 	Labels() string
 	Error() error
 	Close() error
+}
+
+type StatsContext interface {
+	AddDuplicates(i int64)
 }
 
 type noOpIterator struct{}
@@ -143,7 +146,7 @@ type heapIterator struct {
 	}
 	is         []EntryIterator
 	prefetched bool
-	stats      *stats.Context
+	stats      StatsContext
 
 	tuples     []tuple
 	currEntry  logproto.Entry
@@ -153,8 +156,8 @@ type heapIterator struct {
 
 // NewHeapIterator returns a new iterator which uses a heap to merge together
 // entries for multiple interators.
-func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
-	result := &heapIterator{is: is, stats: stats.FromContext(ctx)}
+func NewHeapIterator(stats StatsContext, is []EntryIterator, direction logproto.Direction) HeapIterator {
+	result := &heapIterator{is: is, stats: stats}
 	switch direction {
 	case logproto.BACKWARD:
 		result.heap = &iteratorMaxHeap{iteratorHeap: make([]EntryIterator, 0, len(is))}
@@ -322,21 +325,21 @@ func (i *heapIterator) Len() int {
 }
 
 // NewStreamsIterator returns an iterator over logproto.Stream
-func NewStreamsIterator(ctx context.Context, streams []logproto.Stream, direction logproto.Direction) EntryIterator {
+func NewStreamsIterator(stats StatsContext, streams []logproto.Stream, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(streams))
 	for i := range streams {
 		is = append(is, NewStreamIterator(streams[i]))
 	}
-	return NewHeapIterator(ctx, is, direction)
+	return NewHeapIterator(stats, is, direction)
 }
 
 // NewQueryResponseIterator returns an iterator over a QueryResponse.
-func NewQueryResponseIterator(ctx context.Context, resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
+func NewQueryResponseIterator(stats StatsContext, resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(resp.Streams))
 	for i := range resp.Streams {
 		is = append(is, NewStreamIterator(resp.Streams[i]))
 	}
-	return NewHeapIterator(ctx, is, direction)
+	return NewHeapIterator(stats, is, direction)
 }
 
 type queryClientIterator struct {
@@ -344,6 +347,7 @@ type queryClientIterator struct {
 	direction logproto.Direction
 	err       error
 	curr      EntryIterator
+	stats     StatsContext
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
@@ -351,11 +355,11 @@ func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logpr
 	return &queryClientIterator{
 		client:    client,
 		direction: direction,
+		stats:     stats.FromContext(client.Context()),
 	}
 }
 
 func (i *queryClientIterator) Next() bool {
-	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
@@ -364,8 +368,8 @@ func (i *queryClientIterator) Next() bool {
 			i.err = err
 			return false
 		}
-		stats.JoinIngesters(ctx, batch.Stats)
-		i.curr = NewQueryResponseIterator(ctx, batch, i.direction)
+		stats.JoinIngesters(i.client.Context(), batch.Stats)
+		i.curr = NewQueryResponseIterator(i.stats, batch, i.direction)
 	}
 
 	return true

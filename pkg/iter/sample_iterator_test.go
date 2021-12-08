@@ -14,6 +14,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -105,7 +106,7 @@ var carSeries = logproto.Series{
 }
 
 func TestNewHeapSampleIterator(t *testing.T) {
-	it := NewHeapSampleIterator(context.Background(),
+	it := NewHeapSampleIterator(stats.FromContext(context.Background()),
 		[]SampleIterator{
 			NewSeriesIterator(varSeries),
 			NewSeriesIterator(carSeries),
@@ -194,7 +195,7 @@ func TestReadSampleBatch(t *testing.T) {
 	require.Equal(t, uint32(1), size)
 	require.NoError(t, err)
 
-	res, size, err = ReadSampleBatch(NewMultiSeriesIterator(context.Background(), []logproto.Series{carSeries, varSeries}), 100)
+	res, size, err = ReadSampleBatch(NewMultiSeriesIterator(stats.FromContext(context.Background()), []logproto.Series{carSeries, varSeries}), 100)
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
@@ -279,7 +280,7 @@ func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
 
 func BenchmarkHeapSampleIterator(b *testing.B) {
 	var (
-		ctx          = context.Background()
+		stats        = stats.FromContext(context.Background())
 		series       []logproto.Series
 		entriesCount = 10000
 		seriesCount  = 100
@@ -307,7 +308,7 @@ func BenchmarkHeapSampleIterator(b *testing.B) {
 			itrs = append(itrs, NewSeriesIterator(series[i]))
 		}
 		b.StartTimer()
-		it := NewHeapSampleIterator(ctx, itrs)
+		it := NewHeapSampleIterator(stats, itrs)
 		for it.Next() {
 			it.Sample()
 		}

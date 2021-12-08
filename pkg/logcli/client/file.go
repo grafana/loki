@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	logqllog "github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/marshal"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -31,9 +32,7 @@ const (
 	defaultMaxFileSize       = 20 * (1 << 20) // 20MB
 )
 
-var (
-	ErrNotSupported = errors.New("not supported")
-)
+var ErrNotSupported = errors.New("not supported")
 
 // FileClient is a type of LogCLI client that do LogQL on log lines from
 // the given file directly, instead get log lines from Loki servers.
@@ -62,7 +61,6 @@ func NewFileClient(r io.ReadCloser) *FileClient {
 		labels:      []string{defaultLabelKey},
 		labelValues: []string{defaultLabelValue},
 	}
-
 }
 
 func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
@@ -277,7 +275,7 @@ func newFileIterator(
 	}
 
 	return iter.NewStreamsIterator(
-		ctx,
+		stats.FromContext(ctx),
 		streamResult,
 		params.Direction,
 	), nil

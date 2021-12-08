@@ -24,11 +24,11 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 func TestTransferOut(t *testing.T) {
 	f := newTestIngesterFactory(t)
-
 	ing := f.getIngester(time.Duration(0), t)
 
 	// Push some data into our original ingester
@@ -51,6 +51,7 @@ func TestTransferOut(t *testing.T) {
 			},
 		},
 	})
+	stats, _ := stats.NewContext(ctx)
 	require.NoError(t, err)
 
 	assert.Len(t, ing.instances, 1)
@@ -73,8 +74,7 @@ func TestTransferOut(t *testing.T) {
 		ing2.instances["test"].streamsMtx.RLock()
 		for _, stream := range ing2.instances["test"].streams {
 			it, err := stream.Iterator(
-				context.TODO(),
-				nil,
+				stats,
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,

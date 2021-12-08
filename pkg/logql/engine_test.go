@@ -2028,11 +2028,11 @@ type errorIteratorQuerier struct {
 }
 
 func (e errorIteratorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NewHeapIterator(ctx, e.entries, p.Direction), nil
+	return iter.NewHeapIterator(stats.FromContext(ctx), e.entries, p.Direction), nil
 }
 
 func (e errorIteratorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewHeapSampleIterator(ctx, e.samples), nil
+	return iter.NewHeapSampleIterator(stats.FromContext(ctx), e.samples), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -2274,7 +2274,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	if !q.match {
 		for _, s := range q.streams {
-			return iter.NewStreamsIterator(ctx, s, p.Direction), nil
+			return iter.NewStreamsIterator(stats.FromContext(ctx), s, p.Direction), nil
 		}
 	}
 	recordID := paramsID(p)
@@ -2286,13 +2286,13 @@ func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (it
 	for _, s := range streams {
 		iters = append(iters, iter.NewStreamIterator(s))
 	}
-	return iter.NewHeapIterator(ctx, iters, p.Direction), nil
+	return iter.NewHeapIterator(stats.FromContext(ctx), iters, p.Direction), nil
 }
 
 func (q *querierRecorder) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
-			return iter.NewMultiSeriesIterator(ctx, s), nil
+			return iter.NewMultiSeriesIterator(stats.FromContext(ctx), s), nil
 		}
 	}
 	recordID := paramsID(p)
@@ -2307,7 +2307,7 @@ func (q *querierRecorder) SelectSamples(ctx context.Context, p SelectSampleParam
 	for _, s := range series {
 		iters = append(iters, iter.NewSeriesIterator(s))
 	}
-	return iter.NewHeapSampleIterator(ctx, iters), nil
+	return iter.NewHeapSampleIterator(stats.FromContext(ctx), iters), nil
 }
 
 func paramsID(p interface{}) string {

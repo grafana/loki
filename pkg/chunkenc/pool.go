@@ -47,7 +47,7 @@ var (
 	// BufReaderPool is bufio.Reader pool
 	BufReaderPool = &BufioReaderPool{
 		pool: sync.Pool{
-			New: func() interface{} { return bufio.NewReader(nil) },
+			New: func() interface{} { return bufio.NewReaderSize(nil, 64*1024) },
 		},
 	}
 
@@ -376,9 +376,6 @@ type BufioReaderPool struct {
 // Get returns a bufio.Reader which reads from r. The buffer size is that of the pool.
 func (bufPool *BufioReaderPool) Get(r io.Reader) *bufio.Reader {
 	buf := bufPool.pool.Get().(*bufio.Reader)
-	if buf == nil {
-		return bufio.NewReaderSize(r, 4*1024)
-	}
 	buf.Reset(r)
 	return buf
 }

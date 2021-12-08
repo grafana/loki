@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/validation"
@@ -476,7 +477,7 @@ func Test_SeriesIterator(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
 			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, chunkenc.UnorderedHeadBlockFmt, 0, 0)
 			require.NoError(t, err)
-			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+			it, err := memchunk.Iterator(stats.FromContext(context.Background()), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
 			require.NoError(t, err)
 			stream := logproto.Stream{
 				Labels: cortexpb.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),

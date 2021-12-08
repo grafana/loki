@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 const (
@@ -272,7 +273,7 @@ func newTailer(
 	waitEntryThrottle time.Duration,
 ) *Tailer {
 	t := Tailer{
-		openStreamIterator:        iter.NewHeapIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
+		openStreamIterator:        iter.NewHeapIterator(stats.FromContext(context.Background()), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),

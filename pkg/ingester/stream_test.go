@@ -18,19 +18,18 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
 
-var (
-	countExtractor = func() log.StreamSampleExtractor {
-		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
-		if err != nil {
-			panic(err)
-		}
-		return ex.ForStream(labels.Labels{})
+var countExtractor = func() log.StreamSampleExtractor {
+	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	if err != nil {
+		panic(err)
 	}
-)
+	return ex.ForStream(labels.Labels{})
+}
 
 func TestMaxReturnedStreamsErrors(t *testing.T) {
 	numLogs := 100
@@ -160,13 +159,12 @@ func TestPushRejectOldCounter(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 	}, recordPool.GetRecord(), 3)
 	require.Nil(t, err)
-
 }
 
 func TestStreamIterator(t *testing.T) {
 	const chunks = 3
 	const entries = 100
-
+	stats, _ := stats.NewContext(context.Background())
 	for _, chk := range []struct {
 		name string
 		new  func() *chunkenc.MemChunk
@@ -193,7 +191,7 @@ func TestStreamIterator(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(chunks*entries - 1)
 				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+				iter, err := s.Iterator(stats, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorForward(t, iter, int64(from), int64(from+len))
@@ -203,7 +201,7 @@ func TestStreamIterator(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(entries - 1)
 				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(s.labels))
+				iter, err := s.Iterator(stats, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(s.labels))
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorBackward(t, iter, int64(from), int64(from+len))
@@ -219,7 +217,7 @@ func TestUnorderedPush(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	stats, _ := stats.NewContext(context.Background())
 	s := newStream(
 		&cfg,
 		limiter,
@@ -295,11 +293,11 @@ func TestUnorderedPush(t *testing.T) {
 		{Timestamp: time.Unix(11, 0), Line: "x"},
 	}
 
-	itr, err := s.Iterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(12, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+	itr, err := s.Iterator(stats, time.Unix(int64(0), 0), time.Unix(12, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
 	require.Nil(t, err)
 	iterEq(t, exp, itr)
 
-	sItr, err := s.SampleIterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(12, 0), countExtractor())
+	sItr, err := s.SampleIterator(stats, time.Unix(int64(0), 0), time.Unix(12, 0), countExtractor())
 	require.Nil(t, err)
 	for _, x := range exp {
 		require.Equal(t, true, sItr.Next())
@@ -381,7 +379,6 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	// Now pretend it's a replay. The same write should succeed.
 	_, err = s.Push(context.Background(), entries, nil, 2)
 	require.Nil(t, err)
-
 }
 
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {

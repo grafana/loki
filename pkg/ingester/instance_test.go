@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/validation"
@@ -391,7 +392,7 @@ func Test_Iterator(t *testing.T) {
 	overrides, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 	instance := newInstance(&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil)
-	ctx := context.TODO()
+	stats, ctx := stats.NewContext(context.Background())
 	direction := logproto.BACKWARD
 	limit := uint32(2)
 
@@ -417,7 +418,7 @@ func Test_Iterator(t *testing.T) {
 	}
 
 	// prepare iterators.
-	itrs, err := instance.Query(ctx,
+	itrs, err := instance.Query(ctx, stats,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"} | logfmt`,
@@ -429,12 +430,12 @@ func Test_Iterator(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	heapItr := iter.NewHeapIterator(ctx, itrs, direction)
+	heapItr := iter.NewHeapIterator(stats, itrs, direction)
 
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
 	require.NoError(t,
-		sendBatches(ctx, heapItr,
+		sendBatches(ctx, stats, heapItr,
 			fakeQueryServer(
 				func(qr *logproto.QueryResponse) error {
 					res = qr
@@ -473,7 +474,7 @@ func Test_ChunkFilter(t *testing.T) {
 	require.NoError(t, err)
 	instance := newInstance(
 		&ingesterConfig, "fake", NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1), loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, &testFilter{})
-	ctx := context.TODO()
+	stats, ctx := stats.NewContext(context.Background())
 	direction := logproto.BACKWARD
 	limit := uint32(2)
 
@@ -498,7 +499,7 @@ func Test_ChunkFilter(t *testing.T) {
 	}
 
 	// prepare iterators.
-	itrs, err := instance.Query(ctx,
+	itrs, err := instance.Query(ctx, stats,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"}`,
@@ -510,7 +511,7 @@ func Test_ChunkFilter(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	it := iter.NewHeapIterator(ctx, itrs, direction)
+	it := iter.NewHeapIterator(stats, itrs, direction)
 	defer it.Close()
 
 	for it.Next() {

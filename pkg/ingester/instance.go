@@ -298,7 +298,7 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter.EntryIterator, error) {
+func (i *instance) Query(ctx context.Context, stats *stats.Context, req logql.SelectLogParams) ([]iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -308,7 +308,6 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		return nil, err
 	}
 
-	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
 
 	shard, err := parseShardFromRequest(req.Shards)
@@ -321,7 +320,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 		expr.Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.Iterator(ctx, stats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
+			iter, err := stream.Iterator(stats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -336,7 +335,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) ([]iter
 	return iters, nil
 }
 
-func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+func (i *instance) QuerySample(ctx context.Context, stats *stats.Context, req logql.SelectSampleParams) ([]iter.SampleIterator, error) {
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -346,7 +345,6 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	stats := stats.FromContext(ctx)
 	var iters []iter.SampleIterator
 
 	var shard *astmapper.ShardAnnotation
@@ -366,7 +364,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 		expr.Selector().Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
+			iter, err := stream.SampleIterator(stats, req.Start, req.End, extractor.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
@@ -641,8 +639,7 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
-	stats := stats.FromContext(ctx)
+func sendBatches(ctx context.Context, stats *stats.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit uint32) error {
 	if limit == 0 {
 		// send all batches.
 		for !isDone(ctx) {
@@ -689,8 +686,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	return nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
-	stats := stats.FromContext(ctx)
+func sendSampleBatches(ctx context.Context, stats *stats.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {

@@ -2,7 +2,6 @@ package chunkenc
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -17,7 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -36,14 +34,14 @@ type HeadBlock interface {
 	Convert(HeadBlockFmt) (HeadBlock, error)
 	Append(int64, string) error
 	Iterator(
-		ctx context.Context,
+		stats StatsContext,
 		direction logproto.Direction,
 		mint,
 		maxt int64,
 		pipeline log.StreamPipeline,
 	) iter.EntryIterator
 	SampleIterator(
-		ctx context.Context,
+		stats StatsContext,
 		mint,
 		maxt int64,
 		extractor log.StreamSampleExtractor,
@@ -149,7 +147,7 @@ func (i interval) HighAtDimension(_ uint64) int64 { return i.maxt - 1 }
 
 // helper for base logic across {Entry,Sample}Iterator
 func (hb *unorderedHeadBlock) forEntries(
-	ctx context.Context,
+	stats StatsContext,
 	direction logproto.Direction,
 	mint,
 	maxt int64,
@@ -164,9 +162,8 @@ func (hb *unorderedHeadBlock) forEntries(
 		maxt: maxt,
 	})
 
-	chunkStats := stats.FromContext(ctx)
 	process := func(es *nsEntries) {
-		chunkStats.AddHeadChunkLines(int64(len(es.entries)))
+		stats.AddHeadChunkLines(int64(len(es.entries)))
 
 		// preserve write ordering of entries with the same ts
 		var i int
@@ -183,7 +180,7 @@ func (hb *unorderedHeadBlock) forEntries(
 
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i]
-			chunkStats.AddHeadChunkBytes(int64(len(line)))
+			stats.AddHeadChunkBytes(int64(len(line)))
 			err = entryFn(es.ts, line)
 
 		}
@@ -209,7 +206,7 @@ func (hb *unorderedHeadBlock) forEntries(
 }
 
 func (hb *unorderedHeadBlock) Iterator(
-	ctx context.Context,
+	stats StatsContext,
 	direction logproto.Direction,
 	mint,
 	maxt int64,
@@ -223,7 +220,7 @@ func (hb *unorderedHeadBlock) Iterator(
 	streams := map[uint64]*logproto.Stream{}
 
 	_ = hb.forEntries(
-		ctx,
+		stats,
 		direction,
 		mint,
 		maxt,
@@ -257,12 +254,12 @@ func (hb *unorderedHeadBlock) Iterator(
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
 	}
-	return iter.NewStreamsIterator(ctx, streamsResult, direction)
+	return iter.NewStreamsIterator(stats, streamsResult, direction)
 }
 
 // nolint:unused
 func (hb *unorderedHeadBlock) SampleIterator(
-	ctx context.Context,
+	stats StatsContext,
 	mint,
 	maxt int64,
 	extractor log.StreamSampleExtractor,
@@ -271,7 +268,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	series := map[uint64]*logproto.Series{}
 
 	_ = hb.forEntries(
-		ctx,
+		stats,
 		logproto.FORWARD,
 		mint,
 		maxt,
@@ -308,7 +305,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	for _, s := range series {
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(ctx, seriesRes), func() error {
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(stats, seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
@@ -331,7 +328,7 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 	defer pool.PutWriter(compressedWriter)
 
 	_ = hb.forEntries(
-		context.Background(),
+		noopStats,
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
@@ -364,7 +361,7 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 	out := version.NewBlock()
 
 	err := hb.forEntries(
-		context.Background(),
+		noopStats,
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
@@ -417,7 +414,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 	eb.reset()
 
 	err = hb.forEntries(
-		context.Background(),
+		noopStats,
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,

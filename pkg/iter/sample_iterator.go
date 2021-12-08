@@ -143,7 +143,7 @@ type heapSampleIterator struct {
 	heap       *sampleIteratorHeap
 	is         []SampleIterator
 	prefetched bool
-	stats      *stats.Context
+	stats      StatsContext
 
 	tuples     []sampletuple
 	curr       logproto.Sample
@@ -153,10 +153,10 @@ type heapSampleIterator struct {
 
 // NewHeapSampleIterator returns a new iterator which uses a heap to merge together
 // entries for multiple iterators.
-func NewHeapSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
+func NewHeapSampleIterator(stats StatsContext, is []SampleIterator) SampleIterator {
 	h := sampleIteratorHeap(make([]SampleIterator, 0, len(is)))
 	return &heapSampleIterator{
-		stats:  stats.FromContext(ctx),
+		stats:  stats,
 		is:     is,
 		heap:   &h,
 		tuples: make([]sampletuple, 0, len(is)),
@@ -296,6 +296,8 @@ type sampleQueryClientIterator struct {
 	client QuerySampleClient
 	err    error
 	curr   SampleIterator
+
+	stats StatsContext
 }
 
 // QuerySampleClient is GRPC stream client with only method used by the SampleQueryClientIterator
@@ -309,11 +311,11 @@ type QuerySampleClient interface {
 func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 	return &sampleQueryClientIterator{
 		client: client,
+		stats:  stats.FromContext(client.Context()),
 	}
 }
 
 func (i *sampleQueryClientIterator) Next() bool {
-	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
@@ -322,8 +324,8 @@ func (i *sampleQueryClientIterator) Next() bool {
 			i.err = err
 			return false
 		}
-		stats.JoinIngesters(ctx, batch.Stats)
-		i.curr = NewSampleQueryResponseIterator(ctx, batch)
+		stats.JoinIngesters(i.client.Context(), batch.Stats)
+		i.curr = NewSampleQueryResponseIterator(i.stats, batch)
 	}
 	return true
 }
@@ -345,8 +347,8 @@ func (i *sampleQueryClientIterator) Close() error {
 }
 
 // NewSampleQueryResponseIterator returns an iterator over a SampleQueryResponse.
-func NewSampleQueryResponseIterator(ctx context.Context, resp *logproto.SampleQueryResponse) SampleIterator {
-	return NewMultiSeriesIterator(ctx, resp.Series)
+func NewSampleQueryResponseIterator(stats StatsContext, resp *logproto.SampleQueryResponse) SampleIterator {
+	return NewMultiSeriesIterator(stats, resp.Series)
 }
 
 type seriesIterator struct {
@@ -386,12 +388,12 @@ func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIter
 }
 
 // NewMultiSeriesIterator returns an iterator over multiple logproto.Series
-func NewMultiSeriesIterator(ctx context.Context, series []logproto.Series) SampleIterator {
+func NewMultiSeriesIterator(stats StatsContext, series []logproto.Series) SampleIterator {
 	is := make([]SampleIterator, 0, len(series))
 	for i := range series {
 		is = append(is, NewSeriesIterator(series[i]))
 	}
-	return NewHeapSampleIterator(ctx, is)
+	return NewHeapSampleIterator(stats, is)
 }
 
 // NewSeriesIterator iterates over sample in a series.

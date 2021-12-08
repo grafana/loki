@@ -270,6 +270,7 @@ func (ev *DownstreamEvaluator) Iterator(
 	expr LogSelectorExpr,
 	params Params,
 ) (iter.EntryIterator, error) {
+	stats := stats.FromContext(ctx)
 	switch e := expr.(type) {
 	case DownstreamLogSelectorExpr:
 		// downstream to a querier
@@ -285,7 +286,7 @@ func (ev *DownstreamEvaluator) Iterator(
 		if err != nil {
 			return nil, err
 		}
-		return ResultIterator(results[0], params)
+		return ResultIterator(stats, results[0], params)
 
 	case *ConcatLogSelectorExpr:
 		cur := e
@@ -309,7 +310,7 @@ func (ev *DownstreamEvaluator) Iterator(
 
 		xs := make([]iter.EntryIterator, 0, len(queries))
 		for i, res := range results {
-			iter, err := ResultIterator(res, params)
+			iter, err := ResultIterator(stats, res, params)
 			if err != nil {
 				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract Iterator",
@@ -320,7 +321,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			xs = append(xs, iter)
 		}
 
-		return iter.NewHeapIterator(ctx, xs, params.Direction()), nil
+		return iter.NewHeapIterator(stats, xs, params.Direction()), nil
 
 	default:
 		return nil, EvaluatorUnsupportedType(expr, ev)
@@ -392,10 +393,10 @@ func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, e
 }
 
 // ResultIterator coerces a downstream streams result into an iter.EntryIterator
-func ResultIterator(res logqlmodel.Result, params Params) (iter.EntryIterator, error) {
+func ResultIterator(stats *stats.Context, res logqlmodel.Result, params Params) (iter.EntryIterator, error) {
 	streams, ok := res.Data.(logqlmodel.Streams)
 	if !ok {
 		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), logqlmodel.ValueTypeStreams)
 	}
-	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
+	return iter.NewStreamsIterator(stats, streams, params.Direction()), nil
 }

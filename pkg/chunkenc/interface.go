@@ -1,7 +1,6 @@
 package chunkenc
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -45,17 +44,20 @@ const (
 	EncZstd
 )
 
-var supportedEncoding = []Encoding{
-	EncNone,
-	EncGZIP,
-	EncLZ4_64k,
-	EncSnappy,
-	EncLZ4_256k,
-	EncLZ4_1M,
-	EncLZ4_4M,
-	EncFlate,
-	EncZstd,
-}
+var (
+	supportedEncoding = []Encoding{
+		EncNone,
+		EncGZIP,
+		EncLZ4_64k,
+		EncSnappy,
+		EncLZ4_256k,
+		EncLZ4_1M,
+		EncLZ4_4M,
+		EncFlate,
+		EncZstd,
+	}
+	noopStats = noopStatsContext{}
+)
 
 func (e Encoding) String() string {
 	switch e {
@@ -92,7 +94,6 @@ func ParseEncoding(enc string) (Encoding, error) {
 		}
 	}
 	return 0, fmt.Errorf("invalid encoding: %s, supported: %s", enc, SupportedEncoding())
-
 }
 
 // SupportedEncoding returns the list of supported Encoding.
@@ -112,8 +113,8 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Append(*logproto.Entry) error
-	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error)
-	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
+	Iterator(stats StatsContext, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error)
+	SampleIterator(stats StatsContext, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
 	// Returns the list of blocks in the chunks.
 	Blocks(mintT, maxtT time.Time) []Block
 	// Size returns the number of entries in a chunk
@@ -141,7 +142,7 @@ type Block interface {
 	// Entries is the amount of entries in the block.
 	Entries() int
 	// Iterator returns an entry iterator for the block.
-	Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator
+	Iterator(stats StatsContext, pipeline log.StreamPipeline) iter.EntryIterator
 	// SampleIterator returns a sample iterator for the block.
-	SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator
+	SampleIterator(stats StatsContext, extractor log.StreamSampleExtractor) iter.SampleIterator
 }

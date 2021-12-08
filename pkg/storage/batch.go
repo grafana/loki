@@ -307,6 +307,7 @@ type logBatchIterator struct {
 
 	ctx      context.Context
 	cancel   context.CancelFunc
+	stats    *stats.Context
 	pipeline logql.Pipeline
 }
 
@@ -326,6 +327,7 @@ func newLogBatchIterator(
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
+		stats:              stats.FromContext(ctx),
 		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
@@ -393,7 +395,7 @@ func (it *logBatchIterator) newChunksIterator(b *chunkBatch) (iter.EntryIterator
 		return nil, err
 	}
 
-	return iter.NewHeapIterator(it.ctx, iters, it.direction), nil
+	return iter.NewHeapIterator(it.stats, iters, it.direction), nil
 }
 
 func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.EntryIterator, error) {
@@ -422,7 +424,7 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, streamPipeline, nextChunk)
+			iterator, err := chks[i][j].Iterator(it.stats, from, through, it.direction, streamPipeline, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -436,7 +438,7 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 		result = append(result, iter.NewNonOverlappingIterator(iterators, ""))
 	}
 
-	return iter.NewHeapIterator(it.ctx, result, it.direction), nil
+	return iter.NewHeapIterator(it.stats, result, it.direction), nil
 }
 
 type sampleBatchIterator struct {
@@ -446,6 +448,7 @@ type sampleBatchIterator struct {
 
 	ctx       context.Context
 	cancel    context.CancelFunc
+	stats     *stats.Context
 	extractor logql.SampleExtractor
 }
 
@@ -464,6 +467,7 @@ func newSampleBatchIterator(
 		extractor:          extractor,
 		ctx:                ctx,
 		cancel:             cancel,
+		stats:              stats.FromContext(ctx),
 		batchChunkIterator: newBatchChunkIterator(ctx, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
@@ -531,7 +535,7 @@ func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIter
 		return nil, err
 	}
 
-	return iter.NewHeapSampleIterator(it.ctx, iters), nil
+	return iter.NewHeapSampleIterator(it.stats, iters), nil
 }
 
 func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyChunk, from, through time.Time, nextChunk *LazyChunk) ([]iter.SampleIterator, error) {
@@ -559,7 +563,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, streamExtractor, nextChunk)
+			iterator, err := chks[i][j].SampleIterator(it.stats, from, through, streamExtractor, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -568,7 +572,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 		result = append(result, iter.NewNonOverlappingSampleIterator(iterators, ""))
 	}
 
-	return iter.NewHeapSampleIterator(it.ctx, result), nil
+	return iter.NewHeapSampleIterator(it.stats, result), nil
 }
 
 func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels.Matcher {

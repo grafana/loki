@@ -68,6 +68,7 @@ func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtrac
 		Stage:         l.Stage,
 		LineExtractor: l.LineExtractor,
 		builder:       l.baseBuilder.ForLabels(labels, hash),
+		noopStage:     l.Stage == NoopStage,
 	}
 	l.streamExtractors[hash] = res
 	return res
@@ -76,12 +77,13 @@ func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtrac
 type streamLineSampleExtractor struct {
 	Stage
 	LineExtractor
-	builder *LabelsBuilder
+	builder   *LabelsBuilder
+	noopStage bool
 }
 
 func (l *streamLineSampleExtractor) Process(line []byte) (float64, LabelsResult, bool) {
 	// short circuit.
-	if l.Stage == NoopStage {
+	if l.noopStage {
 		return l.LineExtractor(line), l.builder.GroupedLabels(), true
 	}
 	l.builder.Reset()

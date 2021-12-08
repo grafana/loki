@@ -545,7 +545,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
-	_, ctx := stats.NewContext(queryServer.Context())
+	stats, ctx := stats.NewContext(queryServer.Context())
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -553,7 +553,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
+	itrs, err := instance.Query(ctx, stats, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
 	}
@@ -575,17 +575,17 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		itrs = append(itrs, storeItr)
 	}
 
-	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
+	heapItr := iter.NewHeapIterator(stats, itrs, req.Direction)
 
 	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
-	return sendBatches(ctx, heapItr, queryServer, req.Limit)
+	return sendBatches(ctx, stats, heapItr, queryServer, req.Limit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
-	_, ctx := stats.NewContext(queryServer.Context())
+	stats, ctx := stats.NewContext(queryServer.Context())
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -593,7 +593,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	itrs, err := instance.QuerySample(ctx, stats, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
 	}
@@ -613,11 +613,11 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		itrs = append(itrs, storeItr)
 	}
 
-	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
+	heapItr := iter.NewHeapSampleIterator(stats, itrs)
 
 	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
-	return sendSampleBatches(ctx, heapItr, queryServer)
+	return sendSampleBatches(ctx, stats, heapItr, queryServer)
 }
 
 // boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.

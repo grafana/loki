@@ -423,7 +423,7 @@ func (s *stream) Bounds() (from, to time.Time) {
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
+func (s *stream) Iterator(statsCtx *stats.Context, from, through time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
@@ -444,7 +444,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 		}
 		lastMax = maxt
 
-		itr, err := c.chunk.Iterator(ctx, from, through, direction, pipeline)
+		itr, err := c.chunk.Iterator(statsCtx, from, through, direction, pipeline)
 		if err != nil {
 			return nil, err
 		}
@@ -466,11 +466,11 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 	if ordered {
 		return iter.NewNonOverlappingIterator(iterators, ""), nil
 	}
-	return iter.NewHeapIterator(ctx, iterators, direction), nil
+	return iter.NewHeapIterator(statsCtx, iterators, direction), nil
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
@@ -491,7 +491,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 		}
 		lastMax = maxt
 
-		if itr := c.chunk.SampleIterator(ctx, from, through, extractor); itr != nil {
+		if itr := c.chunk.SampleIterator(statsCtx, from, through, extractor); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}
@@ -503,7 +503,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	if ordered {
 		return iter.NewNonOverlappingSampleIterator(iterators, ""), nil
 	}
-	return iter.NewHeapSampleIterator(ctx, iterators), nil
+	return iter.NewHeapSampleIterator(statsCtx, iterators), nil
 }
 
 func (s *stream) addTailer(t *tailer) {

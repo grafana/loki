@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
@@ -90,7 +91,7 @@ outer:
 		}
 	}
 
-	return iter.NewHeapIterator(ctx, streamIters, req.Direction), nil
+	return iter.NewHeapIterator(stats.FromContext(ctx), streamIters, req.Direction), nil
 }
 
 func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {
@@ -200,7 +201,7 @@ outer:
 	filtered := processSeries(matched, extractor)
 
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewMultiSeriesIterator(ctx, filtered),
+		iter.NewMultiSeriesIterator(stats.FromContext(ctx), filtered),
 		req.Start.UnixNano(),
 		req.End.UnixNano()+1,
 	), nil
