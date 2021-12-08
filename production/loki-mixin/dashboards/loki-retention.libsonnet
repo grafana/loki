@@ -10,7 +10,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addTag()
         .addLog()
         .addRow(
-          $.row('Ressource Usage')
+          $.row('Resource Usage')
           .addPanel(
             $.containerCPUUsagePanel('CPU', 'compactor'),
           )
