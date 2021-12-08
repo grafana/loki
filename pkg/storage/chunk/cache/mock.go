@@ -10,15 +10,16 @@ type mockCache struct {
 	cache map[string][]byte
 }
 
-func (m *mockCache) Store(_ context.Context, keys []string, bufs [][]byte) {
+func (m *mockCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
 	m.Lock()
 	defer m.Unlock()
 	for i := range keys {
 		m.cache[keys[i]] = bufs[i]
 	}
+	return nil
 }
 
-func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
+func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	m.Lock()
 	defer m.Unlock()
 	for _, key := range keys {

@@ -81,7 +81,7 @@ func (c *backgroundCache) Stop() {
 const keysPerBatch = 100
 
 // Store writes keys for the cache in the background.
-func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
 	for len(keys) > 0 {
 		num := keysPerBatch
 		if num > len(keys) {
@@ -101,11 +101,12 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 			if sp != nil {
 				sp.LogFields(otlog.Int("dropped", num))
 			}
-			return // queue is full; give up
+			return nil// queue is full; give up
 		}
 		keys = keys[num:]
 		bufs = bufs[num:]
 	}
+	return nil
 }
 
 func (c *backgroundCache) writeBackLoop() {

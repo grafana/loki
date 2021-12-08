@@ -82,7 +82,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		index := rand.Intn(len(keys))
 		key := keys[index]
 
-		found, bufs, missingKeys := cache.Fetch(context.Background(), []string{key})
+		found, bufs, missingKeys, _ := cache.Fetch(context.Background(), []string{key})
 		require.Len(t, found, 1)
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
@@ -97,7 +97,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 
 func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []chunk.Chunk) {
 	// test getting them all
-	found, bufs, missingKeys := cache.Fetch(context.Background(), keys)
+	found, bufs, missingKeys, _ := cache.Fetch(context.Background(), keys)
 	require.Len(t, found, len(keys))
 	require.Len(t, bufs, len(keys))
 	require.Len(t, missingKeys, 0)
@@ -134,7 +134,7 @@ func (a byExternalKey) Less(i, j int) bool { return a[i].ExternalKey() < a[j].Ex
 func testCacheMiss(t *testing.T, cache cache.Cache) {
 	for i := 0; i < 100; i++ {
 		key := strconv.Itoa(rand.Int()) // arbitrary key which should fail: no chunk key is a single integer
-		found, bufs, missing := cache.Fetch(context.Background(), []string{key})
+		found, bufs, missing, _ := cache.Fetch(context.Background(), []string{key})
 		require.Empty(t, found)
 		require.Empty(t, bufs)
 		require.Len(t, missing, 1)

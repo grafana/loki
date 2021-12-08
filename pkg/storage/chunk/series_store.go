@@ -424,7 +424,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	writeChunk := true
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _ := c.fetcher.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+	found, _, _, _ := c.fetcher.cache.Fetch(ctx, []string{chunk.ExternalKey()})
 	if len(found) > 0 {
 		writeChunk = false
 		dedupedChunksTotal.Inc()
@@ -491,7 +491,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 	if err != nil {
 		return nil, nil, err
 	}
-	_, _, missing := c.writeDedupeCache.Fetch(ctx, keys)
+	_, _, missing, _ := c.writeDedupeCache.Fetch(ctx, keys)
 	// keys and labelEntries are matched in order, but Fetch() may
 	// return missing keys in any order so check against all of them.
 	for _, missingKey := range missing {
