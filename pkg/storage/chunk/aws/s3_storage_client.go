@@ -316,7 +316,10 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	if hedging {
-		httpClient = hedgingCfg.Client(httpClient)
+		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	s3Config = s3Config.WithHTTPClient(httpClient)

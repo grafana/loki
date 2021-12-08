@@ -15,6 +15,7 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/mattn/go-ieproxy"
+	"github.com/prometheus/client_golang/prometheus"
 
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -57,23 +58,25 @@ var (
 	}
 
 	// default Azure http client.
-	defaultClient = &http.Client{
-		Transport: &http.Transport{
-			Proxy: ieproxy.GetProxyFunc(),
-			Dial: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).Dial,
-			MaxIdleConns:           0,
-			MaxIdleConnsPerHost:    100,
-			IdleConnTimeout:        90 * time.Second,
-			TLSHandshakeTimeout:    10 * time.Second,
-			ExpectContinueTimeout:  1 * time.Second,
-			DisableKeepAlives:      false,
-			DisableCompression:     false,
-			MaxResponseHeaderBytes: 0,
-		},
+	defaultClientFactory = func() *http.Client {
+		return &http.Client{
+			Transport: &http.Transport{
+				Proxy: ieproxy.GetProxyFunc(),
+				Dial: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+					DualStack: true,
+				}).Dial,
+				MaxIdleConns:           0,
+				MaxIdleConnsPerHost:    100,
+				IdleConnTimeout:        90 * time.Second,
+				TLSHandshakeTimeout:    10 * time.Second,
+				ExpectContinueTimeout:  1 * time.Second,
+				DisableKeepAlives:      false,
+				DisableCompression:     false,
+				MaxResponseHeaderBytes: 0,
+			},
+		}
 	}
 )
 
@@ -132,20 +135,30 @@ func (c *BlobStorageConfig) ToCortexAzureConfig() cortex_azure.BlobStorageConfig
 // Implements ObjectStorage
 type BlobStorage struct {
 	// blobService storage.Serv
-	cfg          *BlobStorageConfig
-	hedgingCfg   hedging.Config
+	cfg *BlobStorageConfig
+
 	containerURL azblob.ContainerURL
+
+	pipeline        pipeline.Pipeline
+	hedgingPipeline pipeline.Pipeline
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig, hedgingCfg hedging.Config) (*BlobStorage, error) {
 	log.WarnExperimentalUse("Azure Blob Storage")
 	blobStorage := &BlobStorage{
-		cfg:        cfg,
-		hedgingCfg: hedgingCfg,
+		cfg: cfg,
 	}
-
-	var err error
+	pipeline, err := blobStorage.newPipeline(hedgingCfg, false)
+	if err != nil {
+		return nil, err
+	}
+	blobStorage.pipeline = pipeline
+	hedgingPipeline, err := blobStorage.newPipeline(hedgingCfg, true)
+	if err != nil {
+		return nil, err
+	}
+	blobStorage.hedgingPipeline = hedgingPipeline
 	blobStorage.containerURL, err = blobStorage.buildContainerURL()
 	if err != nil {
 		return nil, err
@@ -210,13 +223,12 @@ func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobU
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
-
-	azPipeline, err := b.newPipeline(hedging)
-	if err != nil {
-		return azblob.BlockBlobURL{}, err
+	pipeline := b.pipeline
+	if hedging {
+		pipeline = b.hedgingPipeline
 	}
 
-	return azblob.NewBlockBlobURL(*u, azPipeline), nil
+	return azblob.NewBlockBlobURL(*u, pipeline), nil
 }
 
 func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
@@ -225,15 +237,10 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 		return azblob.ContainerURL{}, err
 	}
 
-	azPipeline, err := b.newPipeline(false)
-	if err != nil {
-		return azblob.ContainerURL{}, err
-	}
-
-	return azblob.NewContainerURL(*u, azPipeline), nil
+	return azblob.NewContainerURL(*u, b.pipeline), nil
 }
 
-func (b *BlobStorage) newPipeline(hedging bool) (pipeline.Pipeline, error) {
+func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipeline.Pipeline, error) {
 	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
 	if err != nil {
 		return nil, err
@@ -248,17 +255,21 @@ func (b *BlobStorage) newPipeline(hedging bool) (pipeline.Pipeline, error) {
 			MaxRetryDelay: b.cfg.MaxRetryDelay,
 		},
 	}
+	client := defaultClientFactory()
 
 	opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
 		return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
-			resp, err := defaultClient.Do(request.WithContext(ctx))
+			resp, err := client.Do(request.WithContext(ctx))
 			return pipeline.NewHTTPResponse(resp), err
 		}
 	})
 
 	if hedging {
+		client, err := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, err
+		}
 		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
-			client := b.hedgingCfg.Client(defaultClient)
 			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
 				resp, err := client.Do(request.WithContext(ctx))
 				return pipeline.NewHTTPResponse(resp), err

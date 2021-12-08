@@ -63,8 +63,9 @@ func Test_Hedging(t *testing.T) {
 				BucketName: "test-bucket",
 				Insecure:   true,
 			}, hedging.Config{
-				At:   tc.hedgeAt,
-				UpTo: tc.upTo,
+				At:           tc.hedgeAt,
+				UpTo:         tc.upTo,
+				MaxPerSecond: 1000,
 			}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
 				opts = append(opts, option.WithEndpoint(server.URL))
 				opts = append(opts, option.WithoutAuthentication())

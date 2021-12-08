@@ -328,6 +328,9 @@ job_name: <string>
 # Describes how to receive logs from gelf client.
 [gelf: <gelf_config>]
 
+# Configuration describing how to pull logs from Cloudflare.
+[cloudflare: <cloudflare>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -1027,6 +1030,133 @@ use_incoming_timestamp: <bool>
 - `__gelf_message_facility`: The GELF facility.
 
 To keep discovered labels to your logs use the [relabel_configs](#relabel_configs) section.
+
+### Cloudflare
+
+The `cloudflare` block configures Promtail to pull logs from the Cloudflare
+[Logpull API](https://developers.cloudflare.com/logs/logpull).
+
+These logs contain data related to the connecting client, the request path through the Cloudflare network, and the response from the origin web server. This data is useful for enriching existing logs on an origin server.
+
+```yaml
+# The Cloudflare API token to use. (Required)
+# You can create a new token by visiting your [Cloudflare profile](https://dash.cloudflare.com/profile/api-tokens).
+api_token: <string>
+
+# The Cloudflare zone id to pull logs for. (Required)
+zone_id: <string>
+
+# The time range to pull logs for.
+[pull_range: <duration> | default = 1m]
+
+# The quantity of workers that will pull logs.
+[workers: <int> | default = 3]
+
+# The type list of fields to fetch for logs. 
+# Supported values: default, minimal, extended, all.
+[fields_type: <string> | default = default]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+```
+
+By default Promtail fetches logs with the default set of fields.
+Here are the different set of fields type available and the fields they include :
+
+- `default` includes `"ClientIP", "ClientRequestHost", "ClientRequestMethod", "ClientRequestURI", "EdgeEndTimestamp", "EdgeResponseBytes",
+"EdgeRequestHost", "EdgeResponseStatus", "EdgeStartTimestamp", "RayID"`
+
+- `minimal` includes all `default` fields and adds `"ZoneID", "ClientSSLProtocol", "ClientRequestProtocol", "ClientRequestPath", "ClientRequestUserAgent", "ClientRequestReferer",
+"EdgeColoCode", "ClientCountry", "CacheCacheStatus", "CacheResponseStatus", "EdgeResponseContentType`
+
+- `extended` includes all `minimal`fields and adds `"ClientSSLCipher", "ClientASN", "ClientIPClass", "CacheResponseBytes", "EdgePathingOp", "EdgePathingSrc", "EdgePathingStatus", "ParentRayID",
+"WorkerCPUTime", "WorkerStatus", "WorkerSubrequest", "WorkerSubrequestCount", "OriginIP", "OriginResponseStatus", "OriginSSLProtocol",
+"OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
+
+- `all` includes all `extended` fields and adds `"ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID"`
+
+To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
+
+Promtail saves the last successfully-fetched timestamp in the position file.
+If a position is found in the file for a given zone ID, Promtail will restart pulling logs
+from that position. When no position is found, Promtail will start pulling logs from the current time.
+
+Promtail fetches logs using multiple workers (configurable via `workers`) which request the last available pull range
+(configured via `pull_range`) repeatedly. Verify the last timestamp fetched by Promtail using the `cloudflare_target_last_requested_end_timestamp` metric.
+It is possible for Promtail to fall behind due to having too many log lines to process for each pull.
+Adding more workers, decreasing the pull range, or decreasing the quantity of fields fetched can mitigate this performance issue.
+
+All Cloudflare logs are in JSON. Here is an example:
+
+```json
+{
+	"CacheCacheStatus": "miss",
+	"CacheResponseBytes": 8377,
+	"CacheResponseStatus": 200,
+	"CacheTieredFill": false,
+	"ClientASN": 786,
+	"ClientCountry": "gb",
+	"ClientDeviceType": "desktop",
+	"ClientIP": "100.100.5.5",
+	"ClientIPClass": "noRecord",
+	"ClientRequestBytes": 2691,
+	"ClientRequestHost": "www.foo.com",
+	"ClientRequestMethod": "GET",
+	"ClientRequestPath": "/comments/foo/",
+	"ClientRequestProtocol": "HTTP/1.0",
+	"ClientRequestReferer": "https://www.foo.com/foo/168855/?offset=8625",
+	"ClientRequestURI": "/foo/15248108/",
+	"ClientRequestUserAgent": "some bot",
+	"ClientSSLCipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
+	"ClientSSLProtocol": "TLSv1.2",
+	"ClientSrcPort": 39816,
+	"ClientXRequestedWith": "",
+	"EdgeColoCode": "MAN",
+	"EdgeColoID": 341,
+	"EdgeEndTimestamp": 1637336610671000000,
+	"EdgePathingOp": "wl",
+	"EdgePathingSrc": "macro",
+	"EdgePathingStatus": "nr",
+	"EdgeRateLimitAction": "",
+	"EdgeRateLimitID": 0,
+	"EdgeRequestHost": "www.foo.com",
+	"EdgeResponseBytes": 14878,
+	"EdgeResponseCompressionRatio": 1,
+	"EdgeResponseContentType": "text/html",
+	"EdgeResponseStatus": 200,
+	"EdgeServerIP": "8.8.8.8",
+	"EdgeStartTimestamp": 1637336610517000000,
+	"FirewallMatchesActions": [],
+	"FirewallMatchesRuleIDs": [],
+	"FirewallMatchesSources": [],
+	"OriginIP": "8.8.8.8",
+	"OriginResponseBytes": 0,
+	"OriginResponseHTTPExpires": "",
+	"OriginResponseHTTPLastModified": "",
+	"OriginResponseStatus": 200,
+	"OriginResponseTime": 123000000,
+	"OriginSSLProtocol": "TLSv1.2",
+	"ParentRayID": "00",
+	"RayID": "6b0a...",
+	"SecurityLevel": "med",
+	"WAFAction": "unknown",
+	"WAFFlags": "0",
+	"WAFMatchedVar": "",
+	"WAFProfile": "unknown",
+	"WAFRuleID": "",
+	"WAFRuleMessage": "",
+	"WorkerCPUTime": 0,
+	"WorkerStatus": "unknown",
+	"WorkerSubrequest": false,
+	"WorkerSubrequestCount": 0,
+	"ZoneID": 1234
+}
+```
+
+You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### relabel_configs
 

@@ -11,31 +11,29 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ),
     local dashboards = self,
 
+    local labelsSelector = 'cluster=~"$cluster", namespace=~"$namespace"',
+    local quantileLabelSelector = 'cluster=~"$cluster", job=~"$namespace/promtail"',
+
     'promtail.json': {
                        local cfg = self,
-
-                       showMultiCluster:: true,
-                       clusterLabel:: 'cluster',
-                       clusterMatchers:: if cfg.showMultiCluster then [utils.selector.re(cfg.clusterLabel, '$cluster')] else [],
-
-                       matchers:: [utils.selector.eq('job', '$namespace/$name')],
-                       selector:: std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in (cfg.clusterMatchers + dashboards['promtail.json'].matchers)]),
                      } +
                      dashboard.dashboard('Loki / Promtail', uid='promtail')
-                     .addClusterSelectorTemplates(false)
+                     .addCluster()
+                     .addTag()
+                     .addTemplate('namespace', 'promtail_build_info{cluster=~"$cluster"}', 'namespace')
                      .addRow(
                        g.row('Targets & Files')
                        .addPanel(
                          g.panel('Active Targets') +
                          g.queryPanel(
-                           'sum(promtail_targets_active_total{%s})' % dashboards['promtail.json'].selector,
+                           'sum(promtail_targets_active_total{%s})' % labelsSelector,
                            'Active Targets',
                          ),
                        )
                        .addPanel(
                          g.panel('Active Files') +
                          g.queryPanel(
-                           'sum(promtail_files_active_total{%s})' % dashboards['promtail.json'].selector,
+                           'sum(promtail_files_active_total{%s})' % labelsSelector,
                            'Active Targets',
                          ),
                        )
@@ -45,7 +43,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addPanel(
                          g.panel('Bps') +
                          g.queryPanel(
-                           'sum(rate(promtail_read_bytes_total{%s}[1m]))' % dashboards['promtail.json'].selector,
+                           'sum(rate(promtail_read_bytes_total{%s}[1m]))' % labelsSelector,
                            'logs read',
                          ) +
                          { yaxes: g.yaxes('Bps') },
@@ -53,7 +51,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addPanel(
                          g.panel('Lines') +
                          g.queryPanel(
-                           'sum(rate(promtail_read_lines_total{%s}[1m]))' % dashboards['promtail.json'].selector,
+                           'sum(rate(promtail_read_lines_total{%s}[1m]))' % labelsSelector,
                            'lines read',
                          ),
                        )
@@ -62,14 +60,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        g.row('Requests')
                        .addPanel(
                          g.panel('QPS') +
-                         g.qpsPanel('promtail_request_duration_seconds_count{%s}' % dashboards['promtail.json'].selector)
+                         g.qpsPanel('promtail_request_duration_seconds_count{%s}' % labelsSelector)
                        )
                        .addPanel(
                          g.panel('Latency') +
-                         utils.latencyRecordingRulePanel(
-                           'promtail_request_duration_seconds',
-                           dashboards['promtail.json'].matchers,
-                           extra_selectors=dashboards['promtail.json'].clusterMatchers
+                         g.queryPanel(
+                           [
+                             'job:promtail_request_duration_seconds:99quantile{%s}' % quantileLabelSelector,
+                             'job:promtail_request_duration_seconds:50quantile{%s}' % quantileLabelSelector,
+                             'job:promtail_request_duration_seconds:avg{%s}' % quantileLabelSelector,
+                           ],
+                           ['p99', 'p50', 'avg']
                          )
                        )
                      ),

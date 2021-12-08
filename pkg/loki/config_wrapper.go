@@ -101,6 +101,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyFIFOCacheConfig(r)
 		applyIngesterFinalSleep(r)
+		applyIngesterReplicationFactor(r)
 		applyChunkRetain(r, &defaults)
 
 		return nil
@@ -472,6 +473,10 @@ func isMemcacheSet(cfg cortexcache.Config) bool {
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.FinalSleep = 0 * time.Second
+}
+
+func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
+	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured

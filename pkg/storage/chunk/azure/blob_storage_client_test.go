@@ -62,20 +62,23 @@ func Test_Hedging(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			count := atomic.NewInt32(0)
 			// hijack the client to count the number of calls
-			defaultClient = &http.Client{
-				Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-					count.Inc()
-					time.Sleep(200 * time.Millisecond)
-					return nil, errors.New("fo")
-				}),
+			defaultClientFactory = func() *http.Client {
+				return &http.Client{
+					Transport: RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+						count.Inc()
+						time.Sleep(200 * time.Millisecond)
+						return nil, errors.New("fo")
+					}),
+				}
 			}
 			c, err := NewBlobStorage(&BlobStorageConfig{
 				ContainerName: "foo",
 				Environment:   azureGlobal,
 				MaxRetries:    1,
 			}, hedging.Config{
-				At:   tc.hedgeAt,
-				UpTo: tc.upTo,
+				At:           tc.hedgeAt,
+				UpTo:         tc.upTo,
+				MaxPerSecond: 1000,
 			})
 			require.NoError(t, err)
 			tc.do(c)

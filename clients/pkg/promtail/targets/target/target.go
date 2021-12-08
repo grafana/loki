@@ -35,6 +35,9 @@ const (
 
 	// GelfTargetType is a gelf target
 	GelfTargetType = TargetType("gelf")
+
+	// CloudflareTargetType is a Cloudflare target
+	CloudflareTargetType = TargetType("Cloudflare")
 )
 
 // Target is a promtail scrape target
