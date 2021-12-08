@@ -9,6 +9,7 @@
 * [4736](https://github.com/grafana/loki/pull/4736) **sandeepsukhani**: allow applying retention at different interval than compaction
 * [4744](https://github.com/grafana/loki/pull/4744) **cyriltovena**: Promtail: Adds GELF UDP support.
 * [4741](https://github.com/grafana/loki/pull/4741) **sandeepsukhani**: index cleanup fixes while applying retention
+* [4857](https://github.com/grafana/loki/pull/4857) **jordanrushing**: New schema v12 including additional configuration for chunk object prefixes
 
 # 2.4.1 (2021/11/07)
 
