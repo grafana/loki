@@ -244,48 +244,52 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 }
 
 func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipeline.Pipeline, error) {
-	if b.cfg.UseManagedIdentity == false {
+	// defing the Azure Pipeline Options
+	opts := azblob.PipelineOptions{
+		Retry: azblob.RetryOptions{
+			Policy:        azblob.RetryPolicyExponential,
+			MaxTries:      (int32)(b.cfg.MaxRetries),
+			TryTimeout:    b.cfg.RequestTimeout,
+			RetryDelay:    b.cfg.MinRetryDelay,
+			MaxRetryDelay: b.cfg.MaxRetryDelay,
+		},
+	}
+
+	if !b.cfg.UseManagedIdentity {
 		credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
 		if err != nil {
 			return nil, err
 		}
 
-		opts := azblob.PipelineOptions{
-			Retry: azblob.RetryOptions{
-				Policy:        azblob.RetryPolicyExponential,
-				MaxTries:      (int32)(b.cfg.MaxRetries),
-				TryTimeout:    b.cfg.RequestTimeout,
-				RetryDelay:    b.cfg.MinRetryDelay,
-				MaxRetryDelay: b.cfg.MaxRetryDelay,
-			},
-		}
+		client := defaultClientFactory()
+
+		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+				resp, err := client.Do(request.WithContext(ctx))
+				return pipeline.NewHTTPResponse(resp), err
+			}
+		})
 
 		if hedging {
-      opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
-        return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
-          resp, err := client.Do(request.WithContext(ctx))
-          return pipeline.NewHTTPResponse(resp), err
+			client, err := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+			if err != nil {
+				return nil, err
+			}
+			opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+				return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+					resp, err := client.Do(request.WithContext(ctx))
+					return pipeline.NewHTTPResponse(resp), err
 				}
 			})
 		}
-
 		return azblob.NewPipeline(credential, opts), nil
-	} else {
-		tokenCredential, err := b.getOAuthToken()
-		if err != nil {
-			return nil, err
-		}
-
-		return azblob.NewPipeline(*tokenCredential, azblob.PipelineOptions{
-			Retry: azblob.RetryOptions{
-				Policy:        azblob.RetryPolicyExponential,
-				MaxTries:      (int32)(b.cfg.MaxRetries),
-				TryTimeout:    b.cfg.RequestTimeout,
-				RetryDelay:    b.cfg.MinRetryDelay,
-				MaxRetryDelay: b.cfg.MaxRetryDelay,
-			},
-		}), nil
 	}
+	tokenCredential, err := b.getOAuthToken()
+	if err != nil {
+		return nil, err
+	}
+
+	return azblob.NewPipeline(*tokenCredential, opts), nil
 
 }
 
@@ -300,7 +304,6 @@ func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := defaultClientFactory()
 
 	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
 		err := spt.Refresh()
@@ -324,11 +327,8 @@ func (b *BlobStorage) fetchMSIToken() (*adal.ServicePrincipalToken, error) {
 	// msiEndpoint := "http://169.254.169.254/metadata/identity/oauth2/token" for production Jobs
 	msiEndpoint, _ := adal.GetMSIVMEndpoint()
 
-	var spt *adal.ServicePrincipalToken
-	var err error
-
 	// both can be empty, systemAssignedMSI scenario
-	spt, err = adal.NewServicePrincipalTokenFromMSI(msiEndpoint, "https://storage.azure.com/")
+	spt, err := adal.NewServicePrincipalTokenFromMSI(msiEndpoint, "https://storage.azure.com/")
 
 	if err != nil {
 		return nil, err
