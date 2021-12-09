@@ -170,6 +170,7 @@ func NewBlobStorage(cfg *BlobStorageConfig, hedgingCfg hedging.Config) (*BlobSto
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
 
+// GetObject returns a reader and the size for the specified object key.
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}
 	if b.cfg.RequestTimeout > 0 {

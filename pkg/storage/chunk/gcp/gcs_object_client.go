@@ -107,7 +107,7 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Conf
 func (s *GCSObjectClient) Stop() {
 }
 
-// GetObject returns a reader for the specified object key from the configured GCS bucket.
+// GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}
 	if s.cfg.RequestTimeout > 0 {

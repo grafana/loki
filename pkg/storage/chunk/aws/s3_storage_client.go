@@ -381,7 +381,7 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]
 }
 
-// GetObject returns a reader for the specified object key from the configured S3 bucket.
+// GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *s3.GetObjectOutput
 
