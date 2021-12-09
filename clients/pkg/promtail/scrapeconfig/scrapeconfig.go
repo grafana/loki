@@ -61,6 +61,8 @@ type ServiceDiscoveryConfig struct {
 	ConsulAgentSDConfigs []*consulagent.SDConfig `yaml:"consulagent_sd_configs,omitempty"`
 	// List of DigitalOcean service discovery configurations.
 	DigitalOceanSDConfigs []*digitalocean.SDConfig `yaml:"digitalocean_sd_configs,omitempty"`
+	// List of Docker service discovery configurations.
+	DockerSDConfigs []*moby.DockerSDConfig `yaml:"docker_sd_config,omitempty"`
 	// List of Docker Swarm service discovery configurations.
 	DockerSwarmSDConfigs []*moby.DockerSwarmSDConfig `yaml:"dockerswarm_sd_configs,omitempty"`
 	// List of Serverset service discovery configurations.
@@ -100,6 +102,9 @@ func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
 		res = append(res, x)
 	}
 	for _, x := range cfg.DigitalOceanSDConfigs {
+		res = append(res, x)
+	}
+	for _, x := range cfg.DockerSDConfigs {
 		res = append(res, x)
 	}
 	for _, x := range cfg.DockerSwarmSDConfigs {
