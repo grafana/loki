@@ -548,6 +548,7 @@ func TestEntriesLimitWithZeroTripperware(t *testing.T) {
 
 type fakeLimits struct {
 	maxQueryParallelism     int
+	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
 	splits                  map[string]time.Duration
@@ -585,7 +586,7 @@ func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryLookback(string) time.Duration {
-	return 0
+	return f.maxQueryLookback
 }
 
 func (f fakeLimits) MinShardingLookback(string) time.Duration {
