@@ -690,7 +690,7 @@ ring:
 
   # The number of tokens the lifecycler will generate and put into the ring if
   # it joined without transferring tokens from another lifecycler.
-  # CLI flag: -ingester.num-tokens
+  # CLI flag: -<prefix>.num-tokens
   [num_tokens: <int> | default = 128]
 ```
 
