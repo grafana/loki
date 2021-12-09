@@ -298,7 +298,7 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -547,7 +547,9 @@ func TestEntriesLimitWithZeroTripperware(t *testing.T) {
 }
 
 type fakeLimits struct {
+	maxQueryLength          time.Duration
 	maxQueryParallelism     int
+	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
 	splits                  map[string]time.Duration
@@ -561,8 +563,11 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 	return f.splits[key]
 }
 
-func (fakeLimits) MaxQueryLength(string) time.Duration {
-	return time.Hour * 7
+func (f fakeLimits) MaxQueryLength(string) time.Duration {
+	if f.maxQueryLength == 0 {
+		return time.Hour * 7
+	}
+	return f.maxQueryLength
 }
 
 func (f fakeLimits) MaxQueryParallelism(string) int {
@@ -585,7 +590,7 @@ func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryLookback(string) time.Duration {
-	return 0
+	return f.maxQueryLookback
 }
 
 func (f fakeLimits) MinShardingLookback(string) time.Duration {

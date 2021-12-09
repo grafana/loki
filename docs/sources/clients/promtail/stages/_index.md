@@ -13,6 +13,7 @@ Parsing stages:
   - [regex](regex/): Extract data using a regular expression.
   - [json](json/): Extract data by parsing the log line as JSON.
   - [replace](replace/): Replace data using a regular expression.
+  - [multiline](multiline/): Merge multiple lines into a multiline block.
 
 Transform stages:
 

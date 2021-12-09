@@ -154,6 +154,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                              // The queries in this dashboard don't make use of the cluster tempalte label selector
                              // but we keep it here to allow selecting a namespace specific to a certain cluster, the
                              // namespace template variable selectors query uses the cluster value.
+                             .addLog()
                              .addCluster()
                              .addNamespace()
                              .addTag(),
