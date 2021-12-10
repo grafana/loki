@@ -104,9 +104,6 @@ func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
 	for _, x := range cfg.DigitalOceanSDConfigs {
 		res = append(res, x)
 	}
-	for _, x := range cfg.DockerSDConfigs {
-		res = append(res, x)
-	}
 	for _, x := range cfg.DockerSwarmSDConfigs {
 		res = append(res, x)
 	}
@@ -338,9 +335,13 @@ type CloudflareConfig struct {
 }
 
 type DockerConfig struct {
-	Host    string   `yaml:"host"` // e.g. unix:///var/run/docker.sock
+	// Host of the Docker daemon. Defaults to unix:///var/run/docker.sock.
+	Host    string   `yaml:"host",default:"unix:///var/run/docker.sock"`
+	// Optional port of the Docker daemon address.
 	Port    int      `yaml:"port"`
+	// The id or name of the container.
 	ContainerName string `yaml:"id"`
+	// Labels optionally holds labels to associate with each record read from Docker logs.
 	Labels model.LabelSet `yaml:"labels"`
 }
 

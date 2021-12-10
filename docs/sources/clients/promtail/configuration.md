@@ -331,6 +331,9 @@ job_name: <string>
 # Configuration describing how to pull logs from Cloudflare.
 [cloudflare: <cloudflare>]
 
+# Configuration describing how to pull logs from a Docker container.
+[docker: <docker>]
+
 # Describes how to relabel targets to determine if they should
 # be processed.
 relabel_configs:
@@ -358,6 +361,10 @@ consul_sd_configs:
 # running on the same host as Promtail.
 consulagent_sd_configs:
   [ - <consulagent_sd_config> ... ]
+
+# Describes how to use the Docker daemon API to discover containers running on the same host as Promtail.
+docker_sd_configs:
+  [ - <docker_sd_config> ... ]
 ```
 
 ### pipeline_stages
@@ -1157,6 +1164,10 @@ All Cloudflare logs are in JSON. Here is an example:
 ```
 
 You can leverage [pipeline stages](pipeline_stages) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+
+### Docker
+
+`TODO`
 
 ### relabel_configs
 
