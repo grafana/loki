@@ -11,7 +11,6 @@ import (
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -44,7 +43,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/tracing"
+	"github.com/grafana/loki/pkg/util/fakeauth"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+
 	"github.com/grafana/loki/pkg/validation"
 )
 
