@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/flagext"
+	util_log "github.com/grafana/loki/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"

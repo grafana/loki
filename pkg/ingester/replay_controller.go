@@ -3,9 +3,9 @@ package ingester
 import (
 	"sync"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"go.uber.org/atomic"
 )
 

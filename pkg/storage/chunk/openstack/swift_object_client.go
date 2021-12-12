@@ -16,7 +16,7 @@ import (
 
 	cortex_openstack "github.com/cortexproject/cortex/pkg/chunk/openstack"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
-	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"

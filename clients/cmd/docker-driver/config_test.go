@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/docker/docker/daemon/logger"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"

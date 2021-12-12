@@ -33,8 +33,8 @@ import (
 	"strings"
 	"syscall"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"golang.org/x/sys/windows"

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/runtimeconfig"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/runtime"

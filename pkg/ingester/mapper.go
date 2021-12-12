@@ -8,8 +8,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 )

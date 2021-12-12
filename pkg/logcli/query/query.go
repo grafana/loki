@@ -12,8 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/fatih/color"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/user"

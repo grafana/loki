@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/util/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

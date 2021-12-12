@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
