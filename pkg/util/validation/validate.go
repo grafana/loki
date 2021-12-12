@@ -14,7 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/grafana/loki/pkg/util/extract"
 )
 
 const (
