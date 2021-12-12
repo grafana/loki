@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	util_math "github.com/grafana/loki/pkg/util/math"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"unsafe"
 
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	util_math "github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"

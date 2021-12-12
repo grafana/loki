@@ -9,7 +9,7 @@ import (
 
 	ot "github.com/opentracing/opentracing-go"
 
-	"github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 )

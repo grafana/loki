@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	util_math "github.com/grafana/loki/pkg/util/math"
 	"go.etcd.io/bbolt"
 
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
