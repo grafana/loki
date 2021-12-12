@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 

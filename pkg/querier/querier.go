@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	cortex_validation "github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/loghttp"
