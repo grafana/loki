@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/util/test"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"

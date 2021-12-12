@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/util/test"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
