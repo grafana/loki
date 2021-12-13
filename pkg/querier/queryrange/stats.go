@@ -100,11 +100,15 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
 			}
-			if statistics != nil {
-				// Re-calculate the summary then log and record metrics for the current query
-				statistics.ComputeSummary(time.Since(start))
-				statistics.Log(level.Debug(logger))
+
+			// type doesn't support statistics, skipping stats collection.
+			if statistics == nil {
+				return resp, err
 			}
+
+			statistics.ComputeSummary(time.Since(start))
+			statistics.Log(level.Debug(logger))
+
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
 				data.recorded = true
