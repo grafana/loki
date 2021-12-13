@@ -789,9 +789,41 @@ func paramsFromRequest(req queryrange.Request) (logql.Params, error) {
 		return &paramsInstantWrapper{
 			LokiInstantRequest: r,
 		}, nil
+	case *LokiLabelNamesRequest:
+		return &paramsLabelNamesWrapper{
+			LokiLabelNamesRequest: r,
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected *LokiRequest, *LokiLabelNamesRequest, or *LokiInstantRequest, got (%T)", r)
 	}
+}
+
+type paramsLabelNamesWrapper struct {
+	*LokiLabelNamesRequest
+}
+
+func (p paramsLabelNamesWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsLabelNamesWrapper) Start() time.Time {
+	return p.GetStartTs()
+}
+
+func (p paramsLabelNamesWrapper) End() time.Time {
+	return p.GetEndTs()
+}
+
+func (p paramsLabelNamesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsLabelNamesWrapper) Interval() time.Duration { return 0 }
+func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
+	return p.Direction()
+}
+func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 } // no limit.
+func (p paramsLabelNamesWrapper) Shards() []string {
+	return p.Shards()
 }
 
 type paramsRangeWrapper struct {

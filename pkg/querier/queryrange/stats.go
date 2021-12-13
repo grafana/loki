@@ -101,13 +101,10 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				}
 			}
 
-			// type doesn't support statistics, skipping stats collection.
-			if statistics == nil {
-				return resp, err
+			if statistics != nil {
+				statistics.ComputeSummary(time.Since(start))
+				statistics.Log(level.Debug(logger))
 			}
-
-			statistics.ComputeSummary(time.Since(start))
-			statistics.Log(level.Debug(logger))
 
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {

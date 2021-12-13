@@ -23,12 +23,14 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		now  = time.Now()
 	)
 	ctx := context.WithValue(context.Background(), ctxKey, data)
+
 	_, _ = StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 		return nil, nil
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
+
 	require.Equal(t, "foo", data.params.Query())
 	require.Equal(t, true, data.recorded)
 	require.Equal(t, now, data.params.Start())
