@@ -2,6 +2,7 @@
 title: Helm
 weight: 20
 ---
+
 # Install Distributed Deployment of Grafana Loki with Helm
 
 The Helm installation runs the Grafana Loki cluster as distributed microservices.
@@ -64,7 +65,7 @@ kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 
 Navigate to `http://localhost:3000` and login with `admin` and the password
 output above. Then follow the [instructions for adding the Loki Data Source](../../getting-started/grafana/), using the URL
-`http://<helm-installation-name>-gateway.<namespace>.svc.cluster.local/` for Loki 
+`http://<helm-installation-name>-gateway.<namespace>.svc.cluster.local/` for Loki
 (with `<helm-installation-name>` and `<namespace>` replaced by the installation and namespace, respectively, of your deployment).
 
 ## Run Loki behind HTTPS ingress
@@ -94,9 +95,9 @@ gateway:
 
 In order to receive and process syslog messages in Promtail, the following changes will be necessary:
 
-* Review the [Promtail syslog-receiver configuration documentation](../../clients/promtail/scraping/#syslog-receiver)
+- Review the [Promtail syslog-receiver configuration documentation](../../clients/promtail/scraping/#syslog-receiver)
 
-* Configure the Promtail Helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
+- Configure the Promtail Helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
 
 ```yaml
 extraScrapeConfigs:
@@ -118,9 +119,9 @@ syslogService:
 
 In order to receive and process syslog message into Promtail, the following changes will be necessary:
 
-* Review the [Promtail systemd-journal configuration documentation](../../clients/promtail/scraping/#journal-scraping-linux-only)
+- Review the [Promtail systemd-journal configuration documentation](../../clients/promtail/scraping/#journal-scraping-linux-only)
 
-* Configure the Promtail Helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
+- Configure the Promtail Helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
 
 ```yaml
 # Add additional scrape config
@@ -147,3 +148,4 @@ extraVolumeMounts:
   - name: journal
     mountPath: /var/log/journal
     readOnly: true
+```
