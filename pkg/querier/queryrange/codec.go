@@ -819,11 +819,11 @@ func (p paramsLabelNamesWrapper) Step() time.Duration {
 }
 func (p paramsLabelNamesWrapper) Interval() time.Duration { return 0 }
 func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
-	return p.Direction()
+	return logproto.FORWARD
 }
 func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 } // no limit.
 func (p paramsLabelNamesWrapper) Shards() []string {
-	return p.Shards()
+	return []string{}
 }
 
 type paramsRangeWrapper struct {
