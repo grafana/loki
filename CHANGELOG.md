@@ -1,5 +1,6 @@
 ## Main
 
+* [4920](https://github.com/grafana/loki/pull/4920) **chaudum**: Add `-list-targets` command line flag to list all available run targets
 * [4860](https://github.com/grafana/loki/pull/4860) **cyriltovena**: Add rate limiting and metrics to hedging
 * [4865](https://github.com/grafana/loki/pull/4865) **taisho6339**: Fix duplicate registry.MustRegister call in Promtail Kafka
 * [4845](https://github.com/grafana/loki/pull/4845) **chaudum** Return error responses consistently as JSON
