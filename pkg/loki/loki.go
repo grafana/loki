@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	rt "runtime"
 
 	cortex_tripper "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
@@ -13,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -293,6 +296,24 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
+}
+
+// ListTargets prints a list of availble user visible targets and their
+// dependencies
+func (t *Loki) ListTargets() {
+	green := color.New(color.FgGreen, color.Bold)
+	if rt.GOOS == "windows" {
+		green.DisableColor()
+	}
+	for _, m := range t.ModuleManager.UserVisibleModuleNames() {
+		fmt.Fprintln(os.Stdout, green.Sprint(m))
+
+		for _, n := range t.ModuleManager.DependenciesForModule(m) {
+			if t.ModuleManager.IsUserVisibleModule(n) {
+				fmt.Fprintln(os.Stdout, " ", n)
+			}
+		}
+	}
 }
 
 // Run starts Loki running, and blocks until a Loki stops.
