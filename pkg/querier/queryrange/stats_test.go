@@ -165,3 +165,20 @@ func Test_StatsUpdateResult(t *testing.T) {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, resp.(*LokiResponse).Statistics.Summary.ExecTime, (20 * time.Millisecond).Seconds())
 }
+
+func Test_SkipUnsupportedStatsRequest(t *testing.T) {
+	startTs := time.Now().Add(time.Second * -1)
+	endTs := time.Now()
+
+	data := &queryData{}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+
+	resp, err := StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		time.Sleep(20 * time.Millisecond)
+		return &LokiLabelNamesResponse{
+			Data: []string{"crazy-data"},
+		}, nil
+	})).Do(ctx, &LokiLabelNamesRequest{Path: "awesome-path", StartTs: startTs, EndTs: endTs})
+	require.NoError(t, err)
+	require.Equal(t, []string{"crazy-data"}, resp.(*LokiLabelNamesResponse).GetData())
+}
