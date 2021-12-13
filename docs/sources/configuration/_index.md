@@ -86,6 +86,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # the distributor and compactor, but all in the same process.
 # Supported values: all, compactor, distributor, ingester, querier, query-scheduler,
 #  ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
+# A full list of available targets can be printed when running Loki with the `-list-targets` command line flag.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
