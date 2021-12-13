@@ -11,7 +11,8 @@ weight: 200
 Instructions for different methods of installing Loki and Promtail.
 
 - [Install using Tanka (recommended)](tanka/)
-- [Install through Helm](helm/)
+- [Install distributed deployment through Helm](distributed-helm/)
+- [Install simple, scalable deployment through Helm](simple-scalable-helm/)
 - [Install through Docker or Docker Compose](docker/)
 - [Install and run locally](local/)
 - [Install from source](install-from-source/)
