@@ -298,7 +298,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
 }
 
-// ListTargets prints a list of availble user visible targets and their
+// ListTargets prints a list of available user visible targets and their
 // dependencies
 func (t *Loki) ListTargets() {
 	green := color.New(color.FgGreen, color.Bold)
