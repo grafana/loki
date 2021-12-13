@@ -64,7 +64,7 @@ kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 
 Navigate to `http://localhost:3000` and login with `admin` and the password
 output above. Then follow the [instructions for adding the Loki Data Source](../../getting-started/grafana/), using the URL
-`http://<helm-installation-name>-gateway.<namespace>.sv.cluster.local:3100/` for Loki, with `<helm-installation-name>` and `<namespaced>` replaced with the correct values for your deployment.
+`http://<helm-installation-name>-gateway.<namespace>.svc.cluster.local:3100/` for Loki, with `<helm-installation-name>` and `<namespaced>` replaced with the correct values for your deployment.
 
 ## Run Loki behind HTTPS ingress
 
