@@ -92,7 +92,7 @@ func (t *Target) start() {
 
 	out := make(chan frame)
 	dstout := stdoutWriter{out: out}
-	dsterr := stdoutWriter{out: out}
+	dsterr := stderrWriter{out: out}
 
 	// Start transfering
 	go func() {
