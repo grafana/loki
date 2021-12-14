@@ -289,7 +289,7 @@ func NewSeriesTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	schema chunk.SchemaConfig,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{}
+	queryRangeMiddleware := []queryrange.Middleware{NewLimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
@@ -334,7 +334,7 @@ func NewLabelsTripperware(
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), NewLimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{NewLimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
