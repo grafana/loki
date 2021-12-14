@@ -496,7 +496,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:                    {Ingester, Distributor},
 	}
 
-	// Add IngesterQuerier as a dependency for store when target is either ingester or querier.
+	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, or read.
 	if t.Cfg.isModuleEnabled(Querier) || t.Cfg.isModuleEnabled(Ruler) || t.Cfg.isModuleEnabled(Read) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
