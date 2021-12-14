@@ -23,12 +23,14 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		now  = time.Now()
 	)
 	ctx := context.WithValue(context.Background(), ctxKey, data)
+
 	_, _ = StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 		return nil, nil
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
+
 	require.Equal(t, "foo", data.params.Query())
 	require.Equal(t, true, data.recorded)
 	require.Equal(t, now, data.params.Start())
@@ -164,4 +166,21 @@ func Test_StatsUpdateResult(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, resp.(*LokiResponse).Statistics.Summary.ExecTime, (20 * time.Millisecond).Seconds())
+}
+
+func Test_SkipUnsupportedStatsRequest(t *testing.T) {
+	startTs := time.Now().Add(time.Second * -1)
+	endTs := time.Now()
+
+	data := &queryData{}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+
+	resp, err := StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		time.Sleep(20 * time.Millisecond)
+		return &LokiLabelNamesResponse{
+			Data: []string{"crazy-data"},
+		}, nil
+	})).Do(ctx, &LokiLabelNamesRequest{Path: "awesome-path", StartTs: startTs, EndTs: endTs})
+	require.NoError(t, err)
+	require.Equal(t, []string{"crazy-data"}, resp.(*LokiLabelNamesResponse).GetData())
 }
