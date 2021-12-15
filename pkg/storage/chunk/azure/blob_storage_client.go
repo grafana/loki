@@ -244,7 +244,7 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 }
 
 func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipeline.Pipeline, error) {
-	// defing the Azure Pipeline Options
+	// defining the Azure Pipeline Options
 	opts := azblob.PipelineOptions{
 		Retry: azblob.RetryOptions{
 			Policy:        azblob.RetryPolicyExponential,
