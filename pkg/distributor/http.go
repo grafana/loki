@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"strings"
 
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/tenant"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
@@ -74,4 +74,29 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
 	}
+}
+
+// ServeHTTP implements the distributor ring status page.
+//
+// If the rate limiting strategy is local instead of global, no ring is used by
+// the distributor and as such, no ring status is returned from this function.
+func (d *Distributor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if d.rateLimitStrat == GlobalRateLimitStrat {
+		d.distributorsRing.ServeHTTP(w, r)
+		return
+	}
+
+	var noRingPage = `
+			<!DOCTYPE html>
+			<html>
+				<head>
+					<meta charset="UTF-8">
+					<title>Distributor Ring Status</title>
+				</head>
+				<body>
+					<h1>Distributor Ring Status</h1>
+					<p>Not running with Global Rating Limit - ring not being used by the Distributor.</p>
+				</body>
+			</html>`
+	cortex_util.WriteHTMLResponse(w, noRingPage)
 }
