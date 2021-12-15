@@ -251,11 +251,15 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 		{Name: "bar", Value: "baz"},
 		{Name: "flip", Value: "flop"},
 		{Name: "toms", Value: "code"},
+		{Name: "env", Value: "dev"},
+		{Name: "class", Value: "not-secret"},
 	}
 	fooMetric2 := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
 		{Name: "bar", Value: "beep"},
 		{Name: "toms", Value: "code"},
+		{Name: "env", Value: "prod"},
+		{Name: "class", Value: "secret"},
 	}
 	fooMetric3 := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
@@ -284,26 +288,37 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	for _, tc := range []struct {
 		metricName, labelName string
 		expect                []string
+		matchers              []*labels.Matcher
 	}{
 		{
 			`foo`, `bar`,
 			[]string{"baz", "beep", "bop"},
+			[]*labels.Matcher{},
 		},
 		{
 			`bar`, `toms`,
 			[]string{"code"},
+			[]*labels.Matcher{},
 		},
 		{
 			`bar`, `bar`,
 			[]string{"baz"},
+			[]*labels.Matcher{},
 		},
 		{
 			`foo`, `foo`,
 			nil,
+			[]*labels.Matcher{},
 		},
 		{
 			`foo`, `flip`,
 			[]string{"flap", "flop"},
+			[]*labels.Matcher{},
+		},
+		{
+			`foo`, `class`,
+			[]string{"not-secret"},
+			[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "env", "dev")},
 		},
 	} {
 		for _, schema := range schemas {
@@ -325,7 +340,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName)
+					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues1) {
@@ -333,7 +348,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName)
+					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues2) {

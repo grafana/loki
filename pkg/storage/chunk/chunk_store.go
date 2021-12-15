@@ -219,7 +219,7 @@ func (c *store) GetChunkRefs(ctx context.Context, userID string, from, through m
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
+func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
@@ -231,25 +231,74 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 		return nil, nil
 	}
 
-	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
-	if err != nil {
-		return nil, err
-	}
-
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if err != nil {
-		return nil, err
-	}
-
-	var result UniqueStrings
-	for _, entry := range entries {
-		_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+	if len(matchers) == 0 {
+		queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 		if err != nil {
 			return nil, err
 		}
-		result.Add(string(labelValue))
+
+		entries, err := c.lookupEntriesByQueries(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		var result UniqueStrings
+		for _, entry := range entries {
+			_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+			if err != nil {
+				return nil, err
+			}
+			result.Add(string(labelValue))
+		}
+		return result.Strings(), nil
+	} else {
+
+		// Otherwise get chunks which include other matchers
+		var chunkIDs []string
+		var initialized bool
+		for _, matcher := range matchers {
+			incoming, err := c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
+			if err != nil {
+				return nil, err
+			}
+			if !initialized {
+				chunkIDs = incoming
+				initialized = true
+			} else {
+				chunkIDs = intersectStrings(chunkIDs, incoming)
+			}
+		}
+		contains := func(id string) bool {
+			for _, a := range chunkIDs {
+				if a == id {
+					return true
+				}
+			}
+			return false
+		}
+
+		// Fetch label values for label name that are part of the filtered chunks
+		var result UniqueStrings
+		queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+		if err != nil {
+			return nil, err
+		}
+		entries, err := c.lookupEntriesByQueries(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			chunkKey, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+			if err != nil {
+				return nil, err
+			}
+			if contains(chunkKey) {
+				result.Add(string(labelValue))
+			}
+		}
+
+		return result.Strings(), nil
 	}
-	return result.Strings(), nil
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.

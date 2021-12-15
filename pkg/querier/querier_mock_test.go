@@ -245,7 +245,7 @@ func (s *storeMock) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return errors.New("storeMock.PutOne() has not been mocked")
 }
 
-func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
+func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
 	return args.Get(0).([]string), args.Error(1)
 }
