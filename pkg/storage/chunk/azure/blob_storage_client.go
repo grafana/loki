@@ -255,35 +255,37 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		},
 	}
 
-	if !b.cfg.UseManagedIdentity {
-		credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
+	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	client := defaultClientFactory()
+
+	opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+		return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
+			resp, err := client.Do(request.WithContext(ctx))
+			return pipeline.NewHTTPResponse(resp), err
+		}
+	})
+
+	if hedging {
+		client, err := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, err
 		}
-
-		client := defaultClientFactory()
-
 		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
 			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
 				resp, err := client.Do(request.WithContext(ctx))
 				return pipeline.NewHTTPResponse(resp), err
 			}
 		})
+	}
 
-		if hedging {
-			client, err := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
-			if err != nil {
-				return nil, err
-			}
-			opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
-				return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
-					resp, err := client.Do(request.WithContext(ctx))
-					return pipeline.NewHTTPResponse(resp), err
-				}
-			})
-		}
+	if !b.cfg.UseManagedIdentity {
 		return azblob.NewPipeline(credential, opts), nil
 	}
+
 	tokenCredential, err := b.getOAuthToken()
 	if err != nil {
 		return nil, err
