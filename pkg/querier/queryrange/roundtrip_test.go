@@ -257,7 +257,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour}, chunk.SchemaConfig{}, 0, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -268,7 +268,7 @@ func TestSeriesTripperware(t *testing.T) {
 
 	lreq := &LokiSeriesRequest{
 		Match:   []string{`{job="varlogs"}`},
-		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
+		StartTs: testTime.Add(-25 * time.Hour), // bigger than split by interval limit
 		EndTs:   testTime,
 		Path:    "/loki/api/v1/series",
 	}
