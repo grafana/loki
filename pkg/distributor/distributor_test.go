@@ -287,7 +287,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			// updates to the expected size
 			if distributors[0].distributorsRing != nil {
 				test.Poll(t, time.Second, testData.distributors, func() interface{} {
-					return distributors[0].distributorsRing.HealthyInstancesCount()
+					return distributors[0].distributorsLifecycler.HealthyInstancesCount()
 				})
 			}
 
