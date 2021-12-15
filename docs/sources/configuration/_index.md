@@ -707,6 +707,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
+
+# Use Managed Identity or not.
+# CLI flag: -ruler.storage.azure.use-managed-identity
+[use_managed_identity: <boolean> | default = false]
 ```
 
 ## gcs_storage_config
