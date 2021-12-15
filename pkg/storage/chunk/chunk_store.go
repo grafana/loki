@@ -541,7 +541,7 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		chunkKey, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -555,14 +555,14 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 
 			// If its in the set, then add it to set, we don't need to run
 			// matcher on it again.
-			result = append(result, seriesID)
+			result = append(result, chunkKey)
 			continue
 		}
 
 		if matcher != nil && !matcher.Matches(string(labelValue)) {
 			continue
 		}
-		result = append(result, seriesID)
+		result = append(result, chunkKey)
 	}
 	// Return ids sorted and deduped because they will be merged with other sets.
 	sort.Strings(result)
