@@ -254,7 +254,7 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 	} else {
 
 		// Otherwise get chunks which include other matchers
-		var seriesIDs []string
+		seriesIDsSet := make(map[string]struct{}, 0)
 		var initialized bool
 		for _, matcher := range matchers {
 			incoming, err := c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
@@ -262,19 +262,23 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 				return nil, err
 			}
 			if !initialized {
-				seriesIDs = incoming
+				for _, i := range incoming {
+					seriesIDsSet[i] = struct{}{}
+				}
 				initialized = true
 			} else {
-				seriesIDs = intersectStrings(seriesIDs, incoming)
+				// Intersect incoming and current set.
+				for _, i := range incoming {
+					_, ok := seriesIDsSet[i]		
+					if !ok {
+						delete(seriesIDsSet, i)
+					}
+				}
 			}
 		}
 		contains := func(id string) bool {
-			for _, a := range seriesIDs {
-				if a == id {
-					return true
-				}
-			}
-			return false
+			_, ok := seriesIDsSet[id]
+			return ok
 		}
 
 		// Fetch label values for label name that are part of the filtered chunks
