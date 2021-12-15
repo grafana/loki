@@ -251,58 +251,10 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 			result.Add(string(labelValue))
 		}
 		return result.Strings(), nil
-	} else {
-
-		// Otherwise get chunks which include other matchers
-		seriesIDsSet := make(map[string]struct{}, 0)
-		var initialized bool
-		for _, matcher := range matchers {
-			incoming, err := c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
-			if err != nil {
-				return nil, err
-			}
-			if !initialized {
-				for _, i := range incoming {
-					seriesIDsSet[i] = struct{}{}
-				}
-				initialized = true
-			} else {
-				// Intersect incoming and current set.
-				for _, i := range incoming {
-					_, ok := seriesIDsSet[i]		
-					if !ok {
-						delete(seriesIDsSet, i)
-					}
-				}
-			}
-		}
-		contains := func(id string) bool {
-			_, ok := seriesIDsSet[id]
-			return ok
-		}
-
-		// Fetch label values for label name that are part of the filtered chunks
-		var result UniqueStrings
-		queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
-		if err != nil {
-			return nil, err
-		}
-		entries, err := c.lookupEntriesByQueries(ctx, queries)
-		if err != nil {
-			return nil, err
-		}
-		for _, entry := range entries {
-			seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
-			if err != nil {
-				return nil, err
-			}
-			if contains(seriesID) {
-				result.Add(string(labelValue))
-			}
-		}
-
-		return result.Strings(), nil
 	}
+
+	return nil, errors.New("Unimplemented: Matchers are not supported by chunk store.")
+
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
