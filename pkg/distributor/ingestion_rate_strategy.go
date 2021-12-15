@@ -6,30 +6,6 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 )
 
-// RateLimitStrat represents a rate limiting strategy to be followed by the distributor
-// regarding when to discard received input.
-//
-// As of now, only two strategies are supported: local, where the ingestion rate limit should is
-// applied individually to each distributor instance, and global, where the ingestion rate limit
-// is shared across the cluster. The ingestion rate strategy cannot be overridden on a per-tenant basis.
-type RateLimitStrat int64
-
-const (
-	// GlobalRateLimitStrat represents a ingestion rate limiting strategy that enforces the rate
-	// limiting globally, configuring a per-distributor local rate limiter as "ingestion_rate / N",
-	// where N is the number of distributor replicas (it's automatically adjusted if the
-	// number of replicas change).
-	//
-	// The global strategy requires the distributors to form their own ring, which
-	// is used to keep track of the current number of healthy distributor replicas.
-	GlobalRateLimitStrat RateLimitStrat = iota
-
-	// LocalRateLimitStrat represents a ingestion rate limiting strategy that enforces the limit
-	// on a per distributor basis. The actual effective rate limit will be N times higher, where
-	// N is the number of distributor replicas.
-	LocalRateLimitStrat
-)
-
 // ReadLifecycler represents the read interface to the lifecycler.
 type ReadLifecycler interface {
 	HealthyInstancesCount() int

@@ -66,7 +66,7 @@ type Distributor struct {
 	distributorsRing       *ring.Ring
 	distributorsLifecycler *ring.Lifecycler
 
-	rateLimitStrat RateLimitStrat
+	rateLimitStrat string
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -99,11 +99,11 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifecycler *ring.Lifecycler
 	var distributorsRing *ring.Ring
-	rateLimitStrat := LocalRateLimitStrat
+	rateLimitStrat := validation.LocalIngestionRateStrategy
 
 	var servs []services.Service
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		rateLimitStrat = GlobalRateLimitStrat
+		rateLimitStrat = validation.GlobalIngestionRateStrategy
 		ringStore, err := kv.NewClient(
 			cfg.DistributorRing.KVStore,
 			ring.GetCodec(),

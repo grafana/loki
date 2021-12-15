@@ -339,6 +339,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 	distributorConfig.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
 	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
 	distributorConfig.DistributorRing.KVStore.Mock = kvStore
+	distributorConfig.DistributorRing.KVStore.Store = "inmemory"
 	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
 	distributorConfig.factory = factory
 	if factory == nil {
