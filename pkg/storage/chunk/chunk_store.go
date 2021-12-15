@@ -254,7 +254,7 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 	} else {
 
 		// Otherwise get chunks which include other matchers
-		var chunkIDs []string
+		var seriesIDs []string
 		var initialized bool
 		for _, matcher := range matchers {
 			incoming, err := c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
@@ -262,14 +262,14 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 				return nil, err
 			}
 			if !initialized {
-				chunkIDs = incoming
+				seriesIDs = incoming
 				initialized = true
 			} else {
-				chunkIDs = intersectStrings(chunkIDs, incoming)
+				seriesIDs = intersectStrings(seriesIDs, incoming)
 			}
 		}
 		contains := func(id string) bool {
-			for _, a := range chunkIDs {
+			for _, a := range seriesIDs {
 				if a == id {
 					return true
 				}
@@ -288,11 +288,11 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 			return nil, err
 		}
 		for _, entry := range entries {
-			chunkKey, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+			seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 			if err != nil {
 				return nil, err
 			}
-			if contains(chunkKey) {
+			if contains(seriesID) {
 				result.Add(string(labelValue))
 			}
 		}
@@ -585,7 +585,7 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		chunkKey, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -599,14 +599,14 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 
 			// If its in the set, then add it to set, we don't need to run
 			// matcher on it again.
-			result = append(result, chunkKey)
+			result = append(result, seriesID)
 			continue
 		}
 
 		if matcher != nil && !matcher.Matches(string(labelValue)) {
 			continue
 		}
-		result = append(result, chunkKey)
+		result = append(result, seriesID)
 	}
 	// Return ids sorted and deduped because they will be merged with other sets.
 	sort.Strings(result)

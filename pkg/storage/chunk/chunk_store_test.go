@@ -320,6 +320,14 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 			[]string{"not-secret"},
 			[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "env", "dev")},
 		},
+		{
+			`foo`, `bar`,
+			[]string{"baz"},
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
+				labels.MustNewMatcher(labels.MatchEqual, "toms", "code"),
+			},
+		},
 	} {
 		for _, schema := range schemas {
 			for _, storeCase := range stores {
