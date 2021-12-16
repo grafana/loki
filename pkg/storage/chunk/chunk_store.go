@@ -253,7 +253,7 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 		return result.Strings(), nil
 	}
 
-	return nil, errors.New("Unimplemented: Matchers are not supported by chunk store.")
+	return nil, errors.New("unimplemented: Matchers are not supported by chunk store")
 
 }
 

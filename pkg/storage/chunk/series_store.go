@@ -227,9 +227,20 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 	return labelNames, nil
 }
 func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer log.Span.Finish()
+
 	if len(matchers) == 0 {
 		return c.baseStore.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 	}
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+	level.Debug(log).Log("metric", metricName)
 
 	// Otherwise get series which include other matchers
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)

@@ -3,14 +3,12 @@ package chunk
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/test"
 )
 
 func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
@@ -73,18 +71,12 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 					// Query with ordinary time-range
 					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
-
-					if !reflect.DeepEqual(tc.expect, labelValues1) {
-						t.Fatalf("%s/%s: wrong label values - %s", tc.metricName, tc.labelName, test.Diff(tc.expect, labelValues1))
-					}
+					require.ElementsMatch(t, tc.expect, labelValues1)
 
 					// Pushing end of time-range into future should yield exact same resultset
 					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
-
-					if !reflect.DeepEqual(tc.expect, labelValues2) {
-						t.Fatalf("%s/%s: wrong label values - %s", tc.metricName, tc.labelName, test.Diff(tc.expect, labelValues2))
-					}
+					require.ElementsMatch(t, tc.expect, labelValues2)
 				})
 			}
 		}
