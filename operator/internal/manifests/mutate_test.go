@@ -6,7 +6,7 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
-	"github.com/ViaQ/loki-operator/internal/manifests"
+	"github.com/grafana/loki-operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 
 	appsv1 "k8s.io/api/apps/v1"

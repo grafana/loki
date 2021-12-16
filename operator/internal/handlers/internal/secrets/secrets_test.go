@@ -3,7 +3,7 @@ package secrets_test
 import (
 	"testing"
 
-	"github.com/ViaQ/loki-operator/internal/handlers/internal/secrets"
+	"github.com/grafana/loki-operator/internal/handlers/internal/secrets"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 )

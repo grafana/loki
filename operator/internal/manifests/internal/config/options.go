@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
+	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
 )
 
 // Options is used to render the loki-config.yaml file template

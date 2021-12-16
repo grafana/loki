@@ -6,11 +6,11 @@ import (
 
 	"github.com/ViaQ/logerr/kverrors"
 
-	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
-	"github.com/ViaQ/loki-operator/internal/external/k8s"
-	"github.com/ViaQ/loki-operator/internal/handlers/internal/secrets"
-	"github.com/ViaQ/loki-operator/internal/manifests"
-	"github.com/ViaQ/loki-operator/internal/status"
+	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
+	"github.com/grafana/loki-operator/internal/external/k8s"
+	"github.com/grafana/loki-operator/internal/handlers/internal/secrets"
+	"github.com/grafana/loki-operator/internal/manifests"
+	"github.com/grafana/loki-operator/internal/status"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

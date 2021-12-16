@@ -4,7 +4,7 @@ package k8sfakes
 import (
 	"sync"
 
-	"github.com/ViaQ/loki-operator/internal/external/k8s"
+	"github.com/grafana/loki-operator/internal/external/k8s"
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"

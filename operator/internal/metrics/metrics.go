@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	lokiv1beta1 "github.com/ViaQ/loki-operator/api/v1beta1"
-	"github.com/ViaQ/loki-operator/internal/manifests"
+	lokiv1beta1 "github.com/grafana/loki-operator/api/v1beta1"
+	"github.com/grafana/loki-operator/internal/manifests"
 )
 
 // UserDefinedLimitsType defines a label that describes the type of limits

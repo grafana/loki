@@ -1,4 +1,4 @@
-module github.com/ViaQ/loki-operator
+module github.com/grafana/loki-operator
 
 go 1.16
 
