@@ -3,6 +3,7 @@ package common
 import (
 	"flag"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/gcp"
@@ -11,13 +12,26 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// Config holds common config that can be shared between multiple other config sections
+// Config holds common config that can be shared between multiple other config sections.
+//
+// Values defined under this common configuration are supersede if a more specific value is defined.
 type Config struct {
 	PathPrefix        string          `yaml:"path_prefix"`
 	Storage           Storage         `yaml:"storage"`
 	PersistTokens     bool            `yaml:"persist_tokens"`
 	ReplicationFactor int             `yaml:"replication_factor"`
 	Ring              util.RingConfig `yaml:"ring"`
+
+	// InstanceInterfaceNames represents a common list of net interfaces used to look for host addresses.
+	//
+	// Internally, addresses will be resolved in the order that this is configured.
+	// By default, the list of used interfaces are, in order: "eth0", "en0", and your loopback net interface (probably "lo").
+	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
+
+	// InstanceAddr represents a common ip used by instances to advertise their address.
+	//
+	// For instance, the different Loki rings will use this
+	InstanceAddr string `yaml:"instance_addr"`
 }
 
 func (c *Config) RegisterFlags(_ *flag.FlagSet) {
@@ -25,6 +39,11 @@ func (c *Config) RegisterFlags(_ *flag.FlagSet) {
 	throwaway.IntVar(&c.ReplicationFactor, "common.replication-factor", 3, "How many ingesters incoming data should be replicated to.")
 	c.Storage.RegisterFlagsWithPrefix("common.storage", throwaway)
 	c.Ring.RegisterFlagsWithPrefix("", "collectors/", throwaway)
+
+	// instance related flags.
+	c.InstanceInterfaceNames = []string{"eth0", "en0"}
+	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "127.0.0.1", "Default advertised address to be used by Loki components.")
+	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
 }
 
 type Storage struct {
