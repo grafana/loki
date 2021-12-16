@@ -57,6 +57,7 @@ func gcsInstrumentation(ctx context.Context, scope string, insecure bool, http2 
 	customTransport.MaxIdleConns = 512
 	if !http2 {
 		// disable HTTP/2 by setting TLSNextProto to non-nil empty map, as per the net/http documentation.
+		// see http2 section of https://pkg.go.dev/net/http
 		customTransport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
 	}
 	if insecure {
