@@ -5,7 +5,7 @@ metadata:
   name: lokistack-viewer-role
 rules:
 - apiGroups:
-  - loki.openshift.io
+  - loki.grafana.com
   resources:
   - lokistacks
   verbs:
@@ -13,7 +13,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - loki.openshift.io
+  - loki.grafana.com
   resources:
   - lokistacks/status
   verbs:

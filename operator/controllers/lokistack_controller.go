@@ -68,9 +68,9 @@ type LokiStackReconciler struct {
 	Flags  manifests.FeatureFlags
 }
 
-// +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=loki.openshift.io,resources=lokistacks/finalizers,verbs=update
+// +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete

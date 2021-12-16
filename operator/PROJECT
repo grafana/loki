@@ -1,4 +1,4 @@
-domain: openshift.io
+domain: grafana.com
 layout:
 - go.kubebuilder.io/v3
 plugins:
@@ -11,9 +11,9 @@ resources:
     crdVersion: v1beta1
     namespaced: true
   controller: true
-  domain: openshift.io
+  domain: grafana.com
   group: loki
   kind: LokiStack
-  path: github.com/grafana/loki-operator/api/v1beta1
+  path: github.com/grafana/loki/operator/api/v1beta1
   version: v1beta1
 version: "3"

@@ -10,9 +10,9 @@ metadata:
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: cluster-logging
     app.kubernetes.io/version: 0.0.1
-  name: lokistacks.loki.openshift.io
+  name: lokistacks.loki.grafana.com
 spec:
-  group: loki.openshift.io
+  group: loki.grafana.com
   names:
     categories:
     - logging

@@ -5,4 +5,4 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: $(CERTIFICATE_NAMESPACE)/$(CERTIFICATE_NAME)
-  name: lokistacks.loki.openshift.io
+  name: lokistacks.loki.grafana.com

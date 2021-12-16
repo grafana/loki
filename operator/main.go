@@ -85,7 +85,7 @@ func main() {
 		Port:                   9443,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "e3716011.openshift.io",
+		LeaderElectionID:       "e3716011.grafana.com",
 	})
 	if err != nil {
 		log.Error(err, "unable to start manager")

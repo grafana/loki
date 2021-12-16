@@ -11,7 +11,7 @@ data:
       port: 9443
     leaderElection:
       leaderElect: true
-      resourceName: e3716011.openshift.io
+      resourceName: e3716011.grafana.com
 kind: ConfigMap
 metadata:
   labels:

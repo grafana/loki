@@ -5,7 +5,7 @@ metadata:
   name: lokistack-editor-role
 rules:
 - apiGroups:
-  - loki.openshift.io
+  - loki.grafana.com
   resources:
   - lokistacks
   verbs:
@@ -17,7 +17,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - loki.openshift.io
+  - loki.grafana.com
   resources:
   - lokistacks/status
   verbs:

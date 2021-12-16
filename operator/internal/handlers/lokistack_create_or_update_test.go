@@ -406,7 +406,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion:         "loki.openshift.io/v1beta1",
+					APIVersion:         "loki.grafana.com/v1beta1",
 					Kind:               "LokiStack",
 					Name:               "someStack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
@@ -555,7 +555,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion:         "loki.openshift.io/v1beta1",
+					APIVersion:         "loki.grafana.com/v1beta1",
 					Kind:               "LokiStack",
 					Name:               "someStack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",

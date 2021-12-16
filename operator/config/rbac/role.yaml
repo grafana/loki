@@ -61,7 +61,7 @@ rules:
   - get
   - update
 - apiGroups:
-  - loki.openshift.io
+  - loki.grafana.com
   resources:
   - lokistacks
   verbs:
@@ -73,13 +73,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - loki.openshift.io
+  - loki.grafana.com
   resources:
   - lokistacks/finalizers
   verbs:
   - update
 - apiGroups:
-  - loki.openshift.io
+  - loki.grafana.com
   resources:
   - lokistacks/status
   verbs:

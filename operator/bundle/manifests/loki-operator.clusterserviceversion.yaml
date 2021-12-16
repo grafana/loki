@@ -5,7 +5,7 @@ metadata:
     alm-examples: |-
       [
         {
-          "apiVersion": "loki.openshift.io/v1beta1",
+          "apiVersion": "loki.grafana.com/v1beta1",
           "kind": "LokiStack",
           "metadata": {
             "name": "lokistack-sample"
@@ -54,7 +54,7 @@ spec:
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
       kind: LokiStack
-      name: lokistacks.loki.openshift.io
+      name: lokistacks.loki.grafana.com
       resources:
       - kind: ConfigMap
         name: ""
@@ -488,7 +488,7 @@ spec:
           - get
           - update
         - apiGroups:
-          - loki.openshift.io
+          - loki.grafana.com
           resources:
           - lokistacks
           verbs:
@@ -500,13 +500,13 @@ spec:
           - update
           - watch
         - apiGroups:
-          - loki.openshift.io
+          - loki.grafana.com
           resources:
           - lokistacks/finalizers
           verbs:
           - update
         - apiGroups:
-          - loki.openshift.io
+          - loki.grafana.com
           resources:
           - lokistacks/status
           verbs:

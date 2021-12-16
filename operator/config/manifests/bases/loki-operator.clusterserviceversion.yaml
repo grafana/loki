@@ -33,7 +33,7 @@ spec:
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
       kind: LokiStack
-      name: lokistacks.loki.openshift.io
+      name: lokistacks.loki.grafana.com
       resources:
       - kind: ConfigMap
         name: ""

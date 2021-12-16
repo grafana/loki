@@ -1,4 +1,4 @@
-apiVersion: loki.openshift.io/v1beta1
+apiVersion: loki.grafana.com/v1beta1
 kind: LokiStack
 metadata:
   name: lokistack-sample

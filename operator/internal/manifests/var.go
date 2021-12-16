@@ -67,7 +67,7 @@ var (
 
 func commonAnnotations(h string) map[string]string {
 	return map[string]string{
-		"loki.openshift.io/config-hash": h,
+		"loki.grafana.com/config-hash": h,
 	}
 }
 

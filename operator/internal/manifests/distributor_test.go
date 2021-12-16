@@ -42,7 +42,7 @@ func TestNewDistributorDeployme_HasTemplateConfigHashAnnotation(t *testing.T) {
 		},
 	})
 
-	expected := "loki.openshift.io/config-hash"
+	expected := "loki.grafana.com/config-hash"
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, expected)
 	require.Equal(t, annotations[expected], "deadbeef")
