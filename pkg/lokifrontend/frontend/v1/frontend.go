@@ -15,13 +15,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/tenant"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
