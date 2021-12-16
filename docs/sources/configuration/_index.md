@@ -1757,7 +1757,7 @@ memcached_client:
   [consistent_hash: <bool>]
 
 redis:
-  # Redis Server endpoint to use for caching. A comma-separated list of endpoints
+  # Redis Server or Cluster configuration endpoint to use for caching. A comma-separated list of endpoints
   # for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
   # CLI flag: -<prefix>.redis.endpoint
   [endpoint: <string>]
