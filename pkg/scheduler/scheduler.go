@@ -462,8 +462,12 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 		r := req.(*schedulerRequest)
 
-		s.queueDuration.Observe(time.Since(r.enqueueTime).Seconds())
+		reqEnqueueTime := time.Since(r.enqueueTime).Seconds()
+		s.queueDuration.Observe(reqEnqueueTime)
 		r.queueSpan.Finish()
+
+		level.Info(s.log).Log("msg", "querier request dequeued", "queryID", r.queryID,
+			"request", r.request.Url, "enqueueTime (seconds)", reqEnqueueTime)
 
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
