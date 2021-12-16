@@ -6,8 +6,9 @@ import (
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/tenant"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp/push"
 	serverutil "github.com/grafana/loki/pkg/util/server"
