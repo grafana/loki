@@ -220,6 +220,21 @@ func (in *LokiStackComponentStatus) DeepCopyInto(out *LokiStackComponentStatus) 
 			(*out)[key] = outVal
 		}
 	}
+	if in.IndexGateway != nil {
+		in, out := &in.IndexGateway, &out.IndexGateway
+		*out = make(PodStatusMap, len(*in))
+		for key, val := range *in {
+			var outVal []string
+			if val == nil {
+				(*out)[key] = nil
+			} else {
+				in, out := &val, &outVal
+				*out = make([]string, len(*in))
+				copy(*out, *in)
+			}
+			(*out)[key] = outVal
+		}
+	}
 	if in.Ingester != nil {
 		in, out := &in.Ingester, &out.Ingester
 		*out = make(PodStatusMap, len(*in))

@@ -608,6 +608,13 @@ spec:
                       type: array
                     description: Gateway is a map to the per pod status of the lokistack gateway deployment.
                     type: object
+                  indexGateway:
+                    additionalProperties:
+                      items:
+                        type: string
+                      type: array
+                    description: IndexGateway is a map to the per pod status of the index gateway statefulset
+                    type: object
                   ingester:
                     additionalProperties:
                       items:
@@ -620,14 +627,14 @@ spec:
                       items:
                         type: string
                       type: array
-                    description: Querier is a map to the per pod status of the querier statefulset
+                    description: Querier is a map to the per pod status of the querier deployment
                     type: object
                   queryFrontend:
                     additionalProperties:
                       items:
                         type: string
                       type: array
-                    description: QueryFrontend is a map to the per pod status of the query frontend deployment.
+                    description: QueryFrontend is a map to the per pod status of the query frontend deployment
                     type: object
                 type: object
               conditions:

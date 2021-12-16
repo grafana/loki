@@ -579,6 +579,13 @@ type LokiStackComponentStatus struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Distributor",order=1
 	Distributor PodStatusMap `json:"distributor,omitempty"`
 
+	// IndexGateway is a map to the per pod status of the index gateway statefulset
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="IndexGateway",order=6
+	IndexGateway PodStatusMap `json:"indexGateway,omitempty"`
+
 	// Ingester is a map to the per pod status of the ingester statefulset
 	//
 	// +optional
@@ -586,14 +593,14 @@ type LokiStackComponentStatus struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Ingester",order=2
 	Ingester PodStatusMap `json:"ingester,omitempty"`
 
-	// Querier is a map to the per pod status of the querier statefulset
+	// Querier is a map to the per pod status of the querier deployment
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Querier",order=3
 	Querier PodStatusMap `json:"querier,omitempty"`
 
-	// QueryFrontend is a map to the per pod status of the query frontend deployment.
+	// QueryFrontend is a map to the per pod status of the query frontend deployment
 	//
 	// +optional
 	// +kubebuilder:validation:Optional

@@ -361,13 +361,13 @@ spec:
         path: components.ingester
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
-      - description: Querier is a map to the per pod status of the querier statefulset
+      - description: Querier is a map to the per pod status of the querier deployment
         displayName: Querier
         path: components.querier
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
       - description: QueryFrontend is a map to the per pod status of the query frontend
-          deployment.
+          deployment
         displayName: Query Frontend
         path: components.queryFrontend
         x-descriptors:
@@ -381,6 +381,12 @@ spec:
           deployment.
         displayName: Gateway
         path: components.gateway
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: IndexGateway is a map to the per pod status of the index gateway
+          statefulset
+        displayName: IndexGateway
+        path: components.indexGateway
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
       - description: Conditions of the Loki deployment health.

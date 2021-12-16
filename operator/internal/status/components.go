@@ -46,9 +46,14 @@ func SetComponentsStatus(ctx context.Context, k k8s.Client, req ctrl.Request) er
 		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelQueryFrontendComponent)
 	}
 
-	s.Status.Components.Ingester, err = appendPodStatus(ctx, k, manifests.LabelIngesterComponent, s.Name, s.Namespace)
+	s.Status.Components.IndexGateway, err = appendPodStatus(ctx, k, manifests.LabelIndexGatewayComponent, s.Name, s.Namespace)
 	if err != nil {
 		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelIngesterComponent)
+	}
+
+	s.Status.Components.Ingester, err = appendPodStatus(ctx, k, manifests.LabelIngesterComponent, s.Name, s.Namespace)
+	if err != nil {
+		return kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelIndexGatewayComponent)
 	}
 
 	s.Status.Components.Gateway, err = appendPodStatus(ctx, k, manifests.LabelGatewayComponent, s.Name, s.Namespace)
