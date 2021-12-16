@@ -79,7 +79,7 @@ spec:
         args:
         - -config.file=/etc/promtail/promtail.yaml
         env: 
-        - name: 'HOSTNAME',
+        - name: 'HOSTNAME', # needed when using kubernetes_sd_configs
           valueFrom:
             fieldRef:
               fieldPath: 'spec.nodeName'
