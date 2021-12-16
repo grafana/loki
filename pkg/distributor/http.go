@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/tenant"
@@ -99,5 +100,5 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					<p>Not running with Global Rating Limit - ring not being used by the Distributor.</p>
 				</body>
 			</html>`
-	cortex_util.WriteHTMLResponse(w, noRingPage)
+	util.WriteHTMLResponse(w, noRingPage)
 }
