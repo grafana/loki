@@ -730,6 +730,10 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # The duration after which the requests to GCS should be timed out.
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
+
+# Enable http2 when connecting to GCS.
+# CLI flag: -<prefix>.gcs.enable-http2
+[enable_http2: <bool> | default = true]
 ```
 
 ## s3_storage_config

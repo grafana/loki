@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
-const maxParallel = 1000
+const maxParallel = 150
 
 var decodeContextPool = sync.Pool{
 	New: func() interface{} {
