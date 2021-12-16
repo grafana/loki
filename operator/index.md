@@ -1,6 +1,6 @@
 ## Welcome to Loki Operator
 
-This is the Kubernetes Operator for Loki provided by the Red Hat OpenShift engineering team. This is currently a work in progress and is subject to large scale changes that will break any dependencies. Do not use this in any production environment.
+This is the Kubernetes Operator for Loki provided by the Grafana Loki SIG operator. This is currently a work in progress and is subject to large scale changes that will break any dependencies. Do not use this in any production environment.
 
 ### Hacking on Loki Operator on kind or OpenShift
 

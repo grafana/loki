@@ -3,7 +3,7 @@
 # Loki Operator
 
 This is the Kubernetes Operator for [Loki](https://grafana.com/docs/loki/latest/)
-provided by the Red Hat OpenShift engineering team. **This is currently a work in
+provided by the Grafana Loki SIG operator. **This is currently a work in
 progress and is subject to large scale changes that will break any dependencies.
 Do not use this in any production environment.**
 
