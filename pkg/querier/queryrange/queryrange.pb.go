@@ -5,6 +5,13 @@ package queryrange
 
 import (
 	fmt "fmt"
+	io "io"
+	math "math"
+	math_bits "math/bits"
+	reflect "reflect"
+	strings "strings"
+	time "time"
+
 	github_com_cortexproject_cortex_pkg_querier_queryrange "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	queryrange "github.com/cortexproject/cortex/pkg/querier/queryrange"
 	_ "github.com/gogo/protobuf/gogoproto"
@@ -14,12 +21,6 @@ import (
 	github_com_grafana_loki_pkg_logproto "github.com/grafana/loki/pkg/logproto"
 	logproto "github.com/grafana/loki/pkg/logproto"
 	stats "github.com/grafana/loki/pkg/logqlmodel/stats"
-	io "io"
-	math "math"
-	math_bits "math/bits"
-	reflect "reflect"
-	strings "strings"
-	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
