@@ -6,11 +6,10 @@ pull:
 
 .PHONY: docs
 docs: pull
-	docker pull ${IMAGE}
 	docker run  --rm -it -v ${PWD}/sources:/hugo/content/docs/loki/latest -p 3002:3002 $(IMAGE)
 
 .PHONY: docs-next
-docs-next:
+docs-next: pull
 	docker run  --rm -it -v ${PWD}/sources:/hugo/content/docs/loki/next -p 3002:3002 $(IMAGE)
 
 .PHONY: docs-test
