@@ -9,7 +9,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -18,6 +17,7 @@ import (
 	dskit_middleware "github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"

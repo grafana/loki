@@ -11,8 +11,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/scheduler/queue"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
@@ -21,6 +19,8 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/scheduler/queue"
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
