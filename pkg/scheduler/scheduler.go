@@ -466,7 +466,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		s.queueDuration.Observe(reqEnqueueTime)
 		r.queueSpan.Finish()
 
-		level.Info(s.log).Log("msg", "querier request dequeued", "queryID", r.queryID,
+		level.Info(s.log).Log("msg", "querier request dequeued", "querierID", querierID, "queryID", r.queryID,
 			"request", r.request.Url, "enqueueTime (seconds)", reqEnqueueTime)
 
 		/*
