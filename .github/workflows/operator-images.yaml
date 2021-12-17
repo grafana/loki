@@ -5,7 +5,7 @@ on:
     paths:
       - 'operator/**'
     branches:
-      - master
+      - main
 
 env:
   IMAGE_REGISTRY: quay.io
