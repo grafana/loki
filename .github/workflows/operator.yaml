@@ -29,7 +29,6 @@ jobs:
       with:
         version: v1.38
         skip-go-installation: true
-        only-new-issues: true
         args: --timeout=2m
         working-directory: ./operator
 
@@ -95,6 +94,7 @@ jobs:
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
       with:
-        path-to-profile: ./operator/profile.cov
+        working-directory: ./operator
+        path-to-profile: profile.cov
         flag-name: Go-${{ matrix.go }}
         shallow: true
