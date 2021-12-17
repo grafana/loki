@@ -116,7 +116,7 @@ query_range:
       fifocache:
         max_size_bytes: 500MB
   split_queries_by_interval: 30m
-  parallelise_shardable_queries: false
+  parallelise_shardable_queries: true
 schema_config:
   configs:
     - from: "2020-10-01"
@@ -332,7 +332,7 @@ query_range:
       fifocache:
         max_size_bytes: 500MB
   split_queries_by_interval: 30m
-  parallelise_shardable_queries: false
+  parallelise_shardable_queries: true
 schema_config:
   configs:
     - from: "2020-10-01"
