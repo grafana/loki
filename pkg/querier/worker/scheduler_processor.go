@@ -17,7 +17,6 @@ import (
 	dskit_middleware "github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,6 +26,8 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {

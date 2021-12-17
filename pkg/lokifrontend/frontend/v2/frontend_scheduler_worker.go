@@ -13,10 +13,11 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
