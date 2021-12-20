@@ -35,7 +35,7 @@ ingester:
   chunk_encoding: snappy
   chunk_idle_period: 1h
   chunk_retain_period: 5m
-  chunk_target_size: 1048576
+  chunk_target_size: 2097152
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
@@ -251,7 +251,7 @@ ingester:
   chunk_encoding: snappy
   chunk_idle_period: 1h
   chunk_retain_period: 5m
-  chunk_target_size: 1048576
+  chunk_target_size: 2097152
   lifecycler:
     final_sleep: 0s
     heartbeat_period: 5s
