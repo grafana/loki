@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
@@ -22,6 +21,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -38,7 +38,7 @@ var maxLabelCacheSize = 100000
 // Config for a Distributor.
 type Config struct {
 	// Distributors ring
-	DistributorRing cortex_distributor.RingConfig `yaml:"ring,omitempty"`
+	DistributorRing RingConfig `yaml:"ring,omitempty"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -123,7 +123,7 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
 		validator:            validator,
-		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		pool:                 clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		labelCache:           labelCache,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
