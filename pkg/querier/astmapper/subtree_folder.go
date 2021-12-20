@@ -26,7 +26,7 @@ func (f *subtreeFolder) MapNode(node parser.Node) (parser.Node, bool, error) {
 		return n, true, nil
 	}
 
-	containsEmbedded, err := Predicate(node, predicate(isEmbedded))
+	containsEmbedded, err := Predicate(node, isEmbedded)
 	if err != nil {
 		return nil, true, err
 	}
