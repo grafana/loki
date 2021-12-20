@@ -266,7 +266,6 @@ github.com/cortexproject/cortex/pkg/configs/client
 github.com/cortexproject/cortex/pkg/configs/legacy_promql
 github.com/cortexproject/cortex/pkg/configs/userconfig
 github.com/cortexproject/cortex/pkg/cortexpb
-github.com/cortexproject/cortex/pkg/distributor
 github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb
 github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb
 github.com/cortexproject/cortex/pkg/ingester/client
