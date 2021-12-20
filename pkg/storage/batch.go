@@ -5,7 +5,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -21,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
