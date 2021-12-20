@@ -257,7 +257,6 @@ func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID strin
 	}
 
 	// Fetch label values for label name that are part of the filtered chunks
-	var result UniqueStrings
 	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 	if err != nil {
 		return nil, err
@@ -266,6 +265,8 @@ func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID strin
 	if err != nil {
 		return nil, err
 	}
+
+	result := NewUniqueStrings(len(entries))
 	for _, entry := range entries {
 		seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
