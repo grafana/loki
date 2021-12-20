@@ -88,7 +88,7 @@ jobs:
        uses: docker/build-push-action@v2
        with:
          context: ./operator
-         file: bundle.Dockerfile
+         file: ./operator/bundle.Dockerfile
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
 
@@ -127,6 +127,6 @@ jobs:
        uses: docker/build-push-action@v2
        with:
          context: ./operator
-         file: calculator.Dockerfile
+         file: ./operator/calculator.Dockerfile
          push: true
          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
