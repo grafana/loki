@@ -3,10 +3,10 @@ package ruler
 import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/ruler/rulestore"
 )
 
 func NewRuler(cfg Config, engine *logql.Engine, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*ruler.Ruler, error) {
