@@ -226,6 +226,59 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 
 	return labelNames, nil
 }
+func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer log.Span.Finish()
+
+	if len(matchers) == 0 {
+		return c.baseStore.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+	}
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	// Otherwise get series which include other matchers
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
+	if err != nil {
+		return nil, err
+	}
+	seriesIDsSet := make(map[string]struct{}, len(seriesIDs))
+	for _, i := range seriesIDs {
+		seriesIDsSet[i] = struct{}{}
+	}
+
+	contains := func(id string) bool {
+		_, ok := seriesIDsSet[id]
+		return ok
+	}
+
+	// Fetch label values for label name that are part of the filtered chunks
+	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	if err != nil {
+		return nil, err
+	}
+
+	result := NewUniqueStrings(len(entries))
+	for _, entry := range entries {
+		seriesID, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		if err != nil {
+			return nil, err
+		}
+		if contains(seriesID) {
+			result.Add(string(labelValue))
+		}
+	}
+
+	return result.Strings(), nil
+}
 
 func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesByChunks")
