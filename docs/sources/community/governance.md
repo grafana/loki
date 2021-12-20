@@ -15,6 +15,8 @@ This document describes the rules and governance of the project. It is meant to 
 
 - **The Loki project**: The sum of all activities performed under this governance, concerning one or more repositories or the community.
 
+- **The Loki Operator sub-project**: The sum of all activities performed under this governance, concerning the repository subfolder `operator` or the community.
+
 ## Values
 
 The Loki developers and community are expected to follow the values defined in the [Code of Conduct][coc]. Furthermore, the Loki community strives for kindness, giving feedback effectively, and building a welcoming environment. The Loki developers generally decide by consensus and only resort to conflict resolution by a majority vote if consensus cannot be reached.
@@ -58,6 +60,13 @@ The current team members are:
 - Sandeep Sukhani - [sandeepsukhani](https://github.com/sandeepsukhani) ([Grafana Labs](https://grafana.com/))
 - Tom Braack - [sh0rez](https://github.com/sh0rez) ([Grafana Labs](https://grafana.com/))
 - Tom Wilkie - [tomwilkie](https://github.com/tomwilkie) ([Grafana Labs](https://grafana.com/))
+
+The current SIG operator team members are:
+- Brett Jones - [blockloop](https://github.com/blockloop/) ([InVision](https://www.invisionapp.com/))
+- Cyril Tovena - [cyriltovena](https://github.com/cyriltovena) ([Grafana Labs](https://grafana.com/))
+- Gerard Vanloo - [Red-GV](https://github.com/Red-GV) ([IBM](https://www.ibm.com))
+- Periklis Tsirakidis - [periklis](https://github.com/periklis) ([Red Hat](https://www.redhat.com))
+- Sashank Agrawal - [sasagarw](https://github.com/sasagarw/) ([Red Hat](https://www.redhat.com))
 
 ### Maintainers
 
