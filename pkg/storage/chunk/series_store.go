@@ -240,7 +240,6 @@ func (c *seriesStore) LabelValuesForMetricName(ctx context.Context, userID strin
 	} else if shortcut {
 		return nil, nil
 	}
-	level.Debug(log).Log("metric", metricName)
 
 	// Otherwise get series which include other matchers
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
