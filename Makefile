@@ -504,10 +504,14 @@ promtail-push: promtail-image-cross
 	$(call push-image,promtail)
 
 # loki
+# Set docker platform linux/amd64 for arm64 processors architecture
+ifeq ($(shell uname -p),arm)
+BUILD_PLATFORM=--platform=linux/amd64
+endif
 loki-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
 loki-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) $(BUILD_PLATFORM) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
