@@ -5,6 +5,8 @@ import (
 	"flag"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -466,8 +468,16 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		s.queueDuration.Observe(reqEnqueueTime)
 		r.queueSpan.Finish()
 
-		level.Info(s.log).Log("msg", "querier request dequeued", "querierID", querierID, "queryID", r.queryID,
-			"request", r.request.Url, "enqueueTime (seconds)", reqEnqueueTime)
+		reqTenantIDs, err := tenant.TenantIDsFromOrgID(r.userID)
+		if err != nil {
+			reqTenantIDs = []string{}
+		}
+		reqURL, err := url.PathUnescape(r.request.Url)
+		if err != nil {
+			reqURL = r.request.Url
+		}
+		level.Info(s.log).Log("msg", "querier request dequeued", "tenant_ids", strings.Join(reqTenantIDs, ", "),
+			"querier_id", querierID, "query_id", r.queryID, "request", reqURL, "enqueue_time (ms)", reqEnqueueTime*1000)
 
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
