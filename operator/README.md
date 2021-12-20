@@ -1,4 +1,4 @@
-![](img/loki-operator.png)
+<p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
 
 # Loki Operator
 
