@@ -94,12 +94,12 @@ type Recoverer interface {
 type ingesterRecoverer struct {
 	// basically map[userID]map[fingerprint]*stream
 	users sync.Map
-	ing   *Ingester
+	ing   *ingester
 
 	done chan struct{}
 }
 
-func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
+func newIngesterRecoverer(i *ingester) *ingesterRecoverer {
 
 	return &ingesterRecoverer{
 		ing:  i,
@@ -113,7 +113,7 @@ func (r *ingesterRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 func (r *ingesterRecoverer) Series(series *Series) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 
-		inst := r.ing.getOrCreateInstance(series.UserID)
+		inst := r.ing.GetOrCreateInstance(series.UserID)
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(logproto.Stream{
@@ -161,7 +161,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 // the fingerprint reported in the WAL record, not the potentially differing one assigned during
 // stream creation.
 func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
-	inst := r.ing.getOrCreateInstance(userID)
+	inst := r.ing.GetOrCreateInstance(userID)
 
 	stream, err := inst.getOrCreateStream(
 		logproto.Stream{

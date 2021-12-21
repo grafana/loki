@@ -36,7 +36,7 @@ var (
 
 // TransferChunks receives all chunks from another ingester. The Ingester
 // must be in PENDING state or else the call will fail.
-func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer) error {
+func (i *ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer) error {
 	logger := util_log.WithContext(stream.Context(), util_log.Logger)
 	// Prevent a shutdown from happening until we've completely finished a handoff
 	// from a leaving ingester.
@@ -107,7 +107,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 			lbls = append(lbls, labels.Label{Name: lbl.Name, Value: lbl.Value})
 		}
 
-		instance := i.getOrCreateInstance(chunkSet.UserId)
+		instance := i.GetOrCreateInstance(chunkSet.UserId)
 		for _, chunk := range chunkSet.Chunks {
 			if err := instance.consumeChunk(userCtx, lbls, chunk); err != nil {
 				return err
@@ -148,7 +148,7 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 // when using gossip ring. If we cannot see ingester is the LEAVING state yet, we don't accept this
 // transfer, as claiming tokens would possibly end up with this ingester owning no tokens, due to conflict
 // resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
-func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
+func (i *ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
 	v, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
 	if err != nil {
 		return errors.Wrap(err, "get ring")
@@ -170,7 +170,7 @@ func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIn
 }
 
 // stopIncomingRequests is called when ingester is stopping
-func (i *Ingester) stopIncomingRequests() {
+func (i *ingester) stopIncomingRequests() {
 	i.shutdownMtx.Lock()
 	defer i.shutdownMtx.Unlock()
 
@@ -181,7 +181,7 @@ func (i *Ingester) stopIncomingRequests() {
 }
 
 // TransferOut implements ring.Lifecycler.
-func (i *Ingester) TransferOut(ctx context.Context) error {
+func (i *ingester) TransferOut(ctx context.Context) error {
 	if i.cfg.MaxTransferRetries <= 0 {
 		return ring.ErrTransferDisabled
 	}
@@ -205,7 +205,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	return backoff.Err()
 }
 
-func (i *Ingester) transferOut(ctx context.Context) error {
+func (i *ingester) transferOut(ctx context.Context) error {
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	targetIngester, err := i.findTransferTarget(ctx)
 	if err != nil {
@@ -296,7 +296,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 // findTransferTarget finds an ingester in a PENDING state to use for transferring
 // chunks to.
-func (i *Ingester) findTransferTarget(ctx context.Context) (*ring.InstanceDesc, error) {
+func (i *ingester) findTransferTarget(ctx context.Context) (*ring.InstanceDesc, error) {
 	ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
 	if err != nil {
 		return nil, err

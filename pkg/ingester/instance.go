@@ -381,27 +381,48 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	return iters, nil
 }
 
-func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	var labels []string
-	if req.Values {
-		values, err := i.index.LabelValues(req.Name, nil)
-		if err != nil {
-			return nil, err
+func (i *instance) Label(_ context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
+	if len(matchers) == 0 {
+		var labels []string
+		if req.Values {
+			values, err := i.index.LabelValues(req.Name, nil)
+			if err != nil {
+				return nil, err
+			}
+			labels = make([]string, len(values))
+			for i := 0; i < len(values); i++ {
+				labels[i] = values[i]
+			}
+		} else {
+			names, err := i.index.LabelNames(nil)
+			if err != nil {
+				return nil, err
+			}
+			labels = make([]string, len(names))
+			for i := 0; i < len(names); i++ {
+				labels[i] = names[i]
+			}
 		}
-		labels = make([]string, len(values))
-		for i := 0; i < len(values); i++ {
-			labels[i] = values[i]
+		return &logproto.LabelResponse{
+			Values: labels,
+		}, nil
+	}
+
+	ids, _ := i.index.Lookup(matchers, nil)
+	labels := make([]string, 0)
+	for _, streamID := range ids {
+		stream, ok := i.streamsByFP[streamID]
+		if !ok {
+			return nil, ErrStreamMissing
 		}
-	} else {
-		names, err := i.index.LabelNames(nil)
-		if err != nil {
-			return nil, err
-		}
-		labels = make([]string, len(names))
-		for i := 0; i < len(names); i++ {
-			labels[i] = names[i]
+
+		for _, label := range stream.labels {
+			if label.Name == req.Name {
+				labels = append(labels, label.Value)
+			}
 		}
 	}
+
 	return &logproto.LabelResponse{
 		Values: labels,
 	}, nil

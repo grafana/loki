@@ -136,10 +136,31 @@ func (cfg *Config) Validate() error {
 // ChunkFilterer filters chunks based on the metric.
 type LabelValueFilterer interface {
 	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
+}		
+
+// ChunkStore is the interface we need to store chunks.
+type ChunkStore interface {
+	Put(ctx context.Context, chunks []chunk.Chunk) error
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
+	GetSchemaConfigs() []chunk.PeriodConfig
+}
+
+type Ingester interface {
+	services.Service
+
+	logproto.IngesterServer
+	logproto.PusherServer
+	logproto.QuerierServer
+	CheckReady(ctx context.Context) error
+	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	ShutdownHandler(w http.ResponseWriter, r *http.Request)
+	GetOrCreateInstance(instanceID string) *instance
 }
 
 // Ingester builds chunks for incoming log streams.
-type Ingester struct {
+type ingester struct {
 	services.Service
 
 	cfg           Config
@@ -183,24 +204,15 @@ type Ingester struct {
 	labelFilter LabelValueFilterer
 }
 
-// ChunkStore is the interface we need to store chunks.
-type ChunkStore interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
-	GetSchemaConfigs() []chunk.PeriodConfig
-}
-
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
 
 	metrics := newIngesterMetrics(registerer)
 
-	i := &Ingester{
+	i := &ingester{
 		cfg:                   cfg,
 		clientConfig:          clientConfig,
 		tenantConfigs:         configs,
@@ -260,17 +272,17 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	return i, nil
 }
 
-func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
+func (i *ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
 }
 
-func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
+func (i *ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
 	i.labelFilter = labelFilter
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
 // when enabled, unhealthy ingesters that reach `ring.kvstore.heartbeat_timeout` are removed from the ring every `HeartbeatPeriod`
-func (i *Ingester) setupAutoForget() {
+func (i *ingester) setupAutoForget() {
 	if !i.cfg.AutoForgetUnhealthy {
 		return
 	}
@@ -339,7 +351,7 @@ func (i *Ingester) setupAutoForget() {
 	}()
 }
 
-func (i *Ingester) starting(ctx context.Context) error {
+func (i *ingester) starting(ctx context.Context) error {
 	if i.cfg.WAL.Enabled {
 		start := time.Now()
 
@@ -441,7 +453,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	return nil
 }
 
-func (i *Ingester) running(ctx context.Context) error {
+func (i *ingester) running(ctx context.Context) error {
 	var serviceError error
 	select {
 	// wait until service is asked to stop
@@ -464,7 +476,7 @@ func (i *Ingester) running(ctx context.Context) error {
 
 // Called after running exits, when Ingester transitions to Stopping state.
 // At this point, loop no longer runs, but flushers are still running.
-func (i *Ingester) stopping(_ error) error {
+func (i *ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
 	var errs errUtil.MultiError
 	errs.Add(i.wal.Stop())
@@ -484,7 +496,7 @@ func (i *Ingester) stopping(_ error) error {
 	return errs.Err()
 }
 
-func (i *Ingester) loop() {
+func (i *ingester) loop() {
 	defer i.loopDone.Done()
 
 	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
@@ -504,7 +516,7 @@ func (i *Ingester) loop() {
 // ShutdownHandler triggers the following set of operations in order:
 //     * Change the state of ring to stop accepting writes.
 //     * Flush all the chunks.
-func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+func (i *ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
@@ -514,7 +526,7 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Push implements logproto.Pusher.
-func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (i *ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -522,12 +534,12 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
+func (i *ingester) GetOrCreateInstance(instanceID string) *instance {
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst
@@ -544,7 +556,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 }
 
 // Query the ingests for log streams matching a set of matchers.
-func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
+func (i *ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 
@@ -553,7 +565,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
@@ -584,7 +596,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
-func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
+func (i *ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 
@@ -593,7 +605,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
@@ -624,7 +636,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 // boltdbShipperMaxLookBack returns a max look back period only if active index type is boltdb-shipper.
 // max look back is limited to from time of boltdb-shipper config.
 // It considers previous periodic config's from time if that also has index type set to boltdb-shipper.
-func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
+func (i *ingester) boltdbShipperMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := storage.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
 	if activePeriodicConfig.IndexType != shipper.BoltDBShipperType {
@@ -641,7 +653,7 @@ func (i *Ingester) boltdbShipperMaxLookBack() time.Duration {
 }
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper.
-func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+func (i *ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -680,13 +692,13 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 }
 
 // Label returns the set of labels for the stream this ingester knows about.
-func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+func (i *ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	instance := i.getOrCreateInstance(userID)
+	instance := i.GetOrCreateInstance(userID)
 	resp, err := instance.Label(ctx, req)
 	if err != nil {
 		return nil, err
@@ -754,37 +766,37 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 }
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
-func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+func (i *ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	return instance.Series(ctx, req)
 }
 
 // Check implements grpc_health_v1.HealthCheck.
-func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+func (*ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
-func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
+func (*ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
 	return nil
 }
 
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
-func (i *Ingester) CheckReady(ctx context.Context) error {
+func (i *ingester) CheckReady(ctx context.Context) error {
 	if s := i.State(); s != services.Running && s != services.Stopping {
 		return fmt.Errorf("ingester not ready: %v", s)
 	}
 	return i.lifecycler.CheckReady(ctx)
 }
 
-func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
+func (i *ingester) getInstanceByID(id string) (*instance, bool) {
 	i.instancesMtx.RLock()
 	defer i.instancesMtx.RUnlock()
 
@@ -792,7 +804,7 @@ func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 	return inst, ok
 }
 
-func (i *Ingester) getInstances() []*instance {
+func (i *ingester) getInstances() []*instance {
 	i.instancesMtx.RLock()
 	defer i.instancesMtx.RUnlock()
 
@@ -804,7 +816,7 @@ func (i *Ingester) getInstances() []*instance {
 }
 
 // Tail logs matching given query
-func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+func (i *ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
@@ -816,7 +828,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	tailer, err := newTailer(instanceID, req.Query, queryServer)
 	if err != nil {
 		return err
@@ -830,7 +842,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 }
 
 // TailersCount returns count of active tail requests from a user
-func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+func (i *ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
