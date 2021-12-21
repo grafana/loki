@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/sources/logo_and_name.png" alt="Loki Logo"></p>
+<p align="center"><img src="../docs/sources/logo.png" alt="Loki Logo"></p>
 
 # Loki Operator
 
