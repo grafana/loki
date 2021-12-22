@@ -504,13 +504,13 @@ promtail-push: promtail-image-cross
 	$(call push-image,promtail)
 
 # loki
-BUILD_PLATFORM ?= amd64
+TARGET_PLATFORM ?= amd64
 loki-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
 loki-image-cross:
-	@echo "make loki-image-cross builds a docker image for a different processor architecture than the one from the host machine (default is linux/amd64)."
-	@echo "If you want to build for a different architecture set BUILD_PLATFORM. For arm64 (Raspberry Pi or Apple Silicon), run 'BUILD_PLATFORM=arm64 make loki-image-cross'"
-	$(SUDO) $(BUILD_OCI) --platform=linux/$(BUILD_PLATFORM) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
+	@echo "make loki-image-cross builds a docker image for a specific processor architecture (TARGET_PLATFORM). This is useful when the intended target platform is different than the platform where the image is built on. The default target platform is linux/amd64."
+	@echo "If you want to build for a different architecture set TARGET_PLATFORM. For arm64 (Raspberry Pi or Apple Silicon), run 'TARGET_PLATFORM=arm64 make loki-image-cross'"
+	$(SUDO) $(BUILD_OCI) --platform=linux/$(TARGET_PLATFORM) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
