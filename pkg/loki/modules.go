@@ -266,7 +266,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	)
 }
 
-func (t *Loki) initIngester() (_ services.Service, err error) {
+func (t *Loki) InitIngester() (_ services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
@@ -275,9 +275,9 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	if err != nil {
 		return
 	}
-	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
-	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
-	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
+	//logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
+	//logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
+	//logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
