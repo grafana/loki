@@ -1,5 +1,9 @@
 ## Main
 
+# 2.4.2 (2021/12/21)
+
+* [4875](https://github.com/grafana/loki/pull/4875) **trevorwhitney**: Loki: fix bug where common replication factor wasn't always getting applied
+
 # 2.4.1 (2021/11/07)
 
 Release notes for 2.4.1 can be found on the [release notes page](https://grafana.com/docs/loki/latest/release-notes/v2-4/)
