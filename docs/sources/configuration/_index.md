@@ -482,22 +482,6 @@ remote_write:
   # This should be greater than or equivalent to -limits.per-user-override-period.
   [config_refresh_period: <duration> | default = 10s]
 
-  wal:
-    # The directory in which to write tenant WAL files. Each tenant will have its own
-    # directory one level below this directory.
-    [dir: <string> | default = "ruler-wal"]
-    # Frequency with which to run the WAL truncation process.
-    [truncate_frequency: <duration> | default = 60m]
-    # Minimum and maximum time series should exist in the WAL for.
-    [min_age: <duration> | default = 5m]
-    [max_age: <duration> | default = 4h]
-
-  wal_cleaner:
-    # The minimum age of a WAL to consider for cleaning.
-    [min_age: <duration> | default = 12h]
-    # How often to run the WAL cleaner.
-    [period: <duration> | default = 0s (disabled)]
-
   client:
     # The URL of the endpoint to send samples to.
     url: <string>
@@ -599,6 +583,22 @@ remote_write:
       # Retry upon receiving a 429 status code from the remote-write storage.
       # This is experimental and might change in the future.
       [retry_on_http_429: <boolean> | default = false]
+
+wal:
+  # The directory in which to write tenant WAL files. Each tenant will have its own
+  # directory one level below this directory.
+  [dir: <string> | default = "ruler-wal"]
+  # Frequency with which to run the WAL truncation process.
+  [truncate_frequency: <duration> | default = 60m]
+  # Minimum and maximum time series should exist in the WAL for.
+  [min_age: <duration> | default = 5m]
+  [max_age: <duration> | default = 4h]
+
+wal_cleaner:
+  # The minimum age of a WAL to consider for cleaning.
+  [min_age: <duration> | default = 12h]
+  # How often to run the WAL cleaner.
+  [period: <duration> | default = 0s (disabled)]
 
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
