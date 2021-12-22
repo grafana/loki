@@ -1,5 +1,6 @@
 ## Main
 
+* [4993](https://github.com/grafana/loki/pull/4926) **thejosephstevens**: Fix parent of wal and wal_cleaner in loki ruler config docs
 * [4933](https://github.com/grafana/loki/pull/4933) **jeschkies**: Support matchers in series label values query.
 * [4926](https://github.com/grafana/loki/pull/4926) **thejosephstevens**: Fix comment in Loki module loading for accuracy
 * [4920](https://github.com/grafana/loki/pull/4920) **chaudum**: Add `-list-targets` command line flag to list all available run targets
