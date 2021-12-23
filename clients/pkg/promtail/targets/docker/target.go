@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ import (
 type Target struct {
 	logger    log.Logger
 	handler   api.EntryHandler
+	since     int64
 	positions positions.Positions
 	config    *scrapeconfig.DockerConfig
 	metrics   *Metrics
@@ -54,11 +56,20 @@ func NewTarget(
 	}
 
 	// TODO: get new `since` from position
+	pos, err := position.Get(positions.CursorKey(config.ContainerName))
+	if err != nil {
+		return nil, err
+	}
+	var since int64 = 0
+	if pos != 0 {
+		since = pos
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &Target{
 		logger:    logger,
 		handler:   handler,
+		since:     since,
 		positions: position,
 		config:    config,
 		metrics:   metrics,
@@ -80,7 +91,7 @@ func (t *Target) start() {
 		ShowStderr: true,
 		Follow:     true,
 		Timestamps: true,
-		// Since: "todo", detemer since from position
+		Since:      strconv.FormatInt(t.since, 10),
 	}
 
 	logs, err := t.client.ContainerLogs(t.ctx, t.config.ContainerName, opts)
@@ -132,6 +143,7 @@ func (t *Target) start() {
 					t.metrics.dockerErrors.Inc()
 				}
 				level.Debug(t.logger).Log("msg", "sending log line", "line", line)
+
 				t.handler.Chan() <- api.Entry{
 					Labels: t.config.Labels.Clone(),
 					Entry: logproto.Entry{
@@ -140,6 +152,7 @@ func (t *Target) start() {
 					},
 				}
 				t.metrics.dockerEntries.Inc()
+				t.positions.Put(positions.CursorKey(t.config.ContainerName), ts.Unix())
 			case <-t.ctx.Done():
 				{
 				}
