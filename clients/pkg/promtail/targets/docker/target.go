@@ -131,6 +131,7 @@ func (t *Target) start() {
 					level.Error(t.logger).Log("msg", "could not extract timestamp", "err", err)
 					t.metrics.dockerErrors.Inc()
 				}
+				level.Debug(t.logger).Log("msg", "sending log line", "line", line)
 				t.handler.Chan() <- api.Entry{
 					Labels: t.config.Labels.Clone(),
 					Entry: logproto.Entry{

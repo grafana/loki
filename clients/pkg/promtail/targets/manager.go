@@ -250,7 +250,7 @@ func NewTargetManagers(
 			}
 			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
+				return nil, errors.Wrap(err, "failed to make Docker target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		case DockerSDConfigs:
@@ -260,7 +260,7 @@ func NewTargetManagers(
 			}
 			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
+				return nil, errors.Wrap(err, "failed to make Docker target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		default:
