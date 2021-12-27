@@ -378,13 +378,6 @@ The `query_range` block configures query splitting and caching in the Loki query
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
-# Limit queries that can be sharded.
-# Queries within the time range of now and now minus this sharding lookback
-# are not sharded. The default value of 0s disables the lookback, causing
-# sharding of all queries at all times.
-# CLI flag: -frontend.min-sharding-lookback
-[min_sharding_lookback: <duration> | default = 0s]
-
 # Deprecated: Split queries by day and execute in parallel.
 # Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
@@ -2160,6 +2153,13 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Retry upon receiving a 429 status code from the remote-write storage.
 # This is experimental and might change in the future.
 [ruler_remote_write_queue_retry_on_ratelimit: <bool>]
+
+# Limit queries that can be sharded.
+# Queries within the time range of now and now minus this sharding lookback
+# are not sharded. The default value of 0s disables the lookback, causing
+# sharding of all queries at all times.
+# CLI flag: -frontend.min-sharding-lookback
+[min_sharding_lookback: <duration> | default = 0s]
 ```
 
 ### grpc_client_config
