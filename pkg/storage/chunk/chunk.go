@@ -89,28 +89,16 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // and S3.  Numbers become hex encoded.  Keys look like:
 // `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
 //
-// Post-v12, (2) additional prefixes were added to external keys
+// v12+, (2) additional prefixes were added to external keys
 // to support better read and write request parallelization:
 // `<user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>`
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") { // pre-checksum
-		chunk, err := parseLegacyChunkID(userID, externalKey)
-		if err != nil {
-			return Chunk{}, err
-		}
-		return chunk, nil
+		return parseLegacyChunkID(userID, externalKey)
 	} else if strings.Count(externalKey, "/") == 4 { // post-v12
-		chunk, err := parseNewerExternalKey(userID, externalKey)
-		if err != nil {
-			return Chunk{}, err
-		}
-		return chunk, nil
+		return parseNewerExternalKey(userID, externalKey)
 	} else { // post-checksum
-		chunk, err := parseNewExternalKey(userID, externalKey)
-		if err != nil {
-			return Chunk{}, err
-		}
-		return chunk, nil
+		return parseNewExternalKey(userID, externalKey)
 	}
 }
 

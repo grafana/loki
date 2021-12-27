@@ -524,7 +524,7 @@ func (cfg SchemaConfig) newExternalKey(chunk Chunk) string {
 	return fmt.Sprintf("%s/%x:%x:%x:%x", chunk.UserID, uint64(chunk.Fingerprint), int64(chunk.From), int64(chunk.Through), chunk.Checksum)
 }
 
-// post-v12
+// v12+
 func (cfg SchemaConfig) newerExternalKey(chunk Chunk, shardFactor uint64, period time.Duration) string {
 	shard := uint64(chunk.Fingerprint) % shardFactor
 	// Reduce the fingerprint into the <period> space to act as jitter
