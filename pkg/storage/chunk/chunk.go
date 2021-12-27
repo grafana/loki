@@ -95,7 +95,7 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") { // pre-checksum
 		return parseLegacyChunkID(userID, externalKey)
-	} else if strings.Count(externalKey, "/") == 4 { // post-v12
+	} else if strings.Count(externalKey, "/") == 4 { // v12+
 		return parseNewerExternalKey(userID, externalKey)
 	} else { // post-checksum
 		return parseNewExternalKey(userID, externalKey)
@@ -179,7 +179,7 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 	}, nil
 }
 
-// post-v12
+// v12+
 func parseNewerExternalKey(userID, key string) (Chunk, error) {
 	// Parse user
 	userIdx := strings.Index(key, "/")
