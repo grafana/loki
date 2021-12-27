@@ -117,7 +117,6 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk
 	s := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				// Would this actually just result in the same as the default value?
 				From:      chunk.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
@@ -161,7 +160,6 @@ func testCache(t *testing.T, cache cache.Cache) {
 	s := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				// Would this actually just result in the same as the default value?
 				From:      chunk.DayTime{Time: 0},
 				Schema:    "v11",
 				RowShards: 16,
