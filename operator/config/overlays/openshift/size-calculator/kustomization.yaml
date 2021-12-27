@@ -1,0 +1,23 @@
+resources:
+- logfile_metric_daemonset.yaml
+- logfile_metric_role.yaml
+- logfile_metric_role_binding.yaml
+- logfile_metric_scc.yaml
+- logfile_metric_service.yaml
+- logfile_metric_service_account.yaml
+- logfile_metric_service_monitor.yaml
+- storage_size_calculator_config.yaml
+- storage_size_calculator.yaml
+
+# Adds namespace to all resources.
+namespace: openshift-logging
+
+# Labels to add to all resources and selectors.
+# commonLabels:
+#  someName: someValue
+commonLabels:
+  app.kubernetes.io/name: storage-size-calculator
+  app.kubernetes.io/instance: storage-size-calculator-v0.0.1
+  app.kubernetes.io/version: "0.0.1"
+  app.kubernetes.io/part-of: loki-operator
+  app.kubernetes.io/managed-by: kubectl-apply

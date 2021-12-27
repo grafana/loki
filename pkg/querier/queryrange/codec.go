@@ -863,3 +863,50 @@ func getQueryTags(ctx context.Context) string {
 	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
 	return v
 }
+
+func NewEmptyResponse(r queryrange.Request) (queryrange.Response, error) {
+	switch req := r.(type) {
+	case *LokiSeriesRequest:
+		return &LokiSeriesResponse{
+			Status:  loghttp.QueryStatusSuccess,
+			Version: uint32(loghttp.GetVersion(req.Path)),
+		}, nil
+	case *LokiLabelNamesRequest:
+		return &LokiLabelNamesResponse{
+			Status:  loghttp.QueryStatusSuccess,
+			Version: uint32(loghttp.GetVersion(req.Path)),
+		}, nil
+	case *LokiInstantRequest:
+		// instant queries in the frontend are always metrics queries.
+		return &LokiPromResponse{
+			Response: &queryrange.PrometheusResponse{
+				Status: loghttp.QueryStatusSuccess,
+				Data: queryrange.PrometheusData{
+					ResultType: loghttp.ResultTypeVector,
+				},
+			},
+		}, nil
+	case *LokiRequest:
+		// range query can either be metrics or logs
+		expr, err := logql.ParseExpr(req.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		if _, ok := expr.(logql.SampleExpr); ok {
+			return &LokiPromResponse{
+				Response: queryrange.NewEmptyPrometheusResponse(),
+			}, nil
+		}
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: req.Direction,
+			Limit:     req.Limit,
+			Version:   uint32(loghttp.GetVersion(req.Path)),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported request type %T", req)
+	}
+}

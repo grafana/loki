@@ -91,6 +91,11 @@ func main() {
 	t, err := loki.New(config.Config)
 	util_log.CheckFatal("initialising loki", err)
 
+	if config.ListTargets {
+		t.ListTargets()
+		os.Exit(0)
+	}
+
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
 	err = t.Run(loki.RunOpts{})
