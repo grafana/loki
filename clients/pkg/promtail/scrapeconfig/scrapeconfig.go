@@ -43,6 +43,7 @@ type Config struct {
 	KafkaConfig      *KafkaTargetConfig         `yaml:"kafka,omitempty"`
 	GelfConfig       *GelfTargetConfig          `yaml:"gelf,omitempty"`
 	CloudflareConfig *CloudflareConfig          `yaml:"cloudflare,omitempty"`
+	S3Config         *S3TargetConfig            `yaml:"aws,omitempty"`
 	RelabelConfigs   []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
 	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
@@ -360,6 +361,40 @@ type PushTargetConfig struct {
 
 	// If promtail should maintain the incoming log timestamp or replace it with the current time.
 	KeepTimestamp bool `yaml:"use_incoming_timestamp"`
+}
+
+// S3TargetConfig describes s3 targets to scrape
+type S3TargetConfig struct {
+	// Set to true to force the request to use path-style addressing.
+	S3ForcePathStyle bool `yaml:"s3forcepathstyle"`
+
+	// Bucket Name to look for objects.
+	BucketName string `yaml:"bucketname"`
+
+	// AWS S3 Endpoint to connect to.
+	Endpoint string `yaml:"endpoint"`
+
+	// AWS Region to use.
+	Region string `yaml:"region"`
+
+	// AWS Access Key ID.
+	AccessKeyID string `yaml:"access_key_id"`
+
+	// AWS Secret Access Key.
+	SecretAccessKey string `yaml:"secret_access_key"`
+
+	// Disable https on s3 connection.
+	Insecure bool `yaml:"insecure"`
+
+	// Labels optionally holds labels to associate with each record read from S3 objects.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// Prefix to be use to look for objects in buckets.
+	Prefix string `yaml:"prefix"`
+
+	SQSQueue string `yaml:"sqs_queue"`
+
+	SQSQueueAccountID string `yaml:"sqs_queue_account_id"`
 }
 
 // DefaultScrapeConfig is the default Config.

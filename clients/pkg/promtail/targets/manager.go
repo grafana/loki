@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/objectstore"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/stdin"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
@@ -37,6 +38,7 @@ const (
 	CloudflareConfigs    = "cloudflareConfigs"
 	DockerConfigs        = "dockerConfigs"
 	DockerSDConfigs      = "dockerSDConfigs"
+	S3Configs            = "s3Configs"
 )
 
 type targetManager interface {
@@ -96,6 +98,8 @@ func NewTargetManagers(
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
 		case cfg.DockerSDConfigs != nil:
 			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
+		case cfg.S3Config != nil:
+			targetScrapeConfigs[S3Configs] = append(targetScrapeConfigs[S3Configs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
 		}
@@ -116,12 +120,13 @@ func NewTargetManagers(
 	}
 
 	var (
-		fileMetrics       *file.Metrics
-		syslogMetrics     *syslog.Metrics
-		gcplogMetrics     *gcplog.Metrics
-		gelfMetrics       *gelf.Metrics
-		cloudflareMetrics *cloudflare.Metrics
+		fileMetrics        *file.Metrics
+		syslogMetrics      *syslog.Metrics
+		gcplogMetrics      *gcplog.Metrics
+		gelfMetrics        *gelf.Metrics
+		cloudflareMetrics  *cloudflare.Metrics
 		dockerMetrics     *docker.Metrics
+		objectStoreMetrics *objectstore.Metrics
 	)
 	if len(targetScrapeConfigs[FileScrapeConfigs]) > 0 {
 		fileMetrics = file.NewMetrics(reg)
@@ -141,13 +146,13 @@ func NewTargetManagers(
 	if len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0 {
 		dockerMetrics = docker.NewMetrics(reg)
 	}
-
+	if len(targetScrapeConfigs[S3Configs]) > 0 {
+		objectStoreMetrics = objectstore.NewMetrics(reg)
+	}
 	for target, scrapeConfigs := range targetScrapeConfigs {
 		switch target {
-		case FileScrapeConfigs:
 			pos, err := getPositionFile()
 			if err != nil {
-				return nil, err
 			}
 			fileTargetManager, err := file.NewFileTargetManager(
 				fileMetrics,
@@ -239,16 +244,9 @@ func NewTargetManagers(
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		case DockerConfigs:
-			pos, err := getPositionFile()
-			if err != nil {
-				return nil, err
-			}
 			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
-			if err != nil {
 				return nil, errors.Wrap(err, "failed to make Docker target manager")
-			}
 			targetManagers = append(targetManagers, cfTargetManager)
-		case DockerSDConfigs:
 			pos, err := getPositionFile()
 			if err != nil {
 				return nil, err
@@ -258,6 +256,16 @@ func NewTargetManagers(
 				return nil, errors.Wrap(err, "failed to make Docker service discovery target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
+		case S3Configs:
+			pos, err := getPositionFile()
+			if err != nil {
+				return nil, err
+			}
+			objectStoreTargetManager, err := objectstore.NewTargetManager(objectStoreMetrics, logger, pos, client, scrapeConfigs)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
+			}
+			targetManagers = append(targetManagers, objectStoreTargetManager)
 		default:
 			return nil, errors.New("unknown scrape config")
 		}
