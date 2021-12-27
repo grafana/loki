@@ -708,6 +708,7 @@ func Test_validateQueryTimeRangeLimits(t *testing.T) {
 	}{
 		{"no change", fakeTimeLimits{1000 * time.Hour, 1000 * time.Hour}, now, now.Add(24 * time.Hour), now, now.Add(24 * time.Hour), false},
 		{"clamped to 24h", fakeTimeLimits{24 * time.Hour, 1000 * time.Hour}, now.Add(-48 * time.Hour), now, now.Add(-24 * time.Hour), now, false},
+		{"end before lookback", fakeTimeLimits{24 * time.Hour, 1000 * time.Hour}, now.Add(-72 * time.Hour), now.Add(-48 * time.Hour), time.Time{}, time.Time{}, true},
 		{"end before start", fakeTimeLimits{}, now, now.Add(-48 * time.Hour), time.Time{}, time.Time{}, true},
 		{"query too long", fakeTimeLimits{maxQueryLength: 24 * time.Hour}, now.Add(-48 * time.Hour), now, time.Time{}, time.Time{}, true},
 	}

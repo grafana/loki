@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"net/http"
 	"time"
@@ -32,7 +33,11 @@ const (
 	tailerWaitEntryThrottle = time.Second / 2
 )
 
-var nowFunc = func() time.Time { return time.Now() }
+var (
+	nowFunc = func() time.Time { return time.Now() }
+
+	errQueryRangeOutsideLookbackPeriod = errors.New("query range is outside lookback period")
+)
 
 type interval struct {
 	start, end time.Time
@@ -93,6 +98,9 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
+		if errors.Is(err, errQueryRangeOutsideLookbackPeriod) {
+			return iter.NoopIterator, err
+		}
 		return nil, err
 	}
 
@@ -140,6 +148,9 @@ func (q *Querier) SelectSamples(ctx context.Context, params logql.SelectSamplePa
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
+		if errors.Is(err, errQueryRangeOutsideLookbackPeriod) {
+			return iter.NoopIterator, err
+		}
 		return nil, err
 	}
 
@@ -261,6 +272,9 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	}
 
 	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
+		if errors.Is(err, errQueryRangeOutsideLookbackPeriod) {
+			return &logproto.LabelResponse{Values: []string{}}, nil
+		}
 		return nil, err
 	}
 
@@ -364,6 +378,9 @@ func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 	}
 
 	if req.Start, req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
+		if errors.Is(err, errQueryRangeOutsideLookbackPeriod) {
+			return &logproto.SeriesResponse{Series: []logproto.SeriesIdentifier{}}, nil
+		}
 		return nil, err
 	}
 
@@ -510,23 +527,30 @@ type timeRangeLimits interface {
 }
 
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
+	if through.Before(from) {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+	}
+
 	now := nowFunc()
-	// Clamp the time range based on the max query lookback.
-	if maxQueryLookback := limits.MaxQueryLookback(userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
-		origStartTime := from
-		from = now.Add(-maxQueryLookback)
+	if maxQueryLookback := limits.MaxQueryLookback(userID); maxQueryLookback > 0 {
+		// whole query range outside the allowed range
+		if through.Before(now.Add(-maxQueryLookback)) {
+			return time.Time{}, time.Time{}, errQueryRangeOutsideLookbackPeriod
+		}
 
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-			"original", origStartTime,
-			"updated", from)
+		// Clamp the query start time based on the max query lookback.
+		if from.Before(now.Add(-maxQueryLookback)) {
+			origStartTime := from
+			from = now.Add(-maxQueryLookback)
 
+			level.Debug(spanlogger.FromContext(ctx)).Log(
+				"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
+				"original", origStartTime,
+				"updated", from)
+		}
 	}
 	if maxQueryLength := limits.MaxQueryLength(userID); maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
-	}
-	if through.Before(from) {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
 	}
 	return from, through, nil
 }
