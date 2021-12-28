@@ -134,19 +134,29 @@ In order to receive and process syslog messages in Promtail, the following chang
 * Configure the Promtail Helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
 
 ```yaml
-extraScrapeConfigs:
-  - job_name: syslog
-    syslog:
-      listen_address: 0.0.0.0:1514
-      labels:
-        job: "syslog"
-  relabel_configs:
-    - source_labels: ['__syslog_message_hostname']
-      target_label: 'host'
-syslogService:
-  enabled: true
-  type: LoadBalancer
-  port: 1514
+extraPorts:
+  syslog:
+    name: tcp-syslog
+    containerPort: 1514
+    service:
+      port: 80
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      loadBalancerIP: 123.234.123.234
+
+config:
+  snippets:
+    extraScrapeConfigs: |
+      # Add an additional scrape config for syslog
+      - job_name: syslog
+        syslog:
+          listen_address: 0.0.0.0:{{ .Values.extraPorts.syslog.containerPort }}
+          labels:
+            job: syslog
+        relabel_configs:
+          - source_labels:
+              - __syslog_message_hostname
+            target_label: host
 ```
 
 ## Run Promtail with systemd-journal support
