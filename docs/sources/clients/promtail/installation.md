@@ -3,8 +3,8 @@ title: Installation
 ---
 # Install Promtail
 
-Promtail is distributed as a [binary](#binary), [Docker container](#docker), and
-[Helm chart](#helm).
+Promtail is distributed as a binary, in a Docker container,
+or there is a Helm chart to install it in a Kubernetes cluster.
 
 ## Binary
 
@@ -20,8 +20,8 @@ docker pull grafana/promtail:2.0.0
 
 ## Helm
 
-Make sure that Helm is
-[installed](https://helm.sh/docs/using_helm/#installing-helm).
+Make sure that Helm is installed.
+See [Installing Helm](https://helm.sh/docs/intro/install/).
 Then you can add Grafana's chart repository to Helm:
 
 ```bash
@@ -46,7 +46,7 @@ $ helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
 
 A `DaemonSet` will deploy Promtail on every node within a Kubernetes cluster.
 
-The DaemonSet deployment is great to collect the logs of all containers within a
+The DaemonSet deployment works well at collecting the logs of all containers within a
 cluster. It's the best solution for a single-tenant model.
 
 ```yaml
