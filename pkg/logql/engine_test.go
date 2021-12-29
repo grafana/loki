@@ -1292,11 +1292,11 @@ func TestEngine_RangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60 * 1000, V: 0.4}, {T: 90 * 1000, V: 0.4}, {T: 120 * 1000, V: 0.4}, {T: 150 * 1000, V: 0.4}, {T: 180 * 1000, V: 0.4}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.0}, {T: 90 * 1000, V: 0.0}, {T: 120 * 1000, V: 0.0}, {T: 150 * 1000, V: 0.0}, {T: 180 * 1000, V: 0.0}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.0}, {T: 90 * 1000, V: 0.0}, {T: 120 * 1000, V: 0.0}, {T: 150 * 1000, V: 0.0}, {T: 180 * 1000, V: 0.0}},
 				},
 			},
 		},
