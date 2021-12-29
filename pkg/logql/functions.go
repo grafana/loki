@@ -92,7 +92,7 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 func (r RangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 	switch r.Operation {
 	case OpRangeTypeRate:
-		return rateLogs(r.Left.Interval, r.Left.Unwrap != nil, r.Left.Offset), nil
+		return rateLogs(r.Left.Interval, r.Left.Unwrap != nil), nil
 	case OpRangeTypeCount:
 		return countOverTime, nil
 	case OpRangeTypeBytesRate:
@@ -123,12 +123,12 @@ func (r RangeAggregationExpr) aggregator() (RangeVectorAggregator, error) {
 }
 
 // rateLogs calculates the per-second rate of log lines.
-func rateLogs(selRange time.Duration, computeValues bool, sefOffset time.Duration) func(samples []promql.Point) float64 {
+func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.Point) float64 {
 	return func(samples []promql.Point) float64 {
 		if !computeValues {
 			return float64(len(samples)) / selRange.Seconds()
 		}
-		return extrapolatedRate(samples, selRange, sefOffset, true, true)
+		return extrapolatedRate(samples, selRange, true, true)
 	}
 }
 
@@ -136,16 +136,15 @@ func rateLogs(selRange time.Duration, computeValues bool, sefOffset time.Duratio
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // extrapolates if the first/last sample is close to the boundary, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extrapolatedRate(samples []promql.Point, selRange time.Duration, sefOffset time.Duration, isCounter, isRate bool) float64 {
+func extrapolatedRate(samples []promql.Point, selRange time.Duration, isCounter, isRate bool) float64 {
 	// No sense in trying to compute a rate without at least two points. Drop
 	// this Vector element.
 	if len(samples) < 2 {
 		return 0
 	}
-	timeStandar := samples[0].T
 	var (
-		rangeStart = timeStandar - durationMilliseconds(selRange+sefOffset)
-		rangeEnd   = timeStandar - durationMilliseconds(sefOffset)
+		rangeStart = samples[0].T - durationMilliseconds(selRange)
+		rangeEnd   = samples[len(samples)-1].T
 	)
 
 	resultValue := samples[len(samples)-1].V - samples[0].V
@@ -199,7 +198,8 @@ func extrapolatedRate(samples []promql.Point, selRange time.Duration, sefOffset 
 	}
 	resultValue = resultValue * (extrapolateToInterval / sampledInterval)
 	if isRate {
-		resultValue = resultValue / selRange.Seconds()
+		seconds := selRange.Seconds()
+		resultValue = resultValue / seconds
 	}
 
 	return resultValue
