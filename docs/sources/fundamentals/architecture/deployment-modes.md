@@ -58,6 +58,8 @@ Consider the microservices mode approach for very large Loki installations.
 
 In this mode the component microservices of Loki are bundled into two targets:
 `-target=read` and `-target=write`.
+The BoltDB [compactor](../../../operations/storage/boltdb-shipper/#compactor) 
+service will run as part of the read target.
 
 There are advantages to separating the read and write paths:
 
