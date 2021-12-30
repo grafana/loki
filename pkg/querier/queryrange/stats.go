@@ -102,8 +102,9 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				}
 			}
 			if statistics != nil {
-				// Re-calculate the summary then log and record metrics for the current query
-				statistics.ComputeSummary(time.Since(start))
+				// Re-calculate the summary: the enqueueTime result is already merged so should not be updated
+				// Log and record metrics for the current query
+				statistics.ComputeSummary(time.Since(start), 0)
 				statistics.Log(level.Debug(logger))
 			}
 			ctxValue := ctx.Value(ctxKey)

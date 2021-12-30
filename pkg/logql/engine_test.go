@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (
@@ -2062,6 +2063,7 @@ func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (it
 func TestEngine_Stats(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits)
 
+	enqueueTime := 2 * time.Millisecond
 	q := eng.Query(LiteralParams{
 		qs:        `{foo="bar"}`,
 		start:     time.Now(),
@@ -2069,9 +2071,11 @@ func TestEngine_Stats(t *testing.T) {
 		direction: logproto.BACKWARD,
 		limit:     1000,
 	})
-	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	ctx := context.WithValue(context.Background(), httpreq.QueryEnqueueTimeHTTPHeader, enqueueTime)
+	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
+	require.Equal(t, enqueueTime.Seconds(), r.Statistics.Summary.EnqueueTime)
 }
 
 type errorIteratorQuerier struct {

@@ -80,6 +80,7 @@ var queryTests = []struct {
 				},
 				"summary": {
 					"bytesProcessedPerSecond": 0,
+					"enqueueTime": 0,
 					"execTime": 0,
 					"linesProcessedPerSecond": 0,
 					"totalBytesProcessed":0,

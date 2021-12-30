@@ -39,6 +39,7 @@ import (
 
 	lokiutil "github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
+	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (
@@ -464,8 +465,8 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 		r := req.(*schedulerRequest)
 
-		reqEnqueueTime := time.Since(r.enqueueTime).Seconds()
-		s.queueDuration.Observe(reqEnqueueTime)
+		reqEnqueueTime := time.Since(r.enqueueTime)
+		s.queueDuration.Observe(reqEnqueueTime.Seconds())
 		r.queueSpan.Finish()
 
 		reqTenantIDs, err := tenant.TenantIDsFromOrgID(r.userID)
@@ -477,7 +478,13 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 			reqURL = r.request.Url
 		}
 		level.Info(s.log).Log("msg", "querier request dequeued", "tenant_ids", strings.Join(reqTenantIDs, ", "),
-			"querier_id", querierID, "query_id", r.queryID, "request", reqURL, "enqueue_time (ms)", reqEnqueueTime*1000)
+			"querier_id", querierID, "query_id", r.queryID, "request", reqURL, "enqueue_time", reqEnqueueTime)
+
+		// Add HTTP header to the request containing the query enqueue time
+		r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
+			Key:    string(lokihttpreq.QueryEnqueueTimeHTTPHeader),
+			Values: []string{reqEnqueueTime.String()},
+		})
 
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.

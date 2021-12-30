@@ -903,10 +903,11 @@ var (
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
-			"execTime": 21,
-			"linesProcessedPerSecond": 22,
-			"totalBytesProcessed": 23,
-			"totalLinesProcessed": 24
+			"enqueueTime": 21,
+			"execTime": 22,
+			"linesProcessedPerSecond": 23,
+			"totalBytesProcessed": 24,
+			"totalLinesProcessed": 25
 		}
 	},`
 	matrixString = `{
@@ -1052,10 +1053,11 @@ var (
 	statsResult = stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 20,
-			ExecTime:                21,
-			LinesProcessedPerSecond: 22,
-			TotalBytesProcessed:     23,
-			TotalLinesProcessed:     24,
+			EnqueueTime:             21,
+			ExecTime:                22,
+			LinesProcessedPerSecond: 23,
+			TotalBytesProcessed:     24,
+			TotalLinesProcessed:     25,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{

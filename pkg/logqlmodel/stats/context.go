@@ -91,7 +91,7 @@ func (c *Context) Reset() {
 }
 
 // Result calculates the summary based on store and ingester data.
-func (c *Context) Result(execTime time.Duration) Result {
+func (c *Context) Result(execTime time.Duration, enqueueTime time.Duration) Result {
 	r := c.result
 
 	r.Merge(Result{
@@ -101,7 +101,7 @@ func (c *Context) Result(execTime time.Duration) Result {
 		Ingester: c.ingester,
 	})
 
-	r.ComputeSummary(execTime)
+	r.ComputeSummary(execTime, enqueueTime)
 
 	return r
 }
@@ -125,7 +125,7 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 }
 
 // ComputeSummary compute the summary of the statistics.
-func (r *Result) ComputeSummary(execTime time.Duration) {
+func (r *Result) ComputeSummary(execTime time.Duration, enqueueTime time.Duration) {
 	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
 		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
@@ -138,6 +138,9 @@ func (r *Result) ComputeSummary(execTime time.Duration) {
 		r.Summary.LinesProcessedPerSecond =
 			int64(float64(r.Summary.TotalLinesProcessed) /
 				execTime.Seconds())
+	}
+	if enqueueTime != 0 {
+		r.Summary.EnqueueTime = enqueueTime.Seconds()
 	}
 }
 
@@ -168,7 +171,8 @@ func (i *Ingester) Merge(m Ingester) {
 func (r *Result) Merge(m Result) {
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
-	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime + m.Summary.ExecTime) * float64(time.Second))))
+	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime+m.Summary.ExecTime)*float64(time.Second))),
+		time.Duration(int64((r.Summary.EnqueueTime+m.Summary.EnqueueTime)*float64(time.Second))))
 }
 
 func (r Result) ChunksDownloadTime() time.Duration {
@@ -281,5 +285,6 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
 		"Summary.ExecTime", time.Duration(int64(s.ExecTime*float64(time.Second))),
+		"Summary.EnqueueTime", time.Duration(int64(s.EnqueueTime*float64(time.Second))),
 	)
 }

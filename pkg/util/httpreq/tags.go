@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/weaveworks/common/middleware"
 )
@@ -16,6 +17,7 @@ var (
 	QueryTagsHTTPHeader ctxKey = "X-Query-Tags"
 	safeQueryTags              = regexp.MustCompile("[^a-zA-Z0-9-=, ]+") // only alpha-numeric, ' ', ',', '=' and `-`
 
+	QueryEnqueueTimeHTTPHeader ctxKey = "X-Query-Enqueue-Time"
 )
 
 func ExtractQueryTagsMiddleware() middleware.Interface {
@@ -29,6 +31,25 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 				ctx = context.WithValue(ctx, QueryTagsHTTPHeader, tags)
 				req = req.WithContext(ctx)
 			}
+			next.ServeHTTP(w, req)
+		})
+	})
+}
+
+func ExtractQueryMetricsMiddleware() middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := req.Context()
+
+			enqueueTimeHeaders := req.Header[string(QueryEnqueueTimeHTTPHeader)]
+			if len(enqueueTimeHeaders) > 0 && enqueueTimeHeaders[0] != "" {
+				enqueueTime, err := time.ParseDuration(enqueueTimeHeaders[0])
+				if err == nil {
+					ctx = context.WithValue(ctx, QueryEnqueueTimeHTTPHeader, enqueueTime)
+					req = req.WithContext(ctx)
+				}
+			}
+
 			next.ServeHTTP(w, req)
 		})
 	})
