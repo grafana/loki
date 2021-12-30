@@ -5,8 +5,6 @@ import (
 	"flag"
 	"io"
 	"net/http"
-	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -468,17 +466,6 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		reqEnqueueTime := time.Since(r.enqueueTime)
 		s.queueDuration.Observe(reqEnqueueTime.Seconds())
 		r.queueSpan.Finish()
-
-		reqTenantIDs, err := tenant.TenantIDsFromOrgID(r.userID)
-		if err != nil {
-			reqTenantIDs = []string{}
-		}
-		reqURL, err := url.PathUnescape(r.request.Url)
-		if err != nil {
-			reqURL = r.request.Url
-		}
-		level.Info(s.log).Log("msg", "querier request dequeued", "tenant_ids", strings.Join(reqTenantIDs, ", "),
-			"querier_id", querierID, "query_id", r.queryID, "request", reqURL, "enqueue_time", reqEnqueueTime)
 
 		// Add HTTP header to the request containing the query enqueue time
 		r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
