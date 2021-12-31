@@ -371,13 +371,6 @@ The `frontend` block configures the Loki query-frontend.
 The `query_range` block configures query splitting and caching in the Loki query-frontend.
 
 ```yaml
-# Split queries by an interval and execute in parallel, 0 disables it. You
-# should use in multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
-# determines how cache keys are chosen when result caching is enabled
-# CLI flag: -querier.split-queries-by-interval
-[split_queries_by_interval: <duration> | default = 0s]
-
 # Deprecated: Split queries by day and execute in parallel.
 # Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
@@ -2160,6 +2153,13 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # sharding of all queries at all times.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
+
+# Split queries by an interval and execute in parallel, 0 disables it. You
+# should use in multiple of 24 hours (same as the storage bucketing scheme),
+# to avoid queriers downloading and processing the same chunks. This also
+# determines how cache keys are chosen when result caching is enabled
+# CLI flag: -querier.split-queries-by-interval
+[split_queries_by_interval: <duration> | default = 0s]
 ```
 
 ### grpc_client_config
