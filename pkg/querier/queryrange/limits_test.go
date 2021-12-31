@@ -55,7 +55,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.SplitQueriesByInterval = time.Hour
 	cfg.CacheResults = false
 	// split in 7 with 2 in // max.
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, 0, nil)
+	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -210,7 +210,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 func Test_MaxQueryLookBack(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
 		maxQueryLookback: 1 * time.Hour,
-	}, chunk.SchemaConfig{}, 0, nil)
+	}, chunk.SchemaConfig{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}

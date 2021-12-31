@@ -438,7 +438,6 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		util_log.Logger,
 		t.overrides,
 		t.Cfg.SchemaConfig.SchemaConfig,
-		t.Cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {

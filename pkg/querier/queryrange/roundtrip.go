@@ -1,7 +1,6 @@
 package queryrange
 
 import (
-	"errors"
 	"flag"
 	"net/http"
 	"strings"
@@ -42,7 +41,6 @@ func NewTripperware(
 	log log.Logger,
 	limits Limits,
 	schema chunk.SchemaConfig,
-	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
 ) (queryrange.Tripperware, Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
@@ -54,7 +52,7 @@ func NewTripperware(
 	shardingMetrics := logql.NewShardingMetrics(registerer)
 	splitByMetrics := NewSplitByMetrics(registerer)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, LokiCodec,
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, LokiCodec,
 		PrometheusExtractor{}, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics, registerer)
 	if err != nil {
 		return nil, nil, err
@@ -62,7 +60,7 @@ func NewTripperware(
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, LokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, LokiCodec, instrumentMetrics, retryMetrics, shardingMetrics, splitByMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -137,6 +135,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			if err := validateLimits(req, rangeQuery.Limit, r.limits); err != nil {
 				return nil, err
 			}
+			// Only filter expressions are query sharded
 			if !expr.HasFilter() {
 				return r.next.RoundTrip(req)
 			}
@@ -239,7 +238,6 @@ func NewLogFilterTripperware(
 	log log.Logger,
 	limits Limits,
 	schema chunk.SchemaConfig,
-	minShardingLookback time.Duration,
 	codec queryrange.Codec,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
@@ -252,9 +250,6 @@ func NewLogFilterTripperware(
 	}
 
 	if cfg.ShardedQueries {
-		if minShardingLookback == 0 {
-			return nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
-		}
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			NewQueryShardMiddleware(
 				log,
@@ -363,7 +358,6 @@ func NewMetricTripperware(
 	log log.Logger,
 	limits Limits,
 	schema chunk.SchemaConfig,
-	minShardingLookback time.Duration,
 	codec queryrange.Codec,
 	extractor queryrange.Extractor,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
@@ -414,9 +408,6 @@ func NewMetricTripperware(
 	}
 
 	if cfg.ShardedQueries {
-		if minShardingLookback == 0 {
-			return nil, nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
-		}
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			NewQueryShardMiddleware(
 				log,
