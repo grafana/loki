@@ -82,8 +82,8 @@ var (
 					KeepAlive: 30 * time.Second,
 					DualStack: true,
 				}).Dial,
-				MaxIdleConns:           0,
-				MaxIdleConnsPerHost:    100,
+				MaxIdleConns:           200,
+				MaxIdleConnsPerHost:    200,
 				IdleConnTimeout:        90 * time.Second,
 				TLSHandshakeTimeout:    10 * time.Second,
 				ExpectContinueTimeout:  1 * time.Second,
@@ -314,7 +314,6 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 	}
 
 	return azblob.NewPipeline(*tokenCredential, opts), nil
-
 }
 
 func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
@@ -353,7 +352,6 @@ func (b *BlobStorage) fetchMSIToken() (*adal.ServicePrincipalToken, error) {
 
 	// both can be empty, systemAssignedMSI scenario
 	spt, err := adal.NewServicePrincipalTokenFromMSI(msiEndpoint, "https://storage.azure.com/")
-
 	if err != nil {
 		return nil, err
 	}
