@@ -1,7 +1,6 @@
 package objectstore
 
 import (
-	//"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+
 	"github.com/grafana/loki/pkg/storage/chunk/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/hedging"
 )

@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
+
 	loki_aws "github.com/grafana/loki/pkg/storage/chunk/aws"
 )
 
