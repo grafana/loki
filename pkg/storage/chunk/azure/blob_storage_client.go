@@ -371,7 +371,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 			return nil, nil, ctx.Err()
 		}
 
-		err := instrument.CollectedRequest(ctx, "azure.List", requestDuration, instrument.ErrorCode, func(context.Context) error {
+		err := instrument.CollectedRequest(ctx, "azure.List", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
 			if err != nil {
 				return err
