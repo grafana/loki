@@ -244,9 +244,11 @@ func NewLogFilterTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), NewLimitsMiddleware(limits)}
-	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec, splitByTime, splitByMetrics))
+	queryRangeMiddleware := []queryrange.Middleware{
+		StatsCollectorMiddleware(),
+		NewLimitsMiddleware(limits),
+		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
+		SplitByIntervalMiddleware(limits, codec, splitByTime, splitByMetrics),
 	}
 
 	if cfg.ShardedQueries {
@@ -285,16 +287,15 @@ func NewSeriesTripperware(
 	shardingMetrics *logql.ShardingMetrics,
 	schema chunk.SchemaConfig,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{NewLimitsMiddleware(limits)}
-	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-			// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
-			// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
-			// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, splitByMetrics),
-		)
+	queryRangeMiddleware := []queryrange.Middleware{
+		NewLimitsMiddleware(limits),
+		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
+		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
+		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
+		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
+		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, splitByMetrics),
 	}
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
@@ -330,15 +331,14 @@ func NewLabelsTripperware(
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 	splitByMetrics *SplitByMetrics,
 ) (queryrange.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{NewLimitsMiddleware(limits)}
-	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
-			// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
-			// This is because the labels API is an index-only operation.
-			SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, splitByMetrics),
-		)
+	queryRangeMiddleware := []queryrange.Middleware{
+		NewLimitsMiddleware(limits),
+		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
+		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
+		// This is because the labels API is an index-only operation.
+		SplitByIntervalMiddleware(WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, splitByMetrics),
 	}
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
