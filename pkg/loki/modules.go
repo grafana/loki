@@ -14,7 +14,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
@@ -28,6 +27,8 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"

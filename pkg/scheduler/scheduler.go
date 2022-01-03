@@ -11,8 +11,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/scheduler/queue"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
@@ -31,6 +29,9 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/scheduler/queue"
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 
 	"github.com/grafana/loki/pkg/tenant"
 
