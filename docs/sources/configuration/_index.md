@@ -321,7 +321,7 @@ The `query_scheduler` block configures the Loki query scheduler.
 
 # The hash ring configuration. This option is required only if use_scheduler_ring is true
 # The CLI flags prefix for this block config is scheduler.ring
-[scheduler_ring: <ring_config>]
+[scheduler_ring: <ring>]
 ```
 
 ## frontend
@@ -1927,7 +1927,7 @@ compacts index shards to more performant forms.
 
 # The hash ring configuration used by compactors to elect a single instance for running compactions
 # The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring
-[compactor_ring: <ring_config>]
+[compactor_ring: <ring>]
 ```
 
 ## limits_config
