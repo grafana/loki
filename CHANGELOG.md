@@ -20,7 +20,7 @@
 * [4892](https://github.com/grafana/loki/pull/4892) **cristaloleg**: Loki: upgrade cristalhq/hedgedhttp from v0.6.0 to v0.7.0
 * [4902](https://github.com/grafana/loki/pull/4902) **cyriltovena**: Fixes 500 when query is outside of max_query_lookback.
 * [4904](https://github.com/grafana/loki/pull/4904) **bboreham**: Fixes rare race condition that could crash an ingester.
-* [4942](https://github.com/grafana/loki/pull/4942) **cyriltovena**: Allow to disable http2 for GCS.
+* [4942](https://github.com/grafana/loki/pull/4942) **cyriltovena**: Allow to disable HTTP/2 for GCS.
 
 # 2.4.1 (2021/11/07)
 
