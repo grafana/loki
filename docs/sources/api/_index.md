@@ -56,6 +56,7 @@ These endpoints are exposed by the querier and the frontend:
 While these endpoints are exposed by just the distributor:
 
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
+- [`GET /distributor/ring`](#get-distributorring)
 
 And these endpoints are exposed by just the ingester:
 
@@ -81,6 +82,9 @@ These endpoints are exposed by the ruler:
 - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
 - [`GET /prometheus/api/v1/rules`](#list-rules)
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
+
+These endpoints are exposed by the compactor:
+- [`GET /compactor/ring`](#get-compactorring)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
@@ -798,6 +802,14 @@ This is helpful for scaling down WAL-enabled ingesters where we want to ensure o
 but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
+
+### `GET /distributor/ring`
+
+Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
+
+### `GET /compactor/ring`
+
+Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
 
 ## `GET /metrics`
 

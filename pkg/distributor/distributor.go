@@ -7,6 +7,7 @@ import (
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -22,13 +23,12 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/tenant"
-
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	"github.com/grafana/loki/pkg/tenant"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -63,7 +63,10 @@ type Distributor struct {
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
-	distributorsRing *ring.Lifecycler
+	distributorsRing       *ring.Ring
+	distributorsLifecycler *ring.Lifecycler
+
+	rateLimitStrat string
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -94,19 +97,35 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var distributorsRing *ring.Lifecycler
+	var distributorsLifecycler *ring.Lifecycler
+	var distributorsRing *ring.Ring
+	rateLimitStrat := validation.LocalIngestionRateStrategy
 
 	var servs []services.Service
-
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		var err error
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+		rateLimitStrat = validation.GlobalIngestionRateStrategy
+		ringStore, err := kv.NewClient(
+			cfg.DistributorRing.KVStore,
+			ring.GetCodec(),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "distributor"),
+			util_log.Logger)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "create distributor KV store client")
 		}
 
-		servs = append(servs, distributorsRing)
-		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
+		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+		if err != nil {
+			return nil, errors.Wrap(err, "create distributor lifecycler")
+		}
+
+		distributorsRing, err = ring.NewWithStoreClientAndStrategy(cfg.DistributorRing.ToRingConfig(),
+			"distributor", "distributor", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
+		if err != nil {
+			return nil, errors.Wrap(err, "create distributor ring client")
+		}
+
+		servs = append(servs, distributorsLifecycler, distributorsRing)
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsLifecycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
 	}
@@ -116,16 +135,18 @@ func New(cfg Config, clientCfg client.Config, configs *runtime.TenantConfigs, in
 		return nil, err
 	}
 	d := Distributor{
-		cfg:                  cfg,
-		clientCfg:            clientCfg,
-		tenantConfigs:        configs,
-		tenantsRetention:     retention.NewTenantsRetention(overrides),
-		ingestersRing:        ingestersRing,
-		distributorsRing:     distributorsRing,
-		validator:            validator,
-		pool:                 clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
-		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		labelCache:           labelCache,
+		cfg:                    cfg,
+		clientCfg:              clientCfg,
+		tenantConfigs:          configs,
+		tenantsRetention:       retention.NewTenantsRetention(overrides),
+		ingestersRing:          ingestersRing,
+		distributorsRing:       distributorsRing,
+		distributorsLifecycler: distributorsLifecycler,
+		validator:              validator,
+		pool:                   clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		labelCache:             labelCache,
+		rateLimitStrat:         rateLimitStrat,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",

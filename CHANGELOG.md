@@ -1,5 +1,6 @@
 ## Main
 
+* [4938](https://github.com/grafana/loki/pull/4938) **DylanGuedes**: Implement ring status page for the distributor
 * [5023](https://github.com/grafana/loki/pull/5023) **ssncferreira**: Move `querier.split-queries-by-interval` to a per-tenant configuration
 * [4993](https://github.com/grafana/loki/pull/4926) **thejosephstevens**: Fix parent of wal and wal_cleaner in loki ruler config docs
 * [4933](https://github.com/grafana/loki/pull/4933) **jeschkies**: Support matchers in series label values query.
