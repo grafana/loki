@@ -731,7 +731,7 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
 
-# Enable http2 when connecting to GCS.
+# Enable HTTP/2 when connecting to GCS.
 # CLI flag: -<prefix>.gcs.enable-http2
 [enable_http2: <bool> | default = true]
 ```
