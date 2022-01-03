@@ -34,6 +34,6 @@ func NewWithLogger(ctx context.Context, logger log.Logger, method string, kvps .
 // If there is no parent span, the SpanLogger will only log to the logger
 // within the context. If the context doesn't have a logger, the fallback
 // logger is used.
-func FromContext(ctx context.Context, fallback log.Logger) *SpanLogger {
-	return spanlogger.FromContext(ctx, fallback, tenant.DefaultResolver)
+func FromContext(ctx context.Context) *SpanLogger {
+	return spanlogger.FromContext(ctx, util_log.Logger, tenant.DefaultResolver)
 }
