@@ -129,7 +129,6 @@ func newPolicyConnPool(logger log.Logger, registerer prometheus.Registerer, sess
 	pool.endpoints = make([]string, len(session.cfg.Hosts))
 	copy(pool.endpoints, session.cfg.Hosts)
 
-	//registerer = prometheus.DefaultRegisterer
 	pool.numHosts = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "gocql_connection_pool_hosts",
 		Help: "Current number of hosts in the connection pool.",
