@@ -90,7 +90,11 @@ func (o *Client) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 
 // GetChunks retrieves the specified chunks from the configured backend
 func (o *Client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, o.getChunkMaxParallel, chunks, o.getChunk)
+	getChunkMaxParallel := o.getChunkMaxParallel
+	if getChunkMaxParallel == 0 {
+		getChunkMaxParallel = defaultMaxParallel
+	}
+	return util.GetParallelChunks(ctx, getChunkMaxParallel, chunks, o.getChunk)
 }
 
 func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
