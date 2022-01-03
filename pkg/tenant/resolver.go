@@ -9,11 +9,11 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-var defaultResolver Resolver = NewSingleResolver()
+var DefaultResolver Resolver = NewSingleResolver()
 
 // WithDefaultResolver updates the resolver used for the package methods.
 func WithDefaultResolver(r Resolver) {
-	defaultResolver = r
+	DefaultResolver = r
 }
 
 // TenantID returns exactly a single tenant ID from the context. It should be
@@ -24,7 +24,7 @@ func WithDefaultResolver(r Resolver) {
 // ignore stutter warning
 //nolint:golint,revive
 func TenantID(ctx context.Context) (string, error) {
-	return defaultResolver.TenantID(ctx)
+	return DefaultResolver.TenantID(ctx)
 }
 
 // TenantIDs returns all tenant IDs from the context. It should return
@@ -34,7 +34,7 @@ func TenantID(ctx context.Context) (string, error) {
 // ignore stutter warning
 //nolint:golint,revive
 func TenantIDs(ctx context.Context) ([]string, error) {
-	return defaultResolver.TenantIDs(ctx)
+	return DefaultResolver.TenantIDs(ctx)
 }
 
 type Resolver interface {
@@ -149,7 +149,7 @@ func ExtractTenantIDFromHTTPRequest(req *http.Request) (string, context.Context,
 		return "", nil, err
 	}
 
-	tenantID, err := defaultResolver.TenantID(ctx)
+	tenantID, err := DefaultResolver.TenantID(ctx)
 	if err != nil {
 		return "", nil, err
 	}
