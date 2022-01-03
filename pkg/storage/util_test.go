@@ -9,7 +9,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	loki_util "github.com/grafana/loki/pkg/util"
