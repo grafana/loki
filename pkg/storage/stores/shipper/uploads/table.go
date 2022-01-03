@@ -39,7 +39,7 @@ var bucketName = []byte("index")
 
 type BoltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
-	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
+	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 }
 
 type StorageClient interface {
@@ -255,7 +255,7 @@ func (lt *Table) write(ctx context.Context, tm time.Time, writes local.TableWrit
 		return err
 	}
 
-	return lt.boltdbIndexClient.WriteToDB(ctx, db, writes)
+	return lt.boltdbIndexClient.WriteToDB(ctx, db, bucketName, writes)
 }
 
 // Stop closes all the open dbs.

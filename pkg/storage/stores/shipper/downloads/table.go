@@ -38,9 +38,10 @@ type BoltDBIndexClient interface {
 
 type StorageClient interface {
 	ListTables(ctx context.Context) ([]string, error)
-	ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, error)
+	ListFiles(ctx context.Context, tableName string) ([]storage.IndexFile, []string, error)
 	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
 	IsFileNotFoundErr(err error) bool
+	Stop()
 }
 
 // Table is a collection of multiple files created for a same table by various ingesters.
@@ -196,7 +197,7 @@ func (t *Table) init(ctx context.Context, spanLogger log.Logger) (err error) {
 	startTime := time.Now()
 	totalFilesSize := int64(0)
 
-	files, err := t.storageClient.ListFiles(ctx, t.name)
+	files, _, err := t.storageClient.ListFiles(ctx, t.name)
 	if err != nil {
 		return
 	}
@@ -396,7 +397,7 @@ func (t *Table) checkStorageForUpdates(ctx context.Context) (toDownload []storag
 	// listing tables from store
 	var files []storage.IndexFile
 
-	files, err = t.storageClient.ListFiles(ctx, t.name)
+	files, _, err = t.storageClient.ListFiles(ctx, t.name)
 	if err != nil {
 		return
 	}
@@ -433,7 +434,9 @@ func (t *Table) downloadFile(ctx context.Context, file storage.IndexFile) error 
 	folderPath, _ := t.folderPathForTable(false)
 	filePath := path.Join(folderPath, file.Name)
 
-	err := shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
+	err := shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
+		return t.storageClient.GetFile(ctx, t.name, file.Name)
+	}, shipper_util.IsCompressedFile(file.Name), filePath, true, util_log.Logger)
 	if err != nil {
 		if t.storageClient.IsFileNotFoundErr(err) {
 			level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", file.Name))
@@ -489,7 +492,9 @@ func (t *Table) doParallelDownload(ctx context.Context, files []storage.IndexFil
 				}
 
 				filePath := path.Join(folderPathForTable, file.Name)
-				err = shipper_util.GetFileFromStorage(ctx, t.storageClient, t.name, file.Name, filePath, true)
+				err := shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
+					return t.storageClient.GetFile(ctx, t.name, file.Name)
+				}, shipper_util.IsCompressedFile(file.Name), filePath, true, util_log.Logger)
 				if err != nil {
 					if t.storageClient.IsFileNotFoundErr(err) {
 						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", file.Name))
