@@ -24,8 +24,8 @@ import (
 
 var defaultTransport http.RoundTripper = &http.Transport{
 	Proxy:                 http.ProxyFromEnvironment,
-	MaxIdleConnsPerHost:   256,
-	MaxIdleConns:          512,
+	MaxIdleConnsPerHost:   200,
+	MaxIdleConns:          200,
 	ExpectContinueTimeout: 5 * time.Second,
 }
 

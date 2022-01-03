@@ -53,8 +53,8 @@ func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClie
 func gcsInstrumentation(ctx context.Context, scope string, insecure bool, http2 bool) (*http.Client, error) {
 	// start with default transport
 	customTransport := http.DefaultTransport.(*http.Transport).Clone()
-	customTransport.MaxIdleConnsPerHost = 256
-	customTransport.MaxIdleConns = 512
+	customTransport.MaxIdleConnsPerHost = 200
+	customTransport.MaxIdleConns = 200
 	if !http2 {
 		// disable HTTP/2 by setting TLSNextProto to non-nil empty map, as per the net/http documentation.
 		// see http2 section of https://pkg.go.dev/net/http
