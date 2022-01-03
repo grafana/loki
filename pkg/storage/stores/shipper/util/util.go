@@ -267,7 +267,7 @@ func DoConcurrentWork(ctx context.Context, maxConcurrency, workCount int, logger
 	doWorkChan := make(chan int)
 	n := util_math.Min(workCount, maxConcurrency)
 
-	// read files in parallel
+	// do work in parallel
 	for i := 0; i < n; i++ {
 		go func() {
 			var err error
@@ -296,7 +296,7 @@ func DoConcurrentWork(ctx context.Context, maxConcurrency, workCount int, logger
 		}()
 	}
 
-	// send all files to doWorkChan
+	// initiate work by sending work number to doWorkChan
 	go func() {
 		for i := 0; i < workCount; i++ {
 			select {
