@@ -800,22 +800,58 @@ max_message_length: <int>
 
 The `s3_config` block configures reading log files from s3 bucket.
 
-**File Formats Supported** : `GZip` and other normal files `.txt`, `.log`
-
-**Note**: With current verion of this implementation, we use a very [simple](./scraping.md/#Object-store-scraping) way to fetch and read files/objects. For a bucket with lot of files with large size, throuput might be affected and also there might be chances of `time out errors`.
+**File Formats Supported** : `GZip` and other flat files `.txt`, `.log`
 
 ```yaml
-# S3 or S3-compatible URL to connect to
-[s3: <string>]
+# Bucket name to pull objects from
+[bucketname: <string>]
+
+# AWS Access Key ID
+[access_key_id: string]
+
+# AWS Secret Access Key
+[secret_access_key: string]
+
+# AWS region to use
+[region: string]
+
+# S3 Endpoint to connect to
+[endpoint: string]
 
 # Set to true to force the request to use path-style addressing
-[s3forcepathstyle: <boolean> | default = false]
+[s3_forcepath_style: <boolean> | default = false]
 
-# How often to check for new files/objects in s3 bucket
-[sync_period: duration | default = 2m]
+# Disable https on S3 connection.
+[insecure: <boolean> | default = false]
 
-# Prefix to use to look for files/objects in s3 bucket
-[prefix: string | default = empty]
+# SQS queue name to receive s3 events from
+[sqs_queue: string]
+
+# SQS queue wait timeout value
+[sqs_queue_timeout: int64 | default = 20]
+
+# Set to true to start reading object from begining for already read objects.
+[reset_cursor: bool | default = false]
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+
+http_config:
+  # The maximum amount of time an idle connection will be held open.
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # If non-zero, specifies the amount of time to wait for a server's
+  # response headers after fully writing the request.
+  [response_header_timeout: <duration> | default = 0s]
+
+  # Set to true to skip verifying the certificate chain and hostname.
+  [insecure_skip_verify: <boolean> | default = false]
+
+  # Path to the trusted CA file that signed the SSL certificate of the S3
+  # endpoint.
+  [ca_file: <string> | default = ""]
+
 ```
 
 #### Available Labels

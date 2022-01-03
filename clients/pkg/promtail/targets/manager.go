@@ -263,7 +263,7 @@ func NewTargetManagers(
 			}
 			objectStoreTargetManager, err := objectstore.NewTargetManager(objectStoreMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make cloudflare target manager")
+				return nil, errors.Wrap(err, "failed to make cloudflare s3 object store manager")
 			}
 			targetManagers = append(targetManagers, objectStoreTargetManager)
 		default:

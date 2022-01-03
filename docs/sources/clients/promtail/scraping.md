@@ -359,27 +359,42 @@ scrape_configs:
 
 Only `api_token` and `zone_id` are required.
 Refer to the [Cloudfare](../../configuration/#cloudflare) configuration section for details.
+
 ## Object store scraping
 
 Promtail supports scraping logs from Object store. Currently promtail supports scraping logs from S3.
 
-### How scraping object store works?
+### How scraping object store works with AWS S3?
 
-With the current version we just use a generic way of fetching and reading new objects. Based on the configured `sync_period` promtail `Lists` the objects from the bucket. Then for each object we check if it's new or updated object. If the object is new, we start reading the object. If the object already exists, we check if it's modified date is changed. If it is changed we start reading the object from the previously known position which is available from `positions.yaml`. If the object already exists and the modified date is not changed then we check if we have completely read the object till `EOF` by matching the bytes read and size of the object from the `positions.yaml`. If we have not read completely, we read the object from the previously known position
+S3 should be integrated with SQS and Upload and Put events should be sent to SQS queue. Promtail polls SQS for the messages and on receiving the messages it parses the message to get the `objects` which were uploaded. 
+Then we pull each object, read the log lines and send the lines to Loki server. Messages will be deleted/acknowledged only after the object is completely being read.  
+
+Things to note on how objectstore treats objects in few scenarios
+
+1. It's possible that we will receive the same object again from the queue for which the reader is still active. In this case we check the modified date time of the object. If it's same as the last known time we skip creating one more reader for it. If the modified date time is changed, we stop the active reader and create new reader. Also, the line or position to start reading depends on `reset_cursor` configuration. If set to `true` objects will be read from begining otherwise it will be read from last saved cursor position. 
+2. If promtail is stopped or crashed, the objects which were not completely read will resume the reading from the last saved position of the cursor. Since, messages are deleted/acknowledged only after the the object is completely read, on restarting the promtail we receive the same messages again from the queue and we start the reading from the last saved position.
+
 
 ### Next steps
 
-In the next versions of object scraping, we would like to support identifying new objects via AWS SQS and AWS Lambda and also support multi part download to improve performance for scraping very large files. Also, we would like to support other Object storage providers like GCS, Swift etc...
+In the next versions of object scraping, we would like to support other Object storage providers like GCS, Swift etc...
 
 ```yaml
 scrape_configs:
-  - job_name: s3
+  - job_name: s3_objectstore
     aws:
-      s3: s3://acess_key:secret_key@region/bucketname
+      bucketname: <bucketname>
+      access_key_id: <access_key_id>
+      secret_access_key: <secret_access_key>
+      region: <region>
+      endpoint: <endpoint>
+      s3_forcepath_style: false
+      insecure: false
+      sqs_queue: <sqs_queue>
+      sqs_queue_timeout: 20
+      reset_cursor: false
       labels:
         job: "awslogs"
-      prefix: ""
-      sync_period: 2m
 ```
 
 

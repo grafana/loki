@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
+	loki_aws "github.com/grafana/loki/pkg/storage/chunk/aws"
 )
 
 // Config describes a job to scrape.
@@ -366,7 +367,7 @@ type PushTargetConfig struct {
 // S3TargetConfig describes s3 targets to scrape
 type S3TargetConfig struct {
 	// Set to true to force the request to use path-style addressing.
-	S3ForcePathStyle bool `yaml:"s3forcepathstyle"`
+	S3ForcePathStyle bool `yaml:"s3_forcepath_style"`
 
 	// Bucket Name to look for objects.
 	BucketName string `yaml:"bucketname"`
@@ -386,15 +387,17 @@ type S3TargetConfig struct {
 	// Disable https on s3 connection.
 	Insecure bool `yaml:"insecure"`
 
+	// HTTP config
+	HTTPConfig loki_aws.HTTPConfig
+
 	// Labels optionally holds labels to associate with each record read from S3 objects.
 	Labels model.LabelSet `yaml:"labels"`
 
-	// Prefix to be use to look for objects in buckets.
-	Prefix string `yaml:"prefix"`
-
 	SQSQueue string `yaml:"sqs_queue"`
 
-	SQSQueueAccountID string `yaml:"sqs_queue_account_id"`
+	Timeout int64 `yaml:"sqs_queue_timeout"`
+
+	ResetCursor bool `yaml:"reset_cursor"`
 }
 
 // DefaultScrapeConfig is the default Config.

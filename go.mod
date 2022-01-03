@@ -102,6 +102,7 @@ require (
 )
 
 require (
+	github.com/go-kit/kit v0.12.0
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/xdg-go/scram v1.0.2
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20191017102106-1550ee647df0
@@ -157,7 +158,6 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v0.6.2 // indirect
 	github.com/felixge/httpsnoop v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
-	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/go-openapi/analysis v0.20.0 // indirect
 	github.com/go-openapi/errors v0.20.0 // indirect
