@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -17,6 +16,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -86,7 +86,7 @@ func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory 
 // mockIngesterClientConfig returns an ingester client config suitable for testing
 func mockIngesterClientConfig() client.Config {
 	return client.Config{
-		PoolConfig: distributor.PoolConfig{
+		PoolConfig: clientpool.PoolConfig{
 			ClientCleanupPeriod:  1 * time.Minute,
 			HealthCheckIngesters: false,
 			RemoteTimeout:        1 * time.Second,
