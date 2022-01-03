@@ -2,19 +2,19 @@ package objectstore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -37,9 +37,8 @@ type Target struct {
 
 	objectClient chunk.ObjectClient
 	client       Client
-	prefix       string
 	timeout      int64
-	reset_cursor bool
+	resetCursor  bool
 }
 
 // NewTarget creates a new Target.
@@ -50,7 +49,7 @@ func NewTarget(metrics *Metrics, logger log.Logger,
 	client Client,
 	labels model.LabelSet,
 	timeout int64,
-	reset_cursor bool,
+	resetCursor bool,
 	storename string) (*Target, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -69,7 +68,7 @@ func NewTarget(metrics *Metrics, logger log.Logger,
 		labels:       labels,
 		storeName:    storename,
 		timeout:      timeout,
-		reset_cursor: reset_cursor,
+		resetCursor:  resetCursor,
 	}
 	go t.run()
 	return t, nil
@@ -131,8 +130,8 @@ func (t *Target) handleObject(object messageObject) {
 		}
 	}
 
-	if t.reset_cursor {
-		level.Debug(t.logger).Log("msg", "reset_cursor set to true. reading object from begining", "object", object.Object.Key, "modified_at", modifiedAt, "position", pos)
+	if t.resetCursor {
+		level.Debug(t.logger).Log("msg", "reset_cursor set to true. reading object from beginning", "object", object.Object.Key, "modified_at", modifiedAt, "position", pos)
 	}
 
 	objectReader := newObjectReader(t.metrics, t.storeName, object.Object, object.Acknowledge, t.objectClient, t.logger, t.labels, t.positions, t.handler, pos)
@@ -147,7 +146,7 @@ func (t *Target) getPosition(key string) (int64, int64, error) {
 
 	position := strings.Split(positionString, ":")
 	if len(position) != 2 {
-		return 0, 0, errors.New(fmt.Sprintf("position value is wrong, expected 2 values, found %d", len(position)))
+		return 0, 0, fmt.Errorf("position value is wrong, expected 2 values, found %d", len(position))
 	}
 
 	modifiedAt, err := strconv.ParseInt(position[0], 10, 64)

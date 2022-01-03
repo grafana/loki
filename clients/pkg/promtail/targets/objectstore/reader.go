@@ -12,14 +12,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
@@ -120,7 +121,7 @@ func (r *objectReader) run() {
 					r.object.BytesRead += int64(len(bytes))
 					r.markPositionAndSize()
 					r.active.Store(false)
-					r.ackMessage()
+					r.acknowledgeMessage()
 					return
 
 				}
@@ -130,6 +131,12 @@ func (r *objectReader) run() {
 		}
 	}
 
+}
+
+func (r *objectReader) acknowledgeMessage() {
+	if err := r.ackMessage(); err != nil {
+		level.Error(r.logger).Log("msg", "error in acknowldeging message", "err", err)
+	}
 }
 
 func (r *objectReader) sendLines(bytes []byte, labels model.LabelSet) {
@@ -147,7 +154,7 @@ func (r *objectReader) sendLines(bytes []byte, labels model.LabelSet) {
 		Labels: labels,
 		Entry: logproto.Entry{
 			Timestamp: time,
-			Line:      string(line),
+			Line:      line,
 		},
 	}
 	// update bytes read
@@ -183,7 +190,7 @@ func (r *objectReader) GetObject() (*bufio.Reader, error) {
 	// if the object is previously known, we have to skip the previously read bytes.
 	_, err = bufReader.Peek(int(r.object.BytesRead))
 	if err != nil {
-		level.Warn(r.logger).Log("msg", "object size is less than previous known size. object will be tailed from begining", "object", r.object.Key)
+		level.Warn(r.logger).Log("msg", "object size is less than previous known size. object will be tailed from beginning", "object", r.object.Key)
 		r.positions.Remove(fmt.Sprintf("s3object-%s", r.object.Key))
 		r.object.BytesRead = 0
 		return bufReader, nil

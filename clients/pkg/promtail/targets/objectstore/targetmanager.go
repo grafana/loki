@@ -69,7 +69,7 @@ func NewTargetManager(
 				SecretAccessKey:  cfg.S3Config.SecretAccessKey,
 				Insecure:         cfg.S3Config.Insecure,
 				S3ForcePathStyle: cfg.S3Config.S3ForcePathStyle,
-				HTTPConfig:       aws.HTTPConfig(cfg.S3Config.HTTPConfig),
+				HTTPConfig:       cfg.S3Config.HTTPConfig,
 			}
 
 			objectClient, err := aws.NewS3ObjectClient(storageClient, hedging.Config{})

@@ -139,9 +139,9 @@ func TestObjectS3Target_Run(t *testing.T) {
 		]
 	}
 	`
-	mockUrl := "mockURL"
+	mockURL := "mockURL"
 	messages := map[string][]*sqs.Message{
-		mockUrl: {
+		mockURL: {
 			{Body: aws.String(record1)},
 			{Body: aws.String(record2)},
 		},
@@ -149,7 +149,7 @@ func TestObjectS3Target_Run(t *testing.T) {
 
 	sqsClient := &s3Client{
 		svc:      &mockSQS{messages: messages},
-		queueURL: &mockUrl,
+		queueURL: &mockURL,
 	}
 
 	ta, err := NewTarget(metrics, logger, client, ps, objectClient, sqsClient, labels, cfg.Timeout, cfg.ResetCursor, storename)
@@ -180,7 +180,10 @@ func createLogLines(filename string, lines []string) error {
 	}
 	defer f.Close()
 	for _, line := range lines {
-		f.WriteString(fmt.Sprintf("%s\n", line))
+		_, err := f.WriteString(fmt.Sprintf("%s\n", line))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
