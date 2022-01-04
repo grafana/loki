@@ -58,7 +58,9 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 
 	cfg.Setup()
 
-	stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst)
+	if cfg.LimitConfig.ReadlineRateEnabled {
+		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst)
+	}
 	var err error
 	if dryRun {
 		promtail.client, err = client.NewLogger(prometheus.DefaultRegisterer, promtail.logger, cfg.ClientConfigs...)
