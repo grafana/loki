@@ -94,6 +94,7 @@ type Config struct {
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
+	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
 	GrpcConfig grpc.Config `yaml:"grpc_store"`
 
@@ -117,6 +118,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading.", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
+	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 }
 
 // Validate config and returns error on failure
@@ -271,8 +273,11 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
 	case StorageTypeAWS, StorageTypeS3:
-		store, err := aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
-		return newChunkClientFromStore(store, err, schemaCfg)
+		c, err := aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
 	case StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -283,38 +288,40 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case StorageTypeAzure:
-		store, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
-		return newChunkClientFromStore(store, err, schemaCfg)
+		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
 	case StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCPColumnKey, StorageTypeBigTable, StorageTypeBigTableHashed:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case StorageTypeGCS:
-		store, err := gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
-		return newChunkClientFromStore(store, err, schemaCfg)
+		c, err := gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
 	case StorageTypeSwift:
-		store, err := openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
-		return newChunkClientFromStore(store, err, schemaCfg)
+		c, err := openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
+		if err != nil {
+			return nil, err
+		}
+		return objectclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk), nil
 	case StorageTypeCassandra:
-		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
+		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case StorageTypeFileSystem:
 		store, err := local.NewFSObjectClient(cfg.FSConfig)
 		if err != nil {
 			return nil, err
 		}
-		return objectclient.NewClient(store, objectclient.Base64Encoder, schemaCfg), nil
+		return objectclient.NewClientWithMaxParallel(store, objectclient.Base64Encoder, cfg.MaxParallelGetChunk), nil
 	case StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, StorageTypeAWS, StorageTypeAzure, StorageTypeCassandra, StorageTypeInMemory, StorageTypeGCP, StorageTypeBigTable, StorageTypeBigTableHashed, StorageTypeGrpc)
 	}
-}
-
-func newChunkClientFromStore(store chunk.ObjectClient, err error, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
-	if err != nil {
-		return nil, err
-	}
-	return objectclient.NewClient(store, nil, schemaCfg), nil
 }
 
 // NewTableClient makes a new table client based on the configuration.

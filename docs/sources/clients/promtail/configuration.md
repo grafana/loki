@@ -435,7 +435,7 @@ The CRI stage is just a convenience wrapper for this definition:
 
 ```yaml
 - regex:
-    expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
+    expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$"
 - labels:
     stream:
 - timestamp:

@@ -229,6 +229,7 @@ func newTestStore(t testing.TB) *testStore {
 			FSConfig: local.FSConfig{
 				Directory: chunkDir,
 			},
+			MaxParallelGetChunk: 150,
 		},
 		BoltDBShipperConfig: shipper.Config{
 			ActiveIndexDirectory: indexDir,
