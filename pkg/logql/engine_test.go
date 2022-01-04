@@ -49,12 +49,12 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			`rate({app="foo"} | unwrap foo [30s])`, time.Unix(60, 0), logproto.FORWARD, 10,
 			[][]logproto.Series{
 				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
-				{newSeries(testSize, offset(46, constantValue(2)), `{app="foo"}`)},
+				{newSeries(testSize, offset(46, incValue(10)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
 			},
-			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.0}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.46666766666666665}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 	} {
 		test := test
@@ -2498,6 +2498,23 @@ func constantValue(t int64) generator {
 				Timestamp: time.Unix(i, 0).UnixNano(),
 				Hash:      uint64(i),
 				Value:     float64(t),
+			},
+		}
+	}
+}
+
+// nolint
+func incValue(val int64) generator {
+	return func(i int64) logData {
+		return logData{
+			Entry: logproto.Entry{
+				Timestamp: time.Unix(i, 0),
+				Line:      fmt.Sprintf("%d", i),
+			},
+			Sample: logproto.Sample{
+				Timestamp: time.Unix(i, 0).UnixNano(),
+				Hash:      uint64(i),
+				Value:     float64(val + i),
 			},
 		}
 	}

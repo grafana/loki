@@ -132,6 +132,7 @@ func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.
 	}
 }
 
+// extrapolatedRate function is taken from prometheus code promql/functions.go:59
 // extrapolatedRate is a utility function for rate/increase/delta.
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // extrapolates if the first/last sample is close to the boundary, and returns
