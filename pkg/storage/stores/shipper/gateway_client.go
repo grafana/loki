@@ -7,7 +7,6 @@ import (
 	"io"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	util_math "github.com/grafana/loki/pkg/util/math"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/pkg/errors"
@@ -15,6 +14,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
+
+	util_math "github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"

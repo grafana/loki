@@ -19,7 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -30,6 +29,8 @@ import (
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
+
+	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/loki/pkg/util/spanlogger"
 

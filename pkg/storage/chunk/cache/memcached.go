@@ -16,6 +16,7 @@ import (
 	instr "github.com/weaveworks/common/instrument"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
 	"github.com/grafana/loki/pkg/util/math"
 )
 

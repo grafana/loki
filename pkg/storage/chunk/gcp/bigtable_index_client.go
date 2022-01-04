@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigtable"
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/grpcclient"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/loki/pkg/util/spanlogger"
 

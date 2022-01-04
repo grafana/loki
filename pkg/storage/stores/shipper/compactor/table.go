@@ -10,10 +10,11 @@ import (
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	util_math "github.com/grafana/loki/pkg/util/math"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
+
+	util_math "github.com/grafana/loki/pkg/util/math"
 
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
