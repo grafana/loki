@@ -7,7 +7,6 @@ import (
 type Config struct {
 	ReadlineRate        float64 `yaml:"readline_rate" json:"readline_rate"`
 	ReadlineBurst       int     `yaml:"readline_burst" json:"readline_burst"`
-	Enable              int     `yaml:"readline_burst" json:"readline_burst"`
 	ReadlineRateEnabled bool    `yaml:"readline_rate_enabled,omitempty"  json:"readline_rate_enabled"`
 }
 
