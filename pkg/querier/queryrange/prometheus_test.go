@@ -49,6 +49,7 @@ var emptyStats = `"stats": {
 	},
 	"summary": {
 		"bytesProcessedPerSecond": 0,
+		"queueTime": 0,
 		"execTime": 0,
 		"linesProcessedPerSecond": 0,
 		"totalBytesProcessed":0,

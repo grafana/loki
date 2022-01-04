@@ -236,15 +236,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
+	httpMiddleware := middleware.Merge(
+		httpreq.ExtractQueryMetricsMiddleware(),
+	)
+
 	queryHandlers := map[string]http.Handler{
-		"/loki/api/v1/query_range":         http.HandlerFunc(t.Querier.RangeQueryHandler),
-		"/loki/api/v1/query":               http.HandlerFunc(t.Querier.InstantQueryHandler),
+		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.Querier.RangeQueryHandler)),
+		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.InstantQueryHandler)),
 		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
 
-		"/api/prom/query":               http.HandlerFunc(t.Querier.LogQueryHandler),
+		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LogQueryHandler)),
 		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
 		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),

@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (
@@ -120,7 +121,9 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	data, err := q.Eval(ctx)
 
-	statResult := statsCtx.Result(time.Since(start))
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+
+	statResult := statsCtx.Result(time.Since(start), queueTime)
 	statResult.Log(level.Debug(log))
 
 	status := "200"
