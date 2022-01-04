@@ -29,18 +29,20 @@ type Client struct {
 	store               chunk.ObjectClient
 	keyEncoder          KeyEncoder
 	getChunkMaxParallel int
+	schema              chunk.SchemaConfig
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
-func NewClient(store chunk.ObjectClient, encoder KeyEncoder) *Client {
-	return NewClientWithMaxParallel(store, encoder, defaultMaxParallel)
+func NewClient(store chunk.ObjectClient, encoder KeyEncoder, schema chunk.SchemaConfig) *Client {
+	return NewClientWithMaxParallel(store, encoder, defaultMaxParallel, schema)
 }
 
-func NewClientWithMaxParallel(store chunk.ObjectClient, encoder KeyEncoder, maxParallel int) *Client {
+func NewClientWithMaxParallel(store chunk.ObjectClient, encoder KeyEncoder, maxParallel int, schema chunk.SchemaConfig) *Client {
 	return &Client{
 		store:               store,
 		keyEncoder:          encoder,
 		getChunkMaxParallel: maxParallel,
+		schema:              schema,
 	}
 }
 
