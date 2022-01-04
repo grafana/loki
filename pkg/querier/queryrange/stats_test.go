@@ -163,5 +163,5 @@ func Test_StatsUpdateResult(t *testing.T) {
 		EndTs: time.Now(),
 	})
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, resp.(*LokiResponse).Statistics.Summary.ExecTime, (20 * time.Millisecond).Seconds())
+	require.GreaterOrEqual(t, resp.(*LokiResponse).Statistics.Summary.ExecTime, (20 * time.Millisecond).Nanoseconds())
 }

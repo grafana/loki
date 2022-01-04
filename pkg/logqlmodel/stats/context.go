@@ -130,7 +130,7 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration)
 		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
 		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
-	r.Summary.ExecTime = execTime.Seconds()
+	r.Summary.ExecTime = int64(execTime)
 	if execTime != 0 {
 		r.Summary.BytesProcessedPerSecond =
 			int64(float64(r.Summary.TotalBytesProcessed) /
@@ -171,7 +171,7 @@ func (i *Ingester) Merge(m Ingester) {
 func (r *Result) Merge(m Result) {
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
-	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime+m.Summary.ExecTime)*float64(time.Second))),
+	r.ComputeSummary(time.Duration(r.Summary.ExecTime+m.Summary.ExecTime),
 		time.Duration(r.Summary.QueueTime+m.Summary.QueueTime))
 }
 
@@ -284,7 +284,7 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
-		"Summary.ExecTime", time.Duration(int64(s.ExecTime*float64(time.Second))),
+		"Summary.ExecTime", time.Duration(s.ExecTime),
 		"Summary.QueueTime", time.Duration(s.QueueTime),
 	)
 }

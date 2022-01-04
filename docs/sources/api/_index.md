@@ -940,7 +940,7 @@ The example belows show all possible statistics returned with their respective d
       "summary": {
         "bytesProcessedPerSecond": 0, // Total of bytes processed per second
         "queueTime": 0, // Total queue time in nanoseconds (int)
-        "execTime": 0, // Total execution time in seconds (float)
+        "execTime": 0, // Total execution time in nanoseconds (int)
         "linesProcessedPerSecond": 0, // Total lines processed per second
         "totalBytesProcessed":0, // Total amount of bytes processed overall for this request
         "totalLinesProcessed":0 // Total amount of lines processed overall for this request

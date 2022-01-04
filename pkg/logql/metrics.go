@@ -79,9 +79,11 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
 
+	execTimeSeconds := float64(stats.Summary.ExecTime) / float64(time.Second)
+
 	// Tag throughput metric by latency type based on a threshold.
 	// Latency below the threshold is fast, above is slow.
-	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+	if execTimeSeconds > slowQueryThresholdSecond {
 		latencyType = latencyTypeSlow
 	}
 
@@ -100,7 +102,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
 		"step", p.Step(),
-		"duration", time.Duration(int64(stats.Summary.ExecTime * float64(time.Second))),
+		"duration", time.Duration(stats.Summary.ExecTime),
 		"status", status,
 		"limit", p.Limit(),
 		"returned_lines", returnedLines,
@@ -119,7 +121,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, rt).
-		Observe(stats.Summary.ExecTime)
+		Observe(execTimeSeconds)
 	chunkDownloadLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.ChunksDownloadTime().Seconds())
 	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
