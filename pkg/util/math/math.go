@@ -31,3 +31,11 @@ func Min64(a, b int64) int64 {
 	}
 	return b
 }
+
+// MinUint32 return the min of a and b.
+func MinUint32(a, b uint32) uint32 {
+	if a < b {
+		return a
+	}
+	return b
+}
