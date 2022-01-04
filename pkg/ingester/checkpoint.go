@@ -207,7 +207,7 @@ type streamIterator struct {
 func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	instances := ing.getInstances()
 	streamInstances := make([]streamInstance, len(instances))
-	for i, inst := range ing.getInstances() {
+	for i, inst := range instances {
 		inst.streamsMtx.RLock()
 		streams := make([]*stream, 0, len(inst.streams))
 		inst.streamsMtx.RUnlock()

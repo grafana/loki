@@ -43,8 +43,6 @@ data:
       # make queries more cache-able by aligning them with their step intervals
       align_queries_with_step: true
       max_retries: 5
-      # parallelize queries in 15min intervals
-      split_queries_by_interval: 15m
       cache_results: true
 
       results_cache:
@@ -57,6 +55,8 @@ data:
 
     limits_config:
       max_cache_freshness_per_query: '10m'
+      # parallelize queries in 15min intervals
+      split_queries_by_interval: 15m
 
     frontend:
       log_queries_longer_than: 5s

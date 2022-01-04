@@ -186,7 +186,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	for _, req := range mockBatch.inserts {
 		table, ok := m.tables[req.tableName]
 		if !ok {
-			return fmt.Errorf("table not found")
+			return fmt.Errorf("table not found: %s", req.tableName)
 		}
 
 		// Check for duplicate writes by RangeKey in same batch
@@ -223,7 +223,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	for _, req := range mockBatch.deletes {
 		table, ok := m.tables[req.tableName]
 		if !ok {
-			return fmt.Errorf("table not found")
+			return fmt.Errorf("table not found: %s", req.tableName)
 		}
 
 		items := table.items[req.hashValue]
@@ -274,7 +274,7 @@ func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func
 
 	table, ok := m.tables[query.TableName]
 	if !ok {
-		return fmt.Errorf("table not found")
+		return fmt.Errorf("table not found: %s", query.TableName)
 	}
 
 	items, ok := table.items[query.HashValue]

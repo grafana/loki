@@ -161,7 +161,6 @@
         },
       },
       query_range: {
-        split_queries_by_interval: '30m',
         align_queries_with_step: true,
         cache_results: true,
         max_retries: 5,
@@ -201,6 +200,7 @@
         ingestion_rate_mb: 10,
         ingestion_burst_size_mb: 20,
         max_cache_freshness_per_query: '10m',
+        split_queries_by_interval: '30m',
       },
 
       ingester: {

@@ -218,6 +218,7 @@ func TestChunkStore_Get(t *testing.T) {
 						return
 					}
 					require.NoError(t, err)
+
 					if !reflect.DeepEqual(tc.expect, chunks1) {
 						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks1))
 					}

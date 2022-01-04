@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          args:
+          - "--with-lokistack-gateway"
+          - "--with-lokistack-gateway-route"
+          - "--with-cert-signing-service"
+          - "--with-service-monitors"
+          - "--with-tls-service-monitors"

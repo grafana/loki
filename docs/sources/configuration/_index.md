@@ -86,6 +86,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # the distributor and compactor, but all in the same process.
 # Supported values: all, compactor, distributor, ingester, querier, query-scheduler,
 #  ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write.
+# A full list of available targets can be printed when running Loki with the `-list-targets` command line flag.
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
@@ -370,20 +371,6 @@ The `frontend` block configures the Loki query-frontend.
 The `query_range` block configures query splitting and caching in the Loki query-frontend.
 
 ```yaml
-# Split queries by an interval and execute in parallel, 0 disables it. You
-# should use in multiple of 24 hours (same as the storage bucketing scheme),
-# to avoid queriers downloading and processing the same chunks. This also
-# determines how cache keys are chosen when result caching is enabled
-# CLI flag: -querier.split-queries-by-interval
-[split_queries_by_interval: <duration> | default = 0s]
-
-# Limit queries that can be sharded.
-# Queries within the time range of now and now minus this sharding lookback
-# are not sharded. The default value of 0s disables the lookback, causing
-# sharding of all queries at all times.
-# CLI flag: -frontend.min-sharding-lookback
-[min_sharding_lookback: <duration> | default = 0s]
-
 # Deprecated: Split queries by day and execute in parallel.
 # Use -querier.split-queries-by-interval instead.
 # CLI flag: -querier.split-queries-by-day
@@ -480,22 +467,6 @@ remote_write:
   # Minimum period to wait between refreshing remote-write reconfigurations.
   # This should be greater than or equivalent to -limits.per-user-override-period.
   [config_refresh_period: <duration> | default = 10s]
-
-  wal:
-    # The directory in which to write tenant WAL files. Each tenant will have its own
-    # directory one level below this directory.
-    [dir: <string> | default = "ruler-wal"]
-    # Frequency with which to run the WAL truncation process.
-    [truncate_frequency: <duration> | default = 60m]
-    # Minimum and maximum time series should exist in the WAL for.
-    [min_age: <duration> | default = 5m]
-    [max_age: <duration> | default = 4h]
-
-  wal_cleaner:
-    # The minimum age of a WAL to consider for cleaning.
-    [min_age: <duration> | default = 12h]
-    # How often to run the WAL cleaner.
-    [period: <duration> | default = 0s (disabled)]
 
   client:
     # The URL of the endpoint to send samples to.
@@ -598,6 +569,22 @@ remote_write:
       # Retry upon receiving a 429 status code from the remote-write storage.
       # This is experimental and might change in the future.
       [retry_on_http_429: <boolean> | default = false]
+
+wal:
+  # The directory in which to write tenant WAL files. Each tenant will have its own
+  # directory one level below this directory.
+  [dir: <string> | default = "ruler-wal"]
+  # Frequency with which to run the WAL truncation process.
+  [truncate_frequency: <duration> | default = 60m]
+  # Minimum and maximum time series should exist in the WAL for.
+  [min_age: <duration> | default = 5m]
+  [max_age: <duration> | default = 4h]
+
+wal_cleaner:
+  # The minimum age of a WAL to consider for cleaning.
+  [min_age: <duration> | default = 12h]
+  # How often to run the WAL cleaner.
+  [period: <duration> | default = 0s (disabled)]
 
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
@@ -706,6 +693,10 @@ The `azure_storage_config` configures Azure as a general storage for different d
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
+
+# Use Managed Identity or not.
+# CLI flag: -ruler.storage.azure.use-managed-identity
+[use_managed_identity: <boolean> | default = false]
 ```
 
 ## gcs_storage_config
@@ -725,6 +716,10 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 # The duration after which the requests to GCS should be timed out.
 # CLI flag: -<prefix>.gcs.request-timeout
 [request_timeout: <duration> | default = 0s]
+
+# Enable HTTP/2 when connecting to GCS.
+# CLI flag: -<prefix>.gcs.enable-http2
+[enable_http2: <bool> | default = true]
 ```
 
 ## s3_storage_config
@@ -2038,6 +2033,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.max-streams-matcher-per-query
 [max_streams_matchers_per_query: <int> | default = 1000]
 
+# Maximum number of concurrent tail requests.
+# CLI flag: -querier.max-concurrent-tail-requests
+[max_concurrent_tail_requests: <int> | default = 10]
+
 # Duration to delay the evaluation of rules to ensure.
 # CLI flag: -ruler.evaluation-delay-duration
 [ruler_evaluation_delay_duration: <duration> | default = 0s]
@@ -2155,6 +2154,20 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Retry upon receiving a 429 status code from the remote-write storage.
 # This is experimental and might change in the future.
 [ruler_remote_write_queue_retry_on_ratelimit: <bool>]
+
+# Limit queries that can be sharded.
+# Queries within the time range of now and now minus this sharding lookback
+# are not sharded. The default value of 0s disables the lookback, causing
+# sharding of all queries at all times.
+# CLI flag: -frontend.min-sharding-lookback
+[min_sharding_lookback: <duration> | default = 0s]
+
+# Split queries by an interval and execute in parallel, 0 disables it. You
+# should use in multiple of 24 hours (same as the storage bucketing scheme),
+# to avoid queriers downloading and processing the same chunks. This also
+# determines how cache keys are chosen when result caching is enabled
+# CLI flag: -querier.split-queries-by-interval
+[split_queries_by_interval: <duration> | default = 0s]
 ```
 
 ### grpc_client_config
@@ -2386,10 +2399,23 @@ If any specific configuration for an object storage client have been provided el
 [swift: <swift_storage_config>]
 
 # Configures a (local) filesystem as the common storage.
-[filesystem: <local_storage_config>]
+[filesystem: <fs_storage_config>]
 
 # The `hedging_config` configures how to hedge requests for the storage.
 [hedging: <hedging_config>]
+```
+
+### fs_storage_config
+
+The `fs_storage_config` configures a local filesystem as a general
+storage for different data generated by Loki.
+
+```yaml
+# Filesystem directory to be used for chunks storage.
+[chunks_directory: <filename> | default = ""]
+
+# Filesystem directory to be used for rules storage.
+[rules_directory: <filename> | default = ""]
 ```
 
 ### ring_config
