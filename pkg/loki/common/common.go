@@ -31,7 +31,9 @@ type Config struct {
 
 	// InstanceAddr represents a common ip used by instances to advertise their address.
 	//
-	// For instance, the different Loki rings will use this
+	// For instance, the different Loki rings will have this stored in its key-value store to be later retrieved by other components.
+	// You can check this during Loki execution under ring status pages (ex: `/ring` will output the address of the different ingester
+	// instances).
 	InstanceAddr string `yaml:"instance_addr"`
 }
 
