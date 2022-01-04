@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"net/http"
+	"net/textproto"
 	"sync"
 	"time"
 
@@ -248,7 +249,7 @@ type schedulerRequest struct {
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
 
-	enqueueTime time.Time
+	queueTime time.Time
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -397,7 +398,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 
 	req.parentSpanContext = parentSpanContext
 	req.queueSpan, req.ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "queued", opentracing.ChildOf(parentSpanContext))
-	req.enqueueTime = now
+	req.queueTime = now
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
@@ -463,14 +464,14 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 		r := req.(*schedulerRequest)
 
-		reqEnqueueTime := time.Since(r.enqueueTime)
-		s.queueDuration.Observe(reqEnqueueTime.Seconds())
+		reqQueueTime := time.Since(r.queueTime)
+		s.queueDuration.Observe(reqQueueTime.Seconds())
 		r.queueSpan.Finish()
 
-		// Add HTTP header to the request containing the query enqueue time
+		// Add HTTP header to the request containing the query queue time
 		r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
-			Key:    string(lokihttpreq.QueryEnqueueTimeHTTPHeader),
-			Values: []string{reqEnqueueTime.String()},
+			Key:    textproto.CanonicalMIMEHeaderKey(string(lokihttpreq.QueryQueueTimeHTTPHeader)),
+			Values: []string{reqQueueTime.String()},
 		})
 
 		/*

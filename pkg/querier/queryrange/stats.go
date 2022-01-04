@@ -102,7 +102,7 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				}
 			}
 			if statistics != nil {
-				// Re-calculate the summary: the enqueueTime result is already merged so should not be updated
+				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
 				statistics.ComputeSummary(time.Since(start), 0)
 				statistics.Log(level.Debug(logger))

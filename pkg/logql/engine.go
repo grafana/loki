@@ -121,9 +121,9 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	data, err := q.Eval(ctx)
 
-	enqueueTime, _ := ctx.Value(httpreq.QueryEnqueueTimeHTTPHeader).(time.Duration)
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
-	statResult := statsCtx.Result(time.Since(start), enqueueTime)
+	statResult := statsCtx.Result(time.Since(start), queueTime)
 	statResult.Log(level.Debug(log))
 
 	status := "200"

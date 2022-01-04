@@ -2063,7 +2063,7 @@ func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (it
 func TestEngine_Stats(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits)
 
-	enqueueTime := 2 * time.Millisecond
+	queueTime := 2 * time.Nanosecond
 	q := eng.Query(LiteralParams{
 		qs:        `{foo="bar"}`,
 		start:     time.Now(),
@@ -2071,11 +2071,11 @@ func TestEngine_Stats(t *testing.T) {
 		direction: logproto.BACKWARD,
 		limit:     1000,
 	})
-	ctx := context.WithValue(context.Background(), httpreq.QueryEnqueueTimeHTTPHeader, enqueueTime)
+	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
 	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
-	require.Equal(t, enqueueTime.Seconds(), r.Statistics.Summary.EnqueueTime)
+	require.Equal(t, queueTime.Nanoseconds(), r.Statistics.Summary.QueueTime)
 }
 
 type errorIteratorQuerier struct {

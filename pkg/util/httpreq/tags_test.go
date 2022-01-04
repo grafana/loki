@@ -76,12 +76,12 @@ func TestQueryMetrics(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "http://testing.com", nil)
-			req.Header.Set(string(QueryEnqueueTimeHTTPHeader), tc.in)
+			req.Header.Set(string(QueryQueueTimeHTTPHeader), tc.in)
 
 			w := httptest.NewRecorder()
 			checked := false
 			mware := ExtractQueryMetricsMiddleware().Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				require.Equal(t, tc.exp, req.Context().Value(QueryEnqueueTimeHTTPHeader))
+				require.Equal(t, tc.exp, req.Context().Value(QueryQueueTimeHTTPHeader))
 				checked = true
 			}))
 

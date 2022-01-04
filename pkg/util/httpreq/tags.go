@@ -17,7 +17,7 @@ var (
 	QueryTagsHTTPHeader ctxKey = "X-Query-Tags"
 	safeQueryTags              = regexp.MustCompile("[^a-zA-Z0-9-=, ]+") // only alpha-numeric, ' ', ',', '=' and `-`
 
-	QueryEnqueueTimeHTTPHeader ctxKey = "X-Query-Enqueue-Time"
+	QueryQueueTimeHTTPHeader ctxKey = "X-Query-Queue-Time"
 )
 
 func ExtractQueryTagsMiddleware() middleware.Interface {
@@ -41,11 +41,11 @@ func ExtractQueryMetricsMiddleware() middleware.Interface {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
 
-			enqueueTimeHeaders := req.Header[string(QueryEnqueueTimeHTTPHeader)]
-			if len(enqueueTimeHeaders) > 0 && enqueueTimeHeaders[0] != "" {
-				enqueueTime, err := time.ParseDuration(enqueueTimeHeaders[0])
+			queueTimeHeader := req.Header.Get(string(QueryQueueTimeHTTPHeader))
+			if queueTimeHeader != "" {
+				queueTime, err := time.ParseDuration(queueTimeHeader)
 				if err == nil {
-					ctx = context.WithValue(ctx, QueryEnqueueTimeHTTPHeader, enqueueTime)
+					ctx = context.WithValue(ctx, QueryQueueTimeHTTPHeader, queueTime)
 					req = req.WithContext(ctx)
 				}
 			}

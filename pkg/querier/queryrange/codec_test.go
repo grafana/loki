@@ -903,7 +903,7 @@ var (
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
-			"enqueueTime": 21,
+			"queueTime": 21,
 			"execTime": 22,
 			"linesProcessedPerSecond": 23,
 			"totalBytesProcessed": 24,
@@ -1053,7 +1053,7 @@ var (
 	statsResult = stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 20,
-			EnqueueTime:             21,
+			QueueTime:               21,
 			ExecTime:                22,
 			LinesProcessedPerSecond: 23,
 			TotalBytesProcessed:     24,
