@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 type TargetManager struct {
@@ -33,7 +36,7 @@ func NewTargetManager(
 		logger:  logger,
 		cancel:  cancel,
 		targets: make(map[string]*Target),
-		manager: discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
+		manager: discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
 	}
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
@@ -47,21 +50,29 @@ func NewTargetManager(
 				return nil, err
 			}
 			tm.targets[cfg.JobName] = t
-		} else if cfg.ServiceDiscoveryConfig.DockerSDConfigs != nil {
+		} else if cfg.DockerSDConfigs != nil {
 			sd_configs := make(discovery.Configs, 0)
-			for _, sd_config := range cfg.ServiceDiscoveryConfig.DockerSDConfigs {
+			for _, sd_config := range cfg.DockerSDConfigs {
 				sd_configs = append(sd_configs, sd_config)
 			}
 			configs[cfg.JobName] = sd_configs
+			level.Debug(tm.logger).Log("msg", "add Docker service discovery", "job", cfg.JobName, "configs", len(sd_configs))
+		} else {
+			level.Debug(tm.logger).Log("msg", "Docker service discovery configs are emtpy")
 		}
 	}
+
+	go tm.run()
+	go util.LogError("running target manager", tm.manager.Run)
 
 	return tm, tm.manager.ApplyConfig(configs)
 }
 
 // run listens on the service discovery and adds new targets.
 func (tm *TargetManager) run() {
+	level.Debug(tm.logger).Log("msg", "start processing target group updates")
 	for targetGroups := range tm.manager.SyncCh() {
+		level.Debug(tm.logger).Log("msg", "process target group", "groups", len(targetGroups))
 		for _, groups := range targetGroups {
 			tm.sync(groups)
 		}
@@ -69,7 +80,16 @@ func (tm *TargetManager) run() {
 }
 
 func (tm *TargetManager) sync(groups []*targetgroup.Group) {
-// TODO: implement syncer that adds and removes Docker targets.
+	level.Debug(tm.logger).Log("msg", "synchronize groups")
+	for _, group := range groups {
+		if group.Source != "Docker" {
+			continue
+		}
+
+		for _, t := range group.Targets {
+			level.Debug(tm.logger).Log("msg", "new target", "labels", t)
+		}
+	}
 }
 
 // Ready returns true if at least one cloudflare target is active.

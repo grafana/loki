@@ -45,6 +45,8 @@ type Config struct {
 	CloudflareConfig       *CloudflareConfig          `yaml:"cloudflare,omitempty"`
 	DockerConfig           *DockerConfig              `yaml:"docker,omitempty"`
 	RelabelConfigs         []*relabel.Config          `yaml:"relabel_configs,omitempty"`
+	// List of Docker service discovery configurations.
+	DockerSDConfigs        []*moby.DockerSDConfig     `yaml:"docker_sd_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig     `yaml:",inline"`
 }
 
@@ -61,8 +63,6 @@ type ServiceDiscoveryConfig struct {
 	ConsulAgentSDConfigs []*consulagent.SDConfig `yaml:"consulagent_sd_configs,omitempty"`
 	// List of DigitalOcean service discovery configurations.
 	DigitalOceanSDConfigs []*digitalocean.SDConfig `yaml:"digitalocean_sd_configs,omitempty"`
-	// List of Docker service discovery configurations.
-	DockerSDConfigs []*moby.DockerSDConfig `yaml:"docker_sd_config,omitempty"`
 	// List of Docker Swarm service discovery configurations.
 	DockerSwarmSDConfigs []*moby.DockerSwarmSDConfig `yaml:"dockerswarm_sd_configs,omitempty"`
 	// List of Serverset service discovery configurations.

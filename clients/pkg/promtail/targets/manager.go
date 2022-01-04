@@ -99,7 +99,7 @@ func NewTargetManagers(
 			targetScrapeConfigs[CloudflareConfigs] = append(targetScrapeConfigs[CloudflareConfigs], cfg)
 		case cfg.DockerConfig != nil:
 			targetScrapeConfigs[DockerConfigs] = append(targetScrapeConfigs[DockerConfigs], cfg)
-		case cfg.ServiceDiscoveryConfig.DockerSDConfigs != nil:
+		case cfg.DockerSDConfigs != nil:
 			targetScrapeConfigs[DockerSDConfigs] = append(targetScrapeConfigs[DockerSDConfigs], cfg)
 		default:
 			return nil, fmt.Errorf("no valid target scrape config defined for %q", cfg.JobName)
@@ -260,7 +260,7 @@ func NewTargetManagers(
 			}
 			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to make Docker target manager")
+				return nil, errors.Wrap(err, "failed to make Docker service discovery target manager")
 			}
 			targetManagers = append(targetManagers, cfTargetManager)
 		default:
