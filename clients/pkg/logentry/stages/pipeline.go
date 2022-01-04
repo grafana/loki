@@ -1,11 +1,13 @@
 package stages
 
 import (
+	"context"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 )
@@ -15,6 +17,8 @@ type PipelineStages = []interface{}
 
 // PipelineStage contains configuration for a single pipeline stage
 type PipelineStage = map[interface{}]interface{}
+
+var rateLimiter *rate.Limiter
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
@@ -99,6 +103,9 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	go func() {
 		defer wg.Done()
 		for e := range pipelineOut {
+			if rateLimiter != nil {
+				_ = rateLimiter.Wait(context.Background())
+			}
 			nextChan <- e.Entry
 		}
 	}()
@@ -121,4 +128,8 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 // Size gets the current number of stages in the pipeline
 func (p *Pipeline) Size() int {
 	return len(p.stages)
+}
+
+func SetReadLineRateLimiter(rateVal float64, burstVal int) {
+	rateLimiter = rate.NewLimiter(rate.Limit(rateVal), burstVal)
 }
