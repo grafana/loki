@@ -43,7 +43,7 @@ func (c *Config) RegisterFlags(_ *flag.FlagSet) {
 
 	// instance related flags.
 	c.InstanceInterfaceNames = []string{"eth0", "en0"}
-	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "127.0.0.1", "Default advertised address to be used by Loki components.")
+	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "", "Default advertised address to be used by Loki components.")
 	throwaway.Var((*flagext.StringSlice)(&c.InstanceInterfaceNames), "common.instance-interface-names", "List of network interfaces to read address from.")
 }
 
