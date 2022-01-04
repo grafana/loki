@@ -7,7 +7,7 @@ import (
 	"io"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	util_math "github.com/grafana/loki/pkg/util/math"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/pkg/errors"
