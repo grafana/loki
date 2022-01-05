@@ -4,6 +4,7 @@ import "bufio"
 
 // unrolledDecodeUVarint decodes a unsigned varint from the provided buffer.
 // This is the same as the std binary library except that it avoids a for loop.
+// see https://cs.opensource.google/go/go/+/master:src/encoding/binary/varint.go
 func unrolledDecodeUVarint(buf *bufio.Reader) (uint64, error) {
 	var by byte
 	var err error
@@ -113,6 +114,7 @@ func unrolledDecodeUVarint(buf *bufio.Reader) (uint64, error) {
 
 // unrolledDecodeVarint decodes a signed varint from the provided buffer.
 // This is the same as the std binary library except that it avoids a for loop.
+// see https://cs.opensource.google/go/go/+/master:src/encoding/binary/varint.go
 func unrolledDecodeVarint(buf *bufio.Reader) (int64, error) {
 	ux, err := unrolledDecodeUVarint(buf) // ok to continue in presence of error
 	x := int64(ux >> 1)
