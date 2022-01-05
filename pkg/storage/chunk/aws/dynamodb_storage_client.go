@@ -30,12 +30,10 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/pkg/util/math"
-
-	"github.com/grafana/loki/pkg/util/spanlogger"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/util"
+	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (

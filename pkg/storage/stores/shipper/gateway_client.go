@@ -15,12 +15,11 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 
-	util_math "github.com/grafana/loki/pkg/util/math"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
 const maxQueriesPerGoroutine = 100
