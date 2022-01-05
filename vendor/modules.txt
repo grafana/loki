@@ -302,7 +302,6 @@ github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/log
 github.com/cortexproject/cortex/pkg/util/math
 github.com/cortexproject/cortex/pkg/util/spanlogger
-github.com/cortexproject/cortex/pkg/util/test
 github.com/cortexproject/cortex/pkg/util/validation
 github.com/cortexproject/cortex/tools/querytee
 # github.com/cristalhq/hedgedhttp v0.7.0
