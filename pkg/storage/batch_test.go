@@ -1665,7 +1665,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	r := statsCtx.Result(time.Since(start))
+	r := statsCtx.Result(time.Since(start), 0)
 	b.Log("Total chunks:" + fmt.Sprintf("%d", r.TotalChunksRef()))
 	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.TotalDecompressedBytes()))
 }

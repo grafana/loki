@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -51,7 +52,7 @@ func TestTable_Compaction(t *testing.T) {
 			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
 			// setup some dbs
-			numDBs := compactMinDBs * 2
+			numDBs := 10
 			numRecordsPerDB := 100
 
 			dbsToSetup := make(map[string]testutil.DBRecords)
@@ -209,7 +210,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
 
 	// setup some dbs
-	numDBs := compactMinDBs * 2
+	numDBs := 10
 	numRecordsPerDB := 100
 
 	dbsToSetup := make(map[string]testutil.DBRecords)
@@ -302,4 +303,148 @@ func compareCompactedDB(t *testing.T, compactedDBPath string, sourceDBsPath stri
 	})
 
 	require.NoError(t, err)
+}
+
+func TestTable_RecreateCompactedDB(t *testing.T) {
+	for name, tt := range map[string]struct {
+		dbCount                   int
+		assert                    func(t *testing.T, storagePath, tableName string)
+		tableMarker               retention.TableMarker
+		compactedDBMtime          time.Time
+		shouldRecreateCompactedDB bool
+	}{
+		// must not recreate compacted db test cases:
+		"more than 1 file in table": {
+			dbCount: 2,
+			assert: func(t *testing.T, storagePath, tableName string) {
+				files, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
+				require.NoError(t, err)
+				require.Len(t, files, 1)
+				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+				require.False(t, strings.HasSuffix(files[0].Name(), recreatedCompactedDBSuffix))
+				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
+			},
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return false, false, nil
+			}),
+		},
+		"compacted db not old enough": {
+			dbCount: 1,
+			assert: func(t *testing.T, storagePath, tableName string) {
+				files, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
+				require.NoError(t, err)
+				require.Len(t, files, 1)
+				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+				require.False(t, strings.HasSuffix(files[0].Name(), recreatedCompactedDBSuffix))
+				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
+			},
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return false, false, nil
+			}),
+			compactedDBMtime: time.Now().Add(-recreateCompactedDBOlderThan / 2),
+		},
+		"marked table": {
+			dbCount: 1,
+			assert: func(t *testing.T, storagePath, tableName string) {
+				files, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
+				require.NoError(t, err)
+				require.Len(t, files, 1)
+				require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+				require.False(t, strings.HasSuffix(files[0].Name(), recreatedCompactedDBSuffix))
+				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
+			},
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return false, true, nil
+			}),
+		},
+		"emptied table": {
+			dbCount: 2,
+			assert: func(t *testing.T, storagePath, tableName string) {
+				_, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
+				require.True(t, os.IsNotExist(err))
+			},
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return true, true, nil
+			}),
+		},
+
+		// must recreate compacted db test cases
+		"compacted db old enough": {
+			dbCount: 1,
+			assert: func(t *testing.T, storagePath, tableName string) {
+				files, err := ioutil.ReadDir(filepath.Join(storagePath, tableName))
+				require.NoError(t, err)
+				require.Len(t, files, 1)
+				require.True(t, strings.HasSuffix(files[0].Name(), recreatedCompactedDBSuffix))
+				compareCompactedDB(t, filepath.Join(storagePath, tableName, files[0].Name()), filepath.Join(storagePath, "test-copy"))
+			},
+			tableMarker: TableMarkerFunc(func(ctx context.Context, tableName string, db *bbolt.DB) (bool, bool, error) {
+				return false, false, nil
+			}),
+			compactedDBMtime:          time.Now().Add(-(recreateCompactedDBOlderThan + time.Minute)),
+			shouldRecreateCompactedDB: true,
+		},
+	} {
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			if !tt.compactedDBMtime.IsZero() {
+				require.Equal(t, 1, tt.dbCount)
+			}
+			tempDir := t.TempDir()
+
+			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+			tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
+
+			// setup some dbs
+			numDBs := tt.dbCount
+			numRecordsPerDB := 100
+
+			dbsToSetup := make(map[string]testutil.DBRecords)
+			for i := 0; i < numDBs; i++ {
+				dbsToSetup[fmt.Sprint(i)] = testutil.DBRecords{
+					Start:      i * numRecordsPerDB,
+					NumRecords: (i + 1) * numRecordsPerDB,
+				}
+			}
+
+			testutil.SetupDBTablesAtPath(t, tableName, objectStoragePath, dbsToSetup, true)
+
+			if !tt.compactedDBMtime.IsZero() && tt.dbCount == 1 {
+				err := os.Chtimes(filepath.Join(objectStoragePath, tableName, "0.gz"), tt.compactedDBMtime, tt.compactedDBMtime)
+				require.NoError(t, err)
+			}
+
+			// setup exact same copy of dbs for comparison.
+			testutil.SetupDBTablesAtPath(t, "test-copy", objectStoragePath, dbsToSetup, false)
+
+			// do the compaction
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+			require.NoError(t, err)
+
+			table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""), true, tt.tableMarker)
+			require.NoError(t, err)
+
+			require.NoError(t, table.compact(true))
+			require.Equal(t, tt.shouldRecreateCompactedDB, table.compactedDBRecreated)
+			tt.assert(t, objectStoragePath, tableName)
+
+			// if the compacted db was recreated, running the compaction again must not recreate the file even if the mtime is older than the threshold
+			if tt.shouldRecreateCompactedDB {
+				files, err := ioutil.ReadDir(filepath.Join(objectStoragePath, tableName))
+				require.NoError(t, err)
+				require.Len(t, files, 1)
+
+				// change the mtime of the recreated file
+				err = os.Chtimes(filepath.Join(objectStoragePath, tableName, files[0].Name()), tt.compactedDBMtime, tt.compactedDBMtime)
+				require.NoError(t, err)
+
+				table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""), true, tt.tableMarker)
+				require.NoError(t, err)
+
+				require.NoError(t, table.compact(true))
+				require.Equal(t, false, table.compactedDBRecreated)
+				tt.assert(t, objectStoragePath, tableName)
+			}
+		})
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"cloud.google.com/go/storage"
 	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
@@ -32,6 +33,7 @@ type GCSConfig struct {
 	ChunkBufferSize  int           `yaml:"chunk_buffer_size"`
 	RequestTimeout   time.Duration `yaml:"request_timeout"`
 	EnableOpenCensus bool          `yaml:"enable_opencensus"`
+	EnableHTTP2      bool          `yaml:"enable_http2"`
 
 	Insecure bool `yaml:"-"`
 }
@@ -46,7 +48,8 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"gcs.bucketname", "", "Name of GCS bucket. Please refer to https://cloud.google.com/docs/authentication/production for more information about how to configure authentication.")
 	f.IntVar(&cfg.ChunkBufferSize, prefix+"gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
-	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enabled OpenCensus (OC) instrumentation for all requests.")
+	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enable OpenCensus (OC) instrumentation for all requests.")
+	f.BoolVar(&cfg.EnableHTTP2, prefix+"gcs.enable-http2", true, "Enable HTTP2 connections.")
 }
 
 func (cfg *GCSConfig) ToCortexGCSConfig() cortex_gcp.GCSConfig {
@@ -81,13 +84,16 @@ func newGCSObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.C
 
 func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, hedging bool, clientFactory ClientFactory) (*storage.BucketHandle, error) {
 	var opts []option.ClientOption
-	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure)
+	httpClient, err := gcsInstrumentation(ctx, storage.ScopeReadWrite, cfg.Insecure, cfg.EnableHTTP2)
 	if err != nil {
 		return nil, err
 	}
 
 	if hedging {
-		httpClient = hedgingCfg.Client(httpClient)
+		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	opts = append(opts, option.WithHTTPClient(httpClient))
@@ -106,30 +112,30 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Conf
 func (s *GCSObjectClient) Stop() {
 }
 
-// GetObject returns a reader for the specified object key from the configured GCS bucket.
-func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+// GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
+func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}
 	if s.cfg.RequestTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, s.cfg.RequestTimeout)
 	}
 
-	rc, err := s.getObject(ctx, objectKey)
+	rc, size, err := s.getObject(ctx, objectKey)
 	if err != nil {
 		// cancel the context if there is an error.
 		cancel()
-		return nil, err
+		return nil, 0, err
 	}
 	// else return a wrapped ReadCloser which cancels the context while closing the reader.
-	return util.NewReadCloserWithContextCancelFunc(rc, cancel), nil
+	return util.NewReadCloserWithContextCancelFunc(rc, cancel), size, nil
 }
 
-func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
+func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
 	reader, err := s.hedgingBucket.Object(objectKey).NewReader(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return reader, nil
+	return reader, reader.Attrs.Size, nil
 }
 
 // PutObject puts the specified bytes into the configured GCS bucket at the provided key

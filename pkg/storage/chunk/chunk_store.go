@@ -19,8 +19,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/encoding"
@@ -219,7 +220,7 @@ func (c *store) GetChunkRefs(ctx context.Context, userID string, from, through m
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
+func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
@@ -231,25 +232,30 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 		return nil, nil
 	}
 
-	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
-	if err != nil {
-		return nil, err
-	}
-
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if err != nil {
-		return nil, err
-	}
-
-	var result UniqueStrings
-	for _, entry := range entries {
-		_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+	if len(matchers) == 0 {
+		queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 		if err != nil {
 			return nil, err
 		}
-		result.Add(string(labelValue))
+
+		entries, err := c.lookupEntriesByQueries(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		var result UniqueStrings
+		for _, entry := range entries {
+			_, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+			if err != nil {
+				return nil, err
+			}
+			result.Add(string(labelValue))
+		}
+		return result.Strings(), nil
 	}
-	return result.Strings(), nil
+
+	return nil, errors.New("unimplemented: Matchers are not supported by chunk store")
+
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.

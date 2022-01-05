@@ -31,6 +31,7 @@ type ConfigWrapper struct {
 	PrintVersion    bool
 	VerifyConfig    bool
 	PrintConfig     bool
+	ListTargets     bool
 	LogConfig       bool
 	ConfigFile      string
 	ConfigExpandEnv bool
@@ -40,6 +41,7 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.PrintVersion, "version", false, "Print this builds version information")
 	f.BoolVar(&c.VerifyConfig, "verify-config", false, "Verify config file and exits")
 	f.BoolVar(&c.PrintConfig, "print-config-stderr", false, "Dump the entire Loki config object to stderr")
+	f.BoolVar(&c.ListTargets, "list-targets", false, "List available targets")
 	f.BoolVar(&c.LogConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
@@ -101,6 +103,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyFIFOCacheConfig(r)
 		applyIngesterFinalSleep(r)
+		applyIngesterReplicationFactor(r)
 		applyChunkRetain(r, &defaults)
 
 		return nil
@@ -185,6 +188,11 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.Ruler.Ring.InstanceID = rc.InstanceID
 		r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.Ruler.Ring.KVStore = rc.KVStore
+
+		// TODO(tjw): temporary fix until dskit is updated: https://github.com/grafana/dskit/pull/101
+		// The ruler's default ring key is "ring", so if if registers under the same common prefix
+		// as the ingester, queriers will try to query it, resulting in failed queries.
+		r.Ruler.Ring.KVStore.Prefix = "/rulers"
 	}
 
 	// Query Scheduler
@@ -472,6 +480,10 @@ func isMemcacheSet(cfg cortexcache.Config) bool {
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.FinalSleep = 0 * time.Second
+}
+
+func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
+	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured

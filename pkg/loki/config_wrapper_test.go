@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -19,6 +18,7 @@ import (
 	cortex_gcp "github.com/cortexproject/cortex/pkg/chunk/gcp"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 
+	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/util"
@@ -1330,4 +1330,17 @@ storage_config:
 		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
 	})
 
+}
+
+func Test_replicationFactor(t *testing.T) {
+	t.Run("replication factor is applied when using memberlist", func(t *testing.T) {
+		yamlContent := `memberlist:
+  join_members:
+    - foo.bar.example.com
+common:
+  replication_factor: 1`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, config.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor)
+	})
 }

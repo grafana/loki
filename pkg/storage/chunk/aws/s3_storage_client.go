@@ -299,9 +299,9 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 			KeepAlive: 30 * time.Second,
 			DualStack: true,
 		}).DialContext,
-		MaxIdleConns:          100,
+		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
-		MaxIdleConnsPerHost:   100,
+		MaxIdleConnsPerHost:   200,
 		TLSHandshakeTimeout:   3 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: cfg.HTTPConfig.ResponseHeaderTimeout,
@@ -316,7 +316,10 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	if hedging {
-		httpClient = hedgingCfg.Client(httpClient)
+		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	s3Config = s3Config.WithHTTPClient(httpClient)
@@ -381,8 +384,8 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]
 }
 
-// GetObject returns a reader for the specified object key from the configured S3 bucket.
-func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+// GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
+func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *s3.GetObjectOutput
 
 	// Map the key into a bucket
@@ -392,7 +395,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	err := ctx.Err()
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return nil, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
+			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
@@ -402,12 +405,16 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			})
 			return requestErr
 		})
+		var size int64
+		if resp.ContentLength != nil {
+			size = *resp.ContentLength
+		}
 		if err == nil {
-			return resp.Body, nil
+			return resp.Body, size, nil
 		}
 		retries.Wait()
 	}
-	return nil, errors.Wrap(err, "failed to get s3 object")
+	return nil, 0, errors.Wrap(err, "failed to get s3 object")
 }
 
 // PutObject into the store

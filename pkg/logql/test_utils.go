@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {

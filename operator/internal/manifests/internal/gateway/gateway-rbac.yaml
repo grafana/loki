@@ -1,0 +1,35 @@
+{{- if eq .Stack.Tenants.Mode "static" -}}
+roleBindings:
+{{- range $spec := .Stack.Tenants.Authorization.RoleBindings }}
+- name: {{ $spec.Name }}
+  roles:
+  {{- range $role := $spec.Roles }}
+  - {{ $role }}
+  {{- end -}}
+  {{ print "\n" }}
+  subjects:
+  {{- range $subject := $spec.Subjects }}
+  - kind: {{ $subject.Kind }}
+    name: {{ $subject.Name }}
+  {{- end -}}
+{{- end -}}
+{{ print "\n" }}
+roles:
+{{- range $spec := .Stack.Tenants.Authorization.Roles }}
+- name: {{ $spec.Name }}
+  permissions:
+  {{- range $permission := $spec.Permissions }}
+  - {{ $permission }}
+  {{- end -}}
+  {{ print "\n" }}
+  resources:
+  {{- range $resource := $spec.Resources }}
+  - {{ $resource }}
+  {{- end -}}
+  {{ print "\n" }}
+  tenants:
+  {{- range $tenant := $spec.Tenants }}
+  - {{ $tenant }}
+  {{- end -}}
+{{- end -}}
+{{- end -}}

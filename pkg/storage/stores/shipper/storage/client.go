@@ -76,7 +76,8 @@ func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string) ([
 }
 
 func (s *indexStorageClient) GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error) {
-	return s.objectClient.GetObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
+	reader, _, err := s.objectClient.GetObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
+	return reader, err
 }
 
 func (s *indexStorageClient) PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error {

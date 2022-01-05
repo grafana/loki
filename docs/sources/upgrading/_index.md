@@ -31,6 +31,24 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Loki
+
+#### Error responses from API
+
+The body of HTTP error responses from API endpoints changed from plain text to
+JSON. The `Content-Type` header was previously already set incorrectly to
+`application/json`. Therefore returning JSON fixes this incosistency
+
+The response body has the following schema:
+
+```json
+{
+  "code": <http status code>,
+  "message": "<error message>",
+  "status": "error"
+}
+```
+
 ### Promtail
 
 #### `gcplog` labels have changed

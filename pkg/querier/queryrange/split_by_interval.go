@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -266,6 +267,23 @@ func forInterval(interval time.Duration, start, end time.Time, callback func(sta
 func splitMetricByTime(r queryrange.Request, interval time.Duration) []queryrange.Request {
 	var reqs []queryrange.Request
 	lokiReq := r.(*LokiRequest)
+	// step is >= configured split interval, let us just split the query interval by step
+	if lokiReq.Step >= interval.Milliseconds() {
+		forInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, func(start, end time.Time) {
+			reqs = append(reqs, &LokiRequest{
+				Query:     lokiReq.Query,
+				Limit:     lokiReq.Limit,
+				Step:      lokiReq.Step,
+				Direction: lokiReq.Direction,
+				Path:      lokiReq.Path,
+				StartTs:   start,
+				EndTs:     end,
+			})
+		})
+
+		return reqs
+	}
+
 	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
 		end := nextIntervalBoundary(start, r.GetStep(), interval)
 		if end.Add(time.Duration(r.GetStep())*time.Millisecond).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*time.Millisecond) == lokiReq.EndTs {

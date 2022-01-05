@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -113,7 +114,11 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 			cfg.Redis.Expiration = cfg.DefaultValidity
 		}
 		cacheName := cfg.Prefix + "redis"
-		cache := NewRedisCache(cacheName, NewRedisClient(&cfg.Redis), logger)
+		client, err := NewRedisClient(&cfg.Redis)
+		if err != nil {
+			return nil, fmt.Errorf("redis client setup failed: %w", err)
+		}
+		cache := NewRedisCache(cacheName, client, logger)
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
 	}
 

@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/middleware"
+
+	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -29,7 +30,7 @@ var (
 		logql.RecordMetrics(data.ctx, data.params, data.status, *data.statistics, data.result)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
-	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
+	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)
 )
 
 type metricRecorder interface {
@@ -101,9 +102,10 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 				}
 			}
 			if statistics != nil {
-				// Re-calculate the summary then log and record metrics for the current query
-				statistics.ComputeSummary(time.Since(start))
-				statistics.Log(logger)
+				// Re-calculate the summary: the queueTime result is already merged so should not be updated
+				// Log and record metrics for the current query
+				statistics.ComputeSummary(time.Since(start), 0)
+				statistics.Log(level.Debug(logger))
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {

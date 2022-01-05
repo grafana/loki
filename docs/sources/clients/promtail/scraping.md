@@ -341,6 +341,25 @@ scrape_configs:
         target_label: facility
 ```
 
+## Cloudflare
+
+Promtail supports pulling HTTP log messages from Cloudflare using the [Logpull API](https://developers.cloudflare.com/logs/logpull).
+The Cloudflare targets can be configured with a `cloudflare` block:
+
+```yaml
+scrape_configs:
+- job_name: cloudflare
+  cloudflare:
+    api_token: REDACTED
+    zone_id: REDACTED
+    fields_type: all
+    labels:
+      job: cloudflare-foo.com
+```
+
+Only `api_token` and `zone_id` are required.
+Refer to the [Cloudfare](../../configuration/#cloudflare) configuration section for details.
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.

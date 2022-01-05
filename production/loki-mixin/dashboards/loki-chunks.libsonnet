@@ -44,18 +44,18 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addRow(
                           $.row('Flush Stats')
                           .addPanel(
-                            $.panel('Size') +
+                            $.panel('Log Entries Per Chunk') +
                             $.latencyPanel('loki_ingester_chunk_entries', '{%s}' % dashboards['loki-chunks.json'].labelsSelector, multiplier='1') +
                             { yaxes: $.yaxes('short') },
                           )
                           .addPanel(
-                            $.panel('Entries') +
+                            $.panel('Index Entries Per Chunk') +
                             $.queryPanel(
                               'sum(rate(loki_chunk_store_index_entries_per_chunk_sum{%s}[5m])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{%s}[5m]))' % [
                                 dashboards['loki-chunks.json'].labelsSelector,
                                 dashboards['loki-chunks.json'].labelsSelector,
                               ],
-                              'entries'
+                              'Index Entries'
                             ),
                           ),
                         )
@@ -88,7 +88,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           ),
                         )
                         .addRow(
-                          $.row('Utiliziation')
+                          $.row('Utilization')
                           .addPanel(
                             grafana.heatmapPanel.new(
                               'Chunk Utilization',
