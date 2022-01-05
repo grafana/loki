@@ -10,7 +10,7 @@ import (
 )
 
 type replayFlusher struct {
-	i *ingester
+	i *Ingester
 }
 
 func (f *replayFlusher) Flush() {

@@ -94,12 +94,12 @@ type Recoverer interface {
 type ingesterRecoverer struct {
 	// basically map[userID]map[fingerprint]*stream
 	users sync.Map
-	ing   *ingester
+	ing   *Ingester
 
 	done chan struct{}
 }
 
-func newIngesterRecoverer(i *ingester) *ingesterRecoverer {
+func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
 
 	return &ingesterRecoverer{
 		ing:  i,

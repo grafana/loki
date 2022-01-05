@@ -112,7 +112,7 @@ const (
 
 // Note: this is called both during the WAL replay (zero or more times)
 // and then after replay as well.
-func (i *ingester) InitFlushQueues() {
+func (i *Ingester) InitFlushQueues() {
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
@@ -122,11 +122,11 @@ func (i *ingester) InitFlushQueues() {
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
-func (i *ingester) Flush() {
+func (i *Ingester) Flush() {
 	i.flush(true)
 }
 
-func (i *ingester) flush(mayRemoveStreams bool) {
+func (i *Ingester) flush(mayRemoveStreams bool) {
 	i.sweepUsers(true, mayRemoveStreams)
 
 	// Close the flush queues, to unblock waiting workers.
@@ -140,7 +140,7 @@ func (i *ingester) flush(mayRemoveStreams bool) {
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
-func (i *ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
+func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	i.sweepUsers(true, true)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -161,7 +161,7 @@ func (o *flushOp) Priority() int64 {
 }
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series
-func (i *ingester) sweepUsers(immediate, mayRemoveStreams bool) {
+func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
@@ -169,7 +169,7 @@ func (i *ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 	}
 }
 
-func (i *ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
+func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
@@ -180,7 +180,7 @@ func (i *ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams
 }
 
 // must hold streamsMtx
-func (i *ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
+func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
 	stream.chunkMtx.RLock()
 	defer stream.chunkMtx.RUnlock()
 	if len(stream.chunks) == 0 {
@@ -201,7 +201,7 @@ func (i *ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	})
 }
 
-func (i *ingester) flushLoop(j int) {
+func (i *Ingester) flushLoop(j int) {
 	defer func() {
 		level.Debug(util_log.Logger).Log("msg", "Ingester.flushLoop() exited")
 		i.flushQueuesDone.Done()
@@ -230,7 +230,7 @@ func (i *ingester) flushLoop(j int) {
 	}
 }
 
-func (i *ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
+func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
 	instance, ok := i.getInstanceByID(userID)
 	if !ok {
 		return nil
@@ -252,7 +252,7 @@ func (i *ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
-func (i *ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
 	instance.streamsMtx.Lock()
 	stream, ok := instance.streamsByFP[fp]
 	instance.streamsMtx.Unlock()
@@ -284,7 +284,7 @@ func (i *ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	return result, stream.labels, &stream.chunkMtx
 }
 
-func (i *ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
+func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 	// Append should close the chunk when the a new one is added.
 	if chunk.closed {
 		if chunk.synced {
@@ -305,7 +305,7 @@ func (i *ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 }
 
 // must hold streamsMtx
-func (i *ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
+func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
 	now := time.Now()
 
 	stream.chunkMtx.Lock()
@@ -331,7 +331,7 @@ func (i *ingester) removeFlushedChunks(instance *instance, stream *stream, mayRe
 	}
 }
 
-func (i *ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
