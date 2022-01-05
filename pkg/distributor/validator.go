@@ -43,7 +43,7 @@ type validationContext struct {
 	userID string
 }
 
-func (v Validator) getValidationContextFor(now time.Time, userID string) validationContext {
+func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
 	return validationContext{
 		userID:                 userID,
 		rejectOldSample:        v.RejectOldSamples(userID),
