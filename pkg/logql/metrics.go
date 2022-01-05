@@ -106,7 +106,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
-		"queue_time", time.Duration(stats.Summary.QueueTime),
+		"queue_time", time.Duration(int64(stats.Summary.QueueTime * float64(time.Second))),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)

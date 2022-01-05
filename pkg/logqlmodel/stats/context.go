@@ -140,7 +140,7 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration)
 				execTime.Seconds())
 	}
 	if queueTime != 0 {
-		r.Summary.QueueTime = int64(queueTime)
+		r.Summary.QueueTime = queueTime.Seconds()
 	}
 }
 
@@ -172,7 +172,7 @@ func (r *Result) Merge(m Result) {
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
 	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime+m.Summary.ExecTime)*float64(time.Second))),
-		time.Duration(r.Summary.QueueTime+m.Summary.QueueTime))
+		time.Duration(int64((r.Summary.QueueTime+m.Summary.QueueTime)*float64(time.Second))))
 }
 
 func (r Result) ChunksDownloadTime() time.Duration {
@@ -285,6 +285,6 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
 		"Summary.ExecTime", time.Duration(int64(s.ExecTime*float64(time.Second))),
-		"Summary.QueueTime", time.Duration(s.QueueTime),
+		"Summary.QueueTime", time.Duration(int64(s.QueueTime*float64(time.Second))),
 	)
 }
