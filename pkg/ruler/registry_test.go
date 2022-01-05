@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
 )
 

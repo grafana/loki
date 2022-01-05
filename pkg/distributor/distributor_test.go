@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -33,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_net "github.com/grafana/loki/pkg/util/net"
+	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
 )
 
