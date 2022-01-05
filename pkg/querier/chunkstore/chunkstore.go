@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // ChunkStore is the read-interface to the Chunk Store.  Made an interface here
