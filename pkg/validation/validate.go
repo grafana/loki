@@ -34,7 +34,7 @@ const (
 	TooFarBehind    = "too_far_behind"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
-	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v, accepts timestamp from: %v"
+	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v, oldest acceptable timestamp is: %v"
 	// TooFarInFuture is a reason for discarding log lines which are newer than the current time + `creation_grace_period`
 	TooFarInFuture         = "too_far_in_future"
 	TooFarInFutureErrorMsg = "entry for stream '%s' has timestamp too new: %v"
