@@ -261,6 +261,58 @@ func Test_splitMetricQuery(t *testing.T) {
 			},
 			interval: 3 * time.Hour,
 		},
+
+		// step larger than split interval
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(25*3600, 0),
+				Step:    6 * 3600 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(6*3600, 0),
+					Step:    6 * 3600 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(6*3600, 0),
+					EndTs:   time.Unix(12*3600, 0),
+					Step:    6 * 3600 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(12*3600, 0),
+					EndTs:   time.Unix(18*3600, 0),
+					Step:    6 * 3600 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(18*3600, 0),
+					EndTs:   time.Unix(24*3600, 0),
+					Step:    6 * 3600 * seconds,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(24*3600, 0),
+					EndTs:   time.Unix(25*3600, 0),
+					Step:    6 * 3600 * seconds,
+				},
+			},
+			interval: 15 * time.Minute,
+		},
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(3*3600, 0),
+				Step:    6 * 3600 * seconds,
+			},
+			expected: []queryrange.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(3*3600, 0),
+					Step:    6 * 3600 * seconds,
+				},
+			},
+			interval: 15 * time.Minute,
+		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			splits := splitMetricByTime(tc.input, tc.interval)

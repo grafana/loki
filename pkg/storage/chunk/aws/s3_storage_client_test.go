@@ -69,7 +69,7 @@ func TestRequestMiddleware(t *testing.T) {
 			client, err := NewS3ObjectClient(cfg, hedging.Config{})
 			require.NoError(t, err)
 
-			readCloser, err := client.GetObject(context.Background(), "key")
+			readCloser, _, err := client.GetObject(context.Background(), "key")
 			require.NoError(t, err)
 
 			buffer := make([]byte, 100)
@@ -108,7 +108,7 @@ func Test_Hedging(t *testing.T) {
 			20 * time.Nanosecond,
 			3,
 			func(c *S3ObjectClient) {
-				_, _ = c.GetObject(context.Background(), "foo")
+				_, _, _ = c.GetObject(context.Background(), "foo")
 			},
 		},
 		{
@@ -117,7 +117,7 @@ func Test_Hedging(t *testing.T) {
 			0,
 			0,
 			func(c *S3ObjectClient) {
-				_, _ = c.GetObject(context.Background(), "foo")
+				_, _, _ = c.GetObject(context.Background(), "foo")
 			},
 		},
 	} {

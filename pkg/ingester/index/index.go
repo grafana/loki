@@ -18,8 +18,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 

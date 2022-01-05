@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"

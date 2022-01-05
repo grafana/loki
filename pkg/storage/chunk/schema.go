@@ -13,8 +13,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 const (

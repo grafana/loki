@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -21,6 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"

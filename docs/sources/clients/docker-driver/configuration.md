@@ -110,6 +110,7 @@ By default, the Docker driver will add the following labels to each log line:
 - `filename`: where the log is written to on disk
 - `host`: the hostname where the log has been generated
 - `swarm_stack`, `swarm_service`: added when deploying from Docker Swarm.
+- `compose_project`, `compose_service`: added when deploying with Docker Compose.
 
 Custom labels can be added using the `loki-external-labels`, `loki-pipeline-stages`,
 `loki-pipeline-stage-file`, `labels`, `env`, and `env-regex` options. See the

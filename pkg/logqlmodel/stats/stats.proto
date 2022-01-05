@@ -28,6 +28,8 @@ message Summary {
   int64 totalLinesProcessed = 4 [(gogoproto.jsontag) = "totalLinesProcessed"];
   // Execution time in seconds.
   double execTime = 5 [(gogoproto.jsontag) = "execTime"];
+  // Queue time in nanoseconds.
+  int64 queueTime = 6 [(gogoproto.jsontag) = "queueTime"];
 }
 
 message Querier {

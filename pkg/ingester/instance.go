@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,9 +27,10 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -665,7 +665,7 @@ func sendBatches(ctx context.Context, stats *stats.Context, i iter.EntryIterator
 	// send until the limit is reached.
 	sent := uint32(0)
 	for sent < limit && !isDone(queryServer.Context()) {
-		batch, batchSize, err := iter.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
+		batch, batchSize, err := iter.ReadBatch(i, math.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
 		}

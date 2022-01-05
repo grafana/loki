@@ -4,13 +4,16 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/util"
+
 	"github.com/grafana/loki/pkg/loghttp/push"
+	"github.com/grafana/loki/pkg/tenant"
 	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -73,4 +76,29 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		serverutil.JSONError(w, http.StatusInternalServerError, err.Error())
 	}
+}
+
+// ServeHTTP implements the distributor ring status page.
+//
+// If the rate limiting strategy is local instead of global, no ring is used by
+// the distributor and as such, no ring status is returned from this function.
+func (d *Distributor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if d.rateLimitStrat == validation.GlobalIngestionRateStrategy {
+		d.distributorsRing.ServeHTTP(w, r)
+		return
+	}
+
+	var noRingPage = `
+			<!DOCTYPE html>
+			<html>
+				<head>
+					<meta charset="UTF-8">
+					<title>Distributor Ring Status</title>
+				</head>
+				<body>
+					<h1>Distributor Ring Status</h1>
+					<p>Not running with Global Rating Limit - ring not being used by the Distributor.</p>
+				</body>
+			</html>`
+	util.WriteHTMLResponse(w, noRingPage)
 }

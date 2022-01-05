@@ -56,6 +56,7 @@ These endpoints are exposed by the querier and the frontend:
 While these endpoints are exposed by just the distributor:
 
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
+- [`GET /distributor/ring`](#get-distributorring)
 
 And these endpoints are exposed by just the ingester:
 
@@ -81,6 +82,9 @@ These endpoints are exposed by the ruler:
 - [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
 - [`GET /prometheus/api/v1/rules`](#list-rules)
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
+
+These endpoints are exposed by the compactor:
+- [`GET /compactor/ring`](#get-compactorring)
 
 A [list of clients](../clients) can be found in the clients documentation.
 
@@ -799,6 +803,14 @@ but instead flushed to our chunk backend.
 
 In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
 
+### `GET /distributor/ring`
+
+Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
+
+### `GET /compactor/ring`
+
+Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
+
 ## `GET /metrics`
 
 `/metrics` exposes Prometheus metrics. See
@@ -927,6 +939,7 @@ The example belows show all possible statistics returned with their respective d
       },
       "summary": {
         "bytesProcessedPerSecond": 0, // Total of bytes processed per second
+        "queueTime": 0, // Total queue time in nanoseconds (int)
         "execTime": 0, // Total execution time in seconds (float)
         "linesProcessedPerSecond": 0, // Total lines processed per second
         "totalBytesProcessed":0, // Total amount of bytes processed overall for this request

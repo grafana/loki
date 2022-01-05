@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -19,6 +18,8 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
