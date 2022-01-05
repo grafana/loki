@@ -457,7 +457,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
-	mm.RegisterModule(Ingester, t.InitIngester)
+	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
