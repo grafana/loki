@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/objectclient"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -130,9 +131,11 @@ func Test_Retention(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// insert in the store.
 			var (
-				store         = newTestStore(t)
+				clientMetrics = storage.NewClientMetrics()
+				store         = newTestStore(t, clientMetrics)
 				expectDeleted = []string{}
 			)
+			defer clientMetrics.Unregister()
 			for _, c := range tt.chunks {
 				require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c}))
 			}
@@ -191,7 +194,9 @@ func (noopCleaner) Cleanup(userID []byte, lbls labels.Labels) error { return nil
 
 func Test_EmptyTable(t *testing.T) {
 	schema := allSchemas[0]
-	store := newTestStore(t)
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	store := newTestStore(t, cm)
 	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, schema.from, schema.from.Add(1*time.Hour))
 	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, schema.from, schema.from.Add(1*time.Hour))
 	c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, schema.from, schema.from.Add(1*time.Hour))
@@ -359,11 +364,13 @@ func TestChunkRewriter(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			store := newTestStore(t)
+			cm := storage.NewClientMetrics()
+			defer cm.Unregister()
+			store := newTestStore(t, cm)
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
 			store.Stop()
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder)
 			for _, indexTable := range store.indexTables() {
 				err := indexTable.DB.Update(func(tx *bbolt.Tx) error {
 					bucket := tx.Bucket(bucketName)
@@ -625,7 +632,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newTestStore(t)
+			cm := storage.NewClientMetrics()
+			defer cm.Unregister()
+			store := newTestStore(t, cm)
 
 			require.NoError(t, store.Put(context.TODO(), tc.chunks))
 			chunksExpiry := map[string]chunkExpiry{}
@@ -640,7 +649,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, len(tc.expectedDeletedSeries))
 
-			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir), objectclient.Base64Encoder)
+			chunkClient := objectclient.NewClient(newTestObjectClient(store.chunkDir, cm), objectclient.Base64Encoder)
 
 			for i, table := range tables {
 				seriesCleanRecorder := newSeriesCleanRecorder()
@@ -667,7 +676,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 
 func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	schema := allSchemas[2]
-	store := newTestStore(t)
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	store := newTestStore(t, cm)
 	now := model.Now()
 	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
 	retentionPeriod := now.Sub(todaysTableInterval.Start) / 2

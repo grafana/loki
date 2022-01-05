@@ -12,13 +12,16 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/storage"
 )
 
 func Test_ChunkIterator(t *testing.T) {
 	for _, tt := range allSchemas {
 		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
-			store := newTestStore(t)
+			cm := storage.NewClientMetrics()
+			defer cm.Unregister()
+			store := newTestStore(t, cm)
 			c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
 			c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
 
@@ -72,7 +75,9 @@ func Test_SeriesCleaner(t *testing.T) {
 	for _, tt := range allSchemas {
 		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
-			store := newTestStore(t)
+			cm := storage.NewClientMetrics()
+			defer cm.Unregister()
+			store := newTestStore(t, cm)
 			c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
 			c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
 			c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))
@@ -152,7 +157,9 @@ func entryFromChunk(c chunk.Chunk) ChunkEntry {
 var chunkEntry ChunkEntry
 
 func Benchmark_ChunkIterator(b *testing.B) {
-	store := newTestStore(b)
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	store := newTestStore(b, cm)
 	for i := 0; i < 100; i++ {
 		require.NoError(b, store.Put(context.TODO(),
 			[]chunk.Chunk{

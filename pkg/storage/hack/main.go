@@ -42,7 +42,7 @@ func main() {
 	}
 }
 
-func getStore() (lstore.Store, error) {
+func getStore(cm storage.ClientMetrics) (lstore.Store, error) {
 	storeConfig := lstore.Config{
 		Config: storage.Config{
 			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
@@ -72,6 +72,7 @@ func getStore() (lstore.Store, error) {
 		chunk.StoreConfig{},
 		schemaCfg.SchemaConfig,
 		&validation.Overrides{},
+		cm,
 		prometheus.DefaultRegisterer,
 		nil,
 		util_log.Logger,
@@ -84,7 +85,9 @@ func getStore() (lstore.Store, error) {
 }
 
 func fillStore() error {
-	store, err := getStore()
+	cm := storage.NewClientMetrics()
+	// defer am.Unregister()
+	store, err := getStore(cm)
 	if err != nil {
 		return err
 	}

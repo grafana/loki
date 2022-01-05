@@ -407,7 +407,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
+func RegisterCustomIndexClients(cfg *Config, cm storage.ClientMetrics, registerer prometheus.Registerer) {
 	// BoltDB Shipper is supposed to be run as a singleton.
 	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 	// in tests for creating multiple instances of it at a time.
@@ -428,7 +428,7 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 			return gateway, nil
 		}
 
-		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
+		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config, cm)
 		if err != nil {
 			return nil, err
 		}
@@ -437,7 +437,7 @@ func RegisterCustomIndexClients(cfg *Config, registerer prometheus.Registerer) {
 
 		return boltDBIndexClientWithShipper, err
 	}, func() (client chunk.TableClient, e error) {
-		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
+		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config, cm)
 		if err != nil {
 			return nil, err
 		}

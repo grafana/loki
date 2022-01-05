@@ -101,6 +101,20 @@ type Config struct {
 	Hedging hedging.Config `yaml:"hedging"`
 }
 
+type ClientMetrics struct {
+	AzureMetrics azure.BlobStorageMetrics
+}
+
+func NewClientMetrics() ClientMetrics {
+	return ClientMetrics{
+		AzureMetrics: azure.NewBlobStorageMetrics(),
+	}
+}
+
+func (c *ClientMetrics) Unregister() {
+	c.AzureMetrics.Unregister()
+}
+
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
@@ -153,6 +167,7 @@ func NewStore(
 	storeCfg chunk.StoreConfig,
 	schemaCfg chunk.SchemaConfig,
 	limits StoreLimits,
+	clientMetrics ClientMetrics,
 	reg prometheus.Registerer,
 	cacheGenNumLoader chunk.CacheGenNumLoader,
 	logger log.Logger,
@@ -212,7 +227,7 @@ func NewStore(
 		chunkClientReg := prometheus.WrapRegistererWith(
 			prometheus.Labels{"component": "chunk-store-" + s.From.String()}, reg)
 
-		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, chunkClientReg)
+		chunks, err := NewChunkClient(objectStoreType, cfg, schemaCfg, clientMetrics, chunkClientReg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}
@@ -268,7 +283,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (chunk.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, clientMetrics ClientMetrics, registerer prometheus.Registerer) (chunk.Client, error) {
 	switch name {
 	case StorageTypeInMemory:
 		return chunk.NewMockStorage(), nil
@@ -288,7 +303,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case StorageTypeAzure:
-		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
+		c, err := azure.NewBlobStorage(&cfg.AzureStorageConfig, clientMetrics.AzureMetrics, cfg.Hedging)
 		if err != nil {
 			return nil, err
 		}
@@ -367,14 +382,14 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 }
 
 // NewObjectClient makes a new StorageClient of the desired types.
-func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
+func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (chunk.ObjectClient, error) {
 	switch name {
 	case StorageTypeAWS, StorageTypeS3:
 		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, cfg.Hedging)
 	case StorageTypeGCS:
 		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, cfg.Hedging)
 	case StorageTypeAzure:
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig, cfg.Hedging)
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig, clientMetrics.AzureMetrics, cfg.Hedging)
 	case StorageTypeSwift:
 		return openstack.NewSwiftObjectClient(cfg.Swift, cfg.Hedging)
 	case StorageTypeInMemory:

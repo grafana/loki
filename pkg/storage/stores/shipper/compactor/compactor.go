@@ -118,7 +118,7 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) (*Compactor, error) {
 	if cfg.SharedStoreType == "" {
 		return nil, errors.New("compactor shared_store_type must be specified")
 	}
@@ -167,7 +167,7 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(storageConfig, schemaConfig, limits, r); err != nil {
+	if err := compactor.init(storageConfig, schemaConfig, limits, clientMetrics, r); err != nil {
 		return nil, err
 	}
 
@@ -175,8 +175,8 @@ func NewCompactor(cfg Config, storageConfig storage.Config, schemaConfig loki_st
 	return compactor, nil
 }
 
-func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, r prometheus.Registerer) error {
-	objectClient, err := storage.NewObjectClient(c.cfg.SharedStoreType, storageConfig)
+func (c *Compactor) init(storageConfig storage.Config, schemaConfig loki_storage.SchemaConfig, limits retention.Limits, clientMetrics storage.ClientMetrics, r prometheus.Registerer) error {
+	objectClient, err := storage.NewObjectClient(c.cfg.SharedStoreType, storageConfig, clientMetrics)
 	if err != nil {
 		return err
 	}
