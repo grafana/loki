@@ -481,8 +481,8 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ing := Ingester{periodicConfigs: tc.periodicConfigs}
-			mlb := ing.boltdbShipperMaxLookBack()
+			ingester := Ingester{periodicConfigs: tc.periodicConfigs}
+			mlb := ingester.boltdbShipperMaxLookBack()
 			require.InDelta(t, tc.expectedMaxLookBack, mlb, float64(time.Second))
 		})
 	}
