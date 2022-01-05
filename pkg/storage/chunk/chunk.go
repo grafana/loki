@@ -93,12 +93,7 @@ func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)
 	}
-	chunk, err := parseNewExternalKey(userID, externalKey)
-	if err != nil {
-		return Chunk{}, err
-	}
-
-	return chunk, nil
+	return parseNewExternalKey(userID, externalKey)
 }
 
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
@@ -178,7 +173,7 @@ func parseNewExternalKey(userID, key string) (Chunk, error) {
 
 func readOneHexPart(hex []byte) (part []byte, i int) {
 	for i < len(hex) {
-		if hex[i] != ':' {
+		if hex[i] != ':' && hex[i] != '/' {
 			i++
 			continue
 		}
@@ -206,12 +201,12 @@ func (c *Chunk) ExternalKey() string {
 	// generate keys appropriately.
 	if c.ChecksumSet {
 		// This is the inverse of parseNewExternalKey.
-		return fmt.Sprintf("%s/%x:%x:%x:%x", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through), c.Checksum)
+		return fmt.Sprintf("%s/%x/%x:%x:%x", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through), c.Checksum)
 	}
 	// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
 	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
 	// See comment on parseExternalKey.
-	return fmt.Sprintf("%s/%d:%d:%d", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through))
+	return fmt.Sprintf("%s:%d:%d:%d", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through))
 }
 
 var writerPool = sync.Pool{
