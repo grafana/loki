@@ -89,13 +89,12 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // and S3.  Numbers become hex encoded.  Keys look like:
 // `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
 //
-// v12+, (2) additional prefixes were added to external keys
-// to support better read and write request parallelization:
-// `<user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>`
+// v12+, fingerprint is now a prefix to support better read and write request parallelization:
+// `<user>/<fprint>/<start>:<end>:<checksum>`
 func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") { // pre-checksum
 		return parseLegacyChunkID(userID, externalKey)
-	} else if strings.Count(externalKey, "/") == 4 { // v12+
+	} else if strings.Count(externalKey, "/") == 2 { // v12+
 		return parseNewerExternalKey(userID, externalKey)
 	} else { // post-checksum
 		return parseNewExternalKey(userID, externalKey)
@@ -189,30 +188,10 @@ func parseNewerExternalKey(userID, key string) (Chunk, error) {
 	if userID != key[:userIdx] {
 		return Chunk{}, errors.WithStack(ErrWrongMetadata)
 	}
-	// Parse period, but throw away
 	hexParts := key[userIdx+1:]
 	partsBytes := unsafeGetBytes(hexParts)
-	h, i := readOneHexPart(partsBytes)
-	if i == 0 || i+1 >= len(partsBytes) {
-		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding period")
-	}
-	_, err := strconv.ParseUint(unsafeGetString(h), 16, 64)
-	if err != nil {
-		return Chunk{}, errors.Wrap(err, "parsing period")
-	}
-	partsBytes = partsBytes[i+1:]
-	// Parse shard, but throw away
-	h, i = readOneHexPart(partsBytes)
-	if i == 0 || i+1 >= len(partsBytes) {
-		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding shard")
-	}
-	_, err = strconv.ParseUint(unsafeGetString(h), 16, 64)
-	if err != nil {
-		return Chunk{}, errors.Wrap(err, "parsing shard")
-	}
-	partsBytes = partsBytes[i+1:]
 	// Parse fingerprint
-	h, i = readOneHexPart(partsBytes)
+	h, i := readOneHexPart(partsBytes)
 	if i == 0 || i+1 >= len(partsBytes) {
 		return Chunk{}, errors.Wrap(errInvalidChunkID(key), "decoding fingerprint")
 	}

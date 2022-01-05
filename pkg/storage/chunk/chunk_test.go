@@ -212,7 +212,7 @@ func TestParseExternalKey(t *testing.T) {
 			Checksum:    4165752645,
 		}},
 
-		{key: userID + "/2/2/2/270d8f00:270d8f00:f84c5745", chunk: Chunk{
+		{key: userID + "/2/270d8f00:270d8f00:f84c5745", chunk: Chunk{
 			UserID:      userID,
 			Fingerprint: model.Fingerprint(2),
 			From:        model.Time(655200000),
@@ -464,11 +464,9 @@ func TestChunkKeys(t *testing.T) {
 			schemaCfg: SchemaConfig{
 				Configs: []PeriodConfig{
 					{
-						From:                 DayTime{Time: 0},
-						Schema:               "v12",
-						RowShards:            16,
-						ChunkPathShardFactor: 2,
-						ChunkPathPeriod:      1 * time.Minute,
+						From:      DayTime{Time: 0},
+						Schema:    "v12",
+						RowShards: 16,
 					},
 				},
 			},
@@ -485,7 +483,7 @@ func TestChunkKeys(t *testing.T) {
 }
 
 func BenchmarkParseNewerExternalKey(b *testing.B) {
-	benchmarkParseExternalKey(b, "fake/10001d0c2b1/1/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
+	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
 }
 func BenchmarkParseNewExternalKey(b *testing.B) {
 	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")

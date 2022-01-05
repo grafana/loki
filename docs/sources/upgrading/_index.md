@@ -59,27 +59,6 @@ The response body has the following schema:
 
 ### Loki
 
-#### Schema v12 introduces (2) new configuration values for chunk object prefixes
-
-PR [4857](https://github.com/grafana/loki/pull/4857) **jordanrushing**: New schema v12 including additional configuration for chunk object prefixes
-
-Schema v12 introduces `chunk_path_period` and `chunk_path_shard_factor` as new config values. These values are added as prefixes to chunk object keys to help parallelize read/write operations and to avoid rate limiting particularly when using S3 as an object store.
-
-```yaml
-schema_config:
-  configs:
-  - from: 2022-01-01
-    store: aws
-    object_store: s3
-    schema: v12
-    index:
-      prefix: loki_
-    chunk_path_period: 1h
-    chunk_path_shard_factor: 2
-```
-
-Example chunk key: `<user>/<period>/<shard>/<fprint>/<start>:<end>:<checksum>`
-
 ## 2.4.0
 
 The following are important changes which should be reviewed and understood prior to upgrading Loki.

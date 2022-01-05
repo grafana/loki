@@ -668,25 +668,13 @@ func TestPeriodConfig_Validate(t *testing.T) {
 			err: "must have row_shards > 0 (current: 0) for schema (v10)",
 		},
 		{
-			desc: "v12 with RowShards, ChunkPathShardFactor, ChunkPathPeriod",
-			in: PeriodConfig{
-				Schema:               "v12",
-				RowShards:            16,
-				ChunkPathShardFactor: 16,
-				ChunkPathPeriod:      1 * time.Hour,
-				IndexTables:          PeriodicTableConfig{Period: 0},
-				ChunkTables:          PeriodicTableConfig{Period: 0},
-			},
-		},
-		{
-			desc: "v12 without ChunkPathShardFactor, ChunkPathPeriod",
+			desc: "v12",
 			in: PeriodConfig{
 				Schema:      "v12",
 				RowShards:   16,
 				IndexTables: PeriodicTableConfig{Period: 0},
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
-			err: "must configure chunk_path_shard_factor and chunk_path_period to values > 0 for schema (v12)",
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -794,11 +782,9 @@ func TestVersionAsInt(t *testing.T) {
 			schemaCfg: SchemaConfig{
 				Configs: []PeriodConfig{
 					{
-						From:                 DayTime{Time: 0},
-						Schema:               "v12",
-						RowShards:            16,
-						ChunkPathShardFactor: 2,
-						ChunkPathPeriod:      1 * time.Minute,
+						From:      DayTime{Time: 0},
+						Schema:    "v12",
+						RowShards: 16,
 					},
 				},
 			},

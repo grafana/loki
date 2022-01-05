@@ -218,21 +218,6 @@ schema_config:
         period: 24h
 ```
 
-To take advantage of new chunk object prefixes that help to avoid rate limiting with S3, specify the prefix values with schema v12:
-
-```yaml
-schema_config:
-  configs:
-  - from: 2022-01-01
-    store: aws
-    object_store: s3
-    schema: v12
-    index:
-      prefix: loki_
-    chunk_path_period: 1h
-    chunk_path_shard_factor: 2
-```
-
 If you don't wish to hard-code S3 credentials, you can also configure an EC2
 instance role by changing the `storage_config` section:
 
