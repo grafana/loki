@@ -275,9 +275,14 @@ func (t *Loki) InitIngester() (_ services.Service, err error) {
 	if err != nil {
 		return
 	}
-	//logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
-	//logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
-	//logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
+
+	if t.Cfg.Ingester.Wrapper != nil {
+		t.Ingester = t.Cfg.Ingester.Wrapper.Wrap(t.Ingester)
+	}
+
+	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
+	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
+	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,

@@ -84,6 +84,7 @@ type Config struct {
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
 	LabelFilterer LabelValueFilterer           `yaml:"-"`
+	Wrapper       IngesterWrapper              `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
@@ -136,7 +137,11 @@ func (cfg *Config) Validate() error {
 // ChunkFilterer filters chunks based on the metric.
 type LabelValueFilterer interface {
 	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
-}		
+}
+
+type IngesterWrapper interface {
+	Wrap(wrapped Ingester) Ingester
+}
 
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
