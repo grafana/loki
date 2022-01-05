@@ -21,10 +21,10 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   make install
   ```
 
-  This will create a custom resource definition with the name `lokistacks.loki.openshift.io` which can be verified using:
+  This will create a custom resource definition with the name `lokistacks.loki.grafana.com` which can be verified using:
 
   ```console
-  kubectl get crd lokistacks.loki.openshift.io
+  kubectl get crd lokistacks.loki.grafana.com
   ```
 
 * Create a minio deployment in the cluster using:
@@ -115,10 +115,10 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   make install
   ```
 
-  This will create a custom resource definition with the name `lokistacks.loki.openshift.io` which can be verified using:
+  This will create a custom resource definition with the name `lokistacks.loki.grafana.com` which can be verified using:
 
   ```console
-  kubectl get crd lokistacks.loki.openshift.io
+  kubectl get crd lokistacks.loki.grafana.com
   ```
   
 * Create the `openshift-logging` namespace in the cluster:

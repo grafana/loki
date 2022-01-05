@@ -5,14 +5,13 @@ import (
 	"flag"
 	"io"
 	"net/http"
+	"net/textproto"
 	"sync"
 	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/scheduler/queue"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
@@ -32,10 +31,14 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/scheduler/queue"
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+
 	"github.com/grafana/loki/pkg/tenant"
 
 	lokiutil "github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
+	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (
@@ -246,7 +249,7 @@ type schedulerRequest struct {
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
 
-	enqueueTime time.Time
+	queueTime time.Time
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -395,7 +398,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 
 	req.parentSpanContext = parentSpanContext
 	req.queueSpan, req.ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "queued", opentracing.ChildOf(parentSpanContext))
-	req.enqueueTime = now
+	req.queueTime = now
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
@@ -461,8 +464,15 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 		r := req.(*schedulerRequest)
 
-		s.queueDuration.Observe(time.Since(r.enqueueTime).Seconds())
+		reqQueueTime := time.Since(r.queueTime)
+		s.queueDuration.Observe(reqQueueTime.Seconds())
 		r.queueSpan.Finish()
+
+		// Add HTTP header to the request containing the query queue time
+		r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
+			Key:    textproto.CanonicalMIMEHeaderKey(string(lokihttpreq.QueryQueueTimeHTTPHeader)),
+			Values: []string{reqQueueTime.String()},
+		})
 
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.

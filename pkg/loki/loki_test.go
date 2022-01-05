@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -90,10 +91,39 @@ func TestLoki_isModuleEnabled(t1 *testing.T) {
 	}
 }
 
+func getRandomPorts(n int) []int {
+	portListeners := []net.Listener{}
+	for i := 0; i < n; i++ {
+		listener, err := net.Listen("tcp", ":0")
+		if err != nil {
+			panic(err)
+		}
+
+		portListeners = append(portListeners, listener)
+	}
+
+	portNumbers := []int{}
+	for i := 0; i < n; i++ {
+		port := portListeners[i].Addr().(*net.TCPAddr).Port
+		portNumbers = append(portNumbers, port)
+		if err := portListeners[i].Close(); err != nil {
+			panic(err)
+		}
+
+	}
+
+	return portNumbers
+}
+
 func TestLoki_CustomRunOptsBehavior(t *testing.T) {
-	yamlConfig := `target: querier
+	ports := getRandomPorts(2)
+	httpPort := ports[0]
+	grpcPort := ports[1]
+
+	yamlConfig := fmt.Sprintf(`target: querier
 server:
-  http_listen_port: 3100
+  http_listen_port: %d
+  grpc_listen_port: %d
 common:
   path_prefix: /tmp/loki
   ring:
@@ -108,7 +138,7 @@ schema_config:
       schema: v11
       index:
         prefix: index_
-        period: 24h`
+        period: 24h`, httpPort, grpcPort)
 
 	cfgWrapper, _, err := configWrapperFromYAML(t, yamlConfig, nil)
 	require.NoError(t, err)
@@ -121,7 +151,7 @@ schema_config:
 		// retries at most 10 times (1 second in total) to avoid infinite loops when no timeout is set.
 		for i := 0; i < 10; i++ {
 			// waits until request to /ready doesn't error.
-			resp, err := http.DefaultClient.Get("http://localhost:3100/ready")
+			resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/ready", httpPort))
 			if err != nil {
 				time.Sleep(time.Millisecond * 200)
 				continue
@@ -156,7 +186,7 @@ schema_config:
 	err = lokiHealthCheck()
 	require.NoError(t, err)
 
-	resp, err := http.DefaultClient.Get("http://localhost:3100/config")
+	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/config", httpPort))
 	require.NoError(t, err)
 
 	defer resp.Body.Close()

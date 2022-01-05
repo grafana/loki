@@ -287,7 +287,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			// updates to the expected size
 			if distributors[0].distributorsRing != nil {
 				test.Poll(t, time.Second, testData.distributors, func() interface{} {
-					return distributors[0].distributorsRing.HealthyInstancesCount()
+					return distributors[0].distributorsLifecycler.HealthyInstancesCount()
 				})
 			}
 
@@ -339,6 +339,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client, factory
 	distributorConfig.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
 	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
 	distributorConfig.DistributorRing.KVStore.Mock = kvStore
+	distributorConfig.DistributorRing.KVStore.Store = "inmemory"
 	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
 	distributorConfig.factory = factory
 	if factory == nil {

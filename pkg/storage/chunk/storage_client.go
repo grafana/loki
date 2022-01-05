@@ -7,10 +7,8 @@ import (
 	"time"
 )
 
-var (
-	// ErrMethodNotImplemented when any of the storage clients do not implement a method
-	ErrMethodNotImplemented = errors.New("method is not implemented")
-)
+// ErrMethodNotImplemented when any of the storage clients do not implement a method
+var ErrMethodNotImplemented = errors.New("method is not implemented")
 
 // IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
 type IndexClient interface {
@@ -61,7 +59,7 @@ type ReadBatchIterator interface {
 type ObjectClient interface {
 	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
-	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
+	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)
 
 	// List objects with given prefix.
 	//

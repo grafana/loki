@@ -120,7 +120,8 @@ func (s *indexStorageClient) ListUserFiles(ctx context.Context, tableName, userI
 }
 
 func (s *indexStorageClient) GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error) {
-	return s.objectClient.GetObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
+	reader, _, err := s.objectClient.GetObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
+	return reader, err
 }
 
 func (s *indexStorageClient) GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error) {

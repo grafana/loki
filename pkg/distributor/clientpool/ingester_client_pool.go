@@ -1,4 +1,4 @@
-package distributor
+package clientpool
 
 import (
 	"flag"

@@ -17,6 +17,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/instrument"
 
 	cortex_azure "github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -35,6 +36,19 @@ const (
 	azureGermanCloud  = "AzureGermanCloud"
 	azureUSGovernment = "AzureUSGovernment"
 )
+
+var requestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace: "loki",
+	Name:      "azure_blob_request_duration_seconds",
+	Help:      "Time spent doing azure blob requests.",
+	// Latency seems to range from a few ms to a few secs and is
+	// important.  So use 6 buckets from 5ms to 5s.
+	Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
+}, []string{"operation", "status_code"}))
+
+func init() {
+	requestDuration.Register()
+}
 
 var (
 	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
@@ -68,8 +82,8 @@ var (
 					KeepAlive: 30 * time.Second,
 					DualStack: true,
 				}).Dial,
-				MaxIdleConns:           0,
-				MaxIdleConnsPerHost:    100,
+				MaxIdleConns:           200,
+				MaxIdleConnsPerHost:    200,
 				IdleConnTimeout:        90 * time.Second,
 				TLSHandshakeTimeout:    10 * time.Second,
 				ExpectContinueTimeout:  1 * time.Second,
@@ -173,49 +187,60 @@ func NewBlobStorage(cfg *BlobStorageConfig, hedgingCfg hedging.Config) (*BlobSto
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
 
-func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+// GetObject returns a reader and the size for the specified object key.
+func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}
 	if b.cfg.RequestTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, b.cfg.RequestTimeout)
 	}
 
-	rc, err := b.getObject(ctx, objectKey)
+	var (
+		size int64
+		rc   io.ReadCloser
+	)
+	err := instrument.CollectedRequest(ctx, "azure.GetObject", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		rc, size, err = b.getObject(ctx, objectKey)
+		return err
+	})
 	if err != nil {
 		// cancel the context if there is an error.
 		cancel()
-		return nil, err
+		return nil, 0, err
 	}
 	// else return a wrapped ReadCloser which cancels the context while closing the reader.
-	return chunk_util.NewReadCloserWithContextCancelFunc(rc, cancel), nil
+	return chunk_util.NewReadCloserWithContextCancelFunc(rc, cancel), size, nil
 }
 
-func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
+func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
 	blockBlobURL, err := b.getBlobURL(objectKey, true)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Request access to the blob
 	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, noClientKey)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), nil
+	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), downloadResponse.ContentLength(), nil
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	blockBlobURL, err := b.getBlobURL(objectKey, false)
-	if err != nil {
+	return instrument.CollectedRequest(ctx, "azure.PutObject", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		blockBlobURL, err := b.getBlobURL(objectKey, false)
+		if err != nil {
+			return err
+		}
+
+		bufferSize := b.cfg.UploadBufferSize
+		maxBuffers := b.cfg.UploadBufferCount
+		_, err = azblob.UploadStreamToBlockBlob(ctx, object, blockBlobURL,
+			azblob.UploadStreamToBlockBlobOptions{BufferSize: bufferSize, MaxBuffers: maxBuffers})
+
 		return err
-	}
-
-	bufferSize := b.cfg.UploadBufferSize
-	maxBuffers := b.cfg.UploadBufferCount
-	_, err = azblob.UploadStreamToBlockBlob(ctx, object, blockBlobURL,
-		azblob.UploadStreamToBlockBlobOptions{BufferSize: bufferSize, MaxBuffers: maxBuffers})
-
-	return err
+	})
 }
 
 func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobURL, error) {
@@ -292,7 +317,6 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 	}
 
 	return azblob.NewPipeline(*tokenCredential, opts), nil
-
 }
 
 func (b *BlobStorage) getOAuthToken() (*azblob.TokenCredential, error) {
@@ -331,7 +355,6 @@ func (b *BlobStorage) fetchMSIToken() (*adal.ServicePrincipalToken, error) {
 
 	// both can be empty, systemAssignedMSI scenario
 	spt, err := adal.NewServicePrincipalTokenFromMSI(msiEndpoint, "https://storage.azure.com/")
-
 	if err != nil {
 		return nil, err
 	}
@@ -349,38 +372,48 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chu
 			return nil, nil, ctx.Err()
 		}
 
-		listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
+		err := instrument.CollectedRequest(ctx, "azure.List", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
+			if err != nil {
+				return err
+			}
+
+			marker = listBlob.NextMarker
+
+			// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
+			for _, blobInfo := range listBlob.Segment.BlobItems {
+				storageObjects = append(storageObjects, chunk.StorageObject{
+					Key:        blobInfo.Name,
+					ModifiedAt: blobInfo.Properties.LastModified,
+				})
+			}
+
+			// Process the BlobPrefixes so called commonPrefixes or synthetic directories in the listed synthetic directory
+			for _, blobPrefix := range listBlob.Segment.BlobPrefixes {
+				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(blobPrefix.Name))
+			}
+
+			return nil
+		})
 		if err != nil {
 			return nil, nil, err
 		}
 
-		marker = listBlob.NextMarker
-
-		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, blobInfo := range listBlob.Segment.BlobItems {
-			storageObjects = append(storageObjects, chunk.StorageObject{
-				Key:        blobInfo.Name,
-				ModifiedAt: blobInfo.Properties.LastModified,
-			})
-		}
-
-		// Process the BlobPrefixes so called commonPrefixes or synthetic directories in the listed synthetic directory
-		for _, blobPrefix := range listBlob.Segment.BlobPrefixes {
-			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(blobPrefix.Name))
-		}
 	}
 
 	return storageObjects, commonPrefixes, nil
 }
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
-	blockBlobURL, err := b.getBlobURL(blobID, false)
-	if err != nil {
-		return err
-	}
+	return instrument.CollectedRequest(ctx, "azure.DeleteObject", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		blockBlobURL, err := b.getBlobURL(blobID, false)
+		if err != nil {
+			return err
+		}
 
-	_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
-	return err
+		_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
+		return err
+	})
 }
 
 // Validate the config.
