@@ -252,7 +252,7 @@ type testStore struct {
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.
 // Because of this, ensure any WAL directories exist/are cleaned up even when overriding the wal.
 // This is an ugly hook for testing :(
-func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, *Ingester) {
+func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, *ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}

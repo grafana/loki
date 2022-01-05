@@ -104,7 +104,7 @@ type testIngesterFactory struct {
 	t         *testing.T
 	store     kv.Client
 	n         int
-	ingesters map[string]*Ingester
+	ingesters map[string]*ingester
 }
 
 func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
@@ -114,11 +114,11 @@ func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
 	return &testIngesterFactory{
 		t:         t,
 		store:     kvClient,
-		ingesters: make(map[string]*Ingester),
+		ingesters: make(map[string]*ingester),
 	}
 }
 
-func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T) *Ingester {
+func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T) *ingester {
 	f.n++
 
 	cfg := defaultIngesterTestConfig(t)
@@ -159,7 +159,7 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 
 type testIngesterClient struct {
 	t *testing.T
-	i *Ingester
+	i *ingester
 }
 
 func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption) (logproto.Ingester_TransferChunksClient, error) {

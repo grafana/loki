@@ -36,7 +36,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
-	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -210,7 +209,7 @@ type ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -595,7 +594,7 @@ func (i *ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
 
-	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(ctx, heapItr, queryServer, req.Limit)
 }
@@ -633,7 +632,7 @@ func (i *ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
 
-	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendSampleBatches(ctx, heapItr, queryServer)
 }
@@ -673,7 +672,7 @@ func (i *ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	reqStart = adjustQueryStartTime(boltdbShipperMaxLookBack, reqStart, time.Now())
 
 	// parse the request
-	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
+	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
 	matchers, err := logql.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -753,7 +752,7 @@ func (i *ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	allValues := listutil.MergeStringLists(resp.Values, storeValues)
+	allValues := errUtil.MergeStringLists(resp.Values, storeValues)
 
 	if req.Values && i.labelFilter != nil {
 		var filteredValues []string
