@@ -60,7 +60,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 	if ctx.rejectOldSample && ts < ctx.rejectOldSampleMaxAge {
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, entry.Timestamp)
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, entry.Timestamp, time.Unix(0, ctx.rejectOldSampleMaxAge))
 	}
 
 	if ts > ctx.creationGracePeriod {
