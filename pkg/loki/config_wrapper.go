@@ -85,6 +85,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 
 		applyPathPrefixDefaults(r, &defaults)
 
+		applyInstanceConfigs(r, &defaults)
+
 		applyDynamicRingConfigs(r, &defaults)
 
 		appendLoopbackInterface(r, &defaults)
@@ -107,6 +109,35 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyChunkRetain(r, &defaults)
 
 		return nil
+	}
+}
+
+// applyInstanceConfigs apply to Loki components instance-related configurations under the common
+// config section.
+//
+// The list of components making usage of these instance-related configurations are: compactor's ring,
+// ruler's ring, distributor's ring, ingester's ring, query scheduler's ring, and the query frontend.
+//
+// The list of implement common configurations are:
+// - "instance-addr", the address advertised to be used by other components.
+// - "instance-interface-names", a list of net interfaces used when looking for addresses.
+func applyInstanceConfigs(r, defaults *ConfigWrapper) {
+	if !reflect.DeepEqual(r.Common.InstanceAddr, defaults.Common.InstanceAddr) {
+		r.Ingester.LifecyclerConfig.Addr = r.Common.InstanceAddr
+		r.CompactorConfig.CompactorRing.InstanceAddr = r.Common.InstanceAddr
+		r.Distributor.DistributorRing.InstanceAddr = r.Common.InstanceAddr
+		r.Ruler.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.QueryScheduler.SchedulerRing.InstanceAddr = r.Common.InstanceAddr
+		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
+	}
+
+	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
+		r.Ingester.LifecyclerConfig.InfNames = r.Common.InstanceInterfaceNames
+		r.CompactorConfig.CompactorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Distributor.DistributorRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Ruler.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.QueryScheduler.SchedulerRing.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 	}
 }
 
