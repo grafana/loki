@@ -19,7 +19,7 @@ type PipelineStages = []interface{}
 type PipelineStage = map[interface{}]interface{}
 
 var rateLimiter *rate.Limiter
-var rateLimiterAsyn bool
+var rateLimiterDrop bool
 var rateLimiterDropReason = "global_rate_limiter_drop"
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
@@ -108,7 +108,7 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 		defer wg.Done()
 		for e := range pipelineOut {
 			if rateLimiter != nil {
-				if rateLimiterAsyn {
+				if rateLimiterDrop {
 					if !rateLimiter.Allow() {
 						p.dropCount.WithLabelValues(rateLimiterDropReason).Inc()
 						continue
@@ -141,7 +141,7 @@ func (p *Pipeline) Size() int {
 	return len(p.stages)
 }
 
-func SetReadLineRateLimiter(rateVal float64, burstVal int, asyn bool) {
+func SetReadLineRateLimiter(rateVal float64, burstVal int, drop bool) {
 	rateLimiter = rate.NewLimiter(rate.Limit(rateVal), burstVal)
-	rateLimiterAsyn = asyn
+	rateLimiterDrop = drop
 }

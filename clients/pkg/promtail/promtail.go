@@ -59,7 +59,7 @@ func New(cfg config.Config, dryRun bool, opts ...Option) (*Promtail, error) {
 	cfg.Setup()
 
 	if cfg.LimitConfig.ReadlineRateEnabled {
-		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateAsyn)
+		stages.SetReadLineRateLimiter(cfg.LimitConfig.ReadlineRate, cfg.LimitConfig.ReadlineBurst, cfg.LimitConfig.ReadlineRateDrop)
 	}
 	var err error
 	if dryRun {
