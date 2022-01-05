@@ -83,7 +83,8 @@ type Config struct {
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
 	LabelFilterer LabelValueFilterer           `yaml:"-"`
-	Wrapper       Wrapper                      `yaml:"-"`
+	// Optional wrapper that can be used to modify the behaviour of the ingester
+	Wrapper Wrapper `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
