@@ -698,7 +698,6 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	level.Info(util_log.Logger).Log("msg", "using original inagester")
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -709,7 +708,6 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
-	level.Info(util_log.Logger).Log("msg", "fetched instance label values", "values", len(resp.Values))
 
 	if req.Start == nil {
 		return resp, nil
@@ -742,7 +740,6 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	var storeValues []string
 	if req.Values {
 		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
-		level.Info(util_log.Logger).Log("msg", "fetched store label values", "values", len(storeValues))
 		if err != nil {
 			return nil, err
 		}
