@@ -59,14 +59,20 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, testStreamLabels, testTime.Add(-time.Hour*5)),
+			httpgrpc.Errorf(
+				http.StatusBadRequest,
+				validation.GreaterThanMaxSampleAgeErrorMsg,
+				testStreamLabels,
+				testTime.Add(-time.Hour*5).Format(timeFormat),
+				testTime.Add(-1*time.Hour).Format(timeFormat), // same as RejectOldSamplesMaxAge
+			),
 		},
 		{
 			"test too new",
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5)),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5).Format(timeFormat)),
 		},
 		{
 			"line too long",
@@ -89,7 +95,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateEntry(v.getValidationContextFor(tt.userID), testStreamLabels, tt.entry)
+			err = v.ValidateEntry(v.getValidationContextFor(testTime, tt.userID), testStreamLabels, tt.entry)
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -190,7 +196,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextFor(tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
+			err = v.ValidateLabels(v.getValidationContextFor(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
 			assert.Equal(t, tt.expected, err)
 		})
 	}
