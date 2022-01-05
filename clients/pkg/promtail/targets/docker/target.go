@@ -25,12 +25,13 @@ import (
 )
 
 type Target struct {
-	logger    log.Logger
-	handler   api.EntryHandler
-	since     int64
-	positions positions.Positions
-	config    *scrapeconfig.DockerConfig
-	metrics   *Metrics
+	logger        log.Logger
+	handler       api.EntryHandler
+	since         int64
+	positions     positions.Positions
+	containerName string
+	labels        model.LabelSet
+	metrics       *Metrics
 
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -45,18 +46,12 @@ func NewTarget(
 	logger log.Logger,
 	handler api.EntryHandler,
 	position positions.Positions,
-	config *scrapeconfig.DockerConfig,
+	containerName string,
+	labels model.LabelSet,
+	client client.APIClient,
 ) (*Target, error) {
 
-	// TODO: load client options from config
-	client, err := client.NewClientWithOpts(client.WithHost(config.Host))
-	if err != nil {
-		level.Error(logger).Log("msg", "could not create new Docker client", "err", err)
-		return nil, err
-	}
-
-	// TODO: get new `since` from position
-	pos, err := position.Get(positions.CursorKey(config.ContainerName))
+	pos, err := position.Get(positions.CursorKey(containerName))
 	if err != nil {
 		return nil, err
 	}
@@ -67,12 +62,13 @@ func NewTarget(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &Target{
-		logger:    logger,
-		handler:   handler,
-		since:     since,
-		positions: position,
-		config:    config,
-		metrics:   metrics,
+		logger:        logger,
+		handler:       handler,
+		since:         since,
+		positions:     position,
+		containerName: containerName,
+		labels:        labels,
+		metrics:       metrics,
 
 		ctx:     ctx,
 		cancel:  cancel,
@@ -94,9 +90,9 @@ func (t *Target) start() {
 		Since:      strconv.FormatInt(t.since, 10),
 	}
 
-	logs, err := t.client.ContainerLogs(t.ctx, t.config.ContainerName, opts)
+	logs, err := t.client.ContainerLogs(t.ctx, t.containerName, opts)
 	if err != nil {
-		level.Error(t.logger).Log("msg", "could not fetch logs for container", "container", t.config.ContainerName, "err", err)
+		level.Error(t.logger).Log("msg", "could not fetch logs for container", "container", t.containerName, "err", err)
 		t.err = err
 		return
 	}
@@ -145,14 +141,14 @@ func (t *Target) start() {
 				level.Debug(t.logger).Log("msg", "sending log line", "line", line)
 
 				t.handler.Chan() <- api.Entry{
-					Labels: t.config.Labels.Clone(),
+					Labels: t.labels.Clone(),
 					Entry: logproto.Entry{
 						Timestamp: ts,
 						Line:      line,
 					},
 				}
 				t.metrics.dockerEntries.Inc()
-				t.positions.Put(positions.CursorKey(t.config.ContainerName), ts.Unix())
+				t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
 			case <-t.ctx.Done():
 				{
 				}
@@ -192,7 +188,7 @@ func (t *Target) DiscoveredLabels() model.LabelSet {
 }
 
 func (t *Target) Labels() model.LabelSet {
-	return t.config.Labels
+	return t.labels
 }
 
 // Details returns target-specific details.

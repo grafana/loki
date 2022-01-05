@@ -2,34 +2,36 @@ package docker
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/discovery"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
-
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/discovery"
 
 	"github.com/grafana/loki/pkg/util"
 )
 
 const (
 	// See github.com/prometheus/prometheus/discovery/moby
-	dockerLabel                     = model.MetaLabelPrefix + "docker_"
-	dockerLabelContainerPrefix      = dockerLabel + "container_"
-	dockerLabelContainerID          = dockerLabelContainerPrefix + "id"
+	dockerLabel                = model.MetaLabelPrefix + "docker_"
+	dockerLabelContainerPrefix = dockerLabel + "container_"
+	dockerLabelContainerID     = dockerLabelContainerPrefix + "id"
 )
 
 type TargetManager struct {
-	logger  log.Logger
-	cancel  context.CancelFunc
-	targets map[string]*Target
-	manager *discovery.Manager
+	metrics    *Metrics
+	logger     log.Logger
+	positions  positions.Positions
+	cancel     context.CancelFunc
+	manager    *discovery.Manager
+	pushClient api.EntryHandler
+	syncers    map[string]*syncer
 }
 
 func NewTargetManager(
@@ -41,22 +43,51 @@ func NewTargetManager(
 ) (*TargetManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := &TargetManager{
-		logger:  logger,
-		cancel:  cancel,
-		targets: make(map[string]*Target),
-		manager: discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
+		metrics:    metrics,
+		logger:     logger,
+		cancel:     cancel,
+		positions:  positions,
+		manager:    discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
+		pushClient: pushClient,
+		syncers:    make(map[string]*syncer),
 	}
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
 		if cfg.DockerConfig != nil {
-			tm.addTarget(cfg.JobName, model.LabelSet{})
-		} else if cfg.DockerSDConfigs != nil {
-			sd_configs := make(discovery.Configs, 0)
-			for _, sd_config := range cfg.DockerSDConfigs {
-				sd_configs = append(sd_configs, sd_config)
+
+			pipeline, err := stages.NewPipeline(log.With(logger, "component", "docker_pipeline"), cfg.PipelineStages, &cfg.JobName, metrics.reg)
+			if err != nil {
+				return nil, err
 			}
-			configs[cfg.JobName] = sd_configs
-			level.Debug(tm.logger).Log("msg", "add Docker service discovery", "job", cfg.JobName, "configs", len(sd_configs))
+
+			s := &syncer{
+				metrics:       metrics,
+				logger:        logger,
+				targets:       make(map[string]*Target),
+				entryHandler:  pipeline.Wrap(pushClient),
+				defaultLabels: cfg.DockerConfig.Labels,
+				host:          cfg.DockerConfig.Host,
+				port:          cfg.DockerConfig.Port,
+			}
+			s.addTarget(cfg.DockerConfig.ContainerName, model.LabelSet{})
+			tm.syncers[cfg.JobName] = s
+		} else if cfg.DockerSDConfigs != nil {
+			for _, sd_config := range cfg.DockerSDConfigs {
+				syncerKey := fmt.Sprintf("%s/%s:%d", cfg.JobName, sd_config.Host, sd_config.Port)
+				_, ok := tm.syncers[syncerKey]
+				if !ok {
+					tm.syncers[syncerKey] = &syncer{
+						metrics:       metrics,
+						logger:        logger,
+						targets:       make(map[string]*Target),
+						entryHandler:  pipeline.Wrap(pushClient),
+						defaultLabels: model.LabelSet{},
+						host:          sd_config.Host,
+						port:          sd_config.Port,
+					}
+				}
+				configs[syncerKey] = append(configs[syncerKey], sd_config)
+			}
 		} else {
 			level.Debug(tm.logger).Log("msg", "Docker service discovery configs are emtpy")
 		}
@@ -70,48 +101,16 @@ func NewTargetManager(
 
 // run listens on the service discovery and adds new targets.
 func (tm *TargetManager) run() {
-	level.Debug(tm.logger).Log("msg", "start processing target group updates")
 	for targetGroups := range tm.manager.SyncCh() {
-		level.Debug(tm.logger).Log("msg", "process target group", "groups", len(targetGroups))
-		for _, groups := range targetGroups {
-			tm.sync(groups)
-		}
-	}
-}
-
-func (tm *TargetManager) sync(groups []*targetgroup.Group) {
-	level.Debug(tm.logger).Log("msg", "synchronize groups")
-	for _, group := range groups {
-		if group.Source != "Docker" {
-			continue
-		}
-
-		for _, t := range group.Targets {
-			containerID, ok := t[dockerLabelContainerID]
+		for jobName, groups := range targetGroups {
+			syncer, ok := tm.syncers[jobName]
 			if !ok {
-				level.Debug(tm.logger).Log("msg", "target did not include container ID")
+				level.Debug(tm.logger).Log("msg", "unknown target for job", "job", jobName)
 				continue
 			}
-
-			_, ok = tm.targets[string(containerID)]
-			if !ok {
-				tm.addTarget(string(containerID), t)
-			}
+			syncer.sync(groups)
 		}
 	}
-}
-
-func (tm *TargetManager) addTarget(id string, labels model.LabelSet) error {
-	pipeline, err := stages.NewPipeline(log.With(tm.logger, "component", "docker_pipeline"), cfg.PipelineStages, &id, metrics.reg)
-	if err != nil {
-		return err
-	}
-	t, err := NewTarget(metrics, log.With(tm.logger, "target", "docker"), pipeline.Wrap(pushClient), positions, cfg.DockerConfig)
-	if err != nil {
-		return err
-	}
-	tm.targets[id] = t
-	return nil
 }
 
 // Ready returns true if at least one cloudflare target is active.
