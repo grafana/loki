@@ -9,9 +9,8 @@ import (
 
 	ot "github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/util/math"
-
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 // Callback from an IndexQuery.
