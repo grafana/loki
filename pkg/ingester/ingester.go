@@ -83,7 +83,7 @@ type Config struct {
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
 	LabelFilterer LabelValueFilterer           `yaml:"-"`
-	Wrapper       IngesterWrapper              `yaml:"-"`
+	Wrapper       Wrapper                      `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
@@ -138,7 +138,7 @@ type LabelValueFilterer interface {
 	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
 }
 
-type IngesterWrapper interface {
+type Wrapper interface {
 	Wrap(wrapped Ingester) Ingester
 }
 
