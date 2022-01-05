@@ -11,8 +11,6 @@ import (
 	"sync"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	gzip "github.com/klauspost/pgzip"
@@ -85,7 +83,7 @@ func DownloadFileFromStorage(getFileFunc GetFileFunc, decompressFile bool, desti
 
 	defer func() {
 		if err := readCloser.Close(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to close read closer", "err", err)
+			level.Error(logger).Log("msg", "failed to close read closer", "err", err)
 		}
 	}()
 
@@ -244,97 +242,4 @@ func QueryKey(q chunk.IndexQuery) string {
 
 func IsCompressedFile(filename string) bool {
 	return strings.HasSuffix(filename, ".gz")
-}
-
-func DoConcurrentWork(ctx context.Context, maxConcurrency, workCount int, logger log.Logger, do func(workNum int) error) error {
-	if workCount == 1 {
-		err := do(0)
-		if err != nil {
-			return err
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		return nil
-	}
-
-	quitChan := make(chan struct{})
-	errChan := make(chan error)
-	doWorkChan := make(chan int)
-	n := util_math.Min(workCount, maxConcurrency)
-
-	// do work in parallel
-	for i := 0; i < n; i++ {
-		go func() {
-			var err error
-			defer func() {
-				errChan <- err
-			}()
-
-			for {
-				select {
-				case workNum, ok := <-doWorkChan:
-					if !ok {
-						return
-					}
-
-					err = do(workNum)
-					if err != nil {
-						level.Error(logger).Log("msg", fmt.Sprintf("error doing work num %d", workNum), "err", err)
-						return
-					}
-				case <-quitChan:
-					return
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
-
-	// initiate work by sending work number to doWorkChan
-	go func() {
-		for i := 0; i < workCount; i++ {
-			select {
-			case doWorkChan <- i:
-			case <-quitChan:
-				break
-			case <-ctx.Done():
-				break
-			}
-		}
-
-		level.Debug(logger).Log("msg", "closing doWorkChan")
-
-		close(doWorkChan)
-	}()
-
-	var firstErr error
-
-	// read all the errors
-	for i := 0; i < n; i++ {
-		err := <-errChan
-		if err != nil && firstErr == nil {
-			firstErr = err
-			close(quitChan)
-		}
-	}
-
-	if firstErr != nil {
-		return firstErr
-	}
-
-	// check whether we stopped work due to context being cancelled.
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-
-	level.Info(logger).Log("msg", "finished compacting the dbs")
-	return nil
 }

@@ -120,6 +120,7 @@ Outer:
 	return globalRetention
 }
 
+// findLatestRetentionStartTime returns the latest retention start time overall and by each user.
 func findLatestRetentionStartTime(now model.Time, limits Limits) (model.Time, map[string]model.Time) {
 	// find the smallest retention period from default limits
 	defaultLimits := limits.DefaultLimits()

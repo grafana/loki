@@ -11,8 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/dskit/concurrency"
+
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -473,64 +474,26 @@ func (t *Table) folderPathForTable(ensureExists bool) (string, error) {
 
 // doParallelDownload downloads objects(dbs) parallelly. It is upto the caller to open the dbs after the download finishes successfully.
 func (t *Table) doParallelDownload(ctx context.Context, files []storage.IndexFile, folderPathForTable string) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	queue := make(chan storage.IndexFile)
-	n := util_math.Min(len(files), downloadParallelism)
-	incomingErrors := make(chan error)
-
-	// Run n parallel goroutines fetching files to download from the queue
-	for i := 0; i < n; i++ {
-		go func() {
-			// when there is an error, break the loop and send the error to the channel to stop the operation.
-			var err error
-			for {
-				file, ok := <-queue
-				if !ok {
-					break
-				}
-
-				filePath := path.Join(folderPathForTable, file.Name)
-				err := shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
-					return t.storageClient.GetFile(ctx, t.name, file.Name)
-				}, shipper_util.IsCompressedFile(file.Name), filePath, true, util_log.Logger)
-				if err != nil {
-					if t.storageClient.IsFileNotFoundErr(err) {
-						level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing file %s, possibly removed during compaction", file.Name))
-						err = nil
-					} else {
-						break
-					}
-				}
-			}
-
-			incomingErrors <- err
-		}()
+	jobs := make([]interface{}, len(files))
+	for i := 0; i < len(files); i++ {
+		jobs[i] = i
 	}
 
-	// Send all the files to download into the queue
-	go func() {
-		for _, file := range files {
-			select {
-			case queue <- file:
-			case <-ctx.Done():
-				break
+	return concurrency.ForEach(ctx, jobs, downloadParallelism, func(ctx context.Context, job interface{}) error {
+		file := files[job.(int)]
+		filePath := path.Join(folderPathForTable, file.Name)
+
+		err := shipper_util.DownloadFileFromStorage(func() (io.ReadCloser, error) {
+			return t.storageClient.GetFile(ctx, t.name, file.Name)
+		}, shipper_util.IsCompressedFile(file.Name), filePath, true, util_log.Logger)
+		if err != nil {
+			if t.storageClient.IsFileNotFoundErr(err) {
+				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("ignoring missing object %s, possibly removed during compaction", file.Name))
+				return nil
 			}
+			return err
 		}
-		close(queue)
-	}()
 
-	// receive all the errors which also lets us make sure all the goroutines have stopped.
-	var firstErr error
-	for i := 0; i < n; i++ {
-		err := <-incomingErrors
-		if err != nil && firstErr == nil {
-			// cancel the download operation in case of error.
-			cancel()
-			firstErr = err
-		}
-	}
-
-	return firstErr
+		return nil
+	})
 }

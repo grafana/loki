@@ -18,26 +18,26 @@ type IndexSet interface {
 	PutFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
 	DeleteFile(ctx context.Context, tableName, userID, fileName string) error
 	IsFileNotFoundErr(err error) bool
-	IsUserIndexSet() bool
+	IsUserBasedIndexSet() bool
 }
 
 type indexSet struct {
-	client    Client
-	userIndex bool
+	client         Client
+	userBasedIndex bool
 }
 
-// NewIndexSet handles storage operations based on the value of indexSet.userIndex
-func NewIndexSet(client Client, userIndex bool) IndexSet {
+// NewIndexSet handles storage operations based on the value of indexSet.userBasedIndex
+func NewIndexSet(client Client, userBasedIndex bool) IndexSet {
 	return indexSet{
-		client:    client,
-		userIndex: userIndex,
+		client:         client,
+		userBasedIndex: userBasedIndex,
 	}
 }
 
 func (i indexSet) validateUserID(userID string) error {
-	if i.userIndex && userID == "" {
+	if i.userBasedIndex && userID == "" {
 		return ErrUserIDMustNotBeEmpty
-	} else if !i.userIndex && userID != "" {
+	} else if !i.userBasedIndex && userID != "" {
 		return ErrUserIDMustBeEmpty
 	}
 
@@ -50,12 +50,12 @@ func (i indexSet) ListFiles(ctx context.Context, tableName, userID string) ([]In
 		return nil, err
 	}
 
-	if i.userIndex {
+	if i.userBasedIndex {
 		return i.client.ListUserFiles(ctx, tableName, userID)
-	} else {
-		files, _, err := i.client.ListFiles(ctx, tableName)
-		return files, err
 	}
+
+	files, _, err := i.client.ListFiles(ctx, tableName)
+	return files, err
 }
 
 func (i indexSet) GetFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error) {
@@ -64,11 +64,11 @@ func (i indexSet) GetFile(ctx context.Context, tableName, userID, fileName strin
 		return nil, err
 	}
 
-	if i.userIndex {
+	if i.userBasedIndex {
 		return i.client.GetUserFile(ctx, tableName, userID, fileName)
-	} else {
-		return i.client.GetFile(ctx, tableName, fileName)
 	}
+
+	return i.client.GetFile(ctx, tableName, fileName)
 }
 
 func (i indexSet) PutFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error {
@@ -77,11 +77,11 @@ func (i indexSet) PutFile(ctx context.Context, tableName, userID, fileName strin
 		return err
 	}
 
-	if i.userIndex {
+	if i.userBasedIndex {
 		return i.client.PutUserFile(ctx, tableName, userID, fileName, file)
-	} else {
-		return i.client.PutFile(ctx, tableName, fileName, file)
 	}
+
+	return i.client.PutFile(ctx, tableName, fileName, file)
 }
 
 func (i indexSet) DeleteFile(ctx context.Context, tableName, userID, fileName string) error {
@@ -90,17 +90,17 @@ func (i indexSet) DeleteFile(ctx context.Context, tableName, userID, fileName st
 		return err
 	}
 
-	if i.userIndex {
+	if i.userBasedIndex {
 		return i.client.DeleteUserFile(ctx, tableName, userID, fileName)
-	} else {
-		return i.client.DeleteFile(ctx, tableName, fileName)
 	}
+
+	return i.client.DeleteFile(ctx, tableName, fileName)
 }
 
 func (i indexSet) IsFileNotFoundErr(err error) bool {
 	return i.client.IsFileNotFoundErr(err)
 }
 
-func (i indexSet) IsUserIndexSet() bool {
-	return i.userIndex
+func (i indexSet) IsUserBasedIndexSet() bool {
+	return i.userBasedIndex
 }

@@ -12,17 +12,26 @@ import (
 
 const delimiter = "/"
 
-// Client is used to manage boltdb index files in object storage, when using boltdb-shipper.
-type Client interface {
-	ListFiles(ctx context.Context, tableName string) ([]IndexFile, []string, error)
-	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
-	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
-	DeleteFile(ctx context.Context, tableName, fileName string) error
-
+// UserIndexClient allows doing operations on the object store for user specific index.
+type UserIndexClient interface {
 	ListUserFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error)
 	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
 	PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
 	DeleteUserFile(ctx context.Context, tableName, userID, fileName string) error
+}
+
+// CommonIndexClient allows doing operations on the object store for common index.
+type CommonIndexClient interface {
+	ListFiles(ctx context.Context, tableName string) ([]IndexFile, []string, error)
+	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
+	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
+	DeleteFile(ctx context.Context, tableName, fileName string) error
+}
+
+// Client is used to manage boltdb index files in object storage, when using boltdb-shipper.
+type Client interface {
+	CommonIndexClient
+	UserIndexClient
 
 	ListTables(ctx context.Context) ([]string, error)
 	IsFileNotFoundErr(err error) bool
@@ -140,17 +149,4 @@ func (s *indexStorageClient) IsFileNotFoundErr(err error) bool {
 
 func (s *indexStorageClient) Stop() {
 	s.objectClient.Stop()
-}
-
-type UserIndexClient interface {
-	ListUserFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error)
-	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
-	PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
-	DeleteUserFile(ctx context.Context, tableName, userID, fileName string) error
-}
-type CommonIndexClient interface {
-	ListFiles(ctx context.Context, tableName string) ([]IndexFile, error)
-	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
-	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
-	DeleteFile(ctx context.Context, tableName, fileName string) error
 }

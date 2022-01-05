@@ -218,7 +218,7 @@ func TestTable_Compaction(t *testing.T) {
 
 			numUserIndexSets, numCommonIndexSets := 0, 0
 			for _, is := range table.indexSets {
-				if is.baseIndexSet.IsUserIndexSet() {
+				if is.baseIndexSet.IsUserBasedIndexSet() {
 					require.Equal(t, tc.userIndexSetState.uploadCompactedDB, is.uploadCompactedDB)
 					require.Equal(t, tc.userIndexSetState.removeSourceObjects, is.removeSourceObjects)
 					numUserIndexSets++
@@ -251,7 +251,7 @@ func TestTable_Compaction(t *testing.T) {
 			if (perUserDBsConfig.NumUnCompactedDBs + perUserDBsConfig.NumCompactedDBs) > 0 {
 				numExpectedUsers = numUsers
 			}
-			validateTable(t, tablePathInStorage, expectedNumCommonDBs, 1, numExpectedUsers, func(filename string) {
+			validateTable(t, tablePathInStorage, expectedNumCommonDBs, numExpectedUsers, func(filename string) {
 				require.True(t, strings.HasSuffix(filename, ".gz"))
 			})
 
@@ -321,7 +321,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 			"marked table": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					validateTable(t, filepath.Join(storagePath, tableName), 1, 1, 10, func(filename string) {
+					validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
@@ -333,7 +333,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 			"not modified": {
 				dbsSetup: setup,
 				assert: func(t *testing.T, storagePath, tableName string) {
-					validateTable(t, filepath.Join(storagePath, tableName), 1, 1, 10, func(filename string) {
+					validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 					compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))
@@ -383,7 +383,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 	}
 }
 
-func validateTable(t *testing.T, path string, expectedNumCommonDBs, expectedNumPerUserDBs, numUsers int, filesCallback func(filename string)) {
+func validateTable(t *testing.T, path string, expectedNumCommonDBs, numUsers int, filesCallback func(filename string)) {
 	files, folders := listDir(t, path)
 	require.Len(t, files, expectedNumCommonDBs)
 	require.Len(t, folders, numUsers)
@@ -394,7 +394,7 @@ func validateTable(t *testing.T, path string, expectedNumCommonDBs, expectedNumP
 
 	for _, folder := range folders {
 		files, folders := listDir(t, filepath.Join(path, folder))
-		require.Len(t, files, expectedNumPerUserDBs)
+		require.Len(t, files, 1)
 		require.Len(t, folders, 0)
 
 		for _, fileName := range files {
@@ -555,7 +555,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 		"more than 1 file in table": {
 			dbCount: 2,
 			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 1, 10, func(filename string) {
+				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
 					require.True(t, strings.HasSuffix(filename, ".gz"))
 					require.False(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
 				})
@@ -572,7 +572,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 		"compacted db not old enough": {
 			dbCount: 1,
 			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 1, 10, func(filename string) {
+				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
 					require.True(t, strings.HasSuffix(filename, ".gz"))
 					require.False(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
 				})
@@ -586,7 +586,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 		"marked table": {
 			dbCount: 1,
 			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 1, 10, func(filename string) {
+				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
 					require.True(t, strings.HasSuffix(filename, ".gz"))
 					require.False(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
 				})
@@ -618,7 +618,7 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 		"compacted db old enough": {
 			dbCount: 1,
 			assert: func(t *testing.T, storagePath, tableName string) {
-				validateTable(t, filepath.Join(storagePath, tableName), 1, 1, 10, func(filename string) {
+				validateTable(t, filepath.Join(storagePath, tableName), 1, 10, func(filename string) {
 					require.True(t, strings.HasSuffix(filename, recreatedCompactedDBSuffix))
 				})
 				compareCompactedTable(t, filepath.Join(storagePath, tableName), filepath.Join(storagePath, fmt.Sprintf("%s-copy", tableName)))

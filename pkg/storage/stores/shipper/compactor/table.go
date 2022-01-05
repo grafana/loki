@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"go.etcd.io/bbolt"
@@ -202,7 +203,7 @@ func (t *table) done() error {
 // applyRetention applies retention on the index sets
 func (t *table) applyRetention() error {
 	tableInterval := retention.ExtractIntervalFromTableName(t.name)
-	// call runRetention on the already initialized index sets which may have expired chunks
+	// call runRetention on the already initialized index sets IntervalMayHaveExpiredChunks which may have expired chunks
 	for userID, is := range t.indexSets {
 		if !t.expirationChecker.IntervalMayHaveExpiredChunks(tableInterval, userID) {
 			continue
@@ -262,7 +263,13 @@ func (t *table) compactFiles(files []storage.IndexFile) error {
 		return err
 	}
 
-	return shipper_util.DoConcurrentWork(t.ctx, readDBsConcurrency, len(files), t.logger, func(workNum int) error {
+	jobs := make([]interface{}, len(files))
+	for i := 0; i < len(files); i++ {
+		jobs[i] = i
+	}
+
+	return concurrency.ForEach(t.ctx, jobs, readDBsConcurrency, func(ctx context.Context, job interface{}) error {
+		workNum := job.(int)
 		// skip seed file
 		if workNum == t.seedSourceFileIdx {
 			return nil

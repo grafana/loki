@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -28,7 +27,6 @@ type indexSet struct {
 	tableName, userID string
 	workingDir        string
 	baseIndexSet      storage.IndexSet
-	tableMarker       retention.TableMarker
 
 	compactedDBRecreated bool
 	uploadCompactedDB    bool
@@ -44,7 +42,7 @@ type indexSet struct {
 // newCommonIndex initializes a new index set for common index. It simply creates instance of indexSet without any processing.
 func newCommonIndex(ctx context.Context, tableName, workingDir string, compactedDB *bbolt.DB, uploadCompactedDB bool,
 	sourceFiles []storage.IndexFile, removeSourceFiles bool, baseCommonIndexSet storage.IndexSet, logger log.Logger) (*indexSet, error) {
-	if baseCommonIndexSet.IsUserIndexSet() {
+	if baseCommonIndexSet.IsUserBasedIndexSet() {
 		return nil, fmt.Errorf("base index set is not for common index")
 	}
 
@@ -67,7 +65,7 @@ func newCommonIndex(ctx context.Context, tableName, workingDir string, compacted
 
 // newUserIndex intializes a new index set for user index. Other than creating instance of indexSet, it also compacts down the source index.
 func newUserIndex(ctx context.Context, tableName, userID string, baseUserIndexSet storage.IndexSet, workingDir string, logger log.Logger) (*indexSet, error) {
-	if !baseUserIndexSet.IsUserIndexSet() {
+	if !baseUserIndexSet.IsUserBasedIndexSet() {
 		return nil, fmt.Errorf("base index set is not for user index")
 	}
 
@@ -106,7 +104,7 @@ func (is *indexSet) initUserIndexSet(workingDir string) {
 	if len(is.sourceObjects) > 0 {
 		// we would only have compacted files in user index folder, so it is not expected to have -1 for seedFileIdx but
 		// let's still check it as a safety mechanism to avoid panics.
-		if seedFileIdx != -1 {
+		if seedFileIdx == -1 {
 			seedFileIdx = 0
 		}
 		compactedDBName = filepath.Join(workingDir, is.sourceObjects[seedFileIdx].Name)
@@ -147,26 +145,10 @@ func (is *indexSet) initUserIndexSet(workingDir string) {
 			return
 		}
 	}
-
-	return
-}
-
-// mustRecreateCompactedDB returns true if the compacted db should be recreated
-func (is *indexSet) mustRecreateCompactedDB() bool {
-	if len(is.sourceObjects) != 1 {
-		// do not recreate if there are multiple source files
-		return false
-	} else if time.Since(is.sourceObjects[0].ModifiedAt) < recreateCompactedDBOlderThan {
-		// do not recreate if the source file is younger than the threshold
-		return false
-	}
-
-	// recreate the compacted db only if we have not recreated it before
-	return !strings.HasSuffix(is.sourceObjects[0].Name, recreatedCompactedDBSuffix)
 }
 
 // recreateCompactedDB just copies the old db to the new one using bbolt.Compact for following reasons:
-// 1. When files are deleted, boltdb leaves free pages in the file. The only way to drop those free pages is to re-create the file.
+// 1. When index entries are deleted, boltdb leaves free pages in the file. The only way to drop those free pages is to re-create the file.
 //    See https://github.com/boltdb/bolt/issues/308 for more details.
 // 2. boltdb by default fills only about 50% of the page in the file. See https://github.com/etcd-io/bbolt/blob/master/bucket.go#L26.
 //    This setting is optimal for unordered writes.
