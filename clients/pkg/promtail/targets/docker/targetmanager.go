@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 
@@ -15,6 +16,13 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/pkg/util"
+)
+
+const (
+	// See github.com/prometheus/prometheus/discovery/moby
+	dockerLabel                     = model.MetaLabelPrefix + "docker_"
+	dockerLabelContainerPrefix      = dockerLabel + "container_"
+	dockerLabelContainerID          = dockerLabelContainerPrefix + "id"
 )
 
 type TargetManager struct {
@@ -41,15 +49,7 @@ func NewTargetManager(
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
 		if cfg.DockerConfig != nil {
-			pipeline, err := stages.NewPipeline(log.With(logger, "component", "docker_pipeline"), cfg.PipelineStages, &cfg.JobName, metrics.reg)
-			if err != nil {
-				return nil, err
-			}
-			t, err := NewTarget(metrics, log.With(logger, "target", "docker"), pipeline.Wrap(pushClient), positions, cfg.DockerConfig)
-			if err != nil {
-				return nil, err
-			}
-			tm.targets[cfg.JobName] = t
+			tm.addTarget(cfg.JobName, model.LabelSet{})
 		} else if cfg.DockerSDConfigs != nil {
 			sd_configs := make(discovery.Configs, 0)
 			for _, sd_config := range cfg.DockerSDConfigs {
@@ -87,9 +87,31 @@ func (tm *TargetManager) sync(groups []*targetgroup.Group) {
 		}
 
 		for _, t := range group.Targets {
-			level.Debug(tm.logger).Log("msg", "new target", "labels", t)
+			containerID, ok := t[dockerLabelContainerID]
+			if !ok {
+				level.Debug(tm.logger).Log("msg", "target did not include container ID")
+				continue
+			}
+
+			_, ok = tm.targets[string(containerID)]
+			if !ok {
+				tm.addTarget(string(containerID), t)
+			}
 		}
 	}
+}
+
+func (tm *TargetManager) addTarget(id string, labels model.LabelSet) error {
+	pipeline, err := stages.NewPipeline(log.With(tm.logger, "component", "docker_pipeline"), cfg.PipelineStages, &id, metrics.reg)
+	if err != nil {
+		return err
+	}
+	t, err := NewTarget(metrics, log.With(tm.logger, "target", "docker"), pipeline.Wrap(pushClient), positions, cfg.DockerConfig)
+	if err != nil {
+		return err
+	}
+	tm.targets[id] = t
+	return nil
 }
 
 // Ready returns true if at least one cloudflare target is active.
