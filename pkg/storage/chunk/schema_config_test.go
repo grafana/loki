@@ -764,6 +764,7 @@ func TestVersionAsInt(t *testing.T) {
 		name      string
 		schemaCfg SchemaConfig
 		expected  int
+		err       bool
 	}{
 		{
 			name: "v9",
@@ -776,6 +777,19 @@ func TestVersionAsInt(t *testing.T) {
 				},
 			},
 			expected: int(9),
+		},
+		{
+			name: "malformed",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:   DayTime{Time: 0},
+						Schema: "v",
+					},
+				},
+			},
+			expected: int(0),
+			err:      true,
 		},
 		{
 			name: "v12",
@@ -793,8 +807,43 @@ func TestVersionAsInt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			version, err := tc.schemaCfg.Configs[0].VersionAsInt()
-			require.NoError(t, err)
 			require.Equal(t, tc.expected, version)
+			if tc.err {
+				require.NotNil(t, err)
+			} else {
+
+				require.NoError(t, err)
+			}
 		})
 	}
+}
+
+func TestUnmarshalPeriodConfig(t *testing.T) {
+	input := `
+from: "2020-07-31"
+index:
+  period: 24h
+  prefix: loki_index_
+object_store: gcs
+schema: v11
+store: boltdb-shipper
+`
+
+	var cfg PeriodConfig
+	require.Nil(t, yaml.Unmarshal([]byte(input), &cfg))
+	var n = 11
+
+	expected := PeriodConfig{
+		From:       DayTime{model.Time(1596153600000)},
+		IndexType:  "boltdb-shipper",
+		ObjectType: "gcs",
+		Schema:     "v11",
+		IndexTables: PeriodicTableConfig{
+			Prefix: "loki_index_",
+			Period: 24 * time.Hour,
+		},
+		schemaInt: &n,
+	}
+
+	require.Equal(t, expected, cfg)
 }
