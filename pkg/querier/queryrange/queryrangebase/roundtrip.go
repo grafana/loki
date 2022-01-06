@@ -41,8 +41,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-const day = 24 * time.Hour
-
 var (
 	// PassthroughMiddleware is a noop middleware
 	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
@@ -299,8 +297,8 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 	defer func() {
-		io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024))
-		_ = response.Body.Close()
+		io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
+		response.Body.Close()
 	}()
 
 	return q.codec.DecodeResponse(ctx, response, r)
