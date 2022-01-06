@@ -28,7 +28,7 @@ pipeline_stages:
 // TestLimitPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	plName := "test_pipeline"
+	plName := "testPipeline"
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitYaml), &plName, registry)
 	require.NoError(t, err)
 	out := processEntries(pl,

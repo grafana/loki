@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"regexp"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
@@ -20,7 +20,6 @@ const (
 	ErrLimitStageInvalidRateOrBurst = "limit stage failed to parse rate or burst"
 )
 
-var subError = errors.New("subError")
 var ratelimitDropReason = "ratelimit_drop_stage"
 
 type LimitConfig struct {
@@ -79,7 +78,6 @@ func validateLimitConfig(cfg *LimitConfig) error {
 type limitStage struct {
 	logger      log.Logger
 	cfg         *LimitConfig
-	labels      map[string]int
 	rateLimiter *rate.Limiter
 	dropCount   *prometheus.CounterVec
 }
