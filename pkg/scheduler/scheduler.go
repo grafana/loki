@@ -301,6 +301,7 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 			}
 
 		case schedulerpb.CANCEL:
+			level.Info(s.log).Log("msg", "inside frontend loop, msg type is cancel", msg.QueryID)
 			s.cancelRequestAndRemoveFromPending(frontendAddress, msg.QueryID)
 			resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 
@@ -416,6 +417,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 
 // This method doesn't do removal from the queue.
 func (s *Scheduler) cancelRequestAndRemoveFromPending(frontendAddr string, queryID uint64) {
+	level.Info(s.log).Log("msg", "cancelling request and remove from pending", "queryID", queryID)
 	s.pendingRequestsMu.Lock()
 	defer s.pendingRequestsMu.Unlock()
 
@@ -500,7 +502,10 @@ func (s *Scheduler) NotifyQuerierShutdown(_ context.Context, req *schedulerpb.No
 
 func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuerier_QuerierLoopServer, req *schedulerRequest) error {
 	// Make sure to cancel request at the end to cleanup resources.
-	defer s.cancelRequestAndRemoveFromPending(req.frontendAddress, req.queryID)
+	level.Info(s.log).Log("msg", "forwarding request to the querier", "queryID", req.queryID)
+	defer func() {
+		s.cancelRequestAndRemoveFromPending(req.frontendAddress, req.queryID)
+	}()
 
 	// Handle the stream sending & receiving on a goroutine so we can
 	// monitoring the contexts in a select and cancel things appropriately.
