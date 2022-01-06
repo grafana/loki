@@ -57,8 +57,6 @@ The response body has the following schema:
     e.g. if you previously used `__project_id` then you'll need to update your relabel config to use `__gcp_resource_labels_project_id`.
   - `resource_type` has been moved to `__gcp_resource_type`
 
-### Loki
-
 ## 2.4.0
 
 The following are important changes which should be reviewed and understood prior to upgrading Loki.
