@@ -3,7 +3,6 @@ package logql
 import (
 	"context"
 	"strings"
-	"time"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/dustin/go-humanize"
@@ -13,7 +12,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
@@ -67,7 +66,7 @@ var (
 	})
 )
 
-func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result, result promql_parser.Value) {
+func RecordMetrics(ctx context.Context, p Params, status string, stats logql_stats.Result, result promql_parser.Value) {
 	var (
 		logger        = util_log.WithContext(ctx, util_log.Logger)
 		rt            = string(GetRangeType(p))
@@ -100,13 +99,13 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
 		"step", p.Step(),
-		"duration", time.Duration(int64(stats.Summary.ExecTime * float64(time.Second))),
+		"duration", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.ExecTime),
 		"status", status,
 		"limit", p.Limit(),
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
-		"queue_time", time.Duration(int64(stats.Summary.QueueTime * float64(time.Second))),
+		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
