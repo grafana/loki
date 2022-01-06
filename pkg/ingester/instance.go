@@ -385,7 +385,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 // Without label matchers the label names and values are retrieved from the index directly.
 // If label matchers are given only the matching streams are fetched from the index.
 // The label names or values are then retrieved from those matching streams.
-func (i *instance) Label(_ context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
+func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
 	if len(matchers) == 0 {
 		var labels []string
 		if req.Values {
@@ -414,23 +414,9 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest, matchers
 		}, nil
 	}
 
-	i.streamsMtx.RLock()
-	defer i.streamsMtx.RUnlock()
-
-	ids, err := i.index.Lookup(matchers, nil)
-	if err != nil {
-		return nil, err
-	}
-
 	labels := make([]string, 0)
-	// TODO: use forMatchingStreams
-	for _, streamID := range ids {
-		stream, ok := i.streamsByFP[streamID]
-		if !ok {
-			return nil, ErrStreamMissing
-		}
-
-		for _, label := range stream.labels {
+	i.forMatchingStreams(ctx, matchers, nil, func(s *stream) error {
+		for _, label := range s.labels {
 			if req.Values {
 				if label.Name == req.Name {
 					labels = append(labels, label.Value)
@@ -439,7 +425,8 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest, matchers
 				labels = append(labels, label.Name)
 			}
 		}
-	}
+		return nil
+	})
 
 	return &logproto.LabelResponse{
 		Values: labels,
