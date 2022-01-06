@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"

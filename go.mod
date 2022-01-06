@@ -174,7 +174,6 @@ require (
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/go-zookeeper/zk v1.0.2 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
-	github.com/gogo/status v1.1.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.0.1 // indirect
@@ -282,6 +281,7 @@ require (
 	github.com/cloudflare/cloudflare-go v0.27.0
 	github.com/gofrs/flock v0.7.1 // indirect
 	github.com/oklog/ulid v1.3.1
+	github.com/gogo/status v1.1.0
 )
 
 // Upgrade to run with gRPC 1.3.0 and above.
