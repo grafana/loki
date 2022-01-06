@@ -46,8 +46,15 @@ var requestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVe
 	Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
 }, []string{"operation", "status_code"}))
 
+var egressBytesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	Namespace: "loki",
+	Name:      "azure_blob_egress_bytes_total",
+	Help:      "Total bytes downloaded from Azure Blob Storage.",
+})
+
 func init() {
 	requestDuration.Register()
+	prometheus.MustRegister(egressBytesTotal)
 }
 
 var (
@@ -203,6 +210,8 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 		rc, size, err = b.getObject(ctx, objectKey)
 		return err
 	})
+	// Assume even failed requests egress bytes count towards rate limits and count them here.
+	egressBytesTotal.Add(float64(size))
 	if err != nil {
 		// cancel the context if there is an error.
 		cancel()
