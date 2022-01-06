@@ -8,9 +8,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-
 )
 
 type syncer struct {
@@ -30,7 +30,6 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 		if group.Source != "Docker" {
 			continue
 		}
-		group.Labels
 
 		for _, t := range group.Targets {
 			containerID, ok := t[dockerLabelContainerID]
@@ -62,7 +61,7 @@ func (s *syncer) addTarget(id string, labels model.LabelSet) error {
 		log.With(s.logger, "target", fmt.Sprintf("docker/%s", id)),
 		s.entryHandler,
 		s.positions,
-		id, 
+		id,
 		labels.Merge(s.defaultLabels),
 		client,
 	)
@@ -71,4 +70,38 @@ func (s *syncer) addTarget(id string, labels model.LabelSet) error {
 	}
 	s.targets[id] = t
 	return nil
+}
+
+// Ready returns true if at least one target is running.
+func (s *syncer) Ready() bool {
+	for _, t := range s.targets {
+		if t.Ready() {
+			return true
+		}
+	}
+
+	return true
+}
+
+func (s *syncer) Stop() {
+	for _, t := range s.targets {
+		t.Stop()
+	}
+}
+
+func (s *syncer) ActiveTargets() []target.Target {
+	result := make([]target.Target, 0, len(s.targets))
+	for _, t := range s.targets {
+		if t.Ready() {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+func (s *syncer) AllTargets() []target.Target {
+	result := make([]target.Target, 0, len(s.targets))
+	for _, t := range s.targets {
+		result = append(result, t)
+	}
+	return result
 }

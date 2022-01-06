@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -138,7 +137,6 @@ func (t *Target) start() {
 					level.Error(t.logger).Log("msg", "could not extract timestamp", "err", err)
 					t.metrics.dockerErrors.Inc()
 				}
-				level.Debug(t.logger).Log("msg", "sending log line", "line", line)
 
 				t.handler.Chan() <- api.Entry{
 					Labels: t.labels.Clone(),

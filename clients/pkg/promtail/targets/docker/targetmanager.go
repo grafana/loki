@@ -72,6 +72,16 @@ func NewTargetManager(
 			s.addTarget(cfg.DockerConfig.ContainerName, model.LabelSet{})
 			tm.syncers[cfg.JobName] = s
 		} else if cfg.DockerSDConfigs != nil {
+			pipeline, err := stages.NewPipeline(
+				log.With(logger, "component", "docker_pipeline"),
+				cfg.PipelineStages,
+				&cfg.JobName,
+				metrics.reg,
+			)
+			if err != nil {
+				return nil, err
+			}
+
 			for _, sd_config := range cfg.DockerSDConfigs {
 				syncerKey := fmt.Sprintf("%s/%s:%d", cfg.JobName, sd_config.Host, sd_config.Port)
 				_, ok := tm.syncers[syncerKey]
@@ -79,6 +89,7 @@ func NewTargetManager(
 					tm.syncers[syncerKey] = &syncer{
 						metrics:       metrics,
 						logger:        logger,
+						positions:     positions,
 						targets:       make(map[string]*Target),
 						entryHandler:  pipeline.Wrap(pushClient),
 						defaultLabels: model.LabelSet{},
@@ -113,10 +124,10 @@ func (tm *TargetManager) run() {
 	}
 }
 
-// Ready returns true if at least one cloudflare target is active.
+// Ready returns true if at least one Docker target is active.
 func (tm *TargetManager) Ready() bool {
-	for _, t := range tm.targets {
-		if t.Ready() {
+	for _, s := range tm.syncers {
+		if s.Ready() {
 			return true
 		}
 	}
@@ -125,25 +136,23 @@ func (tm *TargetManager) Ready() bool {
 
 func (tm *TargetManager) Stop() {
 	tm.cancel()
-	for _, t := range tm.targets {
-		t.Stop()
+	for _, s := range tm.syncers {
+		s.Stop()
 	}
 }
 
 func (tm *TargetManager) ActiveTargets() map[string][]target.Target {
-	result := make(map[string][]target.Target, len(tm.targets))
-	for k, v := range tm.targets {
-		if v.Ready() {
-			result[k] = []target.Target{v}
-		}
+	result := make(map[string][]target.Target, len(tm.syncers))
+	for k, s := range tm.syncers {
+		result[k] = s.ActiveTargets()
 	}
 	return result
 }
 
 func (tm *TargetManager) AllTargets() map[string][]target.Target {
-	result := make(map[string][]target.Target, len(tm.targets))
-	for k, v := range tm.targets {
-		result[k] = []target.Target{v}
+	result := make(map[string][]target.Target, len(tm.syncers))
+	for k, s := range tm.syncers {
+		result[k] = s.AllTargets()
 	}
 	return result
 }

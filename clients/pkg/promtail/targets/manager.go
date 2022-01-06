@@ -143,7 +143,7 @@ func NewTargetManagers(
 	if len(targetScrapeConfigs[CloudflareConfigs]) > 0 {
 		cloudflareMetrics = cloudflare.NewMetrics(reg)
 	}
-	if len(targetScrapeConfigs[DockerConfigs]) > 0 {
+	if len(targetScrapeConfigs[DockerConfigs]) > 0 || len(targetScrapeConfigs[DockerSDConfigs]) > 0 {
 		dockerMetrics = docker.NewMetrics(reg)
 	}
 
