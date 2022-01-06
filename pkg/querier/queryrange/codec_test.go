@@ -903,9 +903,9 @@ var (
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
-			"queueTime": 21,
 			"execTime": 22,
 			"linesProcessedPerSecond": 23,
+			"queueTime": 21,
 			"totalBytesProcessed": 24,
 			"totalLinesProcessed": 25
 		}

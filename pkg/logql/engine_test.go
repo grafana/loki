@@ -2075,7 +2075,7 @@ func TestEngine_Stats(t *testing.T) {
 	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
-	require.Equal(t, queueTime.Nanoseconds(), r.Statistics.Summary.QueueTime)
+	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
 }
 
 type errorIteratorQuerier struct {
