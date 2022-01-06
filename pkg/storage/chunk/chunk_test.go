@@ -501,6 +501,27 @@ func BenchmarkParseOldNewExternalKey(b *testing.B) {
 	benchmarkOldParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
 }
 
+func BenchmarkRootParseLegacyExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := parseLegacyChunkID("fake", "2:1484661279394:1484664879394")
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkRootParseNewExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := parseNewExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkRootParseNewerExternalKey(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := parseNewerExternalKey("fake", "fake/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
+		require.NoError(b, err)
+	}
+}
+
 func benchmarkParseExternalKey(b *testing.B, key string) {
 	for i := 0; i < b.N; i++ {
 		_, err := ParseExternalKey("fake", key)
