@@ -456,8 +456,8 @@ storage:
   # Configures backend rule storage for a local file system directory.
   [local: <local_storage_config>]
 
-  # The `hedging_config` configures how to hedge requests for the storage.
-  [hedging: <hedging_config>]
+  # The `hedging` block configures how to hedge storage requests.
+  [hedging: <hedging>]
 
 # Remote-write configuration to send rule samples to a Prometheus remote-write endpoint.
 remote_write:
@@ -851,28 +851,31 @@ The `swift_storage_config` configures Swift as a general storage for different d
 [container_name: <string> | default = "cortex"]
 ```
 
-## hedging_config
+## hedging
 
-The `hedging_config` configures how to hedge requests for the storage.
+The `hedging` block configures how to hedge storage requests.
 
-Hedged requests is sending a secondary request until the first request has been outstanding for more than a configure expected latency
-for this class of requests.
-You should configure the latency based on your p99 of object store requests.
+The hedging implementation sends a second storage request once a first request has
+been outstanding for more than a configured expected latency for this class of requests.
+Calculate your latency to be when 99 percent of object storage requests have 
+seen responses.
 
 ```yaml
-# Optional. Default is 0 (disabled)
+# An optional duration that sets the quantity of time after a first storage request
+# is sent and before a second request is sent, when no response is received for the first
+# storage request. The recommended duration is the measured p99 of object store requests,
+# to reduce long tail latency. This option is most impactful when used with queriers,
+# and has minimal to no impact on other components.
+# The default value of 0 disables the hedging of storage requests.
 # Example: "at: 500ms"
-# If set to a non-zero value another request will be issued at the provided duration. Recommended to
-# be set to p99 of object store requests to reduce long tail latency. This setting is most impactful when
-# used with queriers and has minimal to no impact on other pieces.
 [at: <duration> | default = 0]
-# Optional. Default is 2
-# The maximum amount of hedge requests to be issued for a given request.
-[up_to: <int> | default = 2]
-# Optional. Default is 5
-# The maximum amount of hedged requests to be issued per seconds.
-[max_per_second: <int> | default = 5]
 
+# An optional maximum quantity of hedged requests to be issued for a given request.
+[up_to: <int> | default = 2]
+
+# Caps the rate of hedged requests by optionally defining the maximum quantity of
+# hedged requests issued per second.
+[max_per_second: <int> | default = 5]
 ```
 
 ## local_storage_config
