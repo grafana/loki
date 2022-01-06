@@ -49,17 +49,16 @@ type PeriodConfig struct {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
-func (p *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain PeriodConfig
-	err := unmarshal((*plain)(p))
+	err := unmarshal((*plain)(cfg))
 	if err != nil {
 		return err
 	}
 
 	// call VersionAsInt after unmarshaling to errcheck schema version and populate PeriodConfig.schemaInt
-	_, err = p.VersionAsInt()
+	_, err = cfg.VersionAsInt()
 	return err
-
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
