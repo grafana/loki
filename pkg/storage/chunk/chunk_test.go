@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -489,7 +490,15 @@ func BenchmarkParseNewExternalKey(b *testing.B) {
 	benchmarkParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
 }
 func BenchmarkParseLegacyExternalKey(b *testing.B) {
-	benchmarkParseExternalKey(b, "57f628c7f6d57aad:162c699f000:162c69a07eb")
+	benchmarkParseExternalKey(b, "2:1484661279394:1484664879394")
+}
+
+func BenchmarkParseOldLegacyExternalKey(b *testing.B) {
+	benchmarkOldParseExternalKey(b, "2:1484661279394:1484664879394")
+}
+
+func BenchmarkParseOldNewExternalKey(b *testing.B) {
+	benchmarkOldParseExternalKey(b, "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
 }
 
 func benchmarkParseExternalKey(b *testing.B, key string) {
@@ -497,4 +506,18 @@ func benchmarkParseExternalKey(b *testing.B, key string) {
 		_, err := ParseExternalKey("fake", key)
 		require.NoError(b, err)
 	}
+}
+
+func benchmarkOldParseExternalKey(b *testing.B, key string) {
+	for i := 0; i < b.N; i++ {
+		_, err := OldParseExternalKey("fake", key)
+		require.NoError(b, err)
+	}
+}
+
+func OldParseExternalKey(userID, externalKey string) (Chunk, error) {
+	if !strings.Contains(externalKey, "/") { // pre-checksum
+		return parseLegacyChunkID(userID, externalKey)
+	}
+	return parseNewExternalKey(userID, externalKey)
 }
