@@ -417,11 +417,11 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	labels := make([]string, 0)
 	i.forMatchingStreams(ctx, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
-			if req.Values {
-				if label.Name == req.Name {
-					labels = append(labels, label.Value)
-				}
-			} else {
+			if req.Values && label.Name == req.Name {
+				labels = append(labels, label.Value)
+				continue
+			}
+			if !req.Values {
 				labels = append(labels, label.Name)
 			}
 		}
