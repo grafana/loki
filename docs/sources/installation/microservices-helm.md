@@ -1,11 +1,12 @@
 ---
-title: Simple scalable deployment with Helm
-weight: 20
+title: Microservices deployment with Helm
+weight: 25
 ---
-# Simple scalable deployment of Grafana Loki with Helm
 
-This Helm installation runs the Grafana Loki cluster in
-[simple scalable deployment mode](../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode)
+# Microservices deployment of Grafana Loki with Helm
+
+The Helm installation runs the Grafana Loki cluster in 
+[microservices mode](../../fundamentals/architecture/deployment-modes/#microservices-mode)
 within a Kubernetes cluster.
 
 ## Prerequisites
@@ -13,8 +14,7 @@ within a Kubernetes cluster.
 - Helm. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster.
 
-
-## Deploy Loki to the Kubernetes cluster
+## Deploy a Loki cluster
 
 1. Add [Loki's chart repository](https://github.com/grafana/helm-charts) to Helm:
 
@@ -33,19 +33,19 @@ within a Kubernetes cluster.
     - Deploy with the default configuration:
 
         ```bash
-        helm upgrade --install loki grafana/loki-simple-scalable
+        helm upgrade --install loki grafana/loki-distributed
         ```
 
     - Deploy with the default configuration in a custom Kubernetes cluster namespace:
 
         ```bash
-        helm upgrade --install loki --namespace=loki grafana/loki-simple-scalable
+        helm upgrade --install loki --namespace=loki grafana/loki-distributed
         ```
 
     - Deploy with added custom configuration:
 
         ```bash
-        helm upgrade --install loki grafana/loki-simple-scalable --set "key1=val1,key2=val2,..."
+        helm upgrade --install loki grafana/loki-distributed --set "key1=val1,key2=val2,..."
         ```
 
 ## Deploy Grafana to your Kubernetes cluster
@@ -70,7 +70,8 @@ kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 
 Navigate to `http://localhost:3000` and login with `admin` and the password
 output above. Then follow the [instructions for adding the Loki Data Source](../../getting-started/grafana/), using the URL
-`http://<helm-installation-name>-gateway.<namespace>.svc.cluster.local:3100/` for Loki, with `<helm-installation-name>` and `<namespaced>` replaced with the correct values for your deployment.
+`http://<helm-installation-name>-gateway.<namespace>.svc.cluster.local/` for Loki
+(with `<helm-installation-name>` and `<namespace>` replaced by the installation and namespace, respectively, of your deployment).
 
 ## Run Loki behind HTTPS Ingress
 
@@ -87,38 +88,21 @@ loki:
   password: pass
 ```
 
-Sample Helm template for Ingress:
+In the `values.yaml` file you passed to the helm chart, add:
 
 ```yaml
-apiVersion: extensions/v1beta1
-kind: Ingress
-metadata:
-  annotations:
-    kubernetes.io/ingress.class: {{ .Values.ingress.class }}
-    ingress.kubernetes.io/auth-type: "basic"
-    ingress.kubernetes.io/auth-secret: {{ .Values.ingress.basic.secret }}
-  name: loki
-spec:
-  rules:
-  - host: {{ .Values.ingress.host }}
-    http:
-      paths:
-      - backend:
-          serviceName: loki
-          servicePort: 3100
-  tls:
-  - secretName: {{ .Values.ingress.cert }}
-    hosts:
-    - {{ .Values.ingress.host }}
+gateway:
+  ingress:
+    enabled: true
 ```
 
 ## Run Promtail with syslog support
 
 In order to receive and process syslog messages in Promtail, the following changes will be necessary:
 
-* Review the [Promtail syslog-receiver configuration documentation](../../clients/promtail/scraping/#syslog-receiver)
+- Review the [Promtail syslog-receiver configuration documentation](../../clients/promtail/scraping/#syslog-receiver)
 
-* Configure the Promtail Helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
+- Configure the Promtail Helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
 
     ```yaml
     extraScrapeConfigs:
@@ -140,9 +124,9 @@ In order to receive and process syslog messages in Promtail, the following chang
 
 In order to receive and process syslog message into Promtail, the following changes will be necessary:
 
-* Review the [Promtail systemd-journal configuration documentation](../../clients/promtail/scraping/#journal-scraping-linux-only)
+- Review the [Promtail systemd-journal configuration documentation](../../clients/promtail/scraping/#journal-scraping-linux-only)
 
-* Configure the Promtail Helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
+- Configure the Promtail Helm chart with the systemd-journal configuration added to the `extraScrapeConfigs` section and volume mounts for the Promtail pods to access the log files. For example:
 
     ```yaml
     # Add additional scrape config
@@ -164,7 +148,7 @@ In order to receive and process syslog message into Promtail, the following chan
       - name: journal
         hostPath:
           path: /var/log/journal
-    
+
     extraVolumeMounts:
       - name: journal
         mountPath: /var/log/journal
