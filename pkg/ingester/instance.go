@@ -393,23 +393,33 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest, matchers
 			for i := 0; i < len(values); i++ {
 				labels[i] = values[i]
 			}
-		} else {
-			names, err := i.index.LabelNames(nil)
-			if err != nil {
-				return nil, err
-			}
-			labels = make([]string, len(names))
-			for i := 0; i < len(names); i++ {
-				labels[i] = names[i]
-			}
+			return &logproto.LabelResponse{
+				Values: labels,
+			}, nil
+		}
+		names, err := i.index.LabelNames(nil)
+		if err != nil {
+			return nil, err
+		}
+		labels = make([]string, len(names))
+		for i := 0; i < len(names); i++ {
+			labels[i] = names[i]
 		}
 		return &logproto.LabelResponse{
 			Values: labels,
 		}, nil
 	}
 
-	ids, _ := i.index.Lookup(matchers, nil)
+	i.streamsMtx.RLock()
+	defer i.streamsMtx.RUnlock()
+
+	ids, err := i.index.Lookup(matchers, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	labels := make([]string, 0)
+	// TODO: use forMatchingStreams
 	for _, streamID := range ids {
 		stream, ok := i.streamsByFP[streamID]
 		if !ok {
@@ -417,8 +427,12 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest, matchers
 		}
 
 		for _, label := range stream.labels {
-			if label.Name == req.Name {
-				labels = append(labels, label.Value)
+			if req.Values {
+				if label.Name == req.Name {
+					labels = append(labels, label.Value)
+				}
+			} else {
+				labels = append(labels, label.Name)
 			}
 		}
 	}
