@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log/level"
@@ -17,6 +16,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/tenant"
@@ -30,7 +30,7 @@ const (
 
 // Limits extends the cortex limits interface with support for per tenant splitby parameters
 type Limits interface {
-	queryrange.Limits
+	queryrangebase.Limits
 	logql.Limits
 	QuerySplitDuration(string) time.Duration
 	MaxQuerySeries(string) int
@@ -56,7 +56,7 @@ func (l limits) QuerySplitDuration(user string) time.Duration {
 }
 
 // WithDefaults will construct a Limits with a default value for QuerySplitDuration when no overrides are present.
-func WithDefaultLimits(l Limits, conf queryrange.Config) Limits {
+func WithDefaultLimits(l Limits, conf queryrangebase.Config) Limits {
 	res := limits{
 		Limits:    l,
 		overrides: true,
@@ -84,7 +84,7 @@ type cacheKeyLimits struct {
 
 // GenerateCacheKey will panic if it encounters a 0 split duration. We ensure against this by requiring
 // a nonzero split interval when caching is enabled
-func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) string {
+func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrangebase.Request) string {
 	split := l.QuerySplitDuration(userID)
 	currentInterval := r.GetStart() / int64(split/time.Millisecond)
 	// include both the currentInterval and the split duration in key to ensure
@@ -94,12 +94,12 @@ func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) st
 
 type limitsMiddleware struct {
 	Limits
-	next queryrange.Handler
+	next queryrangebase.Handler
 }
 
 // NewLimitsMiddleware creates a new Middleware that enforces query limits.
-func NewLimitsMiddleware(l Limits) queryrange.Middleware {
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return limitsMiddleware{
 			next:   next,
 			Limits: l,
@@ -107,7 +107,7 @@ func NewLimitsMiddleware(l Limits) queryrange.Middleware {
 	})
 }
 
-func (l limitsMiddleware) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log, ctx := spanlogger.New(ctx, "limits")
 	defer log.Finish()
 
@@ -161,19 +161,19 @@ type seriesLimiter struct {
 	buf    []byte // buf used for hashing to avoid allocations.
 
 	maxSeries int
-	next      queryrange.Handler
+	next      queryrangebase.Handler
 }
 
 type seriesLimiterMiddleware int
 
 // newSeriesLimiter creates a new series limiter middleware for use for a single request.
-func newSeriesLimiter(maxSeries int) queryrange.Middleware {
+func newSeriesLimiter(maxSeries int) queryrangebase.Middleware {
 	return seriesLimiterMiddleware(maxSeries)
 }
 
 // Wrap wraps a global handler and returns a per request limited handler.
 // The handler returned is thread safe.
-func (slm seriesLimiterMiddleware) Wrap(next queryrange.Handler) queryrange.Handler {
+func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return &seriesLimiter{
 		hashes:    make(map[uint64]struct{}),
 		maxSeries: int(slm),
@@ -182,7 +182,7 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrange.Handler) queryrange.Hand
 	}
 }
 
-func (sl *seriesLimiter) Do(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	// no need to fire a request if the limit is already reached.
 	if sl.isLimitReached() {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
@@ -222,33 +222,33 @@ type limitedRoundTripper struct {
 	next   http.RoundTripper
 	limits Limits
 
-	codec      queryrange.Codec
-	middleware queryrange.Middleware
+	codec      queryrangebase.Codec
+	middleware queryrangebase.Middleware
 }
 
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
-func NewLimitedRoundTripper(next http.RoundTripper, codec queryrange.Codec, limits Limits, middlewares ...queryrange.Middleware) http.RoundTripper {
+func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, middlewares ...queryrangebase.Middleware) http.RoundTripper {
 	transport := limitedRoundTripper{
 		next:       next,
 		codec:      codec,
 		limits:     limits,
-		middleware: queryrange.MergeMiddlewares(middlewares...),
+		middleware: queryrangebase.MergeMiddlewares(middlewares...),
 	}
 	return transport
 }
 
 type work struct {
-	req    queryrange.Request
+	req    queryrangebase.Request
 	ctx    context.Context
 	result chan result
 }
 
 type result struct {
-	response queryrange.Response
+	response queryrangebase.Response
 	err      error
 }
 
-func newWork(ctx context.Context, req queryrange.Request) work {
+func newWork(ctx context.Context, req queryrangebase.Request) work {
 	return work{
 		req:    req,
 		ctx:    ctx,
@@ -300,7 +300,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	response, err := rt.middleware.Wrap(
-		queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			w := newWork(ctx, r)
 			select {
 			case intermediate <- w:
@@ -320,7 +320,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	return rt.codec.EncodeResponse(ctx, response)
 }
 
-func (rt limitedRoundTripper) do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	request, err := rt.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
