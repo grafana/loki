@@ -140,7 +140,7 @@ type LabelValueFilterer interface {
 }
 
 type Wrapper interface {
-	Wrap(wrapped Ingesterer) Ingesterer
+	Wrap(wrapped Interface) Interface
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -152,8 +152,8 @@ type ChunkStore interface {
 	GetSchemaConfigs() []chunk.PeriodConfig
 }
 
-// Ingesterer is an interface for the Ingester
-type Ingesterer interface {
+// Interface is an interface for the Ingester
+type Interface interface {
 	services.Service
 
 	logproto.IngesterServer
