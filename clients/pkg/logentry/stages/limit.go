@@ -104,10 +104,9 @@ func (m *limitStage) shouldDrop(e Entry) bool {
 	if m.cfg.Drop {
 		if m.rateLimiter.Allow() {
 			return false
-		} else {
-			m.dropCount.WithLabelValues(ratelimitDropReason).Inc()
-			return true
 		}
+		m.dropCount.WithLabelValues(ratelimitDropReason).Inc()
+		return true
 	}
 	_ = m.rateLimiter.Allow()
 	return false
