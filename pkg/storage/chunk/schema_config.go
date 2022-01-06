@@ -43,6 +43,23 @@ type PeriodConfig struct {
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks"`
 	RowShards   uint32              `yaml:"row_shards"`
+
+	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
+	schemaInt *int `yaml:"-"`
+}
+
+// UnmarshalYAML implements yaml.Unmarshaller.
+func (p *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type plain PeriodConfig
+	err := unmarshal((*plain)(p))
+	if err != nil {
+		return err
+	}
+
+	// call VersionAsInt after unmarshaling to errcheck schema version and populate PeriodConfig.schemaInt
+	_, err = p.VersionAsInt()
+	return err
+
 }
 
 // DayTime is a model.Time what holds day-aligned values, and marshals to/from
@@ -310,8 +327,16 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 }
 
 func (cfg *PeriodConfig) VersionAsInt() (int, error) {
+	// Read memoized schema version. This is called during unmarshaling,
+	// but may be nil in the case of testware.
+	if cfg.schemaInt != nil {
+		return *cfg.schemaInt, nil
+	}
+
 	v := strings.Trim(cfg.Schema, "v")
-	return strconv.Atoi(v)
+	n, err := strconv.Atoi(v)
+	cfg.schemaInt = &n
+	return n, err
 }
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
