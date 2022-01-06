@@ -381,6 +381,10 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	return iters, nil
 }
 
+// Label returns the label names or values depending on the given request
+// Without label matchers the label names and values are retrieved from the index directly.
+// If label matchers are given only the matching streams are fetched from the index.
+// The label names or values are then retrieved from those matching streams.
 func (i *instance) Label(_ context.Context, req *logproto.LabelRequest, matchers ...*labels.Matcher) (*logproto.LabelResponse, error) {
 	if len(matchers) == 0 {
 		var labels []string
