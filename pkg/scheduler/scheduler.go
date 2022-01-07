@@ -37,9 +37,7 @@ import (
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
-var (
-	errSchedulerIsNotRunning = errors.New("scheduler is not running")
-)
+var errSchedulerIsNotRunning = errors.New("scheduler is not running")
 
 const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
@@ -548,7 +546,8 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRequest, requestErr error) {
 	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-		middleware.ClientUserHeaderInterceptor},
+		middleware.ClientUserHeaderInterceptor,
+	},
 		nil)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
@@ -661,7 +660,6 @@ func (s *Scheduler) running(ctx context.Context) error {
 }
 
 func (s *Scheduler) setRunState(isInSet bool) {
-
 	if isInSet {
 		if s.shouldRun.CAS(false, true) {
 			// Value was swapped, meaning this was a state change from stopped to running.
@@ -722,7 +720,6 @@ func SafeReadRing(s *Scheduler) ring.ReadRing {
 	}
 
 	return s.ring
-
 }
 
 func (s *Scheduler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

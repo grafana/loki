@@ -499,7 +499,7 @@ func (it *sampleBatchIterator) Sample() logproto.Sample {
 
 func (it *sampleBatchIterator) Next() bool {
 	// for loop to avoid recursion
-	for {
+	for it.ctx.Err() == nil {
 		if it.curr != nil && it.curr.Next() {
 			return true
 		}
