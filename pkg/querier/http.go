@@ -7,6 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/model/labels"
@@ -33,6 +34,15 @@ type QueryResponse struct {
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
 func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+	log := spanlogger.FromContext(r.Context())
+	level.Info(log.Logger).Log("msg", "range query started")
+	defer func() {
+		level.Info(log.Logger).Log("msg", "range query ended")
+	}()
+	go func() {
+		<-r.Context().Done()
+		level.Info(log.Logger).Log("msg", "range query done", "err", r.Context().Err())
+	}()
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
