@@ -83,6 +83,7 @@ func parseS3Log(b *batch, labels map[string]string, obj io.ReadCloser) error {
 
 	return nil
 }
+
 func checkIfS3Event(ev map[string]interface{}) (events.S3Event, error) {
 	var s3 events.S3Event
 
