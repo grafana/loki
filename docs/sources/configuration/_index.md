@@ -678,9 +678,8 @@ ring:
   # CLI flag: -<prefix>.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
-  # The heartbeat timeout after which store gateways are considered unhealthy
-  # within the ring. 0 = never (timeout disabled). This option needs be set both
-  # on the store-gateway and querier when running in microservices mode.
+  # The heartbeat timeout after which ring members are considered unhealthy
+  # within the ring. 0 = never (timeout disabled). 
   # CLI flag: -<prefix>.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
