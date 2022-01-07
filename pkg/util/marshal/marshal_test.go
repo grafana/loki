@@ -7,7 +7,7 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
@@ -88,6 +88,7 @@ var queryTests = []struct {
 						"bytesProcessedPerSecond": 0,
 						"execTime": 0,
 						"linesProcessedPerSecond": 0,
+						"queueTime": 0,
 						"totalBytesProcessed":0,
 						"totalLinesProcessed":0
 					}
@@ -195,6 +196,7 @@ var queryTests = []struct {
 					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
 					"linesProcessedPerSecond": 0,
+					"queueTime": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
 				}
@@ -319,6 +321,7 @@ var queryTests = []struct {
 					"bytesProcessedPerSecond": 0,
 					"execTime": 0,
 					"linesProcessedPerSecond": 0,
+					"queueTime": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
 				}

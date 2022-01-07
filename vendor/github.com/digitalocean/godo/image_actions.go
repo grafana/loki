@@ -15,7 +15,7 @@ type ImageActionsService interface {
 	Convert(context.Context, int) (*Action, *Response, error)
 }
 
-// ImageActionsServiceOp handles communition with the image action related methods of the
+// ImageActionsServiceOp handles communication with the image action related methods of the
 // DigitalOcean API.
 type ImageActionsServiceOp struct {
 	client *Client

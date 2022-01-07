@@ -11,7 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/grafana/dskit/services"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -26,7 +26,7 @@ import (
 )
 
 // small util for ensuring data exists as we expect
-func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i *Ingester) {
+func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time, i Interface) {
 	result := mockQuerierServer{
 		ctx: ctx,
 	}

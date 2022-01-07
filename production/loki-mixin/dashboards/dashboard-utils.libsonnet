@@ -26,6 +26,36 @@ local utils = import 'mixin-utils/utils.libsonnet';
           ],
         },
       },
+
+      addCluster(multi=false)::
+        if multi then
+          self.addMultiTemplate('cluster', 'loki_build_info', 'cluster')
+        else
+          self.addTemplate('cluster', 'loki_build_info', 'cluster'),
+
+      addNamespace(multi=false)::
+        if multi then
+          self.addMultiTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace')
+        else
+          self.addTemplate('namespace', 'loki_build_info{cluster=~"$cluster"}', 'namespace'),
+
+      addTag()::
+        self + {
+          tags+: $._config.tags,
+          links+: [
+            {
+              asDropdown: true,
+              icon: 'external link',
+              includeVars: true,
+              keepTime: true,
+              tags: $._config.tags,
+              targetBlank: false,
+              title: 'Loki Dashboards',
+              type: 'dashboards',
+            },
+          ],
+        },
+
       addClusterSelectorTemplates(multi=true)::
         local d = self {
           tags: $._config.tags,
@@ -168,4 +198,29 @@ local utils = import 'mixin-utils/utils.libsonnet';
     |||
       ignoring(%s) group_right() (label_replace(count by(%s, %s, device) (container_fs_writes_bytes_total{%s,container="%s",device!~".*sda.*"}), "device", "$1", "device", "/dev/(.*)") * 0)
     ||| % [$._config.per_instance_label, $._config.per_node_label, $._config.per_instance_label, $.namespaceMatcher(), containerName],
+
+  newStatPanel(queries, legends='', unit='percentunit', decimals=1, thresholds=[], instant=false, novalue='')::
+    super.queryPanel(queries, legends) + {
+      type: 'stat',
+      targets: [
+        target {
+          instant: instant,
+          interval: '',
+
+          // Reset defaults from queryPanel().
+          format: null,
+          intervalFactor: null,
+          step: null,
+        }
+        for target in super.targets
+      ],
+      fieldConfig: {
+        defaults: {
+          decimals: decimals,
+          noValue: novalue,
+          unit: unit,
+        },
+        overrides: [],
+      },
+    },
 }

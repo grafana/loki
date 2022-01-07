@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/openstack"
 	"github.com/prometheus/prometheus/discovery/triton"
 	"github.com/prometheus/prometheus/discovery/zookeeper"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
@@ -42,6 +42,7 @@ type Config struct {
 	WindowsConfig          *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
 	KafkaConfig            *KafkaTargetConfig         `yaml:"kafka,omitempty"`
 	GelfConfig             *GelfTargetConfig          `yaml:"gelf,omitempty"`
+	CloudflareConfig       *CloudflareConfig          `yaml:"cloudflare,omitempty"`
 	RelabelConfigs         []*relabel.Config          `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig     `yaml:",inline"`
 }
@@ -307,6 +308,27 @@ type GelfTargetConfig struct {
 	// UseIncomingTimestamp sets the timestamp to the incoming gelf messages
 	// timestamp if it's set.
 	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+}
+
+type CloudflareConfig struct {
+	// APIToken is the API key for the Cloudflare account.
+	APIToken string `yaml:"api_token"`
+	// ZoneID is the ID of the zone to use.
+	ZoneID string `yaml:"zone_id"`
+	// Labels optionally holds labels to associate with each record read from cloudflare logs.
+	Labels model.LabelSet `yaml:"labels"`
+	// The amount of workers to use for parsing cloudflare logs. Default to 3.
+	Workers int `yaml:"workers"`
+	// The timerange to fetch for each pull request that will be spread across workers. Default 1m.
+	PullRange model.Duration `yaml:"pull_range"`
+	// Fields to fetch from cloudflare logs.
+	// Default to default fields.
+	// Available fields type:
+	// - default
+	// - minimal
+	// - extended
+	// - all
+	FieldsType string `yaml:"fields_type"`
 }
 
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.

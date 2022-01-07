@@ -1,7 +1,7 @@
 package stages
 
 import (
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/go-kit/log"
 	"github.com/mitchellh/mapstructure"

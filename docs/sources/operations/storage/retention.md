@@ -160,7 +160,7 @@ The example configurations will set these rules:
 
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
-[`table_manager_config`](../../../configuration#table_manager_config)
+[`table_manager`](../../../configuration#table_manager)
 section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The

@@ -61,6 +61,23 @@ workspace:
   path: loki
 ---
 kind: pipeline
+name: mixins
+steps:
+- commands:
+  - make BUILD_IN_CONTAINER=false lint-jsonnet
+  depends_on:
+  - clone
+  image: grafana/jsonnet-build:c8b75df
+  name: lint-jsonnet
+trigger:
+  event:
+  - push
+  - pull_request
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
 name: benchmark-cron
 node:
   type: no-parallel
@@ -843,6 +860,8 @@ steps:
     username:
       from_secret: docker_username
 trigger:
+  event:
+  - push
   ref:
     include:
     - refs/heads/main
@@ -876,6 +895,8 @@ steps:
     images_json:
       from_secret: deploy_config
 trigger:
+  event:
+  - push
   ref:
     include:
     - refs/heads/main
@@ -1004,6 +1025,6 @@ kind: secret
 name: deploy_config
 ---
 kind: signature
-hmac: 3d6580e7a97cbdc40b5185fdb0a9e2011fb92ad9ff3bc393a577b1306abc8bc4
+hmac: 615276ab546179d2261b1af22830b968afe2e437463f22ac86a349fca3c86428
 
 ...

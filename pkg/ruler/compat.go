@@ -14,10 +14,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
-	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
@@ -244,10 +244,6 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 
 	if r.Record.Value == "" && r.Alert.Value == "" {
 		return errors.Errorf("one of 'record' or 'alert' must be set")
-	}
-
-	if r.Record.Value != "" && r.Alert.Value != "" {
-		return errors.Errorf("only one of 'record' or 'alert' must be set")
 	}
 
 	if r.Expr.Value == "" {

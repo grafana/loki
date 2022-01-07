@@ -12,7 +12,7 @@ import (
 	"github.com/Workiva/go-datastructures/rangetree"
 	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"

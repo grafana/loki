@@ -24,6 +24,7 @@ func TestCachingSchema(t *testing.T) {
 	baseTime = baseTime.Add(30*24*time.Hour - 1)
 
 	mtime.NowForce(baseTime)
+	defer mtime.NowReset()
 
 	for i, tc := range []struct {
 		from, through time.Time

@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
@@ -52,15 +53,12 @@ func InitWorkerService(
 	authMiddleware middleware.Interface,
 ) (serve services.Service, err error) {
 
-	// Create a couple Middlewares used to handle panics, perform auth, and parse Form's in http request
-	internalMiddleware := middleware.Merge(
+	// Create a couple Middlewares used to handle panics, perform auth, parse forms in http request, and set content type in response
+	handlerMiddleware := middleware.Merge(
+		httpreq.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		authMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
-	)
-	// External middleware also needs to set JSON content type headers
-	externalMiddleware := middleware.Merge(
-		internalMiddleware,
 		serverutil.ResponseJSONMiddleware(),
 	)
 
@@ -72,7 +70,7 @@ func InitWorkerService(
 	// There are some routes which are always registered on the external router, add them now and
 	// wrap them with the externalMiddleware
 	for route, handler := range alwaysExternalRoutesToHandlers {
-		externalRouter.Path(route).Methods("GET", "POST").Handler(externalMiddleware.Wrap(handler))
+		externalRouter.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(handler))
 	}
 
 	// If the querier is running standalone without the query-frontend or query-scheduler, we must register the internal
@@ -91,7 +89,7 @@ func InitWorkerService(
 
 		// Register routes externally
 		for _, route := range routes {
-			externalRouter.Path(route).Methods("GET", "POST").Handler(externalMiddleware.Wrap(internalRouter))
+			externalRouter.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(internalRouter))
 		}
 
 		//If no frontend or scheduler address has been configured, then there is no place for the
@@ -129,7 +127,7 @@ func InitWorkerService(
 			return "internalQuerier"
 		}))
 
-	internalHandler = internalMiddleware.Wrap(internalHandler)
+	internalHandler = handlerMiddleware.Wrap(internalHandler)
 
 	//Return a querier worker pointed to the internal querier HTTP handler so there is not a conflict in routes between the querier
 	//and the query frontend

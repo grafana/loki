@@ -9,10 +9,17 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/logql"
 )
@@ -83,6 +90,69 @@ func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) st
 	// include both the currentInterval and the split duration in key to ensure
 	// a cache key can't be reused when an interval changes
 	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)
+}
+
+type limitsMiddleware struct {
+	Limits
+	next queryrange.Handler
+}
+
+// NewLimitsMiddleware creates a new Middleware that enforces query limits.
+func NewLimitsMiddleware(l Limits) queryrange.Middleware {
+	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+		return limitsMiddleware{
+			next:   next,
+			Limits: l,
+		}
+	})
+}
+
+func (l limitsMiddleware) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+	log, ctx := spanlogger.New(ctx, "limits")
+	defer log.Finish()
+
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	// Clamp the time range based on the max query lookback.
+
+	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLookback); maxQueryLookback > 0 {
+		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
+
+		if r.GetEnd() < minStartTime {
+			// The request is fully outside the allowed range, so we can return an
+			// empty response.
+			level.Debug(log).Log(
+				"msg", "skipping the execution of the query because its time range is before the 'max query lookback' setting",
+				"reqStart", util.FormatTimeMillis(r.GetStart()),
+				"redEnd", util.FormatTimeMillis(r.GetEnd()),
+				"maxQueryLookback", maxQueryLookback)
+
+			return NewEmptyResponse(r)
+		}
+
+		if r.GetStart() < minStartTime {
+			// Replace the start time in the request.
+			level.Debug(log).Log(
+				"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
+				"original", util.FormatTimeMillis(r.GetStart()),
+				"updated", util.FormatTimeMillis(minStartTime))
+
+			r = r.WithStartEnd(minStartTime, r.GetEnd())
+		}
+	}
+
+	// Enforce the max query length.
+	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLength); maxQueryLength > 0 {
+		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
+		if queryLen > maxQueryLength {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLength)
+		}
+	}
+
+	return l.next.Do(ctx, r)
 }
 
 type seriesLimiter struct {
@@ -197,7 +267,8 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	request, err := rt.codec.DecodeRequest(ctx, r)
+	// Do not forward any request header.
+	request, err := rt.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {
 		return nil, err
 	}

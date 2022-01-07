@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: monitor-log-file-metric-exporter
+  labels:
+    name: log-file-metric-exporter
+spec:
+  selector:
+    matchLabels:
+      name: log-file-metric-exporter
+  endpoints:
+    - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      path: /metrics
+      port: logfile-metrics
+      scheme: https
+      interval: 30s
+      scrapeTimeout: 10s
+      tlsConfig:
+        caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
+        serverName: log-file-metric-exporter-metrics.openshift-logging.svc

@@ -10,13 +10,14 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/util"
 )
@@ -28,10 +29,11 @@ type TopicManager interface {
 }
 
 type TargetSyncer struct {
-	logger log.Logger
-	cfg    scrapeconfig.Config
-	reg    prometheus.Registerer
-	client api.EntryHandler
+	logger   log.Logger
+	cfg      scrapeconfig.Config
+	pipeline *stages.Pipeline
+	reg      prometheus.Registerer
+	client   api.EntryHandler
 
 	topicManager TopicManager
 	consumer
@@ -86,8 +88,11 @@ func NewSyncer(
 	if err != nil {
 		return nil, fmt.Errorf("error creating topic manager: %w", err)
 	}
+	pipeline, err := stages.NewPipeline(log.With(logger, "component", "kafka_pipeline"), cfg.PipelineStages, &cfg.JobName, reg)
+	if err != nil {
+		return nil, fmt.Errorf("error creating pipeline: %w", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-
 	t := &TargetSyncer{
 		logger:       logger,
 		ctx:          ctx,
@@ -96,6 +101,7 @@ func NewSyncer(
 		cfg:          cfg,
 		reg:          reg,
 		client:       pushClient,
+		pipeline:     pipeline,
 		close: func() error {
 			if err := group.Close(); err != nil {
 				level.Warn(logger).Log("msg", "error while closing consumer group", "err", err)
@@ -280,19 +286,13 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 			},
 		}, nil
 	}
-
-	pipeline, err := stages.NewPipeline(log.With(ts.logger, "component", "kafka_pipeline"), ts.cfg.PipelineStages, &ts.cfg.JobName, ts.reg)
-	if err != nil {
-		return nil, err
-	}
-
 	t := NewTarget(
 		session,
 		claim,
 		discoveredLabels,
 		labelOut,
 		ts.cfg.RelabelConfigs,
-		pipeline.Wrap(ts.client),
+		ts.pipeline.Wrap(ts.client),
 		ts.cfg.KafkaConfig.UseIncomingTimestamp,
 	)
 

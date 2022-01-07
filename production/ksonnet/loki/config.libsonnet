@@ -40,6 +40,8 @@
     overrides_configmap_mount_name: 'overrides',
     overrides_configmap_mount_path: '/etc/loki/overrides',
 
+    jaeger_reporter_max_queue: 1000,
+
     querier: {
       // This value should be set equal to (or less than) the CPU cores of the system the querier runs.
       // A higher value will lead to a querier trying to process more requests than there are available
@@ -159,7 +161,6 @@
         },
       },
       query_range: {
-        split_queries_by_interval: '30m',
         align_queries_with_step: true,
         cache_results: true,
         max_retries: 5,
@@ -199,6 +200,7 @@
         ingestion_rate_mb: 10,
         ingestion_burst_size_mb: 20,
         max_cache_freshness_per_query: '10m',
+        split_queries_by_interval: '30m',
       },
 
       ingester: {

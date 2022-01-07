@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"regexp"
 	"regexp/syntax"
+	"unicode"
+	"unicode/utf8"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // Filterer is a interface to filter log lines.
@@ -81,6 +83,7 @@ func NewAndFilter(left Filterer, right Filterer) Filterer {
 func (a andFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) && a.right.Filter(line)
 }
+
 func (a andFilter) ToStage() Stage {
 	return StageFunc{
 		process: func(line []byte, _ *LabelsBuilder) ([]byte, bool) {
@@ -102,14 +105,14 @@ func NewAndFilters(filters []Filterer) Filterer {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
 		if !(filter == nil || filter == TrueFilter) {
 			switch c := filter.(type) {
-			case containsFilter:
+			case *containsFilter:
 				// Start accumulating contains filters.
 				if containsFilterAcc == nil {
 					containsFilterAcc = &containsAllFilter{}
 				}
 
 				// Join all contain filters.
-				containsFilterAcc.Add(c)
+				containsFilterAcc.Add(*c)
 			case regexpFilter:
 				regexpFilters = append(regexpFilters, c)
 
@@ -242,11 +245,55 @@ type containsFilter struct {
 	caseInsensitive bool
 }
 
-func (l containsFilter) Filter(line []byte) bool {
-	if l.caseInsensitive {
-		line = bytes.ToLower(line)
+func (l *containsFilter) Filter(line []byte) bool {
+	return contains(line, l.match, l.caseInsensitive)
+}
+
+func contains(line, substr []byte, caseInsensitive bool) bool {
+	if !caseInsensitive {
+		return bytes.Contains(line, substr)
 	}
-	return bytes.Contains(line, l.match)
+	return containsLower(line, substr)
+}
+
+func containsLower(line, substr []byte) bool {
+	if len(substr) == 0 {
+		return true
+	}
+	if len(substr) > len(line) {
+		return false
+	}
+	j := 0
+	for len(line) > 0 {
+		// ascii fast case
+		if c := line[0]; c < utf8.RuneSelf {
+			if c == substr[j] || c+'a'-'A' == substr[j] {
+				j++
+				if j == len(substr) {
+					return true
+				}
+				line = line[1:]
+				continue
+			}
+			line = line[1:]
+			j = 0
+			continue
+		}
+		// unicode slow case
+		lr, lwid := utf8.DecodeRune(line)
+		mr, mwid := utf8.DecodeRune(substr[j:])
+		if lr == mr || mr == unicode.To(unicode.LowerCase, lr) {
+			j += mwid
+			if j == len(substr) {
+				return true
+			}
+			line = line[lwid:]
+			continue
+		}
+		line = line[lwid:]
+		j = 0
+	}
+	return false
 }
 
 func (l containsFilter) ToStage() Stage {
@@ -269,7 +316,7 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if caseInsensitive {
 		match = bytes.ToLower(match)
 	}
-	return containsFilter{
+	return &containsFilter{
 		match:           match,
 		caseInsensitive: caseInsensitive,
 	}
@@ -289,10 +336,7 @@ func (f *containsAllFilter) Empty() bool {
 
 func (f containsAllFilter) Filter(line []byte) bool {
 	for _, m := range f.matches {
-		if m.caseInsensitive {
-			line = bytes.ToLower(line)
-		}
-		if !bytes.Contains(line, m.match) {
+		if !contains(line, m.match, m.caseInsensitive) {
 			return false
 		}
 	}

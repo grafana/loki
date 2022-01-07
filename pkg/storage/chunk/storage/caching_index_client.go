@@ -11,8 +11,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/spanlogger"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -292,8 +293,8 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	log, ctx := spanlogger.New(ctx, "cachingIndexClient.cacheFetch")
-	defer log.Finish()
+	log := spanlogger.FromContext(ctx)
+	level.Debug(log).Log("requested", len(keys))
 
 	cacheGets.Add(float64(len(keys)))
 

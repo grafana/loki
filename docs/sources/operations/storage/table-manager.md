@@ -38,7 +38,7 @@ to store chunks, are not managed by the Table Manager, and a custom bucket polic
 should be set to delete old data.
 
 For detailed information on configuring the Table Manager, refer to the
-[`table_manager`](../../../configuration#table_manager_config)
+[`table_manager`](../../../configuration#table_manager)
 section in the Loki configuration document.
 
 
@@ -104,7 +104,7 @@ order to make sure that the new table is ready once the current table end
 period is reached.
 
 The `creation_grace_period` property - in the
-[`table_manager`](../../../configuration#table_manager_config)
+[`table_manager`](../../../configuration#table_manager)
 configuration block - defines how long before a table should be created.
 
 
@@ -148,7 +148,7 @@ documentation.
 A table can be active or inactive.
 
 A table is considered **active** if the current time is within the range:
-- Table start period - [`creation_grace_period`](../../../configuration#table_manager_config)
+- Table start period - [`creation_grace_period`](../../../configuration#table_manager)
 - Table end period + max chunk age (hardcoded to `12h`)
 
 ![active_vs_inactive_tables](../table-manager-active-vs-inactive-tables.png)

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
@@ -20,8 +19,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/pkg/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -35,7 +36,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	errUtil "github.com/grafana/loki/pkg/util"
-	listutil "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -82,6 +82,9 @@ type Config struct {
 	WAL WALConfig `yaml:"wal,omitempty"`
 
 	ChunkFilterer storage.RequestChunkFilterer `yaml:"-"`
+	LabelFilterer LabelValueFilterer           `yaml:"-"`
+	// Optional wrapper that can be used to modify the behaviour of the ingester
+	Wrapper Wrapper `yaml:"-"`
 
 	IndexShards int `yaml:"index_shards"`
 }
@@ -125,10 +128,41 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.IndexShards <= 0 {
-		return fmt.Errorf("Invalid ingester index shard factor: %d", cfg.IndexShards)
+		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
 
 	return nil
+}
+
+// ChunkFilterer filters chunks based on the metric.
+type LabelValueFilterer interface {
+	Filter(ctx context.Context, labelName string, labelValues []string) ([]string, error)
+}
+
+type Wrapper interface {
+	Wrap(wrapped Interface) Interface
+}
+
+// ChunkStore is the interface we need to store chunks.
+type ChunkStore interface {
+	Put(ctx context.Context, chunks []chunk.Chunk) error
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
+	GetSchemaConfigs() []chunk.PeriodConfig
+}
+
+// Interface is an interface for the Ingester
+type Interface interface {
+	services.Service
+
+	logproto.IngesterServer
+	logproto.PusherServer
+	logproto.QuerierServer
+	CheckReady(ctx context.Context) error
+	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	ShutdownHandler(w http.ResponseWriter, r *http.Request)
+	GetOrCreateInstance(instanceID string) *instance
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -173,15 +207,7 @@ type Ingester struct {
 	wal WAL
 
 	chunkFilter storage.RequestChunkFilterer
-}
-
-// ChunkStore is the interface we need to store chunks.
-type ChunkStore interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error)
-	GetSchemaConfigs() []chunk.PeriodConfig
+	labelFilter LabelValueFilterer
 }
 
 // New makes a new Ingester.
@@ -245,11 +271,19 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
+	if i.cfg.LabelFilterer != nil {
+		i.SetLabelFilterer(i.cfg.LabelFilterer)
+	}
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter storage.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+func (i *Ingester) SetLabelFilterer(labelFilter LabelValueFilterer) {
+	i.labelFilter = labelFilter
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -506,12 +540,12 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
+func (i *Ingester) GetOrCreateInstance(instanceID string) *instance {
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst
@@ -537,7 +571,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	itrs, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
 	if err != nil {
 		return err
@@ -562,7 +596,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
 
-	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(ctx, heapItr, queryServer, req.Limit)
 }
@@ -577,7 +611,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	itrs, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
@@ -600,7 +634,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	heapItr := iter.NewHeapSampleIterator(ctx, itrs)
 
-	defer listutil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
+	defer errUtil.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendSampleBatches(ctx, heapItr, queryServer)
 }
@@ -640,7 +674,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	reqStart = adjustQueryStartTime(boltdbShipperMaxLookBack, reqStart, time.Now())
 
 	// parse the request
-	start, end := listutil.RoundToMilliseconds(reqStart, req.End)
+	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
 	matchers, err := logql.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -670,7 +704,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	instance := i.getOrCreateInstance(userID)
+	instance := i.GetOrCreateInstance(userID)
 	resp, err := instance.Label(ctx, req)
 	if err != nil {
 		return nil, err
@@ -717,8 +751,23 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
+	allValues := errUtil.MergeStringLists(resp.Values, storeValues)
+
+	if req.Values && i.labelFilter != nil {
+		var filteredValues []string
+
+		filteredValues, err = i.labelFilter.Filter(ctx, req.Name, allValues)
+		if err != nil {
+			return nil, err
+		}
+
+		return &logproto.LabelResponse{
+			Values: filteredValues,
+		}, nil
+	}
+
 	return &logproto.LabelResponse{
-		Values: listutil.MergeStringLists(resp.Values, storeValues),
+		Values: allValues,
 	}, nil
 }
 
@@ -729,7 +778,7 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	return instance.Series(ctx, req)
 }
 
@@ -785,7 +834,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance := i.getOrCreateInstance(instanceID)
+	instance := i.GetOrCreateInstance(instanceID)
 	tailer, err := newTailer(instanceID, req.Query, queryServer)
 	if err != nil {
 		return err

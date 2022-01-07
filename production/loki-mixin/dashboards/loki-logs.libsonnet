@@ -45,40 +45,39 @@ local template = import 'grafonnet/template.libsonnet';
     local dashboards = self,
 
     'loki-logs.json': {
-      local cfg = self,
+                        local cfg = self,
 
-      showMultiCluster:: true,
-      clusterLabel:: 'cluster',
+                        showMultiCluster:: true,
+                        clusterLabel:: 'cluster',
 
-    } + lokiLogs +
-    $.dashboard('Loki / Logs')
-      // TODO (callum) For this cluster the cluster template is not actually
-      // added since the json defines the template array, we just need the tags
-      // and links from this function until they're moved to a separate function.
-      .addClusterSelectorTemplates(false)
-      .addLog() +
-    {
-      panels: [
-        p + {
-          targets: [
-            e + {
-              expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
-              else std.strReplace(super.expr, 'cluster="$cluster", ', '')
-            }
-            for e in p.targets
-          ],
-        }
-        for p in super.panels
-      ],
-      templating+: {
-        list+: [
-          deploymentTemplate,
-          podTemplate,
-          containerTemplate,
-          levelTemplate,
-          logTemplate,
-        ],
-      },
-    },
+                      } + lokiLogs +
+                      $.dashboard('Loki / Logs', uid='logs')
+                      .addCluster()
+                      .addNamespace()
+                      .addTag()
+                      .addLog() +
+                      {
+                        panels: [
+                          p {
+                            targets: [
+                              e {
+                                expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
+                                else std.strReplace(super.expr, 'cluster="$cluster", ', ''),
+                              }
+                              for e in p.targets
+                            ],
+                          }
+                          for p in super.panels
+                        ],
+                        templating+: {
+                          list+: [
+                            deploymentTemplate,
+                            podTemplate,
+                            containerTemplate,
+                            levelTemplate,
+                            logTemplate,
+                          ],
+                        },
+                      },
   },
 }

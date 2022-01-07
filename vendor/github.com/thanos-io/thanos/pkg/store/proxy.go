@@ -12,23 +12,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/tracing"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type ctxKey int
@@ -164,6 +165,56 @@ func (s *ProxyStore) Info(_ context.Context, _ *storepb.InfoRequest) (*storepb.I
 	}
 
 	return res, nil
+}
+
+func (s *ProxyStore) LabelSet() []labelpb.ZLabelSet {
+	stores := s.stores()
+	if len(stores) == 0 {
+		return []labelpb.ZLabelSet{}
+	}
+
+	mergedLabelSets := make(map[uint64]labelpb.ZLabelSet, len(stores))
+	for _, st := range stores {
+		for _, lset := range st.LabelSets() {
+			mergedLabelSet := labelpb.ExtendSortedLabels(lset, s.selectorLabels)
+			mergedLabelSets[mergedLabelSet.Hash()] = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(mergedLabelSet)}
+		}
+	}
+
+	labelSets := make([]labelpb.ZLabelSet, 0, len(mergedLabelSets))
+	for _, v := range mergedLabelSets {
+		labelSets = append(labelSets, v)
+	}
+
+	// We always want to enforce announcing the subset of data that
+	// selector-labels represents. If no label-sets are announced by the
+	// store-proxy's discovered stores, then we still want to enforce
+	// announcing this subset by announcing the selector as the label-set.
+	selectorLabels := labelpb.ZLabelsFromPromLabels(s.selectorLabels)
+	if len(labelSets) == 0 && len(selectorLabels) > 0 {
+		labelSets = append(labelSets, labelpb.ZLabelSet{Labels: selectorLabels})
+	}
+
+	return labelSets
+}
+func (s *ProxyStore) TimeRange() (int64, int64) {
+	stores := s.stores()
+	if len(stores) == 0 {
+		return math.MinInt64, math.MaxInt64
+	}
+
+	var minTime, maxTime int64 = math.MaxInt64, math.MinInt64
+	for _, s := range stores {
+		storeMinTime, storeMaxTime := s.TimeRange()
+		if storeMinTime < minTime {
+			minTime = storeMinTime
+		}
+		if storeMaxTime > maxTime {
+			maxTime = storeMaxTime
+		}
+	}
+
+	return minTime, maxTime
 }
 
 // cancelableRespSender is a response channel that does need to be exhausted on cancel.
@@ -418,28 +469,30 @@ func startStreamSeriesSet(
 				}
 			}
 		}()
-		for {
+		// The `defer` only executed when function return, we do `defer cancel` in for loop,
+		// so make the loop body as a function, release timers created by context as early.
+		handleRecvResponse := func() (next bool) {
 			frameTimeoutCtx, cancel := frameCtx(s.responseTimeout)
 			defer cancel()
 			var rr *recvResponse
 			select {
 			case <-ctx.Done():
 				s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
-				return
+				return false
 			case <-frameTimeoutCtx.Done():
 				s.handleErr(errors.Wrapf(frameTimeoutCtx.Err(), "failed to receive any data in %s from %s", s.responseTimeout.String(), s.name), done)
-				return
+				return false
 			case rr = <-rCh:
 			}
 
 			if rr.err == io.EOF {
 				close(done)
-				return
+				return false
 			}
 
 			if rr.err != nil {
 				s.handleErr(errors.Wrapf(rr.err, "receive series from %s", s.name), done)
-				return
+				return false
 			}
 			numResponses++
 			bytesProcessed += rr.r.Size()
@@ -455,8 +508,14 @@ func startStreamSeriesSet(
 				case s.recvCh <- series:
 				case <-ctx.Done():
 					s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
-					return
+					return false
 				}
+			}
+			return true
+		}
+		for {
+			if !handleRecvResponse() {
+				return
 			}
 		}
 	}()

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -158,7 +158,8 @@ func TestSyncPeriod(t *testing.T) {
 	}
 }
 
-func Test_SeriesQuery(t *testing.T) {
+func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
+	t.Helper()
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
@@ -189,6 +190,85 @@ func Test_SeriesQuery(t *testing.T) {
 		}
 		stream.chunks = append(stream.chunks, chunkDesc{chunk: chunk})
 	}
+
+	return instance, currentTime, indexShards
+}
+
+func Test_LabelQuery(t *testing.T) {
+	instance, currentTime, _ := setupTestStreams(t)
+	start := &[]time.Time{currentTime.Add(11 * time.Nanosecond)}[0]
+	end := &[]time.Time{currentTime.Add(12 * time.Nanosecond)}[0]
+	m, err := labels.NewMatcher(labels.MatchEqual, "app", "test")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name             string
+		req              *logproto.LabelRequest
+		expectedResponse logproto.LabelResponse
+		matchers         []*labels.Matcher
+	}{
+		{
+			"label names - no matchers",
+			&logproto.LabelRequest{
+				Start: start,
+				End:   end,
+			},
+			logproto.LabelResponse{
+				Values: []string{"app", "job"},
+			},
+			nil,
+		},
+		{
+			"label names - with matcher",
+			&logproto.LabelRequest{
+				Start: start,
+				End:   end,
+			},
+			logproto.LabelResponse{
+				Values: []string{"app", "job"},
+			},
+			[]*labels.Matcher{m},
+		},
+		{
+			"label values - no matchers",
+			&logproto.LabelRequest{
+				Name:   "app",
+				Values: true,
+				Start:  start,
+				End:    end,
+			},
+			logproto.LabelResponse{
+				Values: []string{"test", "test2"},
+			},
+			nil,
+		},
+		{
+			"label values - with matcher",
+			&logproto.LabelRequest{
+				Name:   "app",
+				Values: true,
+				Start:  start,
+				End:    end,
+			},
+			logproto.LabelResponse{
+				Values: []string{"test"},
+			},
+			[]*labels.Matcher{m},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := instance.Label(context.Background(), tc.req, tc.matchers...)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expectedResponse.Values, resp.Values)
+		})
+	}
+}
+
+func Test_SeriesQuery(t *testing.T) {
+	instance, currentTime, indexShards := setupTestStreams(t)
 
 	tests := []struct {
 		name             string

@@ -7,7 +7,7 @@ import __yyfmt__ "fmt"
 
 import (
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"time"
 )
 

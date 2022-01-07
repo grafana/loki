@@ -208,10 +208,11 @@ type AppJobSpec struct {
 	// A list of environment variables made available to the component.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
 	// The instance size to use for this component.
-	InstanceSizeSlug string          `json:"instance_size_slug,omitempty"`
-	InstanceCount    int64           `json:"instance_count,omitempty"`
-	Kind             AppJobSpecKind  `json:"kind,omitempty"`
-	Alerts           []*AppAlertSpec `json:"alerts,omitempty"`
+	InstanceSizeSlug string                   `json:"instance_size_slug,omitempty"`
+	InstanceCount    int64                    `json:"instance_count,omitempty"`
+	Kind             AppJobSpecKind           `json:"kind,omitempty"`
+	Alerts           []*AppAlertSpec          `json:"alerts,omitempty"`
+	LogDestinations  []*AppLogDestinationSpec `json:"log_destinations,omitempty"`
 }
 
 // AppJobSpecKind  - UNSPECIFIED: Default job type, will auto-complete to POST_DEPLOY kind.  - PRE_DEPLOY: Indicates a job that runs before an app deployment.  - POST_DEPLOY: Indicates a job that runs after an app deployment.  - FAILED_DEPLOY: Indicates a job that runs after a component fails to deploy.
@@ -224,6 +225,35 @@ const (
 	AppJobSpecKind_PostDeploy   AppJobSpecKind = "POST_DEPLOY"
 	AppJobSpecKind_FailedDeploy AppJobSpecKind = "FAILED_DEPLOY"
 )
+
+// AppLogDestinationSpec struct for AppLogDestinationSpec
+type AppLogDestinationSpec struct {
+	// Name of the log destination.
+	Name       string                           `json:"name,omitempty"`
+	Papertrail *AppLogDestinationSpecPapertrail `json:"papertrail,omitempty"`
+	Datadog    *AppLogDestinationSpecDataDog    `json:"datadog,omitempty"`
+	Logtail    *AppLogDestinationSpecLogtail    `json:"logtail,omitempty"`
+}
+
+// AppLogDestinationSpecDataDog DataDog configuration.
+type AppLogDestinationSpecDataDog struct {
+	// Datadog HTTP log intake endpoint.
+	Endpoint string `json:"endpoint,omitempty"`
+	// Datadog API key.
+	ApiKey string `json:"api_key"`
+}
+
+// AppLogDestinationSpecLogtail Logtail configuration.
+type AppLogDestinationSpecLogtail struct {
+	// Logtail token.
+	Token string `json:"token"`
+}
+
+// AppLogDestinationSpecPapertrail Papertrail configuration.
+type AppLogDestinationSpecPapertrail struct {
+	// Papertrail syslog endpoint.
+	Endpoint string `json:"endpoint"`
+}
 
 // AppRouteSpec struct for AppRouteSpec
 type AppRouteSpec struct {
@@ -262,6 +292,8 @@ type AppServiceSpec struct {
 	// The ports on which this service will listen for internal traffic.
 	InternalPorts []int64         `json:"internal_ports,omitempty"`
 	Alerts        []*AppAlertSpec `json:"alerts,omitempty"`
+	// A list of configured log forwarding destinations.
+	LogDestinations []*AppLogDestinationSpec `json:"log_destinations,omitempty"`
 }
 
 // AppServiceSpecHealthCheck struct for AppServiceSpecHealthCheck
@@ -364,9 +396,10 @@ type AppWorkerSpec struct {
 	// A list of environment variables made available to the component.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
 	// The instance size to use for this component.
-	InstanceSizeSlug string          `json:"instance_size_slug,omitempty"`
-	InstanceCount    int64           `json:"instance_count,omitempty"`
-	Alerts           []*AppAlertSpec `json:"alerts,omitempty"`
+	InstanceSizeSlug string                   `json:"instance_size_slug,omitempty"`
+	InstanceCount    int64                    `json:"instance_count,omitempty"`
+	Alerts           []*AppAlertSpec          `json:"alerts,omitempty"`
+	LogDestinations  []*AppLogDestinationSpec `json:"log_destinations,omitempty"`
 }
 
 // DeploymentCauseDetailsDigitalOceanUser struct for DeploymentCauseDetailsDigitalOceanUser

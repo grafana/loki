@@ -81,7 +81,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	if err != nil {
 		return nil, errors.Wrapf(err, "parse external URL %q", cfg.ExternalURL)
 	}
-	cfg.PathPrefix = externalURL.Path
+	externalURL.Path += cfg.PathPrefix
 
 	healthCheckTargetFlag := true
 	if cfg.HealthCheckTarget != nil {
@@ -99,7 +99,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 
 	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), 303))
 	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
-	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
+	serv.HTTP.PathPrefix("/static/").Handler(http.StripPrefix(externalURL.Path, http.FileServer(ui.Assets)))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
 	serv.HTTP.Path("/config").Handler(http.HandlerFunc(serv.config))

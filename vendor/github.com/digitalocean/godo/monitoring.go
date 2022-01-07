@@ -4,21 +4,28 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/digitalocean/godo/metrics"
 )
 
 const (
-	monitoringBasePath  = "v2/monitoring"
-	alertPolicyBasePath = monitoringBasePath + "/alerts"
+	monitoringBasePath     = "v2/monitoring"
+	alertPolicyBasePath    = monitoringBasePath + "/alerts"
+	dropletMetricsBasePath = monitoringBasePath + "/metrics/droplet"
 
-	DropletCPUUtilizationPercent       = "v1/insights/droplet/cpu"
-	DropletMemoryUtilizationPercent    = "v1/insights/droplet/memory_utilization_percent"
-	DropletDiskUtilizationPercent      = "v1/insights/droplet/disk_utilization_percent"
-	DropletPublicOutboundBandwidthRate = "v1/insights/droplet/public_outbound_bandwidth"
-	DropletDiskReadRate                = "v1/insights/droplet/disk_read"
-	DropletDiskWriteRate               = "v1/insights/droplet/disk_write"
-	DropletOneMinuteLoadAverage        = "v1/insights/droplet/load_1"
-	DropletFiveMinuteLoadAverage       = "v1/insights/droplet/load_5"
-	DropletFifteenMinuteLoadAverage    = "v1/insights/droplet/load_15"
+	DropletCPUUtilizationPercent        = "v1/insights/droplet/cpu"
+	DropletMemoryUtilizationPercent     = "v1/insights/droplet/memory_utilization_percent"
+	DropletDiskUtilizationPercent       = "v1/insights/droplet/disk_utilization_percent"
+	DropletPublicOutboundBandwidthRate  = "v1/insights/droplet/public_outbound_bandwidth"
+	DropletPublicInboundBandwidthRate   = "v1/insights/droplet/public_inbound_bandwidth"
+	DropletPrivateOutboundBandwidthRate = "v1/insights/droplet/private_outbound_bandwidth"
+	DropletPrivateInboundBandwidthRate  = "v1/insights/droplet/private_inbound_bandwidth"
+	DropletDiskReadRate                 = "v1/insights/droplet/disk_read"
+	DropletDiskWriteRate                = "v1/insights/droplet/disk_write"
+	DropletOneMinuteLoadAverage         = "v1/insights/droplet/load_1"
+	DropletFiveMinuteLoadAverage        = "v1/insights/droplet/load_5"
+	DropletFifteenMinuteLoadAverage     = "v1/insights/droplet/load_15"
 )
 
 // MonitoringService is an interface for interfacing with the
@@ -30,6 +37,18 @@ type MonitoringService interface {
 	CreateAlertPolicy(context.Context, *AlertPolicyCreateRequest) (*AlertPolicy, *Response, error)
 	UpdateAlertPolicy(context.Context, string, *AlertPolicyUpdateRequest) (*AlertPolicy, *Response, error)
 	DeleteAlertPolicy(context.Context, string) (*Response, error)
+
+	GetDropletBandwidth(context.Context, *DropletBandwidthMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletAvailableMemory(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletCPU(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletFilesystemFree(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletFilesystemSize(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletLoad1(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletLoad5(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletLoad15(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletCachedMemory(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletFreeMemory(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDropletTotalMemory(context.Context, *DropletMetricsRequest) (*MetricsResponse, *Response, error)
 }
 
 // MonitoringServiceOp handles communication with monitoring related methods of the
@@ -110,6 +129,32 @@ type alertPoliciesRoot struct {
 
 type alertPolicyRoot struct {
 	AlertPolicy *AlertPolicy `json:"policy,omitempty"`
+}
+
+// DropletMetricsRequest holds the information needed to retrieve Droplet various metrics.
+type DropletMetricsRequest struct {
+	HostID string
+	Start  time.Time
+	End    time.Time
+}
+
+// DropletBandwidthMetricsRequest holds the information needed to retrieve Droplet bandwidth metrics.
+type DropletBandwidthMetricsRequest struct {
+	DropletMetricsRequest
+	Interface string
+	Direction string
+}
+
+// MetricsResponse holds a Metrics query response.
+type MetricsResponse struct {
+	Status string      `json:"status"`
+	Data   MetricsData `json:"data"`
+}
+
+// MetricsData holds the data portion of a Metrics response.
+type MetricsData struct {
+	ResultType string                 `json:"resultType"`
+	Result     []metrics.SampleStream `json:"result"`
 }
 
 // ListAlertPolicies all alert policies
@@ -217,4 +262,95 @@ func (s *MonitoringServiceOp) DeleteAlertPolicy(ctx context.Context, uuid string
 	resp, err := s.client.Do(ctx, req, nil)
 
 	return resp, err
+}
+
+// GetDropletBandwidth retrieves Droplet bandwidth metrics.
+func (s *MonitoringServiceOp) GetDropletBandwidth(ctx context.Context, args *DropletBandwidthMetricsRequest) (*MetricsResponse, *Response, error) {
+	path := dropletMetricsBasePath + "/bandwidth"
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	q := req.URL.Query()
+	q.Add("host_id", args.HostID)
+	q.Add("interface", args.Interface)
+	q.Add("direction", args.Direction)
+	q.Add("start", fmt.Sprintf("%d", args.Start.Unix()))
+	q.Add("end", fmt.Sprintf("%d", args.End.Unix()))
+	req.URL.RawQuery = q.Encode()
+
+	root := new(MetricsResponse)
+	resp, err := s.client.Do(ctx, req, root)
+
+	return root, resp, err
+}
+
+// GetDropletCPU retrieves Droplet CPU metrics.
+func (s *MonitoringServiceOp) GetDropletCPU(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/cpu", args)
+}
+
+// GetDropletFilesystemFree retrieves Droplet filesystem free metrics.
+func (s *MonitoringServiceOp) GetDropletFilesystemFree(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/filesystem_free", args)
+}
+
+// GetDropletFilesystemSize retrieves Droplet filesystem size metrics.
+func (s *MonitoringServiceOp) GetDropletFilesystemSize(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/filesystem_size", args)
+}
+
+// GetDropletLoad1 retrieves Droplet load 1 metrics.
+func (s *MonitoringServiceOp) GetDropletLoad1(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/load_1", args)
+}
+
+// GetDropletLoad5 retrieves Droplet load 5 metrics.
+func (s *MonitoringServiceOp) GetDropletLoad5(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/load_5", args)
+}
+
+// GetDropletLoad15 retrieves Droplet load 15 metrics.
+func (s *MonitoringServiceOp) GetDropletLoad15(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/load_15", args)
+}
+
+// GetDropletCachedMemory retrieves Droplet cached memory metrics.
+func (s *MonitoringServiceOp) GetDropletCachedMemory(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/memory_cached", args)
+}
+
+// GetDropletFreeMemory retrieves Droplet free memory metrics.
+func (s *MonitoringServiceOp) GetDropletFreeMemory(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/memory_free", args)
+}
+
+// GetDropletTotalMemory retrieves Droplet total memory metrics.
+func (s *MonitoringServiceOp) GetDropletTotalMemory(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/memory_total", args)
+}
+
+// GetDropletAvailableMemory retrieves Droplet available memory metrics.
+func (s *MonitoringServiceOp) GetDropletAvailableMemory(ctx context.Context, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	return s.getDropletMetrics(ctx, "/memory_available", args)
+}
+
+func (s *MonitoringServiceOp) getDropletMetrics(ctx context.Context, path string, args *DropletMetricsRequest) (*MetricsResponse, *Response, error) {
+	fullPath := dropletMetricsBasePath + path
+	req, err := s.client.NewRequest(ctx, http.MethodGet, fullPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	q := req.URL.Query()
+	q.Add("host_id", args.HostID)
+	q.Add("start", fmt.Sprintf("%d", args.Start.Unix()))
+	q.Add("end", fmt.Sprintf("%d", args.End.Unix()))
+	req.URL.RawQuery = q.Encode()
+
+	root := new(MetricsResponse)
+	resp, err := s.client.Do(ctx, req, root)
+
+	return root, resp, err
 }

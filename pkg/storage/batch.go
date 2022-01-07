@@ -5,15 +5,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -22,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -657,11 +656,12 @@ outer:
 }
 
 func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
-	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
-	defer log.Finish()
-	start := time.Now()
-	stats := stats.FromContext(ctx)
-	var totalChunks int64
+	var (
+		totalChunks int64
+		start       = time.Now()
+		stats       = stats.FromContext(ctx)
+		logger      = util_log.WithContext(ctx, util_log.Logger)
+	)
 	defer func() {
 		stats.AddChunksDownloadTime(time.Since(start))
 		stats.AddChunksDownloaded(totalChunks)
@@ -677,7 +677,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 	if len(chksByFetcher) == 0 {
 		return nil
 	}
-	level.Debug(log).Log("msg", "loading lazy chunks", "chunks", totalChunks)
+	level.Debug(logger).Log("msg", "loading lazy chunks", "chunks", totalChunks)
 
 	errChan := make(chan error)
 	for fetcher, chunks := range chksByFetcher {
@@ -696,9 +696,9 @@ func fetchLazyChunks(ctx context.Context, chunks []*LazyChunk) error {
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", err)
+				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {
-					level.Error(util_log.Logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
+					level.Error(logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
 					errChan <- nil
 					return
 				}

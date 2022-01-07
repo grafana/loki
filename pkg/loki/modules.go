@@ -11,10 +11,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
-	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv/codec"
@@ -35,11 +32,14 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/scheduler"
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway/indexgatewaypb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/uploads"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -203,6 +204,8 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
+	t.Server.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
 	return t.distributor, nil
@@ -232,15 +235,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		SchedulerRing:         scheduler.SafeReadRing(t.queryScheduler),
 	}
 
+	httpMiddleware := middleware.Merge(
+		httpreq.ExtractQueryMetricsMiddleware(),
+	)
+
 	queryHandlers := map[string]http.Handler{
-		"/loki/api/v1/query_range":         http.HandlerFunc(t.Querier.RangeQueryHandler),
-		"/loki/api/v1/query":               http.HandlerFunc(t.Querier.InstantQueryHandler),
+		"/loki/api/v1/query_range":         httpMiddleware.Wrap(http.HandlerFunc(t.Querier.RangeQueryHandler)),
+		"/loki/api/v1/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.InstantQueryHandler)),
 		"/loki/api/v1/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/labels":              http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
 		"/loki/api/v1/series":              http.HandlerFunc(t.Querier.SeriesHandler),
 
-		"/api/prom/query":               http.HandlerFunc(t.Querier.LogQueryHandler),
+		"/api/prom/query":               httpMiddleware.Wrap(http.HandlerFunc(t.Querier.LogQueryHandler)),
 		"/api/prom/label":               http.HandlerFunc(t.Querier.LabelHandler),
 		"/api/prom/label/{name}/values": http.HandlerFunc(t.Querier.LabelHandler),
 		"/api/prom/series":              http.HandlerFunc(t.Querier.SeriesHandler),
@@ -274,6 +281,11 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	if err != nil {
 		return
 	}
+
+	if t.Cfg.Ingester.Wrapper != nil {
+		t.Ingester = t.Cfg.Ingester.Wrapper.Wrap(t.Ingester)
+	}
+
 	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
@@ -437,7 +449,6 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		util_log.Logger,
 		t.overrides,
 		t.Cfg.SchemaConfig.SchemaConfig,
-		t.Cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -489,6 +500,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}
 
 	frontendHandler = middleware.Merge(
+		httpreq.ExtractQueryTagsMiddleware(),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -500,6 +512,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	// If this process also acts as a Querier we don't do any proxying of tail requests
 	if t.Cfg.Frontend.TailProxyURL != "" && !t.isModuleActive(Querier) {
 		httpMiddleware := middleware.Merge(
+			httpreq.ExtractQueryTagsMiddleware(),
 			t.HTTPAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)

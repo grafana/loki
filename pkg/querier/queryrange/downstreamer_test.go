@@ -9,7 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -120,12 +120,12 @@ func TestResponseToResult(t *testing.T) {
 					}},
 				},
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 			},
 			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Data: logqlmodel.Streams{{
 					Labels: `{foo="bar"}`,
@@ -144,7 +144,7 @@ func TestResponseToResult(t *testing.T) {
 			desc: "LokiPromResponse",
 			input: &LokiPromResponse{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Response: &queryrange.PrometheusResponse{
 					Data: queryrange.PrometheusData{
@@ -154,7 +154,7 @@ func TestResponseToResult(t *testing.T) {
 			},
 			expected: logqlmodel.Result{
 				Statistics: stats.Result{
-					Summary: stats.Summary{ExecTime: 1},
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 				},
 				Data: sampleStreamToMatrix(testSampleStreams()),
 			},
@@ -310,7 +310,7 @@ func TestInstanceDownstream(t *testing.T) {
 				}},
 			},
 			Statistics: stats.Result{
-				Summary: stats.Summary{ExecTime: 1},
+				Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
 			},
 		}
 	}

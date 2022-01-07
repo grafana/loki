@@ -18,7 +18,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
@@ -193,7 +194,7 @@ func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrange.CachingOptions) { return }
 
-func (Codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
+func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (queryrange.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -256,6 +257,12 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 }
 
 func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Request, error) {
+	header := make(http.Header)
+	queryTags := getQueryTags(ctx)
+	if queryTags != "" {
+		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
+	}
+
 	switch request := r.(type) {
 	case *LokiRequest:
 		params := url.Values{
@@ -281,7 +288,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 
 		return req.WithContext(ctx), nil
@@ -303,7 +310,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 		return req.WithContext(ctx), nil
 	case *LokiLabelNamesRequest:
@@ -321,7 +328,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 		return req.WithContext(ctx), nil
 	case *LokiInstantRequest:
@@ -344,7 +351,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
 			URL:        u,
 			Body:       http.NoBody,
-			Header:     http.Header{},
+			Header:     header,
 		}
 
 		return req.WithContext(ctx), nil
@@ -363,9 +370,6 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.DecodeResponse")
-	defer sp.Finish()
-
 	var buf []byte
 	var err error
 	if buffer, ok := r.Body.(Buffer); ok {
@@ -373,11 +377,9 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	} else {
 		buf, err = ioutil.ReadAll(r.Body)
 		if err != nil {
-			sp.LogFields(otlog.Error(err))
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 	}
-	sp.LogFields(otlog.Int64("bytes", r.ContentLength))
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
@@ -855,4 +857,56 @@ func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryra
 	}
 
 	return promHeaders
+}
+
+func getQueryTags(ctx context.Context) string {
+	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
+	return v
+}
+
+func NewEmptyResponse(r queryrange.Request) (queryrange.Response, error) {
+	switch req := r.(type) {
+	case *LokiSeriesRequest:
+		return &LokiSeriesResponse{
+			Status:  loghttp.QueryStatusSuccess,
+			Version: uint32(loghttp.GetVersion(req.Path)),
+		}, nil
+	case *LokiLabelNamesRequest:
+		return &LokiLabelNamesResponse{
+			Status:  loghttp.QueryStatusSuccess,
+			Version: uint32(loghttp.GetVersion(req.Path)),
+		}, nil
+	case *LokiInstantRequest:
+		// instant queries in the frontend are always metrics queries.
+		return &LokiPromResponse{
+			Response: &queryrange.PrometheusResponse{
+				Status: loghttp.QueryStatusSuccess,
+				Data: queryrange.PrometheusData{
+					ResultType: loghttp.ResultTypeVector,
+				},
+			},
+		}, nil
+	case *LokiRequest:
+		// range query can either be metrics or logs
+		expr, err := logql.ParseExpr(req.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		if _, ok := expr.(logql.SampleExpr); ok {
+			return &LokiPromResponse{
+				Response: queryrange.NewEmptyPrometheusResponse(),
+			}, nil
+		}
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: req.Direction,
+			Limit:     req.Limit,
+			Version:   uint32(loghttp.GetVersion(req.Path)),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported request type %T", req)
+	}
 }

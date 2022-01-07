@@ -210,9 +210,12 @@ func (t *DateTime) UnmarshalBSON(data []byte) error {
 // Marshals a DateTime as a bsontype.DateTime, an int64 representing
 // milliseconds since epoch.
 func (t DateTime) MarshalBSONValue() (bsontype.Type, []byte, error) {
-	// UnixNano cannot be used, the result of calling UnixNano on the zero
-	// Time is undefined.
-	i64 := NormalizeTimeForMarshal(time.Time(t)).Unix() * 1000
+	// UnixNano cannot be used directly, the result of calling UnixNano on the zero
+	// Time is undefined. Thats why we use time.Nanosecond() instead.
+
+	tNorm := NormalizeTimeForMarshal(time.Time(t))
+	i64 := tNorm.Unix()*1000 + int64(tNorm.Nanosecond())/1e6
+
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, uint64(i64))
 

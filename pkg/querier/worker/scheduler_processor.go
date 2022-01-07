@@ -7,9 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -28,7 +26,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
@@ -134,18 +133,10 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 		// paired with a Send.
 		go func() {
 			// We need to inject user into context for sending response back.
-			ctx := user.InjectOrgID(ctx, request.UserID)
-
-			tracer := opentracing.GlobalTracer()
-			// Ignore errors here. If we cannot get parent span, we just don't create new one.
-			parentSpanContext, _ := lokigrpc.GetParentSpanForRequest(tracer, request.HttpRequest)
-			if parentSpanContext != nil {
-				queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "querier_processor_runRequest", opentracing.ChildOf(parentSpanContext))
-				defer queueSpan.Finish()
-
-				ctx = spanCtx
-			}
-			logger := util_log.WithContext(ctx, sp.log)
+			var (
+				ctx    = user.InjectOrgID(ctx, request.UserID)
+				logger = util_log.WithContext(ctx, sp.log)
+			)
 
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 
@@ -206,7 +197,6 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 		middleware.ClientUserHeaderInterceptor,
 		dskit_middleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
 	}, nil)
-
 	if err != nil {
 		return nil, err
 	}

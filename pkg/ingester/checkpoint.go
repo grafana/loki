@@ -18,10 +18,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
-	prompool "github.com/prometheus/prometheus/pkg/pool"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/util/pool"
@@ -207,7 +207,7 @@ type streamIterator struct {
 func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	instances := ing.getInstances()
 	streamInstances := make([]streamInstance, len(instances))
-	for i, inst := range ing.getInstances() {
+	for i, inst := range instances {
 		inst.streamsMtx.RLock()
 		streams := make([]*stream, 0, len(inst.streams))
 		inst.streamsMtx.RUnlock()

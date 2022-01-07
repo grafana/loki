@@ -11,7 +11,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	ww "github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
@@ -229,6 +229,7 @@ func newTestStore(t testing.TB) *testStore {
 			FSConfig: local.FSConfig{
 				Directory: chunkDir,
 			},
+			MaxParallelGetChunk: 150,
 		},
 		BoltDBShipperConfig: shipper.Config{
 			ActiveIndexDirectory: indexDir,

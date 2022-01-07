@@ -6,12 +6,10 @@ import (
 
 	otlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
-
-const maxParallel = 1000
 
 var decodeContextPool = sync.Pool{
 	New: func() interface{} {
@@ -20,10 +18,10 @@ var decodeContextPool = sync.Pool{
 }
 
 // GetParallelChunks fetches chunks in parallel (up to maxParallel).
-func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
+func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetParallelChunks")
 	defer log.Finish()
-	log.LogFields(otlog.Int("chunks requested", len(chunks)))
+	log.LogFields(otlog.Int("requested", len(chunks)))
 
 	queuedChunks := make(chan chunk.Chunk)
 
@@ -63,7 +61,7 @@ func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context
 		}
 	}
 
-	log.LogFields(otlog.Int("chunks fetched", len(result)))
+	log.LogFields(otlog.Int("fetched", len(result)))
 	if lastErr != nil {
 		log.Error(lastErr)
 	}

@@ -9,14 +9,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/index"
+
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/errutil"
@@ -40,7 +42,7 @@ type streamedBlockWriter struct {
 	indexReader tsdb.IndexReader
 	closers     []io.Closer
 
-	seriesRefs uint64 // postings is a current posting position.
+	seriesRefs storage.SeriesRef // postings is a current posting position.
 }
 
 // NewStreamedBlockWriter returns streamedBlockWriter instance, it's not concurrency safe.
@@ -206,7 +208,7 @@ func (w *streamedBlockWriter) writeMetaFile() error {
 	w.meta.Thanos.SegmentFiles = block.GetSegmentFiles(w.blockDir)
 	w.meta.Stats.NumChunks = w.totalChunks
 	w.meta.Stats.NumSamples = w.totalSamples
-	w.meta.Stats.NumSeries = w.seriesRefs
+	w.meta.Stats.NumSeries = uint64(w.seriesRefs)
 
 	return w.meta.WriteToDir(w.logger, w.blockDir)
 }

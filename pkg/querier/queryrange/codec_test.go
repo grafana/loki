@@ -86,7 +86,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := LokiCodec.DecodeRequest(context.TODO(), req)
+			got, err := LokiCodec.DecodeRequest(context.TODO(), req, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -241,7 +241,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Query, req.(*LokiRequest).Query)
 	require.Equal(t, toEncode.Step, req.(*LokiRequest).Step)
@@ -273,7 +273,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("match[]"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Match, req.(*LokiSeriesRequest).Match)
 	require.Equal(t, toEncode.StartTs, req.(*LokiSeriesRequest).StartTs)
@@ -296,7 +296,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got)
+	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
@@ -903,10 +903,11 @@ var (
 		},
 		"summary": {
 			"bytesProcessedPerSecond": 20,
-			"execTime": 21,
-			"linesProcessedPerSecond": 22,
-			"totalBytesProcessed": 23,
-			"totalLinesProcessed": 24
+			"execTime": 22,
+			"linesProcessedPerSecond": 23,
+			"queueTime": 21,
+			"totalBytesProcessed": 24,
+			"totalLinesProcessed": 25
 		}
 	},`
 	matrixString = `{
@@ -1052,10 +1053,11 @@ var (
 	statsResult = stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 20,
-			ExecTime:                21,
-			LinesProcessedPerSecond: 22,
-			TotalBytesProcessed:     23,
-			TotalLinesProcessed:     24,
+			QueueTime:               21,
+			ExecTime:                22,
+			LinesProcessedPerSecond: 23,
+			TotalBytesProcessed:     24,
+			TotalLinesProcessed:     25,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{

@@ -8,7 +8,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -1665,7 +1665,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	r := statsCtx.Result(time.Since(start))
+	r := statsCtx.Result(time.Since(start), 0)
 	b.Log("Total chunks:" + fmt.Sprintf("%d", r.TotalChunksRef()))
 	b.Log("Total bytes decompressed:" + fmt.Sprintf("%d", r.TotalDecompressedBytes()))
 }

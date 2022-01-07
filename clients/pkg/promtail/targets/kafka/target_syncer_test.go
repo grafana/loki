@@ -6,18 +6,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/clients/pkg/logentry/stages"
+
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/config"
 
 	"github.com/Shopify/sarama"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
 
 func Test_TopicDiscovery(t *testing.T) {
@@ -102,6 +105,9 @@ func Test_NewTarget(t *testing.T) {
 			},
 		},
 	}
+	pipeline, err := stages.NewPipeline(ts.logger, ts.cfg.PipelineStages, &ts.cfg.JobName, ts.reg)
+	require.NoError(t, err)
+	ts.pipeline = pipeline
 	tg, err := ts.NewTarget(&testSession{}, newTestClaim("foo", 10, 1))
 
 	require.NoError(t, err)
