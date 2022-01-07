@@ -12,13 +12,28 @@ import (
 
 const delimiter = "/"
 
-// Client is used to manage boltdb index files in object storage, when using boltdb-shipper.
-type Client interface {
-	ListTables(ctx context.Context) ([]string, error)
-	ListFiles(ctx context.Context, tableName string) ([]IndexFile, error)
+// UserIndexClient allows doing operations on the object store for user specific index.
+type UserIndexClient interface {
+	ListUserFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error)
+	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
+	PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
+	DeleteUserFile(ctx context.Context, tableName, userID, fileName string) error
+}
+
+// CommonIndexClient allows doing operations on the object store for common index.
+type CommonIndexClient interface {
+	ListFiles(ctx context.Context, tableName string) ([]IndexFile, []string, error)
 	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
 	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
 	DeleteFile(ctx context.Context, tableName, fileName string) error
+}
+
+// Client is used to manage boltdb index files in object storage, when using boltdb-shipper.
+type Client interface {
+	CommonIndexClient
+	UserIndexClient
+
+	ListTables(ctx context.Context) ([]string, error)
 	IsFileNotFoundErr(err error) bool
 	Stop()
 }
@@ -51,11 +66,40 @@ func (s *indexStorageClient) ListTables(ctx context.Context) ([]string, error) {
 	return tableNames, nil
 }
 
-func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string) ([]IndexFile, error) {
+func (s *indexStorageClient) ListFiles(ctx context.Context, tableName string) ([]IndexFile, []string, error) {
 	// The forward slash here needs to stay because we are trying to list contents of a directory without which
 	// we will get the name of the same directory back with hosted object stores.
 	// This is due to the object stores not having a concept of directories.
-	objects, _, err := s.objectClient.List(ctx, s.storagePrefix+tableName+delimiter, delimiter)
+	objects, users, err := s.objectClient.List(ctx, s.storagePrefix+tableName+delimiter, delimiter)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	files := make([]IndexFile, 0, len(objects))
+	for _, object := range objects {
+		// The s3 client can also return the directory itself in the ListObjects.
+		if strings.HasSuffix(object.Key, delimiter) {
+			continue
+		}
+		files = append(files, IndexFile{
+			Name:       path.Base(object.Key),
+			ModifiedAt: object.ModifiedAt,
+		})
+	}
+
+	userIDs := make([]string, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, path.Base(string(user)))
+	}
+
+	return files, userIDs, nil
+}
+
+func (s *indexStorageClient) ListUserFiles(ctx context.Context, tableName, userID string) ([]IndexFile, error) {
+	// The forward slash here needs to stay because we are trying to list contents of a directory without which
+	// we will get the name of the same directory back with hosted object stores.
+	// This is due to the object stores not having a concept of directories.
+	objects, _, err := s.objectClient.List(ctx, s.storagePrefix+path.Join(tableName, userID)+delimiter, delimiter)
 	if err != nil {
 		return nil, err
 	}
@@ -80,12 +124,25 @@ func (s *indexStorageClient) GetFile(ctx context.Context, tableName, fileName st
 	return reader, err
 }
 
+func (s *indexStorageClient) GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error) {
+	readCloser, _, err := s.objectClient.GetObject(ctx, s.storagePrefix+path.Join(tableName, userID, fileName))
+	return readCloser, err
+}
+
 func (s *indexStorageClient) PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error {
 	return s.objectClient.PutObject(ctx, s.storagePrefix+path.Join(tableName, fileName), file)
 }
 
+func (s *indexStorageClient) PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error {
+	return s.objectClient.PutObject(ctx, s.storagePrefix+path.Join(tableName, userID, fileName), file)
+}
+
 func (s *indexStorageClient) DeleteFile(ctx context.Context, tableName, fileName string) error {
 	return s.objectClient.DeleteObject(ctx, s.storagePrefix+path.Join(tableName, fileName))
+}
+
+func (s *indexStorageClient) DeleteUserFile(ctx context.Context, tableName, userID, fileName string) error {
+	return s.objectClient.DeleteObject(ctx, s.storagePrefix+path.Join(tableName, userID, fileName))
 }
 
 func (s *indexStorageClient) IsFileNotFoundErr(err error) bool {

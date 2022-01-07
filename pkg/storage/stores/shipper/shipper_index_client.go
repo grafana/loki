@@ -49,7 +49,7 @@ const (
 type boltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error
 	NewWriteBatch() chunk.WriteBatch
-	WriteToDB(ctx context.Context, db *bbolt.DB, writes local.TableWrites) error
+	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
 	Stop()
 }
 
