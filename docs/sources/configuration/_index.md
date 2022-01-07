@@ -1722,7 +1722,7 @@ background:
 memcached:
   # Configures how long keys stay in memcached.
   # CLI flag: -<prefix>.memcached.expiration
-  expiration: <duration> | default = 0
+  expiration: <duration>
 
   # Configures how many keys to fetch in each batch request.
   # CLI flag: -<prefix>.memcached.batchsize
@@ -1845,7 +1845,7 @@ fifocache:
   # The expiry duration for the cache.
   # The default value of 0 disables expiration.
   # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 0s]
+  [validity: <duration>]
 ```
 
 ## schema_config
