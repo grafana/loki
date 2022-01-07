@@ -26,9 +26,8 @@ Example:
 
 ## __line__
 
-This function return the current log line.
+This function returns the current log line.
 
-> Added in Loki 2.5
 Signature:
 
 `line() string`
