@@ -88,9 +88,9 @@ resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
 # However, if you need to provide an actual filter_pattern for a specific log group you should
 # copy this block and modify it accordingly.
 resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
-  name            = "lambdafunction_logfilter_${var.log_group_names[count.index]}"
-  count           = length(var.log_group_names)
-  log_group_name  = var.log_group_names[count.index]
+  for_each        = toset(var.log_group_names)
+  name            = "lambdafunction_logfilter_${each.value}"
+  log_group_name  = each.value
   destination_arn = aws_lambda_function.lambda_promtail.arn
   # required but can be empty string
   filter_pattern = ""
@@ -98,16 +98,16 @@ resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
 }
 
 resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
+  for_each      = toset(var.bucket_names)
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lambda_promtail.arn
   principal     = "s3.amazonaws.com"
-  source_arn    = "arn:aws:s3:::${var.bucket_names[count.index]}"
-  count         = length(var.bucket_names)
+  source_arn    = "arn:aws:s3:::${each.value}"
 }
 
 resource "aws_s3_bucket_notification" "push-to-lambda-promtail" {
-  bucket = var.bucket_names[count.index]
-  count  = length(var.bucket_names)
+  for_each = toset(var.bucket_names)
+  bucket   = each.value
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.lambda_promtail.arn
