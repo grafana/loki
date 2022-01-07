@@ -25,8 +25,8 @@ type targetGroup struct {
 	host          string
 	port          int
 
-	mtx            sync.Mutex
-	client         client.APIClient
+	mtx    sync.Mutex
+	client client.APIClient
 }
 
 func (tg *targetGroup) sync(groups []*targetgroup.Group) {
