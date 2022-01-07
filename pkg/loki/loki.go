@@ -280,8 +280,23 @@ func newDefaultConfig() *Config {
 	return defaultConfig
 }
 
+// RunOpts configures custom behavior for running Loki.
+type RunOpts struct {
+	// CustomConfigEndpointHandlerFn is the handlerFunc to be used by the /config endpoint.
+	// If empty, default handlerFunc will be used.
+	CustomConfigEndpointHandlerFn func(http.ResponseWriter, *http.Request)
+}
+
+func (t *Loki) bindConfigEndpoint(opts RunOpts) {
+	configEndpointHandlerFn := configHandler(t.Cfg, newDefaultConfig())
+	if opts.CustomConfigEndpointHandlerFn != nil {
+		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
+	}
+	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
+}
+
 // Run starts Loki running, and blocks until a Loki stops.
-func (t *Loki) Run() error {
+func (t *Loki) Run(opts RunOpts) error {
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
 		return err
@@ -306,8 +321,8 @@ func (t *Loki) Run() error {
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
-	// This adds a way to see the config and the changes compared to the defaults
-	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configHandler(t.Cfg, newDefaultConfig()))
+	// Config endpoint adds a way to see the config and the changes compared to the defaults.
+	t.bindConfigEndpoint(opts)
 
 	// Each component serves its version.
 	t.Server.HTTP.Path("/loki/api/v1/status/buildinfo").Methods("GET").HandlerFunc(versionHandler())
