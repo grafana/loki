@@ -555,7 +555,7 @@ remote_write:
     [proxy_url: <string>]
 
     # Configure whether HTTP requests follow HTTP 3xx redirects.
-    [follow_redirects: <bool> | default = true]
+    [follow_redirects: <boolean> | default = true]
 
     # Configures the queue used to write to remote storage.
     queue_config:
@@ -729,7 +729,7 @@ The `gcs_storage_config` configures GCS as a general storage for different data 
 
 # Enable HTTP/2 when connecting to GCS.
 # CLI flag: -<prefix>.gcs.enable-http2
-[enable_http2: <bool> | default = true]
+[enable_http2: <boolean> | default = true]
 ```
 
 ## s3_storage_config
@@ -910,7 +910,7 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.
 # CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrent: <bool> | default = false]
+[match_max_concurrent: <boolean> | default = false]
 
 # How often to query the frontend_address DNS to resolve frontend addresses.
 # Also used to determine how often to poll the scheduler-ring for addresses if configured.
@@ -1500,7 +1500,7 @@ cassandra:
   # Instruct the Cassandra driver to not attempt to get host
   # info from the system.peers table.
   # CLI flag: -cassandra.disable-initial-host-lookup
-  [disable_initial_host_lookup: <bool> | default = false]
+  [disable_initial_host_lookup: <boolean> | default = false]
 
   # Use SSL when connecting to Cassandra instances.
   # CLI flag: -cassandra.ssl
@@ -1508,7 +1508,7 @@ cassandra:
 
   # Require SSL certificate validation when SSL is enabled.
   # CLI flag: -cassandra.host-verification
-  [host_verification: <bool> | default = true]
+  [host_verification: <boolean> | default = true]
 
   # Path to certificate file to verify the peer when SSL is enabled.
   # CLI flag: -cassandra.ca-path
@@ -1516,7 +1516,7 @@ cassandra:
 
   # Enable password authentication when connecting to Cassandra.
   # CLI flag: -cassandra.auth
-  [auth: <bool> | default = false]
+  [auth: <boolean> | default = false]
 
   # Username for password authentication when auth is true.
   # CLI flag: -cassandra.username
@@ -1762,7 +1762,7 @@ memcached_client:
 
   # Whether or not to use a consistent hash to discover multiple memcached servers.
   # CLI flag: -<prefix>.memcached.consistent-hash
-  [consistent_hash: <bool> | default = true]
+  [consistent_hash: <boolean> | default = true]
 
   # Trip the circuit breaker after this number of consecutive dial failures.
   # A value of 0 disables the circuit breaker.
@@ -1820,7 +1820,7 @@ redis:
 
   # Skip validating server certificate.
   # CLI flag: -<prefix>.redis.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <bool> | default = false]
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
   # Close connections after remaining idle for this duration.
   # If the value is zero, then idle connections are not closed.
@@ -1936,7 +1936,7 @@ compacts index shards to more performant forms.
 
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
 # CLI flag: -boltdb.shipper.compactor.retention-enabled
-[retention_enabled: <bool> | default = false]
+[retention_enabled: <boolean> | default = false]
 
 # Delay after which chunks will be fully deleted during retention.
 # CLI flag: -boltdb.shipper.compactor.retention-delete-delay
@@ -2008,7 +2008,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Whether or not old samples will be rejected.
 # CLI flag: -validation.reject-old-samples
-[reject_old_samples: <bool> | default = true]
+[reject_old_samples: <boolean> | default = true]
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
@@ -2030,7 +2030,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Truncate log lines when they exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
-[max_line_size_truncate: <bool> | default = false ]
+[max_line_size_truncate: <boolean> | default = false ]
 
 # Maximum number of log entries that will be returned for a query.
 # CLI flag: -validation.max-entries-limit
@@ -2049,7 +2049,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
-[unordered_writes: <bool> | default = true]
+[unordered_writes: <boolean> | default = true]
 
 # Maximum number of chunks that can be fetched by a single query.
 # CLI flag: -store.query-chunk-limit
@@ -2156,7 +2156,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [max_query_lookback: <duration> | default = 0]
 
 # Disable recording rules remote-write.
-[ruler_remote_write_disabled: <bool> | default = false]
+[ruler_remote_write_disabled: <boolean> | default = false]
 
 # The URL of the endpoint to send samples to.
 [ruler_remote_write_url: <string>]
@@ -2196,7 +2196,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [ruler_remote_write_queue_max_backoff: <duration>]
 # Retry upon receiving a 429 status code from the remote-write storage.
 # This is experimental and might change in the future.
-[ruler_remote_write_queue_retry_on_ratelimit: <bool>]
+[ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
 
 # Limit queries that can be sharded.
 # Queries within the time range of now and now minus this sharding lookback
@@ -2241,7 +2241,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 
 # Enable backoff and retry when a rate limit is hit.
 # CLI flag: -<prefix>.backoff-on-ratelimits
-[backoff_on_ratelimits: <bool> | default = false]
+[backoff_on_ratelimits: <boolean> | default = false]
 
 # Configures backoff when enabled.
 backoff_config:
