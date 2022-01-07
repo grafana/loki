@@ -45,16 +45,16 @@ func (tg *targetGroup) sync(groups []*targetgroup.Group) {
 				continue
 			}
 
-			tg.addTarget(string(containerID), t)
+			err := tg.addTarget(string(containerID), t)
+			if err != nil {
+				level.Error(tg.logger).Log("msg", "could not add target", "containerID", containerID, "err", err)
+			}
 		}
 	}
 }
 
 // addTarget checks whether the container with given id is already known. If not it's added to the this group
 func (tg *targetGroup) addTarget(id string, labels model.LabelSet) error {
-	tg.mtx.Lock()
-	defer tg.mtx.Unlock()
-
 	if tg.client == nil {
 		// TODO: load client options from config
 		var err error

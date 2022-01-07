@@ -31,7 +31,7 @@ type TargetManager struct {
 	cancel     context.CancelFunc
 	manager    *discovery.Manager
 	pushClient api.EntryHandler
-	syncers    map[string]*targetGroup
+	groups     map[string]*targetGroup
 }
 
 func NewTargetManager(
@@ -49,7 +49,7 @@ func NewTargetManager(
 		positions:  positions,
 		manager:    discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
 		pushClient: pushClient,
-		syncers:    make(map[string]*targetGroup),
+		groups:     make(map[string]*targetGroup),
 	}
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
@@ -70,7 +70,7 @@ func NewTargetManager(
 				port:          cfg.DockerConfig.Port,
 			}
 			s.addTarget(cfg.DockerConfig.ContainerName, model.LabelSet{})
-			tm.syncers[cfg.JobName] = s
+			tm.groups[cfg.JobName] = s
 		} else if cfg.DockerSDConfigs != nil {
 			pipeline, err := stages.NewPipeline(
 				log.With(logger, "component", "docker_pipeline"),
@@ -84,9 +84,9 @@ func NewTargetManager(
 
 			for _, sd_config := range cfg.DockerSDConfigs {
 				syncerKey := fmt.Sprintf("%s/%s:%d", cfg.JobName, sd_config.Host, sd_config.Port)
-				_, ok := tm.syncers[syncerKey]
+				_, ok := tm.groups[syncerKey]
 				if !ok {
-					tm.syncers[syncerKey] = &targetGroup{
+					tm.groups[syncerKey] = &targetGroup{
 						metrics:       metrics,
 						logger:        logger,
 						positions:     positions,
@@ -114,19 +114,19 @@ func NewTargetManager(
 func (tm *TargetManager) run() {
 	for targetGroups := range tm.manager.SyncCh() {
 		for jobName, groups := range targetGroups {
-			syncer, ok := tm.syncers[jobName]
+			tg, ok := tm.groups[jobName]
 			if !ok {
 				level.Debug(tm.logger).Log("msg", "unknown target for job", "job", jobName)
 				continue
 			}
-			syncer.sync(groups)
+			tg.sync(groups)
 		}
 	}
 }
 
 // Ready returns true if at least one Docker target is active.
 func (tm *TargetManager) Ready() bool {
-	for _, s := range tm.syncers {
+	for _, s := range tm.groups {
 		if s.Ready() {
 			return true
 		}
@@ -136,22 +136,22 @@ func (tm *TargetManager) Ready() bool {
 
 func (tm *TargetManager) Stop() {
 	tm.cancel()
-	for _, s := range tm.syncers {
+	for _, s := range tm.groups {
 		s.Stop()
 	}
 }
 
 func (tm *TargetManager) ActiveTargets() map[string][]target.Target {
-	result := make(map[string][]target.Target, len(tm.syncers))
-	for k, s := range tm.syncers {
+	result := make(map[string][]target.Target, len(tm.groups))
+	for k, s := range tm.groups {
 		result[k] = s.ActiveTargets()
 	}
 	return result
 }
 
 func (tm *TargetManager) AllTargets() map[string][]target.Target {
-	result := make(map[string][]target.Target, len(tm.syncers))
-	for k, s := range tm.syncers {
+	result := make(map[string][]target.Target, len(tm.groups))
+	for k, s := range tm.groups {
 		result[k] = s.AllTargets()
 	}
 	return result
