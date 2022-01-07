@@ -31,7 +31,7 @@ type TargetManager struct {
 	cancel     context.CancelFunc
 	manager    *discovery.Manager
 	pushClient api.EntryHandler
-	syncers    map[string]*syncer
+	syncers    map[string]*targetGroup
 }
 
 func NewTargetManager(
@@ -49,7 +49,7 @@ func NewTargetManager(
 		positions:  positions,
 		manager:    discovery.NewManager(ctx, log.With(logger, "component", "docker_discovery")),
 		pushClient: pushClient,
-		syncers:    make(map[string]*syncer),
+		syncers:    make(map[string]*targetGroup),
 	}
 	configs := map[string]discovery.Configs{}
 	for _, cfg := range scrapeConfigs {
@@ -60,7 +60,7 @@ func NewTargetManager(
 				return nil, err
 			}
 
-			s := &syncer{
+			s := &targetGroup{
 				metrics:       metrics,
 				logger:        logger,
 				targets:       make(map[string]*Target),
@@ -86,7 +86,7 @@ func NewTargetManager(
 				syncerKey := fmt.Sprintf("%s/%s:%d", cfg.JobName, sd_config.Host, sd_config.Port)
 				_, ok := tm.syncers[syncerKey]
 				if !ok {
-					tm.syncers[syncerKey] = &syncer{
+					tm.syncers[syncerKey] = &targetGroup{
 						metrics:       metrics,
 						logger:        logger,
 						positions:     positions,

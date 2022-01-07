@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -15,10 +16,9 @@ import (
 
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )
 
-func Test_CloudflareTarget(t *testing.T) {
+func Test_DockerTarget(t *testing.T) {
 	h := func(w http.ResponseWriter, r *http.Request) {
 		dat, err := os.ReadFile("testdata/flog.log")
 		require.NoError(t, err)
@@ -29,16 +29,11 @@ func Test_CloudflareTarget(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(h))
 	defer ts.Close()
 
-	var (
-		w      = log.NewSyncWriter(os.Stderr)
-		logger = log.NewLogfmtLogger(w)
-		cfg    = &scrapeconfig.DockerConfig{
-			Host:          ts.URL,
-			Labels:        model.LabelSet{"job": "docker"},
-			ContainerName: "flog",
-		}
-		client = fake.New(func() {})
-	)
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+	entryHandler := fake.New(func() {})
+	client, err := client.NewClientWithOpts(client.WithHost(ts.URL))
+	require.NoError(t, err)
 
 	ps, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
@@ -46,15 +41,23 @@ func Test_CloudflareTarget(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ta, err := NewTarget(NewMetrics(prometheus.NewRegistry()), logger, client, ps, cfg)
+	ta, err := NewTarget(
+		NewMetrics(prometheus.NewRegistry()),
+		logger,
+		entryHandler,
+		ps,
+		"flog",
+		model.LabelSet{"job": "docker"},
+		client,
+	)
 	require.NoError(t, err)
 	require.True(t, ta.Ready())
 
 	require.Eventually(t, func() bool {
-		return len(client.Received()) >= 5
+		return len(entryHandler.Received()) >= 5
 	}, 5*time.Second, 100*time.Millisecond)
 
-	received := client.Received()
+	received := entryHandler.Received()
 	sort.Slice(received, func(i, j int) bool {
 		return received[i].Timestamp.Before(received[j].Timestamp)
 	})
