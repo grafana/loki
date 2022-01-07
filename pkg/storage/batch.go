@@ -522,6 +522,7 @@ func (it *sampleBatchIterator) Next() bool {
 			return false
 		}
 	}
+	return false
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
