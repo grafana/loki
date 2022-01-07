@@ -34,6 +34,13 @@ resource "aws_iam_role_policy" "logs" {
         ],
         "Effect" : "Allow",
         "Resource" : "arn:aws:logs:*:*:*",
+      },
+      {
+        "Action" : [
+          "s3:GetObject",
+        ],
+        "Effect" : "Allow",
+        "Resource" : "arn:aws:s3:::*/*",
       }
     ]
   })
@@ -88,4 +95,26 @@ resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
   # required but can be empty string
   filter_pattern = ""
   depends_on     = [aws_iam_role_policy.logs]
+}
+
+resource "aws_lambda_permission" "allow-s3-invoke-lambda-promtail" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda_promtail.arn
+  principal     = "s3.amazonaws.com"
+  source_arn    = "arn:aws:s3:::${var.bucket_names[count.index]}"
+  count         = length(var.bucket_names)
+}
+
+resource "aws_s3_bucket_notification" "push-to-lambda-promtail" {
+  bucket = var.bucket_names[count.index]
+  count  = length(var.bucket_names)
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.lambda_promtail.arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "AWSLogs/"
+    filter_suffix       = ".log.gz"
+  }
+
+  depends_on = [aws_lambda_permission.allow-s3-invoke-lambda-promtail]
 }
