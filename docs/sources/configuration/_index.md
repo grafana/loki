@@ -1009,7 +1009,7 @@ lifecycler:
 # Number of times to try and transfer chunks when leaving before
 # falling back to flushing to the store. Zero = no transfers are done.
 # CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 0]
+[max_transfer_retries: <int> | default = 10]
 
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
