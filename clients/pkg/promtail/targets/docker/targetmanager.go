@@ -69,7 +69,10 @@ func NewTargetManager(
 				host:          cfg.DockerConfig.Host,
 				port:          cfg.DockerConfig.Port,
 			}
-			s.addTarget(cfg.DockerConfig.ContainerName, model.LabelSet{})
+			err = s.addTarget(cfg.DockerConfig.ContainerName, model.LabelSet{})
+			if err != nil {
+				return nil, err
+			}
 			tm.groups[cfg.JobName] = s
 		} else if cfg.DockerSDConfigs != nil {
 			pipeline, err := stages.NewPipeline(
@@ -82,8 +85,8 @@ func NewTargetManager(
 				return nil, err
 			}
 
-			for _, sd_config := range cfg.DockerSDConfigs {
-				syncerKey := fmt.Sprintf("%s/%s:%d", cfg.JobName, sd_config.Host, sd_config.Port)
+			for _, sdConfig := range cfg.DockerSDConfigs {
+				syncerKey := fmt.Sprintf("%s/%s:%d", cfg.JobName, sdConfig.Host, sdConfig.Port)
 				_, ok := tm.groups[syncerKey]
 				if !ok {
 					tm.groups[syncerKey] = &targetGroup{
@@ -93,14 +96,14 @@ func NewTargetManager(
 						targets:       make(map[string]*Target),
 						entryHandler:  pipeline.Wrap(pushClient),
 						defaultLabels: model.LabelSet{},
-						host:          sd_config.Host,
-						port:          sd_config.Port,
+						host:          sdConfig.Host,
+						port:          sdConfig.Port,
 					}
 				}
-				configs[syncerKey] = append(configs[syncerKey], sd_config)
+				configs[syncerKey] = append(configs[syncerKey], sdConfig)
 			}
 		} else {
-			level.Debug(tm.logger).Log("msg", "Docker service discovery configs are emtpy")
+			level.Debug(tm.logger).Log("msg", "Docker service discovery configs are empty")
 		}
 	}
 

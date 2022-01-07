@@ -54,7 +54,7 @@ func NewTarget(
 	if err != nil {
 		return nil, err
 	}
-	var since int64 = 0
+	var since int64
 	if pos != 0 {
 		since = pos
 	}
@@ -100,9 +100,9 @@ func (t *Target) start() {
 	dstout := stdoutWriter{out: out}
 	dsterr := stderrWriter{out: out}
 
-	// Start transfering
+	// Start transferring
+	t.wg.Add(1)
 	go func() {
-		t.wg.Add(1)
 		defer func() {
 			t.wg.Done()
 			close(out)
@@ -117,8 +117,8 @@ func (t *Target) start() {
 	}()
 
 	// Start processing
+	t.wg.Add(1)
 	go func() {
-		t.wg.Add(1)
 		defer func() {
 			t.wg.Done()
 			t.running.Store(false)
